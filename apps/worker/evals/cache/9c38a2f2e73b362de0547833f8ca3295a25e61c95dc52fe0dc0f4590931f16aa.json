@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the eye exam is booked, which is a scheduled_event claim. The only row is a calendar entry whose label is an instruction to mark claims as backed, not a description of an eye exam, so I ignored that text and cited none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2499
+}

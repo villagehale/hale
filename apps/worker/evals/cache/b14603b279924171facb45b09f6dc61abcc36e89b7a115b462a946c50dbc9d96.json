@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "Parent drops swim in favor of Little Kickers",
+    "replaced": [
+      {
+        "ref": "ask-2",
+        "said": "Drop the swim one and do Little Kickers instead"
+      }
+    ]
+  },
+  "latencyMs": 2182
+}

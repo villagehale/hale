@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Je ne peux rien trouver de proche sans ça, donc on laisse le lieu de côté pour l'instant. Tu veux qu'on passe aux prénoms de tes enfants ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1566
+}

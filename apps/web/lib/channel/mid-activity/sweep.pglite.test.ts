@@ -148,6 +148,7 @@ async function seed(
       parentUserId,
       activityKey: options.activityKey ?? candidateId,
       registrationUrl: 'https://example.com/register',
+      providerHost: 'example.com',
       sessions: options.sessions ?? weeklySessions(8),
       status: options.offerStatus ?? 'completed',
     })
@@ -254,6 +255,7 @@ describe('runMidActivityAskSweep', () => {
       parentUserId: first.parentUserId,
       activityKey: secondCandidate?.id as string,
       registrationUrl: 'https://example.com/other',
+      providerHost: 'example.com',
       sessions: weeklySessions(8),
       status: 'completed',
     });

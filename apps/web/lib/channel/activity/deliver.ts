@@ -1,7 +1,12 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
+import {
+  type CadenceLane,
+  handOffProactive,
+  isQueuedForDecider,
+} from '~/lib/channel/proactive/queue';
 import type { OptOutForm } from '~/lib/channel/opt-out';
 import type { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -28,8 +33,8 @@ import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from 
  *
  * Two things now decide to answer an activity promise: the hourly sweep (sweep.ts), which
  * keeps every promise that has come due, and the question-time deep job (deep-job.ts),
- * which keeps ONE promise minutes after it is made because the parent named a place and
- * the answer is worth opening pages for. They disagree about a great deal — which
+ * which keeps each promise minutes after it is made, by opening the pages the answer is
+ * on. They disagree about a great deal — which
  * research runs, what a failure costs, whether to fall back to a snippet search — and
  * they must not disagree about ONE thing: what happens between a set of picks and a
  * parent reading them.
@@ -194,6 +199,11 @@ export interface FollowUpRecipient {
   conversationId: string | null;
   /** The parent's one proactive language (`parentLanguage`). The follow-up is written in it. */
   language: string;
+  /** The 1:1 iMessage chat the promise was made in, and the parent's ask in it (the inbound
+   * the promise answered), so the answer threads under the ask as every reply does. Null on
+   * SMS, in a group, or wherever the ask is not known to be 1:1. The transport replies in
+   * that chat only while it is still this parent's 1:1 on this line. */
+  thread: { chatId: string; messageId: string } | null;
 }
 
 /** The effects a delivery performs. Every one is REQUIRED (rule #11): a sender that could
@@ -231,6 +241,7 @@ export interface FollowUpDelivery {
       /** Everything the parent has now been told on this subject: what they had heard
        * before this message, and what this message said. */
       heardFacts: readonly string[];
+      askLanguage: string | null;
       now: Date;
     },
   ): Promise<ActivityPromiseRecordOutcome>;
@@ -264,6 +275,13 @@ export interface FollowUpDeliveryInput {
   /** What the parent had already been told on this subject before this message — the
    * watch row's `heardFacts`, or null when no follow-up has answered this promise yet. */
   heardFacts: readonly string[] | null;
+  /** The promise row's `askLanguage`: the language tag of the parent's ask. Carried onto
+   * the watch this delivery mints, which keeps answering the same ask. */
+  askLanguage: string | null;
+  /** `immediate` for the question-time job while `deep-followup-now` is lit: the second
+   * half of a reply in a live conversation, which never waits for the hourly decider.
+   * `candidate` for the sweep, and for the question-time job while it is dark. */
+  lane: CadenceLane;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -284,7 +302,8 @@ export type FollowUpDeliveryOutcome =
     }
   | { status: 'deferred'; reason: FollowUpFallback }
   | { status: 'refused_at_send'; reasons: readonly string[] }
-  | { status: 'skipped'; reason: string };
+  | { status: 'skipped'; reason: string }
+  | { status: 'queued' };
 
 /**
  * Compose the message, gate it, send it, and close the promise against the row that
@@ -304,6 +323,9 @@ export async function deliverFollowUp(
   // composed, because the composer's gates read it. `watch` is what the message is
   // allowed to say and what the ledger is about to be told, and they are one value so
   // they cannot disagree (#521, and the 2026-08-22 repeat of it through this door).
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
   const watch = watchWarranted(input.picks);
   const composed = await deps.composer.compose({
     subject: input.subject,
@@ -376,12 +398,48 @@ export async function deliverFollowUp(
     return { status: 'refused_at_send', reasons: unbacked };
   }
 
+  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+    return { status: 'queued' };
+  }
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId: input.familyId,
+        parentUserId: input.recipient.parentUserId,
+        kind: 'activity_followup',
+        category: 'activity_followup',
+        templateKey: 'activity_followup:kept',
+        what: message,
+        why: 'activity_followup',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: input.dedupeKey,
+        payload: { auditVerb: 'activity_followup_sent', fulfillKind: 'activity_followup' },
+      },
+    ],
+    input.lane,
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'agent_commitments',
+      targetId: input.commitmentId,
+      after: { kind: 'activity_followup' },
+    });
+    return { status: 'queued' };
+  }
+
   const delivered = await deliverFamilyOutbound(database, {
     familyId: input.familyId,
     body,
     to,
     legacy: deps.transport,
     bubbleKind: 'discretionary',
+    ...(input.recipient.thread ? { replyIn: input.recipient.thread } : {}),
     now,
   });
   if (delivered.status === 'held') {
@@ -481,6 +539,7 @@ export async function deliverFollowUp(
     channelMessageId,
     dueInHours: ACTIVITY_WATCH_DUE_HOURS,
     heardFacts: [...new Set([...(input.heardFacts ?? []), ...followUpFacts(input.picks)])].sort(),
+    askLanguage: input.askLanguage,
     now,
   });
   if (recorded.status === 'recorded') {

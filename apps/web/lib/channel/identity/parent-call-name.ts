@@ -278,13 +278,21 @@ export interface ParentCallNameVoice {
  * call them. A different name stores THAT name, not the Google one. A reply
  * the model read as none of those is not claimed.
  */
+/** Whether Hale's latest name ask to this parent is the confirm of a held name: the only
+ * time a text is a reply to it. */
+export async function parentNameConfirmPending(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<boolean> {
+  return (await latestAsk(database, input)) === PARENT_NAME_CONFIRM_TEMPLATE_KEY;
+}
+
 export async function handleParentCallNameReply(
   database: Database,
   input: { familyId: string; parentUserId: string; body: string },
   voice: ParentCallNameVoice,
 ): Promise<ParentCallNameReply> {
-  const pending = await latestAsk(database, input);
-  if (pending !== PARENT_NAME_CONFIRM_TEMPLATE_KEY) return { status: 'declined' };
+  if (!(await parentNameConfirmPending(database, input))) return { status: 'declined' };
 
   const held = safeGivenName(await readHeldGivenName(database, input.parentUserId));
   if (!held) {

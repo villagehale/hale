@@ -61,7 +61,9 @@ export function defaultFreshLinkPorts(): FreshLinkPorts {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
   };
 }
 

@@ -162,6 +162,26 @@ describe('the payloads', () => {
     for (const system of plain) expect(system).not.toContain(addendum);
   });
 
+  it('keeps the ground tools+system prefix identical across two family-local days', async () => {
+    const prefix = async (today: string) => {
+      const seen: Seen[] = [];
+      await createActivityFinder(
+        makeClient(
+          { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find({ ...QUERY, today });
+      const ground = seen[0];
+      return JSON.stringify({ tools: ground?.tools ?? null, system: ground?.system ?? null });
+    };
+    const a = await prefix('2026-10-12 (Monday)');
+    const b = await prefix('2026-03-01 (Sunday)');
+    expect(a).toBe(b);
+    expect(a).toContain('cache_control');
+    expect(a).not.toContain('2026-10-12');
+    expect(a).not.toContain('2026-03-01');
+  });
+
   it('omits a stage it does not have rather than sending a placeholder', () => {
     expect(
       groundUserMessage({ subject: 'story time', window: null, town: 'Toronto', stage: null }),

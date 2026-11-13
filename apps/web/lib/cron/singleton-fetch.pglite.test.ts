@@ -273,6 +273,7 @@ describe('the per-drain expiry sweep', () => {
         channelSend: inert,
         channelSendDead: inert,
         channelMessage,
+        foldedInto: async () => [],
         deepResearch: inert,
         autonomyNotices: inert,
       },

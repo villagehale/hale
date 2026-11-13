@@ -1,5 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, laneRequestFields, pickLane } from '@hale/agent';
+import {
+  type AgentClient,
+  cachedSystem,
+  laneRequestFields,
+  layoutTools,
+  pickLane,
+} from '@hale/agent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ActivityQuery } from './deidentify';
 import { type GroundingEvidence, readEvidence } from './evidence';
@@ -246,18 +252,18 @@ export function createAngleResearcher(
           .stream({
             ...wireLane(skill.meta.task),
             max_tokens: ANGLE_MAX_TOKENS,
-            system: skill.instructions,
+            system: cachedSystem(skill.instructions),
             // Cast because the pinned SDK (0.41.0) predates `web_fetch` and has no member
             // for it in `ToolUnion`. The wire shape is live-probed (see deep.ts); the SDK
             // serialises the tool list as given.
-            tools: [
+            tools: layoutTools([
               { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_ANGLE_SEARCHES },
               {
                 name: 'web_fetch',
                 type: 'web_fetch_20260209',
                 max_uses: MAX_ANGLE_FETCHES,
               } as unknown as Anthropic.ToolUnion,
-            ],
+            ]),
             messages: [{ role: 'user', content: angleUserMessage(query, angle) }],
           })
           .finalMessage();

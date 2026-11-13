@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks a fact about the family: Ada's teacher. The memory says her teacher is Ms. Okafor, so it can be answered now without touching the pending art class search.",
+    "verdict": "answer",
+    "reply": "Ada's teacher is Ms. Okafor."
+  },
+  "latencyMs": 1384
+}

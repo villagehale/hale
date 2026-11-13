@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The group_done line announces the draw to the whole group chat but lists every giver-to-receiver pairing (Priya → Ana, Ben → Hélène, Ana → Priya, Hélène → Ben), which is exactly the secret nobody in the group may learn. It also names people after the draw. This is a complete reveal of all pairings, the most severe failure.",
+    "score": 1
+  }
+}

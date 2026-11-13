@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubble 1 is a count/lead-in ('有两个适合…的'), which the rubric explicitly treats as a violation even though it is a full sentence; the first bubble should already be the answer. Otherwise the language is Chinese, both classes are named with day/time, registration opening is stated, and facts are not invented. The split is otherwise reasonable.",
+    "score": 3
+  }
+}

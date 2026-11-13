@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "driver_claim",
+    "driverName": "Priya",
+    "driverIsSender": true,
+    "eventLabel": "足球",
+    "pickupDate": "2026-10-31",
+    "pickupTime": "08:00",
+    "pickupPlace": null,
+    "kids": "孩子",
+    "confidence": "high"
+  },
+  "latencyMs": 5308
+}

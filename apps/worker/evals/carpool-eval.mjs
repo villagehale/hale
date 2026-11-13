@@ -1,111 +1,123 @@
-// VIL-445 carpool eval. Judges score meaning, 1 to 5. No word-matching.
+// VIL-520 · Carpool reader eval (hard rule #8: no LLM mocking).
 //
-// Paid live runs are not approved. This runner estimates or replays cache.
+// SUBJECT: packages/agent/skills/carpool-reading.md, called the way the runtime calls it
+// (apps/web/lib/channel/linq/carpool-reading.ts): the same user message, tool, schema, lane
+// and max_tokens, imported from that file. The grade runs the runtime's own parse
+// (`parseCarpoolReading`) and pickup resolver (`resolveCarpoolPickup`) on the model's
+// reading and checks the structured outcome: intent, driver, local day and hour, and the
+// instant stored. No wording is graded. Every `now` is a fixed clock from the fixtures.
 //
-//   node evals/carpool-eval.mjs --estimate
-//   node evals/carpool-eval.mjs --cached-only
+// Runs cached-only in ci.yml (eval:carpool). A miss never spends.
 //
-// --estimate prices one live run of the four ticket cases
-// (reader + voice, each with two attempts, plus one Haiku judge draw)
-// at max_tokens and exits 0. It does not call the API.
-// --cached-only replays committed cache. A miss prints that estimate and exits 1.
+//   node evals/carpool-eval.mjs --dry           # worst-case price to record; no API, nothing written
+//   node evals/carpool-eval.mjs --cached-only   # replay; a miss exits 1
+//   HALE_SPEND_LEDGER=... node --env-file=../../.env evals/carpool-eval.mjs --record --max-usd 0.10
 
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { JUDGE_REASON_MAX_CHARS, formatEstimate, suiteBreakdown } from './carpool-estimate.mjs';
-import { CARPOOL_JUDGE_CASES } from './carpool-judge-fixtures.mjs';
+import { CARPOOL_READING_FIXTURES, gradeCarpoolReading } from './carpool-reading-fixtures.mjs';
 import {
-  JUDGE_MIN,
+  PRICE,
   REPO_ROOT,
-  cacheGet,
-  cacheKey,
-  evalRunTag,
-  isVerdict,
-  readJudgeModel,
-  scoreFirstJudgeSchema,
+  cachedToolCall,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
 } from './lib/harness.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
-const READING_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'carpool-reading.md');
-const VOICE_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'carpool-voice.md');
+const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'carpool-reading.md');
 const READING_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'carpool-reading.ts');
-const VOICE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'carpool-voice.ts');
+const APPLY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'carpool-apply.ts');
 
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-const JUDGE_SYSTEM = judgePrompt('carpool', { reasonMaxChars: JUDGE_REASON_MAX_CHARS });
+function estimateTokens(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return Math.ceil(text.length / 3);
+}
 
-async function dryBreakdown() {
-  const agent = await importTs(AGENT_SRC);
-  const reading = await importTs(READING_SRC);
-  await importTs(VOICE_SRC);
-  const readingSkill = await agent.loadSkill(READING_SKILL);
-  const voiceSkill = await agent.loadSkill(VOICE_SKILL);
-  const judgeModel = await readJudgeModel();
-  const readLane = agent.pickLane(readingSkill.meta.task);
-  const voiceLane = agent.pickLane(voiceSkill.meta.task);
-  return suiteBreakdown({
-    readModel: readLane.model,
-    voiceModel: voiceLane.model,
-    judgeModel,
-    readingInstructions: readingSkill.instructions,
-    voiceInstructions: voiceSkill.instructions,
-    readingTool: reading.CARPOOL_READING_TOOL_SCHEMA,
-    judgeSystem: JUDGE_SYSTEM,
-    judgeSchema: scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS),
-  });
+function worstCaseUsd({ lane, skill, reading }) {
+  const price = PRICE[lane.model];
+  if (!price) throw new Error(`no list price for ${lane.model}`);
+  let usd = 0;
+  for (const fixture of CARPOOL_READING_FIXTURES) {
+    const input =
+      estimateTokens(skill.instructions) +
+      estimateTokens(reading.carpoolUserMessage(fixture.input)) +
+      estimateTokens(reading.CARPOOL_READING_TOOL_SCHEMA);
+    usd += (input / 1e6) * price.input + (reading.CARPOOL_READING_MAX_TOKENS / 1e6) * price.output;
+  }
+  return usd;
 }
 
 async function main() {
-  const estimateOnly = process.argv.includes('--estimate');
+  const dry = process.argv.includes('--dry');
   const cachedOnly = process.argv.includes('--cached-only');
-  if (estimateOnly && cachedOnly) {
-    console.error('carpool: pass only one of --estimate and --cached-only');
-    process.exit(1);
-  }
-  if (!estimateOnly && !cachedOnly) {
-    console.error('carpool: pass --estimate or --cached-only. This runner does not call the API.');
+  const record = process.argv.includes('--record');
+  if ([dry, cachedOnly, record].filter(Boolean).length !== 1) {
+    console.error(
+      'carpool: pass exactly one of --dry, --cached-only or --record. Only --record calls the API.',
+    );
     process.exit(2);
   }
 
-  const breakdown = await dryBreakdown();
-  const printed = formatEstimate(breakdown);
+  const agent = await importTs(AGENT_SRC);
+  const reading = await importTs(READING_SRC);
+  const apply = await importTs(APPLY_SRC);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const lane = agent.pickLane(skill.meta.task);
 
-  if (estimateOnly) {
-    console.info(printed);
+  if (dry) {
+    const usd = worstCaseUsd({ lane, skill, reading });
+    console.info(
+      `carpool: worst case to record ${CARPOOL_READING_FIXTURES.length} fixtures (${lane.model}), every call at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD`,
+    );
     return;
   }
 
-  for (const fixture of CARPOOL_JUDGE_CASES) {
-    const key = cacheKey(evalRunTag(`carpool:${fixture.id}`), fixture.situation);
-    const cached = await cacheGet(key);
-    if (!cached) {
-      console.error(printed);
-      console.error(`carpool: cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const verdict = await cacheGet(cacheKey(`carpool:judge:${fixture.id}`, fixture.situation));
-    if (!verdict || !isVerdict(verdict.parsed)) {
-      console.error(printed);
-      console.error(`carpool: judge cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const score = verdict.parsed.score;
-    const ok = score >= JUDGE_MIN;
-    console.info(`${ok ? 'PASS' : 'FAIL'}  ${fixture.id}  judge:${score}`);
-    if (!ok) process.exitCode = 1;
+  if (record) installEvalSpendCap();
+  const getClient = lazyAnthropic('carpool');
+  const cost = makeCost();
+  console.info(`carpool eval | mode=${record ? 'record' : 'cached-only'} | subject=${lane.model}`);
+  let passed = true;
+  for (const fixture of CARPOOL_READING_FIXTURES) {
+    const { value } = await cachedToolCall({
+      tag: `carpool-reading:${fixture.id}`,
+      lane,
+      system: skill.instructions,
+      userMessage: reading.carpoolUserMessage(fixture.input),
+      toolName: reading.CARPOOL_READING_TOOL,
+      toolSchema: reading.CARPOOL_READING_TOOL_SCHEMA,
+      toolDescription: reading.CARPOOL_READING_TOOL_DESCRIPTION,
+      maxTokens: reading.CARPOOL_READING_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const parsed = reading.parseCarpoolReading(value);
+    const pickupAt =
+      apply.resolveCarpoolPickup(parsed, fixture.input.timeZone)?.toISOString() ?? null;
+    const failures = gradeCarpoolReading(fixture.expect, { reading: parsed, pickupAt });
+    console.info(
+      `${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(32)} ${parsed.intent} ${parsed.pickupDate ?? '-'} ${parsed.pickupTime ?? '-'} ${pickupAt ?? '-'}`,
+    );
+    for (const f of failures) console.info(`      · ${f}`);
+    if (failures.length > 0) passed = false;
   }
+  console.info(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  process.exit(passed ? 0 : 1);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err) => {
-    console.error(err instanceof Error ? err.message : 'carpool eval failed');
-    process.exit(1);
+    console.error('carpool eval harness error:', err instanceof Error ? err.message : err);
+    process.exit(2);
   });
 }
-
-export { dryBreakdown, formatEstimate };

@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import {
@@ -94,7 +95,7 @@ const DAY_MS = 86_400_000;
 export const CHECK_IN_ANCHOR_ENABLED_ENV = 'CHECK_IN_ANCHOR_ENABLED';
 
 export function checkInAnchorEnabled(): boolean {
-  return process.env[CHECK_IN_ANCHOR_ENABLED_ENV] === 'true';
+  return isEnabled('check-in-anchor');
 }
 
 /**

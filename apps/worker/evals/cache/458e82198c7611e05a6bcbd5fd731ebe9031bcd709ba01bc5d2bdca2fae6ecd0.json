@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgwWZWCk2aTs5wPoqxh8V",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/AYKEAgTGAI4AUIIdGhpbmtpbmcSDA4CL3s2jKl/7S+shBoMmwAlgS8T7sggOfNYIjAhVLF+kI5mR0mPo1MrBsVmCXx05EwI56SCE46cZ4pBVvqM5zkMbm/8lvhAap9bVWEqmQbGYtRWHu8T6ZyLq75vixqEM5o4Y18o7LWUAg9Awz1tnrLniSLzSYRAL2jK4cKlhWds0chKvQeLycnhtjmWHJDhbls31MUWfhlXNmKGxWn120PEOLPQKhGe6lYlu/qJgfKMPjPzbLFjRDe19w1qGWc5MlediZT2uj79WnDXwC2x3Rlq2XUE7X4dQwOoiTvqJREMFbYtCjlPg2S1fMvll5XTlHA71/rz4acKPH1PHCD7/xLwVMQvJo8RfjB2g/ypvIgkXKQBrruqARcxDi3+YfTGV3O7Ho2VFXP/8Sh8Nct64gA+JNzjTTgrL1CbEJscWI6znNY89Tqv4SLhJ/w/lR1H941s963UjV3Svg0KtIYr9OnEGWDWlRqHSUZnTgPIRrum9dowBhGNhgVVMFhiMBVWzHOUA2M0ZDOx6LB4ef4WT42zuxhUJo1mZjVEaJ7YgYWtTRphc1qDU2Ou1vNzry5KKpCbrypEm0Fn3TGMTT9lirYWzJvZm+CGT5mywrNfi6Fy9DDchVNUVGJ/PTUaogMbwLlMcG72lM4U5kbf2E0mWK/KGb8m1yXPCGAYPEym8gMSmawVeaoFVhR6UlDboDNA4cNsZ7wMgh1vCEdOmbjsBATvW5sBMwk8UJD21kB5aye5dA5VOTICy+rnorJkwzJRD9QDqDce928fUr+10JdodBP2Vo8YCGK9bGohCVr/s0PejZ/M3y3K50PUpKBZz8ODwYMBp/HIV+zq6lOuQHo3xbVmrX7X0G8WFa3vN1TfS0/PR7TRT7Tu/B60JviVb4f1/SLx0ZcABwKxNLocma6guBmgjbEZUpkJfdbhL6GNCwfOGOxjr4yhxhCnwF91e4f7G89Uf7G/C71HrxLVC6l26+P/DztftJLwf1esbCB11e0fdJY++4DRpAV5lYDIVJYwH4BGkzw5yQlzx7VNK5qUD/ATbSVMeBtt0e5A8nGYUy9Q5jrIXERBuf8dTKXwdGNlxqcbN2poDh7/yB7Fw8Rzrhl2VO5IdH8xvlf+77gzNsAvE6yPllAQ7W/idmTM3mGqsm5FI8xCSu2lGAE="
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym. Remy's 19 months, so he's well under 3.5 and would go with a parent. Mini Gym is the solo class once kids turn 3.5, so that's a ways off for him."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1697,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 182,
+      "output_tokens_details": {
+        "thinking_tokens": 114
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2797
+}

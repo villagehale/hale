@@ -15,6 +15,8 @@ import {
   SIGNUP_RUN_MAX_COST_USD,
   ensureProfile,
   failure,
+  parentTakesOverLiveView,
+  secretBindingsFor,
   settleBrowser,
   signupFacts,
   stopAndReadCost,
@@ -25,8 +27,11 @@ import {
 import {
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
   BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+  BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
+  type BrowserUseReviewOutput,
   parsePaymentOutput,
   parsePlanOutput,
+  parseReviewOutput,
   sameProviderHttpsUrl,
 } from './outcome';
 
@@ -34,14 +39,24 @@ import {
  * VIL-558 · carries out a parent's day-before plan at the open. One run joins the open
  * the way a punctual parent would (waiting room and queue included), takes the first
  * ranked choice still open, and stops at checkout. Hale's code then checks the cart
- * total against the plan's maximum and the spending cap (rule #7). Only then does a
- * second run in the same browser pay, with the card already saved on the parent's
- * own city account. Hale never types a card on this path. A missing saved card, a
- * security code prompt, or a failed cap check leaves the cart on the live browser
- * for the parent.
+ * total against the plan's maximum and the spending cap (rule #7). A read-only review
+ * in the same browser then chooses the saved card and stops on the last page before
+ * "place order", and Hale's code checks the final total there, tax and fees included,
+ * against the maximum and the cap again. Only then does a run pay that exact total, with
+ * the card already saved on the parent's own city account. Hale never types a card on
+ * this path. A missing saved card, a security code prompt, a final total it cannot read,
+ * or a failed check leaves the cart on the live browser for the parent.
  */
 export const PLAN_SIGNUP_SKILL = 'browser-use-plan-signup';
+export const CHECKOUT_REVIEW_SKILL = 'browser-use-checkout-review';
 export const SAVED_CARD_PAYMENT_SKILL = 'browser-use-saved-card-payment';
+/** The review chooses and reads; it never places the order. */
+export const CHECKOUT_REVIEW_RUN_MAX_COST_USD = 1;
+/**
+ * The review's own window when checkout is reached at the sweep's end. The 10-minute sweep
+ * budget plus this stays inside the route's 800 s.
+ */
+export const CHECKOUT_REVIEW_MIN_MS = 120_000;
 
 export type PlanEngineOutcome =
   | BrowserUseEngineOutcome
@@ -72,12 +87,33 @@ export type PlanEngineDetail =
   /** The parent's yes no longer stood at the moment of payment (rule #4). */
   | 'authorization_lapsed'
   /** Assisted mode: the agent said it added to the cart or submitted, which it must never do. */
-  | 'submit_boundary';
+  | 'submit_boundary'
+  /** No final total was read before "place order", or it read below the cart total. */
+  | 'total_unread'
+  /** The env-only payment kill switch is not exactly `true`: nothing is paid. */
+  | 'payment_off'
+  /**
+   * The checkout review said it placed the order, which it must never do: the card may be
+   * charged, for an amount Hale never read. Never `payment_boundary`, which means nothing
+   * was paid.
+   */
+  | 'review_placed_order';
 
 export type PlanEngineStep =
   | { step: 'checkout'; choiceIndex: number; cartTotalCents: number | null }
   | { step: 'ready'; choiceIndex: number; feeCents: number | null }
   | { step: 'spending_cap'; amountCents: number; ok: boolean }
+  | {
+      step: 'final_total';
+      checkoutTotalCents: number;
+      finalTotalCents: number | null;
+      taxCents: number | null;
+      feesCents: number | null;
+      currency: string | null;
+      /** `none` when the final total may be paid; otherwise why the cart went back. */
+      detail: PlanEngineDetail;
+      ok: boolean;
+    }
   | {
       step: 'payment';
       outcome: PlanEngineOutcome;
@@ -96,6 +132,10 @@ export interface BrowserUsePlanInput
     | 'providerSession'
     | 'onProfileCreated'
     | 'proxyCountryCode'
+    | 'credentials'
+    | 'accountCreate'
+    | 'joinWaitlist'
+    | 'askedStart'
   > {
   /**
    * `auto`: Hale pays with the saved card at the open. `assisted`: Hale only fills, and the
@@ -107,9 +147,17 @@ export interface BrowserUsePlanInput
   maxPriceCents: number;
   /** The parent said Hale may tick the provider's activity waiver. */
   waiverAccepted: boolean;
-  /** Rule #7, on the cart total, before the saved card is used. */
+  /**
+   * The env-only payment kill switch (`browserUseSignupPaymentEnabled`). False stops the plan
+   * at checkout, before the review and the saved card: the parent pays on the live browser.
+   */
+  paymentEnabled: boolean;
+  /** Rule #7, on the cart total and again on the final total, before the saved card is used. */
   checkSpendingCap: (amountCents: number) => Promise<{ ok: boolean; reason: string }>;
-  /** Rule #4, re-read just before the saved card is used: false stops the browser unpaid. */
+  /**
+   * Rule #4, re-read before the review and again just before the saved card is used: false
+   * stops the browser unpaid.
+   */
   stillAuthorized: () => Promise<boolean>;
   /** Called once per step so the caller writes one audit row each (rule #6). */
   onStep: (step: PlanEngineStep) => Promise<void>;
@@ -131,11 +179,38 @@ export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | '
   resume: PlanPayingToken;
 }
 
+/**
+ * What this run charged, as the engine knows it. `nothing`: the run stopped before any
+ * payment run, or the card was declined. `unknown`: a payment run started, or the review
+ * placed the order, and no charged amount was read; never read as zero. `cents`: the
+ * amount the payment run read.
+ */
+export type PlanCharged = 'nothing' | 'unknown' | { cents: number };
+
 export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outcome' | 'detail'> {
   outcome: PlanEngineOutcome;
   detail: PlanEngineDetail;
   /** Index into `choices` of the session in the cart, or null when none was. */
   choiceIndex: number | null;
+  /** Set to `nothing` on every result, and only {@link reportPayment} may say otherwise. */
+  charged: PlanCharged;
+}
+
+interface PlanTracker extends BrowserTracker {
+  /** Set before the checkout review run is created: from then on it may have placed the order. */
+  reviewStarted: boolean;
+}
+
+/** The plan engine threw. `reviewStarted`: the checkout review may have placed the order. */
+export class PlanEngineThrew extends BrowserUseEngineThrew {
+  readonly reviewStarted: boolean;
+  constructor(
+    cause: unknown,
+    ids: ConstructorParameters<typeof BrowserUseEngineThrew>[1] & { reviewStarted: boolean },
+  ) {
+    super(cause, ids);
+    this.reviewStarted = ids.reviewStarted;
+  }
 }
 
 /** Only the slots on the consent grant. Every choice label is a `session` slot. */
@@ -171,7 +246,7 @@ function planResult(
   detail: PlanEngineDetail,
   choiceIndex: number | null,
 ): BrowserUsePlanResult {
-  return { ...base, outcome, detail, choiceIndex };
+  return { ...base, outcome, detail, choiceIndex, charged: 'nothing' };
 }
 
 export function runBrowserUsePlanSignup(
@@ -198,12 +273,13 @@ export function settleBrowserUsePlanPayment(
 async function tracked(
   resume: PlanResumeToken | null,
   deps: BrowserUseEngineDeps,
-  drive: (tracker: BrowserTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
+  drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  const tracker: BrowserTracker = {
+  const tracker: PlanTracker = {
     browserId: resume?.browserId ?? null,
     runId: resume?.runId ?? null,
     sessionId: resume?.sessionId ?? null,
+    reviewStarted: false,
   };
   let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
   try {
@@ -214,11 +290,12 @@ async function tracked(
       browserId: tracker.browserId,
       sessionId,
     }).catch(() => null);
-    throw new BrowserUseEngineThrew(error, {
+    throw new PlanEngineThrew(error, {
       runId: tracker.runId ?? null,
       sessionId,
       browserId: tracker.browserId,
       sessionCostUsd,
+      reviewStarted: tracker.reviewStarted,
     });
   }
   // The browser holds the family's place in line until a later sweep picks it up.
@@ -238,7 +315,7 @@ export async function releasePlanRun(
 async function drivePlan(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
-  tracker: BrowserTracker,
+  tracker: PlanTracker,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   if (input.resume?.phase === 'paying') return resumePayment(input, deps, tracker, input.resume);
   let runId: string | null = input.resume?.runId ?? null;
@@ -260,6 +337,7 @@ async function drivePlan(
         keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
         agentmail: false,
         maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+        ...(secretBindingsFor(input) ? { secretBindings: secretBindingsFor(input) } : {}),
       });
       runId = run.id;
       tracker.runId = run.id;
@@ -305,16 +383,20 @@ async function drivePlan(
     const live = waited.liveViewUrl;
 
     if (output.outcome !== 'reached_checkout') {
-      const handsOn = output.outcome === 'needs_human' || output.outcome === 'needs_login';
       return {
         ...stop(output.outcome, output.detail),
-        liveViewUrl: handsOn ? live : null,
+        liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
         cartTotalCents: output.cart_total_cents,
+        passwordRejectionMessage: output.password_rejection_message,
+        passwordRule: output.password_rule,
+        siteChoices: output.site_choices,
+        seatsOpen: output.seats_open,
+        fees: output.fees,
       };
     }
     const choiceIndex = output.choice_index;
     if (choiceIndex === null || choiceIndex >= input.choices.length) {
-      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: live };
+      return { ...stop('needs_human', 'choice_unreadable'), liveViewUrl: null };
     }
     const total = output.cart_total_cents;
     await input.onStep({ step: 'checkout', choiceIndex, cartTotalCents: total });
@@ -341,8 +423,65 @@ async function drivePlan(
     if (!(await input.stillAuthorized())) {
       return stop('cancelled', 'authorization_lapsed', choiceIndex);
     }
+    if (!input.paymentEnabled) return { ...checkout, detail: 'payment_off' };
     if (!ids.sessionId) return checkout;
-    return await payWithSavedCard(input, deps, tracker, checkout, {
+
+    await input.onCheckpoint({
+      phase: 'signup',
+      runId,
+      sessionId: ids.sessionId,
+      browserId: tracker.browserId,
+      reviewStarted: true,
+    });
+    tracker.reviewStarted = true;
+    const review = await reviewCheckout(input, deps, tracker, ids.sessionId);
+    const reviewed: BrowserUsePlanResult = {
+      ...checkout,
+      liveViewUrl: review.liveViewUrl ?? live,
+      costUsd: sumCost(checkout.costUsd, review.costUsd),
+    };
+    const final = finalTotal(review, {
+      checkoutTotalCents: total,
+      currency: output.cart_currency,
+      maxPriceCents: input.maxPriceCents,
+    });
+    const read = review.kind === 'read' ? review.output : null;
+    await input.onStep({
+      step: 'final_total',
+      checkoutTotalCents: total,
+      finalTotalCents: read ? read.total_cents : null,
+      taxCents: read ? read.tax_cents : null,
+      feesCents: read ? read.fees_cents : null,
+      currency: read ? read.currency : null,
+      detail: final.ok ? 'none' : final.detail,
+      ok: final.ok,
+    });
+    if (!final.ok) {
+      // Only a review answer that was read can rule out a placed order. Placed, or never read,
+      // a charge may exist: the browser stays on what the provider now shows, so it can be
+      // checked, and the payment row records an amount not known.
+      if (review.kind === 'unread' || final.detail === 'review_placed_order') {
+        return reportPayment(input, { ...reviewed, detail: final.detail });
+      }
+      return {
+        ...reviewed,
+        detail: final.detail,
+        cartTotalCents: final.detail === 'price_change' && read ? read.total_cents : total,
+      };
+    }
+    const finalCap = await input.checkSpendingCap(final.totalCents);
+    await input.onStep({ step: 'spending_cap', amountCents: final.totalCents, ok: finalCap.ok });
+    if (!finalCap.ok) {
+      return { ...reviewed, detail: 'spending_cap', cartTotalCents: final.totalCents };
+    }
+    if (!(await input.stillAuthorized())) {
+      return {
+        ...stop('cancelled', 'authorization_lapsed', choiceIndex),
+        costUsd: reviewed.costUsd,
+      };
+    }
+    const ready: BrowserUsePlanResult = { ...reviewed, cartTotalCents: final.totalCents };
+    return await payWithSavedCard(input, deps, tracker, ready, {
       currency: output.cart_currency,
       paying: {
         phase: 'paying',
@@ -350,23 +489,117 @@ async function drivePlan(
         sessionId: ids.sessionId,
         browserId: tracker.browserId,
         choiceIndex,
-        cartTotalCents: total,
-        holdExpiresAt: checkout.holdExpiresAt?.toISOString() ?? null,
-        costUsd: checkout.costUsd,
+        cartTotalCents: final.totalCents,
+        holdExpiresAt: ready.holdExpiresAt?.toISOString() ?? null,
+        costUsd: ready.costUsd,
       },
     });
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) {
-      return planResult(
+      const failed = planResult(
         failure('error', 'api_error', { runId, sessionId: tracker.sessionId }),
         'error',
         'api_error',
         null,
       );
+      // Once the review run exists it may have placed the order, as for a throw.
+      return tracker.reviewStarted ? reportPayment(input, failed) : failed;
     }
     throw error;
   }
+}
+
+type CheckoutReview =
+  | {
+      kind: 'read';
+      output: BrowserUseReviewOutput;
+      costUsd: string | null;
+      liveViewUrl: string | null;
+    }
+  | {
+      kind: 'unread';
+      detail: 'timeout' | 'run_failed' | 'unreadable_output' | 'api_error';
+      costUsd: string | null;
+      liveViewUrl: string | null;
+    };
+
+type FinalTotal = { ok: true; totalCents: number } | { ok: false; detail: PlanEngineDetail };
+
+/**
+ * One read-and-select run in the same browser: it chooses the saved card, ticks the waiver
+ * only when the parent allowed it, and stops on the last page before "place order" without
+ * pressing it. It is told no figure to expect. A run still going at its deadline is
+ * cancelled; there is no resume phase for a review, so the cart goes back to the parent.
+ */
+async function reviewCheckout(
+  input: BrowserUsePlanInput,
+  deps: BrowserUseEngineDeps,
+  tracker: BrowserTracker,
+  sessionId: string,
+): Promise<CheckoutReview> {
+  let runId: string | null = null;
+  try {
+    const run = await deps.api.createRun({
+      task: taskWithFacts(await deps.loadTask(CHECKOUT_REVIEW_SKILL), {
+        registration_url: input.registrationUrl,
+        waiver_accepted_by_parent: input.waiverAccepted,
+      }),
+      outputSchema: BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
+      ...ACTION_MODEL,
+      sessionId,
+      keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
+      agentmail: false,
+      maxCostUsd: CHECKOUT_REVIEW_RUN_MAX_COST_USD,
+    });
+    runId = run.id;
+    const deadline = Math.max(
+      input.waitUntil.getTime(),
+      deps.now().getTime() + CHECKOUT_REVIEW_MIN_MS,
+    );
+    const waited = await waitForRunUntil(deps, run.id, deadline, tracker);
+    if (waited.kind === 'timeout') {
+      await deps.api.cancelRun(run.id).catch(() => undefined);
+      return { kind: 'unread', detail: 'timeout', costUsd: null, liveViewUrl: waited.liveViewUrl };
+    }
+    const summary = await deps.api.getRun(run.id);
+    const seen = { costUsd: summary.totalCostUsd, liveViewUrl: waited.liveViewUrl };
+    if (waited.status !== 'completed') return { kind: 'unread', detail: 'run_failed', ...seen };
+    const output = parseReviewOutput(summary.output);
+    if (!output) return { kind: 'unread', detail: 'unreadable_output', ...seen };
+    return { kind: 'read', output, ...seen };
+  } catch (error) {
+    if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
+    if (error instanceof BrowserUseApiError) {
+      return { kind: 'unread', detail: 'api_error', costUsd: null, liveViewUrl: null };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Code, not the review agent, decides whether the final total may be paid, and every doubt
+ * hands the cart back. Tax and fees only add, so a final below the cart total is a subtotal.
+ */
+function finalTotal(
+  review: CheckoutReview,
+  at: { checkoutTotalCents: number; currency: string | null; maxPriceCents: number },
+): FinalTotal {
+  if (review.kind === 'unread') return { ok: false, detail: review.detail };
+  const read = review.output;
+  if (read.order_placed) return { ok: false, detail: 'review_placed_order' };
+  if (read.outcome !== 'ready_to_place') {
+    return { ok: false, detail: read.detail === 'none' ? 'total_unread' : read.detail };
+  }
+  if (!read.saved_card_selected) return { ok: false, detail: 'no_saved_card' };
+  const total = read.total_cents;
+  if (total === null || total < at.checkoutTotalCents) return { ok: false, detail: 'total_unread' };
+  // Two pages that both name no currency are not a match.
+  if (read.currency === null || read.currency !== at.currency) {
+    return { ok: false, detail: 'currency_unknown' };
+  }
+  if (total > at.maxPriceCents) return { ok: false, detail: 'price_change' };
+  return { ok: true, totalCents: total };
 }
 
 /**
@@ -445,10 +678,22 @@ async function resumePayment(
   return awaitPayment(input, deps, tracker, checkout, { ...paying, runId: paying.runId });
 }
 
+/**
+ * The one door for a result where a charge may exist: every payment run's end, a payment
+ * whose run id was never stored, and a review that placed the order or was never read. It
+ * writes the payment row and says what was charged.
+ */
 async function reportPayment(
   input: Pick<BrowserUsePlanInput, 'onStep'>,
-  result: BrowserUsePlanResult,
+  reported: BrowserUsePlanResult,
 ): Promise<BrowserUsePlanResult> {
+  const charged: PlanCharged =
+    reported.amountChargedCents !== null
+      ? { cents: reported.amountChargedCents }
+      : reported.detail === 'card_declined'
+        ? 'nothing'
+        : 'unknown';
+  const result = { ...reported, charged };
   await input.onStep({
     step: 'payment',
     outcome: result.outcome,

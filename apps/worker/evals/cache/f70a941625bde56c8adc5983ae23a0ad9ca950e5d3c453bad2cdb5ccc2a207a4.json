@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgxCNZ1koPDL9ozez65Ps",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on for the rest of this week. Next week starts Monday with daycare pickup at 4:30.\n\nTuesday has swim lesson at 5:00. Wednesday is the pediatrician checkup at 9:15am, then daycare pickup at 4:30. Thursday has music class at 6:00pm.\n\nSaturday there's a birthday party at 1:00pm.\n\nWhich of those is the tough one with your work hours?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1945,
+      "cache_read_input_tokens": 17537,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1945,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 566,
+      "output_tokens_details": {
+        "thinking_tokens": 425
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

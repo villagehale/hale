@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgwVYUzRGYFm3htg47Zqn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzAYKEAgTGAI4AUIIdGhpbmtpbmcSDB25uJ9TqEV+1aTTOhoMIzOwC0kO0GVYG1+iIjBl6vqYMNCKcsQTJEY2FzrZtpa1Pg5VpdXZgaNz8cLnA7ZiJehbUFL+0N9F8hgfrqYq6QW3iNrcNcBlKyT4csqiQvW2RbMK25YyWu97VjrWNInZCVUMT9XViWbQtAeIbZ6ppd8q9KQfOxRlrgWbNDYWDaAXcLbzub40+PgEt/qjef9Llycc7sPEvTpOTmBZLAMFyR3/Rqj+efnIa0G0g1OfFiguyEgZpJne825D5ZjQFsWQRUsD6kY2XWfcBSUvBtylxQkS+1V1zRvSUCy3TNLB2h2YsThzYxvorshX+CMcl6NDxjyVhRlywRqydqY+h+igrPLHv3QW0ix/fVVRSwytAro08JUe+loniS+qQMh/5BDxkf8SdKAMSjHmPVivvG5BZbG1plmcFnbJUsA8LhF5MMSYypDusoLkReOrF6BwyL7Vb9KcnIHDdqfoChGNcb25+SoW9M2VUd3aYkX2QHrvcArbTA9dn3a69cQNxe3MUOJ6OdigXjY5rU81eOTt+C13NgctSfVe/hv8CXCKPHvoBL4ml+VLAZknS5UhAontT2u2Hn2un+BXFdMSpyRBM5q0t0JkK8OWrlx7NS6uEu6q5+L3Thjn/n7EYZS0FoWD7UxyJdNSjHbXln7VtAsvCwfdAJFSzHWksacH0XhCmn3LGtBWUVw6unvseyjX5yDKfW4yZgPq0m8RWU8PE9ZkR/AVI30a79Q4CTYcq3zNjhTjadYQA62NXb4rN3Y6N/4+icaSQ6MAUJvDDlshXI/Gz24F5dSwPT9tqmxDGIS6TA1mkH9KDAYjIC4KiHyZoKyJXj6qCO52D2thsQvKdsgomQqeVVNSgaI6VKOPzOpqZWoFUpgW+aoyckXx/gyUclbbx1SC7oMdWA6YQ57HUbmB7M03srCyOeFnbriizMrxbkQIcFIphw5D6kJaLX996uMyu9SRVWRqwBHdDTeqRUpsRSCMMGZn1E4doJEVMM7eDCVysXw8USo8lc8J5OCdy2H7XasY0zsveVrnWrR5NYtCoV9Bo+8l4nddafOLcogNjmGSxtbT8bh2x0IArQMlGAE="
+      },
+      {
+        "type": "text",
+        "text": "Bread and bananas are on. Milk was already there, since Jordan had put it on."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 123,
+      "cache_read_input_tokens": 20526,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 123,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 72,
+      "output_tokens_details": {
+        "thinking_tokens": 43
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

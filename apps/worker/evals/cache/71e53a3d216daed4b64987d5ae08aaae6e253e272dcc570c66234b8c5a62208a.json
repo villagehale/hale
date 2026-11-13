@@ -1,0 +1,9 @@
+{
+  "value": {
+    "effect": {
+      "type": "screen",
+      "name": "confetti"
+    }
+  },
+  "latencyMs": 2700
+}

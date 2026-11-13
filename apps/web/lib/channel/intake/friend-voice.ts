@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
@@ -25,6 +25,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { ageFitCorrectionEnabled } from './age-fit-correction';
 import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
@@ -453,6 +454,7 @@ const childSchema = z.object({
   name: z.string().nullable().optional().default(null),
   ageMonths: z.number().nullable().optional().default(null),
   agePrecision: z.enum(['years', 'months']).nullable().optional().default(null),
+  dateOfBirth: z.string().nullable().optional().default(null),
 });
 
 const scheduleAddSchema = z.object({
@@ -612,6 +614,7 @@ const replyJsonSchema = {
             type: ['string', 'null'],
             enum: ['years', 'months', null],
           },
+          dateOfBirth: { type: ['string', 'null'] },
         },
       },
     },
@@ -2820,13 +2823,14 @@ export async function friendVoiceSystem(
       : null;
   const group = input.householdGroup ? await loadCronSkill('household-group') : null;
   const place = placeInPlay(input) ? await loadCronSkill('onboarding-friend-place') : null;
-  const leftover = friendVoiceLeftoverMarksEnabled()
-    ? await loadCronSkill('onboarding-friend-leftover-marks')
-    : null;
-  const system = [skill, choice, group, place, leftover]
-    .flatMap((part) => (part ? [part.instructions] : []))
-    .join('\n\n');
-  return { skill, system };
+  // VIL-568: the age-fit correction addendum rides only when the flag is on, so
+  // every other onboarding turn (and its eval cache key) keeps its bytes.
+  const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
+  const extras = [choice, group, place, ageFit].flatMap((part) =>
+    part ? [part.instructions] : [],
+  );
+  const system = [skill.instructions, ...extras].join('\n\n');
+  return { skill, system, extras };
 }
 
 /** The parsed tool value as the composer hands it to speakFriend. */
@@ -2883,11 +2887,13 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
     async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
       const short = options?.prompt === 'short';
-      const { skill, system } = await friendVoiceSystem(input, short);
+      const { skill, extras } = await friendVoiceSystem(input, short);
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system,
+        system: skill.instructions,
+        systemExtras: extras,
+        cacheTtl: SPARSE_CACHE_TTL,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
