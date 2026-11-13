@@ -55,6 +55,8 @@ import { recordStatedState } from '~/lib/channel/stated-state';
 import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
+import { recordSchoolBreak } from '~/lib/care/school-break/facts';
+import { createSchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
@@ -766,6 +768,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
+    schoolBreakReplyReader: createSchoolBreakReplyReader(screenClient),
+    recordSchoolBreak,
     consent: createConsentReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
@@ -832,6 +836,13 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       // from being the thing that says so: a constraint violation is thrown from inside
       // the write, out through the gate, and retried into the same wall until the
       // question closes.
+      if (ask.scope === 'break_dates') {
+        return {
+          status: 'open' as const,
+          scope: 'break_dates' as const,
+          schoolYear: ask.schoolYear,
+        };
+      }
       if (ask.scope === 'search') {
         return {
           status: 'open' as const,

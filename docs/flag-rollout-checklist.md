@@ -119,6 +119,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `REGISTRATION_ASSISTED_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:22` | `true` | OFF | empty, or `false` | Barton |
 | `REGISTRATION_PLAN_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:10` | `true` | OFF | empty, or `false` | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | `apps/web/lib/channel/same-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
+| `SCHOOL_BREAK_ENABLED` | `apps/web/lib/care/school-break/flag.ts:12` (trim, `!== 'false'`) | unset (anything except `false`) | ON | `false` | Noah |
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
 | `SOCIAL_WATCHLIST` | `apps/web/lib/social/flag.ts:12` | `on` (no trim) | OFF | empty, or `off` | Noah |
@@ -321,6 +322,7 @@ Each parser is on when the variable is unset. There is nothing to light; the kil
 | Flag | What it does | Extra signal this week | Kill | Owner |
 | --- | --- | --- | --- | --- |
 | `GCAL_PAST_CLASSIFY_SKIP` | Calendar items that already ended skip the classifier. | A jump in classify volume or Anthropic spend after a calendar connect. | `false` | Noah |
+| `SCHOOL_BREAK_ENABLED` | VIL-685. The hourly `/api/cron/school-break` sweep reads each family's winter break off their own board's calendar page (the host their allowed school mail comes from), caches it per board in `school_break_readings` with its page and quotes, and files it as the family's `school_winter_break` fact. With no page, one `school_break_ask` goes to the proactive decider (daytime, AI-written); the reply is read in the router and filed with the parent's words. The nudge sweep's verified-break question reads that fact even while `WEEKDAY_CARE_ENABLED` is off (only the break rung). | A break question naming days the fact's page or the parent did not state, a second ask in one school year, or `school break: board failed` in logs. | `false` | Noah |
 | `LINQ_GROUP_COPARENT` | Co-parent seating and calendar notices stay in the Linq group. | Group `channel_messages` with status `failed`. | `off` | Noah |
 | `VOICE_DISABLED` | Unset, voice compose runs when `ANTHROPIC_API_KEY` is set. | Odd parent-visible wording on composed sends, and `sms_turn_failed` on those turns. | `true` | Sloane |
 

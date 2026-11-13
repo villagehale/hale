@@ -33,6 +33,11 @@ export type {
   NewRegistrationWindow,
 } from './schema/registration-windows.js';
 export type {
+  SchoolBreakReading,
+  SchoolBreakReadingStatus,
+  NewSchoolBreakReading,
+} from './schema/school-break-readings.js';
+export type {
   GtaRegion,
   SocialCategory,
   SocialPlatform,

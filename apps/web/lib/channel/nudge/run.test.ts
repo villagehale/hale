@@ -1248,6 +1248,48 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
+  describe('VIL-685 · the winter-break question while weekday care itself is off', () => {
+    const BREAK_KNOWN: WeekdayCareContext = {
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: false,
+      verifiedBreak: {
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+        date: '2026-12-21',
+        source: 'school_calendar',
+      },
+    };
+
+    it('reaches the break rung on its own kill switch, and the after-school prompts stay dark', async () => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const h = harness({
+        families: NO_REGION,
+        children: [TODDLER],
+        candidates: CIVIC,
+        weekdayCare: BREAK_KNOWN,
+      });
+      // No model in this harness: reaching the ask shows up as the unvoiced weekday ask.
+      expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
+    });
+
+    it('is silent when SCHOOL_BREAK_ENABLED=false', async () => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      vi.stubEnv('SCHOOL_BREAK_ENABLED', 'false');
+      const h = harness({
+        families: NO_REGION,
+        children: [TODDLER],
+        candidates: CIVIC,
+        weekdayCare: BREAK_KNOWN,
+      });
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result.sent).toBe(0);
+      expect(result.skips).toEqual({});
+      const audits = h.writes.filter((w) => w.table === schema.auditLog).map((w) => w.payload);
+      expect(JSON.stringify(audits)).not.toContain('weekday_care');
+    });
+  });
+
   it('with no model, sends nothing for one school-age child', async () => {
     const h = ask([
       {

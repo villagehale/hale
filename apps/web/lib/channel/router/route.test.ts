@@ -578,6 +578,8 @@ function harness(
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
     weekdayCareReader?: ChannelRouterDeps['weekdayCareReader'];
+    schoolBreakReplyReader?: ChannelRouterDeps['schoolBreakReplyReader'];
+    recordSchoolBreak?: ChannelRouterDeps['recordSchoolBreak'];
     consent?: ChannelRouterDeps['consent'];
     weekdayCareAnswerTarget?: ChannelRouterDeps['weekdayCareAnswerTarget'];
     recordWeekdayCare?: ChannelRouterDeps['recordWeekdayCare'];
@@ -642,6 +644,10 @@ function harness(
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
+      schoolBreakReplyReader: options.schoolBreakReplyReader ?? {
+        read: async () => ({ status: 'nothing_stated' as const }),
+      },
+      recordSchoolBreak: options.recordSchoolBreak ?? (async () => {}),
       consent: options.consent,
       weekdayCareAnswerTarget:
         options.weekdayCareAnswerTarget ?? (async () => ({ status: 'no_open_ask' as const })),
@@ -5487,6 +5493,81 @@ describe('the weekday-care answer', () => {
     expect(JSON.stringify(h.logs)).toContain('no_picks');
     expect(JSON.stringify(h.transport.sent)).not.toContain('EarlyON');
     expect(coach.calls).toBe(1);
+  });
+
+  it('VIL-685 · files the winter break a parent gave in answer to the one dates ask', async () => {
+    const recorded: unknown[] = [];
+    const weekdayWrites: unknown[] = [];
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'dec 21 to jan 1 I think' },
+      coach,
+      questions: questionsFrom(askStanding),
+      weekdayCareAnswerTarget: async () => ({
+        status: 'open' as const,
+        scope: 'break_dates' as const,
+        schoolYear: '2026-27',
+      }),
+      schoolBreakReplyReader: {
+        read: async (input) => {
+          expect(input.schoolYear).toBe('2026-27');
+          return {
+            status: 'read' as const,
+            firstDay: '2026-12-21',
+            lastDay: '2027-01-01',
+            name: 'winter break',
+            quote: 'dec 21 to jan 1',
+          };
+        },
+      },
+      recordSchoolBreak: async (_db, write) => {
+        recorded.push(write);
+      },
+      recordWeekdayCare: async (_db, input) => {
+        weekdayWrites.push(input);
+        return { status: 'recorded' as const, care: input.care, providerNamed: false };
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(recorded).toEqual([
+      expect.objectContaining({
+        source: 'parent',
+        familyId: FAMILY,
+        schoolYear: '2026-27',
+        firstDay: '2026-12-21',
+        lastDay: '2027-01-01',
+        quote: 'dec 21 to jan 1',
+      }),
+    ]);
+    expect(weekdayWrites).toEqual([]);
+    // Not claimed: the coach still answers, with the fact in its context.
+    expect(coach.calls).toBe(1);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('VIL-685 · files nothing when the reply gives no days, and says so in the log', async () => {
+    const recorded: unknown[] = [];
+    const h = harness({
+      context: { body: "she's at Maple Grove" },
+      coach: fakeCoach(),
+      questions: questionsFrom(askStanding),
+      weekdayCareAnswerTarget: async () => ({
+        status: 'open' as const,
+        scope: 'break_dates' as const,
+        schoolYear: '2026-27',
+      }),
+      schoolBreakReplyReader: { read: async () => ({ status: 'nothing_stated' as const }) },
+      recordSchoolBreak: async (_db, write) => {
+        recorded.push(write);
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(recorded).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('settles neither side');
   });
 
   it('does not store daycare from a sentence that answers a search ask', async () => {

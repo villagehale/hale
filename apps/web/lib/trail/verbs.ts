@@ -294,6 +294,7 @@ export const AUDIT_VERBS = [
   'proactive_cadence_sent',
   'proactive_cadence_skipped',
   'weekday_care_recorded',
+  'school_break_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
   // VIL-619 · the one-time scrub of the email previews older alerts kept.
@@ -1182,6 +1183,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   weekday_care_recorded: {
     sentence: 'you told Hale how your weeks are covered',
+    family: 'done',
+  },
+  // VIL-685 · from the board's own calendar page, or from the parent's answer.
+  school_break_recorded: {
+    sentence: "Hale noted when your kids' winter break is",
     family: 'done',
   },
   followup_daycare_asked: { sentence: 'Hale asked how daycare is going', family: 'note' },

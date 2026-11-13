@@ -480,13 +480,14 @@ async function loadOpenItems(
 
 /**
  * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
- * mid-activity ask and the VIL-681 next-day check-back. They are reviewed live even while
- * the cadence flag is off.
+ * mid-activity ask, the VIL-681 next-day check-back and the VIL-685 winter-break ask. They
+ * are reviewed live even while the cadence flag is off.
  */
 const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'evening_check_in',
   'mid_activity_ask',
   'next_day_checkback',
+  'school_break_ask',
 ];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
@@ -684,7 +685,7 @@ async function dropAlreadySent(
   summary: ProactiveReviewSummary,
 ): Promise<QueuedItem[]> {
   const care = items.some((item) => WEEKDAY_ASK_KEYS.includes(item.templateKey))
-    ? await loadWeekdayCareContext(database, familyId)
+    ? await loadWeekdayCareContext(database, familyId, now)
     : null;
   const dropped = new Map<'already_sent' | 'already_asked', QueuedItem[]>();
   const kept: QueuedItem[] = [];

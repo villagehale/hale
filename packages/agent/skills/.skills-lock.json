@@ -599,6 +599,18 @@
     "file": "said-line.md",
     "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
   },
+  "school-break-read.md": {
+    "file": "school-break-read.md",
+    "sha256": "012f764df18cfdf35f682cc77fdf3fcbd0fdb646ab2b2b4cdaf5b1cbe0ea0781"
+  },
+  "school-break-reply.md": {
+    "file": "school-break-reply.md",
+    "sha256": "686a7e78986c573584bcb8a4f1865f1fe0fcb6023bcd41add7cc9e1ab3e9d099"
+  },
+  "school-calendar-search.md": {
+    "file": "school-calendar-search.md",
+    "sha256": "55c84724278d871c86bf61b8ea95b8047c8f42ab60f578e9d85f86f15104f203"
+  },
   "shared-group-reading-common-time.md": {
     "file": "shared-group-reading-common-time.md",
     "sha256": "045c723248fefb6bd0f549f0db6ef852d7365409e3cac499c0b19ecd39ae0079"

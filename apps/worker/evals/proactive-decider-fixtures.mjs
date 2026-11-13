@@ -277,4 +277,37 @@ export const PROACTIVE_DECIDER_FIXTURES = [
     expect: { action: 'send_now', includes: ['checkback'], frequency: null },
     snapshot: snapshot({ now: THURSDAY_MIDDAY, candidates: [candidate(CHECKBACK)] }),
   },
+  {
+    // VIL-685 · no page has this family's winter break, so the one question: it may go now
+    // or wait for a better moment before mid-December, but never be thrown away.
+    id: 'school-break-ask',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['break-ask'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'break-ask',
+          kind: 'school_break_ask',
+          why: 'school_break_ask year=2026-27',
+          worthlessAfter: '2026-12-15T17:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    // VIL-685 · the break question, once the board's page gave the dates: a nudge the
+    // nudge sweep handed off. Never thrown away; the moment is the decider's.
+    id: 'winter-break-question',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['winter-break'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'winter-break',
+          why: 'weekday_care',
+          worthlessAfter: '2026-12-21T05:00:00.000Z',
+        }),
+      ],
+    }),
+  },
 ];
