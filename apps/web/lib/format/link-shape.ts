@@ -222,13 +222,14 @@ function handedLinkEnd(token: string, handed: readonly string[]): number | null 
  * handed link counts only as itself, compared as a parsed URL, and only where all that
  * follows it before whitespace, the end or a non-ASCII character is closing punctuation:
  * '<link>(场次', '<link>)。' and '<link>!' are the link, while '<link>.evil.tld',
- * '<link>．app', '<link>@host' and '<link>!@host' are another link.
+ * '<link>．app', '<link>@host' and '<link>!@host' are another link. The link and that
+ * closing punctuation go together: a full stop left behind would read as a spaced dot and
+ * join the words around it ('page is <link>. Max' as 'is.Max').
  */
 function withoutHanded(text: string, handed: readonly string[]): string {
-  return readCharacters(text).replace(SCHEME_TOKEN, (token) => {
-    const end = handedLinkEnd(token, handed);
-    return end === null ? token : ` ${token.slice(end)}`;
-  });
+  return readCharacters(text).replace(SCHEME_TOKEN, (token) =>
+    handedLinkEnd(token, handed) === null ? token : ' ',
+  );
 }
 
 /**
