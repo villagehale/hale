@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { channelMessages } from './channel-messages.js';
 import { children } from './children.js';
 import { families } from './families.js';
 import { users } from './users.js';
@@ -135,10 +136,16 @@ export const authorizedSignupOffers = pgTable(
      */
     lastAskedSeq: bigint('last_asked_seq', { mode: 'number' }),
     /**
-     * When a text about the ask was last kept (the database clock at the keep). Never an
-     * order among sign-up asks: `lastAskedSeq` is. It ranks Hale's last sign-up text against
-     * the asks of other lanes, which share no sequence with it (VIL-302, `newestAsks`).
+     * The outbound `channel_messages` row that carried the text whose number is
+     * `lastAskedSeq`, set in the same write (migration 0249). Its `send_recorded_at` is when
+     * that text went, on the one clock every ask of every lane is ranked by (VIL-302,
+     * `newestAsks`). Never an order among sign-up asks: `lastAskedSeq` is. Null: not known
+     * (a text kept before the column existed), so it ranks against no other lane's ask.
      */
+    lastAskedMessageId: uuid('last_asked_message_id').references(() => channelMessages.id, {
+      onDelete: 'set null',
+    }),
+    /** That row's `send_recorded_at`, copied in the same write, for reading only. */
     lastAskedAt: timestamp('last_asked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

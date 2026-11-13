@@ -21,8 +21,8 @@ import { LinqSendError } from '~/lib/channel/linq/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import { type InboundBurst, createInboundBurst } from '~/lib/channel/router/burst';
 import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
+import { ASK_TIE_WINDOW_MS, type OpenQuestion } from '~/lib/channel/router/open-questions';
 import { FakeReplyTransport, type ReplySent } from '~/lib/channel/router/reply-route';
-import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import type { ChannelRouterDeps, DeterministicHandler } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
 import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
@@ -44,7 +44,7 @@ import { recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import { createPlanNotifier, createPlanPrepDeliver } from './notice';
 import { type PlanPrepDeps, recordPlanNotice, runDueSignupPlanPrep } from './prep';
-import type { PlanReader, PlanReading } from './reader';
+import { type PlanReader, type PlanReading, toPlanReading } from './reader';
 import type { PlanReplyWriter } from './writer';
 
 // Which of a parent's sign-up asks a bare yes, no or stop answers, end to end: the coach turn
@@ -1253,17 +1253,39 @@ describe('a bare stop from a parent with a planned sign-up', () => {
  * question; several: ambiguous); the plan read is stipulated.
  */
 describe('a bare yes with intro asks and a sign-up offer both open', () => {
-  async function introAsks(f: Household, optInAt: Date, cardAt: Date) {
-    await db.database.insert(schema.channelMessages).values({
-      familyId: f.familyId,
-      parentUserId: f.parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'village_intro',
-      status: 'sent',
-      dedupeKey: introAskDedupeKey(f.familyId),
-      sentAt: optInAt,
-    });
+  /** When a send began (the caller's `sent_at`) and when its row recorded it (the
+   * database clock, `send_recorded_at`; null: recorded before that column existed). */
+  type Sent = { sentAt: Date; recordedAt: Date | null };
+
+  async function outbound(f: Household, dedupeKey: string, sent: Sent) {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'village_intro',
+        status: 'sent',
+        dedupeKey,
+        sentAt: sent.sentAt,
+        ...(sent.recordedAt ? { sendRecordedAt: sent.recordedAt } : {}),
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (sent.recordedAt === null) {
+      // The trigger stamps every recorded send; a row from before the column has none.
+      await db.database
+        .update(schema.channelMessages)
+        .set({ sendRecordedAt: null })
+        .where(eq(schema.channelMessages.id, row?.id as string));
+    }
+  }
+
+  async function introOptIn(f: Household, sent: Sent) {
+    await outbound(f, introAskDedupeKey(f.familyId), sent);
+  }
+
+  async function introCard(f: Household, sent: Sent) {
     const other = await seedFamily(db.database, 'Other');
     const askedIsA = f.familyId < other.familyId;
     const [row] = await db.database
@@ -1274,21 +1296,17 @@ describe('a bare yes with intro asks and a sign-up offer both open', () => {
         stage: 'toddler',
         familyAId: askedIsA ? f.familyId : other.familyId,
         familyBId: askedIsA ? other.familyId : f.familyId,
-        familyAAskedAt: cardAt,
-        familyBAskedAt: cardAt,
+        familyAAskedAt: sent.sentAt,
+        familyBAskedAt: sent.sentAt,
         expiresAt: new Date(NOW.getTime() + 7 * 86_400_000),
       })
       .returning({ id: schema.villageIntroProposals.id });
-    await db.database.insert(schema.channelMessages).values({
-      familyId: f.familyId,
-      parentUserId: f.parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'village_intro',
-      status: 'sent',
-      dedupeKey: introCardDedupeKey(row?.id as string, askedIsA ? 'a' : 'b'),
-      sentAt: cardAt,
-    });
+    await outbound(f, introCardDedupeKey(row?.id as string, askedIsA ? 'a' : 'b'), sent);
+  }
+
+  async function introAsks(f: Household, optInAt: Date, cardAt: Date) {
+    await introOptIn(f, { sentAt: optInAt, recordedAt: optInAt });
+    await introCard(f, { sentAt: cardAt, recordedAt: cardAt });
   }
 
   function skillContract(lists: string[][]): ChannelRouterDeps['replyResolver'] {
@@ -1322,14 +1340,42 @@ describe('a bare yes with intro asks and a sign-up offer both open', () => {
     };
   }
 
-  /** The swim offer, texted by a coach turn. Its kept text is dated `at`: the keep stamps
-   * the database clock, which this file's fixed NOW does not move. */
+  /** The swim offer, texted by a coach turn. The row that carried it records its send
+   * on the database clock, which this file's fixed NOW does not move, so it is set to
+   * `at`, as is the keep's own stamp. */
   async function swimOffered(f: Household, at: Date) {
-    await parentTexts(f, 'can you sign Ada up for swim', at, { coachOffer: offering(f, SWIM) });
+    return swimTexted(f, { recordedAt: at, keptAt: at });
+  }
+
+  /**
+   * The swim offer, texted by a coach turn: `recordedAt` is when the row that carried it
+   * recorded the send, `keptAt` when the sign-up lane's keep stamped its own column after
+   * the transport call (at or after the send).
+   */
+  async function swimTexted(f: Household, at: { recordedAt: Date; keptAt: Date }) {
+    await parentTexts(f, 'can you sign Ada up for swim', at.recordedAt, {
+      coachOffer: offering(f, SWIM),
+    });
     const swimId = await offerIdFor(f, SWIM);
+    const [carried] = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, f.familyId),
+          eq(schema.channelMessages.direction, 'out'),
+          eq(schema.channelMessages.category, 'reply'),
+        ),
+      )
+      .orderBy(sql`${schema.channelMessages.createdAt} desc`)
+      .limit(1);
+    await db.database
+      .update(schema.channelMessages)
+      .set({ sendRecordedAt: at.recordedAt })
+      .where(eq(schema.channelMessages.id, carried?.id as string));
     await db.database
       .update(schema.authorizedSignupOffers)
-      .set({ lastAskedAt: at })
+      .set({ lastAskedAt: at.keptAt })
       .where(eq(schema.authorizedSignupOffers.id, swimId));
     expect((await offerRow(swimId)).lastAskedSeq).not.toBeNull();
     return swimId;
@@ -1387,5 +1433,208 @@ describe('a bare yes with intro asks and a sign-up offer both open', () => {
     expect(lists).toEqual([['intro_optin', 'intro_proposal']]);
     expect(seen).toEqual([]);
     expect((await offerRow(swimId)).status).toBe('planned');
+  });
+
+  /**
+   * VIL-302 · one clock at one point of every send. Every ask is dated by when the row that
+   * carried it recorded the send (`send_recorded_at`, the database clock, stamped by the
+   * trigger), never by a caller's start time or the sign-up lane's own stamp after its
+   * transport call. Two asks recorded within ASK_TIE_WINDOW_MS of each other, or either of
+   * unknown time, are a tie: a bare yes binds neither, and the coach asks. The plan read is
+   * the real parse over stipulated model JSON, so a naming is checked by the code.
+   */
+  describe('one send clock, and a near tie makes Hale ask', () => {
+    const T = minutes(-100);
+    const at = (s: number) => new Date(T.getTime() + s * 1_000);
+    type PlanModelJson = Parameters<typeof toPlanReading>[0];
+    function planModelSays(raw: Partial<PlanModelJson>): PlanReader {
+      return {
+        read: vi.fn(async ({ text, offer }) =>
+          toPlanReading(
+            {
+              reason: 'stipulated',
+              said: null,
+              named: null,
+              verdict: 'unrelated',
+              choiceIds: [],
+              maxPriceCents: null,
+              waiverSaid: null,
+              waiverAccepted: false,
+              question: null,
+              ...raw,
+            },
+            offer,
+            text,
+          ),
+        ),
+      };
+    }
+    const bareYes = planModelSays({
+      verdict: 'approve',
+      said: 'yes',
+      choiceIds: ['sat-0900'],
+      maxPriceCents: 9800,
+    });
+
+    async function bareYesFrom(f: Household, planReader: PlanReader = bareYes) {
+      const lists: string[][] = [];
+      const seen: string[] = [];
+      const transport = new FakeReplyTransport();
+      await parentTexts(f, 'yes', minutes(-50), {
+        transport,
+        planReader,
+        introOwner: introOwner(seen),
+        replyResolver: skillContract(lists),
+      });
+      return { lists, seen, replies: transport.sent.map((sent) => sent.body) };
+    }
+
+    it('the sign-up texted first, an open question seconds later: the yes is the question, and no sign-up starts', async () => {
+      const f = await household();
+      // Each send began before the sign-up's keep and was recorded after the sign-up text.
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: at(10) });
+      await introOptIn(f, { sentAt: at(5), recordedAt: at(20) });
+      await introCard(f, { sentAt: at(6), recordedAt: at(40) });
+
+      const { lists, seen } = await bareYesFrom(f);
+
+      expect(lists).toEqual([['intro_optin', 'intro_proposal'], ['intro_proposal']]);
+      expect(seen).toEqual(['intro_proposal']);
+      expect((await offerRow(swimId)).status).toBe('pending');
+    });
+
+    it('an open question, then the sign-up texted: the yes is the sign-up', async () => {
+      const f = await household();
+      await introOptIn(f, { sentAt: at(-30), recordedAt: at(-30) });
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+
+      const { lists, seen } = await bareYesFrom(f);
+
+      expect(lists).toEqual([['intro_optin']]);
+      expect(seen).toEqual([]);
+      expect((await offerRow(swimId)).status).toBe('planned');
+    });
+
+    it.each([
+      ['after', 4],
+      ['before', -4],
+    ])(
+      'an open question recorded seconds %s the sign-up text: Hale asks which',
+      async (_order, offset) => {
+        expect(Math.abs(offset) * 1_000).toBeLessThan(ASK_TIE_WINDOW_MS);
+        const f = await household();
+        const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+        await introOptIn(f, { sentAt: at(offset), recordedAt: at(offset) });
+
+        const { seen, replies } = await bareYesFrom(f);
+
+        expect(seen).toEqual([]);
+        expect((await offerRow(swimId)).status).toBe('pending');
+        expect(replies).toEqual(['Sure thing.']);
+      },
+    );
+
+    it('an open question whose send time is not known: Hale asks which', async () => {
+      const f = await household();
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+      await introOptIn(f, { sentAt: at(60), recordedAt: null });
+
+      const { seen, replies } = await bareYesFrom(f);
+
+      expect(seen).toEqual([]);
+      expect((await offerRow(swimId)).status).toBe('pending');
+      expect(replies).toEqual(['Sure thing.']);
+    });
+
+    it('a sign-up text whose send time is not known: Hale asks which', async () => {
+      const f = await household();
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+      // Kept before the row that carried it was named.
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ lastAskedMessageId: null })
+        .where(eq(schema.authorizedSignupOffers.id, swimId));
+      await introOptIn(f, { sentAt: at(60), recordedAt: at(60) });
+
+      const { seen, replies } = await bareYesFrom(f);
+
+      expect(seen).toEqual([]);
+      expect((await offerRow(swimId)).status).toBe('pending');
+      expect(replies).toEqual(['Sure thing.']);
+    });
+
+    it('positive control: the same open question with both times known and apart binds the yes', async () => {
+      const f = await household();
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+      await introOptIn(f, { sentAt: at(60), recordedAt: at(60) });
+
+      const { seen } = await bareYesFrom(f);
+
+      expect(seen).toEqual(['intro_optin']);
+      expect((await offerRow(swimId)).status).toBe('pending');
+    });
+
+    it('a yes that names the sign-up in whole words binds it, though an open question is newer', async () => {
+      const f = await household();
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+      await introOptIn(f, { sentAt: at(60), recordedAt: at(60) });
+      const lists: string[][] = [];
+      const seen: string[] = [];
+
+      await parentTexts(f, 'yes, sign her up for Preschool Swim', minutes(-50), {
+        planReader: planModelSays({
+          verdict: 'approve',
+          said: 'yes, sign her up',
+          named: 'Preschool Swim',
+          choiceIds: ['sat-0900'],
+          maxPriceCents: 9800,
+        }),
+        introOwner: introOwner(seen),
+        replyResolver: skillContract(lists),
+      });
+
+      expect(seen).toEqual([]);
+      expect((await offerRow(swimId)).status).toBe('planned');
+    });
+
+    it('a yes whose words only resemble the sign-up does not bind it while an open question is newer', async () => {
+      const f = await household();
+      const swimId = await swimTexted(f, { recordedAt: T, keptAt: T });
+      await introOptIn(f, { sentAt: at(60), recordedAt: at(60) });
+      const seen: string[] = [];
+
+      // The model calls "swimming" a naming; no whole word of the program or its site is in it.
+      await parentTexts(f, 'yes to swimming', minutes(-50), {
+        planReader: planModelSays({
+          verdict: 'approve',
+          said: 'yes',
+          named: 'swimming',
+          choiceIds: ['sat-0900'],
+          maxPriceCents: 9800,
+        }),
+        introOwner: introOwner(seen),
+        replyResolver: skillContract([]),
+      });
+
+      expect((await offerRow(swimId)).status).toBe('pending');
+    });
+
+    it('the keep names the row that carried the text, and copies its recorded send time', async () => {
+      const f = await household();
+      await parentTexts(f, 'can you sign Ada up for swim', T, { coachOffer: offering(f, SWIM) });
+      const offer = await offerRow(await offerIdFor(f, SWIM));
+      const [carried] = await db.database
+        .select({ id: schema.channelMessages.id, recorded: schema.channelMessages.sendRecordedAt })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.familyId, f.familyId),
+            eq(schema.channelMessages.direction, 'out'),
+          ),
+        );
+      expect(carried?.recorded).toBeInstanceOf(Date);
+      expect(offer.lastAskedMessageId).toBe(carried?.id);
+      expect(offer.lastAskedAt?.getTime()).toBe(carried?.recorded?.getTime());
+    });
   });
 });
