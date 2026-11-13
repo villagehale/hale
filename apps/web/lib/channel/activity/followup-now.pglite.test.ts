@@ -271,6 +271,7 @@ async function openPromises(familyId: string) {
 
 describe('deep-followup-now dark: the hourly sweep keeps the promise, as before #1251', () => {
   it('queues nothing at question time, sends nothing within the day, and answers at the due time, unthreaded, in the stored language', async () => {
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'false');
     const http = linqWire();
     const seeded = await household();
     // Positive control: this household's group is claimed and open to a schedule line.

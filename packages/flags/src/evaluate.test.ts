@@ -48,14 +48,23 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('f14', undefined, env)).toBe(false);
   });
 
-  it('keeps inbound-burst dark by default and arms one allowlisted family', () => {
-    expect(isEnabled('inbound-burst', 'fam-a', {})).toBe(false);
-    const env = { INBOUND_BURST_FAMILY_ALLOWLIST: 'fam-a' };
-    expect(isEnabled('inbound-burst', 'fam-a', env)).toBe(true);
-    expect(isEnabled('inbound-burst', 'fam-b', env)).toBe(false);
-    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true\n' })).toBe(false);
-    expect(isEnabled('inbound-burst', 'fam-b', { INBOUND_BURST_ENABLED: 'true' })).toBe(true);
-  });
+  it.each([
+    ['deep-followup-now', 'DEEP_FOLLOWUP_NOW_ENABLED', 'DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST'],
+    ['holding-line', 'HOLDING_LINE_ENABLED', 'HOLDING_LINE_FAMILY_ALLOWLIST'],
+    ['inbound-burst', 'INBOUND_BURST_ENABLED', 'INBOUND_BURST_FAMILY_ALLOWLIST'],
+    ['next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED', 'NEXT_DAY_CHECKBACK_FAMILY_ALLOWLIST'],
+    ['coach-bubbles', 'COACH_BUBBLES_ENABLED', 'COACH_BUBBLES_FAMILY_ALLOWLIST'],
+  ])(
+    '%s is a kill switch: unset is ON, false is OFF, no allowlist relights it',
+    (key, env, allowlist) => {
+      expect(isEnabled(key, 'fam-a', {})).toBe(true);
+      expect(isEnabled(key, undefined, {})).toBe(true);
+      expect(isEnabled(key, 'fam-a', { [env]: 'false' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { [env]: ' false\n' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { [env]: 'false', [allowlist]: 'fam-a' })).toBe(false);
+      expect(isEnabled(key, 'fam-a', { ...ON, [env]: 'false' })).toBe(false);
+    },
+  );
 
   it('runs inbound-midturn by default for every family; only "false" turns it off', () => {
     expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(true);
@@ -65,19 +74,6 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
       false,
     );
     expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_BURST_ENABLED: 'false' })).toBe(true);
-  });
-
-  it('keeps deep-followup-now dark by default and arms one allowlisted family', () => {
-    expect(isEnabled('deep-followup-now', 'fam-a', {})).toBe(false);
-    const env = { DEEP_FOLLOWUP_NOW_FAMILY_ALLOWLIST: 'fam-a' };
-    expect(isEnabled('deep-followup-now', 'fam-a', env)).toBe(true);
-    expect(isEnabled('deep-followup-now', 'fam-b', env)).toBe(false);
-    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true\n' })).toBe(
-      false,
-    );
-    expect(isEnabled('deep-followup-now', 'fam-b', { DEEP_FOLLOWUP_NOW_ENABLED: 'true' })).toBe(
-      true,
-    );
   });
 
   it('does not call the PostHog evaluator', () => {

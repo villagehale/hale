@@ -117,7 +117,7 @@ export const maxDuration = 300;
  * THE NEXT-DAY CHECK-BACK (VIL-681) rides after the mid-activity legs. A parent who
  * started something with Hale and went quiet may be checked back on once, the next day.
  * It queues for the proactive decider and sends nothing itself. Its own flag
- * (NEXT_DAY_CHECKBACK_ENABLED) is strict `true` and default off, and it reads nothing
+ * (NEXT_DAY_CHECKBACK_ENABLED) is a kill switch, on unless `false`, and it reads nothing
  * while WORKSTREAMS_ENABLED is off.
  *
  * THE WORKSTREAM CHECK-BACK (VIL-419) rides last. It is a follow-up on a thread
