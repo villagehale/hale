@@ -98,6 +98,22 @@ export function opensForSomeone(
   return familyOpening(reading, { district: city.district, residencyKnown: true }) !== null;
 }
 
+/** The page's own words for a date: for a district family the passage that ties it to the
+ * district (namesDistrict), else the date's own quote. */
+export function openingQuote(date: LiveRegistrationDate, district: TorontoDistrict | null): string {
+  const [own = ''] = date.evidence;
+  if (district === null) return own;
+  const name = district.split('_');
+  return (
+    date.evidence.find(
+      (passage) =>
+        name.every((word) => namesAny(passage, [word])) &&
+        normalizeQuote(passage).includes(normalizeQuote(own)) &&
+        datesPrintedIn(passage) === 1,
+    ) ?? own
+  );
+}
+
 /** The instant a date opens at, in the page's own zone (the family's city). */
 export function openingInstant(reading: VerifiedRegistrationReading, date: LiveRegistrationDate) {
   return registrationAnchor(reading, date);

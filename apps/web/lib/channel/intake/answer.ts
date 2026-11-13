@@ -359,7 +359,9 @@ async function groundOfficialPages(
 async function answerFromOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
+  ownTown: readonly string[] | null,
 ): Promise<IntakeAnswerOutcome> {
+  if (ownTown !== null) return answerFromOwnTownPage(ownTown, input);
   const ground = await groundOfficialPages(client, input);
   if (ground.status === 'ungrounded') {
     console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
@@ -369,6 +371,20 @@ async function answerFromOfficialPages(
   return body === null
     ? { status: 'unavailable', reason: 'not_posted' }
     : { status: 'answered', body };
+}
+
+/**
+ * VIL-684: the parent's own town has a date off its own official page, so that page's
+ * words are the grounding, not a second search that could name another date than the one
+ * the family is told. Quotes that cannot go out as one plain SMS send nothing.
+ */
+function answerFromOwnTownPage(
+  quotes: readonly string[],
+  input: IntakeAnswerInput,
+): IntakeAnswerOutcome {
+  const notes = quotes.map((quote) => (/[.!]$/.test(quote) ? quote : `${quote}.`)).join(' ');
+  const body = officialPageReplyFromNotes(notes, input.pendingAsk);
+  return body === null ? unavailable('unusable', 'own_town_quote') : { status: 'answered', body };
 }
 
 async function answerFromCurrentSource(
@@ -391,21 +407,22 @@ async function answerFromCurrentSource(
     : { status: 'answered', body };
 }
 
-/** Whether the town a postal code is in has its own-city opening on file (VIL-684). */
-export type IntakeOwnTownOpens = (postal: string, now: Date) => Promise<boolean>;
+/** The page's own words for the opening of the town a postal code is in, or null with
+ * none on file (VIL-684). */
+export type IntakeOwnTownQuotes = (postal: string, now: Date) => Promise<readonly string[] | null>;
 
 export function createIntakeAnswerComposer(
   client: AgentClient,
-  ownTownOpens: IntakeOwnTownOpens,
+  ownTownQuotes: IntakeOwnTownQuotes,
 ): IntakeAnswerComposer {
   /** VIL-684: once the parent's own town has a date off its own page, a question for that
    * town's dates is not this lane's hand dataset's to answer ("not posted yet", an older
-   * season): it goes on to the grounded answer below, like any program date. */
-  const ownTownReadingAnswers = async (input: IntakeAnswerInput): Promise<boolean> => {
+   * season): the grounded answer below answers it from that page. */
+  const ownTownReading = async (input: IntakeAnswerInput): Promise<readonly string[] | null> => {
     const postal = input.postalCode ?? null;
-    if (postal === null) return false;
-    if (!recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal })) return false;
-    return ownTownOpens(postal, new Date());
+    if (postal === null) return null;
+    if (!recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal })) return null;
+    return ownTownQuotes(postal, new Date());
   };
   return {
     async compose(input) {
@@ -433,14 +450,16 @@ export function createIntakeAnswerComposer(
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
       // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
-      const recMorning = (await ownTownReadingAnswers(input))
-        ? null
-        : await writeRecMorningIntakeReply({
-            parentWords: input.parentWords,
-            pendingAsk: input.pendingAsk,
-            postal: input.postalCode,
-            language: input.language ?? null,
-          });
+      const ownTown = await ownTownReading(input);
+      const recMorning =
+        ownTown !== null
+          ? null
+          : await writeRecMorningIntakeReply({
+              parentWords: input.parentWords,
+              pendingAsk: input.pendingAsk,
+              postal: input.postalCode,
+              language: input.language ?? null,
+            });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
@@ -471,7 +490,7 @@ export function createIntakeAnswerComposer(
         return unavailable('model_failed', message(err));
       }
 
-      return screenedForTheHealthLine(value, await answerTheRead(client, value, input));
+      return screenedForTheHealthLine(value, await answerTheRead(client, value, input, ownTown));
     },
   };
 }
@@ -485,10 +504,11 @@ async function answerTheRead(
   client: AgentClient,
   value: z.infer<typeof answerSchema>,
   input: IntakeAnswerInput,
+  ownTown: readonly string[] | null,
 ): Promise<IntakeAnswerOutcome> {
   switch (value.askKind) {
     case 'program_dates':
-      return answerFromOfficialPages(client, input);
+      return answerFromOfficialPages(client, input, ownTown);
     case 'current_source':
       return answerFromCurrentSource(client, input);
     case 'cheer_up':
