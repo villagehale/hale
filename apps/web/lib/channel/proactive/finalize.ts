@@ -39,7 +39,7 @@ export interface ProactiveLedgerWrite {
   providerChatId?: string | null;
   sentAt: Date;
   /** The sent sentence, only for a template in {@link BODY_RECORDED_TEMPLATE_KEYS}. */
-  body: string | null;
+  body?: string;
 }
 
 export interface ProactiveAuditRow {
@@ -112,7 +112,7 @@ export async function finalizeProactiveSend(
       providerMessageId: firstId === null ? input.providerMessageId : null,
       providerChatId: input.providerChatId,
       sentAt: input.sentAt,
-      body: BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey) ? input.composed : null,
+      ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey) ? { body: input.composed } : {}),
     });
     firstId ??= id;
   }
