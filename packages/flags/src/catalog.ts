@@ -35,7 +35,8 @@ export interface FlagSpec {
   onVariant?: string;
   /**
    * Multivariate kill variant, for one whose default is ON. The env value, trimmed, picks
-   * it (a trailing newline from `vercel env add` must still kill), and a kill or a
+   * it, and so does a trimmed `false` (a trailing newline from `vercel env add` must
+   * still kill, and `=false` is the kill switch on every flag), and a kill or a
    * PostHog flag switched off resolves to it instead of the default. Arming values stay
    * exact. Unset: the default is the off variant, as before.
    */
@@ -315,7 +316,9 @@ export function parseEnvBoolean(spec: FlagSpec, env: Record<string, string | und
 
 export function envVariant(spec: FlagSpec, env: Record<string, string | undefined>): string {
   const raw = env[spec.env];
-  if (raw !== undefined && spec.offVariant !== undefined && raw.trim() === spec.offVariant) {
+  // The kill reads like isFlagKilled: trimmed, and `false` as well as the off variant.
+  const trimmed = raw?.trim();
+  if (spec.offVariant !== undefined && (trimmed === spec.offVariant || trimmed === 'false')) {
     return spec.offVariant;
   }
   if (raw !== undefined && spec.variants?.includes(raw)) return raw;

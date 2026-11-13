@@ -180,6 +180,9 @@ describe('multivariate claim-reader-mode', () => {
     );
     expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off' })).toBe('off');
     expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'off\n' })).toBe('off');
+    // The launch kill switch is `=false`, as on every boolean; it kills here too.
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false' })).toBe('off');
+    expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'false\n' })).toBe('off');
     expect(flagValue('claim-reader-mode', undefined, { CLAIM_READER_MODE: 'shadow\n' })).toBe(
       'enforce',
     );

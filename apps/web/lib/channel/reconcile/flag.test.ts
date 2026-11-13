@@ -15,6 +15,7 @@ describe('CLAIM_READER_MODE', () => {
     expect(claimReaderMode({ CLAIM_READER_MODE: 'off' })).toBe('off');
     expect(claimReaderMode({ CLAIM_READER_MODE: 'off\n' })).toBe('off');
     expect(claimReaderMode({ CLAIM_READER_MODE: ' off ' })).toBe('off');
+    expect(claimReaderMode({ CLAIM_READER_MODE: 'false' })).toBe('off');
     // Anything else is not a kill: the default stands.
     expect(claimReaderMode({ CLAIM_READER_MODE: 'OFF' })).toBe('enforce');
     expect(claimReaderMode({ CLAIM_READER_MODE: 'shadow\n' })).toBe('enforce');

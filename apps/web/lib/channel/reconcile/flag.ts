@@ -6,8 +6,8 @@
  * and only counts the comparison (claim-shadow.ts); no send changes. `off` is the kill
  * switch: nothing reads, nothing is queried and the warm skips.
  *
- * `off` is matched trimmed, so a trailing newline from `vercel env add` still kills;
- * `shadow` and `enforce` are exact (packages/flags `offVariant`).
+ * `off` and `false` are matched trimmed, so a trailing newline from `vercel env add`
+ * still kills; `shadow` and `enforce` are exact (packages/flags `offVariant`).
  *
  * The allowlist enforces named families while the mode is `shadow`. It never arms
  * anything while the mode is `off`.
