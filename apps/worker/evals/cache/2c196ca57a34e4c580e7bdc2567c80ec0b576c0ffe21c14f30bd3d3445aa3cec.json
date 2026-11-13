@@ -1,0 +1,13 @@
+{
+  "value": {
+    "parking": "There's no parking at the venue itself (it's on a pedestrian street), the Green P on Queen is closest.",
+    "bring": ""
+  },
+  "latencyMs": 1029,
+  "usage": {
+    "input_tokens": 157,
+    "output_tokens": 49,
+    "cache_read_input_tokens": 755,
+    "cache_creation_input_tokens": 0
+  }
+}

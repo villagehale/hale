@@ -1,4 +1,4 @@
-import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
+import { GuardrailError, defineTool, invokeTool, markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -88,7 +88,11 @@ describe('read_email · production reader', () => {
     await expect(r.connected(familyId, parentUserId)).resolves.toBe(true);
     await expect(
       r.read({ familyId, parentUserId, conversationId, gmailMessageId: 'gm-1' }),
-    ).resolves.toEqual({ read: true, body: BODY, truncated: false });
+    ).resolves.toEqual({
+      read: true,
+      body: markUntrusted('email', 'body', BODY),
+      truncated: false,
+    });
     expect(fetched).toEqual(['gm-1:token-1']);
   });
 
@@ -127,7 +131,10 @@ describe('read_email · production reader', () => {
   // 13+ child. Until the scrub rewrites them, a null still refuses and a text still reads.
   it.each([
     { snippet: null, result: { read: false, reason: 'private' } },
-    { snippet: 'Happy Thanksgiving', result: { read: true, body: BODY, truncated: false } },
+    {
+      snippet: 'Happy Thanksgiving',
+      result: { read: true, body: markUntrusted('email', 'body', BODY), truncated: false },
+    },
   ])('a row from before the private flag with snippet $snippet', async ({ snippet, result }) => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const { familyId, parentUserId } = await seedFamily(db.database);
@@ -195,7 +202,7 @@ describe('read_email · production reader', () => {
     });
     expect(read).toEqual({
       read: true,
-      body: long.slice(0, READ_EMAIL_MAX_CHARS),
+      body: markUntrusted('email', 'body', long.slice(0, READ_EMAIL_MAX_CHARS)),
       truncated: true,
     });
   });

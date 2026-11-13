@@ -1,0 +1,15 @@
+{
+  "parsed": {
+    "payload": {
+      "digest_item": {
+        "title": "calendar conflict: Noah's checkup overlaps a work meeting",
+        "summary": "Noah's 6-month checkup (Tue Jun 23, 10:15 AM) overlaps a work meeting at 10:00 AM. Parent & Baby Swim on Saturday has no conflict.",
+        "needs_attention": true
+      }
+    },
+    "confidence": 0.9,
+    "rationale": "Digest-only note flagging the Tue Jun 23 checkup vs 10:00 AM work meeting overlap; swim is clear.",
+    "recipient_visibility": "internal_only",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}

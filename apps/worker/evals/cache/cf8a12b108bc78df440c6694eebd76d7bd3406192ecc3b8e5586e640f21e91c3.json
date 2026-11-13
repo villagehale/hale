@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.97,
+    "rationale": "Promotional clothing sale from a retail sender with no dated child occasion, cancellation, or enrolment."
+  },
+  "latencyMs": 891,
+  "usage": {
+    "input_tokens": 199,
+    "output_tokens": 62,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

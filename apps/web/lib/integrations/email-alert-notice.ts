@@ -1,5 +1,4 @@
-import type { AgentClient } from '@hale/agent';
-import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, markUntrusted, pickLane } from '@hale/agent';
 import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
 import { withLlmContext } from '~/lib/analytics/llm-trace';
@@ -186,13 +185,29 @@ export function emailAlertNoticeFacts(input: {
   };
 }
 
-/** The user turn. Shared with the eval, which replays this request shape. No body
- * keeps the bytes identical to today's facts JSON so the notice eval is not re-keyed. */
+/** The user turn. Shared with the eval, which replays this request shape. The email's own
+ * strings in the facts enter marked untrusted; a handed body keeps its own fence. */
 export function emailAlertNoticeUserMessage(
   facts: EmailAlertNoticeFacts,
   body?: string | null,
 ): string {
-  const factsJson = JSON.stringify(facts);
+  const factsJson = JSON.stringify({
+    ...facts,
+    email: {
+      ...facts.email,
+      sender:
+        facts.email.sender === null ? null : markUntrusted('email', 'sender', facts.email.sender),
+      subject:
+        facts.email.subject === null
+          ? null
+          : markUntrusted('email', 'subject', facts.email.subject),
+      title: markUntrusted('email', 'title', facts.email.title),
+      location:
+        facts.email.location === null
+          ? null
+          : markUntrusted('email', 'location', facts.email.location),
+    },
+  });
   if (body == null || body === '') return factsJson;
   const handed = body.slice(0, EMAIL_ALERT_NOTICE_BODY_MAX_CHARS);
   return `${factsJson}\n\n${EMAIL_ALERT_BODY_PREAMBLE}\n${EMAIL_ALERT_BODY_OPEN}\n${handed}\n${EMAIL_ALERT_BODY_CLOSE}`;

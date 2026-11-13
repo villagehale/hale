@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.9,
+    "rationale": "A cousin invites the family to a first birthday party on July 12 and asks them to say whether they can attend.",
+    "payload": {
+      "host": "cousin.mei@gmail.com",
+      "honoree": "Leo",
+      "event": "1st birthday party",
+      "date": "Saturday July 12",
+      "time": "2 PM",
+      "location": "Host's home",
+      "rsvp_requested": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 297,
+    "output": 303
+  }
+}

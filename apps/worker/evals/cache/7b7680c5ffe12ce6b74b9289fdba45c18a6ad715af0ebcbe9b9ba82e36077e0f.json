@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.97,
+    "rationale": "Swimming class for Léo on Saturday July 25 cancelled by a swim school"
+  },
+  "latencyMs": 1329,
+  "usage": {
+    "input_tokens": 221,
+    "output_tokens": 55,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

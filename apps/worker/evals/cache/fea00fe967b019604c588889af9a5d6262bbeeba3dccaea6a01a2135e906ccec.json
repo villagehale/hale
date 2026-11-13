@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "to": "grandma.rivera@gmail.com",
+      "subject": "Re: Any new pictures?",
+      "body": "hi grandma — so good to hear from you. i'll pull together some recent photos and send them your way. love you."
+    },
+    "confidence": 0.72,
+    "rationale": "Warm short reply to grandma's photo request; no photos or details in memory, so none are attached or invented.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}

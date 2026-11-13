@@ -1,0 +1,25 @@
+{
+  "value": {
+    "cycle_on_page": null,
+    "evidence": null,
+    "year_evidence": null,
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": null,
+    "note": "The page states for Fall 2026: \"Registration dates will be announced at a later date.\"",
+    "found": false,
+    "reason": "announced_later",
+    "confidence": 0.97
+  },
+  "latencyMs": 2235,
+  "usage": {
+    "input_tokens": 244,
+    "output_tokens": 149,
+    "cache_read_input_tokens": 4982,
+    "cache_creation_input_tokens": 0
+  }
+}

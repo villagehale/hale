@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.97,
+    "rationale": "Swim school notice cancelling Leo's Level 2 class this Saturday, a dated change to a child's schedule"
+  },
+  "latencyMs": 2043,
+  "usage": {
+    "input_tokens": 215,
+    "output_tokens": 65,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1271
+  }
+}

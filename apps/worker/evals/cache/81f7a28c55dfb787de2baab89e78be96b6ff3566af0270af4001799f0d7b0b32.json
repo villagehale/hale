@@ -1,0 +1,13 @@
+{
+  "value": {
+    "parking": "",
+    "bring": ""
+  },
+  "latencyMs": 2050,
+  "usage": {
+    "input_tokens": 128,
+    "output_tokens": 179,
+    "cache_read_input_tokens": 755,
+    "cache_creation_input_tokens": 0
+  }
+}

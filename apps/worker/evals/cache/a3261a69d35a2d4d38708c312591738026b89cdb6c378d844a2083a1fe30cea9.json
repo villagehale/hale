@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states Swim Level 1 registration, Saturday September 26 at 9 AM, Leisure Centre, names two other Hale families as a number, asks to add to calendar (offer is add_to_calendar, alreadyOnCalendar false), and invents nothing. Claim 'got a spot' and 'first class' framing are reasonably supported by a booking confirmation; 'Brookfield Recreation sent the confirmation Tuesday' matches arrivedOn. Tone is casual and in English. Minor risk: 'got a spot' slightly exceeds 'registration confirmation' but is a plausible reading.",
+    "score": 4
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.97,
+    "rationale": "School notice moving a dated parent-teacher conference for Leo to a new time"
+  },
+  "latencyMs": 1245,
+  "usage": {
+    "input_tokens": 218,
+    "output_tokens": 52,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

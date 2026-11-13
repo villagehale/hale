@@ -1,0 +1,16 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.1,
+    "rationale": "Forwarded email has an unknown sender and removed content, so nothing identifies its type or purpose.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 242,
+    "output": 214
+  }
+}

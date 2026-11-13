@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.96,
+    "rationale": "Service Canada notice confirming EI parental benefits claim processed and first payment date; one-way government notice.",
+    "payload": {
+      "sender": "noreply@servicecanada.gc.ca",
+      "program": "Employment Insurance parental benefits",
+      "status": "claim processed",
+      "first_payment_amount": "$668",
+      "first_payment_date": "June 19",
+      "reference": "EI-2026-0042189"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 299,
+    "output": 302
+  }
+}

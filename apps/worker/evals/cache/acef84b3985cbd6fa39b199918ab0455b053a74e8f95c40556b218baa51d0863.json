@@ -1,0 +1,13 @@
+{
+  "value": {
+    "parking": "",
+    "bring": "a nut-free lunch packed in a disposable bag; a hat; sunscreen already applied"
+  },
+  "latencyMs": 1581,
+  "usage": {
+    "input_tokens": 196,
+    "output_tokens": 191,
+    "cache_read_input_tokens": 755,
+    "cache_creation_input_tokens": 0
+  }
+}

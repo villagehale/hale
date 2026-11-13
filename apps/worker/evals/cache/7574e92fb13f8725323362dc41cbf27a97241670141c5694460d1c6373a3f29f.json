@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.82,
+    "rationale": "Known daycare says an infant-room spot opened and asks the family to confirm and pay a $200 deposit within 5 business days.",
+    "payload": {
+      "sender": "admin@maplegrove-childcare.ca",
+      "daycare": "Maple Grove Childcare",
+      "outcome": "spot_offered",
+      "room": "infant",
+      "start": "September",
+      "deposit_amount": "$200",
+      "response_deadline": "5 business days"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 296,
+    "output": 672
+  }
+}

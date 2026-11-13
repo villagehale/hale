@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.8,
+    "rationale": "Daycare sender heads-up about Leo's room with details to follow; plausibly a dated change or event, so route to extraction."
+  },
+  "latencyMs": 1335,
+  "usage": {
+    "input_tokens": 193,
+    "output_tokens": 67,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

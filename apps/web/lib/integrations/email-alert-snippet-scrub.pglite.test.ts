@@ -1,3 +1,4 @@
+import { markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -135,7 +136,7 @@ describe('scrubEmailAlertSnippets', () => {
     await expect(read('gm-teen')).resolves.toEqual({ read: false, reason: 'private' });
     await expect(read('gm-text')).resolves.toEqual({
       read: true,
-      body: 'the email body',
+      body: markUntrusted('email', 'body', 'the email body'),
       truncated: false,
     });
 

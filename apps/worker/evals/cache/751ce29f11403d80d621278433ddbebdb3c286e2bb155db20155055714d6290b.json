@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Winter 2027 swim lessons",
+    "evidence": "Riverbend Aquatics — Winter 2027 swim lessons. Registration opens Tuesday, November 17, 2026 at 7:00 p.m.",
+    "year_evidence": "Registration opens Tuesday, November 17, 2026 at 7:00 p.m.",
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The page gives the registration opening no resident or non-resident label: \"Registration opens Tuesday, November 17, 2026 at 7:00 p.m.\"",
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "Tuesday, November 17, 2026 at 7:00 p.m.",
+      "date_text": "Tuesday, November 17, 2026",
+      "time_text": "7:00 p.m.",
+      "date": "2026-11-17",
+      "time": "19:00"
+    },
+    "note": null,
+    "found": true,
+    "reason": null,
+    "confidence": 0.93
+  },
+  "latencyMs": 2766,
+  "usage": {
+    "input_tokens": 132,
+    "output_tokens": 340,
+    "cache_read_input_tokens": 4982,
+    "cache_creation_input_tokens": 0
+  }
+}

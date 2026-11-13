@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.2,
+    "rationale": "Vague personal email from an unknown sender with no identifiable family-related content or context.",
+    "payload": {
+      "from": "j.reeve@outlook.com",
+      "subject": "hey"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 243,
+    "output": 231
+  }
+}

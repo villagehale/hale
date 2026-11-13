@@ -1,0 +1,24 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": "Junior Soccer - Saturdays 10:00 AM Ages 5-7",
+    "sessions_matching": "one",
+    "availability_quote": null,
+    "waitlist_quote": null,
+    "schedule_quote": "Saturdays 10:00 AM",
+    "session_start_quote": null,
+    "session_start_date_text": null,
+    "session_start": null,
+    "state": "unknown",
+    "spots_left": null,
+    "waitlist_room": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 2360,
+  "usage": {
+    "input_tokens": 133,
+    "output_tokens": 160,
+    "cache_read_input_tokens": 2301,
+    "cache_creation_input_tokens": 0
+  }
+}

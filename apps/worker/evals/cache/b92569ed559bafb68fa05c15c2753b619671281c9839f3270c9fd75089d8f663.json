@@ -1,0 +1,43 @@
+{
+  "value": {
+    "cycle_on_page": "Fall swimming lessons",
+    "evidence": "Fall swimming lessons | Aug. 12 | Aug. 22 9 a.m. | Aug. 28 9 a.m.",
+    "year_evidence": "Fall 2026 and Winter 2027 Registration Schedule",
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The table columns label the openings: \"Registration date and time (resident)\" holds Aug. 22 9 a.m. and \"Registration date and time (non-resident)\" holds Aug. 28 9 a.m. The \"Program viewable online\" column holds Aug. 12.",
+    "preview": {
+      "quote": "Aug. 12",
+      "date_text": "Aug. 12",
+      "time_text": null,
+      "date": "2026-08-12",
+      "time": null
+    },
+    "resident_open": {
+      "quote": "Aug. 22 9 a.m.",
+      "date_text": "Aug. 22",
+      "time_text": "9 a.m.",
+      "date": "2026-08-22",
+      "time": "09:00"
+    },
+    "general_open": {
+      "quote": "Aug. 28 9 a.m.",
+      "date_text": "Aug. 28",
+      "time_text": "9 a.m.",
+      "date": "2026-08-28",
+      "time": "09:00"
+    },
+    "unclassified_open": null,
+    "note": "The row prints no year. The year 2026 is taken from the table heading \"Fall 2026 and Winter 2027 Registration Schedule\". The page names no time zone or place.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 6727,
+  "usage": {
+    "input_tokens": 409,
+    "output_tokens": 1017,
+    "cache_read_input_tokens": 4982,
+    "cache_creation_input_tokens": 0
+  }
+}

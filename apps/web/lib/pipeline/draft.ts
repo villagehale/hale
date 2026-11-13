@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, markUntrustedTree, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { loadDraftActionSkill } from './skill';
@@ -51,7 +51,10 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
   const skill = await loadDraftActionSkill();
   const userMessage = JSON.stringify({
     action_type: input.actionType,
-    event: input.event,
+    event: {
+      ...input.event,
+      payload: markUntrustedTree('email', input.event.payload),
+    },
     memory_slice: input.memorySlice ?? null,
   });
 

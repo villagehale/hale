@@ -1,5 +1,4 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { loadExtractChildEventSkill } from './skill';
@@ -93,7 +92,11 @@ export async function extractChildEvent(
 ): Promise<ExtractResult> {
   const skill = await loadExtractChildEventSkill();
   const userMessage = JSON.stringify({
-    email: { subject: input.subject, from: input.from, body: input.body },
+    email: {
+      subject: markUntrusted('email', 'subject', input.subject),
+      from: markUntrusted('email', 'from', input.from),
+      body: markUntrusted('email', 'body', input.body),
+    },
     received_at: input.receivedAt,
     family_timezone: input.familyTimezone,
     children: input.children.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),

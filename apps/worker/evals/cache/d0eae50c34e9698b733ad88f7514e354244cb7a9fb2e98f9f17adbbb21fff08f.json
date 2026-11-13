@@ -1,0 +1,24 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "session_quote": null,
+    "sessions_matching": "none",
+    "availability_quote": null,
+    "waitlist_quote": null,
+    "schedule_quote": null,
+    "session_start_quote": null,
+    "session_start_date_text": null,
+    "session_start": null,
+    "state": "unknown",
+    "spots_left": null,
+    "waitlist_room": null,
+    "confidence": 0.9
+  },
+  "latencyMs": 2385,
+  "usage": {
+    "input_tokens": 392,
+    "output_tokens": 251,
+    "cache_read_input_tokens": 2301,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1586,7 +1587,7 @@ describe('the notice is the whole text, and the thread keeps the email for the c
       const { result, fetched } = await readEmail(conversationId);
       expect(result).toEqual(
         read
-          ? { read: true, body: 'the email body', truncated: false }
+          ? { read: true, body: markUntrusted('email', 'body', 'the email body'), truncated: false }
           : { read: false, reason: 'private' },
       );
       expect(fetched).toEqual(read ? ['m1'] : []);
@@ -1665,7 +1666,9 @@ describe('the notice is the whole text, and the thread keeps the email for the c
       const body = 'Leo has a dentist visit on Thursday at 4pm.';
       const { result } = await readEmail(conversationId, body);
       expect(result).toEqual(
-        read ? { read: true, body, truncated: false } : { read: false, reason: 'private' },
+        read
+          ? { read: true, body: markUntrusted('email', 'body', body), truncated: false }
+          : { read: false, reason: 'private' },
       );
     },
   );

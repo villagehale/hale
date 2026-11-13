@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -47,7 +47,10 @@ const eventNotesSchema = z.object({ parking: z.string(), bring: z.string() });
 
 /** Same bytes the eval replays (run-event-notes-eval.mjs). */
 export function eventNotesUserMessage(title: string, description: string): string {
-  return JSON.stringify({ title, description });
+  return JSON.stringify({
+    title: markUntrusted('calendar', 'title', title),
+    description: markUntrusted('calendar', 'description', description),
+  });
 }
 
 /** Hash of what the facts were read from: the title AND the description. A renamed event with

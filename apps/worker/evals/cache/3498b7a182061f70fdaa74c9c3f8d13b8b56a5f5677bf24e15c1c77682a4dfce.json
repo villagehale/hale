@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzjBHb8Szd9motDbUn5S",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6wcKEAgTGAI4AUIIdGhpbmtpbmcSDE5lJMP9C+W44grz/xoM+zzvYcv0vbsvj/eaIjBPfg53jgLpdcXx5an7qCqDszbn3ouD8+DYhbtU2KogNshrqRVKpK+2CRZ2f+NSFW4qiAdypwxKUzvnsLdDNyYBpM1R2YGwLPkt6QNMMGm3x7KsJpU34hqf8lCAC6+RFdWVmE10WMxZTQQo1LfNYbXJN79c4O5XXgkqwJcGpj/8noYU8HlokFSKcoGxC45LrWXZvNcY4rFZt5LoKKVoa1ktnc/ts+fooIIK+rVDA4fF0G/4NrfGmddQdMIW5UV6vlphnmSwdzCDH9ksqMfioL8gKhDkBlydTkCWdwHNpMdi6ZF7AQVjK5O/oYK2fhAz4bKGN/AnfngNQHf1O4X9ZZFfPuniKZwHCilkumeSAWZ1Q59eQR1BnWuLsUyYru8nkkNpzmTt2NTy7gd+/seZGw/TQTQczHNuCv34X9QT8CHRCGrKSSaxWWgP8xoU6/s7b66S2RXjdLxE785WdGQ6VAn58zPJnxbCOjCKn05RcscdRl8poSiDq3XLxlPaFAeI1bp2y6a/eEDNEJPML8PoBpXnG0R4bAeGRacvvN3vj61Y4OadqK4DWXSygxAqdvqD4VCQWNIgCoCXQ8gzlGaxj+xn8/BaLsVx6c0uTrTb8gzuNtvjdIlI6zGajvt0QX9MJziVkM2g/+ulbj528osumlHbepQybMLZP5PZeVvaphNQm1ZBoB4Rrw/8t+xqzNZ1Z2AI4hkOsocaXpm+hPsuEmZB7IbxetMCBK03wLqPreAx0+3UarmqgR0++GdL/mSYtzhdRd4+h9wxgmWMZiV2G8EzD/BjiHGhvLPAYgFt1TejVXVL3GFntd0oo0jZ4P0fXybQroCD7k1M361jU0Hu5OtrtYglC8/Ftq+MciA19B+/xDSVm85/qbYQfpvNZKqYtN4X3PuaNKWSAvavVbVccxqsiy+I9QGv2aGFzBY1ePBjGNV6Nbb0LvuRZ77pMQpAYGW+kzI6mrvVnjXVVLKhBEaL+CrdFGdoa+CHRvWkykSKZkvfGgWoJdQ2RJfcLuA/Tx7V3ZU2rCJ3zn/ZK7Gk4uHq8wVt616DKmIiOwNdE1wGb9o7f6rPJhIyhAZGmd0OurCFfqqIBBiNix8rRt1xnMmMTuFI1JtUiFxHa8pRJqnDvdT05ToZBxDrbmvoSB7LKLg+5d8S+cLKlExhOr+bfoU7tcC3DAGcSve6LIvhYPITLK8NuDTBEiJ1v8TnhZ4MwBjeS2LAVvySRtw8HWVW8ZdD6alS1zRJkzPt/lLiVYxtTbz66OsS2hU+F+D2GAE="
+      },
+      {
+        "type": "text",
+        "text": "They said they can set up a visit, and their director will be the one to arrange it. No date or time yet, so the next move is theirs."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 19973,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 714,
+        "ephemeral_1h_input_tokens": 19259
+      },
+      "output_tokens": 160,
+      "output_tokens_details": {
+        "thinking_tokens": 119
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

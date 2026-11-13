@@ -1,0 +1,84 @@
+{
+  "request": {
+    "model": "claude-haiku-5-5",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "max_tokens": 256,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Triage an inbox envelope for a child-event\n\nYou are Hale's inbox sentinel's first pass. You take ONE envelope — subject,\nsender, and Gmail's own snippet, NEVER the full body — from a family's connected\ninbox and decide whether it is worth fetching the full body for.\n\nYou receive the envelope and, optionally, the family's children's first names\n(for name-matching only — do not reason about their ages or stages here). You do\nNOT see prior emails, the family calendar, or any other signal — only this one\nenvelope.\n\n## The question\n\n`child_related`: would this email, if fully read, plausibly describe or confirm\na specific dated occasion in a child's week — a class or appointment being\ncancelled or moved, a new invite or event, a reminder about one already\nscheduled, or a confirmation that the child now HAS A PLACE in one? Think\ncancellations, reschedules, invites (Evite/Paperless Post/e-vite patterns),\npicture day, recital/practice notices, appointment reminders, and registration\nor enrolment confirmations from a rec centre, pool, camp, school or club\n(\"you're registered\", \"your spot is confirmed\", \"enrolment confirmed\"),\nincluding ones formatted as a receipt.\n\nAnswer `false` for: newsletters and general updates with no single dated\nchange, marketing/promotional email (even if it mentions \"kids\" or \"family\"),\nwork/unrelated mail, shipping and delivery notifications for GOODS (a parcel,\nan order of clothing or equipment), policy or handbook updates, and anything\nwith no plausible connection to a child's schedule. A receipt confirming a\nplace in a dated program is NOT a shipping/order notification, however much it\nis formatted like one — answer `true`. A purchase confirmation with no dated\noccasion behind it (a membership renewal, a gift card, a newsletter\nsubscription) is still `false`.\n\n## Output contract\n\nReturn strict JSON matching this shape (via the forced triage tool):\n\n```\n{\n  \"child_related\": boolean,\n  \"confidence\": number,   // 0–1\n  \"rationale\": string     // 1 short phrase — why, from the envelope alone\n}\n```\n\n## Calibration\n\nThis stage is a NOISE FILTER, not a verdict — it exists to avoid fetching and\npaying for a full-body extraction on the >95% of inbox mail that is irrelevant.\nBias toward `true` on genuine ambiguity (a vague-but-plausible subject line still\nroutes to extraction, which has the full body to settle it) but toward `false` on\nclear noise (a newsletter subject, a promo sender, an unrelated notification) —\nthe two failure directions are not symmetric: a missed genuine event costs a\nfamily a broken plan, a wasted extraction call costs a few cents. When truly\nunsure, lean `true`.\n\n## What NOT to do\n\n- Never invent detail beyond the subject/sender/snippet given.\n- Never use a child's name alone as sufficient signal — a promotional email\n  addressed \"Hi Alex\" is not child-related.\n- Never produce non-JSON output.",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"envelope\":{\"subject\":\"<untrusted source=\\\"email\\\" field=\\\"subject\\\">\\nDía de fotos el jueves: por favor confirme\\n</untrusted>\",\"from\":\"<untrusted source=\\\"email\\\" field=\\\"from\\\">\\nOficina <oficina@escuela-los-pinos.example>\\n</untrusted>\",\"snippet\":\"<untrusted source=\\\"email\\\" field=\\\"snippet\\\">\\nEl día de fotos es este jueves 12 de noviembre a las 9:00 a. m. Por favor responda para confirmar que Pip asistirá.\\n</untrusted>\"},\"children\":[\"Pip\",\"Wren\"]}"
+      }
+    ],
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "child_related": {
+              "type": "boolean"
+            },
+            "confidence": {
+              "type": "number",
+              "description": "(minimum: 0, maximum: 1)"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "child_related",
+            "confidence",
+            "rationale"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "claude-haiku-5-5",
+    "id": "msg_011CgziKfLBTPbj9p9E1ciJS",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"child_related\": true, \"confidence\": 0.97, \"rationale\": \"School office asks to confirm child's attendance at picture day on a dated Thursday morning\"}"
+      }
+    ],
+    "container": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 222,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1271,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 55,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

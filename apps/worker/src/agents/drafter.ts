@@ -1,4 +1,4 @@
-import { SPARSE_CACHE_TTL, forceToolJson, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, forceToolJson, markUntrustedTree, pickLane } from '@hale/agent';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
@@ -58,7 +58,10 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
 
   const userMessage = JSON.stringify({
     action_type: input.actionType,
-    event: input.event,
+    event: {
+      ...input.event,
+      payload: markUntrustedTree('email', input.event.payload) as Record<string, unknown>,
+    },
     memory_slice: input.memorySlice ?? null,
     voice_profile: input.voiceProfile ?? null,
     action_template_hint: input.actionTemplateHint ?? null,

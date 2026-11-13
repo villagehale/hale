@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "sender is an unplaceable individual, title is a generic placeholder, no child named, no time or place, nothing specific about what happened",
+    "about_the_kids": "unsure",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

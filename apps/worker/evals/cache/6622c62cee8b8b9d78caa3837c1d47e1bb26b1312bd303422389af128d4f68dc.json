@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.85,
+    "rationale": "PTA fundraiser solicitation with no specific dated occasion, child event change, or registration confirmation"
+  },
+  "latencyMs": 1116,
+  "usage": {
+    "input_tokens": 202,
+    "output_tokens": 61,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

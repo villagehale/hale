@@ -1,0 +1,14 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.9,
+    "rationale": "Monthly daycare newsletter with general updates and no single dated occasion or change"
+  },
+  "latencyMs": 1483,
+  "usage": {
+    "input_tokens": 216,
+    "output_tokens": 52,
+    "cache_read_input_tokens": 1271,
+    "cache_creation_input_tokens": 0
+  }
+}

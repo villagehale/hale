@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.93,
+    "rationale": "Secondary school registrar notice about the June final exam schedule and Grade 11 course selection deadline of April 18, which is routine school logistics and a one-way notice.",
+    "payload": {
+      "sender": "registrar@northgate-secondary.schoolboard.ca",
+      "topics": [
+        "final_exam_schedule",
+        "grade_11_course_selection"
+      ],
+      "deadlines": [
+        {
+          "item": "Grade 11 course selection via student portal",
+          "date": "April 18"
+        }
+      ],
+      "exam_period": "June"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 308,
+    "output": 329
+  }
+}

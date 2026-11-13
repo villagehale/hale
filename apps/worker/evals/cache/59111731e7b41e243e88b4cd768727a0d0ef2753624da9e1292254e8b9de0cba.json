@@ -1,0 +1,17 @@
+{
+  "parsed": {
+    "payload": {
+      "digest_item": {
+        "type": "supply_low_signal",
+        "item": "size 2 diapers",
+        "estimated_days_left": 4,
+        "source": "subscription usage estimate",
+        "summary": "size 2 diapers are running low — about 4 days left, based on the subscription usage estimate."
+      }
+    },
+    "confidence": 0.95,
+    "rationale": "Low-supply signal for size 2 diapers with about 4 days left, added to the digest with no outgoing message or purchase.",
+    "recipient_visibility": "internal_only",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.88,
+    "rationale": "Known daycare is offering a toddler-room spot and asks the family to confirm and send a $300 deposit within 5 business days.",
+    "payload": {
+      "daycare": "Sunny Days Daycare",
+      "outcome": "offer",
+      "start_date": "September 2",
+      "deposit_amount": "$300",
+      "deposit_method": "e-transfer",
+      "response_deadline": "5 business days",
+      "consequence_if_missed": "spot released to next family on waitlist"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 311,
+    "output": 754
+  }
+}

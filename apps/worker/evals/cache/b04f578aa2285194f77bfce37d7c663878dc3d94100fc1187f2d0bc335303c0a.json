@@ -1,0 +1,24 @@
+{
+  "value": {
+    "kind": "cancellation",
+    "event": {
+      "title": "Daycare Closed – Professional Development Day",
+      "child_ref": null,
+      "original_time": "2026-07-22T09:00:00-04:00",
+      "new_time": null,
+      "end_time": null,
+      "location": "Little Sprouts Daycare",
+      "address": null
+    },
+    "source_confidence": 0.9,
+    "quote_evidence": "Little Sprouts Daycare will be closed this Wednesday, July 22nd for a staff professional development day.",
+    "teen_content": false
+  },
+  "latencyMs": 8805,
+  "usage": {
+    "input_tokens": 339,
+    "output_tokens": 163,
+    "cache_read_input_tokens": 2562,
+    "cache_creation_input_tokens": 0
+  }
+}

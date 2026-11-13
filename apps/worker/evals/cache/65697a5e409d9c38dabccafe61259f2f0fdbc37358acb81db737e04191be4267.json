@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a casual, first-person reply that thanks the clinic and confirms the visit details, which suits the recipient. However, it contains an unfilled bracketed placeholder ('[parent: confirm this time works, or tell them what does]') that would be sent as-is, and the lowercase 'hi' and 'tuesday' are slightly too informal for a clinic, so it is not ready to send.",
+    "score": 3
+  }
+}

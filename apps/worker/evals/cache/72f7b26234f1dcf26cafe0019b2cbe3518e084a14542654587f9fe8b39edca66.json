@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the cancellation, the sender, the arrival day (Tuesday), the class name and the Saturday 9 AM slot, and it asks nothing and offers nothing since offer is null. However it says 'this Saturday' and 'Tuesday' without a date tied to facts beyond what is given, and it is a single sentence with a slightly stiff structure. Facts are supported and privacy is not at issue, so the score reflects only minor tone and phrasing concerns.",
+    "score": 4
+  }
+}

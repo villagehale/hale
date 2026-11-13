@@ -1,4 +1,10 @@
-import { type GuardResult, type RegisteredTool, defineTool } from '@hale/agent';
+import {
+  type GuardResult,
+  type RegisteredTool,
+  defineTool,
+  markUntrustedTree,
+  untrustedSourceFor,
+} from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import {
@@ -229,7 +235,13 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
           const stage = stageByChild.get(c.id) as FamilyStage;
           return { childId: c.id, name: stage === 'teenager' ? null : c.name, stage };
         }),
-        recentEvents,
+        recentEvents: recentEvents.map((event) => ({
+          ...event,
+          payload:
+            event.payload === TEEN_MEMORY_PLACEHOLDER
+              ? event.payload
+              : markUntrustedTree(untrustedSourceFor(event.eventType), event.payload),
+        })),
         recentEpisodes: recentEpisodes.map((e) => ({
           childId: e.childId,
           episodeType: e.episodeType,

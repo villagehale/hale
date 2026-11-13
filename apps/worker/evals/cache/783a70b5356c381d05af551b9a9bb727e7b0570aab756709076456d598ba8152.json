@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "vaccine_schedule_update",
+    "confidence": 0.93,
+    "rationale": "Public Health Toronto informational notice that the routine infant immunization schedule's 6-month dose has changed; no reply requested.",
+    "payload": {
+      "sender": "immunization@toronto.ca",
+      "issuer": "Public Health Toronto",
+      "change": "6-month dose now includes an additional component",
+      "action_advised": "Talk to your provider at next visit",
+      "informational_only": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 296,
+    "output": 299
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "value": {
+    "kind": "new_event",
+    "event": {
+      "title": "Ava's 6th Birthday Party",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": "2026-08-08T14:00:00-04:00",
+      "end_time": null,
+      "location": "Jump Zone Trampoline Park",
+      "address": "123 Fun Ave"
+    },
+    "source_confidence": 0.95,
+    "quote_evidence": "Leo, we'd love for you to join us! Please RSVP by August 1st.",
+    "teen_content": false
+  },
+  "latencyMs": 5446,
+  "usage": {
+    "input_tokens": 347,
+    "output_tokens": 164,
+    "cache_read_input_tokens": 2562,
+    "cache_creation_input_tokens": 0
+  }
+}
