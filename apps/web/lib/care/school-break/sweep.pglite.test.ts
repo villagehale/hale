@@ -1134,19 +1134,32 @@ describe('the winter-break sweep: a filed break stands only on what named it', (
     },
   );
 
-  it('keeps a board break while any mail that named the school is still kept kid mail', async () => {
+  it('keeps a board break while any mail from that school is still kept kid mail, and retires it when none is', async () => {
     const { familyId } = await seedFamily({ mail: [BOARD, BOARD] });
     const newest = `msg-${seq}`;
+    const older = `msg-${seq - 1}`;
     await runSchoolBreakSweep(db.database, deps(scripted().lookup), NOW);
-    expect((await loadSchoolBreak(db.database, familyId, '2026-27'))?.sourceMail).toHaveLength(1);
-    // The board's older notice is withdrawn; the one the school check read still stands.
-    await verdictOn(familyId, `msg-${seq - 1}`, 'adult');
-    const result = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
-    expect(result).toMatchObject({ retired: 0 });
+    // Every kept message from the school, not only the one the school check read.
+    const filed = await loadSchoolBreak(db.database, familyId, '2026-27');
+    expect(filed?.sourceMail.map((mail) => mail.messageId).sort()).toEqual([newest, older].sort());
+
+    // The message the school check read is withdrawn; the school's other notice stands.
+    await verdictOn(familyId, newest, 'adult');
+    const kept = await runSchoolBreakSweep(db.database, deps(scripted().lookup), LATER);
+    expect(kept).toMatchObject({ retired: 0 });
     expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toMatchObject({
       boardHost: BOARD,
-      sourceMail: [{ messageId: newest }],
     });
+
+    // The last kept mail from that school is withdrawn too: nothing names it any more.
+    await verdictOn(familyId, older, 'adult');
+    const gone = await runSchoolBreakSweep(
+      db.database,
+      deps(scripted().lookup),
+      new Date(LATER.getTime() + 25 * HOUR),
+    );
+    expect(gone).toMatchObject({ retired: 1 });
+    expect(await loadSchoolBreak(db.database, familyId, '2026-27')).toBeNull();
   });
 
   it('retires a board break once the parent says the only school-age child is at daycare, and never asks about a board', async () => {
