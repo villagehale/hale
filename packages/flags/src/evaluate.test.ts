@@ -66,6 +66,16 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     },
   );
 
+  it('runs inbound-midturn by default for every family; only "false" turns it off', () => {
+    expect(isEnabled('inbound-midturn', 'fam-a', {})).toBe(true);
+    expect(isEnabled('inbound-midturn', undefined, {})).toBe(true);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false' })).toBe(false);
+    expect(isEnabled('inbound-midturn', 'fam-a', { INBOUND_MIDTURN_ENABLED: 'false\n' })).toBe(
+      false,
+    );
+    expect(isEnabled('inbound-midturn', 'fam-b', { INBOUND_BURST_ENABLED: 'false' })).toBe(true);
+  });
+
   it('does not call the PostHog evaluator', () => {
     let called = 0;
     setFlagEvaluatorForTests(() => {

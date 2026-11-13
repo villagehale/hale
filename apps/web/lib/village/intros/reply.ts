@@ -201,6 +201,17 @@ export interface VillageIntroReplyDeps {
   saidLine?: SaidLineWriter;
 }
 
+/** The intro answer the consent model reads in a text, or null for none (and for a read
+ * that failed: a failed read grants nothing and revokes nothing). */
+export async function readIntroKeyword(
+  consent: ConsentReader | undefined,
+  text: string,
+): Promise<IntroKeyword | null> {
+  const read = await readConsent(consent, { question: 'intro', text });
+  if (!read || read.verdict === 'neither' || read.target === 'none') return null;
+  return { target: read.target, granted: read.verdict === 'yes' };
+}
+
 /**
  * Answer one intro keyword.
  *
@@ -220,11 +231,8 @@ export async function handleVillageIntroReply(
     keyword = { target: input.resolved.target, granted: input.resolved.granted };
     reading = { readBy: 'reply-resolver', confidence: input.resolved.confidence };
   } else {
-    const read = await readConsent(deps.consent, { question: 'intro', text: input.body });
-    if (!read || read.verdict === 'neither' || read.target === 'none') {
-      return { status: 'declined_to_claim' };
-    }
-    keyword = { target: read.target, granted: read.verdict === 'yes' };
+    keyword = await readIntroKeyword(deps.consent, input.body);
+    if (!keyword) return { status: 'declined_to_claim' };
     reading = { readBy: 'consent-reply', confidence: 'high' };
   }
 

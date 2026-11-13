@@ -200,6 +200,7 @@ export const OPS_PAGE_VOCABULARY = {
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
+  side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
   inbound_canary_failed: {
     stage: [
