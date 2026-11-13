@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Only a waitlist is open for the Sat 9:30 AM session. I don't join waitlists, so nothing's been signed up. Here's the registration page if you want to look: https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 2050,
+  "usage": {
+    "input_tokens": 134,
+    "output_tokens": 78,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}
