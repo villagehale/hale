@@ -6,14 +6,15 @@ import {
   CRISIS_UNANSWERED_AUDIT_ACTION,
   failurePageCrisisPager,
 } from '~/lib/monitoring/failure-page';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
 /**
  * A crisis flag about one adult is never visible to another adult in the family. The
  * family-wide access copy goes to every parent seat, so the `crisis_unanswered` row
- * stays out of it, whoever asks. Real DDL and the real crisis pager; only the Slack
- * post is faked.
+ * stays out of every copy but the one the parent it is about asks for (right of
+ * access). Real DDL and the real crisis pager; only the Slack post is faked.
  */
 
 const NOW = new Date('2026-07-30T12:00:00.000Z');
@@ -30,6 +31,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users, rate_limits cascade');
 });
 
@@ -44,7 +46,7 @@ async function seedCoParent(familyId: string): Promise<string> {
 }
 
 describe('a crisis flag in the family data export', () => {
-  it("is in neither parent's copy; another internal row is in both", async () => {
+  it("is in the texting parent's own copy only; another internal row is in both", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { familyId, parentUserId: texter } = await seedFamily(db.database, 'Juniper Family');
     const coParent = await seedCoParent(familyId);
@@ -78,16 +80,24 @@ describe('a crisis flag in the family data export', () => {
       .values({ familyId, actor: 'system', actionTaken: 'autonomy_acted_notice_aged_out' })
       .returning({ id: schema.auditLog.id });
 
-    for (const actorUserId of [texter, coParent]) {
-      const copy = await assembleFamilyExport(db.database, familyId, { actorUserId, now: NOW });
-      const ids = copy.trail.map((row) => row.id);
-      expect(ids).not.toContain(crisis?.id);
-      expect(ids).toContain(agedOut?.id);
-    }
+    const own = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: texter,
+      now: NOW,
+    });
+    expect(own.trail.map((row) => row.id)).toEqual(
+      expect.arrayContaining([crisis?.id, agedOut?.id]),
+    );
+    const other = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: coParent,
+      now: NOW,
+    });
+    expect(other.trail.map((row) => row.id)).not.toContain(crisis?.id);
+    expect(other.trail.map((row) => row.id)).toContain(agedOut?.id);
   }, 30_000);
 
-  it('leaves the crisis rows out in the query, so they never crowd out a row the copy keeps', async () => {
+  it("leaves another adult's crisis rows out in the query, so they never crowd out a row the copy keeps", async () => {
     const { familyId, parentUserId } = await seedFamily(db.database, 'Alder Family');
+    const coParent = await seedCoParent(familyId);
     const [older] = await db.database
       .insert(schema.auditLog)
       .values({
@@ -110,9 +120,43 @@ describe('a crisis flag in the family data export', () => {
     );
 
     const copy = await assembleFamilyExport(db.database, familyId, {
-      actorUserId: parentUserId,
+      actorUserId: coParent,
       now: NOW,
     });
     expect(copy.trail.map((row) => row.id)).toEqual([older?.id]);
+    // Positive control: the same rows are the texting parent's own, so their copy holds them.
+    const own = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(own.trail.filter((row) => row.id !== older?.id)).toHaveLength(50);
+  }, 30_000);
+
+  it("with audience rows lit, an own row written before the column is still in its adult's copy only", async () => {
+    vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Hazel Family');
+    const coParent = await seedCoParent(familyId);
+    const [heldRead] = await db.database
+      .insert(schema.auditLog)
+      .values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'opt_out_hold_read',
+        targetTable: 'users',
+        targetId: parentUserId,
+      })
+      .returning({ id: schema.auditLog.id, audience: schema.auditLog.audience });
+    expect(heldRead?.audience).toBeNull();
+
+    const own = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(own.trail.map((row) => row.id)).toEqual([heldRead?.id]);
+    const other = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: coParent,
+      now: NOW,
+    });
+    expect(other.trail.map((row) => row.id)).not.toContain(heldRead?.id);
   }, 30_000);
 });
