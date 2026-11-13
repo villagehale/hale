@@ -5,6 +5,8 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
+import { considerGroupPlanRsvp } from '../group-plan-rsvp/inbound';
+import type { GroupPlanRsvpReading } from '../group-plan-rsvp/reading';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import { considerGroupExperience } from './inbound';
 import type { GroupExperienceReading } from './reading';
@@ -265,7 +267,10 @@ describe('VIL-399 scene 04: the tally never writes a calendar on its own', () =>
       now: NOW,
     });
     const w = ports(reading({ kind: 'rsvp_tally' }));
-    await considerGroupExperience(w.ports, turnInput(a));
+    await considerGroupExperience(w.ports, {
+      ...turnInput(a),
+      planRef: { status: 'plan', planId: plan.id },
+    });
     expect(w.group).toHaveLength(1);
     expect(await calendarCopies()).toEqual([]);
     expect((await calendarAsks()).map((row) => row.familyId)).not.toContain(b.familyId);
@@ -274,19 +279,55 @@ describe('VIL-399 scene 04: the tally never writes a calendar on its own', () =>
   it('a yes RSVP read from the group takes the household OK path; a no takes none', async () => {
     const { a, b, plan } = await planWithAnswers(new Date(SATURDAY_10));
     await db.exec('truncate table linq_group_plan_rsvps cascade');
-    const yes = ports(reading({ kind: 'rsvp_vote', response: 'yes', samePlan: true }));
-    await considerGroupExperience(yes.ports, turnInput(a));
-    const no = ports(reading({ kind: 'rsvp_vote', response: 'no', samePlan: true }));
-    await considerGroupExperience(no.ports, {
-      ...turnInput(a),
+    const texted: string[] = [];
+    const answer = (response: 'yes' | 'no'): GroupPlanRsvpReading => ({
+      intent: 'rsvp',
+      planTitle: null,
+      startsAt: null,
+      location: null,
+      deadline: null,
+      response,
+      headcount: 1,
+      householdLabel: null,
+      coversNames: [],
+      confidence: 'high',
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
+    });
+    const portsFor = (response: 'yes' | 'no') => ({
+      database: db.database,
+      now: NOW,
+      send: async () => ({ providerMessageId: 'g-1' }),
+      reader: { read: async () => answer(response) },
+      composer: fakeGroupPlanRsvpComposer(),
+      oneToOne: {
+        text: async ({ to }: { to: string; body: string }) => {
+          texted.push(to);
+          return { providerMessageId: `dm-${texted.length}`, chatId: `dm-${texted.length}` };
+        },
+        link: async () => ({ providerMessageId: 'unused' }),
+      },
+    });
+    await considerGroupPlanRsvp(portsFor('yes'), {
+      chatId: CHAT,
+      senderHandle: PARENT_A,
+      senderUserId: a.userId,
+      text: 'we are in',
+      tapback: null,
+    });
+    const afterYes = [...texted];
+    await considerGroupPlanRsvp(portsFor('no'), {
+      chatId: CHAT,
       senderHandle: PARENT_B,
       senderUserId: b.userId,
-      senderFamilyId: b.familyId,
+      text: 'we cannot make it',
+      tapback: null,
     });
     expect(plan.id).toBeTruthy();
     expect(await calendarAsks()).toEqual([{ familyId: a.familyId, status: 'asked' }]);
-    expect(yes.texted).toEqual([PARENT_A]);
-    expect(no.texted).toEqual([]);
+    expect(afterYes).toEqual([PARENT_A]);
+    expect(texted).toEqual([PARENT_A]);
     expect(await calendarCopies()).toEqual([]);
   });
 });

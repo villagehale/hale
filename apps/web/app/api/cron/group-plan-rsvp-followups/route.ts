@@ -27,9 +27,11 @@ export const GET = cronRoute('group-plan-rsvp-followups', async () => {
     }
     const summary = await runGroupPlanFollowups({
       store: createPostgresGroupPlanRsvpStore(db()),
-      send: async ({ chatId, text }) =>
+      send: async ({ chatId, text, familyId, planId }) =>
         sendGroupPlanRsvpLine(db(), {
           chatId,
+          familyId,
+          planId,
           text,
           templateKey: GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
           now: new Date(),

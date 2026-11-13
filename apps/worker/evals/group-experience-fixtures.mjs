@@ -247,7 +247,8 @@ export const GROUP_EXPERIENCE_VOICE_FIXTURES = [
       id: 'rsvp-open',
       situation:
         "A parent asked Hale to find out who is coming to Saturday's picnic. A poll card follows.",
-      watchFor: 'One ask whether they are in. No reply-word instructions. Three short labels.',
+      watchFor:
+        'One ask whether they are in. Never points at the poll or says how to answer (what to tap, type, or reply). Three short labels.',
     },
   ),
   group(
@@ -279,7 +280,8 @@ export const GROUP_EXPERIENCE_VOICE_FIXTURES = [
       scene: '03',
       id: 'time-open',
       situation: 'A parent asked Hale to poll Saturday 10 or Sunday 10 for the park.',
-      watchFor: 'One ask to pick between the two times. Option labels for the poll.',
+      watchFor:
+        'One ask which of the two times works. Option labels for the poll. Never points at the poll or says how to answer (what to tap, pick, type, or reply).',
     },
   ),
   group(
@@ -294,6 +296,19 @@ export const GROUP_EXPERIENCE_VOICE_FIXTURES = [
     },
   ),
   group(
+    'time_tie',
+    1,
+    { leaders: ['Saturday 10', 'Sunday 2'] },
+    {
+      scene: '03',
+      id: 'time-tie',
+      situation:
+        'Someone asked Hale to lock the time vote, but Saturday 10 and Sunday 2 are tied and nobody who can settle it picked one.',
+      watchFor:
+        'One short ask which of the two the group goes with, naming both. Does not say anything is locked. Does not tell people what to tap, type, or reply.',
+    },
+  ),
+  group(
     'link_facts',
     0,
     {
@@ -304,7 +319,8 @@ export const GROUP_EXPERIENCE_VOICE_FIXTURES = [
       scene: '05',
       id: 'link-facts',
       situation: 'A parent posted a public camp link with price, sessions and spots.',
-      watchFor: 'Public facts only. No login, no payment, no ask in the group.',
+      watchFor:
+        'Public facts only, each with the meaning the post gave it: $120 is for two sessions, never per session. No login, no payment, no ask in the group.',
     },
   ),
   {

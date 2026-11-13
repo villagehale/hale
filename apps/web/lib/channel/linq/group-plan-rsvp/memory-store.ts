@@ -68,6 +68,8 @@ export interface MemoryGroupPlanWorld {
   /** Household zones Hale knows, keyed by family id. Absent means unknown. */
   householdZones: Map<string, string>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
+  /** Hale group lines about a plan, keyed by provider message id. */
+  planLines: Map<string, { chatId: string; planId: string }>;
 }
 
 export function createMemoryWorld(): MemoryGroupPlanWorld {
@@ -80,6 +82,7 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     consents: new Map(),
     householdZones: new Map(),
     audits: [],
+    planLines: new Map(),
   };
 }
 
@@ -97,6 +100,7 @@ function copyPoll(poll: MemoryPoll): GroupPollRecord {
     expected: poll.expected.map((person) => ({ ...person })),
     providerMessageId: poll.providerMessageId,
     origin: poll.origin,
+    createdByMemberKey: poll.createdByMemberKey,
   };
 }
 
@@ -114,11 +118,11 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
       return poll && poll.providerMessageId === providerMessageId ? copyPoll(poll) : null;
     },
 
-    async closePoll(pollId, _actorUserId, now) {
+    async closePoll(pollId, _actorUserId, now, reason = 'locked') {
       const poll = world.polls.get(pollId);
       if (!poll || poll.closedAt) return false;
       poll.closedAt = now;
-      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason: 'locked' } });
+      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason } });
       return true;
     },
 
@@ -134,6 +138,7 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
         expected: input.expected.map((person) => ({ ...person })),
         providerMessageId: input.providerMessageId,
         origin: input.origin,
+        createdByMemberKey: input.createdByMemberKey ?? null,
         votes: new Map(),
         closedAt: null,
       };
@@ -204,6 +209,15 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
 
 export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): GroupPlanRsvpStore {
   const plansById = () => [...world.plans.values()];
+  const closePast = (chatId: string, now: Date) => {
+    const pastBefore = now.getTime() - GROUP_PLAN_PAST_AFTER_MS;
+    for (const row of plansById()) {
+      if (row.chatId !== chatId || row.closedAt !== null || !row.startsAt) continue;
+      if (row.startsAt.getTime() >= pastBefore) continue;
+      row.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason: 'past' } });
+    }
+  };
 
   return {
     ...createMemoryGroupPollStore(world),
@@ -212,16 +226,23 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return world.families.get(chatId) ?? null;
     },
 
-    async loadLivePlan(chatId, now) {
-      const pastBefore = now.getTime() - GROUP_PLAN_PAST_AFTER_MS;
-      for (const row of plansById()) {
-        if (row.chatId !== chatId || row.closedAt !== null || !row.startsAt) continue;
-        if (row.startsAt.getTime() >= pastBefore) continue;
-        row.closedAt = now;
-        world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason: 'past' } });
-      }
-      const plan = plansById().find((row) => row.chatId === chatId && row.closedAt === null);
-      return plan ? { ...plan } : null;
+    async listOpenPlans(chatId, now) {
+      closePast(chatId, now);
+      return plansById()
+        .filter((row) => row.chatId === chatId && row.closedAt === null)
+        .reverse()
+        .map((row) => ({ ...row }));
+    },
+
+    async loadOpenPlan(chatId, planId, now) {
+      closePast(chatId, now);
+      const plan = world.plans.get(planId);
+      return plan && plan.chatId === chatId && plan.closedAt === null ? { ...plan } : null;
+    },
+
+    async planOfGroupLine(chatId, providerMessageId, _templateKeys) {
+      const line = world.planLines.get(providerMessageId);
+      return line && line.chatId === chatId ? line.planId : null;
     },
 
     async setPlanStart(planId, startsAt, _actorUserId, _now) {
@@ -243,6 +264,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
 
     async createPlan(input: CreatePlanInput) {
       for (const old of plansById()) {
+        if (old.id !== input.replacesPlanId) continue;
         if (old.chatId !== input.chatId || old.closedAt !== null) continue;
         old.closedAt = input.now;
         world.audits.push({

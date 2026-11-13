@@ -5,7 +5,12 @@ import {
   groupPrivateQuestionEnabled,
   linqPollsEnabled,
 } from '../config';
+import {
+  type GroupPlanHouseholdResolver,
+  postgresGroupPlanHouseholds,
+} from '../group-plan-rsvp/calendar';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
+import { type PlanRef, refPlanId } from '../group-plan-rsvp/plan-identity';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
   type GroupPlanRecord,
@@ -77,8 +82,11 @@ export interface GroupExperienceTurnInput {
   decided?: 'time_lock';
   /** With `decided`: the open poll's option key the lock named in the same message. */
   lockChoice?: string;
-  /** The door's first reader did not tie this message to the open plan. */
-  otherEvent?: true;
+  /**
+   * The plan the door's first reader (VIL-442) resolved this message to, by id. This turn binds
+   * a message to a plan only through it: absent, nothing here binds to an open plan.
+   */
+  planRef?: PlanRef;
 }
 
 export interface GroupExperienceTurnPorts {
@@ -120,6 +128,8 @@ export interface GroupExperienceTurnPorts {
   deny?: () => Promise<readonly string[]>;
   recent?: () => Promise<{ from: 'hale' | 'member'; text: string }[]>;
   households?: (chatId: string) => Promise<string[]>;
+  /** Which household a seated parent belongs to here. Production: postgresGroupPlanHouseholds. */
+  planHouseholds?: GroupPlanHouseholdResolver;
 }
 
 export interface SettleCalendarInput {
@@ -163,16 +173,25 @@ async function moveCalendar(
   );
 }
 
+/** The open plan the door's first reader resolved this message to, by id; else none. */
+async function resolvedPlan(
+  input: GroupExperienceTurnInput,
+  plans: GroupPlanRsvpStore,
+): Promise<GroupPlanRecord | null> {
+  const planId = refPlanId(input.planRef);
+  return planId ? plans.loadOpenPlan(input.chatId, planId, input.now) : null;
+}
+
 async function liveView(
   store: GroupExperienceStore,
   plans: GroupPlanRsvpStore,
-  chatId: string,
-  now: Date,
+  input: GroupExperienceTurnInput,
 ): Promise<GroupExperienceLiveView> {
+  const chatId = input.chatId;
   const rsvp = await store.loadLive(chatId, 'rsvp_poll');
   const time = await store.loadLive(chatId, 'time_poll');
   const link = await store.loadLive(chatId, 'link_card');
-  const plan = await plans.loadLivePlan(chatId, now);
+  const plan = await resolvedPlan(input, plans);
   // A poll VIL-471 owns is still the chat's open vote: the reader may see a lock on it.
   const groupPoll = time ? null : await plans.loadLivePoll(chatId);
   return {
@@ -195,9 +214,10 @@ async function liveView(
 }
 
 /**
- * The plan a poll or RSVP opening is about. Only the reader's yes ties it to the open plan;
- * an event the reader names as another one opens its own plan (closing the open one);
- * anything else binds to no plan.
+ * The plan a poll or RSVP opening is about. It binds to an open plan only by the id the door's
+ * first reader resolved (and this reader agrees it is that plan). A titled event opens its own
+ * plan only when the first reader read it as another event, or no plan is open at all; other
+ * open plans stay open. Anything else binds to no plan.
  */
 async function planFor(
   input: GroupExperienceTurnInput,
@@ -206,11 +226,15 @@ async function planFor(
 ): Promise<
   { status: 'live'; plan: GroupPlanRecord } | { status: 'new'; title: string } | { status: 'none' }
 > {
-  const live = await plans.loadLivePlan(input.chatId, input.now);
-  if (live && reading.samePlan === true) return { status: 'live', plan: live };
+  const resolved = await resolvedPlan(input, plans);
+  if (resolved && reading.samePlan !== false) return { status: 'live', plan: resolved };
   const title = reading.title?.trim();
-  if (title && (!live || reading.samePlan === false)) return { status: 'new', title };
-  return { status: 'none' };
+  if (!title || resolved) return { status: 'none' };
+  if (input.planRef?.status === 'other') return { status: 'new', title };
+  const open = await plans.listOpenPlans(input.chatId, input.now);
+  return open.length === 0 && input.planRef?.status !== 'unclear'
+    ? { status: 'new', title }
+    : { status: 'none' };
 }
 
 async function openPlan(
@@ -344,14 +368,21 @@ export async function takeGroupExperienceTurn(
   const store = ports.store ?? createPostgresGroupExperienceStore(ports.database);
   const plans = ports.plans ?? createPostgresGroupPlanRsvpStore(ports.database);
   if (input.decided === 'time_lock') {
+    // The first reader read a lock on the VIL-471 poll it was shown: that poll, and only it.
     if (!allowedKind('time_lock')) return { handled: false };
-    return lockTime(input, ports, store, plans, await denyForChat(ports, input.chatId));
+    return lockGroupPoll(
+      input,
+      ports,
+      plans,
+      input.lockChoice ?? null,
+      await denyForChat(ports, input.chatId),
+    );
   }
   const reader = ports.reader ?? productionGroupExperienceReader();
   if (!reader) return { handled: true, outcome: 'group_experience_unread', count: 'ignored' };
 
   const urls = groupLinkCardsEnabled() ? httpsUrlsIn(input.text) : [];
-  const live = await liveView(store, plans, input.chatId, input.now);
+  const live = await liveView(store, plans, input);
   const reading = await reader.read({
     text: input.text,
     senderName: input.senderName,
@@ -368,17 +399,17 @@ export async function takeGroupExperienceTurn(
   const deny = await denyForChat(ports, input.chatId);
 
   if (reading.kind === 'rsvp_open') return openRsvp(input, ports, store, plans, reading, deny);
-  if (reading.kind === 'rsvp_vote' && reading.response) {
-    // Only an answer both readers tie to the open plan is counted there.
-    if (reading.samePlan !== true || input.otherEvent) return { handled: false };
-    return voteRsvp(input, ports, store, plans, reading.response, deny);
-  }
+  // A text answer is the first reader's to record (it binds by plan id). One this reader alone
+  // calls an answer is not recorded on any plan.
+  if (reading.kind === 'rsvp_vote') return { handled: false };
   if (reading.kind === 'rsvp_tally') return tallyRsvp(input, ports, plans, deny);
   if (reading.kind === 'time_open') return openTime(input, ports, store, plans, reading, deny);
   if (reading.kind === 'time_vote' && reading.optionKey) {
     return voteTime(input, ports, store, reading.optionKey, deny);
   }
-  if (reading.kind === 'time_lock') return lockTime(input, ports, store, plans, deny);
+  if (reading.kind === 'time_lock') {
+    return lockTime(input, ports, store, plans, reading.optionKey, deny);
+  }
   if (reading.kind === 'link_facts') {
     return speakLink(input, ports, store, urls[0] ?? live.link?.url ?? null, familyIds, deny);
   }
@@ -470,57 +501,13 @@ async function openRsvp(
   };
 }
 
-async function voteRsvp(
-  input: GroupExperienceTurnInput,
-  ports: GroupExperienceTurnPorts,
-  store: GroupExperienceStore,
-  plans: GroupPlanRsvpStore,
-  response: 'yes' | 'no' | 'maybe',
-  deny: readonly string[],
-): Promise<GroupExperienceTurnOutcome> {
-  const plan = await plans.loadLivePlan(input.chatId, input.now);
-  if (!plan) return { handled: false };
-  const memberKey = await senderMemberKey(
-    { handle: input.senderHandle, name: input.senderName },
-    async () => [],
-  );
-  await plans.upsertRsvp({
-    planId: plan.id,
-    memberKey,
-    displayName: input.senderName || 'someone',
-    householdLabel: null,
-    userId: input.senderUserId,
-    haleCustomer: !!input.senderUserId,
-    response,
-    headcount: 1,
-    source: 'text',
-    coversKeys: [],
-    verbatim: input.text,
-    now: input.now,
-  });
-  await settleCalendar(ports, input, {
-    planId: plan.id,
-    userId: input.senderUserId,
-    memberKey,
-    displayName: input.senderName || 'someone',
-    response,
-    parentWords: input.text,
-  });
-  const loaded = await plans.loadTally(plan.id);
-  if (loaded.tally.toGo === 0) {
-    return tallyRsvp(input, ports, plans, deny, store);
-  }
-  return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
-}
-
 async function tallyRsvp(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
   plans: GroupPlanRsvpStore,
   deny: readonly string[],
-  store?: GroupExperienceStore,
 ): Promise<GroupExperienceTurnOutcome> {
-  const plan = await plans.loadLivePlan(input.chatId, input.now);
+  const plan = await resolvedPlan(input, plans);
   if (!plan) return { handled: false };
   const { tally } = await plans.loadTally(plan.id);
   const spoken = await speak(
@@ -558,10 +545,6 @@ async function tallyRsvp(
       count: 'ignored',
       notice: { skipped: 'not_sent' },
     };
-  }
-  if (store) {
-    const live = await store.loadLive(input.chatId, 'rsvp_poll');
-    if (live && tally.toGo === 0) await store.close(live.id, input.now);
   }
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
@@ -648,7 +631,13 @@ async function openTime(
     familyId: input.familyId,
     kind: 'time_poll',
     subjectKey,
-    payload: { planId: plan?.id ?? null, options, votes: {}, card: cardResult === 'sent' },
+    payload: {
+      planId: plan?.id ?? null,
+      options,
+      votes: {},
+      card: cardResult === 'sent',
+      createdBy: await senderKeyOf(input),
+    },
     now: input.now,
   });
   return {
@@ -683,40 +672,90 @@ async function voteTime(
   return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
 }
 
-async function lockTime(
+async function senderKeyOf(input: GroupExperienceTurnInput): Promise<string> {
+  return senderMemberKey({ handle: input.senderHandle, name: input.senderName }, async () => []);
+}
+
+/**
+ * The choice a lock lands on. A choice the message named counts only as a tie-break among the
+ * leaders; it never beats an option with more votes. One leader wins on its own. A tie with no
+ * leader named is `tie`: nothing locks, and Hale asks which.
+ */
+export function lockedChoice(
+  counts: readonly { key: string; votes: number }[],
+  named: string | null | undefined,
+): { status: 'won'; key: string } | { status: 'tie'; keys: string[] } {
+  const top = Math.max(0, ...counts.map((option) => option.votes));
+  const leaders = counts.filter((option) => option.votes === top).map((option) => option.key);
+  if (named && leaders.includes(named)) return { status: 'won', key: named };
+  const only = leaders.length === 1 ? leaders[0] : undefined;
+  if (only && top > 0) return { status: 'won', key: only };
+  return { status: 'tie', keys: leaders };
+}
+
+/**
+ * Whether this sender's lock may move `plan`: the person who opened the poll, or a seated Hale
+ * parent of the plan's host household. Anyone else's lock moves no plan.
+ */
+async function mayMovePlan(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
-  store: GroupExperienceStore,
-  plans: GroupPlanRsvpStore,
+  plan: GroupPlanRecord,
+  creatorKey: string | null,
+): Promise<boolean> {
+  if (creatorKey && creatorKey === (await senderKeyOf(input))) return true;
+  if (!input.senderUserId) return false;
+  const households = ports.planHouseholds ?? postgresGroupPlanHouseholds(ports.database);
+  const home = await households.resolve({ chatId: input.chatId, userId: input.senderUserId });
+  return home.status === 'one' && home.familyId === plan.familyId;
+}
+
+/** A lock that would move a plan, from someone who may not move it: nothing closes or moves. */
+function lockRefused(): GroupExperienceTurnOutcome {
+  console.info(
+    { outcome: 'group_lock_not_authorized' },
+    'group experience: a lock that would move a plan came from someone who may not move it',
+  );
+  return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+}
+
+/** A tie nothing breaks: one short model-written line asking which of the leaders. */
+async function askTieBreak(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  leaders: readonly string[],
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
-  const live = await store.loadLive(input.chatId, 'time_poll');
-  if (!live) return lockGroupPoll(input, ports, plans, deny);
-  const options = Array.isArray(live.payload.options)
-    ? (live.payload.options as { key: string; text: string; startsAt?: string | null }[])
-    : [];
-  const votes = (live.payload.votes as Record<string, string> | undefined) ?? {};
-  const counts = new Map<string, number>();
-  for (const key of Object.values(votes)) {
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  let winnerKey: string | null = null;
-  let best = 0;
-  let tie = false;
-  for (const [key, count] of counts) {
-    if (count > best) {
-      best = count;
-      winnerKey = key;
-      tie = false;
-    } else if (count === best) {
-      tie = true;
-    }
-  }
-  if (!winnerKey || tie || best === 0)
+  if (leaders.length < 2) {
     return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
-  const won = options.find((option) => option.key === winnerKey) ?? null;
-  const winner = won?.text ?? null;
-  if (!winner) return { handled: false };
+  }
+  const spoken = await speak(ports, input, 'time_tie', { leaders }, 1, 'group', deny);
+  if (spoken.status !== 'composed') {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: spoken.reason },
+    };
+  }
+  const notice = await sendGroup(ports, input, spoken.line);
+  if (notice !== 'sent') {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: 'not_sent' },
+    };
+  }
+  return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
+}
+
+async function speakLock(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  winner: string,
+  deny: readonly string[],
+): Promise<GroupExperienceTurnOutcome | 'sent'> {
   const spoken = await speak(ports, input, 'time_lock', { winner }, 0, 'group', deny);
   if (spoken.status !== 'composed') {
     return {
@@ -735,35 +774,69 @@ async function lockTime(
       notice: { skipped: 'not_sent' },
     };
   }
+  return 'sent';
+}
+
+/** VIL-399's own time poll. With none open, a lock this reader read is on the VIL-471 poll. */
+async function lockTime(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  store: GroupExperienceStore,
+  plans: GroupPlanRsvpStore,
+  named: string | null,
+  deny: readonly string[],
+): Promise<GroupExperienceTurnOutcome> {
+  const live = await store.loadLive(input.chatId, 'time_poll');
+  if (!live) return lockGroupPoll(input, ports, plans, named, deny);
+  const options = Array.isArray(live.payload.options)
+    ? (live.payload.options as { key: string; text: string; startsAt?: string | null }[])
+    : [];
+  const votes = (live.payload.votes as Record<string, string> | undefined) ?? {};
+  const counts = options.map((option) => ({
+    key: option.key,
+    votes: Object.values(votes).filter((key) => key === option.key).length,
+  }));
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
-  const startsAt = typeof won?.startsAt === 'string' ? won.startsAt : null;
-  if (planId && startsAt) await placePlan(input, ports, plans, planId, startsAt);
+  const plan = planId ? await plans.loadOpenPlan(input.chatId, planId, input.now) : null;
+  const creator = typeof live.payload.createdBy === 'string' ? live.payload.createdBy : null;
+  const authorized = plan ? await mayMovePlan(input, ports, plan, creator) : true;
+  const choice = lockedChoice(counts, authorized ? named : null);
+  if (choice.status === 'tie') {
+    const leaders = options.filter((o) => choice.keys.includes(o.key)).map((o) => o.text);
+    return askTieBreak(input, ports, leaders, deny);
+  }
+  const won = options.find((option) => option.key === choice.key) ?? null;
+  if (!won) return { handled: false };
+  const startsAt = typeof won.startsAt === 'string' ? won.startsAt : null;
+  if (plan && startsAt && !authorized) return lockRefused();
+  const said = await speakLock(input, ports, won.text, deny);
+  if (said !== 'sent') return said;
+  if (plan && startsAt) await placePlan(input, ports, plans, plan, startsAt);
   await store.close(live.id, input.now);
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
 
 /**
- * A locked choice places the poll's own plan, fixed when the poll opened, and only while that
- * plan is still the chat's open plan. A label is never parsed into a date: no placed instant,
- * no plan time. Households whose copy Hale wrote get it moved; yes households get the OK ask.
+ * A locked choice places the poll's own plan, named by id when the poll opened, while that plan
+ * is still open. A label is never parsed into a date: no placed instant, no plan time. Every
+ * household whose copy Hale wrote gets it moved (one daytime notice each); yes households get
+ * the OK ask.
  */
 async function placePlan(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
   plans: GroupPlanRsvpStore,
-  planId: string,
+  plan: GroupPlanRecord,
   startsAt: string,
 ): Promise<void> {
   const placed = new Date(startsAt);
   if (Number.isNaN(placed.getTime())) return;
-  const openPlanNow = await plans.loadLivePlan(input.chatId, input.now);
-  if (openPlanNow?.id !== planId) return;
-  if (!(await plans.setPlanStart(planId, placed, input.senderUserId, input.now))) return;
-  await moveCalendar(ports, input, planId);
-  const { rows } = await plans.loadTally(planId);
-  for (const yes of await plans.listYesRsvps(planId)) {
+  if (!(await plans.setPlanStart(plan.id, placed, input.senderUserId, input.now))) return;
+  await moveCalendar(ports, input, plan.id);
+  const { rows } = await plans.loadTally(plan.id);
+  for (const yes of await plans.listYesRsvps(plan.id)) {
     await settleCalendar(ports, input, {
-      planId,
+      planId: plan.id,
       userId: yes.userId,
       memberKey: yes.memberKey,
       displayName: rows.find((row) => row.memberKey === yes.memberKey)?.displayName ?? 'someone',
@@ -775,47 +848,42 @@ async function placePlan(
 }
 
 /**
- * VIL-471 owns the chat's open poll: a lock names the choice the message named, else the single
- * leader, and closes the poll. A choice placed on the open plan when the poll opened moves that
- * plan and its written copies. A tie with no choice named, or no votes yet, locks nothing.
+ * VIL-471 owns the chat's open poll. A lock lands on the single leader, or on a leader the
+ * message named when the leaders tie; a tie nothing breaks asks which. A choice placed on a plan
+ * when the poll opened (the poll's own plan, by id) moves that plan and its written copies, and
+ * only the poll's creator or the plan's host household may lock it that way.
  */
 async function lockGroupPoll(
   input: GroupExperienceTurnInput,
   ports: GroupExperienceTurnPorts,
   plans: GroupPlanRsvpStore,
+  named: string | null,
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
   const poll = await plans.loadLivePoll(input.chatId);
   if (!poll) return { handled: false };
   const tally = await plans.loadPollTally(poll.id);
-  const top = Math.max(0, ...tally.options.map((option) => option.votes));
-  const leaders = top > 0 ? tally.options.filter((option) => option.votes === top) : [];
-  const wonKey =
-    poll.options.find((option) => option.key === input.lockChoice)?.key ??
-    (leaders.length === 1 ? leaders[0]?.key : undefined);
-  const won = poll.options.find((option) => option.key === wonKey);
+  const placedPlanId = poll.options.find((option) => option.places)?.places?.planId ?? null;
+  const plan = placedPlanId
+    ? await plans.loadOpenPlan(input.chatId, placedPlanId, input.now)
+    : null;
+  const authorized = plan ? await mayMovePlan(input, ports, plan, poll.createdByMemberKey) : true;
+  const choice = lockedChoice(
+    tally.options.map((option) => ({ key: option.key, votes: option.votes })),
+    authorized ? named : null,
+  );
+  if (choice.status === 'tie') {
+    const leaders = poll.options.filter((o) => choice.keys.includes(o.key)).map((o) => o.text);
+    return askTieBreak(input, ports, leaders, deny);
+  }
+  const won = poll.options.find((option) => option.key === choice.key);
   if (!won) return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
-  const winner = won.text;
-  const spoken = await speak(ports, input, 'time_lock', { winner }, 0, 'group', deny);
-  if (spoken.status !== 'composed') {
-    return {
-      handled: true,
-      outcome: 'group_experience_line_unsent',
-      count: 'ignored',
-      notice: { skipped: spoken.reason },
-    };
-  }
-  const notice = await sendGroup(ports, input, spoken.line);
-  if (notice !== 'sent') {
-    return {
-      handled: true,
-      outcome: 'group_experience_line_unsent',
-      count: 'ignored',
-      notice: { skipped: 'not_sent' },
-    };
-  }
+  const places = won.places && plan && won.places.planId === plan.id ? won.places : null;
+  if (places && !authorized) return lockRefused();
+  const said = await speakLock(input, ports, won.text, deny);
+  if (said !== 'sent') return said;
   await plans.closePoll(poll.id, input.senderUserId, input.now);
-  if (won.places) await placePlan(input, ports, plans, won.places.planId, won.places.startsAt);
+  if (places && plan) await placePlan(input, ports, plans, plan, places.startsAt);
   return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
 }
 

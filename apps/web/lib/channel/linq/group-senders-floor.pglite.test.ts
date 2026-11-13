@@ -560,20 +560,21 @@ describe('a floored send needs the pass the floor gave for that chat and that cl
 });
 
 describe('the RSVP tally goes through the floor', () => {
-  const tally = () =>
+  const tally = (familyId: string) =>
     sendGroupPlanRsvpLine(db.database, {
       chatId: GROUP,
+      familyId,
       text: 'Two in, one to go.',
       templateKey: GROUP_PLAN_RSVP_TEMPLATE,
       now: DAY,
     });
 
   it('an Apple-ID email in the chat: nothing is sent or ledgered, the reason is named', async () => {
-    await householdGroup();
+    const { familyId } = await householdGroup();
     const wire = linqWire([MOM, DAD, EMAIL]);
     vi.stubGlobal('fetch', wire.fetch);
 
-    const refusal = await tally().then(
+    const refusal = await tally(familyId).then(
       () => null,
       (err: unknown) => err,
     );
@@ -586,24 +587,24 @@ describe('the RSVP tally goes through the floor', () => {
   });
 
   it('positive control: the live list is exactly the roster, so the tally goes', async () => {
-    await householdGroup();
+    const { familyId } = await householdGroup();
     const wire = linqWire([MOM, DAD]);
     vi.stubGlobal('fetch', wire.fetch);
 
-    await expect(tally()).resolves.toEqual({ providerMessageId: 'out-2' });
+    await expect(tally(familyId)).resolves.toEqual({ providerMessageId: 'out-2' });
     expect(wire.groupPosts().map((c) => c.url)).toEqual([`${BASE}/chats/${GROUP}/messages`]);
     expect(await ledger(GROUP_PLAN_RSVP_TEMPLATE)).toEqual([{ status: 'sent', chat: GROUP }]);
   });
 });
 
 describe('RSVP follow-ups through the real sender', () => {
-  async function duePlan() {
+  async function duePlan(familyId: string) {
     const world = createMemoryWorld();
-    world.families.set(GROUP, { familyId: 'memory-family', timeZone: ZONE });
+    world.families.set(GROUP, { familyId, timeZone: ZONE });
     const store = createMemoryGroupPlanRsvpStore(world);
     const plan = await store.createPlan({
       chatId: GROUP,
-      familyId: 'memory-family',
+      familyId,
       title: 'park Saturday',
       startsAt: new Date('2026-11-01T18:00:00.000Z'),
       location: null,
@@ -623,9 +624,11 @@ describe('RSVP follow-ups through the real sender', () => {
       {
         store,
         composer: fakeGroupPlanRsvpComposer(),
-        send: ({ chatId, text }) =>
+        send: ({ chatId, text, familyId, planId }) =>
           sendGroupPlanRsvpLine(db.database, {
             chatId,
+            familyId,
+            planId,
             text,
             templateKey: GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
             now: DAY,
@@ -637,8 +640,8 @@ describe('RSVP follow-ups through the real sender', () => {
   }
 
   it('participants_unverified holds the wave without consuming it', async () => {
-    await householdGroup();
-    const { store, plan } = await duePlan();
+    const { familyId } = await householdGroup();
+    const { store, plan } = await duePlan(familyId);
     vi.stubGlobal('fetch', linqWire(null).fetch);
 
     const result = await run(store);
@@ -659,8 +662,8 @@ describe('RSVP follow-ups through the real sender', () => {
   }
 
   it('a read Linq refuses for this chat (404, its 2001) holds the wave and keeps it claimed', async () => {
-    await householdGroup();
-    const { store, plan } = await duePlan();
+    const { familyId } = await householdGroup();
+    const { store, plan } = await duePlan(familyId);
     const wire = readRefusedWith(404, { error: { code: 2001 } });
     vi.stubGlobal('fetch', wire.fetch);
 
@@ -672,8 +675,8 @@ describe('RSVP follow-ups through the real sender', () => {
   });
 
   it('positive control: a 404 with no Linq code holds the wave without consuming it', async () => {
-    await householdGroup();
-    const { store, plan } = await duePlan();
+    const { familyId } = await householdGroup();
+    const { store, plan } = await duePlan(familyId);
     const wire = readRefusedWith(404, {});
     vi.stubGlobal('fetch', wire.fetch);
 
@@ -685,8 +688,8 @@ describe('RSVP follow-ups through the real sender', () => {
   });
 
   it('participant_unresolved holds the wave and keeps it claimed', async () => {
-    await householdGroup();
-    const { store, plan } = await duePlan();
+    const { familyId } = await householdGroup();
+    const { store, plan } = await duePlan(familyId);
     const wire = linqWire([MOM, DAD, EMAIL]);
     vi.stubGlobal('fetch', wire.fetch);
 
@@ -698,8 +701,8 @@ describe('RSVP follow-ups through the real sender', () => {
   });
 
   it('positive control: the live list is exactly the roster, so the follow-up goes', async () => {
-    await householdGroup();
-    const { store } = await duePlan();
+    const { familyId } = await householdGroup();
+    const { store } = await duePlan(familyId);
     const wire = linqWire([MOM, DAD]);
     vi.stubGlobal('fetch', wire.fetch);
 

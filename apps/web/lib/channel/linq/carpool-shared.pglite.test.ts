@@ -8,7 +8,7 @@ import {
   loadAffectedDrivers,
   reanchorCarpoolReminders,
 } from '~/lib/integrations/team-schedule/driver';
-import { runCarpoolReminders } from './carpool';
+import { carpoolChatAudience, runCarpoolReminders } from './carpool';
 import type { CarpoolReading } from './carpool-apply';
 import { fakeCarpoolComposer } from './carpool-voice';
 import type { PrivateAsideModel } from './group-private-aside';
@@ -50,7 +50,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec(
-    'truncate table families, users, linq_shared_group_people, linq_multi_family_joins, linq_multi_family_members, linq_group_carpools, family_events, audit_log, channel_messages cascade',
+    'truncate table families, users, linq_shared_group_people, linq_multi_family_joins, linq_multi_family_members, linq_group_carpools, linq_group_rosters, family_events, audit_log, channel_messages cascade',
   );
 });
 
@@ -343,6 +343,133 @@ describe("a shared ride is never another family's private event data", () => {
     });
     const [moved] = await rides();
     expect(moved?.pickupPlace).toBe('Arena 2');
+  });
+});
+
+describe("team-schedule reads only the rides in a family's own household chats", () => {
+  it('a family with a claimed chat does not reach a shared-chat ride filed under its id', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    const b = await seedFamily(PARENT_B, 'Bao', 'Mia');
+    const tuesday = new Date('2026-11-17T23:00:00.000Z');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-ada-household' })
+      .where(eq(schema.families.id, a.familyId));
+    // A ride in the chat both families share, filed under Ada's family, driven by Bao.
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: CHAT,
+      familyId: a.familyId,
+      planKey: 'soccer:2026-11-17',
+      eventLabel: 'soccer',
+      pickupAt: tuesday,
+      driverName: 'Bao',
+      driverUserId: b.userId,
+      driverHaleCustomer: 'true',
+      status: 'assigned',
+      reminderStatus: 'pending',
+    });
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({ familyId: a.familyId, title: 'hockey', startsAt: tuesday, source: 'email' })
+      .returning({ id: schema.familyEvents.id });
+    expect(
+      await loadAffectedDrivers(db.database, {
+        familyId: a.familyId,
+        familyEventId: event?.id as string,
+        originalStartsAt: tuesday,
+        timeZone: 'America/Toronto',
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe('household or shared is decided once, from positive proof', () => {
+  const STATUSES = [
+    'roster_pending',
+    'no_family',
+    'mixed_family',
+    'roles_proposed',
+    'partial',
+    'confirmed',
+    'refused',
+    'ejected',
+    'not_group',
+  ] as const;
+  const HOUSEHOLD = new Set<string>(['confirmed', 'roles_proposed']);
+
+  async function familyOnly(name: string) {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: name, provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    return family?.id as string;
+  }
+
+  for (const status of STATUSES) {
+    it(`a roster in ${status} with a family and no live join is ${HOUSEHOLD.has(status) ? 'a household' : 'shared'}`, async () => {
+      const familyId = await familyOnly('Ada');
+      await db.database
+        .insert(schema.linqGroupRosters)
+        .values({ chatId: CHAT, familyId, source: 'added_to_existing', status });
+      expect(await carpoolChatAudience(db.database, CHAT)).toBe(
+        HOUSEHOLD.has(status) ? 'household' : 'shared',
+      );
+    });
+  }
+
+  it('a confirmed roster with no family is shared', async () => {
+    await db.database
+      .insert(schema.linqGroupRosters)
+      .values({ chatId: CHAT, familyId: null, source: 'added_to_existing', status: 'confirmed' });
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('shared');
+  });
+
+  it('a confirmed household roster with a live multi-family join is shared', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    await db.database.insert(schema.linqGroupRosters).values({
+      chatId: CHAT,
+      familyId: a.familyId,
+      source: 'added_to_existing',
+      status: 'confirmed',
+    });
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('shared');
+  });
+
+  it('no roster at all is shared', async () => {
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('shared');
+  });
+
+  it('a ride keeps the decision it was made with: a roster confirmed later never turns its reminder into a group line or a cold 1:1', async () => {
+    await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    const b = await seedFamily(PARENT_B, 'Bao', 'Mia');
+    await say("I'll drive soccer Tuesday 5:30, taking Mia", PARENT_B, 'm1', ride({ kids: 'Mia' }));
+    const [row] = await rides();
+    expect(row?.chatAudience).toBe('shared');
+    // Later the chat's joins end and a confirmed household roster appears.
+    await db.database.update(schema.linqMultiFamilyJoins).set({ leftAt: NOW });
+    await db.database.insert(schema.linqGroupRosters).values({
+      chatId: CHAT,
+      familyId: b.familyId,
+      source: 'added_to_existing',
+      status: 'confirmed',
+    });
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('household');
+    const group: string[] = [];
+    const driver: string[] = [];
+    await runCarpoolReminders(db.database, {
+      now: new Date((row?.reminderFireAt as Date).getTime() + 5 * 60 * 1000),
+      send: async ({ text }) => {
+        group.push(text);
+        return { providerMessageId: `g-${group.length}` };
+      },
+      voice: fakeCarpoolComposer(),
+      sendDriver: async ({ text }) => {
+        driver.push(text);
+        return { sent: true, providerMessageId: 'driver-1' };
+      },
+    });
+    expect(group).toEqual([]);
+    expect(driver).toEqual([]);
   });
 });
 

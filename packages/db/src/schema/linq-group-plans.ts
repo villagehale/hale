@@ -19,8 +19,8 @@ import { users } from './users.js';
  * Any plan, not a birthday: a picnic, a museum Saturday, soccer, a class party.
  * The covering family is the household that claimed the chat (T22: one family's
  * plan covers everyone seated). `expected_count` is how many distinct people or
- * households Hale is waiting on. Closed rows stay; a chat has at most one live
- * plan.
+ * households Hale is waiting on. Closed rows stay. A chat may hold several open
+ * plans (VIL-689): a message binds to one only by its id, never by being "the" open one.
  */
 export const linqGroupPlans = pgTable(
   'linq_group_plans',
@@ -47,7 +47,7 @@ export const linqGroupPlans = pgTable(
       'linq_group_plans_expected_count_check',
       sql`${table.expectedCount} >= 0 AND ${table.expectedCount} <= 80`,
     ),
-    liveChatUniq: uniqueIndex('linq_group_plans_live_chat_uniq')
+    openChatIdx: index('linq_group_plans_open_chat_idx')
       .on(table.chatId)
       .where(sql`${table.closedAt} IS NULL`),
     familyIdx: index('linq_group_plans_family_idx').on(table.familyId),

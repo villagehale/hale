@@ -8,7 +8,7 @@ import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL, type GroupPlanCalendarLineInput } from './calendar';
-import type { GroupPlanRsvpLineInput } from './facts';
+import type { GroupPlanRsvpLineInput, GroupPlanWhichLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
 /**
@@ -29,6 +29,7 @@ export type GroupPlanRsvpVoiceSkip =
 
 export type GroupLineInput =
   | GroupPlanRsvpLineInput
+  | GroupPlanWhichLineInput
   | GroupPollLineInput
   | GroupPlanCalendarLineInput;
 

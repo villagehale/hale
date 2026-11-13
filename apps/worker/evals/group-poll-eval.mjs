@@ -299,8 +299,8 @@ async function main() {
       ...(fixture.pollChoice !== undefined && value.pollChoice !== fixture.pollChoice
         ? [`pollChoice=${value.pollChoice}`]
         : []),
-      ...(fixture.samePlan !== undefined && value.samePlan !== fixture.samePlan
-        ? [`samePlan=${value.samePlan}`]
+      ...(fixture.planKey !== undefined && value.planKey !== fixture.planKey
+        ? [`planKey=${value.planKey}`]
         : []),
       ...(fixture.pollStarts &&
       !(

@@ -182,6 +182,7 @@ describe('P2: a plan on a household calendar does not silence its own tally', ()
         coveringFamilyId: a.familyId,
         text: 'Hale where are we at?',
         messageId: 'm-1',
+        planRef: { status: 'plan', planId: plan.id },
       },
     );
     expect(group).toEqual(['picnic tally.']);
@@ -238,6 +239,7 @@ describe('P2: a plan on a household calendar does not silence its own tally', ()
         coveringFamilyId: a.familyId,
         text: 'Hale where are we at?',
         messageId: 'm-2',
+        planRef: { status: 'plan', planId: plan.id },
       },
     );
     expect(group).toEqual([]);

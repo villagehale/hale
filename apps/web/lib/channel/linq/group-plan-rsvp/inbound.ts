@@ -55,7 +55,7 @@ import {
 } from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
 import type { PlanRsvpResponse, PlanTally } from './tally';
-import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
+import { type GroupPlanLine, type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import {
   type GroupPlanRsvpComposer,
   composeGroupPlanRsvpLine,
@@ -117,11 +117,13 @@ function calendarTemplate(kind: CalendarPrivateKind): string {
 }
 
 function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
-  return (line: { chatId: string; text: string; kind?: 'plan' | 'poll' }) =>
+  return (line: GroupPlanLine) =>
     ports.send
       ? ports.send({ chatId: line.chatId, text: line.text })
       : sendGroupPlanRsvpLine(ports.database, {
           chatId: line.chatId,
+          familyId: line.familyId,
+          planId: line.planId ?? null,
           text: line.text,
           templateKey: groupTemplate(line.kind),
           now: ports.now,
@@ -215,9 +217,7 @@ export async function considerGroupPlanRsvp(
 ): Promise<GroupPlanRsvpTurnOutcome> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const live = linqGroupPlanRsvpEnabled()
-    ? await store.loadLivePlan(input.chatId, ports.now)
-    : null;
+  const open = linqGroupPlanRsvpEnabled() ? await store.listOpenPlans(input.chatId, ports.now) : [];
   const livePoll = linqGroupPollsEnabled() ? await store.loadLivePoll(input.chatId) : null;
   const cover = await store.coveringFamily(input.chatId);
   const hostFamilyId = await hostFamilyIdForPlan(
@@ -225,7 +225,7 @@ export async function considerGroupPlanRsvp(
     cover,
     { chatId: input.chatId, userId: input.senderUserId },
   );
-  if (!live && !livePoll && !hostFamilyId) return { handled: false };
+  if (open.length === 0 && !livePoll && !hostFamilyId) return { handled: false };
 
   return takeGroupPlanRsvpTurn(
     {
@@ -315,8 +315,8 @@ export async function settleGroupPlanCalendarAfterRsvp(
 ): Promise<CalendarEffect | undefined> {
   if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const plan = await store.loadLivePlan(input.chatId, ports.now);
-  if (!plan || plan.id !== input.planId) return undefined;
+  const plan = await store.loadOpenPlan(input.chatId, input.planId, ports.now);
+  if (!plan) return undefined;
   if (input.proactive) {
     const home = input.userId
       ? await postgresGroupPlanHouseholds(ports.database).resolve({
@@ -361,8 +361,8 @@ export async function moveGroupPlanCalendarCopies(
 ): Promise<MovedCopyEffect[] | { status: 'skipped'; reason: string } | undefined> {
   if (!linqGroupPlanRsvpEnabled() || !linqGroupPlanRsvpCalendarEnabled()) return undefined;
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const plan = await store.loadLivePlan(input.chatId, ports.now);
-  if (!plan || plan.id !== input.planId) return undefined;
+  const plan = await store.loadOpenPlan(input.chatId, input.planId, ports.now);
+  if (!plan) return undefined;
   return moveWrittenCopies(
     { chatId: input.chatId, plan, actorUserId: input.actorUserId, now: ports.now },
     {

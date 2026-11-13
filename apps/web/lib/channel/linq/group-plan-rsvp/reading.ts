@@ -49,16 +49,22 @@ export interface GroupPollReadView {
   options: readonly { key: string; text: string }[];
 }
 
+/** One open plan as the reader sees it. `key` is opaque (`p1`, `p2`, …): never an id. */
+export interface GroupPlanReadView {
+  key: string;
+  title: string;
+  startsAt: string | null;
+  deadline: string | null;
+  yesNames: string[];
+  waitingNames: string[];
+}
+
 export interface GroupPlanRsvpReadInput {
   text: string;
   tapback: LinqTapback | null;
   senderName: string | null;
-  plan: {
-    title: string;
-    deadline: string | null;
-    yesNames: string[];
-    waitingNames: string[];
-  } | null;
+  /** The chat's open plans, newest first. Empty when none is open. */
+  plans: readonly GroupPlanReadView[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
   /** Present only while group polls are on. `live` is null when no poll is open. */
   polls?: { live: GroupPollReadView | null };
@@ -83,10 +89,15 @@ export interface GroupPlanRsvpReading {
   coversNames: string[];
   confidence: 'high' | 'low';
   /**
-   * Whether the message is about the live plan: true, false when it is about another event,
-   * null when no plan is live. Only true binds a message to the live plan.
+   * Which open plan the message is about: a `key` from `plans`, `other` (an event no open plan
+   * is), `unclear` (it could be more than one), or null (no plan open, or not about a plan).
+   * Code binds only a key it finds in `plans`.
    */
-  samePlan?: boolean | null;
+  planKey: string | null;
+  /** `start_tracking`: the `key` of an open plan the new event replaces, or null. */
+  replacesPlanKey: string | null;
+  /** The sender is speaking to Hale (names Hale, or asks Hale to count, track or settle). */
+  addressed: boolean;
   /** `start_poll`: the question, in the parent's words, or null when they gave none. */
   pollQuestion?: string | null;
   /** `start_poll`: the choices, in the parent's words and order. */
@@ -112,7 +123,9 @@ const outputSchema = z.object({
   householdLabel: z.string().nullable(),
   coversNames: z.array(z.string()),
   confidence: z.enum(['high', 'low']),
-  samePlan: z.boolean().nullable(),
+  planKey: z.string().nullable(),
+  replacesPlanKey: z.string().nullable(),
+  addressed: z.boolean(),
   pollQuestion: z.string().nullable(),
   pollOptions: z.array(z.string()),
   pollStarts: z.array(z.string().nullable()),
@@ -133,7 +146,9 @@ const outputJsonSchema = {
     householdLabel: { type: ['string', 'null'] },
     coversNames: { type: 'array', items: { type: 'string' } },
     confidence: { type: 'string', enum: ['high', 'low'] },
-    samePlan: { type: ['boolean', 'null'] },
+    planKey: { type: ['string', 'null'] },
+    replacesPlanKey: { type: ['string', 'null'] },
+    addressed: { type: 'boolean' },
     pollQuestion: { type: ['string', 'null'] },
     pollOptions: { type: 'array', items: { type: 'string' } },
     pollStarts: { type: 'array', items: { type: ['string', 'null'] } },
@@ -150,7 +165,9 @@ const outputJsonSchema = {
     'householdLabel',
     'coversNames',
     'confidence',
-    'samePlan',
+    'planKey',
+    'replacesPlanKey',
+    'addressed',
     'pollQuestion',
     'pollOptions',
     'pollStarts',
@@ -163,7 +180,7 @@ export function groupPlanRsvpUserMessage(input: GroupPlanRsvpReadInput): string 
     text: input.text,
     tapback: input.tapback,
     senderName: input.senderName,
-    plan: input.plan,
+    plans: input.plans,
     recent: input.recent.slice(-6),
     ...(input.polls ? { polls: input.polls } : {}),
     ...(input.secretSanta ? { secretSanta: true } : {}),
@@ -200,8 +217,11 @@ export function readingFromTapback(
     householdLabel: null,
     coversNames: [],
     confidence: 'high',
-    // A tapback is a vote on the live plan, as it always was: the protocol, not a reading.
-    samePlan: true,
+    // A tapback names no plan itself: the turn binds it only to the plan of the Hale line it
+    // landed on (code resolves that from the message id).
+    planKey: null,
+    replacesPlanKey: null,
+    addressed: false,
   };
 }
 

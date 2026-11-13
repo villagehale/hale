@@ -83,6 +83,7 @@ describe('catalog history cutover', () => {
       '0252_city_registration_readings',
       '0254_school_break_readings',
       '0255_email_alert_holds',
+      '0256_group_plan_identity',
       '0257_family_signup_help_seasons',
     ]);
   });

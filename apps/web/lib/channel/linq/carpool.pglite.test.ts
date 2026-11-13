@@ -363,6 +363,17 @@ describe('runCarpoolReminders', () => {
     const voice = fakeCarpoolComposer();
     const door = send();
     await insertAssigned(familyId, userId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: userId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: 'dm-driver',
+      inGroup: false,
+      status: 'delivered',
+      sentAt: FRIDAY_EVE,
+    });
     // Design (#975) — the driver 1:1 runs only for a family with no claimed group.
     await db.database
       .update(schema.families)
@@ -387,6 +398,31 @@ describe('runCarpoolReminders', () => {
       .from(schema.linqGroupCarpools)
       .where(eq(schema.linqGroupCarpools.familyId, familyId));
     expect(row?.reminderStatus).toBe('sent');
+  });
+
+  it('a driver who never texted Hale 1:1 gets no 1:1, even in a household group (no cold text)', async () => {
+    const { familyId, userId } = await seed();
+    await seedRoster(familyId, 'confirmed', PARENTS);
+    const door = send();
+    await insertAssigned(familyId, userId);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, familyId));
+    const driverSends: string[] = [];
+    const fired = await runCarpoolReminders(db.database, {
+      now: FRIDAY_EVE,
+      send: door.send,
+      voice: fakeCarpoolComposer(),
+      listChatHandles: present(MOM, DAD),
+      sendDriver: async ({ text }) => {
+        driverSends.push(text);
+        return { sent: true, providerMessageId: 'driver-1' };
+      },
+    });
+    expect(fired.fired).toBe(1);
+    expect(door.texts.some((text) => text.includes('night_before_group'))).toBe(true);
+    expect(driverSends).toEqual([]);
   });
 
   it('does not send after quiet hours close the window', async () => {

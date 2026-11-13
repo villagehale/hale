@@ -74,7 +74,8 @@ function memoryStore(): GroupExperienceStore {
 function stubPlans() {
   return {
     coveringFamily: async () => ({ familyId: FAMILY, timeZone: 'America/Toronto' }),
-    loadLivePlan: async () => null,
+    listOpenPlans: async () => [],
+    loadOpenPlan: async () => null,
     loadLivePoll: async () => null,
     createPlan: async (input: { chatId: string; familyId: string; title: string }) => ({
       id: 'plan-1',
