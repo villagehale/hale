@@ -197,6 +197,7 @@ function stop(sender: string, messageId = 'in-stop'): LinqInboundText {
     text: 'STOP',
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     mentions: [],
   };

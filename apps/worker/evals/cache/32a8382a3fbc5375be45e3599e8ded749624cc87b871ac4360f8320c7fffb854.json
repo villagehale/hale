@@ -1,0 +1,23 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "Cake is still open! Sam's got the balloons."
+  },
+  "latencyMs": 1759,
+  "usage": {
+    "input_tokens": 210,
+    "output_tokens": 95,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

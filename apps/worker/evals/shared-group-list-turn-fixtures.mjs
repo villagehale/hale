@@ -12,6 +12,7 @@
 //   newOwned  — how many NEW items the speaker owns afterwards
 //   newOpen   — how many NEW open items exist afterwards
 //   hide      — whether the speaker's new or claimed gift is kept from the child's family
+//   secretAfter — whether each named seeded item is kept secret afterwards
 //   reply     — 'required' when Hale must say something (a doubled claim, an ask)
 //   hiddenNeverShown — an item text the model must never be handed (code's filter)
 //   knownMiss — a first draw that failed one check, kept as a finding (never re-drawn)
@@ -320,6 +321,63 @@ export const SHARED_GROUP_LIST_TURN_FIXTURES = [
     secrets: ['Lego set for Zara', 'Priya is getting Zara a gift'],
     watchFor:
       "Ada's own Hale family has a child named Zara, though she never said so here. The cake is the only open item.",
+  },
+  {
+    id: 'en-keep-open-gift-secret',
+    language: 'English',
+    people: [
+      { name: 'Mei', kid: null, family: 'A' },
+      { name: 'Priya', kid: null, family: 'B' },
+      { name: 'Sam', kid: null, family: 'C' },
+    ],
+    speaker: 0,
+    items: [
+      { list: 'Gifts for Mia', text: 'Lego for Mia', owner: 1 },
+      { list: 'Party', text: 'cake', owner: null },
+    ],
+    text: "let's keep the Lego a surprise from Mia's family, they might join this chat",
+    expect: {
+      listTurn: true,
+      owners: { 'Lego for Mia': 1, cake: null },
+      newOwned: 0,
+      newOpen: 0,
+      secretAfter: { 'Lego for Mia': true, cake: false },
+    },
+    secrets: [],
+    watchFor: "Mia's family is not in this chat yet. Priya has the Lego; nobody took anything new.",
+  },
+  {
+    id: 'en-whats-left-secret-shown',
+    language: 'English',
+    people: [
+      { name: 'Mei', kid: null, family: 'A' },
+      { name: 'Priya', kid: null, family: 'B' },
+      { name: 'Sam', kid: null, family: 'C' },
+    ],
+    speaker: 2,
+    items: [
+      {
+        list: "Mia's party",
+        text: 'Lego for Mia',
+        owner: 1,
+        hidden: { forKid: 'Mia', from: [] },
+      },
+      { list: "Mia's party", text: 'cake', owner: null },
+    ],
+    text: "what's left for Mia's party?",
+    expect: {
+      listTurn: true,
+      owners: { 'Lego for Mia': 1, cake: null },
+      newOwned: 0,
+      reply: 'required',
+      secretAfter: { 'Lego for Mia': true, cake: false },
+      // First draw (2026-11-13): read as not a list turn, though its reply named the open cake.
+      // It kept nothing new secret, which is what this fixture guards.
+      knownMiss: { ticket: 'VIL-687', failure: 'listTurn: got false want true' },
+    },
+    secrets: [],
+    watchFor:
+      "Mia's family is not in this chat; everyone here may hear about the Lego. The cake is the only open item.",
   },
   {
     id: 'en-add-needs',

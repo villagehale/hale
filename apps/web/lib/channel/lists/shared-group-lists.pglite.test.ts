@@ -72,11 +72,16 @@ type Decision = {
   add: string[];
   claim: { item: string | null; text: string | null }[];
   release: string[];
-  gift: { forKid: string | null; keepFromKidFamily: boolean; kidFamily: string[] };
+  gift: {
+    forKid: string | null;
+    keepFromKidFamily: boolean;
+    kidFamily: string[];
+    items: string[];
+  };
   reply: string | null;
 };
 
-const NO_GIFT = { forKid: null, keepFromKidFamily: false, kidFamily: [] };
+const NO_GIFT = { forKid: null, keepFromKidFamily: false, kidFamily: [], items: [] };
 
 function decision(extra: Partial<Decision>): Decision {
   return {
@@ -396,7 +401,7 @@ describe('hidden gifts', () => {
       decision({
         list: 'Gifts for Mia',
         claim: [{ item: null, text: 'Lego for Mia' }],
-        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: ['p1'] },
+        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: ['p1'], items: [] },
         reply: 'Lego is yours.',
       }),
     );
@@ -433,7 +438,7 @@ describe('hidden gifts', () => {
       decision({
         list: 'Gifts for Mia',
         claim: [{ item: null, text: 'Lego for Mia' }],
-        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [] },
         reply: 'Lego is yours.',
       }),
     );
@@ -476,8 +481,9 @@ describe('hidden gifts', () => {
     const { model, seen } = scripted(blind, blind);
     const out = await turn(await context(priya, [ada, sam, priya], 'I can get Mia Lego'), model);
     expect(seen[0]?.items).toEqual([]);
-    // Withheld, not a race: a withheld turn keeps the 1:1 aside quiet too.
-    expect(out).toEqual({ handled: true, line: null, lineWhy: 'withheld', counts: { held: 2 } });
+    // Withheld, not a race, and not read again: a withheld turn keeps the 1:1 aside quiet too.
+    expect(seen).toHaveLength(1);
+    expect(out).toEqual({ handled: true, line: null, lineWhy: 'withheld', counts: { held: 1 } });
     expect((await items())[0]?.ownerPersonId).toBe(sam.id);
   });
 
@@ -493,7 +499,7 @@ describe('hidden gifts', () => {
       return decision({
         list: 'Gifts for Leo',
         claim: [{ item: null, text: 'kite for Leo' }],
-        gift: { forKid: 'Leo', keepFromKidFamily: true, kidFamily: [] },
+        gift: { forKid: 'Leo', keepFromKidFamily: true, kidFamily: [], items: [] },
         reply: 'Kite is yours.',
       });
     });
@@ -766,6 +772,7 @@ describe('in a multi-family group turn', () => {
         text: "we'll bring the salad",
         providerMessageId: `in-${intent}`,
         receivedAt: NOW,
+        sentAt: NOW,
         now: NOW,
         send: wire.send,
         privateAside,
@@ -802,6 +809,8 @@ describe('in a multi-family group turn', () => {
       /** When the message was sent, and when Hale took it (later on a retry). */
       receivedAt?: Date;
       now?: Date;
+      /** Linq's sent_at; null when the webhook carried none. Defaults to `receivedAt`. */
+      sentAt?: Date | null;
     } = {},
   ) {
     const seen: SharedListTurnInput[] = [];
@@ -821,6 +830,7 @@ describe('in a multi-family group turn', () => {
         text,
         providerMessageId: id,
         receivedAt: extra.receivedAt ?? at,
+        sentAt: extra.sentAt === undefined ? (extra.receivedAt ?? at) : extra.sentAt,
         now: extra.now ?? at,
         send: wire.send,
         ...(extra.privateAside ? { privateAside: extra.privateAside } : {}),
@@ -862,7 +872,7 @@ describe('in a multi-family group turn', () => {
       answer: decision({
         list: 'Gifts for Zara',
         claim: [{ item: null, text: 'Lego for Zara' }],
-        gift: { forKid: 'Zara', keepFromKidFamily: true, kidFamily: [] },
+        gift: { forKid: 'Zara', keepFromKidFamily: true, kidFamily: [], items: [] },
         reply: 'Lego is yours.',
       }),
     });
@@ -909,7 +919,7 @@ describe('in a multi-family group turn', () => {
           decision({
             list: `Gifts for ${forKid}`,
             claim: [{ item: null, text: `Lego for ${forKid}` }],
-            gift: { forKid, keepFromKidFamily: true, kidFamily: [] },
+            gift: { forKid, keepFromKidFamily: true, kidFamily: [], items: [] },
             reply: 'Nice, the Lego is yours.',
           }),
         wire,
@@ -1035,7 +1045,7 @@ describe('in a multi-family group turn', () => {
       decision({
         list: 'Gifts for Mia',
         claim: [{ item: null, text: LEGO }],
-        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily },
+        gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily, items: [] },
         reply: 'Nice, the Lego is yours.',
       });
 
@@ -1542,6 +1552,51 @@ describe('in a multi-family group turn', () => {
       expect(heldLine).toEqual(idleLine);
     }, 30_000);
 
+    it('a held turn that also claimed something in the open leaves the same audit row as a plain claim', async () => {
+      const { wire, priya } = await secretWhileMiaFamilyAway();
+      await parent(ADA, 'Ada', 'Mia');
+      const here = [MEI, PRIYA, ADA];
+      await say(
+        PRIYA,
+        "I'll bring cupcakes and get Mia a Lego",
+        'in-blind-two',
+        here,
+        () =>
+          decision({
+            list: 'Gifts for Mia',
+            claim: [
+              { item: null, text: 'cupcakes' },
+              { item: null, text: LEGO },
+            ],
+            reply: 'Cupcakes and the Lego are yours.',
+          }),
+        wire,
+      );
+      await say(
+        PRIYA,
+        "I'll bring juice",
+        'in-plain',
+        here,
+        () => decision({ list: 'Gifts for Mia', claim: [{ item: null, text: 'juice' }] }),
+        wire,
+      );
+      expect(wire.texts).toEqual([]);
+      const turns = (
+        await db.database
+          .select({ action: schema.auditLog.actionTaken, after: schema.auditLog.after })
+          .from(schema.auditLog)
+          .where(eq(schema.auditLog.familyId, priya.familyId))
+          .orderBy(schema.auditLog.occurredAt)
+      )
+        .filter((row) => row.action === 'linq_multi_family_list_turn')
+        .map((row) => row.after)
+        .slice(-2);
+      expect(turns).toEqual([
+        { claimed: 1, line: 'quiet', notice: 'declined' },
+        { claimed: 1, line: 'quiet', notice: 'declined' },
+      ]);
+    });
+
     describe('the allow-list: only people here, seated and cleared at the hide see it', () => {
       const RAJ = '+16415550606';
       const peopleRows = () => db.database.select().from(schema.linqSharedGroupPeople);
@@ -1689,7 +1744,7 @@ describe('in a multi-family group turn', () => {
             decision({
               list: 'Gifts for Leo',
               claim: [{ item: null, text: 'Kite for Leo' }],
-              gift: { forKid: 'Leo', keepFromKidFamily: true, kidFamily: [] },
+              gift: { forKid: 'Leo', keepFromKidFamily: true, kidFamily: [], items: [] },
               reply: null,
             }),
           wire,
@@ -1727,7 +1782,7 @@ describe('in a multi-family group turn', () => {
             decision({
               list: 'Gifts for Mia',
               claim: [{ item: null, text: 'Puzzle for Mia' }],
-              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [] },
               reply: 'Puzzle is yours.',
             }),
           wire,
@@ -2024,6 +2079,31 @@ describe('in a multi-family group turn', () => {
         expect(wire.texts.join(' ')).not.toContain(LEGO);
       });
 
+      it('a hide whose webhook carried no sent time clears nobody', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        const welcomed = new Date(NOW.getTime() + 60_000);
+        const retried = new Date(NOW.getTime() + 120_000);
+        const withRaj = [...here, RAJ];
+        await say(PRIYA, 'welcome Raj!', 'in-welcome', withRaj, quiet, wire, {
+          receivedAt: welcomed,
+          now: welcomed,
+        });
+        // Without sent_at, Hale only knows when it took the message, which is after Raj came.
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          withRaj,
+          () => secretLego([]),
+          wire,
+          { receivedAt: retried, now: retried, sentAt: null },
+        );
+        expect((await items())[0]?.hiddenClearedPhoneHashes).toEqual([]);
+        const later = await say(RAJ, "what's left?", 'in-later', withRaj, whatsLeft, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain(LEGO);
+      });
+
       /** Linq's GET for the chat: `present` active, `departed` still listed as removed. */
       const linqListsWith = (present: readonly string[], departed: readonly string[] = []) =>
         linqAnswers(
@@ -2109,7 +2189,7 @@ describe('in a multi-family group turn', () => {
             if (!lego || !ada) throw new Error('the model was not shown the Lego and Ada');
             return decision({
               claim: [{ item: lego, text: null }],
-              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [ada] },
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [ada], items: [] },
             });
           },
           wire,
@@ -2248,7 +2328,7 @@ describe('in a multi-family group turn', () => {
               decision({
                 list: 'Gifts',
                 claim: [{ item: null, text: 'Lego' }],
-                gift: { forKid, keepFromKidFamily: true, kidFamily: [] },
+                gift: { forKid, keepFromKidFamily: true, kidFamily: [], items: [] },
                 reply: null,
               }),
             wire,
@@ -2284,7 +2364,7 @@ describe('in a multi-family group turn', () => {
             decision({
               list: 'Gifts for Mia',
               add: [LEGO],
-              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [] },
             }),
           wire,
         );
@@ -2313,7 +2393,7 @@ describe('in a multi-family group turn', () => {
             if (!lego) throw new Error('the model was not shown the Lego');
             return decision({
               claim: [{ item: lego, text: null }],
-              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [] },
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [] },
             });
           },
           wire,
@@ -2324,6 +2404,95 @@ describe('in a multi-family group turn', () => {
         const later = await miasDadJoinsAndAsks(here, wire);
         expect(shown(later.seen)).toEqual([]);
         expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      /** Priya puts the Lego for Mia and a cake on the lists in the open. */
+      async function openLegoAndCake(here: readonly string[], wire: ReturnType<typeof sender>) {
+        await say(
+          PRIYA,
+          'add Lego for Mia',
+          'in-open-lego',
+          here,
+          () => decision({ list: 'Gifts for Mia', add: [LEGO] }),
+          wire,
+        );
+        await say(
+          PRIYA,
+          'we need a cake',
+          'in-open-cake',
+          here,
+          () => decision({ list: 'Party', add: ['cake'] }),
+          wire,
+        );
+      }
+
+      it('a keep-secret verdict that writes nothing and names no item hides everything the model saw', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await openLegoAndCake(here, wire);
+        await say(
+          MEI,
+          "let's keep the Lego a surprise from Mia's family",
+          'in-hide-open',
+          here,
+          () =>
+            decision({
+              list: 'Gifts for Mia',
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [] },
+            }),
+          wire,
+        );
+        // Positive control: the people here at the hide still see both.
+        const open = await say(PRIYA, "what's left?", 'in-open', here, whatsLeft, wire);
+        expect(shown(open.seen)).toEqual([LEGO, 'cake']);
+        const later = await miasDadJoinsAndAsks(here, wire);
+        expect(shown(later.seen)).toEqual([]);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+      });
+
+      it('a keep-secret verdict that names an item already open hides that item and nothing else', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await openLegoAndCake(here, wire);
+        await say(
+          MEI,
+          "let's keep the Lego a surprise from Mia's family",
+          'in-hide-open',
+          here,
+          (input) => {
+            const lego = input.items.find((entry) => entry.text === LEGO)?.ref;
+            if (!lego) throw new Error('the model was not shown the Lego');
+            return decision({
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: [lego] },
+            });
+          },
+          wire,
+        );
+        const open = await say(PRIYA, "what's left?", 'in-open', here, whatsLeft, wire);
+        expect(shown(open.seen)).toEqual([LEGO, 'cake']);
+        const later = await miasDadJoinsAndAsks(here, wire);
+        expect(shown(later.seen)).toEqual(['cake']);
+        expect(wire.texts.join(' ')).not.toContain('Lego');
+        expect((await items()).map((row) => [row.text, row.hidden]).sort()).toEqual([
+          ['Lego for Mia', true],
+          ['cake', false],
+        ]);
+      });
+
+      it('a keep-secret verdict naming an item the model was not shown is refused and hides nothing it did not see', async () => {
+        const { wire, here } = await chatBeforeTheHide();
+        await openLegoAndCake(here, wire);
+        const out = await say(
+          MEI,
+          "let's keep the Lego a surprise",
+          'in-hide-bad-ref',
+          here,
+          () =>
+            decision({
+              gift: { forKid: 'Mia', keepFromKidFamily: true, kidFamily: [], items: ['i99'] },
+            }),
+          wire,
+        );
+        expect(out.seen).toHaveLength(2);
+        expect((await items()).every((row) => !row.hidden)).toBe(true);
       });
 
       it.each([

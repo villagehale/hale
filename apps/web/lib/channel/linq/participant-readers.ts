@@ -10,7 +10,8 @@ export interface ChatReaders {
   hashes: readonly string[];
   /**
    * Of them, the ones Linq says joined no later than the message was sent, on Linq's own
-   * clock. Anyone whose join time Linq does not give, or gives as after the send, is left out.
+   * clock. Anyone whose join time Linq does not give, or gives as after the send, is left out,
+   * and so is everyone when the message carried no sent time.
    */
   presentAtSend: ReadonlySet<string>;
 }
@@ -28,7 +29,7 @@ export function listedReaders(
   listed: ParticipantRead | null,
   speakerHash: string,
   isHaleLine: (phone: string) => boolean,
-  sentAt: Date,
+  sentAt: Date | null,
 ): ChatReaders | null {
   if (listed?.status !== 'ok' || listed.isGroup === false) return null;
   const hashes = new Set<string>();
@@ -41,7 +42,7 @@ export function listedReaders(
     const hash = phoneBlindIndex(phone);
     hashes.add(hash);
     const joined = listed.joinedAt?.get(handle);
-    if (!joined || joined > sentAt) notYet.add(hash);
+    if (!sentAt || !joined || joined > sentAt) notYet.add(hash);
   }
   if (!hashes.has(speakerHash)) return null;
   return {

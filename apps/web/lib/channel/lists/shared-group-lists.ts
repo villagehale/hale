@@ -26,8 +26,9 @@ import { foldListText } from './tools';
  * - SCOPE IS THE CHAT. Every read and write is bound to `chatId`. Ids the model sees are
  *   per-turn refs (`i1`, `p2`) that code maps back; a ref it did not see is refused.
  * - A HIDDEN GIFT IS SHOWN ONLY ON AN ALLOW-LIST. The model decides whether the group
- *   wants a gift kept from the child's family. Any keep-secret verdict hides the item,
- *   whether or not it names the child or anyone in their family; once it is hidden, it is
+ *   wants a gift kept from the child's family. Any keep-secret verdict hides something,
+ *   whether or not it names the child or anyone in their family: what the turn writes, the
+ *   items it names, or, when it does neither, every item the model saw. Once hidden, it is
  *   shown only while everyone reading the chat was here, seated and cleared when it was
  *   hidden (SharedListAudience). A child or person the model names only takes more people
  *   off. Everyone else hides it, and clearance is only ever taken away. A hidden item left
@@ -376,8 +377,9 @@ export const sharedListTurnJsonSchema = {
         forKid: { type: ['string', 'null'] },
         keepFromKidFamily: { type: 'boolean' },
         kidFamily: { type: 'array', items: { type: 'string' } },
+        items: { type: 'array', items: { type: 'string' } },
       },
-      required: ['forKid', 'keepFromKidFamily', 'kidFamily'],
+      required: ['forKid', 'keepFromKidFamily', 'kidFamily', 'items'],
     },
     reply: { type: ['string', 'null'] },
   },
@@ -396,6 +398,7 @@ const decisionSchema = z
         forKid: z.string().nullable(),
         keepFromKidFamily: z.boolean(),
         kidFamily: z.array(z.string()),
+        items: z.array(z.string()),
       })
       .strict(),
     reply: z.string().nullable(),
@@ -416,9 +419,10 @@ export interface SharedListDecision {
   release: SharedListItemView[];
   /**
    * Set whenever the model chose to keep a gift from the child's family, whether or not it
-   * named the child (a name it gave that is out of bounds is dropped) or anyone in the family.
+   * named the child (a name it gave that is out of bounds is dropped), anyone in the family,
+   * or an item already on the list (`items`).
    */
-  hide: { forKid: string | null; personIds: string[] } | null;
+  hide: { forKid: string | null; personIds: string[]; items: SharedListItemView[] } | null;
   reply: string | null;
 }
 
@@ -479,8 +483,14 @@ export function parseSharedListDecision(
     if (!person) return null;
     personIds.push(person.id);
   }
+  const hideItems: SharedListItemView[] = [];
+  for (const ref of raw.gift.items) {
+    const item = refs.items.get(ref);
+    if (!item) return null;
+    hideItems.push(item);
+  }
   const forKid = raw.gift.forKid === null ? null : clean(raw.gift.forKid, 100);
-  const hide = raw.gift.keepFromKidFamily ? { forKid, personIds } : null;
+  const hide = raw.gift.keepFromKidFamily ? { forKid, personIds, items: hideItems } : null;
   return { listName, add, claim, release, hide, reply: clean(raw.reply, 1000) };
 }
 
@@ -859,6 +869,24 @@ async function applyOnce(
     note(expected, after?.owner === speaker ? 'already_yours' : 'taken', id);
   }
 
+  // A keep-secret verdict always hides something: the items it names, and, when it names none
+  // and writes nothing, every item the model saw, since code cannot tell which one it meant.
+  if (decision.hide) {
+    const aimed =
+      decision.hide.items.length > 0 || decision.add.length > 0 || decision.claim.length > 0;
+    const targets = aimed ? decision.hide.items : snapshot.items;
+    if (!aimed) {
+      console.warn(
+        { outcome: 'shared_list_hide_unaimed', items: targets.length },
+        'shared list: a keep-secret verdict named nothing, so everything shown is hidden',
+      );
+    }
+    for (const item of targets) {
+      await hideExisting(item.id);
+      touched.add(item.id);
+    }
+  }
+
   for (const item of decision.release) {
     const key = keyOf(item.listKey, item.textKey);
     const expected: SharedListOutcome = seen.get(key) === speaker ? 'released' : 'not_yours';
@@ -949,7 +977,9 @@ export async function applySharedListTurn(
   let current: { snapshot: Snapshot; decision: SharedListDecision } = read;
   let pass = await applyLocked(database, context, current, options.now);
   const counts = { ...pass.applied.counts };
-  if (!pass.applied.matched && options.model) {
+  // A held write says nothing whatever a second read finds, and a second read would leave a
+  // trace in the counts that a turn with nothing held does not.
+  if (!pass.applied.matched && !pass.applied.counts.held && options.model) {
     // The second read calls the model, so it runs outside the lock.
     const again = await readSharedListTurn(database, context, options.model);
     if (again.kind === 'list') {

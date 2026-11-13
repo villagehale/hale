@@ -44,12 +44,22 @@ describe('parseLinqWebhook', () => {
         mediaCount: 0,
         media: [],
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
+        sentAt: new Date('2026-02-05T19:31:13.074Z'),
         otherHandles: [],
         isGroup: false,
         mentions: [],
         service: 'iMessage',
       },
     });
+  });
+
+  it.each([
+    ['no sent_at', undefined],
+    ['a sent_at that is not a time', 'soon'],
+  ])("says Linq gave no sent time when the payload has %s, and takes Hale's", (_label, sentAt) => {
+    const base = received();
+    const parsed = parseLinqWebhook({ ...base, data: { ...base.data, sent_at: sentAt } }, FALLBACK);
+    expect(parsed).toMatchObject({ message: { sentAt: null, receivedAt: FALLBACK } });
   });
 
   /**

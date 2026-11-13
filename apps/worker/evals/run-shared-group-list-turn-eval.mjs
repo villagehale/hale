@@ -7,8 +7,10 @@
 // Checks per case:
 //   1. CODE: whether it was a list turn, every seeded item's owner afterwards, how many new
 //      items the speaker owns (or are open), whether the gift is kept from the child's
-//      family (calibrated both ways), that a secret gift never reached the model when the
-//      child's family reads the chat, and that a doubled claim or an ask got a line.
+//      family (calibrated both ways), which seeded items are secret afterwards (a keep-secret
+//      about an item already on the list, and an ask that keeps nothing new), that a secret
+//      gift never reached the model when the child's family reads the chat, and that a
+//      doubled claim or an ask got a line.
 //   2. JUDGE: facts, secrecy, tone and language of the line (judges/shared-group-list-turn).
 //
 //   node evals/run-shared-group-list-turn-eval.mjs                 # live, then caches
@@ -175,7 +177,12 @@ function codeChecks(fixture, people, beforeRows, afterRows, read, result, seen) 
         failures.push(`hide(${row.text}): got ${row.secret} want ${want.hide}`);
     }
   }
-  if (want.reply === 'required' && !(result.handled && result.line))
+  for (const [text, secret] of Object.entries(want.secretAfter ?? {})) {
+    const row = afterRows.find((r) => r.text === text);
+    if (row?.secret !== secret) failures.push(`secret(${text}): got ${row?.secret} want ${secret}`);
+  }
+  // A message not read as a list turn has no list line; that is the listTurn miss, not a second.
+  if (want.reply === 'required' && listTurn && !(result.handled && result.line))
     failures.push(`no line (${result.handled ? result.lineWhy : result.why})`);
   if (want.hiddenNeverShown) {
     const shown = seen.some((input) => input.items.some((i) => i.text === want.hiddenNeverShown));

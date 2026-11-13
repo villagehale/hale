@@ -151,6 +151,7 @@ function inbound(
     chatId: GROUP,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     mentions: [],
     ...over,
