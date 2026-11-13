@@ -7,6 +7,8 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
+import { recordSchoolBreak } from '~/lib/care/school-break/facts';
+import { createSchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import {
   defaultActivityPromisePorts,
@@ -836,6 +838,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
+    schoolBreakReplyReader: createSchoolBreakReplyReader(screenClient),
+    recordSchoolBreak,
     consent: createConsentReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
@@ -910,6 +914,14 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       // from being the thing that says so: a constraint violation is thrown from inside
       // the write, out through the gate, and retried into the same wall until the
       // question closes.
+      if (ask.scope === 'break_dates') {
+        return {
+          status: 'open' as const,
+          scope: 'break_dates' as const,
+          schoolYear: ask.schoolYear,
+          question: ask.question,
+        };
+      }
       if (ask.scope === 'search') {
         return {
           status: 'open' as const,
@@ -1140,12 +1152,13 @@ function askSent(
   return sendRecordedAt(database, { familyId, channelMessageId });
 }
 
-/** A ledger-read question whose id is the row that carried it, dated by that row. */
-async function datedByItsRow(
+/** A ledger-read question whose id is the row that carried it, dated by that row. The
+ * rest of what its reader said (the weekday ask's `scope`) is kept. */
+async function datedByItsRow<Q extends { id: string }>(
   database: Database,
   familyId: string,
-  question: { id: string } | null,
-): Promise<{ id: string; askedAt: Date | null } | null> {
+  question: Q | null,
+): Promise<(Omit<Q, 'askedAt'> & { askedAt: Date | null }) | null> {
   if (!question) return null;
-  return { id: question.id, askedAt: await askSent(database, familyId, question.id) };
+  return { ...question, askedAt: await askSent(database, familyId, question.id) };
 }

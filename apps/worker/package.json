@@ -112,6 +112,7 @@
     "eval:experience-card": "node evals/run-coach-channel-eval.mjs --cached-only --only=experience-card-one-venue,experience-card-compare-venues",
     "eval:proactive-decider": "node evals/run-proactive-decider-eval.mjs --cached-only",
     "eval:proactive-writer": "node evals/run-proactive-writer-eval.mjs --cached-only",
+    "eval:school-break": "node evals/run-school-break-eval.mjs --cached-only",
     "eval:workstream-extract": "node evals/run-workstream-extract-eval.mjs --cached-only",
     "eval:weekday-care-ask": "node evals/run-weekday-care-ask-eval.mjs --cached-only",
     "eval:carpool": "node evals/carpool-eval.mjs --cached-only",

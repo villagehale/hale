@@ -302,6 +302,8 @@ export const AUDIT_VERBS = [
   'proactive_cadence_sent',
   'proactive_cadence_skipped',
   'weekday_care_recorded',
+  'school_break_recorded',
+  'school_break_retired',
   'followup_daycare_asked',
   'email_alert_sent',
   // VIL-619 · the one-time scrub of the email previews older alerts kept.
@@ -1219,6 +1221,17 @@ const VERBS: Record<AuditVerb, Verb> = {
   weekday_care_recorded: {
     sentence: 'you told Hale how your weeks are covered',
     family: 'done',
+  },
+  // VIL-685 · from the board's own calendar page, or from the parent's answer.
+  school_break_recorded: {
+    sentence: "Hale noted when your kids' winter break is",
+    family: 'done',
+  },
+  // VIL-685 · the school's break stopped applying: the mail that named the school was
+  // withdrawn, no child is at that school's age, or two schools gave other days.
+  school_break_retired: {
+    sentence: "Hale stopped using the school's winter break it had noted",
+    family: 'note',
   },
   followup_daycare_asked: { sentence: 'Hale asked how daycare is going', family: 'note' },
   // Read in a connected mailbox, not guessed. The sentence says WHERE it came from,

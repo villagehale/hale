@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { type AcceptedStatus, acceptedStatus } from '~/lib/channel/ledger';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import { SCHOOL_BREAK_ASK_TEMPLATE_KEY } from '~/lib/channel/weekday-care/key';
 import type { ChannelCategory } from './queue';
 
 /**
@@ -13,9 +14,17 @@ import type { ChannelCategory } from './queue';
  *   - the audit row the trail reads, pointing at the first of those rows;
  *   - the composed sentence in the recipient's own thread, where their reply is read.
  *
+ * A row carries the composed sentence as its `body` only for a template whose reply is
+ * read against the words Hale sent ({@link BODY_RECORDED_TEMPLATE_KEYS}): the model wrote
+ * that question whole, so neither the template nor the item can say what was asked.
+ *
  * Called AFTER the transport accepted the text: a compose that never left is not
  * something Hale said.
  */
+
+/** VIL-685 · "when is your winter break?": a bare range in the reply ends on the day
+ * back or the last day off depending on which one the question asked for. */
+const BODY_RECORDED_TEMPLATE_KEYS: readonly string[] = [SCHOOL_BREAK_ASK_TEMPLATE_KEY];
 
 export interface ProactiveLedgerWrite {
   familyId: string;
@@ -29,6 +38,8 @@ export interface ProactiveLedgerWrite {
   providerMessageId: string | null;
   providerChatId?: string | null;
   sentAt: Date;
+  /** The sent sentence, only for a template in {@link BODY_RECORDED_TEMPLATE_KEYS}. */
+  body?: string;
 }
 
 export interface ProactiveAuditRow {
@@ -88,22 +99,29 @@ export async function finalizeProactiveSend(
     audit: { actionTaken: string; after: Record<string, unknown> };
   },
 ): Promise<string> {
-  let firstId: string | null = null;
-  for (const item of input.items) {
-    const id = await ports.recordSend(database, {
-      familyId: input.familyId,
-      parentUserId: item.parentUserId,
-      channel: input.channel,
-      category: item.category,
-      templateKey: item.templateKey,
-      dedupeKey: item.dedupeKey,
-      status: acceptedStatus(input.channel),
-      providerMessageId: firstId === null ? input.providerMessageId : null,
-      providerChatId: input.providerChatId,
-      sentAt: input.sentAt,
-    });
-    firstId ??= id;
-  }
+  // One transaction, so every row of the one text shares one `created_at` (Postgres
+  // `now()` is the transaction's start). Written one by one, an item after a question
+  // would read as something Hale said after it, and close that question at once.
+  const firstId = await database.transaction(async (tx) => {
+    let first: string | null = null;
+    for (const item of input.items) {
+      const id = await ports.recordSend(tx as unknown as Database, {
+        familyId: input.familyId,
+        parentUserId: item.parentUserId,
+        channel: input.channel,
+        category: item.category,
+        templateKey: item.templateKey,
+        dedupeKey: item.dedupeKey,
+        status: acceptedStatus(input.channel),
+        providerMessageId: first === null ? input.providerMessageId : null,
+        providerChatId: input.providerChatId,
+        sentAt: input.sentAt,
+        ...(BODY_RECORDED_TEMPLATE_KEYS.includes(item.templateKey) ? { body: input.composed } : {}),
+      });
+      first ??= id;
+    }
+    return first;
+  });
   if (firstId === null) throw new Error('finalizeProactiveSend: a text that carried no item');
   await ports.audit(database, {
     familyId: input.familyId,

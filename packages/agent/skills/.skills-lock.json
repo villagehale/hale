@@ -541,7 +541,7 @@
   },
   "proactive-writer.md": {
     "file": "proactive-writer.md",
-    "sha256": "910e4ed0c6919b46df7b4fefbf3a92556435ef06d2268913d28bff03c6e4a1bb"
+    "sha256": "f9860d1be922999c3995a20b96b1d55061e4794556facd5cce8e65047f990c31"
   },
   "radar-voice.md": {
     "file": "radar-voice.md",
@@ -610,6 +610,22 @@
   "said-line.md": {
     "file": "said-line.md",
     "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
+  },
+  "school-break-read.md": {
+    "file": "school-break-read.md",
+    "sha256": "5bfddb00250542e041bd396a505788d58e3b37051ec6ab487166df0487007583"
+  },
+  "school-break-reply.md": {
+    "file": "school-break-reply.md",
+    "sha256": "b6340c63db0a0e0e90a03d6686c8a5c72a14110b642f5605132004550453f534"
+  },
+  "school-calendar-search.md": {
+    "file": "school-calendar-search.md",
+    "sha256": "f830ad46b26c506eb77ea04cddac5728dcfb889d802ac05eccc6b206c80fca58"
+  },
+  "school-mail-sender.md": {
+    "file": "school-mail-sender.md",
+    "sha256": "c28d920ff5aa37113385c6afd2597373c078479506bcfed823dd109896dc2f7b"
   },
   "secret-santa-line.md": {
     "file": "secret-santa-line.md",

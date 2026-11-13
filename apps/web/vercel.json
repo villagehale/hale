@@ -19,6 +19,7 @@
     { "path": "/api/cron/memory-digest", "schedule": "48 6 * * *" },
     { "path": "/api/cron/ops-daily", "schedule": "14 13 * * *" },
     { "path": "/api/cron/registration-verify", "schedule": "3 16 * * 1" },
+    { "path": "/api/cron/school-break", "schedule": "13 * * * *" },
     { "path": "/api/cron/watched-spots", "schedule": "1-59/10 * * * *" },
     { "path": "/api/cron/drain", "schedule": "* * * * *" },
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "board_on_page": "Example District School Board",
+    "name": "Winter Break",
+    "year_evidence": "2026-2027 School Year Calendar (Elementary and Secondary)",
+    "first_day": {
+      "quote": "Winter Break Monday, December 21, 2026 to Friday, January 1, 2027",
+      "date_text": "Monday, December 21, 2026",
+      "date": "2026-12-21"
+    },
+    "last_day": {
+      "quote": "Winter Break Monday, December 21, 2026 to Friday, January 1, 2027",
+      "date_text": "Friday, January 1, 2027",
+      "date": "2027-01-01"
+    },
+    "found": true
+  },
+  "latencyMs": 3051
+}

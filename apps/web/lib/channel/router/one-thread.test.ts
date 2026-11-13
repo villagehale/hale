@@ -130,6 +130,8 @@ describe('one parent, two doors, one conversation', () => {
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
       calendarOffers: calendarOffersIdle,
       weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
+      schoolBreakReplyReader: { read: async () => ({ status: 'nothing_stated' as const }) },
+      recordSchoolBreak: async () => {},
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },

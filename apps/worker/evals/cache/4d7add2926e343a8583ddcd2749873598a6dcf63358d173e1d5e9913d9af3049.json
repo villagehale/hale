@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "This is an admissions and open-house promotion from the Admissions Office aimed at prospective families whose children do not yet attend, so it is not a school writing to its own families.",
+    "sender": "other",
+    "school_words": null
+  },
+  "latencyMs": 2147,
+  "usage": {
+    "input_tokens": 93,
+    "output_tokens": 73,
+    "cache_read_input_tokens": 718,
+    "cache_creation_input_tokens": 0
+  }
+}

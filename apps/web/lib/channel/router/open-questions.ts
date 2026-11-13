@@ -819,7 +819,7 @@ export interface OpenQuestionSources {
   weekdayCare(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date | null } | null>;
+  ): Promise<{ id: string; askedAt: Date | null; scope?: string } | null>;
   /**
    * The empty-Saturday ask, while it is Hale's last word to this parent and inside
    * its 48h window — or null (VIL-365, channel/nudge/empty-saturday-question.ts).
@@ -1218,7 +1218,10 @@ export function createOpenQuestionReader(
         questions.push({
           id: weekdayCare.id,
           kind: 'weekday_care',
-          description: 'How this household covers its weekdays',
+          description:
+            weekdayCare.scope === 'break_dates'
+              ? "When this household's winter break starts and ends"
+              : 'How this household covers its weekdays',
           subject: SUBJECT.weekday_care,
           answerable: KIND_ANSWERABLE.weekday_care,
           askedAt: weekdayCare.askedAt,

@@ -144,6 +144,10 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
+import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
+import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
@@ -701,10 +705,19 @@ export interface ChannelRouterDeps {
         prompt: 'after_school' | 'weekend_fallback' | 'break';
         eventKey: string | null;
       }
+    | { status: 'open'; scope: 'break_dates'; schoolYear: string; question: string | null }
     | { status: 'no_open_ask' }
     | { status: 'wrong_channel' }
     | { status: 'child_gone' }
   >;
+  /**
+   * VIL-685 · reads the days of a winter break from a parent's answer to Hale's one
+   * question about it. REQUIRED (rule #11): a router without it would hear the answer
+   * and write nothing. No client is `nothing_stated`, named in the reader's log.
+   */
+  schoolBreakReplyReader: SchoolBreakReplyReader;
+  /** Write down this family's winter break (lib/care/school-break/facts.ts). */
+  recordSchoolBreak(database: Database, write: SchoolBreakWrite): Promise<void>;
   /**
    * A yes to a weekday-finder ask. Runs the existing activity search for this
    * family and returns either a grounded sentence or a named abstain. It does
@@ -2204,7 +2217,10 @@ type WeekdayCareReplyOutcome =
       eventKey: string | null;
     }
   | { status: 'declined' }
-  | { status: 'not_recorded'; reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' };
+  | {
+      status: 'not_recorded';
+      reason: 'no_open_ask' | 'wrong_channel' | 'child_gone' | 'school_break_off';
+    };
 
 /**
  * Read the answer, write the fact, say nothing — and REPORT which of those happened.
@@ -2233,6 +2249,30 @@ async function recordWeekdayCareAnswer(
     now: turn.now,
   });
   if (target.status !== 'open') return { status: 'not_recorded', reason: target.status };
+
+  if ('scope' in target && target.scope === 'break_dates') {
+    // The lane's kill switch covers its reply reader too: off, nothing is read or filed.
+    if (!schoolBreakEnabled()) return { status: 'not_recorded', reason: 'school_break_off' };
+    const reading = await deps.schoolBreakReplyReader.read({
+      question: target.question,
+      text: turn.body,
+      today: dayKeyOf(turn.now, DEFAULT_TIMEZONE),
+      schoolYear: target.schoolYear,
+    });
+    if (reading.status === 'nothing_stated') return { status: 'unreadable' };
+    await deps.recordSchoolBreak(deps.database, {
+      source: 'parent',
+      familyId: turn.familyId,
+      parentUserId: turn.parentUserId,
+      schoolYear: target.schoolYear,
+      name: reading.name,
+      firstDay: reading.firstDay,
+      lastDay: reading.lastDay,
+      quote: reading.quote,
+      now: turn.now,
+    });
+    return { status: 'recorded' };
+  }
 
   if ('scope' in target) {
     const read = await readConsent(deps.consent, { question: 'weekday_search', text: turn.body });

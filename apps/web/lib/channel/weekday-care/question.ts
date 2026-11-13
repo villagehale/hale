@@ -7,7 +7,7 @@ import {
 } from '~/lib/care/weekday';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import type { WeekdaySearchPrompt } from '~/lib/channel/nudge/weekday-care-ask';
-import { parseWeekdayAskKey } from './key';
+import { SCHOOL_BREAK_ASK_TEMPLATE_KEY, parseWeekdayAskKey } from './key';
 
 /**
  * IS THE WEEKDAY-CARE QUESTION STILL OPEN? — derived, with no row and no column of its
@@ -33,6 +33,15 @@ import { parseWeekdayAskKey } from './key';
 
 export const WEEKDAY_CARE_QUESTION_TTL_MS = 48 * 3_600_000;
 
+/** The asks this question reads. It answers to one of them at a time, so one text may
+ * carry at most one of them per parent (proactive/review.ts). */
+export const WEEKDAY_QUESTION_TEMPLATE_KEYS: readonly string[] = [
+  WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+  WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+];
+
 export type WeekdayCareQuestion =
   | {
       /** The ask's own `channel_messages` row — the id the open-question list carries. */
@@ -48,6 +57,15 @@ export type WeekdayCareQuestion =
       scope: 'search';
       prompt: WeekdaySearchPrompt;
       eventKey: string | null;
+    }
+  | {
+      id: string;
+      askedAt: Date;
+      /** VIL-685 · "when is your winter break?" — the one ask when no page has the days. */
+      scope: 'break_dates';
+      schoolYear: string;
+      /** The text Hale sent, so the reply is read as an answer to it. */
+      question: string | null;
     };
 
 /** Per PARENT, not per family: the question went to one phone, and a co-parent who
@@ -61,6 +79,7 @@ export async function weekdayCareQuestion(
       id: schema.channelMessages.id,
       createdAt: schema.channelMessages.createdAt,
       dedupeKey: schema.channelMessages.dedupeKey,
+      body: schema.channelMessages.body,
     })
     .from(schema.channelMessages)
     .where(
@@ -68,11 +87,7 @@ export async function weekdayCareQuestion(
         eq(schema.channelMessages.familyId, input.familyId),
         eq(schema.channelMessages.parentUserId, input.parentUserId),
         eq(schema.channelMessages.direction, 'out'),
-        inArray(schema.channelMessages.templateKey, [
-          WEEKDAY_CARE_ASK_TEMPLATE_KEY,
-          WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
-          WEEKDAY_BREAK_TEMPLATE_KEY,
-        ]),
+        inArray(schema.channelMessages.templateKey, [...WEEKDAY_QUESTION_TEMPLATE_KEYS]),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
@@ -98,6 +113,15 @@ export async function weekdayCareQuestion(
 
   const parsed = parseWeekdayAskKey(ask.dedupeKey);
   if (parsed === null) return null;
+  if (parsed.scope === 'break_dates') {
+    return {
+      id: ask.id,
+      askedAt: ask.createdAt,
+      scope: 'break_dates',
+      schoolYear: parsed.schoolYear,
+      question: ask.body,
+    };
+  }
   if (parsed.scope === 'search') {
     return {
       id: ask.id,

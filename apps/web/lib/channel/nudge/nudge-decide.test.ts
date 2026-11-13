@@ -939,6 +939,65 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
     expect(JSON.stringify(nudge.ask)).not.toContain('after-school');
   });
 
+  describe('VIL-685 · only the break question armed (breakOnly)', () => {
+    const WINTER = {
+      eventKey: 'winter-break-2026-12-21',
+      label: 'Winter Break',
+      date: '2026-12-21',
+      source: 'school_calendar' as const,
+    };
+
+    it('asks the verified winter break, once per event key', () => {
+      const first = decide({
+        ...READY,
+        weekdayCare: { ...READY.weekdayCare, verifiedBreak: WINTER, breakOnly: true },
+      });
+      if (first?.kind !== 'weekday_care') throw new Error('expected the break ask');
+      expect(first.ask).toEqual({
+        prompt: 'verified_break',
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+      });
+      const again = decideAll({
+        ...READY,
+        weekdayCare: {
+          ...READY.weekdayCare,
+          verifiedBreak: WINTER,
+          breakOnly: true,
+          askedBreakKeys: ['winter-break-2026-12-21'],
+        },
+      });
+      expect(again.nudge).toBeNull();
+    });
+
+    it('asks about a break the parent gave no name for, naming none', () => {
+      const nudge = decide({
+        ...READY,
+        weekdayCare: {
+          ...READY.weekdayCare,
+          verifiedBreak: { ...WINTER, label: null, source: 'parent_said' as const },
+          breakOnly: true,
+        },
+      });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the break ask');
+      expect(nudge.ask).toEqual({
+        prompt: 'verified_break',
+        eventKey: 'winter-break-2026-12-21',
+        label: null,
+      });
+    });
+
+    it('offers no other weekday prompt and no drop-in while weekday care itself is off', () => {
+      // Positive control: the same family with weekday care armed hears the fallback.
+      expect(decide(READY)?.kind).toBe('weekday_care');
+      const decision = decideAll({
+        ...READY,
+        weekdayCare: { ...READY.weekdayCare, breakOnly: true },
+      });
+      expect(decision.nudge).toBeNull();
+    });
+  });
+
   it('a verified named break uses that name and not a fabricated PA day', () => {
     const nudge = decide({
       ...READY,

@@ -21,6 +21,7 @@ import {
   defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
+  nudgeWorthlessAfter,
   runNudgeCron,
 } from './run.js';
 import type { SaturdayPlans } from './saturday-plans';
@@ -289,8 +290,12 @@ function harness(
   return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
 }
 
+/** The ledger rows of one text are written in one transaction; the fake runs it inline. */
 function db() {
-  return {} as never;
+  const fake = {
+    transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(fake),
+  };
+  return fake as never;
 }
 
 function auditActions(writes: Harness['writes']): string[] {
@@ -1248,6 +1253,73 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
+  describe('VIL-685 · the winter-break question while weekday care itself is off', () => {
+    const BREAK_KNOWN: WeekdayCareContext = {
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: false,
+      verifiedBreak: {
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+        date: '2026-12-21',
+        source: 'school_calendar',
+      },
+    };
+
+    it('reaches the break rung on its own kill switch, and the after-school prompts stay dark', async () => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const h = harness({
+        families: NO_REGION,
+        children: [TODDLER],
+        candidates: CIVIC,
+        weekdayCare: BREAK_KNOWN,
+      });
+      // No model in this harness: reaching the ask shows up as the unvoiced weekday ask.
+      expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
+    });
+
+    it('is silent when SCHOOL_BREAK_ENABLED=false', async () => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      vi.stubEnv('SCHOOL_BREAK_ENABLED', 'false');
+      const h = harness({
+        families: NO_REGION,
+        children: [TODDLER],
+        candidates: CIVIC,
+        weekdayCare: BREAK_KNOWN,
+      });
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result.sent).toBe(0);
+      expect(result.skips).toEqual({});
+      const audits = h.writes.filter((w) => w.table === schema.auditLog).map((w) => w.payload);
+      expect(JSON.stringify(audits)).not.toContain('weekday_care');
+    });
+  });
+
+  it('VIL-685 · a break question stops being worth sending after the break begins', () => {
+    const nudge = {
+      kind: 'weekday_care' as const,
+      ask: {
+        prompt: 'verified_break' as const,
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+      },
+    };
+    expect(
+      nudgeWorthlessAfter(
+        nudge,
+        new Date('2026-11-13T15:00:00Z'),
+        'America/Toronto',
+      )?.toISOString(),
+    ).toBe('2026-12-22T05:00:00.000Z');
+    expect(
+      nudgeWorthlessAfter(
+        { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+        new Date('2026-11-13T15:00:00Z'),
+        'America/Toronto',
+      ),
+    ).toBeNull();
+  });
+
   it('with no model, sends nothing for one school-age child', async () => {
     const h = ask([
       {
@@ -1264,18 +1336,17 @@ describe('runNudgeCron — the weekday-care ask', () => {
 describe('the call-name line after a find', () => {
   function recordingDb(): { db: never; rows: Record<string, unknown>[] } {
     const rows: Record<string, unknown>[] = [];
-    return {
-      rows,
-      db: {
-        insert: () => ({
-          values: (payload: Record<string, unknown>) => {
-            const row = { id: `row-${rows.length + 1}`, ...payload };
-            rows.push(row);
-            return { returning: () => Promise.resolve([row]) };
-          },
-        }),
-      } as never,
+    const fake = {
+      insert: () => ({
+        values: (payload: Record<string, unknown>) => {
+          const row = { id: `row-${rows.length + 1}`, ...payload };
+          rows.push(row);
+          return { returning: () => Promise.resolve([row]) };
+        },
+      }),
+      transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(fake),
     };
+    return { rows, db: fake as never };
   }
 
   it('asks once after a registration find, confirms a Google name, and does not ask again', async () => {

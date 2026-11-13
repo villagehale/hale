@@ -69,7 +69,27 @@ export function weekdayFinderTemplateKey(ask: WeekdayFinderAsk): string {
 
 export type ParsedWeekdayAskKey =
   | { scope: 'legacy_care'; childId: string }
-  | { scope: 'search'; prompt: WeekdaySearchPrompt; eventKey: string | null };
+  | { scope: 'search'; prompt: WeekdaySearchPrompt; eventKey: string | null }
+  | { scope: 'break_dates'; schoolYear: string };
+
+/** VIL-685 · the one ask for a family's winter-break days, once per school year. */
+const BREAK_DATES_KIND = 'weekday_break_dates';
+const SCHOOL_YEAR = /^\d{4}-\d{2}$/;
+
+/** The dates ask's key: five parts, the school year in the subject slot. */
+export function schoolBreakAskDedupeKey(
+  familyId: string,
+  schoolYear: string,
+  parentUserId: string,
+): string {
+  if (!SCHOOL_YEAR.test(schoolYear)) {
+    throw new Error(`school break ask: bad school year ${schoolYear}`);
+  }
+  return `${PREFIX}:${familyId}:${BREAK_DATES_KIND}:${schoolYear}:${parentUserId}`;
+}
+
+/** The dates ask's `channel_messages.template_key`. */
+export const SCHOOL_BREAK_ASK_TEMPLATE_KEY = proactiveNudgeTemplateKey(BREAK_DATES_KIND);
 
 /** Five colon-separated parts, or null. A search ask is not a child id. */
 export function parseWeekdayAskKey(key: string | null): ParsedWeekdayAskKey | null {
@@ -91,6 +111,9 @@ export function parseWeekdayAskKey(key: string | null): ParsedWeekdayAskKey | nu
   }
   if (kind === 'weekday_break') {
     return { scope: 'search', prompt: 'break', eventKey: subject };
+  }
+  if (kind === BREAK_DATES_KIND && SCHOOL_YEAR.test(subject)) {
+    return { scope: 'break_dates', schoolYear: subject };
   }
   return null;
 }

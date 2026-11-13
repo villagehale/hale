@@ -1,0 +1,21 @@
+{
+  "value": {
+    "days_from": null,
+    "quote": null,
+    "first_day": null,
+    "first_day_text": null,
+    "last_day": null,
+    "last_day_text": null,
+    "back_day": null,
+    "back_day_text": null,
+    "name": null,
+    "confidence": "low"
+  },
+  "latencyMs": 1093,
+  "usage": {
+    "input_tokens": 67,
+    "output_tokens": 78,
+    "cache_read_input_tokens": 1635,
+    "cache_creation_input_tokens": 0
+  }
+}

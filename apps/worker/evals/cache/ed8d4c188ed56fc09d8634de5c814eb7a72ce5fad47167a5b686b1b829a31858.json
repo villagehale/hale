@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The school break ask is still valid until December, the parent replied to the last send, there is no unanswered streak or pace preference, and 11 AM Thursday is outside quiet hours, so it goes now.",
+    "action": "send_now",
+    "item_ids": [
+      "break-ask"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -16,6 +16,8 @@ const LIBRARY = 'https://library.example.test/programs';
 /** VIL-681 · Thursday 8:23 AM and 11:00 AM local: the review after the sweep queued it. */
 const THURSDAY_FIRST_THING = '2026-10-08T12:23:00.000Z';
 const THURSDAY_MIDDAY = '2026-10-08T15:00:00.000Z';
+/** VIL-685 · Thursday Dec 17, 11:00 AM local: the break starts Monday. */
+const THURSDAY_BEFORE_BREAK = '2026-12-17T16:00:00.000Z';
 /** The check-back's one day closes Friday 8:00 AM local. */
 const CHECKBACK = {
   id: 'checkback',
@@ -276,5 +278,39 @@ export const PROACTIVE_DECIDER_FIXTURES = [
     id: 'checkback-midday',
     expect: { action: 'send_now', includes: ['checkback'], frequency: null },
     snapshot: snapshot({ now: THURSDAY_MIDDAY, candidates: [candidate(CHECKBACK)] }),
+  },
+  {
+    // VIL-685 · no page has this family's winter break, so the one question: it may go now
+    // or wait for a better moment before mid-December, but never be thrown away.
+    id: 'school-break-ask',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['break-ask'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'break-ask',
+          kind: 'school_break_ask',
+          why: 'school_break_ask year=2026-27',
+          worthlessAfter: '2026-12-15T17:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    // VIL-685 · the break question, as the nudge sweep hands it off (kind `nudge`, why
+    // `weekday_care`, worthless once the break begins), on the Thursday before a Monday
+    // break: there is no later moment left to wait for, so it goes now.
+    id: 'winter-break-question',
+    expect: { action: 'send_now', includes: ['winter-break'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_BEFORE_BREAK,
+      candidates: [
+        candidate({
+          id: 'winter-break',
+          why: 'weekday_care',
+          worthlessAfter: '2026-12-22T05:00:00.000Z',
+        }),
+      ],
+    }),
   },
 ];

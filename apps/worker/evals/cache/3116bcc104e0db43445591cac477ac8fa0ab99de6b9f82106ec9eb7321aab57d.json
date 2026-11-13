@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! The school email lists winter break as Dec 21 through Jan 1. Do those days look right for your kids?"
+  },
+  "stopReason": "tool_use"
+}
