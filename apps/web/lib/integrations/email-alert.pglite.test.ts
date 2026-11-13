@@ -10,7 +10,12 @@ import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
+import {
+  PROACTIVE_CATEGORY,
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+} from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   appendMessage,
@@ -20,6 +25,8 @@ import {
   resolveNoteConversation,
 } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import * as passportCopy from '~/lib/passport/copy';
 import type {
   ExtractedEvent,
@@ -48,7 +55,6 @@ import {
   emailAlertOfferDraft,
 } from './email-alert';
 import { EMAIL_ALERT_BODY_ENABLED_ENV } from './email-alert-body-flag';
-import { EMAIL_ALERT_HOLD_DEBT_ENABLED_ENV } from './email-alert-hold-flag';
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, recordGoingCountShare, sessionKey } from './going';
@@ -166,6 +172,8 @@ function harness(
     readAlertBodyThrows?: boolean;
     /** What a re-read of a held message finds; by default the message is still there. */
     reread?: GmailAlertEnvelope | null | 'throws';
+    /** The production chokepoint and zone reader over this database, in place of a verdict. */
+    productionGate?: boolean;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -195,7 +203,9 @@ function harness(
         if (over.classifyThrows) throw new Error('gmail messages.get 503');
         return over.classification ?? classified();
       },
-      gate: async () => over.verdict ?? { allowed: true, optOut: 'full' },
+      gate: over.productionGate
+        ? (request) => assertProactiveSendAllowed(request, buildOutboundGatePorts(db.database))
+        : async () => over.verdict ?? { allowed: true, optOut: 'full' },
       resolvePhone: async () => (over.phone === undefined ? PHONE : over.phone),
       transport: over.sendThrows
         ? {
@@ -208,7 +218,9 @@ function harness(
         threaded.push(input);
         return 'conv-1';
       },
-      timeZone: async () => 'America/Toronto',
+      timeZone: over.productionGate
+        ? buildOutboundGatePorts(db.database).parentTimeZone
+        : async () => 'America/Toronto',
       rereadEnvelope: async (messageId) => {
         h.rereads.push(messageId);
         if (over.reread === 'throws') throw new Error('gmail messages.get 503');
@@ -460,11 +472,9 @@ describe('alertParentForEmail', () => {
   });
 
   it('a gate hold leaves a RECEIPT on the ledger and does not consume the dedupe key', async () => {
-    // A held email alert is never re-offered: the Gmail cursor advanced past this message
-    // the moment the sweep read it, so "we'll catch it next time" is not true here the way
-    // it is for a nudge. The row is therefore the only record that Hale read a parenting
-    // email at 23:40 and chose to stay quiet — a console line is not a receipt (the
-    // welcome card's shape, lib/channel/intake/welcome-card.ts).
+    // The row is the record that Hale read a parenting email at 23:40 and chose to stay
+    // quiet — a console line is not a receipt (the welcome card's shape,
+    // lib/channel/intake/welcome-card.ts). The debt the sweep re-offers is its own row.
     const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
     await expect(alert(held)).resolves.toBe('gate_refused:quiet_hours');
     expect(held.transport.sent).toEqual([]);
@@ -484,7 +494,9 @@ describe('alertParentForEmail', () => {
       providerMessageId: null,
       body: null,
     });
-    await expect(auditRows()).resolves.toEqual([]);
+    await expect(auditRows()).resolves.toMatchObject([
+      { actionTaken: 'email_alert_held', audience: family.parentUserId },
+    ]);
 
     const later = harness();
     await expect(alert(later)).resolves.toBe('sent');
@@ -1933,10 +1945,6 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
   const MORNING = new Date('2026-09-17T12:00:00.000Z');
   const QUIET = { allowed: false, reason: 'quiet_hours' } as const;
 
-  beforeEach(() => {
-    vi.stubEnv(EMAIL_ALERT_HOLD_DEBT_ENABLED_ENV, 'true');
-  });
-
   function sweepAt(h: Harness, now: Date, envelopes: GmailAlertEnvelope[] = []) {
     return alertParentForGmailSweep(
       db.database,
@@ -1967,6 +1975,23 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
       .where(eq(schema.emailAlertHolds.integrationId, INTEGRATION));
   }
 
+  async function holdAudit() {
+    return (await auditRows())
+      .filter((r) => r.targetTable === 'email_alert_holds')
+      .sort(
+        (a, b) =>
+          a.occurredAt.getTime() - b.occurredAt.getTime() ||
+          a.actionTaken.localeCompare(b.actionTaken),
+      )
+      .map(({ actionTaken, audience, targetTable, targetId, after }) => ({
+        actionTaken,
+        audience,
+        targetTable,
+        targetId,
+        after,
+      }));
+  }
+
   async function holdAt0750() {
     await expect(sweepAt(harness({ verdict: QUIET }), HELD_AT, [HELD_ENVELOPE])).resolves.toEqual([
       'gate_refused:quiet_hours',
@@ -1977,12 +2002,27 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
     await holdAt0750();
     const [open] = await holdRows();
     expect(open).toMatchObject({ messageId: 'm1', heldAt: HELD_AT, closedAt: null, outcome: null });
+    await expect(holdAudit()).resolves.toEqual([
+      {
+        actionTaken: 'email_alert_held',
+        audience: family.parentUserId,
+        targetTable: 'email_alert_holds',
+        targetId: open?.id,
+        after: { reason: 'quiet_hours' },
+      },
+    ]);
 
     const morning = harness();
     await expect(sweepAt(morning, MORNING)).resolves.toEqual(['sent']);
     expect(morning.rereads).toEqual(['m1']);
     expect(morning.transport.sent).toHaveLength(1);
     await expect(holdRows()).resolves.toMatchObject([{ closedAt: MORNING, outcome: 'sent' }]);
+    expect((await holdAudit()).map((r) => [r.actionTaken, r.after])).toEqual([
+      ['email_alert_held', { reason: 'quiet_hours' }],
+      ['email_alert_hold_closed', { outcome: 'sent' }],
+    ]);
+    // The send itself keeps its own row.
+    expect((await auditRows()).filter((r) => r.actionTaken === 'email_alert_sent')).toHaveLength(1);
 
     // A closed debt is not owed again.
     const later = harness();
@@ -2054,18 +2094,95 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
       'gate_refused:no_watch_consent',
     ]);
     await expect(holdRows()).resolves.toEqual([]);
+    await expect(holdAudit()).resolves.toEqual([]);
   });
 
-  it('dark, a quiet-hours hold writes no debt and is not re-offered', async () => {
-    vi.stubEnv(EMAIL_ALERT_HOLD_DEBT_ENABLED_ENV, undefined);
-    await expect(sweepAt(harness({ verdict: QUIET }), HELD_AT, [HELD_ENVELOPE])).resolves.toEqual([
-      'gate_refused:quiet_hours',
-    ]);
-    await expect(holdRows()).resolves.toEqual([]);
+  it("the parent's own quiet window holds the re-offer past the floor, then it goes", async () => {
+    await holdAt0750();
+    await db.database.insert(schema.loopPrefs).values({
+      userId: family.parentUserId,
+      quietHoursStart: '21:00:00',
+      quietHoursEnd: '09:00:00',
+    });
 
-    const morning = harness();
-    await expect(sweepAt(morning, MORNING)).resolves.toEqual([]);
-    expect(morning.rereads).toEqual([]);
-    expect(morning.transport.sent).toEqual([]);
+    // 08:30: the floor is open and the gate allows, but the parent asked for nothing before 09:00.
+    const early = harness();
+    await expect(sweepAt(early, new Date('2026-09-17T12:30:00.000Z'))).resolves.toEqual([
+      'hold_waiting',
+    ]);
+    expect(early.rereads).toEqual([]);
+    expect(early.classifyCalls).toBe(0);
+    expect(early.transport.sent).toEqual([]);
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: null, outcome: null }]);
+
+    const nine = new Date('2026-09-17T13:00:00.000Z');
+    const h = harness();
+    await expect(sweepAt(h, nine)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(1);
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: nine, outcome: 'sent' }]);
+  });
+
+  describe('through the production chokepoint', () => {
+    async function enrol() {
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schema.users.id, family.parentUserId));
+      await db.database.insert(schema.parentChannels).values({
+        userId: family.parentUserId,
+        familyId: family.familyId,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(PHONE),
+        phoneE164Hash: phoneBlindIndex(PHONE),
+        verifiedAt: HELD_AT,
+      });
+      await recordWatchConsent(
+        db.database,
+        {
+          familyId: family.familyId,
+          userId: family.parentUserId,
+          granted: true,
+          verbatimReply: 'yes',
+          interpretation: 'the parent said yes to being watched',
+          channelMessageId: null,
+        },
+        HELD_AT,
+      );
+    }
+
+    it('the real floor holds at 07:50, keeps the debt at 07:59, and lets it go at 08:00', async () => {
+      await enrol();
+      await expect(
+        sweepAt(harness({ productionGate: true }), HELD_AT, [HELD_ENVELOPE]),
+      ).resolves.toEqual(['gate_refused:quiet_hours']);
+      await expect(holdRows()).resolves.toHaveLength(1);
+
+      const still = harness({ productionGate: true });
+      await expect(sweepAt(still, new Date('2026-09-17T11:59:00.000Z'))).resolves.toEqual([
+        'hold_waiting',
+      ]);
+      expect(still.rereads).toEqual([]);
+
+      const morning = harness({ productionGate: true });
+      await expect(sweepAt(morning, MORNING)).resolves.toEqual(['sent']);
+      expect(morning.transport.sent).toHaveLength(1);
+      await expect(holdRows()).resolves.toMatchObject([{ outcome: 'sent' }]);
+    });
+
+    it('never a cold text: a parent with no live channel is not texted, and the debt closes', async () => {
+      await holdAt0750();
+      const morning = harness({ productionGate: true });
+      await expect(sweepAt(morning, MORNING)).resolves.toEqual(['gate_refused:not_enrolled']);
+      expect(morning.rereads).toEqual([]);
+      expect(morning.classifyCalls).toBe(0);
+      expect(morning.transport.sent).toEqual([]);
+      await expect(holdRows()).resolves.toMatchObject([
+        { closedAt: MORNING, outcome: 'gate_refused:not_enrolled' },
+      ]);
+      expect((await holdAudit()).map((r) => [r.actionTaken, r.after])).toEqual([
+        ['email_alert_held', { reason: 'quiet_hours' }],
+        ['email_alert_hold_closed', { outcome: 'gate_refused:not_enrolled' }],
+      ]);
+    });
   });
 });
