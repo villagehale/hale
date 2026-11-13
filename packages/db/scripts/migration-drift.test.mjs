@@ -77,7 +77,8 @@ describe('catalog history cutover', () => {
       '0245_secret_santa',
       '0246_opt_out_held_messages_kind',
       '0247_messages_author_user_id',
-      '0250_group_plan_identity',
+      '0249_asks_one_send_clock',
+      '0251_group_plan_identity',
     ]);
   });
 });

@@ -7198,6 +7198,10 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS opt_out_unread boolean');
       // And the turn's author (0247, VIL-597), which the router writes on the parent's turn.
       await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS author_user_id uuid');
+      // And the recorded send time (0249, VIL-302), which drizzle names on every ledger row.
+      await db.exec(
+        'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS send_recorded_at timestamptz',
+      );
     });
 
     afterAll(async () => {

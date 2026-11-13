@@ -172,9 +172,11 @@ export interface OpenCheckupOffer {
   /** Whose visit, or null for a household-scoped checkpoint. */
   childId: string | null;
   summary: string;
-  /** When the offer sentence went out — the ledger row's mint time (recorded against
-   * the sent message). The open-question reader's recency fact. */
+  /** When the offer row was minted, after the message that carried it was sent. */
   askedAt: Date;
+  /** The outbound `channel_messages` row that carried the offer: the router dates the ask
+   * by its recorded send (VIL-302, channel/ledger.ts `sendRecordedAt`). */
+  askedVia: string;
 }
 
 /**
@@ -211,6 +213,7 @@ export async function loadOpenCheckupOffer(
     childId: offer.subjectChildId,
     summary: offer.summary,
     askedAt: offer.createdAt,
+    askedVia: offer.createdFrom,
   };
 }
 

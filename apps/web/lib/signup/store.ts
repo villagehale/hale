@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
@@ -214,10 +214,10 @@ export class AskOrderUnmarked extends Error {
 /**
  * Brackets the one transport call that carries a text about sign-up asks. Run it right
  * before that call, and send only when it resolved: it throws {@link AskOrderUnmarked} when
- * the send could not be marked. Run what it returns once the transport accepted the text,
- * and never when the send failed.
+ * the send could not be marked. Run what it returns with the `channel_messages` row that
+ * recorded the text, once that row recorded the send, and never when the send failed.
  */
-export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
+export type SendStamp = () => Promise<(channelMessageId: string) => Promise<AskStampOutcome>>;
 
 /**
  * The stamp for a text about these asks (the offer, a question back, a notice, a receipt).
@@ -226,8 +226,10 @@ export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
  * `authorized_signup_ask_seq` and marks the parent's order uncertain at that number
  * (`authorized_signup_ask_order_uncertain`). While the mark stands no bare yes or no binds
  * any of their asks ({@link loadLastAsked}). When that write fails the send is not
- * made. Once the transport took the text, the number is kept on each ask and the mark is
- * cleared, in one transaction ({@link keepAskNumber}). A send that fails in any way (a
+ * made. Once the transport took the text and its ledger row recorded the send, the number is
+ * kept on each ask with that row, and the mark is cleared, in one transaction
+ * ({@link keepAskNumber}). The row's `send_recorded_at` is when the text went, on the one
+ * clock every lane's asks are ranked by (VIL-302). A send that fails in any way (a
  * refusal, a timeout after the carrier may have taken the text, a 2xx with no id, a crash)
  * leaves the mark, so a text the parent may have can never hand their bare answer to an
  * older ask. The next text about one of their asks that is kept clears it.
@@ -242,7 +244,7 @@ export type SendStamp = () => Promise<() => Promise<AskStampOutcome>>;
 export function askStamp(database: Database, asks: AskedAbout): SendStamp {
   return async () => {
     const seq = await markAskInFlight(database, asks);
-    return () => keepAskNumber(database, asks, seq);
+    return (channelMessageId) => keepAskNumber(database, asks, seq, channelMessageId);
   };
 }
 
@@ -298,9 +300,11 @@ async function drawAskNumber(database: Database): Promise<number> {
 }
 
 /**
- * The text went: keep its number on each ask (never lowering one a later-started send
- * kept) and clear the parent's mark, in one transaction. The mark is cleared only when no
- * send that started later is still marked (it stands at a higher number then). Retried
+ * The text went: keep its number on each ask with the row that recorded it, and clear the
+ * parent's mark, in one transaction. An ask a later-started send already kept is left as it
+ * is, row and time too, so a time never pairs with a lower number than its own text's. The
+ * mark is cleared only when no send that started later is still marked (it stands at a
+ * higher number then). Retried
  * once. When it still fails, the mark made before the send holds every bare answer of
  * theirs until a later number is kept ({@link keepMissed}). Never throws: the parent
  * already has the text.
@@ -309,6 +313,7 @@ async function keepAskNumber(
   database: Database,
   asks: AskedAbout,
   seq: number,
+  channelMessageId: string,
 ): Promise<AskStampOutcome> {
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -317,17 +322,20 @@ async function keepAskNumber(
         const tx = rawTx as unknown as Database;
         const offers = schema.authorizedSignupOffers;
         const uncertain = schema.authorizedSignupAskOrderUncertain;
+        const messages = schema.channelMessages;
         await tx
           .update(offers)
           .set({
-            lastAskedSeq: sql`greatest(${offers.lastAskedSeq}, ${seq}::bigint)`,
-            lastAskedAt: sql`clock_timestamp()`,
+            lastAskedSeq: seq,
+            lastAskedMessageId: channelMessageId,
+            lastAskedAt: sql`(select ${messages.sendRecordedAt} from ${messages} where ${messages.id} = ${channelMessageId} and ${messages.familyId} = ${asks.familyId})`,
           })
           .where(
             and(
               inArray(offers.id, [...asks.offerIds]),
               eq(offers.familyId, asks.familyId),
               eq(offers.parentUserId, asks.parentUserId),
+              or(isNull(offers.lastAskedSeq), lt(offers.lastAskedSeq, seq)),
             ),
           );
         await tx
@@ -395,8 +403,9 @@ async function keepMissed(
  * - `asked`: the ask whose text reached them last, whatever its status now: the offer, or a
  *   later question back, notice or receipt about it ({@link AskOrder}). An approved, running
  *   or finished ask can be it, so a bare yes after its login ask or receipt is never handed
- *   to an older ask still waiting on one. `askedAt` is when that text's number was kept:
- *   never an order among sign-up asks, only how they rank against the asks of other lanes
+ *   to an older ask still waiting on one. `askedAt` is when the row that carried that text
+ *   recorded its send (`channel_messages.send_recorded_at`): never an order among sign-up
+ *   asks, only how they rank against the asks of other lanes, on the one clock they all use
  *   (`newestAsks`, VIL-302). Null when not known.
  * - `uncertain`: their order is marked uncertain (a send about one of their asks is out, or
  *   ended without its number kept: {@link askStamp}), so no bare answer binds until a later
@@ -429,9 +438,11 @@ export async function loadLastAsked(
     return { status: 'uncertain' };
   }
   const offers = schema.authorizedSignupOffers;
+  const messages = schema.channelMessages;
   const [row] = await database
-    .select({ id: offers.id, askedAt: offers.lastAskedAt })
+    .select({ id: offers.id, askedAt: messages.sendRecordedAt })
     .from(offers)
+    .leftJoin(messages, eq(messages.id, offers.lastAskedMessageId))
     .where(
       and(
         eq(offers.familyId, input.familyId),
