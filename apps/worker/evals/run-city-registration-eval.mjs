@@ -14,11 +14,17 @@
 //     equal it exactly;
 //   · a date for a place with no such page: an invented town must come back not found,
 //     never with a guessed date;
-//   · a page that is not the city's own: the source must be on the city's own domain;
+//   · a page that is not the city's own: the source must be on the city's own domain
+//     (production now refuses it in code, through the official site the structured
+//     source names; this check stays as the hand-read second line);
+//   · a Toronto district family given another district's morning, or a free-centres or
+//     early-local morning;
 //   · a city that publishes its date today, and the lookup did not find it.
 //
-// Recorded RAW: the search turn's blocks (minus the opaque encrypted result payloads) and
-// each page's bytes as fetched by production's own pinned fetcher at record time, so a
+// Recorded RAW: the search turn's blocks (minus the opaque encrypted result payloads), the
+// structured source's answers for the city's official site (Wikidata name search and
+// place check, free), and each page's bytes as fetched by production's own pinned
+// fetcher at record time, so a
 // replay re-derives everything — the search outcome, the page text, the reading and the
 // family's date — through today's code. The clock is pinned to the record day.
 //
@@ -57,6 +63,9 @@ const {
   pageSearchUserMessage,
 } = await importTs(join(REGISTRATION, 'city', 'search.ts'));
 const { lookupCityRegistration } = await importTs(join(REGISTRATION, 'city', 'lookup.ts'));
+const { lookupOfficialSite, wikidataSource } = await importTs(
+  join(REGISTRATION, 'city', 'official-site.ts'),
+);
 const { familyOpening } = await importTs(join(REGISTRATION, 'city', 'opening.ts'));
 const { createRegistrationReader } = await importTs(join(REGISTRATION, 'read.ts'));
 const { createRegistrationPageBytesFetch } = await importTs(join(REGISTRATION, 'page.ts'));
@@ -72,6 +81,9 @@ const {
 const NOW = new Date('2026-11-12T20:00:00Z');
 const CYCLE = 'Winter 2027';
 const SEARCH_USD = 0.01;
+
+const TORONTO_REGISTER =
+  'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
 
 const place = (city, provinceOrState, district = null) => ({
   city,
@@ -97,20 +109,51 @@ const FIXTURES = [
         { own: ['2026-12-01', '06:30'], general: ['2026-12-02', '06:30'] },
     },
   },
+  // Toronto registers by district. The register page's table, read by hand 2026-11-12:
+  // "Winter Recreation: Free Centres (for eligible residents) Tuesday, December 1, 7 a.m.
+  //  Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.
+  //  Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m."
+  // It prints no year; production pins it from the printed weekday (Dec 8 2026 is a
+  // Tuesday and Dec 9 a Wednesday; neither date is that weekday in 2027). The four
+  // districts share one search: its input names no district.
   {
     id: 'toronto-north-york',
     why: 'A current family city that registers by district: North York opens on its own morning.',
     place: place('Toronto', 'Ontario', 'north_york'),
-    // The register page's table reads "Winter Recreation: North York and Scarborough |
-    // Wednesday, December 9, 7 a.m." and states no year for it, so under the stale-year
-    // rule it is not a date yet: "not found" is honest here, and the only hard zero is a
-    // date other than the page's. A find is still graded against the page.
+    expect: 'find',
+    host: 'toronto.ca',
+    reference: { [TORONTO_REGISTER]: { own: ['2026-12-09', '07:00'], general: null } },
+  },
+  {
+    id: 'toronto-scarborough',
+    why: "Scarborough shares North York's morning.",
+    place: place('Toronto', 'Ontario', 'scarborough'),
+    searchAs: 'toronto-north-york',
+    expect: 'find',
+    host: 'toronto.ca',
+    reference: { [TORONTO_REGISTER]: { own: ['2026-12-09', '07:00'], general: null } },
+  },
+  {
+    id: 'toronto-east-york',
+    why: 'Toronto and East York open a day earlier than North York.',
+    place: place('Toronto', 'Ontario', 'toronto_east_york'),
+    searchAs: 'toronto-north-york',
+    expect: 'find',
+    host: 'toronto.ca',
+    reference: { [TORONTO_REGISTER]: { own: ['2026-12-08', '07:00'], general: null } },
+  },
+  {
+    id: 'toronto-etobicoke-york',
+    why: 'Etobicoke shares the Toronto and East York morning.',
+    place: place('Toronto', 'Ontario', 'etobicoke_york'),
+    searchAs: 'toronto-north-york',
+    // The recorded draw (2026-11-12) quoted its section by stitching two passages that are
+    // not adjacent on the page, and the corroboration gate refused it, so this family
+    // hears "doesn't know yet" until the next lookup. Not re-drawn (eval spend rule): the
+    // hard zero here is a date the page does not state, and a find is graded on the page.
     expect: 'no_wrong_date',
     host: 'toronto.ca',
-    reference: {
-      'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/':
-        { own: ['2026-12-09', '07:00'], general: null },
-    },
+    reference: { [TORONTO_REGISTER]: { own: ['2026-12-08', '07:00'], general: null } },
   },
   {
     id: 'greater-sudbury',
@@ -125,6 +168,23 @@ const FIXTURES = [
         general: null,
       },
     },
+  },
+  // Outside the GTA, found live with no hand-kept anything. Both sites may refuse the
+  // pinned fetcher (a bot challenge, a 403); the hard zero is a date the page does not
+  // state, so "not found" with a named reason passes and a find is graded on the page.
+  {
+    id: 'ottawa',
+    why: 'A family far from the GTA in a big city: its own page, or an honest not found.',
+    place: place('Ottawa', 'Ontario'),
+    expect: 'no_wrong_date',
+    host: 'ottawa.ca',
+  },
+  {
+    id: 'vancouver',
+    why: 'A family in another province: its own page, or an honest not found.',
+    place: place('Vancouver', 'British Columbia'),
+    expect: 'no_wrong_date',
+    host: 'vancouver.ca',
   },
   {
     id: 'invented-town',
@@ -159,12 +219,34 @@ function rawBlocks(content) {
   });
 }
 
+/** The structured source production asks for a city's official site, its answers
+ * recorded on the record day (free: Wikidata's public API). */
+function cachedOfficialSiteSource(cachedOnly) {
+  const live = wikidataSource();
+  const cached = (kind, input, load) => async () => {
+    const key = cacheKey(`city-registration:official-site:${kind}`, input);
+    const hit = await cacheGet(key);
+    if (hit !== undefined) return hit;
+    if (cachedOnly) {
+      console.error(`cache miss in --cached-only mode (official site ${kind} ${input})`);
+      process.exit(1);
+    }
+    const value = await load();
+    await cachePut(key, value);
+    return value;
+  };
+  return {
+    search: (name) => cached('search', name, () => live.search(name))(),
+    sparql: (query) => cached('sparql', query, () => live.sparql(query))(),
+  };
+}
+
 async function cachedSearch({ fixture, skill, cachedOnly, getClient, cost }) {
   const model = agent.pickModel(skill.meta.task);
   const system = agent.cachedSystem(skill.instructions);
   const userMessage = pageSearchUserMessage(fixture.place, CYCLE, NOW.toISOString().slice(0, 10));
   const key = cacheKey(
-    `city-registration:search:${fixture.id}`,
+    `city-registration:search:${fixture.searchAs ?? fixture.id}`,
     JSON.stringify({ model, system, userMessage, maxUses: MAX_PAGE_SEARCHES }),
   );
   const cached = await cacheGet(key);
@@ -254,34 +336,39 @@ async function main() {
   );
 
   const failures = [];
+  const officialSites = cachedOfficialSiteSource(cachedOnly);
   for (const fixture of FIXTURES) {
     // The text the reader handed the model for the page being read now: the page a
     // verified date's quotes are checked against.
     let lastPageText = null;
     const reader = broken
       ? brokenReader()
-      : createRegistrationReader({
-          fetchBody: (url) => cachedPage(url, cachedOnly),
-          extract: async (cycle, pageText) => {
-            lastPageText = pageText;
-            const result = await cachedToolCall({
-              tag: `city-registration:read:${fixture.id}`,
-              model: readLane.model,
-              lane: readLane,
-              system: readSkill.instructions,
-              userMessage: extractionInput(cycle, pageText),
-              toolName: 'published_registration_window',
-              toolDescription:
-                'Return the registration dates this page publishes for the named cycle.',
-              toolSchema: EXTRACTION_JSON_SCHEMA,
-              maxTokens: EXTRACTION_MAX_TOKENS,
-              cachedOnly,
-              getClient,
-              cost,
-            });
-            return parseExtraction(result.value);
+      : createRegistrationReader(
+          {
+            fetchBody: (url) => cachedPage(url, cachedOnly),
+            extract: async (cycle, pageText) => {
+              lastPageText = pageText;
+              const result = await cachedToolCall({
+                tag: `city-registration:read:${fixture.id}`,
+                model: readLane.model,
+                lane: readLane,
+                system: readSkill.instructions,
+                userMessage: extractionInput(cycle, pageText),
+                toolName: 'published_registration_window',
+                toolDescription:
+                  'Return the registration dates this page publishes for the named cycle.',
+                toolSchema: EXTRACTION_JSON_SCHEMA,
+                maxTokens: EXTRACTION_MAX_TOKENS,
+                cachedOnly,
+                getClient,
+                cost,
+              });
+              return parseExtraction(result.value);
+            },
           },
-        });
+          // The own-city lane's reader, as production builds it (sweep.ts cityLookupDeps).
+          { yearFromWeekday: true },
+        );
     const texts = new Map();
     const readAndKeep = async (target, now) => {
       lastPageText = null;
@@ -304,7 +391,11 @@ async function main() {
     };
 
     const found = await lookupCityRegistration(
-      { search, read: readAndKeep },
+      {
+        officialSite: (where) => lookupOfficialSite(officialSites, where),
+        search,
+        read: readAndKeep,
+      },
       fixture.place,
       CYCLE,
       NOW,
@@ -333,7 +424,7 @@ async function main() {
           }
         }
       }
-      const opening = familyOpening(found.reading, fixture.place.residencyKnown);
+      const opening = familyOpening(found.reading, fixture.place);
       if (opening === null) reasons.push('verified, but no opening for this family');
       const reference = fixture.reference?.[found.sourceUrl];
       if (opening && reference) {

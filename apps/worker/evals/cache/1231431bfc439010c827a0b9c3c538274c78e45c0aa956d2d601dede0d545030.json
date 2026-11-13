@@ -1,0 +1,22 @@
+{
+  "head": {
+    "vars": [
+      "item",
+      "site"
+    ]
+  },
+  "results": {
+    "bindings": [
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q172"
+        },
+        "site": {
+          "type": "uri",
+          "value": "https://www.toronto.ca/"
+        }
+      }
+    ]
+  }
+}

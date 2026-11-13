@@ -1,6 +1,7 @@
 import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import type { RegistrationReader, RegistrationTarget } from '../read';
 import { type OfficialSite, onOfficialSite } from './official-site';
+import { familyOpening } from './opening';
 import type { OwnCity } from './place';
 import type { PageSearch } from './search';
 
@@ -59,9 +60,13 @@ export function readCycleLabel(place: Pick<OwnCity, 'district'>, cycleLabel: str
   return place.district ? `${cycleLabel} (${place.district.replaceAll('_', ' ')})` : cycleLabel;
 }
 
-/** A reading with an opening in it. A preview alone is not a registration date. */
-function hasOpening(reading: VerifiedRegistrationReading): boolean {
-  return reading.dates.some((date) => date.kind !== 'preview');
+/** A reading with an opening in it for this family (opening.ts): a preview alone is not
+ * a registration date, and a district family needs its district's own date. */
+export function opensForFamily(
+  reading: VerifiedRegistrationReading,
+  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
+): boolean {
+  return familyOpening(reading, place) !== null;
 }
 
 function outcomeName(reading: LiveRegistrationReading): string {
@@ -70,8 +75,11 @@ function outcomeName(reading: LiveRegistrationReading): string {
 
 /** A page that answered and said this season is not out (later, another season only, no
  * date), as opposed to one that could not be read or did not verify. */
-export function pageSaysNotYet(reading: LiveRegistrationReading): boolean {
-  if (reading.status === 'verified') return !hasOpening(reading);
+export function pageSaysNotYet(
+  reading: LiveRegistrationReading,
+  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
+): boolean {
+  if (reading.status === 'verified') return !opensForFamily(reading, place);
   if (reading.status !== 'unverified') return false;
   return (
     reading.reason === 'announced_later' ||
@@ -149,7 +157,7 @@ export async function lookupCityRegistration(
       now,
     );
     tried.push({ url, outcome: outcomeName(reading) });
-    if (reading.status === 'verified' && hasOpening(reading)) {
+    if (reading.status === 'verified' && opensForFamily(reading, place)) {
       return { status: 'verified', municipality: search.municipality, sourceUrl: url, reading };
     }
     if (readDidNotFinish(reading)) {
@@ -158,7 +166,7 @@ export async function lookupCityRegistration(
           ? 'reader_busy'
           : `page_unread:${reading.reason}`;
     }
-    if (pageSaysNotYet(reading)) notYet = true;
+    if (pageSaysNotYet(reading, place)) notYet = true;
     if (reading.status === 'unverified' && reading.reason === 'incomplete_date') noYear = true;
   }
   if (unfinished !== null) return { status: 'retry', reason: unfinished };

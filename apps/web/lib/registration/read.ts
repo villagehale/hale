@@ -166,6 +166,9 @@ export function createRegistrationReader(
       }
       pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
     }
+    // A page with no words on it (a bot challenge served as a 200) says nothing, and a
+    // model asked about it answers "not published": it is unreadable, and never asked.
+    if (!/\p{L}/u.test(pageText)) return unreadable('empty_page');
 
     let extracted: ExtractedWindow;
     try {

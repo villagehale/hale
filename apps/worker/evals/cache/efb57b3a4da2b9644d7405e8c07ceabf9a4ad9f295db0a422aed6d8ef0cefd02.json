@@ -1,0 +1,515 @@
+{
+  "searchinfo": {
+    "search": "Vancouver"
+  },
+  "search": [
+    {
+      "id": "Q24639",
+      "title": "Q24639",
+      "pageid": 28046,
+      "concepturi": "http://www.wikidata.org/entity/Q24639",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q24639",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "largest city in the province of British Columbia, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "largest city in the province of British Columbia, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q234053",
+      "title": "Q234053",
+      "pageid": 227680,
+      "concepturi": "http://www.wikidata.org/entity/Q234053",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q234053",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "city in and the county seat of Clark County, Washington, United States",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "city in and the county seat of Clark County, Washington, United States",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q108471430",
+      "title": "Q108471430",
+      "pageid": 103731728,
+      "concepturi": "http://www.wikidata.org/entity/Q108471430",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q108471430",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "family name",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "family name",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q196107",
+      "title": "Q196107",
+      "pageid": 193923,
+      "concepturi": "http://www.wikidata.org/entity/Q196107",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q196107",
+      "display": {
+        "label": {
+          "value": "Vancouver Whitecaps FC",
+          "language": "en"
+        },
+        "description": {
+          "value": "Major League Soccer team in Vancouver, BC, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Whitecaps FC",
+      "description": "Major League Soccer team in Vancouver, BC, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Whitecaps FC"
+      }
+    },
+    {
+      "id": "Q9674",
+      "title": "Q9674",
+      "pageid": 11068,
+      "concepturi": "http://www.wikidata.org/entity/Q9674",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q9674",
+      "display": {
+        "label": {
+          "value": "2010 Winter Olympics",
+          "language": "en"
+        },
+        "description": {
+          "value": "21st edition of Winter Olympics, in Vancouver, Canada",
+          "language": "en"
+        }
+      },
+      "label": "2010 Winter Olympics",
+      "description": "21st edition of Winter Olympics, in Vancouver, Canada",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Vancouver 2010"
+      },
+      "aliases": [
+        "Vancouver 2010"
+      ]
+    },
+    {
+      "id": "Q135264473",
+      "title": "Q135264473",
+      "pageid": 129015154,
+      "concepturi": "http://www.wikidata.org/entity/Q135264473",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q135264473",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "Tony Hawk's Underground level",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "Tony Hawk's Underground level",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q133248684",
+      "title": "Q133248684",
+      "pageid": 127102841,
+      "concepturi": "http://www.wikidata.org/entity/Q133248684",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q133248684",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "1962 painting by Bruno Bobak",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "1962 painting by Bruno Bobak",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q170479",
+      "title": "Q170479",
+      "pageid": 170758,
+      "concepturi": "http://www.wikidata.org/entity/Q170479",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q170479",
+      "display": {
+        "label": {
+          "value": "Vancouver Island",
+          "language": "en"
+        },
+        "description": {
+          "value": "island of British Columbia, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Island",
+      "description": "island of British Columbia, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Island"
+      }
+    },
+    {
+      "id": "Q7914286",
+      "title": "Q7914286",
+      "pageid": 7852728,
+      "concepturi": "http://www.wikidata.org/entity/Q7914286",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7914286",
+      "display": {
+        "label": {
+          "value": "Vancouveria hexandra",
+          "language": "en"
+        },
+        "description": {
+          "value": "species of plant",
+          "language": "en"
+        }
+      },
+      "label": "Vancouveria hexandra",
+      "description": "species of plant",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouveria hexandra"
+      }
+    },
+    {
+      "id": "Q2004274",
+      "title": "Q2004274",
+      "pageid": 1932632,
+      "concepturi": "http://www.wikidata.org/entity/Q2004274",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2004274",
+      "display": {
+        "label": {
+          "value": "Vancouver Sun",
+          "language": "en"
+        },
+        "description": {
+          "value": "daily newspaper in Vancouver, British Columbia",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Sun",
+      "description": "daily newspaper in Vancouver, British Columbia",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Sun"
+      }
+    },
+    {
+      "id": "Q3022823",
+      "title": "Q3022823",
+      "pageid": 2889966,
+      "concepturi": "http://www.wikidata.org/entity/Q3022823",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3022823",
+      "display": {
+        "label": {
+          "value": "Vancouver Film School",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian Film School",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Film School",
+      "description": "Canadian Film School",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Film School"
+      }
+    },
+    {
+      "id": "Q192890",
+      "title": "Q192890",
+      "pageid": 191015,
+      "concepturi": "http://www.wikidata.org/entity/Q192890",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q192890",
+      "display": {
+        "label": {
+          "value": "Vancouver Canucks",
+          "language": "en"
+        },
+        "description": {
+          "value": "hockey team of the National Hockey League",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Canucks",
+      "description": "hockey team of the National Hockey League",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Canucks"
+      }
+    },
+    {
+      "id": "Q1376408",
+      "title": "Q1376408",
+      "pageid": 1315632,
+      "concepturi": "http://www.wikidata.org/entity/Q1376408",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q1376408",
+      "display": {
+        "label": {
+          "value": "Vancouver Public Library",
+          "language": "en"
+        },
+        "description": {
+          "value": "public library system in British Columbia",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Public Library",
+      "description": "public library system in British Columbia",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Public Library"
+      }
+    },
+    {
+      "id": "Q958124",
+      "title": "Q958124",
+      "pageid": 907972,
+      "concepturi": "http://www.wikidata.org/entity/Q958124",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q958124",
+      "display": {
+        "label": {
+          "value": "Vancouver East",
+          "language": "en"
+        },
+        "description": {
+          "value": "federal electoral district in British Columbia, Canada (since 1935)",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver East",
+      "description": "federal electoral district in British Columbia, Canada (since 1935)",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver East"
+      }
+    },
+    {
+      "id": "Q7914244",
+      "title": "Q7914244",
+      "pageid": 7852681,
+      "concepturi": "http://www.wikidata.org/entity/Q7914244",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7914244",
+      "display": {
+        "label": {
+          "value": "Vancouver River",
+          "language": "en"
+        },
+        "description": {
+          "value": "watercourse in British Columbia, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver River",
+      "description": "watercourse in British Columbia, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver River"
+      }
+    },
+    {
+      "id": "Q3554467",
+      "title": "Q3554467",
+      "pageid": 3383475,
+      "concepturi": "http://www.wikidata.org/entity/Q3554467",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3554467",
+      "display": {
+        "label": {
+          "value": "Vancouver Kingsway",
+          "language": "en"
+        },
+        "description": {
+          "value": "federal electoral district in British Columbia, Canada (since 1997)",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Kingsway",
+      "description": "federal electoral district in British Columbia, Canada (since 1997)",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Kingsway"
+      }
+    },
+    {
+      "id": "Q3554460",
+      "title": "Q3554460",
+      "pageid": 3383468,
+      "concepturi": "http://www.wikidata.org/entity/Q3554460",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q3554460",
+      "display": {
+        "label": {
+          "value": "Vancouver Centre",
+          "language": "en"
+        },
+        "description": {
+          "value": "federal electoral district in British Columbia, Canada (since 1917)",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver Centre",
+      "description": "federal electoral district in British Columbia, Canada (since 1917)",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver Centre"
+      }
+    },
+    {
+      "id": "Q4706526",
+      "title": "Q4706526",
+      "pageid": 4497069,
+      "concepturi": "http://www.wikidata.org/entity/Q4706526",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q4706526",
+      "display": {
+        "label": {
+          "value": "Vancouveria",
+          "language": "en"
+        },
+        "description": {
+          "value": "genus of plants",
+          "language": "en"
+        }
+      },
+      "label": "Vancouveria",
+      "description": "genus of plants",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouveria"
+      }
+    },
+    {
+      "id": "Q7914110",
+      "title": "Q7914110",
+      "pageid": 7852541,
+      "concepturi": "http://www.wikidata.org/entity/Q7914110",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7914110",
+      "display": {
+        "label": {
+          "value": "Vancouver",
+          "language": "en"
+        },
+        "description": {
+          "value": "album by Matthew Good",
+          "language": "en"
+        }
+      },
+      "label": "Vancouver",
+      "description": "album by Matthew Good",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Vancouver"
+      }
+    },
+    {
+      "id": "Q641965",
+      "title": "Q641965",
+      "pageid": 604041,
+      "concepturi": "http://www.wikidata.org/entity/Q641965",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q641965",
+      "display": {
+        "label": {
+          "value": "2010 Winter Paralympics",
+          "language": "en"
+        },
+        "description": {
+          "value": "multi-parasport event in Vancouver and Whistler, Canada",
+          "language": "en"
+        }
+      },
+      "label": "2010 Winter Paralympics",
+      "description": "multi-parasport event in Vancouver and Whistler, Canada",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Vancouver 2010"
+      },
+      "aliases": [
+        "Vancouver 2010"
+      ]
+    }
+  ],
+  "search-continue": 20,
+  "success": 1
+}
