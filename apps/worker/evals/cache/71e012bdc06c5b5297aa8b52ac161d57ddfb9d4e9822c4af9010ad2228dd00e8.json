@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzEW5hQYwNHZfFWznYjR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpAYKEAgTGAI4AUIIdGhpbmtpbmcSDMNKjJMIUBrqCr4HXhoMWjobnq8GB2sI7YgIIjBlmlwwRGSmwyj5mIPdlG/Z3v3nb3zUHUvJko2W3F998b2WpmmQYhaxPo4J0CQ1h/4qwQWM0U+w3THUQc+vVuT9T5ulMzyNGVz9H/c+0ozUdn08rWsqg2PyxVzR6jrvc+8Eq7ywG+Ph5GSp8dePQO6AjM0NMXMVD6wm8C2SBmv8S7l1vXLorxcWQRQcxKzradZm/Iyd3AgFBErwY5WCmo3FyZYlQ608MWfqo5maR/sJzo0O2Fk1aiMq7g7XGA51aejSDZVUHhNpUrRdyKeuG4ly+dbQheuEsomB5CLW4+MUDNj0Y6lXCLMwDMMg/AXyd4DeKjLLb5AbpErTcelyfe/+ojjgYzt1FKgEumQU486nS8xlvcpnfUi3D1ctO5NcyjtR+1DR9tJOH+JyNiZZ6YOxZ22TEkcbSgSuREq2xbXAFRprRbZopPIzejwYJ++6unVUzeoMNw9OvHbHKkD2VnVXlfn6vJvmmwyBbm9Wk3KGJMOZP4m3Y3yAQ+OCdv4H3RGPSx1xNwWqXDzG9q6Qbfs6Z6IbvfKkTqBcIrvZEHCh3Y2hwKneqirI9OEThNlgx5xH/hiIuWK1uF4+Vs3c0zJl3BfZCXsLDpzZAZbDdRfdxLfc1l9fjbH7LIBrawQrjpPkn97KEllhZAbGmz171w0Nr00hdYOj7uZfdLNepb9AetHgUOORn4Fts/gLnPn+qrcRNuI5N5M1jLOUa1Ioo9T13hSLR0FbKUZXd7uu/0QMUrqdwixZ10mbhclMZX2pVsQdwhsYVt16z3FAQcRcJYntTDoW6blL/RJXXUKhPKyUyv6Y+iMyzVzSYv4y8djJgViLlvPzyqIgr9+LAJda6Q71iBM3/t9jDVSqaFMJ6XVfMlojjzI4sqdnuCcPkb/FFHHE4TqRSH4GRiPAwS1KpXCDYgjGPBLWdFTeVEBXCpph91OtRb4sMl2VNB9fA0Ar1b2t0GcfQIK2n0UIo/tzWJjS9hvN6dRLtxtXyEQTCKgntsM7Xl8YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Sept 14 to 20 shows \"Kids at their dad's\" starting Mon, Sep 14 at 9:00am. Grandma also has the kids Sat, Sep 19 at 10:00am. Nothing else is on that week, and I can't see an end time for either."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1243,
+      "cache_read_input_tokens": 23713,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1243,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 133,
+      "output_tokens_details": {
+        "thinking_tokens": 43
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2218
+}

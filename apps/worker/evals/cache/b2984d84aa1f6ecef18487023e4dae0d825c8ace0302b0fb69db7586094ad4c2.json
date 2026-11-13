@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Reply is in Chinese, answers the single question, names the Sunday pick with its time, and the calendar is correctly stated as free. Bubbles are sensible single thoughts with no question or lead-in. However, the first bubble's time string is given as 'Sun, Nov 15, 2:00' untranslated in a Chinese sentence and no clock conversion context, and the second bubble's free-calendar statement plus link is a reasonable split. Minor stylistic roughness only.",
+    "score": 4
+  }
+}

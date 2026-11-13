@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for send and reply was turned off this turn, so the confirmation is true. It is short and answers in the parent's own language. It covers sending, and 'replying' is implied by asking before each email. No greeting, no sign-off, nothing invented.",
+    "score": 5
+  }
+}
