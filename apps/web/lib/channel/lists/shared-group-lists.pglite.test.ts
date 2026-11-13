@@ -229,7 +229,9 @@ describe('shared list owners', () => {
     const ada = await person();
     const salad = await item(ada.id, 'salad');
     const first = scripted(decision({ claim: [{ item: 'i1', text: null }], reply: null }));
-    expect(await turn(await context(sam, [sam, ada], 'we will bring the salad'), first.model)).toEqual({
+    expect(
+      await turn(await context(sam, [sam, ada], 'we will bring the salad'), first.model),
+    ).toEqual({
       handled: true,
       line: null,
       lineWhy: 'quiet',
@@ -1910,10 +1912,18 @@ describe('in a multi-family group turn', () => {
         });
         expect(await seatOf(RAJ)).toBeDefined();
         // Mei's hide went out at NOW, before Raj was added; Hale takes it on a retry.
-        await say(MEI, "I'll get Mia the Lego, shh", 'in-lego', withRaj, () => secretLego([]), wire, {
-          receivedAt: NOW,
-          now: retried,
-        });
+        await say(
+          MEI,
+          "I'll get Mia the Lego, shh",
+          'in-lego',
+          withRaj,
+          () => secretLego([]),
+          wire,
+          {
+            receivedAt: NOW,
+            now: retried,
+          },
+        );
         expect((await items())[0]?.hiddenClearedPhoneHashes.sort()).toEqual(
           [MEI, PRIYA, ADA].map(phoneBlindIndex).sort(),
         );
