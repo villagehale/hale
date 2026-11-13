@@ -1,9 +1,11 @@
 // VIL-662 team-schedule eval. Dry runs only — no paid live calls.
 //
 //   node evals/run-team-schedule-eval.mjs --dry
+//   node evals/run-team-schedule-eval.mjs --cached-only   # the same zero-call check
 //
 // Prices extract + match + parent voice + driver voice at max_tokens for every
-// fixture, as a full miss. Must stay under $5.
+// fixture, as a full miss. Must stay under $5. Nothing is recorded, so the
+// every-suite cached-only replay runs this price check.
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -176,9 +178,9 @@ async function dryRun() {
 }
 
 async function main() {
-  const dry = process.argv.includes('--dry');
+  const dry = process.argv.includes('--dry') || process.argv.includes('--cached-only');
   if (!dry) {
-    console.error('team-schedule: dry runs only. Pass --dry. No paid evals.');
+    console.error('team-schedule: dry runs only. Pass --dry or --cached-only. No paid evals.');
     process.exit(2);
   }
   console.info(await dryRun());

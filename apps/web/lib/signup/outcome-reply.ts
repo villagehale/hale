@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasGarbledText } from '~/lib/format/garbled-text';
 import { foreignLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -77,6 +78,9 @@ export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts)
   if (facts.link && !tidy.includes(facts.link)) out.push('missing the hand-off link');
   if (links.length > 0) {
     out.push(`${facts.link ? 'contains another link' : 'contains a link'}: ${links.join(', ')}`);
+  }
+  if (hasGarbledText(tidy)) {
+    out.push('garbled characters: an accented letter came out as two or three other characters');
   }
   return out;
 }

@@ -659,11 +659,12 @@ export interface OpenQuestionSources {
     database: Database,
     input: { familyId: string; parentUserId: string },
   ): Promise<{ askedAt: Date } | null>;
-  /** The proposal this family may answer right now, or null. `askedAt` is when the card
-   * went to this family's side of the pair. */
+  /** The proposal this parent may answer right now, or null. `askedAt` is when the card
+   * was delivered to this parent on their family's side of the pair. */
   introProposal(
     database: Database,
     familyId: string,
+    parentUserId: string,
     now: Date,
   ): Promise<{ id: string; askedAt: Date } | null>;
   /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
@@ -922,7 +923,7 @@ export function createOpenQuestionReader(
           }),
         ),
         readerTask('introProposal', null, () =>
-          sources.introProposal(database, input.familyId, input.now),
+          sources.introProposal(database, input.familyId, input.parentUserId, input.now),
         ),
         readerTask('planOffer', null, () => sources.planOffer(database, input.familyId, input.now)),
         readerTask('checkupOffer', null, () =>

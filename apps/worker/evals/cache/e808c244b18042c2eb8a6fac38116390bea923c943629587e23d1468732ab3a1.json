@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the sign-up wasn't finished and nothing is booked, gives the registration link exactly, lists pack values only (child and parent names and email, all present in pack), uses plain warm English, avoids system talk and makes no retry promise. Minor nit: it says 'I couldn't finish' without naming the not_configured cause, which is acceptable since reason codes should not be surfaced.",
+    "score": 5
+  }
+}
