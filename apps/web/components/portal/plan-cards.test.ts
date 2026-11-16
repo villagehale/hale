@@ -21,26 +21,40 @@ describe('FoundingPlan', () => {
     expect(source).not.toMatch(/founding_number|foundingNumber/);
     expect(html).not.toMatch(/#\s*\d/);
   });
+
+  it('badges as Free when shown next to the founding offer', () => {
+    const html = renderToStaticMarkup(createElement(FoundingPlan, { badge: 'Free' }));
+    expect(html).toContain('Free');
+    expect(html).not.toContain('Founding family');
+  });
 });
 
 describe('promo Plan cards', () => {
   it('shows the founding offer, the paid subscription, and list prices', () => {
-    expect(renderToStaticMarkup(createElement(PromoOfferPlan, { currency: 'CAD' }))).toContain(
-      'C$79/yr',
-    );
-    expect(renderToStaticMarkup(createElement(PromoOfferPlan, { currency: 'USD' }))).toContain(
-      'US$59/yr',
-    );
+    const cad = renderToStaticMarkup(createElement(PromoOfferPlan, { currency: 'CAD' }));
+    expect(cad).toContain('$79/yr');
+    expect(cad).toContain('CAD');
+    expect(cad).toContain('Full refund anytime');
+    expect(cad).not.toContain('C$');
+    expect(cad).not.toContain('ask for a refund');
+    const usd = renderToStaticMarkup(createElement(PromoOfferPlan, { currency: 'USD' }));
+    expect(usd).toContain('$59/yr');
+    expect(usd).toContain('USD');
+    expect(usd).not.toContain('US$');
     expect(renderToStaticMarkup(createElement(PaidPlan, { tier: 'plus' }))).toContain(
       'Your family is on Plus.',
     );
     const listCad = renderToStaticMarkup(createElement(ListPlan, { currency: 'CAD' }));
-    expect(listCad).toContain('C$19/mo');
-    expect(listCad).toContain('C$159/yr');
-    expect(listCad).toContain('Continue · C$19/mo');
-    expect(listCad).toContain('Continue · C$159/yr');
+    expect(listCad).toContain('$19/mo');
+    expect(listCad).toContain('$159/yr');
+    expect(listCad).toContain('CAD');
+    expect(listCad).toContain('Continue · $19/mo');
+    expect(listCad).toContain('Continue · $159/yr');
+    expect(listCad).not.toContain('C$');
     const listUsd = renderToStaticMarkup(createElement(ListPlan, { currency: 'USD' }));
-    expect(listUsd).toContain('US$14/mo');
-    expect(listUsd).toContain('US$119/yr');
+    expect(listUsd).toContain('$14/mo');
+    expect(listUsd).toContain('$119/yr');
+    expect(listUsd).toContain('USD');
+    expect(listUsd).not.toContain('US$');
   });
 });

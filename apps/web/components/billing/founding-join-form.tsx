@@ -1,6 +1,8 @@
 'use client';
 
+import type { BillingCurrency } from '@hale/types';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { PriceWithCurrency } from '~/components/billing/price-with-currency';
 import stage from '~/components/hale/connect/connect.module.css';
 import { DeviceTextLink } from '~/components/hale/device-text-link';
 import styles from '~/components/portal/signin.module.css';
@@ -22,10 +24,12 @@ import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
  */
 export function FoundingJoinForm({
   priceLabel,
+  currency,
   smsNumber = '',
   cancelled = false,
 }: {
   priceLabel: string;
+  currency: BillingCurrency;
   smsNumber?: string;
   cancelled?: boolean;
 }) {
@@ -194,11 +198,18 @@ export function FoundingJoinForm({
         ? 'Check your texts'
         : 'Join as a founding family';
   const lede =
-    step === 'expired'
-      ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
-      : step === 'code'
-        ? 'A code is on its way to this number.'
-        : `${priceLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Hale will not text first.`;
+    step === 'expired' ? (
+      'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
+    ) : step === 'code' ? (
+      'A code is on its way to this number.'
+    ) : (
+      <PriceWithCurrency
+        amount={priceLabel}
+        currency={currency}
+        noteClassName={styles.currencyNote}
+        after=", locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime. Hale will not text first."
+      />
+    );
 
   return (
     <section className={`${stage.card} ${stage.door}`}>

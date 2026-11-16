@@ -1,10 +1,13 @@
+import { currencyFromIpCountry } from '@hale/types';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { FOUNDING_PRICE_DISPLAY, currencyFromIpCountry } from '@hale/types';
 import { FoundingJoinForm } from '~/components/billing/founding-join-form';
+import { FreeJoinCard } from '~/components/billing/free-join-card';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
+import stage from '~/components/hale/connect/connect.module.css';
 import { promoNewVisitorCheckoutEnabled } from '~/lib/billing/flags';
+import { foundingPriceLabel } from '~/lib/billing/price-display';
 import { foundingPromoOpen } from '~/lib/billing/prices';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 
@@ -30,11 +33,15 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
 
   return (
     <ConnectStage>
-      <FoundingJoinForm
-        priceLabel={FOUNDING_PRICE_DISPLAY[currency].perYear}
-        smsNumber={haleTextsNumber()}
-        cancelled={checkout === 'cancelled'}
-      />
+      <div className={stage.pairRow}>
+        <FreeJoinCard />
+        <FoundingJoinForm
+          priceLabel={foundingPriceLabel(currency)}
+          currency={currency}
+          smsNumber={haleTextsNumber()}
+          cancelled={checkout === 'cancelled'}
+        />
+      </div>
     </ConnectStage>
   );
 }
