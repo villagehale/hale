@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createConsentReader, readConsent, toConsentReading } from './consent-reply';
+import {
+  consentReplyUserMessage,
+  createConsentReader,
+  readConsent,
+  toConsentReading,
+} from './consent-reply';
 
 describe('toConsentReading', () => {
   it('keeps a verdict and a target, and drops anything else', () => {
@@ -27,6 +32,28 @@ describe('createConsentReader', () => {
     await expect(reader.read({ question: 'founder_welcome', text })).resolves.toBeNull();
     expect(JSON.stringify(logged.mock.calls)).toContain('client_unavailable');
     expect(JSON.stringify(logged.mock.calls)).not.toContain(text);
+  });
+});
+
+describe('consentReplyUserMessage', () => {
+  it('includes Hale last line only when one was passed', () => {
+    expect(JSON.parse(consentReplyUserMessage({ question: 'intro', text: '你找一下啊' }))).toEqual({
+      question: 'intro',
+      text: '你找一下啊',
+    });
+    expect(
+      JSON.parse(
+        consentReplyUserMessage({
+          question: 'intro',
+          text: '你找一下啊',
+          lastHaleMessage: 'Send the registration page.',
+        }),
+      ),
+    ).toEqual({
+      question: 'intro',
+      text: '你找一下啊',
+      lastHaleMessage: 'Send the registration page.',
+    });
   });
 });
 

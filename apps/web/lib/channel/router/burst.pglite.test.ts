@@ -214,7 +214,7 @@ describe('the settle', () => {
     expect(reader.calls).toHaveLength(1);
   });
 
-  it('a lone text picked up at 1s waits out the rest of the quiet, 1.5s, then goes alone', async () => {
+  it('a lone text picked up at 1s does not wait out the quiet window', async () => {
     const fam = await seedFamily(db.database, 'Lone Early');
     const m1 = await text(fam, 'is swim on thursday', T0);
     clock = T0 + 1_000;
@@ -223,14 +223,17 @@ describe('the settle', () => {
 
     const plan = await planBurst(db.database, p, jobFor(fam, m1), 'fresh');
 
-    expect(plan).toEqual({ kind: 'lone', waitedMs: 1_500, why: 'alone' });
-    expect(p.sleeps.reduce((sum, ms) => sum + ms, 0)).toBe(1_500);
+    expect(plan).toEqual({ kind: 'lone', waitedMs: 0, why: 'alone' });
+    expect(p.sleeps).toEqual([]);
     expect(reader.calls).toHaveLength(0);
   });
 
   it('a stream that never goes quiet is cut at the hold ceiling, measured from the settle start', async () => {
     const fam = await seedFamily(db.database, 'Stream');
+    // Two texts already in: a lone pickup does not wait, so the hold ceiling is
+    // only a wait that has already started collecting a burst.
     const m1 = await text(fam, 'ok so', T0);
+    const m2 = await text(fam, 'and then', T0 + 100);
     const late: string[] = [];
     const arrivals = [2_000, 4_000, 6_000, 8_000, 10_000].map((offset) => ({
       at: T0 + offset,
@@ -243,8 +246,8 @@ describe('the settle', () => {
     const plan = anchorOf(await planBurst(db.database, p, jobFor(fam, m1), 'fresh'));
 
     expect(plan.waitedMs).toBe(BURST_MAX_HOLD_MS);
-    // Inside the hold: the anchor and the texts at 2, 4, 6 and 8 seconds.
-    expect(plan.members.map((m) => m.channelMessageId)).toEqual([m1, ...late.slice(0, 4)]);
+    // Inside the hold: the two that started it, and the texts at 2, 4, 6 and 8 seconds.
+    expect(plan.members.map((m) => m.channelMessageId)).toEqual([m1, m2, ...late.slice(0, 4)]);
     // Arrived after the hold: never seen by this turn, still its own.
     expect(late).toHaveLength(4);
   });
