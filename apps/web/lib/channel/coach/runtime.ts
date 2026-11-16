@@ -1020,7 +1020,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   emails.length > 0
                     ? [
                         ...trustedAfterEmail(turn, transcript),
-                        ...((await ports.loadParentStatedFacts?.(turn.familyId, turn.parentUserId, now)) ?? []),
+                        ...((await ports.loadParentStatedFacts?.(
+                          turn.familyId,
+                          turn.parentUserId,
+                          now,
+                        )) ?? []),
+                        JSON.stringify(healthLineFacts(healthPlace).facts),
                       ]
                     : [],
               });
