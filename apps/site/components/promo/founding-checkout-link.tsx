@@ -1,11 +1,11 @@
 'use client';
 
+import { parseAttribution, serializeAttribution } from '@hale/types';
 import type { ReactNode } from 'react';
-import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { ATTRIBUTION_STORAGE_KEY } from '~/lib/analytics/attribution';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { APP_URL } from '~/lib/app-url';
 import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
-import { parseAttribution, serializeAttribution } from '@hale/types';
 
 /** The app page that starts founding checkout for a signed-in family. */
 export const FOUNDING_CHECKOUT_PATH = '/settings/founding';
@@ -48,7 +48,12 @@ export function FoundingCheckoutLink({
       data-cta="promo_cta_click"
       data-cta-placement={placement}
       onClick={(event) => {
-        capture('promo_cta_click', { cta_placement: placement, promo_phase: phase, currency, plan });
+        capture('promo_cta_click', {
+          cta_placement: placement,
+          promo_phase: phase,
+          currency,
+          plan,
+        });
         let stored: string | null = null;
         try {
           stored = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);

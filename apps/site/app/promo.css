@@ -485,7 +485,8 @@
   white-space: nowrap;
   border: 0;
 }
-.rd .hs-tier .promo-tier-price {
+.rd .hs-tier .promo-tier-price,
+.rd .promo-tier-pair {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;

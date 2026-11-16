@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { RedesignHome } from '~/components/redesign/home';
 import { RedesignPricing } from '~/components/redesign/pricing';
 import { type PromoPhase, buildHolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
-import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, foundingAfterLine } from './holiday-promo';
+import {
+  PromoBanner,
+  PromoFaqItems,
+  PromoSection,
+  PromoStickyCta,
+  foundingAfterLine,
+} from './holiday-promo';
 
 /**
  * Barton's promo copy rules, checked on the rendered pages (both phases, both
@@ -45,7 +51,9 @@ const PRICES = {
 const door = { locale: 'en' as const, smsNumber: '+16475551234', prefill: 'Hi Hale' };
 
 const card = (html: string, tier: 'plus' | 'max') =>
-  html.match(new RegExp(`<li class="hs-tier t-${tier}">[\\s\\S]*?(?=<li class="hs-tier |</ol>)`))?.[0] ?? '';
+  html.match(
+    new RegExp(`<li class="hs-tier t-${tier}">[\\s\\S]*?(?=<li class="hs-tier |</ol>)`),
+  )?.[0] ?? '';
 
 for (const { phase, currency } of CASES) {
   const promo = buildHolidayPromo(phase, currency);
@@ -65,7 +73,7 @@ for (const { phase, currency } of CASES) {
         expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
         expect(html).toContain('id="founding"');
         const sale = want.max[1].replace('$', '').replace('/yr', '');
-        expect(offer).toMatch(new RegExp(`class="promo-offer-tier"[^>]*>Max<`));
+        expect(offer).toMatch(/class="promo-offer-tier"[^>]*>Max</);
         expect(offer).toMatch(new RegExp(`class="promo-price-num"[^>]*>${sale}<`));
         expect(offer).toContain(`<s class="promo-price-regular">${want.max[0]}</s>`);
         expect(offer).toContain(`<s class="promo-price-regular">${want.plus[0]}</s>`);
@@ -91,8 +99,8 @@ for (const { phase, currency } of CASES) {
         for (const tier of ['plus', 'max'] as const) {
           const c = card(html, tier);
           const [regular, sale] = want[tier];
-          expect(c).toContain(`<s class="promo-tier-regular" aria-hidden="true">${regular}</s>`);
-          expect(c).toContain(`<span class="promo-tier-sale" aria-hidden="true">${sale}</span>`);
+          expect(c).toContain(`<s class="promo-tier-regular">${regular}</s>`);
+          expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
           expect(c).toContain(FOUNDING_REFUND_LINE);
           expect(text(c)).toContain(`Lock in ${sale}`);
           expect(c).toContain(`/settings/founding?plan=${tier}`);
@@ -138,12 +146,16 @@ for (const { phase, currency } of CASES) {
         expect(body).toMatch(/Refund anytime/);
         expect(body).toContain(FOUNDING_REFUND_LINE);
         expect(body).toMatch(/locked in for as long as you’re a member/);
-        expect(body).not.toMatch(/try it for a month|try a month|free trial|\btrial\b|first month/i);
+        expect(body).not.toMatch(
+          /try it for a month|try a month|free trial|\btrial\b|first month/i,
+        );
       });
 
       it('places the refund line right under the sale prices, and shows no paid monthly option', () => {
         expect(offer).toMatch(
-          new RegExp(`class="promo-offer-plus"[\\s\\S]*?class="promo-price-note"[^>]*>${FOUNDING_REFUND_LINE}`),
+          new RegExp(
+            `class="promo-offer-plus"[\\s\\S]*?class="promo-price-note"[^>]*>${FOUNDING_REFUND_LINE}`,
+          ),
         );
         expect(body).not.toMatch(/\$14\/mo|\$15\/mo|\$19\/mo|\$29\/mo|\$39\/mo/);
         expect(body).not.toMatch(/by the year or the month/i);

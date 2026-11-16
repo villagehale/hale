@@ -188,8 +188,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
             <PriceLockup promo={promo} />
             <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
-              Founding families: your price is locked in for as long as you’re a member. Join by
-              Dec 31. Refund anytime.
+              Founding families: your price is locked in for as long as you’re a member. Join by Dec
+              31. Refund anytime.
             </p>
             <ul className="promo-chips">
               {CHIPS.map((chip) => (
@@ -226,8 +226,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 <h3>Locked in for life</h3>
                 <p>
                   Join by Dec 31 and your price ({promo.max.saleLabel} for Max,{' '}
-                  {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member.
-                  It doesn’t go up at renewal. If you cancel, the founding price ends with the
+                  {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. It
+                  doesn’t go up at renewal. If you cancel, the founding price ends with the
                   membership.
                 </p>
               </div>
@@ -301,11 +301,9 @@ export function TierSalePrice({ price }: { price: PromoTierPrice }) {
         {price.saleLabel.replace('/yr', ' a year')}, regular price{' '}
         {price.regularLabel.replace('/yr', ' a year')}.
       </span>
-      <s className="promo-tier-regular" aria-hidden="true">
-        {price.regularLabel}
-      </s>
-      <span className="promo-tier-sale" aria-hidden="true">
-        {price.saleLabel}
+      <span className="promo-tier-pair" aria-hidden="true">
+        <s className="promo-tier-regular">{price.regularLabel}</s>
+        <span className="promo-tier-sale">{price.saleLabel}</span>
       </span>
     </h3>
   );
