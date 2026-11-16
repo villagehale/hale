@@ -256,6 +256,23 @@ export interface FriendVoiceInput {
    */
   currency?: 'CAD' | 'USD';
   /**
+   * A photo on this turn. Absent when there wasn't one, or the intake photo
+   * flag is off, so those turns keep their prompt bytes.
+   */
+  photo?:
+    | {
+        read: 'facts';
+        facts: {
+          kind: string;
+          title: string | null;
+          venue: string | null;
+          whenText: string | null;
+          notes: string | null;
+          childName: string | null;
+        };
+      }
+    | { read: 'unread' };
+  /**
    * VIL-641. Code's record that an earlier reply asked for the coarse code after a
    * first no, so a no now is the second one. Absent when it did not.
    */
@@ -920,6 +937,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
         : null,
       coparentGroup: input.coparentGroup ?? null,
       ...(input.currency ? { currency: input.currency } : {}),
+      ...(input.photo ? { photo: photoForModel(input.photo) } : {}),
       // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
       ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
       // Who runs Hale is for when they ask; otherwise the founder's name is
@@ -2730,8 +2748,24 @@ export function findShowGroupBubbles(
  * The system text for one compose. The co-parent choice and the household-group
  * addendum ride only on the turns that need them, so every other turn keeps its bytes.
  */
+function photoForModel(photo: NonNullable<FriendVoiceInput['photo']>): unknown {
+  if (photo.read === 'unread') return { read: 'unread' };
+  return {
+    read: 'facts',
+    kind: photo.facts.kind,
+    title: photo.facts.title,
+    venue: photo.facts.venue,
+    when: photo.facts.whenText,
+    notes: photo.facts.notes,
+    child: photo.facts.childName,
+  };
+}
+
 export async function friendVoiceSystem(
-  input: Pick<FriendVoiceInput, 'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined'>,
+  input: Pick<
+    FriendVoiceInput,
+    'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined' | 'photo'
+  >,
   short: boolean,
 ) {
   const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
@@ -2747,7 +2781,8 @@ export async function friendVoiceSystem(
   const statedPlace = intakeStatedPlaceEnabled()
     ? await loadCronSkill('onboarding-stated-place')
     : null;
-  const extras = [choice, group, place, ageFit, statedPlace].flatMap((part) =>
+  const photo = input.photo ? await loadCronSkill('intake-photo-read') : null;
+  const extras = [choice, group, place, ageFit, statedPlace, photo].flatMap((part) =>
     part ? [part.instructions] : [],
   );
   const system = [skill.instructions, ...extras].join('\n\n');

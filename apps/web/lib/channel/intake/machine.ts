@@ -26,7 +26,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
-import { householdTimezone } from '~/lib/channel/household-timezone';
+import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -38,6 +38,7 @@ import {
   safeGivenName,
 } from '~/lib/channel/identity/parent-call-name';
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
@@ -138,6 +139,7 @@ import {
 } from './friend-voice';
 import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
+import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
@@ -250,6 +252,17 @@ export interface IntakeDeps {
    * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * Reads a photo sent during intake, including HEIC. Absent is named
+   * `not_configured` when the flag is on and the turn has an image: the
+   * friend voice is told the image was unread, and nothing is invented.
+   */
+  readIntakePhoto?: (input: {
+    media: readonly InboundMediaPart[];
+    parentWords: string;
+    now: Date;
+    timeZone: string | null;
+  }) => Promise<NonNullable<FriendVoiceInput['photo']>>;
   /**
    * #868 · the model reads an opt-out from any wording. Read after the carrier STOP
    * keyword (which still revokes first) and before any onboarding or group turn.
@@ -456,6 +469,8 @@ export interface Inbound {
    * there: a caller written before the provider could answer a keyword means "it
    * answered nothing", which is exactly what absent resolves to. */
   providerAnsweredKeyword?: ProviderKeyword | null;
+  /** Linq parts that were not text. Absent on a text-only turn. */
+  media?: readonly InboundMediaPart[];
 }
 
 /** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
@@ -1585,6 +1600,27 @@ function friendAddress(ctx: SendContext): 'tu' | 'vous' {
   return ctx.pipe.isGroup ? 'vous' : 'tu';
 }
 
+async function intakePhotoExtra(
+  deps: IntakeDeps,
+  inbound: Inbound,
+  timeZone: string | null,
+): Promise<{ photo: NonNullable<FriendVoiceInput['photo']> } | Record<string, never>> {
+  if (!intakePhotoReadEnabled() || inbound.isGroup) return {};
+  if (!inbound.media?.some((part) => part.kind === 'image')) return {};
+  if (!deps.readIntakePhoto) {
+    console.info({ skipped: 'not_configured' }, 'intake photo: reader absent');
+    return { photo: { read: 'unread' } };
+  }
+  return {
+    photo: await deps.readIntakePhoto({
+      media: inbound.media,
+      parentWords: inbound.body,
+      now: inbound.receivedAt,
+      timeZone,
+    }),
+  };
+}
+
 function placeCurrency(
   place: Parameters<typeof currencyOfPlace>[0],
 ): { currency: 'CAD' | 'USD' } | Record<string, never> {
@@ -2031,6 +2067,7 @@ async function friendOnboardingTurn(
     card = located.accepted;
   }
   const priorGiven = session.firstTouch?.given ?? null;
+  const photo = await intakePhotoExtra(deps, inbound, place?.timezone ?? null);
   // Pre-family: the map, the schedule and the co-parent ask come after provisioning.
   const checklist: OnboardingChecklist = {
     postal: placeSettled({ place, given: priorGiven }),
@@ -2071,6 +2108,7 @@ async function friendOnboardingTurn(
         parentWords: inbound.body,
         placeLabel: place?.city || place?.areaCoarse || null,
         ...placeCurrency(place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2494,6 +2532,7 @@ async function friendColdTurn(
   }
   // Their Saturday, on their clock: the zone signup wrote from their postal code.
   const timeZone = await householdTimezone(database, familyId);
+  const photo = await intakePhotoExtra(deps, inbound, knownTimezone(timeZone));
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
   let alreadyRecorded: {
@@ -2509,6 +2548,7 @@ async function friendColdTurn(
         placeLabel:
           session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
         ...placeCurrency(session.firstTouch?.place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2572,6 +2612,7 @@ async function friendColdTurn(
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
       ...placeCurrency(session.firstTouch?.place),
+      ...photo,
       agesLabel: summarizeChildren(session.collected.children),
       ageMonths: session.collected.children.flatMap((child) =>
         child.ageMonths == null ? [] : [child.ageMonths],

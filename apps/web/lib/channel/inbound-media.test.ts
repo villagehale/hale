@@ -313,4 +313,42 @@ describe('readInboundMedia', () => {
     expect(read.blocks).toEqual([]);
     expect(read.unwatched).toEqual([{ kind: 'file' }]);
   });
+
+  it('turns a HEIC into a JPEG block only when a converter is given', async () => {
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0]), Buffer.from('ftypheic')]);
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+    const fetchImpl = vi.fn(async () => new Response(heic, { status: 200 }));
+    const part = {
+      kind: 'image' as const,
+      url: 'https://cdn.example/shot.heic',
+      mime: 'image/heic',
+    };
+    const dark = await readInboundMedia([part], fetchImpl as unknown as typeof fetch);
+    expect(dark.blocks).toEqual([]);
+    expect(dark.unwatched).toEqual([{ kind: 'image' }]);
+    const convertHeic = vi.fn(async () => jpeg);
+    const lit = await readInboundMedia(
+      [part],
+      fetchImpl as unknown as typeof fetch,
+      undefined,
+      undefined,
+      {
+        convertHeic,
+      },
+    );
+    expect(convertHeic).toHaveBeenCalledTimes(1);
+    expect(lit.blocks[0]).toMatchObject({
+      type: 'image',
+      source: { media_type: 'image/jpeg' },
+    });
+    expect(lit.unwatched).toEqual([]);
+    const failed = await readInboundMedia(
+      [part],
+      fetchImpl as unknown as typeof fetch,
+      undefined,
+      undefined,
+      { convertHeic: async () => null },
+    );
+    expect(failed.unwatched).toEqual([{ kind: 'image' }]);
+  });
 });

@@ -455,6 +455,10 @@
     "file": "intake-official-ground.md",
     "sha256": "f87a740e2be873a3d580f86deb2b25d04949ba042ed8f8483280f3513c843b29"
   },
+  "intake-photo-read.md": {
+    "file": "intake-photo-read.md",
+    "sha256": "b204db32942e91eba1ee69d90532a0270323807b537aeb7791c106297bc8cddd"
+  },
   "interest-passport-voice.md": {
     "file": "interest-passport-voice.md",
     "sha256": "2d3a751c0e6ac252aaea2c12c4f4d0eabad3e9bc645d557271524d06d229106a"
