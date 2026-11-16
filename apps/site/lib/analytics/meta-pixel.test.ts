@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { metaPixelIdWhenConversionsEnabled } from './meta-pixel.js';
+import {
+  conversionsPageViewEnabled,
+  metaPixelIdWhenConversionsEnabled,
+} from './meta-pixel.js';
 
 const PIXEL_ID = '1460101092968766';
 
@@ -31,11 +34,20 @@ const privacy = readFileSync(
 );
 
 describe('Meta Pixel id is env-driven', () => {
-  it('is null unless the conversions flag is exact true', () => {
+  it('is null unless a conversions flag is exact true', () => {
     expect(metaPixelIdWhenConversionsEnabled({ NEXT_PUBLIC_META_PIXEL_ID: PIXEL_ID })).toBeNull();
+    expect(conversionsPageViewEnabled({ CONVERSIONS_API_ENABLED: 'true' })).toBe(true);
+    expect(conversionsPageViewEnabled({ NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'true' })).toBe(true);
+    expect(conversionsPageViewEnabled({ NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'TRUE' })).toBe(false);
     expect(
       metaPixelIdWhenConversionsEnabled({
         CONVERSIONS_API_ENABLED: 'true',
+        NEXT_PUBLIC_META_PIXEL_ID: PIXEL_ID,
+      }),
+    ).toBe(PIXEL_ID);
+    expect(
+      metaPixelIdWhenConversionsEnabled({
+        NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'true',
         NEXT_PUBLIC_META_PIXEL_ID: PIXEL_ID,
       }),
     ).toBe(PIXEL_ID);
@@ -48,6 +60,8 @@ describe('Meta Pixel PageView on both sites', () => {
     expect(layout).toContain('metaPixelId');
     expect(consent).toContain('installMetaPixel');
     expect(consent).toContain('pixelId');
+    expect(consent).toContain('NEXT_PUBLIC_CONVERSIONS_API_ENABLED');
+    expect(consent).toContain('NEXT_PUBLIC_META_PIXEL_ID');
   });
 
   it('loads on the product app behind the conversions flag', () => {

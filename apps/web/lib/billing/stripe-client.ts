@@ -23,6 +23,10 @@ export interface CheckoutSessionParams {
   readonly cancelUrl: string;
   /** Prefills the Stripe-hosted form; safe to omit. */
   readonly customerEmail?: string | null;
+  /** Reuses an existing Stripe Customer so a family cannot mint a second one. */
+  readonly customerId?: string | null;
+  /** Stripe Idempotency-Key — same family cannot open two founding sessions. */
+  readonly idempotencyKey?: string;
   readonly sku?: CheckoutSku;
   readonly currency?: BillingCurrency;
   readonly attribution?: Attribution;
@@ -49,12 +53,16 @@ export function stripeCheckoutClientFromEnv(
   return {
     async createCheckoutSession(params) {
       const form = checkoutForm(params);
+      const headers: Record<string, string> = {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      };
+      if (params.idempotencyKey) {
+        headers['Idempotency-Key'] = params.idempotencyKey;
+      }
       const res = await fetchImpl(STRIPE_CHECKOUT_ENDPOINT, {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${secret}`,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
+        headers,
         body: form.toString(),
       });
       if (!res.ok) {
@@ -122,7 +130,9 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
   for (const [key, value] of Object.entries(ads)) {
     form.set(`metadata[${key}]`, value);
   }
-  if (params.customerEmail) {
+  if (params.customerId) {
+    form.set('customer', params.customerId);
+  } else if (params.customerEmail) {
     form.set('customer_email', params.customerEmail);
   }
   return form;

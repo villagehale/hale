@@ -92,6 +92,7 @@ describe('resolveCheckoutPrice', () => {
 
   it('stops offering founding after the cutoff and uses list prices instead', () => {
     expect(foundingPromoOpen(CUTOFF, FOUNDING)).toBe(true);
+    expect(foundingPromoOpen(new Date('2026-12-31T23:59:59-05:00'), FOUNDING)).toBe(true);
     expect(foundingPromoOpen(AFTER, FOUNDING)).toBe(false);
     expect(
       resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: AFTER, env: WITH_LIST }),

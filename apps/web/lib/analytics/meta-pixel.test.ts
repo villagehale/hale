@@ -17,6 +17,12 @@ describe('metaPixelIdWhenConversionsEnabled', () => {
         NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
       }),
     ).toBe('1460101092968766');
+    expect(
+      metaPixelIdWhenConversionsEnabled({
+        NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'true',
+        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+      }),
+    ).toBe('1460101092968766');
     expect(metaPixelIdFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766' })).toBe(
       '1460101092968766',
     );

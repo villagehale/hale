@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PROMO_JOIN_COOKIE, signPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
+
+const createMock = vi.fn();
+const clientMock = { createCheckoutSession: vi.fn() };
+
+vi.mock('~/lib/db', () => ({ db: () => ({}) }));
+vi.mock('~/lib/billing/create-checkout', () => ({
+  createBillingCheckout: (...args: unknown[]) => createMock(...args),
+}));
+vi.mock('~/lib/billing/stripe-client', () => ({
+  stripeCheckoutClientFromEnv: () => clientMock,
+}));
+
+async function post(cookie?: string, country = 'CA') {
+  const { POST } = await import('./route');
+  return POST(
+    new Request('https://app.example.com/api/promo/join/checkout', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(cookie ? { cookie } : {}),
+        'x-vercel-ip-country': country,
+      },
+      body: '{}',
+    }),
+  );
+}
+
+describe('POST /api/promo/join/checkout', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    createMock.mockReset();
+  });
+
+  it('404s when the new-visitor flag is off', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    const res = await post();
+    expect(res.status).toBe(404);
+  });
+
+  it('401s without a join cookie', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    const res = await post();
+    expect(res.status).toBe(401);
+  });
+
+  it('opens Checkout for the bound family and 409s on a second subscription', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    const token = signPromoJoinBinding({
+      familyId: 'fam-9',
+      userId: 'user-9',
+      externalAuthId: 'sms:abc',
+    });
+    createMock.mockResolvedValue({ status: 'created', url: 'https://checkout.stripe.com/c/pay/cs' });
+
+    const res = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs' });
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      familyId: 'fam-9',
+      externalAuthId: 'sms:abc',
+      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+    });
+
+    createMock.mockResolvedValue({ status: 'already_paid' });
+    const paid = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(paid.status).toBe(409);
+  });
+});

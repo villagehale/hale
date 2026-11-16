@@ -28,6 +28,13 @@ function ConsentSentence({ text }: { text: string }): ReactNode {
   );
 }
 
+function pixelIdFromPropsOrEnv(pixelId: string | null | undefined): string | null {
+  if (pixelId) return pixelId;
+  if (process.env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true') return null;
+  const id = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
+  return id ? id : null;
+}
+
 export function ConsentBanner({
   privacyHref,
   text,
@@ -49,9 +56,10 @@ export function ConsentBanner({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    const id = pixelIdFromPropsOrEnv(pixelId);
     if (readConsent() === 'granted') {
       installGoogleAds();
-      if (pixelId) installMetaPixel(pixelId);
+      if (id) installMetaPixel(id);
     }
     const onOpen = () => setOpen(true);
     window.addEventListener(CONSENT_OPEN_EVENT, onOpen);
@@ -64,7 +72,8 @@ export function ConsentBanner({
     setOpen(false);
     if (previous !== 'granted') {
       installGoogleAds();
-      if (pixelId) installMetaPixel(pixelId);
+      const id = pixelIdFromPropsOrEnv(pixelId);
+      if (id) installMetaPixel(id);
     }
   }
 

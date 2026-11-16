@@ -70,6 +70,36 @@ describe('stripeCheckoutClientFromEnv', () => {
     expect(body.has('payment_method_types')).toBe(false);
   });
 
+  it('sends customer and Idempotency-Key instead of a second email when reusing a Customer', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' }), {
+        status: 200,
+      }),
+    );
+    const client = stripeCheckoutClientFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchMock);
+    if (!client) throw new Error('expected a configured client');
+
+    await client.createCheckoutSession({
+      priceId: 'price_founding',
+      familyId: 'fam-7',
+      tier: 'plus',
+      period: 'annual',
+      successUrl: 'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      customerId: 'cus_existing',
+      customerEmail: 'p@example.com',
+      idempotencyKey: 'hale-checkout-fam-7',
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'hale-checkout-fam-7',
+    );
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get('customer')).toBe('cus_existing');
+    expect(body.has('customer_email')).toBe(false);
+  });
+
   it('retrieves a Checkout Session by id', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

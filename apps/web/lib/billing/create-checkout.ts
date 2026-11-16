@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
+import { eq } from 'drizzle-orm';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
+import { familyAlreadySubscribed } from './already-subscribed.js';
 import { checkoutSuccessUrl } from './checkout-session.js';
 import type { CheckoutSku } from './prices.js';
 import type { StripeCheckoutClient } from './stripe-client.js';
@@ -14,12 +16,17 @@ import type { StripeCheckoutClient } from './stripe-client.js';
  * them here — so this is exercised with fakes (no live Stripe, no real DB).
  *
  * Returns not_found (and creates nothing) when the caller has no family, matching
- * the other family-scoped mutations. The audit row is the billing intent — the
- * user chose to upgrade — written once the session is created.
+ * the other family-scoped mutations. already_paid when the family already has a
+ * live paid plan or Stripe subscription, so the same phone/family cannot open a
+ * second subscription. The audit row is the billing intent — the user chose to
+ * upgrade — written once the session is created.
  */
 export type CreateBillingCheckoutResult =
   | { status: 'created'; url: string }
-  | { status: 'not_found' };
+  | { status: 'not_found' }
+  | { status: 'already_paid' };
+
+export { familyAlreadySubscribed } from './already-subscribed.js';
 
 export async function createBillingCheckout(input: {
   tier: PaidTier;
@@ -43,6 +50,10 @@ export async function createBillingCheckout(input: {
   currency?: BillingCurrency;
   attribution?: Attribution;
   adsContext?: AdsCheckoutContext;
+  /** When set, skip the session family lookup (the ads new-visitor path). */
+  familyId?: string;
+  /** Defaults to the settings billing hash. Founding join cancels back to /founding. */
+  cancelUrl?: string;
 }): Promise<CreateBillingCheckoutResult> {
   const {
     tier,
@@ -60,11 +71,27 @@ export async function createBillingCheckout(input: {
     adsContext,
   } = input;
 
-  const familyId = await resolveFamilyForUser(externalAuthId, database);
+  const familyId = input.familyId ?? (await resolveFamilyForUser(externalAuthId, database));
   if (!familyId) {
     return { status: 'not_found' };
   }
   const userId = await requireUserIdForUser(externalAuthId, database);
+
+  const [family] = await database
+    .select({
+      planTier: schema.families.planTier,
+      stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      stripeCustomerId: schema.families.stripeCustomerId,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (!family) {
+    return { status: 'not_found' };
+  }
+  if (familyAlreadySubscribed(family)) {
+    return { status: 'already_paid' };
+  }
 
   const { url } = await client.createCheckoutSession({
     priceId,
@@ -72,8 +99,10 @@ export async function createBillingCheckout(input: {
     tier,
     period,
     successUrl: checkoutSuccessUrl(marketingOrigin),
-    cancelUrl: `${origin}/settings?checkout=cancelled#billing`,
-    customerEmail,
+    cancelUrl: input.cancelUrl ?? `${origin}/settings?checkout=cancelled#billing`,
+    customerEmail: family.stripeCustomerId ? null : customerEmail,
+    customerId: family.stripeCustomerId,
+    idempotencyKey: `hale-checkout-${familyId}`,
     sku,
     currency,
     attribution,

@@ -48,7 +48,15 @@ describe('isProtectedPath', () => {
   });
 
   it('does not gate a public route, nor one that merely shares a prefix', () => {
-    for (const path of ['/sign-in', '/onboarding', '/unsubscribe', '/', '/planner', '/savedish']) {
+    for (const path of [
+      '/sign-in',
+      '/onboarding',
+      '/unsubscribe',
+      '/',
+      '/planner',
+      '/savedish',
+      '/founding',
+    ]) {
       expect(isProtectedPath(path)).toBe(false);
     }
   });
