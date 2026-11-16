@@ -1,0 +1,23 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "还没人认领的有饮料和纸盘，水果林已经带了。"
+  },
+  "latencyMs": 2205,
+  "usage": {
+    "input_tokens": 216,
+    "output_tokens": 103,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

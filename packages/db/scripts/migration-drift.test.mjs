@@ -79,6 +79,7 @@ describe('catalog history cutover', () => {
       '0247_messages_author_user_id',
       '0249_asks_one_send_clock',
       '0250_anthropic_spend',
+      '0243_shared_list_hidden_cleared',
     ]);
   });
 });

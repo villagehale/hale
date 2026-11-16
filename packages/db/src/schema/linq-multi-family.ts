@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { consentRecords } from './consent.js';
 import { families } from './families.js';
 import { users } from './users.js';
@@ -111,6 +120,14 @@ export const linqSharedGroupPeople = pgTable(
     inferredRole: text('inferred_role'),
     inferredFamilyLabel: text('inferred_family_label'),
     inferredKidName: text('inferred_kid_name'),
+    /**
+     * VIL-687: every child this person said in the chat they are family of. Grow-only while
+     * the seat lives, so a later claim never drops an earlier one. A hidden gift for any of
+     * them is never cleared for this seat.
+     */
+    inferredKidNames: text('inferred_kid_names').array().notNull().default(sql`'{}'::text[]`),
+    /** They said they are a child's family here without naming the child: no gift clears them. */
+    claimsUnnamedKid: boolean('claims_unnamed_kid').notNull().default(false),
     firstName: text('first_name'),
     stoppedAt: timestamp('stopped_at', { withTimezone: true }),
     seatedAt: timestamp('seated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,0 +1,28 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Zara's birthday",
+    "add": [],
+    "claim": [
+      {
+        "item": null,
+        "text": "Lego set for Zara"
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": "Zara",
+      "keepFromKidFamily": true,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": null
+  },
+  "latencyMs": 1959,
+  "usage": {
+    "input_tokens": 180,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

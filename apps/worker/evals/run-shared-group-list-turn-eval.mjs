@@ -7,8 +7,10 @@
 // Checks per case:
 //   1. CODE: whether it was a list turn, every seeded item's owner afterwards, how many new
 //      items the speaker owns (or are open), whether the gift is kept from the child's
-//      family (calibrated both ways), that a secret gift never reached the model when the
-//      child's family reads the chat, and that a doubled claim or an ask got a line.
+//      family (calibrated both ways), which seeded items are secret afterwards (a keep-secret
+//      about an item already on the list, and an ask that keeps nothing new), that a secret
+//      gift never reached the model when the child's family reads the chat, and that a
+//      doubled claim or an ask got a line.
 //   2. JUDGE: facts, secrecy, tone and language of the line (judges/shared-group-list-turn).
 //
 //   node evals/run-shared-group-list-turn-eval.mjs                 # live, then caches
@@ -103,9 +105,14 @@ async function seed(dbm, database, fixture) {
       addedByPersonId: people[item.owner ?? 0].id,
       ownerPersonId: item.owner === null ? null : people[item.owner].id,
       claimedAt: item.owner === null ? null : NOW,
+      hidden: Boolean(item.hidden),
       hiddenForKid: item.hidden?.forKid ?? null,
       hiddenFromPersonIds: hiddenFrom.map((p) => p.id),
       hiddenFromFamilyIds: hiddenFrom.flatMap((p) => (p.familyId ? [p.familyId] : [])),
+      // Everyone else was in the chat when it was hidden and has stayed.
+      hiddenClearedPhoneHashes: item.hidden
+        ? people.filter((p) => !hiddenFrom.includes(p)).map((p) => p.phoneE164Hash)
+        : [],
       addedAt: new Date(NOW.getTime() - 60_000 + index),
     });
   }
@@ -123,10 +130,7 @@ async function listState(dbm, database, people) {
     list: row.listName,
     text: row.text,
     owner: nameOf(row.ownerPersonId),
-    secret:
-      row.hiddenForKid !== null ||
-      row.hiddenFromPersonIds.length > 0 ||
-      row.hiddenFromFamilyIds.length > 0,
+    secret: row.hidden,
     forKid: row.hiddenForKid,
     ownerPersonId: row.ownerPersonId,
   }));
@@ -173,7 +177,12 @@ function codeChecks(fixture, people, beforeRows, afterRows, read, result, seen) 
         failures.push(`hide(${row.text}): got ${row.secret} want ${want.hide}`);
     }
   }
-  if (want.reply === 'required' && !(result.handled && result.line))
+  for (const [text, secret] of Object.entries(want.secretAfter ?? {})) {
+    const row = afterRows.find((r) => r.text === text);
+    if (row?.secret !== secret) failures.push(`secret(${text}): got ${row?.secret} want ${secret}`);
+  }
+  // A message not read as a list turn has no list line; that is the listTurn miss, not a second.
+  if (want.reply === 'required' && listTurn && !(result.handled && result.line))
     failures.push(`no line (${result.handled ? result.lineWhy : result.why})`);
   if (want.hiddenNeverShown) {
     const shown = seen.some((input) => input.items.some((i) => i.text === want.hiddenNeverShown));
@@ -269,7 +278,11 @@ async function main() {
           text: fixture.text,
           language: null,
           speaker: people[fixture.speaker],
-          ...(await lists.sharedListAudience(testDb.database, people)),
+          // The fixture's people are the whole chat: all seated before this turn, all reading.
+          ...lists.sharedListAudience(people, new Set(people.map((p) => p.id)), async () => {
+            const hashes = people.map((p) => p.phoneE164Hash);
+            return { hashes, presentAtSend: new Set(hashes) };
+          }),
         };
         const read = await lists.readSharedListTurn(testDb.database, context, model);
         const result = await lists.applySharedListTurn(testDb.database, context, read, {

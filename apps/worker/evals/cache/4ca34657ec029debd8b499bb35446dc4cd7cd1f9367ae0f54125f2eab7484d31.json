@@ -1,0 +1,26 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Picnic",
+    "add": [
+      "ice",
+      "a cooler"
+    ],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": [],
+      "items": []
+    },
+    "reply": "Good call, ice and a cooler are both still open if anyone can grab them!"
+  },
+  "latencyMs": 2319,
+  "usage": {
+    "input_tokens": 149,
+    "output_tokens": 114,
+    "cache_read_input_tokens": 2317,
+    "cache_creation_input_tokens": 0
+  }
+}

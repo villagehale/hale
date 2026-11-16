@@ -339,6 +339,10 @@ describe('listLinqParticipantHandles', () => {
       status: 'ok',
       handles: ['+14165550101', '+14165550102'],
       isGroup: true,
+      joinedAt: new Map([
+        ['+14165550101', null],
+        ['+14165550102', null],
+      ]),
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -362,12 +366,14 @@ describe('listLinqParticipantHandles', () => {
       status: 'ok',
       handles: ['+14165550101'],
       isGroup: false,
+      joinedAt: new Map([['+14165550101', null]]),
     });
     const unsaid = jsonFetch(200, { id: CHAT, handles: [{ handle: '+14165550101' }] });
     expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: unsaid })).toEqual({
       status: 'ok',
       handles: ['+14165550101'],
       isGroup: null,
+      joinedAt: new Map([['+14165550101', null]]),
     });
   });
 
