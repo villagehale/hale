@@ -7,12 +7,15 @@ import { type FakeDb, makeFakeDb } from './fakes';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import {
   SITTING_REMINDER_HOUR_LOCAL,
+  SITTING_REMINDER_STALE_CLAIM_MS,
+  SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV,
   type SittingReminderDeps,
   defaultSittingReminderDeps,
   findNudgeEligible,
   isNextLocalMorning,
   isSittingReminderSlot,
   runSittingReminderCron,
+  sittingReminderStaleReleaseEnabled,
   sittingSessionEligible,
 } from './sitting-reminder';
 import { FakeTransport } from './transport';
@@ -145,6 +148,27 @@ describe('sitting reminder', () => {
   });
 });
 
+describe('sittingReminderStaleReleaseEnabled (VIL-562)', () => {
+  it('is off when unset, empty, or any spelling other than exact true', () => {
+    expect(sittingReminderStaleReleaseEnabled({})).toBe(false);
+    expect(
+      sittingReminderStaleReleaseEnabled({ [SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV]: '' }),
+    ).toBe(false);
+    for (const value of ['TRUE', 'True', '1', 'on', 'yes', 'true\n', ' true', 'true ']) {
+      expect(
+        sittingReminderStaleReleaseEnabled({ [SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV]: value }),
+        JSON.stringify(value),
+      ).toBe(false);
+    }
+  });
+
+  it('is on only for exactly true', () => {
+    expect(
+      sittingReminderStaleReleaseEnabled({ [SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV]: 'true' }),
+    ).toBe(true);
+  });
+});
+
 describe('isSittingReminderSlot', () => {
   it('is true for the 8:00 Eastern hour and false for 7:00 and 9:00', () => {
     expect(isSittingReminderSlot(TORONTO_8AM, EASTERN)).toBe(true);
@@ -269,6 +293,7 @@ describe('runSittingReminderCron', () => {
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it('sends the locked line once from the injected transport', async () => {
@@ -306,6 +331,121 @@ describe('runSittingReminderCron', () => {
     const owed = await runSittingReminderCron(unheld.db, deps(transport), TORONTO_8AM);
     expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
     expect(transport.sent[0]?.to).toBe(PHONE);
+  });
+
+  it('flag off: a stranded claim stays claimed and is not sent again', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const stale = new Date(TORONTO_8AM.getTime() - SITTING_REMINDER_STALE_CLAIM_MS - 60_000);
+    const id = seedSession(fake, { sittingReminderSentAt: stale });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: stale,
+    });
+  });
+
+  it('flag on: a stranded claim older than the window is released and sent this morning', async () => {
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const stale = new Date(TORONTO_8AM.getTime() - SITTING_REMINDER_STALE_CLAIM_MS - 60_000);
+    seedSession(fake, {
+      sittingReminderSentAt: stale,
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: [
+            {
+              direction: 'out',
+              body: 'Hi',
+              providerId: 'SMhello',
+              at: FIRST_HELLO_PREVIOUS_EVENING.toISOString(),
+            },
+          ],
+          firstTouch: firstTouchAt(EASTERN_FSA),
+        }),
+      ),
+    });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+
+    expect(result.staleReleased).toBe(1);
+    expect(result.sent).toBe(1);
+    expect(transport.bodies().length).toBeGreaterThan(0);
+    expect(console.info).toHaveBeenCalledWith(
+      { staleReleased: 1 },
+      'sitting reminder: stranded claim released',
+    );
+  });
+
+  it('flag on: a claim that has an outbound after it is not released', async () => {
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, 'true');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const stale = new Date(TORONTO_8AM.getTime() - SITTING_REMINDER_STALE_CLAIM_MS - 60_000);
+    const id = seedSession(fake, {
+      sittingReminderSentAt: stale,
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: [
+            {
+              direction: 'out',
+              body: 'Hi',
+              providerId: 'SMhello',
+              at: FIRST_HELLO_PREVIOUS_EVENING.toISOString(),
+            },
+            {
+              direction: 'out',
+              body: 'Still here.',
+              providerId: 'SMnudge',
+              at: stale.toISOString(),
+            },
+          ],
+          firstTouch: firstTouchAt(EASTERN_FSA),
+        }),
+      ),
+    });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: stale,
+    });
+  });
+
+  it('flag on: a claim still inside the window is not released', async () => {
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, 'true');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const recent = new Date(TORONTO_8AM.getTime() - 10 * 60_000);
+    const id = seedSession(fake, { sittingReminderSentAt: recent });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: recent,
+    });
+  });
+
+  it('flag on: an unclaimed in-slot session still sends once', async () => {
+    vi.stubEnv(SITTING_REMINDER_STALE_RELEASE_ENABLED_ENV, 'true');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake);
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+
+    expect(result).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
   });
 
   it('caps at one send — a second tick in the same hour is quiet', async () => {
