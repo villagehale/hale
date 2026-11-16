@@ -1,13 +1,14 @@
 'use client';
 
 import { type ReactNode, useEffect, useState } from 'react';
+import type { PromoPhase } from '~/lib/promo/holiday';
 
 /**
  * Reveals the mobile promo bar after the first screen and hides it while the
  * offer section or the footer is on screen, so it never covers the real CTA.
  * Server HTML ships it hidden; with no JavaScript it simply never appears.
  */
-export function PromoStickyReveal({ children }: { children: ReactNode }) {
+export function PromoStickyReveal({ children, phase }: { children: ReactNode; phase: PromoPhase }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
     const covered = new Set<Element>();
@@ -39,7 +40,12 @@ export function PromoStickyReveal({ children }: { children: ReactNode }) {
     };
   }, []);
   return (
-    <div className="rd promo-sticky" data-show={show ? 'true' : 'false'} inert={!show}>
+    <div
+      className="rd promo-sticky"
+      data-promo-phase={phase}
+      data-show={show ? 'true' : 'false'}
+      inert={!show}
+    >
       <div className="promo-sticky-in">{children}</div>
     </div>
   );

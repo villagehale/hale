@@ -59,7 +59,7 @@ export function RedesignPricing({
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
     <div className="hs-tier-head"><span className="hs-tier-name">{t("Free")}</span><span className="hs-tier-num">01</span></div>
-    <h3>{promo ? (promo.currency === "USD" ? "US$0/mo" : "C$0/mo") : t("$0 CAD/mo")}</h3>
+    <h3>{promo ? `$0/mo ${promo.code}` : t("$0 CAD/mo")}</h3>
     <p className="hs-tier-meta">{t("Free for every family")}</p>
     <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A text when a spot opens")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
@@ -68,24 +68,29 @@ export function RedesignPricing({
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
     {promo ? (promo.currency === "USD" ? (<>
-    <h3>US$14/mo</h3>
-    <p className="hs-tier-meta">or US$119/yr</p>
+    <h3>$14/mo USD</h3>
+    <p className="hs-tier-meta">or $119/yr USD</p>
     </>) : (<>
-    <h3>C$159/yr</h3>
+    <h3>$159/yr CAD</h3>
     <p className="hs-tier-meta">Billed yearly</p>
     </>)) : (<>
     <h3>{t("$19 CAD/mo")}<span className="hs-tier-usd">{t("$15 USD/mo")}</span></h3>
     <p className="hs-tier-meta">{t("or $159 CAD / $129 USD a year, about three months free")}</p>
     </>)}
-    {promo ? <p className="promo-tier-tag">Founding families: {promo.price}, locked in. Join by Dec 31.</p> : null}
+    {promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>Founding families: {promo.price}, locked in. Join by Dec 31.</p> : null}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{promo ? "Helps you get registered" : t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary" placement="pricing_plus" phase={promo.phase} currency={promo.currency}>Lock in {promo.price}</FoundingCheckoutLink> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
+    {promo ? (<>
+    <h3>{promo.currency === "USD" ? "$29/mo USD" : "$39/mo CAD"}</h3>
+    <p className="hs-tier-meta">{promo.currency === "USD" ? "or $259/yr USD" : "or $329/yr CAD"}</p>
+    </>) : (<>
     <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
-    <p className="hs-tier-meta">{promo ? "or $329 CAD / $259 USD a year" : t("or $329 CAD / $259 USD a year, about three months free")}</p>
+    <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>
+    </>)}
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{keepCardTail(t("Sign-ups for a whole season in one go"))}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>

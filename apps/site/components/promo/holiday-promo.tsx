@@ -3,6 +3,7 @@ import type { HolidayPromo } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import { FoundingCheckoutLink } from './founding-checkout-link';
+import { PROMO_IMAGES, type PromoImage } from './promo-images';
 import { PromoStickyReveal } from './promo-sticky';
 
 /**
@@ -11,10 +12,15 @@ import { PromoStickyReveal } from './promo-sticky';
  * Copy rules this file is held to (holiday-promo.test.ts):
  *  - the sale name leads, with the founding price as the big numeral under it (ad 05);
  *  - never was / save / % off / strikethrough anywhere near "Sale";
- *  - every Canadian surface carries "Plus is C$159/yr after Dec 31.";
+ *  - every Canadian surface carries "Plus is $159/yr CAD after Dec 31.";
+ *  - plain "$" in both countries, with CAD / USD quietly beside every price;
  *  - registration stays "helps you get registered"; no camp-finding, no child
  *    names, no referral or gift offer.
- * Same hook, price and type as the v2 ad creatives (05 founding price).
+ *
+ * Look (Barton, Nov 16): each phase has its own theme, keyed on
+ * data-promo-phase in promo.css. Black Friday is retail night: near-black,
+ * gold, a big sale headline. Holiday is warm: deep green, cranberry and cream,
+ * soft lights and snow.
  */
 
 const REFUND_EMAIL = 'aloha@villagehale.com';
@@ -91,10 +97,10 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-/** The amber price block, the same lockup as the ads. */
+/** The big founding price: "$79/yr" with the currency code set small beside it. */
 function PriceLockup({ promo }: { promo: HolidayPromo }) {
   return (
-    <p className="promo-price" aria-label={`${promo.price.replace('/yr', ' a year')}`}>
+    <p className="promo-price" aria-label={promo.price.replace('/yr', ' a year')}>
       <span className="promo-price-sym" aria-hidden="true">
         {promo.symbol}
       </span>
@@ -104,7 +110,38 @@ function PriceLockup({ promo }: { promo: HolidayPromo }) {
       <span className="promo-price-per" aria-hidden="true">
         /yr
       </span>
+      <span className="promo-price-code" aria-hidden="true">
+        {promo.code}
+      </span>
     </p>
+  );
+}
+
+function Photo({ image, className }: { image: PromoImage; className: string }) {
+  return (
+    <img
+      className={className}
+      src={image.src}
+      srcSet={image.srcSet}
+      sizes="(max-width: 640px) 92vw, (max-width: 1023.98px) 60vw, 520px"
+      width={image.width}
+      height={image.height}
+      alt={image.alt}
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
+
+/** One feature photo and two details, all lazy: the offer sits below the hero. */
+function PromoMedia({ promo }: { promo: HolidayPromo }) {
+  const [feature, a, b] = PROMO_IMAGES[promo.phase];
+  return (
+    <div className="promo-media">
+      <Photo image={feature} className="promo-ph promo-ph-feature" />
+      <Photo image={a} className="promo-ph promo-ph-a" />
+      <Photo image={b} className="promo-ph promo-ph-b" />
+    </div>
   );
 }
 
@@ -126,7 +163,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
           <div className="promo-main">
             <p className="promo-kicker">Founding families</p>
             <h2 className="promo-sale" id="founding-h">
-              <span>{promo.saleName.replace(/ Sale$/, '')}</span> <span>Sale</span>
+              <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
+              <span className="promo-sale-word">Sale</span>
             </h2>
             <PriceLockup promo={promo} />
             <p className="promo-lede">
@@ -159,6 +197,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               Dec 31, 2026.
             </p>
           </div>
+          <PromoMedia promo={promo} />
           <ol className="promo-points">
             <li>
               <span className="promo-pt-ic" aria-hidden="true">
@@ -210,7 +249,7 @@ export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
   const after =
     promo.currency === 'USD'
       ? `New members pay the regular Plus price after Dec 31. If you joined as a founding family, you keep ${promo.price} for as long as you’re a member.`
-      : `New members pay the regular price: Plus is C$159/yr after Dec 31. If you joined as a founding family, you keep ${promo.price} for as long as you’re a member.`;
+      : `New members pay the regular price: Plus is $159/yr CAD after Dec 31. If you joined as a founding family, you keep ${promo.price} for as long as you’re a member.`;
   return (
     <>
       <FaqItem id="what-happens-after-dec-31" question="What happens after Dec 31?">
@@ -235,7 +274,7 @@ export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
 /** Mobile-only bar pinned to the bottom once the hero is gone, hidden over the offer itself. */
 export function PromoStickyCta({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
   return (
-    <PromoStickyReveal>
+    <PromoStickyReveal phase={promo.phase}>
       <div className="promo-sticky-copy">
         <strong>{promo.saleName}</strong>
         <span>

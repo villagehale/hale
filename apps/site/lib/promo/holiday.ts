@@ -18,7 +18,7 @@ import {
  *  - "Black Friday Sale" until Nov 27, then "Holiday Sale" from Nov 28 00:00
  *    America/Toronto to Dec 31. The phase is picked per request, so the switch
  *    needs no deploy.
- *  - Founding price C$79/yr (Canada) or US$59/yr (US), locked for as long as the
+ *  - Founding price $79/yr CAD (Canada) or $59/yr USD (US), locked for as long as the
  *    family stays a member. Currency follows the visitor's country (US → USD,
  *    everything else → CAD), the same rule checkout uses.
  *  - Canadian surfaces always carry the Plus price after Dec 31. US surfaces never
@@ -39,11 +39,13 @@ export interface HolidayPromo {
   /** The sale name, which leads every promo surface. */
   saleName: 'Black Friday Sale' | 'Holiday Sale';
   currency: BillingCurrency;
-  /** "C$" or "US$". */
-  symbol: 'C$' | 'US$';
+  /** Plain "$" in both countries; `code` says which dollars. */
+  symbol: '$';
+  /** "CAD" or "USD", shown quietly beside every price. */
+  code: BillingCurrency;
   /** Whole-unit founding price per year. */
   amount: 79 | 59;
-  /** "C$79/yr" / "US$59/yr". */
+  /** "$79/yr CAD" / "$59/yr USD": the price as it reads in a sentence or button. */
   price: string;
   /** The required Canadian line. Null on US surfaces. */
   afterLine: string | null;
@@ -58,8 +60,9 @@ export function buildHolidayPromo(phase: PromoPhase, currency: BillingCurrency):
     saleName: phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale',
     currency,
     symbol: display.symbol,
+    code: display.code,
     amount: display.amount as 79 | 59,
-    price: display.perYear,
+    price: display.perYearCode,
     afterLine: currency === 'USD' ? null : CANADA_PLUS_AFTER_LINE,
   };
 }

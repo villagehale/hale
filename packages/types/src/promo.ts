@@ -63,14 +63,18 @@ export function promoPhaseAt(now: Date): PromoPhase {
  * What the founding price LOOKS like on a page. Display only: checkout charges
  * the Stripe price id in env (STRIPE_PRICE_FOUNDING_ANNUAL_*), so a change to
  * the amount has to land in Stripe and here together.
+ *
+ * Both countries show a plain "$" (Barton, Nov 16). The currency code rides
+ * along quietly so the price is never ambiguous: `perYear` is "$79/yr" for the
+ * big numeral, `perYearCode` is "$79/yr CAD" for every sentence and button.
  */
 export const FOUNDING_PRICE_DISPLAY: Record<
   BillingCurrency,
-  { symbol: 'C$' | 'US$'; amount: number; perYear: string }
+  { symbol: '$'; amount: number; perYear: string; perYearCode: string; code: BillingCurrency }
 > = {
-  CAD: { symbol: 'C$', amount: 79, perYear: 'C$79/yr' },
-  USD: { symbol: 'US$', amount: 59, perYear: 'US$59/yr' },
+  CAD: { symbol: '$', amount: 79, perYear: '$79/yr', perYearCode: '$79/yr CAD', code: 'CAD' },
+  USD: { symbol: '$', amount: 59, perYear: '$59/yr', perYearCode: '$59/yr USD', code: 'USD' },
 };
 
 /** The line every Canadian promo surface carries. US surfaces show none. */
-export const CANADA_PLUS_AFTER_LINE = 'Plus is C$159/yr after Dec 31.';
+export const CANADA_PLUS_AFTER_LINE = 'Plus is $159/yr CAD after Dec 31.';

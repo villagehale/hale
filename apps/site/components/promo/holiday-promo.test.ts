@@ -46,13 +46,22 @@ for (const { phase, currency } of CASES) {
         expect(body).toContain(phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale');
         expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
         expect(html).toContain('id="founding"');
-        expect(body).toContain(currency === 'USD' ? 'US$59/yr' : 'C$79/yr');
-        expect(body).not.toContain(currency === 'USD' ? 'C$79' : 'US$59');
+        expect(body).toContain(currency === 'USD' ? '$59/yr USD' : '$79/yr CAD');
+        expect(body).not.toContain(currency === 'USD' ? '$79' : '$59');
+      });
+
+      it('shows a plain "$" with a quiet currency code, never a C$ / US$ prefix', () => {
+        expect(body).not.toMatch(/C\$|US\$/);
+        // the big numeral carries its code beside it
+        expect(html).toMatch(new RegExp(`class="promo-price-code"[^>]*>${currency}<`));
+        // no price in the other country's currency
+        const other = currency === 'USD' ? 'CAD' : 'USD';
+        expect(body).not.toMatch(new RegExp(`\\$\\d[\\d.]*(/(yr|mo))? ${other}`));
       });
 
       it('carries the Canadian Plus line only in Canada', () => {
-        if (currency === 'CAD') expect(body).toContain('Plus is C$159/yr after Dec 31.');
-        else expect(body).not.toMatch(/C\$159/);
+        if (currency === 'CAD') expect(body).toContain('Plus is $159/yr CAD after Dec 31.');
+        else expect(body).not.toMatch(/\$159/);
       });
 
       it('never pairs the sale with was / save / % off / strikethrough', () => {

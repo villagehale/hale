@@ -106,7 +106,10 @@ export function FoundingCheckout({
           <h1 id="founding-title" className={styles.sale}>
             {saleName}
           </h1>
-          <p className={styles.price} aria-label={`${display.perYear.replace('/yr', ' a year')}`}>
+          <p
+            className={styles.price}
+            aria-label={`${display.perYear.replace('/yr', ' a year')} ${display.code}`}
+          >
             <span className={styles.symbol} aria-hidden="true">
               {display.symbol}
             </span>
@@ -115,6 +118,9 @@ export function FoundingCheckout({
             </span>
             <span className={styles.per} aria-hidden="true">
               /yr
+            </span>
+            <span className={styles.code} aria-hidden="true">
+              {display.code}
             </span>
           </p>
           <p className={styles.lede}>
@@ -134,9 +140,7 @@ export function FoundingCheckout({
           <ul>
             <li>
               <Check aria-hidden="true" />
-              <span>
-                Billed {display.perYear} in {currency}, starting today.
-              </span>
+              <span>Billed {display.perYearCode}, starting today.</span>
             </li>
             <li>
               <Check aria-hidden="true" />
@@ -160,7 +164,7 @@ export function FoundingCheckout({
             </output>
           ) : null}
           <button type="button" className={styles.button} onClick={begin} disabled={busy || !ready}>
-            {busy ? 'Opening checkout…' : `Continue to checkout · ${display.perYear}`}
+            {busy ? 'Opening checkout…' : `Continue to checkout · ${display.perYearCode}`}
             <ArrowRight aria-hidden="true" />
           </button>
           <p className={styles.secure}>
