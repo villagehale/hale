@@ -189,6 +189,11 @@ export interface ReadInboundMediaOptions {
   documents?: boolean;
   /** The PDF fetch. Production pins the vetted address, like the `.vcf` fetch. */
   documentFetch?: ContactFetch;
+  /**
+   * VIL-413 · turn an iPhone HEIC into JPEG before the image block. Absent: a HEIC
+   * stays unwatched, which is every turn that is not intake with the flag on.
+   */
+  convertHeic?: (bytes: Buffer) => Promise<Buffer | null>;
 }
 
 /**
@@ -262,13 +267,21 @@ export async function readInboundMedia(
         unwatched.push({ kind: 'image' });
         continue;
       }
-      const bytes = Buffer.from(await response.arrayBuffer());
+      let bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.byteLength === 0 || bytes.byteLength > IMAGE_BYTE_CAP) {
         unwatched.push({ kind: 'image' });
         continue;
       }
-      const mime =
+      let mime =
         sniffedMime(bytes) ?? headerMime(response.headers.get('content-type')) ?? part.mime;
+      if ((!mime || !IMAGE_BLOCK_MIMES.has(mime)) && options.convertHeic) {
+        const jpeg = await options.convertHeic(bytes);
+        const sniffed = jpeg ? sniffedMime(jpeg) : null;
+        if (jpeg && sniffed === 'image/jpeg' && jpeg.byteLength <= IMAGE_BYTE_CAP) {
+          bytes = jpeg;
+          mime = sniffed;
+        }
+      }
       if (!mime || !IMAGE_BLOCK_MIMES.has(mime)) {
         unwatched.push({ kind: 'image' });
         continue;

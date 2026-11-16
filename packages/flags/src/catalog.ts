@@ -138,6 +138,7 @@ export const FLAGS = [
   }),
   exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
+  exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {

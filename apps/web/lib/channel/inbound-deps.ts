@@ -21,6 +21,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
+import { readIntakePhoto } from '~/lib/channel/intake/intake-photo';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createOptOutReader, sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
@@ -115,6 +116,7 @@ export function buildIntakeDeps(
       yearFinder: createActivityFinder(activityClient),
     }),
     friendVoice: createFriendVoiceComposer(client),
+    readIntakePhoto: (input) => readIntakePhoto({ ...input, client }),
     answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
     optOutReader: sharedOptOutReader(),
