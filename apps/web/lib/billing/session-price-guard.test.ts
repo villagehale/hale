@@ -4,8 +4,10 @@ import { decidePaidSessionGrant, paidSessionPriceIds } from './session-price-gua
 const BEFORE = new Date('2026-11-16T12:00:00-05:00');
 const AFTER = new Date('2027-01-01T00:00:00-05:00');
 const ENV = {
-  STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
-  STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+  STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_founding_cad',
+  STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD: 'price_founding_usd',
+  STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
+  STRIPE_PRICE_PROMO_MAX_ANNUAL_USD: 'price_max_usd',
   STRIPE_PRICE_PLUS_MONTHLY: 'price_cad_mo',
   STRIPE_PRICE_PLUS_ANNUAL: 'price_cad_yr',
   STRIPE_PRICE_PLUS_MONTHLY_USD: 'price_usd_mo',
@@ -30,12 +32,22 @@ describe('paidSessionPriceIds', () => {
 });
 
 describe('decidePaidSessionGrant', () => {
-  it('allows a founding Checkout Session during the window', () => {
+  it('allows a Plus or Max promo Checkout Session during the window', () => {
     expect(
       decidePaidSessionGrant(
         checkout({
           id: 'cs_founding',
           metadata: { tier: 'plus', priceId: 'price_founding_cad' },
+        }),
+        BEFORE,
+        ENV,
+      ),
+    ).toEqual({ status: 'allow' });
+    expect(
+      decidePaidSessionGrant(
+        checkout({
+          id: 'cs_max',
+          metadata: { tier: 'family', priceId: 'price_max_cad' },
         }),
         BEFORE,
         ENV,

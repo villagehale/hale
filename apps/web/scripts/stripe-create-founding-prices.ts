@@ -1,12 +1,15 @@
 #!/usr/bin/env tsx
-// Idempotent Stripe bootstrap for the 2026 founding-family yearly prices
-// (CAD 7900 / USD 5900, metadata promo=founding-2026) and the Plus USD list
-// (monthly 1400 / yearly 11900, metadata list=plus-usd).
+// Idempotent Stripe bootstrap for the 2026 holiday promo yearly prices
+// (Plus CAD 5900 / USD 3900, Max CAD 9900 / USD 7900, metadata
+// promo=holiday-2026, lookup_key hale_promo_{plus|max}_annual_{cad|usd})
+// and the Plus USD list (monthly 1400 / yearly 11900, metadata list=plus-usd).
 //
+// Dry-run by default. Pass --apply to create missing products/prices.
 // Prints only newly created price ids as ENV=price_… lines. Existing tagged
 // prices are left alone. Does not print the secret key.
 //
 //   pnpm stripe:create-founding-prices
+//   pnpm stripe:create-founding-prices -- --apply
 //
 // Needs STRIPE_SECRET_KEY. Do not commit the output.
 
@@ -22,7 +25,16 @@ if (!secret) {
   process.exit(1);
 }
 
-const result = await ensurePromoPrices(stripeCatalogApiFromSecret(secret));
+const apply = process.argv.includes('--apply');
+const result = await ensurePromoPrices(stripeCatalogApiFromSecret(secret), { apply });
+if (!apply) {
+  process.stderr.write(
+    `dry-run: ${result.wouldCreate.length} price(s) would be created. Pass --apply to create.\n`,
+  );
+  if (result.wouldCreate.length > 0) {
+    process.stderr.write(`${result.wouldCreate.join('\n')}\n`);
+  }
+}
 const printed = formatCreatedPriceIds(result);
 if (printed) process.stdout.write(`${printed}\n`);
 process.exit(0);

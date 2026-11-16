@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FOUNDING_PROMO_ENDS_AT,
+  FOUNDING_PRICE_DISPLAY,
   PLUS_LIST_PRICE_DISPLAY,
+  PROMO_PRICE_DISPLAY,
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
@@ -50,6 +52,17 @@ describe('founding promo window', () => {
   it('is open before the cutoff', () => {
     const ends = parseFoundingPromoEndsAt(undefined);
     expect(isFoundingPromoWindowOpen(new Date('2026-11-16T00:00:00-05:00'), ends)).toBe(true);
+  });
+});
+
+describe('promo annual display', () => {
+  it('pins Plus and Max yearly amounts with a plain $ and no CAD/USD label', () => {
+    expect(PROMO_PRICE_DISPLAY.plus.CAD).toEqual({ symbol: '$', amount: 59, perYear: '$59/yr' });
+    expect(PROMO_PRICE_DISPLAY.plus.USD).toEqual({ symbol: '$', amount: 39, perYear: '$39/yr' });
+    expect(PROMO_PRICE_DISPLAY.family.CAD).toEqual({ symbol: '$', amount: 99, perYear: '$99/yr' });
+    expect(PROMO_PRICE_DISPLAY.family.USD).toEqual({ symbol: '$', amount: 79, perYear: '$79/yr' });
+    expect(FOUNDING_PRICE_DISPLAY.CAD.amount).toBe(79);
+    expect(FOUNDING_PRICE_DISPLAY.USD.amount).toBe(59);
   });
 });
 

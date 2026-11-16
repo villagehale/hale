@@ -1,13 +1,19 @@
 import type { BillingCurrency } from '@hale/types';
-import { FOUNDING_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
+import { PLUS_LIST_PRICE_DISPLAY, PROMO_PRICE_DISPLAY } from '@hale/types';
 
 /**
- * Hale-web price labels. Plain `$` plus a CAD/USD note (same geo-IP currency
- * as checkout). List amounts come from PLUS_LIST_PRICE_DISPLAY cents.
+ * Hale-web price labels. Promo surfaces use a plain `$` with no CAD/USD note.
+ * Currency still comes from visitor geo at checkout. List amounts come from
+ * PLUS_LIST_PRICE_DISPLAY cents.
  */
 
+export function promoPriceLabel(tier: 'plus' | 'family', currency: BillingCurrency): string {
+  return PROMO_PRICE_DISPLAY[tier][currency].perYear;
+}
+
+/** Plus promo yearly label. Prefer promoPriceLabel when the tier is known. */
 export function foundingPriceLabel(currency: BillingCurrency): string {
-  return `$${FOUNDING_PRICE_DISPLAY[currency].amount}/yr`;
+  return promoPriceLabel('plus', currency);
 }
 
 export function plusListPriceLabels(currency: BillingCurrency): {

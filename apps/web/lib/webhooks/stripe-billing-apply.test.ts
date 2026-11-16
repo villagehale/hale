@@ -595,4 +595,39 @@ describe('applyStripeBillingEvent', () => {
     expect(result).toEqual({ status: 'refund_ready', opsAlert: 'sent' });
     expect(rec.planWrites).toEqual([]);
   });
+
+  it('grants family from a Max promo yearly Checkout Session during the window', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free' });
+    const map: PriceTierMap = { price_max_cad: 'family' };
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_max',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_max',
+            metadata: {
+              familyId: FAMILY_ID,
+              tier: 'family',
+              priceId: 'price_max_cad',
+            },
+            client_reference_id: FAMILY_ID,
+          },
+        },
+      },
+      db,
+      map,
+      {},
+      {
+        now: new Date('2026-11-16T12:00:00-05:00'),
+        env: {
+          STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus_cad',
+          STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: 'applied', tier: 'family' });
+    expect(rec.planWrites).toEqual([{ tier: 'family' }]);
+  });
 });

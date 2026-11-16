@@ -2,8 +2,9 @@
  * Live Stripe lockdown for the founding promo window.
  *
  * Lists every active Payment Link and every open Checkout Session whose price
- * is not a founding yearly id. Dry-run by default; `--apply` deactivates those
- * links and expires those sessions. Ids and counts only — never secrets.
+ * is not one of the four promo yearly ids. Dry-run by default; `--apply`
+ * deactivates those links and expires those sessions. Ids and counts only —
+ * never secrets.
  */
 
 export interface PromoLockdownLink {

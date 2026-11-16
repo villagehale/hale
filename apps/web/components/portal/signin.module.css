@@ -17,15 +17,6 @@
   text-align: left;
 }
 
-.currencyNote {
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--slate, #5c6b87);
-}
-
 .field {
   margin-top: var(--s6, 32px);
   display: flex;

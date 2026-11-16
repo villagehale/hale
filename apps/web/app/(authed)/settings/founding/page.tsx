@@ -7,7 +7,7 @@ import { PortalHeading } from '~/components/portal/heading';
 import styles from '~/components/portal/portal.module.css';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { foundingWindowOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
+import { foundingWindowOpen, isPromoAnnualSku, resolveCheckoutPrice } from '~/lib/billing/prices';
 import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { currentFamilyId } from '~/lib/family';
@@ -79,25 +79,48 @@ export default async function FoundingCheckoutPage({
   if (!familyMayUseFoundingCheckout(familyId, now)) {
     notFound();
   }
-  const selection = resolveCheckoutPrice({
+  const stripeReady = Boolean(process.env.STRIPE_SECRET_KEY && process.env.APP_URL);
+  const plus = resolveCheckoutPrice({
     currency,
     period: 'annual',
     now,
     preview: !holidayPromoEnabled(),
+    tier: 'plus',
   });
-  const ready =
-    selection.status === 'selected' &&
-    selection.price.sku === 'founding_annual' &&
-    selection.price.currency === currency &&
-    Boolean(process.env.STRIPE_SECRET_KEY && process.env.APP_URL);
+  const max = resolveCheckoutPrice({
+    currency,
+    period: 'annual',
+    now,
+    preview: !holidayPromoEnabled(),
+    tier: 'family',
+  });
+  const plusReady =
+    stripeReady &&
+    plus.status === 'selected' &&
+    isPromoAnnualSku(plus.price.sku) &&
+    plus.price.currency === currency;
+  const maxReady =
+    stripeReady &&
+    max.status === 'selected' &&
+    isPromoAnnualSku(max.price.sku) &&
+    max.price.currency === currency;
   return (
     <div className={styles.one}>
       <FoundingCheckout
         currency={currency}
         phase={promoPhaseAt(now)}
-        ready={ready}
+        ready={plusReady}
         attribution={attribution}
         cancelled={params.checkout === 'cancelled'}
+        tier="plus"
+      />
+      <FoundingCheckout
+        currency={currency}
+        phase={promoPhaseAt(now)}
+        ready={maxReady}
+        attribution={attribution}
+        cancelled={params.checkout === 'cancelled'}
+        tier="family"
       />
     </div>
   );
