@@ -274,7 +274,7 @@ export function PromoStickyCta({ promo, ...door }: { promo: HolidayPromo } & Doo
       <div className="promo-sticky-copy">
         <strong>{promo.saleName}</strong>
         <span>
-          {promo.price}, locked in. Join by Dec 31
+          {promo.price}, locked in. Join by Dec&nbsp;31
         </span>
       </div>
       <TextDoor className="promo-sticky-btn" placement="promo_sticky" {...door}>
