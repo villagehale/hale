@@ -10,9 +10,15 @@ import {
   YMCA_PORTAL,
   YMCA_SWIM_OPENS,
 } from './facts';
-import type { RecMorningTopic, RecMorningWhere } from './match';
+import { recMorningModelTopicEnabled } from './flag';
+import type { RecHelloCity, RecMorningTopic, RecMorningWhere } from './match';
 import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './match';
 import { type RecMorningReader, sharedRecMorningReader } from './read';
+import {
+  type RecMorningCatalogEntry,
+  type RecMorningTopicPicker,
+  sharedRecMorningTopicPicker,
+} from './topic';
 
 /**
  * VIL-308 rec-morning FACTS. VIL-508 (absolute zero fixed copy): nothing in this file is
@@ -128,6 +134,45 @@ export function recMorningBody(
   return REC_MORNING_FACTS[topic](now, where, askedPostal);
 }
 
+const TORONTO_TOPICS: readonly RecMorningTopic[] = [
+  'toronto_swim',
+  'toronto_rec',
+  'toronto_waitlist',
+  'toronto_wishlist',
+  'toronto_efun',
+  'two_parents',
+];
+
+const BRAMPTON_TOPICS: readonly RecMorningTopic[] = ['brampton_swim', 'brampton_rec'];
+
+const GTA_WIDE_TOPICS: readonly RecMorningTopic[] = [
+  'ymca_gta_swim',
+  'ymca_follow',
+  'jack_of_sports',
+];
+
+/** The family's own rec-morning topics, before GTA-wide ones. No word test. */
+export function recMorningTopicsForCity(city: RecHelloCity): readonly RecMorningTopic[] {
+  if (city === 'toronto') return TORONTO_TOPICS;
+  if (city === 'brampton') return BRAMPTON_TOPICS;
+  return [city];
+}
+
+/**
+ * Facts Hale holds for this family as of `now`. Null bodies (a morning that has
+ * passed, a town with no window) are dropped. The catalog is the family's city
+ * plus YMCA and Jack of Sports — not a scan of the parent's words.
+ */
+export function recMorningCatalog(now: Date, where: RecMorningWhere): RecMorningCatalogEntry[] {
+  const ids = [...recMorningTopicsForCity(where.municipality), ...GTA_WIDE_TOPICS];
+  const out: RecMorningCatalogEntry[] = [];
+  for (const topic of ids) {
+    const facts = recMorningBody(topic, now, where, null);
+    if (facts) out.push({ topic, facts });
+  }
+  return out;
+}
+
 /**
  * The C1 / post-intake body. Null when the family has no GTA place on file (VIL-591),
  * when this text is not a rec-morning question, and when it names a town the dataset
@@ -194,38 +239,12 @@ function verbatimFrom(facts: string): string[] {
   return [...facts.matchAll(URL_IN_FACTS)].map((m) => m[0].replace(/[.,]+$/, ''));
 }
 
-/**
- * VIL-508: the parent's rec-morning text, written by the model from the topic's facts.
- * Null when the family has no GTA place, when this is not a rec-morning question, when
- * the dataset holds no window, or when the model wrote nothing usable — the caller sends
- * nothing from this lane.
- *
- * VIL-545: the word test only picks the facts. The model reads whether they answer the
- * text ({@link RecMorningReader}); any other reading, or a failed read, sends nothing
- * from this lane and the coach answers the turn.
- */
-export async function writeRecMorningReply(
+async function speakFromFacts(
   body: string,
-  now: Date,
-  where: RecMorningWhere | null,
-  language: ReplyLanguage | null = null,
-  write: typeof speak = speak,
-  read: RecMorningReader = sharedRecMorningReader(),
+  facts: string,
+  language: ReplyLanguage | null,
+  write: typeof speak,
 ): Promise<string | null> {
-  const facts = recMorningReply(body, now, where);
-  if (facts === null) return null;
-  const reading = await read({ text: body, facts, language });
-  if (reading === null) {
-    console.error(
-      { outcome: 'read_failed' },
-      'rec-morning: read failed - nothing sent from this lane',
-    );
-    return null;
-  }
-  if (reading !== 'answers') {
-    console.info({ outcome: 'not_answered' }, 'rec-morning: facts do not answer this text');
-    return null;
-  }
   const text = await write({
     purpose: 'rec_morning',
     // Null only when intake has no stored language yet. The skill then writes
@@ -241,6 +260,85 @@ export async function writeRecMorningReply(
   return text;
 }
 
+/**
+ * Flag on: the model picks a topic from the family's catalog. No word test. A
+ * failed pick, `none`, or an empty catalog sends nothing from this lane.
+ */
+async function writeFromPickedTopic(
+  body: string,
+  now: Date,
+  where: RecMorningWhere,
+  language: ReplyLanguage | null,
+  write: typeof speak,
+  pick: RecMorningTopicPicker,
+): Promise<string | null> {
+  const catalog = recMorningCatalog(now, where);
+  if (catalog.length === 0) return null;
+  const picked = await pick({
+    text: body,
+    language,
+    homeCity: where.municipality,
+    topics: catalog,
+  });
+  if (picked === null) {
+    console.error(
+      { outcome: 'read_failed' },
+      'rec-morning: topic pick failed - nothing sent from this lane',
+    );
+    return null;
+  }
+  if (picked === 'none') {
+    console.info({ outcome: 'not_answered' }, 'rec-morning: facts do not answer this text');
+    return null;
+  }
+  const entry = catalog.find((item) => item.topic === picked);
+  if (entry === undefined) {
+    console.info({ outcome: 'not_answered' }, 'rec-morning: facts do not answer this text');
+    return null;
+  }
+  return speakFromFacts(body, entry.facts, language, write);
+}
+
+/**
+ * VIL-508: the parent's rec-morning text, written by the model from the topic's facts.
+ * Null when the family has no GTA place, when this is not a rec-morning question, when
+ * the dataset holds no window, or when the model wrote nothing usable — the caller sends
+ * nothing from this lane.
+ *
+ * VIL-545: off, the word test only picks the facts and rec-morning-read decides whether
+ * they answer the text. On ({@link recMorningModelTopicEnabled}), the model picks the
+ * topic from the family's catalog and the word test is not consulted.
+ */
+export async function writeRecMorningReply(
+  body: string,
+  now: Date,
+  where: RecMorningWhere | null,
+  language: ReplyLanguage | null = null,
+  write: typeof speak = speak,
+  read: RecMorningReader = sharedRecMorningReader(),
+  pick: RecMorningTopicPicker = sharedRecMorningTopicPicker(),
+): Promise<string | null> {
+  if (where === null) return null;
+  if (recMorningModelTopicEnabled()) {
+    return writeFromPickedTopic(body, now, where, language, write, pick);
+  }
+  const facts = recMorningReply(body, now, where);
+  if (facts === null) return null;
+  const reading = await read({ text: body, facts, language });
+  if (reading === null) {
+    console.error(
+      { outcome: 'read_failed' },
+      'rec-morning: read failed - nothing sent from this lane',
+    );
+    return null;
+  }
+  if (reading !== 'answers') {
+    console.info({ outcome: 'not_answered' }, 'rec-morning: facts do not answer this text');
+    return null;
+  }
+  return speakFromFacts(body, facts, language, write);
+}
+
 /** VIL-508: the mid-signup rec-morning text, model-written; null sends nothing. */
 export async function writeRecMorningIntakeReply(
   input: {
@@ -253,8 +351,9 @@ export async function writeRecMorningIntakeReply(
   },
   write: typeof speak = speak,
   read: RecMorningReader = sharedRecMorningReader(),
+  pick: RecMorningTopicPicker = sharedRecMorningTopicPicker(),
 ): Promise<string | null> {
-  if (recMorningIntakeReply(input) === null) return null;
+  if (!recMorningModelTopicEnabled() && recMorningIntakeReply(input) === null) return null;
   const text = await writeRecMorningReply(
     input.parentWords,
     input.now ?? new Date(),
@@ -262,6 +361,7 @@ export async function writeRecMorningIntakeReply(
     input.language ?? null,
     write,
     read,
+    pick,
   );
   return text;
 }
