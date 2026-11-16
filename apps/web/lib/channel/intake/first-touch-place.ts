@@ -16,6 +16,13 @@ export interface FirstTouchPlace {
   /** One municipality when the FSA or the city names exactly one. */
   municipality: Municipality | null;
   city: string | null;
+  /** Set when a stated place names the country. Absent on a postal-only read. */
+  country?: 'Canada' | 'United States';
+  countryCode?: 'CA' | 'US';
+  province?: string | null;
+  /** The zone the code or the city gives. Null when the city sits in more than one. */
+  timezone?: string | null;
+  currency?: 'CAD' | 'USD';
 }
 
 const POSTAL_IN_TEXT =

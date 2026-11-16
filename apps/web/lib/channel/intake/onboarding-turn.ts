@@ -8,6 +8,7 @@ import { acceptCalendarDate } from './calendar-date';
 import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
 import { type IntakeSession, placeSettled } from './session';
+import { acceptStatedCountry } from './stated-place';
 
 /**
  * One activity the parent agreed to put on the calendar. The model settles
@@ -86,6 +87,10 @@ export interface OnboardingCapture {
   stopAsking: boolean;
   /** BCP-47 tag of the language this parent is writing in. Null when the model omitted it. */
   language: ReplyLanguage | null;
+  /** CA, US, or other, only when the stated-place flag is on and the model said. */
+  country?: 'CA' | 'US' | 'other' | null;
+  /** Province or state they named. The table accepts it; a sentence does not match. */
+  region?: string | null;
 }
 
 export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
@@ -424,6 +429,18 @@ export function countRejectedScheduleAdds(raw: unknown, limits: ScheduleLimits):
   ).length;
 }
 
+function statedPlaceFields(row: Record<string, unknown>): {
+  country?: 'CA' | 'US' | 'other';
+  region?: string;
+} {
+  const country = acceptStatedCountry(row.country);
+  const region = typeof row.region === 'string' ? row.region.trim() : '';
+  return {
+    ...(country ? { country } : {}),
+    ...(region.length > 0 ? { region } : {}),
+  };
+}
+
 /**
  * Keep a field only when it is the shape of that fact.
  */
@@ -491,6 +508,7 @@ export function acceptOnboardingCapture(
     nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     placeDeclined: row.placeDeclined === true,
+    ...statedPlaceFields(row),
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
