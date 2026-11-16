@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_LIST_CAD_CENTS,
+  MAX_LIST_CAD_METADATA,
+  MAX_LIST_LOOKUP,
+  MAX_LIST_USD_CENTS,
+  MAX_LIST_USD_METADATA,
   PLUS_USD_ANNUAL_CENTS,
   PLUS_USD_LIST_METADATA,
   PLUS_USD_MONTHLY_CENTS,
@@ -62,10 +67,10 @@ function fakeApi(seed: {
 }
 
 describe('ensurePromoPrices', () => {
-  it('creates four promo yearly prices and Plus USD list monthly/annual', async () => {
+  it('creates four promo yearly prices, Plus USD list, and Max list annual', async () => {
     const { api, createdPrices } = fakeApi({});
     const result = await ensurePromoPrices(api);
-    expect(createdPrices).toHaveLength(6);
+    expect(createdPrices).toHaveLength(8);
     expect(createdPrices).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -108,6 +113,20 @@ describe('ensurePromoPrices', () => {
           interval: 'year',
           metadata: PLUS_USD_LIST_METADATA,
         }),
+        expect.objectContaining({
+          currency: 'cad',
+          unitAmount: MAX_LIST_CAD_CENTS,
+          interval: 'year',
+          metadata: MAX_LIST_CAD_METADATA,
+          lookupKey: MAX_LIST_LOOKUP.cad,
+        }),
+        expect.objectContaining({
+          currency: 'usd',
+          unitAmount: MAX_LIST_USD_CENTS,
+          interval: 'year',
+          metadata: MAX_LIST_USD_METADATA,
+          lookupKey: MAX_LIST_LOOKUP.usd,
+        }),
       ]),
     );
     expect(PROMO_PLUS_CAD_CENTS).toBe(5900);
@@ -116,6 +135,8 @@ describe('ensurePromoPrices', () => {
     expect(PROMO_MAX_USD_CENTS).toBe(7900);
     expect(PLUS_USD_MONTHLY_CENTS).toBe(1400);
     expect(PLUS_USD_ANNUAL_CENTS).toBe(11900);
+    expect(MAX_LIST_CAD_CENTS).toBe(32900);
+    expect(MAX_LIST_USD_CENTS).toBe(25900);
     expect(formatCreatedPriceIds(result).split('\n')).toEqual([
       `STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD=${result.plusCad}`,
       `STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD=${result.plusUsd}`,
@@ -123,6 +144,8 @@ describe('ensurePromoPrices', () => {
       `STRIPE_PRICE_PROMO_MAX_ANNUAL_USD=${result.maxUsd}`,
       `STRIPE_PRICE_PLUS_MONTHLY_USD=${result.plusMonthlyUsd}`,
       `STRIPE_PRICE_PLUS_ANNUAL_USD=${result.plusAnnualUsd}`,
+      `STRIPE_PRICE_MAX_ANNUAL_CAD=${result.maxAnnualCad}`,
+      `STRIPE_PRICE_MAX_ANNUAL_USD=${result.maxAnnualUsd}`,
     ]);
   });
 
@@ -180,6 +203,24 @@ describe('ensurePromoPrices', () => {
         metadata: { list: 'plus-usd' },
         productId: 'prod_p',
       },
+      {
+        id: 'price_exist_max_list_cad',
+        currency: 'cad',
+        unitAmount: 32900,
+        interval: 'year',
+        metadata: { list: 'max-cad' },
+        productId: 'prod_max',
+        lookupKey: MAX_LIST_LOOKUP.cad,
+      },
+      {
+        id: 'price_exist_max_list_usd',
+        currency: 'usd',
+        unitAmount: 25900,
+        interval: 'year',
+        metadata: { list: 'max-usd' },
+        productId: 'prod_max',
+        lookupKey: MAX_LIST_LOOKUP.usd,
+      },
     ];
     const { api, createdPrices, createdProducts } = fakeApi({
       prices: existing,
@@ -199,6 +240,8 @@ describe('ensurePromoPrices', () => {
       maxUsd: 'price_exist_max_usd',
       plusMonthlyUsd: 'price_exist_mo',
       plusAnnualUsd: 'price_exist_yr',
+      maxAnnualCad: 'price_exist_max_list_cad',
+      maxAnnualUsd: 'price_exist_max_list_usd',
       created: [],
       wouldCreate: [],
     });
@@ -217,6 +260,8 @@ describe('ensurePromoPrices', () => {
       'STRIPE_PRICE_PROMO_MAX_ANNUAL_USD',
       'STRIPE_PRICE_PLUS_MONTHLY_USD',
       'STRIPE_PRICE_PLUS_ANNUAL_USD',
+      'STRIPE_PRICE_MAX_ANNUAL_CAD',
+      'STRIPE_PRICE_MAX_ANNUAL_USD',
     ]);
   });
 });

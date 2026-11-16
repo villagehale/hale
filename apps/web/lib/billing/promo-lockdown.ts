@@ -1,10 +1,13 @@
+import { isLegacyFoundingPrice } from './create-prices.js';
+
 /**
  * Live Stripe lockdown for the founding promo window.
  *
  * Lists every active Payment Link and every open Checkout Session whose price
- * is not one of the four promo yearly ids. Dry-run by default; `--apply`
- * deactivates those links and expires those sessions. Ids and counts only —
- * never secrets.
+ * is not one of the four promo yearly ids. Also archives (active=false) prices
+ * tagged with the old founding metadata (`promo=founding-2026`), leftover
+ * founding lookup keys, or leftover STRIPE_PRICE_FOUNDING_ANNUAL_* ids.
+ * Dry-run by default; `--apply` writes. Ids and counts only — never secrets.
  */
 
 export interface PromoLockdownLink {
@@ -16,25 +19,41 @@ export interface PromoLockdownSession {
   readonly priceIds: readonly string[];
 }
 
+export interface PromoLockdownPrice {
+  readonly id: string;
+  readonly lookupKey: string | null;
+  readonly metadata: Record<string, string>;
+}
+
 export interface PromoLockdownApi {
   listActivePaymentLinks(): Promise<PromoLockdownLink[]>;
   listOpenCheckoutSessions(): Promise<PromoLockdownSession[]>;
+  listActivePrices(): Promise<PromoLockdownPrice[]>;
   deactivatePaymentLink(id: string): Promise<void>;
   expireCheckoutSession(id: string): Promise<void>;
+  archivePrice(id: string): Promise<void>;
 }
 
-export type PromoLockdownAction = 'deactivate' | 'would_deactivate' | 'expire' | 'would_expire';
+export type PromoLockdownAction =
+  | 'deactivate'
+  | 'would_deactivate'
+  | 'expire'
+  | 'would_expire'
+  | 'archive'
+  | 'would_archive';
 
 export interface PromoLockdownResult {
   readonly apply: boolean;
   readonly paymentLinkCount: number;
   readonly sessionCount: number;
+  readonly priceCount: number;
   readonly paymentLinks: ReadonlyArray<{ id: string; action: 'deactivate' | 'would_deactivate' }>;
   readonly sessions: ReadonlyArray<{
     id: string;
     priceIds: readonly string[];
     action: 'expire' | 'would_expire';
   }>;
+  readonly prices: ReadonlyArray<{ id: string; action: 'archive' | 'would_archive' }>;
 }
 
 export function sessionNeedsExpiry(
@@ -46,14 +65,29 @@ export function sessionNeedsExpiry(
   return session.priceIds.some((id) => !foundingPriceIds.has(id));
 }
 
+export function priceNeedsArchive(
+  price: PromoLockdownPrice,
+  keepAliveIds: ReadonlySet<string>,
+  leftoverFoundingIds: ReadonlySet<string>,
+): boolean {
+  if (keepAliveIds.has(price.id)) return false;
+  if (leftoverFoundingIds.has(price.id)) return true;
+  return isLegacyFoundingPrice(price);
+}
+
 export async function runPromoLockdown(input: {
   api: PromoLockdownApi;
   foundingPriceIds: ReadonlySet<string>;
+  leftoverFoundingPriceIds?: ReadonlySet<string>;
   apply: boolean;
 }): Promise<PromoLockdownResult> {
+  const leftover = input.leftoverFoundingPriceIds ?? new Set<string>();
   const links = await input.api.listActivePaymentLinks();
   const open = await input.api.listOpenCheckoutSessions();
   const sessions = open.filter((session) => sessionNeedsExpiry(session, input.foundingPriceIds));
+  const prices = (await input.api.listActivePrices()).filter((price) =>
+    priceNeedsArchive(price, input.foundingPriceIds, leftover),
+  );
 
   if (input.apply) {
     for (const link of links) {
@@ -62,12 +96,16 @@ export async function runPromoLockdown(input: {
     for (const session of sessions) {
       await input.api.expireCheckoutSession(session.id);
     }
+    for (const price of prices) {
+      await input.api.archivePrice(price.id);
+    }
   }
 
   return {
     apply: input.apply,
     paymentLinkCount: links.length,
     sessionCount: sessions.length,
+    priceCount: prices.length,
     paymentLinks: links.map((link) => ({
       id: link.id,
       action: input.apply ? 'deactivate' : 'would_deactivate',
@@ -76,6 +114,10 @@ export async function runPromoLockdown(input: {
       id: session.id,
       priceIds: session.priceIds,
       action: input.apply ? 'expire' : 'would_expire',
+    })),
+    prices: prices.map((price) => ({
+      id: price.id,
+      action: input.apply ? 'archive' : 'would_archive',
     })),
   };
 }
@@ -197,6 +239,36 @@ export function stripePromoLockdownApiFromSecret(
         secret,
         `checkout/sessions/${id}/expire`,
         { method: 'POST', body: '' },
+        fetchImpl,
+      );
+    },
+    async listActivePrices() {
+      const rows = await listPages(secret, 'prices', { active: 'true' }, fetchImpl);
+      return rows.flatMap((row) => {
+        if (!isRecord(row)) return [];
+        const id = readString(row.id);
+        if (!id) return [];
+        const metadata = isRecord(row.metadata)
+          ? Object.fromEntries(
+              Object.entries(row.metadata).flatMap(([key, value]) =>
+                typeof value === 'string' ? [[key, value] as const] : [],
+              ),
+            )
+          : {};
+        return [
+          {
+            id,
+            lookupKey: readString(row.lookup_key),
+            metadata,
+          },
+        ];
+      });
+    },
+    async archivePrice(id) {
+      await stripeJson(
+        secret,
+        `prices/${id}`,
+        { method: 'POST', body: new URLSearchParams({ active: 'false' }).toString() },
         fetchImpl,
       );
     },

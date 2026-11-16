@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FOUNDING_PROMO_ENDS_AT,
   FOUNDING_PRICE_DISPLAY,
+  MAX_LIST_PRICE_DISPLAY,
   PLUS_LIST_PRICE_DISPLAY,
   PROMO_PRICE_DISPLAY,
   currencyFromIpCountry,
@@ -79,6 +80,19 @@ describe('Plus list display', () => {
       annualLabel: '$119/yr USD',
       monthlyCents: 1400,
       annualCents: 11900,
+    });
+  });
+});
+
+describe('Max list annual display', () => {
+  it('pins CAD 32900 and USD 25900 for after the cutoff', () => {
+    expect(MAX_LIST_PRICE_DISPLAY.CAD).toEqual({
+      annualLabel: '$329/yr CAD',
+      annualCents: 32900,
+    });
+    expect(MAX_LIST_PRICE_DISPLAY.USD).toEqual({
+      annualLabel: '$259/yr USD',
+      annualCents: 25900,
     });
   });
 });

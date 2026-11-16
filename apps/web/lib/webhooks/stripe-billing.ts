@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BillingPeriod, PlanTier } from '@hale/types';
 import {
+  familyPriceIdsFromEnv,
   foundingWindowOpen,
   plusPriceIdsFromEnv,
   promoMaxPriceIdsFromEnv,
@@ -167,6 +168,9 @@ export function priceTierMapFromEnv(
     if (!(priceId in map)) map[priceId] = 'plus';
   }
   for (const priceId of promoMaxPriceIdsFromEnv(env)) {
+    if (!(priceId in map)) map[priceId] = 'family';
+  }
+  for (const priceId of familyPriceIdsFromEnv(env)) {
     if (!(priceId in map)) map[priceId] = 'family';
   }
   return map;

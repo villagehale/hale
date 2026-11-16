@@ -122,6 +122,24 @@ describe('decidePaidSessionGrant', () => {
     });
   });
 
+  it('refuses leftover founding $79/$59 ids during the window', () => {
+    expect(
+      decidePaidSessionGrant(
+        checkout({
+          id: 'cs_old',
+          metadata: { tier: 'plus', priceId: 'price_old_founding' },
+        }),
+        BEFORE,
+        { ...ENV, STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_old_founding' },
+      ),
+    ).toEqual({
+      status: 'disallowed',
+      priceIds: ['price_old_founding'],
+      reason: 'unknown_price',
+      sessionId: 'cs_old',
+    });
+  });
+
   it('allows list prices on a paid session after the cutoff', () => {
     expect(
       decidePaidSessionGrant(

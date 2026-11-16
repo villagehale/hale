@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Attribution } from '@hale/types';
+import type { Attribution, BillingCurrency } from '@hale/types';
+import { PROMO_PRICE_DISPLAY } from '@hale/types';
 import { metaPixelIdFromEnv } from '~/lib/analytics/meta-pixel';
 import { captureServerEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
@@ -223,19 +224,38 @@ async function postMetaCapiPurchase(
   }
 }
 
-/** Fake values hashed at send time. Never a real parent. */
-export const META_TEST_PURCHASE: PurchaseConversion = {
-  eventId: 'cs_test_ops',
-  orderId: 'cs_test_ops',
-  value: 59,
-  currency: 'CAD',
-  email: 'capi.test@example.com',
-  phone: '+1 555 010 0100',
-  familyId: null,
-  attribution: {},
-  ads: {},
-  sku: 'promo_plus_annual',
-};
+export type MetaTestPurchaseTier = 'plus' | 'family';
+
+export function metaTestPurchaseTierFromUnknown(value: unknown): MetaTestPurchaseTier {
+  return value === 'family' || value === 'max' ? 'family' : 'plus';
+}
+
+export function metaTestPurchaseCurrencyFromUnknown(value: unknown): BillingCurrency {
+  return value === 'USD' || value === 'usd' ? 'USD' : 'CAD';
+}
+
+/** Fake values hashed at send time. Never a real parent. Amounts match PROMO_PRICE_DISPLAY. */
+export function metaTestPurchaseFor(
+  tier: MetaTestPurchaseTier = 'plus',
+  currency: BillingCurrency = 'CAD',
+): PurchaseConversion {
+  const display = PROMO_PRICE_DISPLAY[tier][currency];
+  return {
+    eventId: 'cs_test_ops',
+    orderId: 'cs_test_ops',
+    value: display.amount,
+    currency,
+    email: 'capi.test@example.com',
+    phone: '+1 555 010 0100',
+    familyId: null,
+    attribution: {},
+    ads: {},
+    sku: tier === 'family' ? 'promo_max_annual' : 'promo_plus_annual',
+  };
+}
+
+/** @deprecated Prefer metaTestPurchaseFor(tier, currency). Plus CAD $59. */
+export const META_TEST_PURCHASE: PurchaseConversion = metaTestPurchaseFor('plus', 'CAD');
 
 export type MetaTestPurchaseResult =
   | { status: number; events_received: number | null }
@@ -249,6 +269,7 @@ export type MetaTestPurchaseResult =
 export async function sendMetaTestPurchase(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
+  choice: { tier?: unknown; currency?: unknown } = {},
 ): Promise<MetaTestPurchaseResult> {
   const pixelId = metaPixelIdFromEnv(env);
   const token = env.META_CAPI_ACCESS_TOKEN?.trim();
@@ -256,7 +277,11 @@ export async function sendMetaTestPurchase(
   if (!pixelId || !token || !testEventCode) {
     return { status: 'skipped', reason: 'not_configured' };
   }
-  const posted = await postMetaCapiPurchase(META_TEST_PURCHASE, pixelId, token, env, fetchImpl);
+  const purchase = metaTestPurchaseFor(
+    metaTestPurchaseTierFromUnknown(choice.tier),
+    metaTestPurchaseCurrencyFromUnknown(choice.currency),
+  );
+  const posted = await postMetaCapiPurchase(purchase, pixelId, token, env, fetchImpl);
   if (posted.status === 'error') {
     return { status: 'skipped', reason: 'provider_error' };
   }

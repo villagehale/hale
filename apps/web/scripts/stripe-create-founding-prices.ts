@@ -1,8 +1,10 @@
 #!/usr/bin/env tsx
 // Idempotent Stripe bootstrap for the 2026 holiday promo yearly prices
 // (Plus CAD 5900 / USD 3900, Max CAD 9900 / USD 7900, metadata
-// promo=holiday-2026, lookup_key hale_promo_{plus|max}_annual_{cad|usd})
-// and the Plus USD list (monthly 1400 / yearly 11900, metadata list=plus-usd).
+// promo=holiday-2026, lookup_key hale_promo_{plus|max}_annual_{cad|usd}),
+// the Plus USD list (monthly 1400 / yearly 11900, metadata list=plus-usd),
+// and Max list annual after the cutoff (CAD 32900 / USD 25900, product Hale Max,
+// lookup_key hale_list_max_annual_{cad|usd}, metadata list=max-cad / max-usd).
 //
 // Dry-run by default. Pass --apply to create missing products/prices.
 // Prints only newly created price ids as ENV=price_… lines. Existing tagged

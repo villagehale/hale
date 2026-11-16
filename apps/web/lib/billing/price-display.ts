@@ -1,5 +1,5 @@
 import type { BillingCurrency } from '@hale/types';
-import { PLUS_LIST_PRICE_DISPLAY, PROMO_PRICE_DISPLAY } from '@hale/types';
+import { MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY, PROMO_PRICE_DISPLAY } from '@hale/types';
 
 /**
  * Hale-web price labels. Promo surfaces use a plain `$` with no CAD/USD note.
@@ -25,4 +25,8 @@ export function plusListPriceLabels(currency: BillingCurrency): {
     monthly: `$${row.monthlyCents / 100}/mo`,
     annual: `$${row.annualCents / 100}/yr`,
   };
+}
+
+export function maxListPriceLabel(currency: BillingCurrency): string {
+  return `$${MAX_LIST_PRICE_DISPLAY[currency].annualCents / 100}/yr`;
 }

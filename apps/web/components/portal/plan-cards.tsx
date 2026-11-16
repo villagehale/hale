@@ -1,6 +1,10 @@
 import type { BillingCurrency, PlanTier } from '@hale/types';
 import { Bell, Star } from 'lucide-react';
-import { plusListPriceLabels, promoPriceLabel } from '~/lib/billing/price-display';
+import {
+  maxListPriceLabel,
+  plusListPriceLabels,
+  promoPriceLabel,
+} from '~/lib/billing/price-display';
 import { PlanCheckoutButton } from './plan-checkout-button';
 import styles from './portal.module.css';
 
@@ -105,7 +109,14 @@ export function PlanOffer({
   currency: BillingCurrency;
   surface: 'founding' | 'list';
 }) {
-  if (surface === 'list') return <ListPlan currency={currency} />;
+  if (surface === 'list') {
+    return (
+      <>
+        <ListPlan currency={currency} />
+        <MaxListPlan currency={currency} />
+      </>
+    );
+  }
   return (
     <>
       <FoundingPlan badge="Free" />
@@ -137,6 +148,32 @@ export function ListPlan({ currency }: { currency: BillingCurrency }) {
       <div className={styles['fp-rule']} />
       <PlanCheckoutButton period="monthly" label={`Continue · ${list.monthly}`} />
       <PlanCheckoutButton period="annual" label={`Continue · ${list.annual}`} />
+    </section>
+  );
+}
+
+/** Max list annual after the cutoff. Not shown during the promo window. */
+export function MaxListPlan({ currency }: { currency: BillingCurrency }) {
+  const annual = maxListPriceLabel(currency);
+  return (
+    <section className={`${styles.card} ${styles['fp-card']}`}>
+      <div className={styles['fp-head']}>
+        <span className={styles['fp-seal']} aria-hidden="true">
+          <Star
+            className={styles['fp-star']}
+            aria-hidden="true"
+            fill="currentColor"
+            strokeWidth={0}
+          />
+        </span>
+        <span className={styles['fp-badge']}>Max</span>
+      </div>
+      <h2 className={styles['fp-title']}>
+        {annual}. <span className={styles['fp-currency']}>{currency}</span>
+      </h2>
+      <p className={styles['fp-body']}>Continue to checkout when you are ready.</p>
+      <div className={styles['fp-rule']} />
+      <PlanCheckoutButton tier="family" period="annual" label={`Continue · ${annual}`} />
     </section>
   );
 }

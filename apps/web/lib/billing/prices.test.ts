@@ -45,6 +45,7 @@ describe('paidTierFromUnknown', () => {
 describe('paidTierFromSku', () => {
   it('grants Max only from the Max promo sku', () => {
     expect(paidTierFromSku('promo_max_annual')).toBe('family');
+    expect(paidTierFromSku('max_annual')).toBe('family');
     expect(paidTierFromSku('promo_plus_annual')).toBe('plus');
     expect(paidTierFromSku('plus_annual')).toBe('plus');
     expect(paidTierFromSku('plus_monthly')).toBe('plus');
@@ -260,12 +261,29 @@ describe('resolveCheckoutPrice', () => {
         period: 'annual',
         now: AFTER,
         tier: 'family',
-        env: {
-          ...WITH_LIST,
-          STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
-        },
+        env: WITH_LIST,
       }),
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'monthly',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          ...WITH_LIST,
+          STRIPE_PRICE_MAX_ANNUAL_USD: 'price_max_list_usd',
+        },
+      }),
+    ).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_max_list_usd',
+        sku: 'max_annual',
+        currency: 'USD',
+        period: 'annual',
+      },
+    });
   });
 
   it('does not charge list during the window when the promo id is missing', () => {
@@ -331,7 +349,7 @@ describe('promo renewal after the cutoff', () => {
       ...env,
       STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
     };
-    expect(plusPriceIdsFromEnv(leftover)).toContain('price_founding_cad');
+    expect(plusPriceIdsFromEnv(leftover)).not.toContain('price_founding_cad');
     expect(promoPriceIdsFromEnv(leftover)).not.toContain('price_founding_cad');
   });
 });

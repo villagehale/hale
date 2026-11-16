@@ -184,6 +184,17 @@ describe('POST /api/promo/join/checkout', () => {
       tier: 'family',
       priceId: 'price_max_cad',
     });
+
+    createMock.mockClear();
+    const byPlan = await post(`${PROMO_JOIN_COOKIE}=${token}`, 'CA', undefined, {
+      plan: 'family',
+    });
+    expect(byPlan.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      sku: 'promo_max_annual',
+      tier: 'family',
+      priceId: 'price_max_cad',
+    });
   });
 
   it('501s during the window when the founding price id is missing', async () => {

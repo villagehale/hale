@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { foundingPriceLabel, plusListPriceLabels, promoPriceLabel } from './price-display';
+import {
+  foundingPriceLabel,
+  maxListPriceLabel,
+  plusListPriceLabels,
+  promoPriceLabel,
+} from './price-display';
 
 describe('hale-web price labels', () => {
   it('uses a plain $ with no CAD/USD label on promo amounts', () => {
@@ -11,5 +16,7 @@ describe('hale-web price labels', () => {
     expect(foundingPriceLabel('USD')).toBe('$39/yr');
     expect(plusListPriceLabels('CAD')).toEqual({ monthly: '$19/mo', annual: '$159/yr' });
     expect(plusListPriceLabels('USD')).toEqual({ monthly: '$14/mo', annual: '$119/yr' });
+    expect(maxListPriceLabel('CAD')).toBe('$329/yr');
+    expect(maxListPriceLabel('USD')).toBe('$259/yr');
   });
 });
