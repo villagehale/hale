@@ -140,11 +140,11 @@ function listSelection(
  * Pick the Stripe price for a new checkout.
  *
  * 1. Flag off → unavailable (the route 404s).
- * 2. Window open and a founding yearly id exists for the currency → founding.
- *    An explicit monthly request uses the USD/CAD list monthly id when set;
- *    otherwise it still falls through to founding yearly (the US list may be
- *    unset while the founding yearly is live).
- * 3. Otherwise the list price for that currency, then CAD as the fallback.
+ * 2. Window open → founding yearly for that currency. Missing founding id is
+ *    unavailable (never a silent list charge while the page advertises founding).
+ *    An explicit monthly request uses the list monthly id when set; otherwise
+ *    it still uses founding yearly.
+ * 3. After the window, the list price for that currency, then CAD as fallback.
  */
 export function resolveCheckoutPrice(input: {
   currency: BillingCurrency;
@@ -157,12 +157,13 @@ export function resolveCheckoutPrice(input: {
     return { status: 'unavailable', reason: 'flag_off' };
   }
 
-  const foundingId = foundingAnnualPriceId(input.currency, env);
-  if (foundingPromoOpen(input.now, env) && foundingId) {
+  if (foundingPromoOpen(input.now, env)) {
     if (input.period === 'monthly') {
       const monthly = listSelection(input.currency, 'monthly', env);
       if (monthly) return { status: 'selected', price: monthly };
     }
+    const foundingId = foundingAnnualPriceId(input.currency, env);
+    if (!foundingId) return { status: 'unavailable', reason: 'no_price' };
     return {
       status: 'selected',
       price: {

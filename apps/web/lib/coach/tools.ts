@@ -12,6 +12,8 @@ import { linkRef } from '~/lib/channel/coach/activity-links';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { activityClient } from '~/lib/pipeline/client';
+import { signupOfferToolEnabled } from '~/lib/signup/offer-tool';
+import { registrationTopUpSubject } from '~/lib/signup/plan/towns';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -161,6 +163,16 @@ async function withoutPooledNegatives(
  * never be offered, and counting it would have Hale promise to come back about a find it
  * must never mention (rule #1).
  */
+function liveTopUpQuery(
+  query: ActivityQuery,
+  picks: readonly ActivityPick[],
+  needPage: boolean,
+): ActivityQuery {
+  if (!needPage) return query;
+  const venue = picks.find((pick) => !pick.url && !pick.sourceUrl)?.sourceName ?? query.subject;
+  return { ...query, subject: registrationTopUpSubject(venue) };
+}
+
 export function searchVillageTool(
   database: Database,
   /**
@@ -216,13 +228,15 @@ export function searchVillageTool(
         today: await readFamilyToday(database, ctx.familyId, now),
       });
       const query = searched;
+      const needPage = signupOfferToolEnabled();
       const picks =
         found.reason === null && query
           ? (
               await topUpShortRadar({
                 radar: found.picks,
+                needPage,
                 liveSearch: async () => {
-                  const extra = await resolved.find(query);
+                  const extra = await resolved.find(liveTopUpQuery(query, found.picks, needPage));
                   if (!extra.found) {
                     console.info(
                       { reason: extra.reason },

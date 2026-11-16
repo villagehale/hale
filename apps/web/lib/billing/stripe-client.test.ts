@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { stripeCheckoutClientFromEnv } from './stripe-client.js';
+import { integrationIdentifier, stripeCheckoutClientFromEnv } from './stripe-client.js';
 
 /**
  * The client posts a subscription Checkout Session to Stripe with an injected fetch
@@ -66,8 +66,45 @@ describe('stripeCheckoutClientFromEnv', () => {
     expect(body.has('subscription_data[metadata][fbp]')).toBe(false);
     expect(body.has('subscription_data[metadata][client_ip]')).toBe(false);
     expect(body.get('customer_email')).toBe('p@example.com');
+    expect(body.get('integration_identifier')).toBe(integrationIdentifier('fam-7'));
     expect(body.get('integration_identifier')).toMatch(/^hale-checkout-[a-z]{8}$/);
     expect(body.has('payment_method_types')).toBe(false);
+    expect((init.headers as Record<string, string>)['Idempotency-Key']).toBeUndefined();
+  });
+
+  it('keeps the dashboard identifier stable for the same family', () => {
+    expect(integrationIdentifier('fam-7')).toBe(integrationIdentifier('fam-7'));
+    expect(integrationIdentifier('fam-7')).not.toBe(integrationIdentifier('fam-8'));
+  });
+
+  it('sends customer and Idempotency-Key instead of a second email when reusing a Customer', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' }), {
+        status: 200,
+      }),
+    );
+    const client = stripeCheckoutClientFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchMock);
+    if (!client) throw new Error('expected a configured client');
+
+    await client.createCheckoutSession({
+      priceId: 'price_founding',
+      familyId: 'fam-7',
+      tier: 'plus',
+      period: 'annual',
+      successUrl: 'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      customerId: 'cus_existing',
+      customerEmail: 'p@example.com',
+      idempotencyKey: 'hale-checkout-fam-7',
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'hale-checkout-fam-7',
+    );
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get('customer')).toBe('cus_existing');
+    expect(body.has('customer_email')).toBe(false);
   });
 
   it('retrieves a Checkout Session by id', async () => {

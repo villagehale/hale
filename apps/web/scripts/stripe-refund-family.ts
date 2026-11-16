@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
-// Ops path: refund a family's latest Stripe payment and cancel the subscription.
-// Dry-run unless --apply is passed. Prints ids and named outcomes only — no
-// parent-facing copy, no secrets.
+// Ops path: full refund of a family's latest paid Stripe charge (no amount,
+// no window), then cancel the subscription. Dry-run unless --apply is passed.
+// Prints ids and named outcomes only — no parent-facing copy, no secrets.
 //
 //   pnpm stripe:refund-family -- --family <family-uuid>
 //   pnpm stripe:refund-family -- --family <family-uuid> --apply

@@ -304,6 +304,8 @@ function routerDeps(
     },
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+    holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: options.floodLine ?? {
       compose: async () => ({ status: 'composed', line: 'A lot at once, give me an hour.' }),
     },
@@ -1501,11 +1503,6 @@ describe('a text a deterministic handler takes is handed back before the side re
   };
   // Each handler as production builds it, and a text its own matcher takes.
   const TAKEN: Array<[string, () => DeterministicHandler, string]> = [
-    [
-      'village intro, a revocation',
-      () => villageIntroHandler(defaultVillageIntroReplyDeps(consent('no'))),
-      'please stop introducing us to other families',
-    ],
     ['connector link', () => connectorLinkHandler(), 'connect my google calendar'],
     ['connector disconnect', () => connectorDisconnectHandler(), 'disconnect my calendar'],
     [
@@ -1541,6 +1538,33 @@ describe('a text a deterministic handler takes is handed back before the side re
     expect(reader.calls).toEqual([]);
     expect(transport.bodies()).toEqual([]);
     expect(await stageOf(fam, quick.id)).toBe('fresh');
+  });
+
+  it('village intro revocation is the coach’s unless an intro ask is outstanding', async () => {
+    const fam = await seedParent('Side Intro Outstanding');
+    const transport = new FakeReplyTransport();
+    const body = 'please stop introducing us to other families';
+    const handler = villageIntroHandler(defaultVillageIntroReplyDeps(consent('no')));
+
+    const unread = scriptedReader(() => ANSWER);
+    const withoutAsk: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader: unread } }),
+      handlers: [handler],
+    };
+    const skipped = await sideTurnOn(withoutAsk, fam, body);
+    expect(skipped.outcome).toEqual({ kind: 'answered', by: 'side_read' });
+    expect(unread.calls).toHaveLength(1);
+
+    const unreadWithAsk = scriptedReader(() => ANSWER);
+    const withAsk: ChannelRouterDeps = {
+      ...routerDeps(transport, { sideTurn: { reader: unreadWithAsk } }),
+      handlers: [handler],
+      questions: { open: async () => [openQuestion('intro_optin')] },
+    };
+    const handedBack = await sideTurnOn(withAsk, fam, body);
+    expect(handedBack.outcome).toEqual({ kind: 'queued', why: 'question_open' });
+    expect(unreadWithAsk.calls).toEqual([]);
+    expect(await stageOf(fam, handedBack.quick.id)).toBe('fresh');
   });
 
   it('positive control: with the production chain in front of it, a quick question is still answered beside the turn', async () => {

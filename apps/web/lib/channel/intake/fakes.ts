@@ -459,7 +459,8 @@ export function makeFakeDb(): FakeDb {
     table === schema.parentChannels ||
     table === schema.users ||
     table === schema.auditLog ||
-    table === schema.children;
+    table === schema.children ||
+    table === schema.familyMembers;
 
   /** A SELECT's rows. See the module note for which predicates are evaluated. */
   const selectFrom = (table: unknown) => {

@@ -117,4 +117,16 @@ describe('POST /api/billing/checkout', () => {
     expect(await res.json()).toEqual({ error: 'founding_unavailable' });
     expect(createMock).not.toHaveBeenCalled();
   });
+
+  it('409s when the family already has a subscription', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({ status: 'already_paid' });
+
+    const res = await post({ period: 'annual' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'already_paid' });
+  });
 });

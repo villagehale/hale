@@ -561,6 +561,8 @@ describe('a diary answer through the real router', () => {
       sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+      holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+      sendParentReaction: async () => ({ status: 'sent' }),
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
       recordCapabilityNotes: async () => ({ status: 'recorded', declined: 0, corrected: 0 }),

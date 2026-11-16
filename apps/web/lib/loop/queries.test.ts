@@ -22,6 +22,11 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   };
 });
 
+/**
+ * `householdFamilyEvent()` lives in `@hale/db`'s compiled dist, which closed over
+ * the real drizzle operators. The fake db only understands MARKERS, so the
+ * household gate is restated here in the same shape `queries.ts` composes.
+ */
 vi.mock('@hale/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@hale/db')>();
   return {

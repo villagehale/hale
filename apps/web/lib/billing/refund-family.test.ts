@@ -1,8 +1,23 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { refundFamilyLatestPayment, type StripeRefundApi } from './refund-family.js';
+import {
+  type StripeRefundApi,
+  refundFamilyLatestPayment,
+  stripeRefundApiFromEnv,
+} from './refund-family.js';
 
-function fakeDb(family: { id: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null } | null): {
+const here = dirname(fileURLToPath(import.meta.url));
+
+function fakeDb(
+  family: {
+    id: string;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+  } | null,
+): {
   db: Database;
   audits: Array<Record<string, unknown>>;
 } {
@@ -49,7 +64,12 @@ describe('refundFamilyLatestPayment', () => {
       stripeSubscriptionId: 'sub_1',
     });
     expect(
-      await refundFamilyLatestPayment({ familyId: 'fam-1', apply: true, database: db, stripe: null }),
+      await refundFamilyLatestPayment({
+        familyId: 'fam-1',
+        apply: true,
+        database: db,
+        stripe: null,
+      }),
     ).toEqual({ status: 'skipped', reason: 'not_configured' });
   });
 
@@ -104,6 +124,28 @@ describe('refundFamilyLatestPayment', () => {
       actor: 'ops',
       actionTaken: 'billing_refunded',
     });
+  });
+
+  it('posts a full refund of the charge and never sends amount', async () => {
+    const bodies: string[] = [];
+    const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof init?.body === 'string') bodies.push(init.body);
+      return new Response(JSON.stringify({ id: 're_1' }), { status: 200 });
+    }) as typeof fetch;
+    const api = stripeRefundApiFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchImpl);
+    expect(api).not.toBeNull();
+    await api?.refundCharge('ch_paid');
+    expect(bodies).toHaveLength(1);
+    const params = new URLSearchParams(bodies[0]);
+    expect(params.get('charge')).toBe('ch_paid');
+    expect(params.has('amount')).toBe(false);
+  });
+
+  it('documents a full refund with no window on the ops script', () => {
+    const script = readFileSync(join(here, '../../scripts/stripe-refund-family.ts'), 'utf8');
+    expect(script).toMatch(/full refund/i);
+    expect(script).toMatch(/no amount/);
+    expect(script).not.toMatch(/pro-rat/i);
   });
 
   it('skips no_customer when the family has never checked out', async () => {

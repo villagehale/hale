@@ -13,6 +13,11 @@ export function metaPixelIdFromEnv(
 export function metaPixelIdWhenConversionsEnabled(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  if (env.CONVERSIONS_API_ENABLED !== 'true') return null;
+  if (
+    env.CONVERSIONS_API_ENABLED !== 'true' &&
+    env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true'
+  ) {
+    return null;
+  }
   return metaPixelIdFromEnv(env);
 }

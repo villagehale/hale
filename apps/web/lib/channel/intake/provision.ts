@@ -235,32 +235,50 @@ export async function provisionFromIntake(
     const existing = await existingActiveSmsChannel(tx, { userId, phoneHash });
     if (existing) return existing;
 
-    const [family] = await tx
-      .insert(schema.families)
-      .values({
-        displayName: intakeFamilyName(input.children),
-        // Provisioned into 'sms_intake'. The same request flips to 'sms_active'
-        // once the live find is out and the implied watch is recorded. The stage
-        // is what the sweeps select on, and it must not flip before that row.
-        onboardingStage: 'sms_intake',
-        primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
-        ...(location
-          ? {
-              country: location.country,
-              countryCode: location.countryCode,
-              postalCode: location.postalCode,
-              areaCoarse: location.areaCoarse,
-            }
-          : {}),
-        ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
-      })
-      .returning({ id: schema.families.id });
-    const familyId = family?.id;
-    if (!familyId) {
-      throw new Error('provisionFromIntake: families insert returned no row');
-    }
+    // Ads new-visitor checkout creates the users+family rows before any channel.
+    // The first inbound must attach here rather than mint a second household.
+    const [membership] = await tx
+      .select({ familyId: schema.familyMembers.familyId })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, userId))
+      .limit(1);
 
-    await tx.insert(schema.familyMembers).values({ familyId, userId, role: 'primary_parent' });
+    const reusedFamily = Boolean(membership?.familyId);
+    let familyId = membership?.familyId ?? null;
+    const familyPatch = {
+      displayName: intakeFamilyName(input.children),
+      // Provisioned into 'sms_intake'. The same request flips to 'sms_active'
+      // once the live find is out and the implied watch is recorded. The stage
+      // is what the sweeps select on, and it must not flip before that row.
+      onboardingStage: 'sms_intake' as const,
+      primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
+      ...(location
+        ? {
+            country: location.country,
+            countryCode: location.countryCode,
+            postalCode: location.postalCode,
+            areaCoarse: location.areaCoarse,
+          }
+        : {}),
+    };
+    if (!familyId) {
+      const [family] = await tx
+        .insert(schema.families)
+        .values({
+          ...familyPatch,
+          ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
+        })
+        .returning({ id: schema.families.id });
+      familyId = family?.id ?? null;
+      if (!familyId) {
+        throw new Error('provisionFromIntake: families insert returned no row');
+      }
+
+      await tx.insert(schema.familyMembers).values({ familyId, userId, role: 'primary_parent' });
+    } else {
+      // Do not overwrite plan_tier — a founding checkout may already have set Plus.
+      await tx.update(schema.families).set(familyPatch).where(eq(schema.families.id, familyId));
+    }
 
     // The loop's exchange channel for a parent who arrived by TEXT is text. Without a
     // row the loop falls back to its documented default of 'email', and this parent has
@@ -376,13 +394,17 @@ export async function provisionFromIntake(
     }
 
     await tx.insert(schema.auditLog).values([
-      {
-        familyId,
-        actor: userId,
-        actionTaken: 'family_created',
-        targetTable: 'families',
-        targetId: familyId,
-      },
+      ...(reusedFamily
+        ? []
+        : [
+            {
+              familyId,
+              actor: userId,
+              actionTaken: 'family_created',
+              targetTable: 'families',
+              targetId: familyId,
+            },
+          ]),
       {
         familyId,
         actor: userId,
@@ -409,7 +431,7 @@ export async function provisionFromIntake(
           verification: 'inbound_origination',
         },
       },
-      ...(lifetimeFamilyComp
+      ...(lifetimeFamilyComp && !reusedFamily
         ? [
             {
               familyId,

@@ -346,8 +346,11 @@ async function settle(
   anchor: { familyId: string; parentUserId: string; channelMessageId: string },
 ): Promise<{ members: readonly BurstMember[]; waitedMs: number }> {
   const startedMs = ports.now().getTime();
-  for (;;) {
-    const members = await pendingBurst(database, anchor, BURST_MAX_MEMBERS);
+  const first = await pendingBurst(database, anchor, BURST_MAX_MEMBERS);
+  // A lone 1:1 text is already the whole turn. Waiting out the quiet window for a
+  // second text that is not there is the wait the parent feels.
+  if (first.length < 2) return { members: first, waitedMs: 0 };
+  for (let members = first; ; ) {
     const nowMs = ports.now().getTime();
     const waitedMs = nowMs - startedMs;
     const newest = members.at(-1);
@@ -363,6 +366,7 @@ async function settle(
     await ports.sleep(
       Math.min(BURST_POLL_MS, BURST_QUIET_MS - quietMs, BURST_MAX_HOLD_MS - waitedMs),
     );
+    members = await pendingBurst(database, anchor, BURST_MAX_MEMBERS);
   }
 }
 

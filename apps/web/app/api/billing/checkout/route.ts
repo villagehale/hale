@@ -115,6 +115,9 @@ export async function POST(req: Request): Promise<Response> {
     if (result.status === 'not_found') {
       return NextResponse.json({ error: 'no_family' }, { status: 404 });
     }
+    if (result.status === 'already_paid') {
+      return NextResponse.json({ error: 'already_paid' }, { status: 409 });
+    }
     return NextResponse.json({ url: result.url }, { status: 200 });
   } catch {
     return NextResponse.json({ error: 'stripe_checkout_failed' }, { status: 502 });

@@ -16,6 +16,8 @@ import {
   metaPixelIdFromEnv,
   metaPurchaseFromPaidSession,
 } from '~/lib/billing/checkout-success';
+import { intakePrefill } from '~/lib/intake-prefill';
+import { buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -26,11 +28,15 @@ interface PageProps {
   }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'CheckoutSuccess');
+  const search = (await searchParams) ?? {};
+  const sessionId = checkoutSessionIdFromSearch(search);
+  const facts = sessionId ? await fetchCheckoutSessionFacts(sessionId) : null;
+  const paid = facts?.paid === true;
   return {
-    title: t('metaTitle'),
+    title: paid ? t('metaTitle') : t('unpaidTitle'),
     robots: { index: false, follow: false },
     alternates: { canonical: localeHref(locale, '/checkout/success') },
   };
@@ -42,6 +48,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
   const search = (await searchParams) ?? {};
   const sessionId = checkoutSessionIdFromSearch(search);
   const facts = sessionId ? await fetchCheckoutSessionFacts(sessionId) : null;
+  const paid = facts?.paid === true;
   const conversionsEnabled = conversionsApiEnabled();
   const googlePurchase = facts
     ? googlePurchaseFromPaidSession({
@@ -57,16 +64,30 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
         pixelId: metaPixelIdFromEnv(),
       })
     : null;
+  const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
+  const textHref = smsNumber ? buildSmsHref(smsNumber, null, intakePrefill(locale)) : null;
 
   return (
     <>
       <SiteHeader locale={locale} />
       <div className="rd">
         <main id="main" className="sp-hero">
-          <h1 className="sp-h1">{t('heading')}</h1>
-          <p className="sp-lede">
-            <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
-          </p>
+          <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
+          {paid ? (
+            <>
+              <p className="sp-lede">{t('lede')}</p>
+              <p className="sp-lede">
+                {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
+                {textHref ? ' · ' : null}
+                <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+              </p>
+            </>
+          ) : (
+            <p className="sp-lede">
+              {t('unpaidLede')}{' '}
+              <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+            </p>
+          )}
         </main>
       </div>
       <SiteFooter locale={locale} />

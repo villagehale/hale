@@ -1,5 +1,7 @@
 import { RedesignHome } from '~/components/redesign/home';
 import type { Locale } from '~/i18n/routing';
+import { sitePriceSurface } from '~/lib/billing/site-price-surface';
+import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { siteJsonLd } from '~/lib/site/structured-data';
@@ -11,7 +13,12 @@ import { requestHolidayPromo } from '~/lib/promo/server';
  * With no number provisioned the page degrades to email rather than rendering a
  * dead `sms:` link, so the read has to happen here and be handed down. The
  * homepage's metadata (title, description, hreflang) is the localized layout's.
+ *
+ * Dynamic so HOLIDAY_PROMO_ENABLED and the exclusive founding cutoff are read
+ * at request time (the locale layout is otherwise statically generated).
  */
+export const dynamic = 'force-dynamic';
+
 export default async function LandingPage({
   params,
   searchParams,
@@ -23,6 +30,8 @@ export default async function LandingPage({
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const source = await pageSource(searchParams);
   const promo = await requestHolidayPromo(locale, searchParams);
+  const priceSurface = sitePriceSurface();
+  const currency = priceSurface === 'list' ? await visitorCurrency() : 'CAD';
   return (
     <>
       <script
@@ -36,6 +45,8 @@ export default async function LandingPage({
         prefill={intakePrefill(locale)}
         source={source}
         promo={promo}
+        priceSurface={priceSurface}
+        currency={currency}
       />
     </>
   );
