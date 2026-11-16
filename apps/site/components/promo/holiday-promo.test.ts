@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { RedesignHome } from '~/components/redesign/home';
 import { RedesignPricing } from '~/components/redesign/pricing';
-import { buildHolidayPromo, type PromoPhase } from '~/lib/promo/holiday';
+import { type PromoPhase, buildHolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from './holiday-promo';
 
 /**
@@ -111,6 +111,7 @@ for (const { phase, currency } of CASES) {
         expect(text(card)).toContain(founding);
         // Monthly list prices are no longer the Plus headline during the promo.
         expect(card).not.toMatch(/\$14\/mo|\$19\/mo/);
+        expect(card).toContain(FOUNDING_REFUND_LINE);
         const rest = text(html.replace(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/, ''));
         expect(rest).not.toMatch(/\$159|\$119/);
       });
@@ -135,7 +136,27 @@ for (const { phase, currency } of CASES) {
 
       it('promises refunds anytime and the lifetime lock', () => {
         expect(body).toMatch(/Refund anytime/);
+        expect(body).toContain(FOUNDING_REFUND_LINE);
         expect(body).toMatch(/locked in for as long as you’re a member/);
+        expect(body).not.toMatch(/try it for a month|try a month|free trial|\btrial\b|first month/i);
+      });
+
+      it('places the refund line next to the founding price, and shows no paid monthly option', () => {
+        const offer = html.match(/id="founding"[\s\S]*?<\/section>/)?.[0] ?? '';
+        expect(offer).toMatch(
+          new RegExp(`class="promo-price"[\\s\\S]*?class="promo-price-note"[^>]*>${FOUNDING_REFUND_LINE}`),
+        );
+        if (name === 'pricing') {
+          const plus = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
+          const max = html.match(/<li class="hs-tier t-max">[\s\S]*?<\/li>/)?.[0] ?? '';
+          expect(plus).toContain(`class="promo-plus-founding"`);
+          expect(plus).toContain(FOUNDING_REFUND_LINE);
+          expect(max).toContain('Coming soon');
+          expect(max).not.toMatch(/\/mo|\$29|\$39|\$259|\$329/);
+        }
+        // Free may still say $0/mo; paid monthly plans are closed during the promo.
+        expect(body).not.toMatch(/\$14\/mo|\$15\/mo|\$19\/mo|\$29\/mo|\$39\/mo/);
+        expect(body).not.toMatch(/by the year or the month/i);
       });
 
       it('offers the founding checkout door and a mobile sticky CTA', () => {

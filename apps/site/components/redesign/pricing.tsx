@@ -10,7 +10,7 @@ import { logoSrc, shoreSrc } from './assets';
 import { TextDoor } from './text-door';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from '~/components/promo/holiday-promo';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
-import type { HolidayPromo } from '~/lib/promo/holiday';
+import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 
 export function RedesignPricing({
   locale,
@@ -52,7 +52,7 @@ export function RedesignPricing({
   <div className="sp-grid">
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
-    <h1 className="sp-h1">{list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
+    <h1 className="sp-h1">{promo ? t("Free, with unlimited chat.") : list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
     <p className="sp-lede">{promo ? `Hale is free to start, with unlimited chat. Until Dec 31, founding families can join Plus at ${promo.price}, locked in for as long as they’re members.` : list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
     
    </div>
@@ -80,7 +80,7 @@ export function RedesignPricing({
      <s className="promo-plus-list">{promo.currency === "USD" ? "$119/yr USD" : "$159/yr CAD"}</s>
      <span className="promo-plus-founding">{promo.price}</span>
     </h3>
-    <p className="hs-tier-meta">Billed yearly</p>
+    <p className="hs-tier-meta promo-plus-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
     </>) : list ? (<>
     <h3>{plusList.monthlyLabel}</h3>
     <p className="hs-tier-meta">{t(currency === 'USD' ? 'or US$119/yr' : 'or C$159/yr')}</p>
@@ -96,8 +96,8 @@ export function RedesignPricing({
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     {promo ? (<>
-    <h3>{promo.currency === "USD" ? "$29/mo USD" : "$39/mo CAD"}</h3>
-    <p className="hs-tier-meta">{promo.currency === "USD" ? "or $259/yr USD" : "or $329/yr CAD"}</p>
+    <h3>Coming soon</h3>
+    <p className="hs-tier-meta">Not part of the founding offer.</p>
     </>) : (<>
     <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
     <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>

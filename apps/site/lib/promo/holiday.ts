@@ -48,6 +48,9 @@ export interface HolidayPromo {
   price: string;
 }
 
+/** Sits next to the founding price. No trial or "try it for a month" wording. */
+export const FOUNDING_REFUND_LINE = 'Full refund anytime if it’s not for you.';
+
 export const promoPhase = promoPhaseAt;
 
 export function buildHolidayPromo(phase: PromoPhase, currency: BillingCurrency): HolidayPromo {

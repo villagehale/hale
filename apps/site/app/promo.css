@@ -163,6 +163,15 @@
   margin-left: 4px;
   margin-bottom: 0.2em;
 }
+.rd .promo-price-note {
+  margin-top: var(--s3);
+  max-width: 28ch;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--promo-on-night-2);
+}
 .rd .promo-lede {
   margin-top: var(--s5);
   max-width: 40ch;

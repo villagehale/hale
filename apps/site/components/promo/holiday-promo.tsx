@@ -1,5 +1,5 @@
 import type { Locale } from '~/i18n/routing';
-import type { HolidayPromo } from '~/lib/promo/holiday';
+import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import { FoundingCheckoutLink } from './founding-checkout-link';
@@ -167,6 +167,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               <span className="promo-sale-word">Sale</span>
             </h2>
             <PriceLockup promo={promo} />
+            <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
               Founding families: locked in for as long as you’re a member. Join by Dec 31. Refund
               anytime.
