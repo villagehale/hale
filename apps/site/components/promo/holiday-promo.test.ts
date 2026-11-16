@@ -182,8 +182,8 @@ describe('promo off', () => {
     const html = renderToStaticMarkup(createElement(RedesignPricing, { ...door }));
     const card = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
     expect(card).toContain('$19 CAD/mo');
-    expect(card).toContain('$15 USD/mo');
-    expect(card).toContain('or $159 CAD / $129 USD a year, about three months free');
+    expect(card).toContain('$14 USD/mo');
+    expect(card).toContain('or $159 CAD / $119 USD a year, about three months free');
     expect(card).not.toMatch(/<(s|del|strike)[\s>]|promo-tier-regular|line-through/i);
   });
 });

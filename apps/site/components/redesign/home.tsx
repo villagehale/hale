@@ -1,6 +1,6 @@
 import { PLUS_LIST_PRICE_DISPLAY, type BillingCurrency } from '@hale/types';
 import type { Locale } from '~/i18n/routing';
-import { Phrase, closeHeading, keepCardTail, tx } from './tx';
+import { Phrase, closeHeading, tx } from './tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import type { SitePriceSurface } from '~/lib/billing/site-price-surface';
@@ -359,8 +359,8 @@ export function RedesignHome({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
-    <h3>{list ? plusList.monthlyLabel : t("$19 CAD/mo")}{list ? null : <span className="hs-tier-usd">{t("$15 USD/mo")}</span>}</h3>
-    <p className="hs-tier-meta">{list ? t(currency === 'USD' ? 'or $119/yr USD' : 'or $159/yr CAD') : t("or $159 CAD / $129 USD a year, about three months free")}</p>
+    <h3>{list ? plusList.monthlyLabel : t("$19 CAD/mo")}{list ? null : <span className="hs-tier-usd">{t("$14 USD/mo")}</span>}</h3>
+    <p className="hs-tier-meta">{list ? t(currency === 'USD' ? 'or $119/yr USD' : 'or $159/yr CAD') : t("or $159 CAD / $119 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
@@ -370,7 +370,7 @@ export function RedesignHome({
     <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
     <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{keepCardTail(t("Sign-ups for a whole season in one go"))}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
   </ol>

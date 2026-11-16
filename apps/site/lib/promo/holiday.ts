@@ -3,6 +3,7 @@ import {
   FOUNDING_PROMO_STARTS_AT,
   HOLIDAY_SALE_STARTS_AT,
   type PromoPhase,
+  PROMO_PRICE_DISPLAY,
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
@@ -28,8 +29,8 @@ import {
  *  - Never was / save / % off wording.
  *
  * DISPLAY ONLY. Checkout charges whatever Stripe price id the env names
- * (apps/web/lib/billing/prices.ts). Until apps/web has founding Plus and Max
- * prices at these amounts, the promo flag must stay off.
+ * (apps/web/lib/billing/prices.ts). Promo flags stay off in production until
+ * Barton says go.
  */
 
 export type { PromoPhase };
@@ -51,27 +52,6 @@ export interface PromoTierPrice {
   /** "$99/yr" */
   saleLabel: string;
 }
-
-/**
- * LOCAL MIRROR of `PROMO_PRICE_DISPLAY` from @hale/types, added by Noah's
- * #1290 (not merged when this was written). Same shape and amounts; `family`
- * is the Max plan (PlanTier name). Once #1290 lands, delete this block and
- * `import { PROMO_PRICE_DISPLAY } from '@hale/types'` instead.
- * The old FOUNDING_PRICE_DISPLAY ($79 / $59 Plus-only) is no longer read here.
- */
-export const PROMO_PRICE_DISPLAY: Record<
-  'plus' | 'family',
-  Record<BillingCurrency, { symbol: '$'; amount: number; perYear: string }>
-> = {
-  plus: {
-    CAD: { symbol: '$', amount: 59, perYear: '$59/yr' },
-    USD: { symbol: '$', amount: 39, perYear: '$39/yr' },
-  },
-  family: {
-    CAD: { symbol: '$', amount: 99, perYear: '$99/yr' },
-    USD: { symbol: '$', amount: 79, perYear: '$79/yr' },
-  },
-};
 
 /**
  * Regular annual prices (struck through), from the site's existing public

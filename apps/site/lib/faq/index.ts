@@ -117,7 +117,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'what-do-paid-plans-cost',
     question: 'What do paid plans cost?',
     answer:
-      'Free is $0 with unlimited chat. Plus is $19 CAD or $15 USD a month ($159 CAD or $129 USD a year). Max is $39 CAD or $29 USD a month ($329 CAD or $259 USD a year). Families who join now get every feature free until paid plans start.',
+      'Free is $0 with unlimited chat. Plus is $19 CAD or $14 USD a month ($159 CAD or $119 USD a year). Max is $39 CAD or $29 USD a month ($329 CAD or $259 USD a year). Families who join now get every feature free until paid plans start.',
   },
   {
     id: 'what-happens-to-our-data',
