@@ -289,7 +289,7 @@ export const PAYMENT_ENV_ONLY = [
     env: 'HOLIDAY_PROMO_ENABLED',
     posthogKey: null,
     type: 'boolean' as const,
-    note: 'env-only; exact `true`; founding checkout + USD list path; nothing in PostHog may turn this on',
+    note: 'env-only; exact `true`; founding checkout + USD list path; PROMO_PREVIEW_FAMILY_IDS / PROMO_PREVIEW_TOKEN are separate env-only proofs while this stays off; nothing in PostHog may turn this on',
   },
   {
     env: 'PROMO_NEW_VISITOR_CHECKOUT_ENABLED',

@@ -53,7 +53,7 @@ export function RedesignPricing({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
-    <p className="sp-lede">{promo ? `Hale is free to start, with unlimited chat. Until Dec 31, founding families can join Plus at ${promo.price}, locked in for as long as they’re members.` : list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
+    <p className="sp-lede">{promo ? `Hale is free to start, with unlimited chat. Until Dec 31, founding families can join Plus at ${promo.price}, locked in for as long as they’re members.` : list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
     
    </div>
    
@@ -83,7 +83,7 @@ export function RedesignPricing({
     <p className="hs-tier-meta">Billed yearly</p>
     </>)) : list ? (<>
     <h3>{plusList.monthlyLabel}</h3>
-    <p className="hs-tier-meta">{t(currency === 'USD' ? 'or US$119/yr' : 'or C$159/yr')}</p>
+    <p className="hs-tier-meta">{t(currency === 'USD' ? 'or $119/yr USD' : 'or $159/yr CAD')}</p>
     </>) : (<>
     <h3>{t("$19 CAD/mo")}<span className="hs-tier-usd">{t("$15 USD/mo")}</span></h3>
     <p className="hs-tier-meta">{t("or $159 CAD / $129 USD a year, about three months free")}</p>
@@ -112,7 +112,7 @@ export function RedesignPricing({
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">
   <div className="hs-faq-l"><p className="hs-eyebrow">{t("About pricing")}</p><h2 className="hs-h2">{t("Fair questions.")}</h2></div>
-  <div className="hs-faq-r">{promo ? <PromoFaqItems promo={promo} /> : <FaqItem id="when-do-plus-and-max-open" question={list ? t("What does Plus cost?") : t("When do Plus and Max open?")}>{list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US. Text Hale to start.") : t("When the parts they add are ready. Until then, everything Hale does is free.")}</FaqItem>}<FaqItem id="whats-the-difference-between-plus-and-max" question={t("What’s the difference between Plus and Max?")}>{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.")}</FaqItem></div>
+  <div className="hs-faq-r">{promo ? <PromoFaqItems promo={promo} /> : <FaqItem id="when-do-plus-and-max-open" question={list ? t("What does Plus cost?") : t("When do Plus and Max open?")}>{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US. Text Hale to start.") : t("When the parts they add are ready. Until then, everything Hale does is free.")}</FaqItem>}<FaqItem id="whats-the-difference-between-plus-and-max" question={t("What’s the difference between Plus and Max?")}>{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and sign-ups for a whole season in one go.")}</FaqItem></div>
  </div>
 </section><section className="hs hs-close-sec" id="start">
  <div className="hs-wrap">
@@ -126,7 +126,7 @@ export function RedesignPricing({
     <p className="hs-close-sub">{promo.saleName}. Join by Dec 31. Refund anytime.</p>
     </>) : (<>
     <h2>{list ? t("Start with a text.") : closeHeading(t("Founding families join free."))}</h2>
-    <p className="hs-close-sub">{list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.") : t("Founding families get everything free until paid plans start.")}</p>
+    <p className="hs-close-sub">{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Founding families get everything free until paid plans start.")}</p>
     </>)}
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
     <p className="hs-close-terms">{promo ? "You text first; standard message rates apply, reply STOP any time." : list ? t("You text first; standard message rates apply, reply STOP any time.") : t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>

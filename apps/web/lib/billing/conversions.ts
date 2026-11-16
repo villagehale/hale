@@ -3,12 +3,10 @@ import type { Attribution } from '@hale/types';
 import { metaPixelIdFromEnv } from '~/lib/analytics/meta-pixel';
 import { captureServerEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
-import {
-  adsContextFromStripeMetadata,
-  type AdsCheckoutContext,
-} from './ads-context.js';
+import { type AdsCheckoutContext, adsContextFromStripeMetadata } from './ads-context.js';
 import { attributionFromStripeMetadata } from './attribution.js';
 import { metaCapiEnabled } from './flags.js';
+import { isPromoPreviewFamily } from './promo-preview.js';
 
 /**
  * Server-side Purchase conversions from a verified Stripe billing webhook.
@@ -27,7 +25,8 @@ export type ConversionSkipReason =
   | 'flag_off'
   | 'not_configured'
   | 'not_a_purchase'
-  | 'provider_error';
+  | 'provider_error'
+  | 'preview';
 
 export type ConversionSendResult =
   | { status: 'sent' }
@@ -147,9 +146,7 @@ export function purchaseFromStripeEvent(payload: unknown): PurchaseConversion | 
   const currency = readString(object.currency)?.toUpperCase();
   if (amountTotal === null || !currency) return null;
   const details = isRecord(object.customer_details) ? object.customer_details : null;
-  const email =
-    (details ? readString(details.email) : null) ??
-    readString(object.customer_email);
+  const email = (details ? readString(details.email) : null) ?? readString(object.customer_email);
   const phone = details ? readString(details.phone) : null;
   const metadata = isRecord(object.metadata) ? object.metadata : null;
   return {
@@ -171,7 +168,13 @@ export async function sendMetaPurchase(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ConversionSendResult> {
-  if (!metaCapiEnabled(env)) {
+  const preview = isPromoPreviewFamily(purchase.familyId, env);
+  const testEventCode = metaTestEventCodeFromEnv(env);
+  if (preview && !testEventCode) {
+    console.info('billing conversions: meta skipped', { reason: 'preview' });
+    return { status: 'skipped', reason: 'preview' };
+  }
+  if (!metaCapiEnabled(env) && !(preview && testEventCode)) {
     return { status: 'skipped', reason: 'flag_off' };
   }
   const pixelId = metaPixelIdFromEnv(env);

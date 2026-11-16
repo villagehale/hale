@@ -6,6 +6,8 @@ import {
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
+  paidEventOccurredAt,
+  paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
   stripeRefsFromStripeEvent,
@@ -120,6 +122,26 @@ describe('planTierFromStripeEvent', () => {
       }),
     ).toBeNull();
     expect(planTierFromStripeEvent(event, MAP)).toBeNull();
+    expect(
+      planTierFromStripeEvent(event, MAP, {
+        paymentLinkId: 'plink_year',
+        paymentLinkTier: 'plus',
+        allowPaymentLink: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('disables the Payment Link fallback while the founding window is open', () => {
+    const env = {
+      STRIPE_PAYMENT_LINK_ID: 'plink_year',
+      STRIPE_PAYMENT_LINK_TIER: 'plus',
+    };
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2026-11-16T12:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: false },
+    );
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2027-01-01T00:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: true },
+    );
   });
 
   it('maps invoice.paid from the line price and refuses an unknown price', () => {
@@ -193,6 +215,39 @@ describe('stripeRefsFromStripeEvent', () => {
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
     });
+  });
+
+  it('uses the subscription object id when the event is customer.subscription.*', () => {
+    const event = {
+      id: 'evt_sub',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_self',
+          customer: 'cus_1',
+          items: { data: [{ price: { id: 'price_plus' } }] },
+        },
+      },
+    };
+    expect(stripeRefsFromStripeEvent(event)).toEqual({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_self',
+    });
+  });
+});
+
+describe('paidEventOccurredAt', () => {
+  it('reads Stripe event.created unix seconds and ignores a later fallback', () => {
+    const during = Math.floor(new Date('2026-11-16T12:00:00-05:00').getTime() / 1000);
+    const after = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ created: during }, after)).toEqual(
+      new Date('2026-11-16T12:00:00-05:00'),
+    );
+  });
+
+  it('falls back when created is missing', () => {
+    const fallback = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ id: 'evt_1' }, fallback)).toBe(fallback);
   });
 });
 

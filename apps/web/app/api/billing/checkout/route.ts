@@ -1,15 +1,17 @@
-import { NextResponse } from 'next/server';
 import type { BillingPeriod } from '@hale/types';
 import { currencyFromIpCountry } from '@hale/types';
+import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
+import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { foundingPromoOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
-import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
+import { foundingWindowOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
+import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
 import { db as defaultDb } from '~/lib/db';
+import { resolveFamilyForUser } from '~/lib/family';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 
 export const runtime = 'nodejs';
@@ -25,13 +27,19 @@ const PERIODS: ReadonlySet<string> = new Set<BillingPeriod>(['monthly', 'annual'
  * cookie, query, and body is copied into Stripe metadata.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!holidayPromoEnabled()) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
-
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  if (!externalAuthId) {
+  const now = new Date();
+  const live = holidayPromoEnabled();
+  if (!live) {
+    if (!externalAuthId) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    const familyId = await resolveFamilyForUser(externalAuthId, defaultDb());
+    if (!familyMayUseFoundingCheckout(familyId, now)) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+  } else if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
@@ -61,13 +69,22 @@ export async function POST(req: Request): Promise<Response> {
   if (body?.expectedCurrency !== undefined && body.expectedCurrency !== currency) {
     return NextResponse.json({ error: 'currency_changed' }, { status: 409 });
   }
-  const now = new Date();
-  const selected = resolveCheckoutPrice({ currency, period, now });
+  const selected = resolveCheckoutPrice({
+    currency,
+    period,
+    now,
+    preview: !live,
+  });
+  if (
+    foundingWindowOpen(now) &&
+    selected.status === 'selected' &&
+    selected.price.sku !== 'founding_annual'
+  ) {
+    return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
+  }
   if (
     body?.offer === 'founding' &&
-    (!foundingPromoOpen(now) ||
-      selected.status !== 'selected' ||
-      selected.price.sku !== 'founding_annual')
+    (selected.status !== 'selected' || selected.price.sku !== 'founding_annual')
   ) {
     return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
   }
@@ -117,6 +134,9 @@ export async function POST(req: Request): Promise<Response> {
     }
     if (result.status === 'already_paid') {
       return NextResponse.json({ error: 'already_paid' }, { status: 409 });
+    }
+    if (result.status === 'founding_only') {
+      return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
     }
     return NextResponse.json({ url: result.url }, { status: 200 });
   } catch {

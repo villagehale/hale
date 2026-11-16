@@ -9,10 +9,10 @@ vi.mock('~/lib/billing/new-visitor-join', () => ({
 vi.mock('~/lib/auth/rate-limit', () => ({ authRateLimited: async () => false }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 
-async function post(body: unknown) {
+async function post(body: unknown, url = 'https://app.example.com/api/promo/join/verify') {
   const { POST } = await import('./route');
   return POST(
-    new Request('https://app.example.com/api/promo/join/verify', {
+    new Request(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -31,6 +31,34 @@ describe('POST /api/promo/join/verify', () => {
     const res = await post({ phone: '+15195551234', code: '123456' });
     expect(res.status).toBe(404);
     expect(verifyMock).not.toHaveBeenCalled();
+  });
+
+  it('404s with a wrong preview token while flags stay off', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    const res = await post(
+      { phone: '+15195551234', code: '123456' },
+      'https://app.example.com/api/promo/join/verify?preview=nope',
+    );
+    expect(res.status).toBe(404);
+    expect(verifyMock).not.toHaveBeenCalled();
+  });
+
+  it('verifies with a matching preview token while flags stay off', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    verifyMock.mockResolvedValue({
+      status: 'ok',
+      familyId: 'fam-9',
+      userId: 'user-9',
+      externalAuthId: 'sms:abc',
+      alreadyPaid: false,
+    });
+    const res = await post(
+      { phone: '+15195551234', code: '123456' },
+      'https://app.example.com/api/promo/join/verify?preview=secret',
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toContain(PROMO_JOIN_COOKIE);
   });
 
   it('sets the join cookie when the OTP spends', async () => {

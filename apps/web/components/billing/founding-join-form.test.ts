@@ -25,3 +25,24 @@ describe('FreeJoinCard', () => {
     expect(html).not.toMatch(/\$\d/);
   });
 });
+
+describe('/founding two-option pair', () => {
+  it('renders Free and founding annual together, with no monthly or list annual', () => {
+    const html = renderToStaticMarkup(
+      createElement('div', null, [
+        createElement(FreeJoinCard, { key: 'free' }),
+        createElement(FoundingJoinForm, {
+          key: 'founding',
+          priceLabel: '$79/yr',
+          currency: 'CAD',
+        }),
+      ]),
+    );
+    expect(html).toContain('Free');
+    expect(html).toContain('$79/yr');
+    expect(html).toContain('Join as a founding family');
+    expect(html).not.toContain('/mo');
+    expect(html).not.toContain('$159/yr');
+    expect(html).not.toContain('Continue ·');
+  });
+});
