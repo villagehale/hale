@@ -1,3 +1,5 @@
+import { safeHttpUrl } from '~/lib/format/http-url';
+
 /**
  * Paid Stripe Checkout Session facts for the browser Google Ads conversion.
  *
@@ -61,6 +63,20 @@ export function checkoutSuccessUrl(marketingOrigin: string): string {
   return `${base}/checkout/success?session_id=${CHECKOUT_SESSION_ID_PLACEHOLDER}`;
 }
 
+function isProductionMarketingOrigin(raw: string): boolean {
+  const url = safeHttpUrl(raw);
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (host !== 'villagehale.com' && host !== 'www.villagehale.com') return false;
+    return parsed.pathname === '/' && parsed.search === '' && parsed.hash === '';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Production uses www.villagehale.com (the apex 308s). Local/preview may override
  * with NEXT_PUBLIC_MARKETING_URL.
@@ -70,6 +86,6 @@ export function checkoutMarketingOrigin(
   env: Record<string, string | undefined> = process.env,
 ): string {
   const raw = env.NEXT_PUBLIC_MARKETING_URL?.trim().replace(/\/$/, '');
-  if (raw && !/^https:\/\/(www\.)?villagehale\.com$/i.test(raw)) return raw;
+  if (raw && !isProductionMarketingOrigin(raw)) return raw;
   return productionOrigin;
 }

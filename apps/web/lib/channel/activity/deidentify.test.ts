@@ -223,14 +223,14 @@ describe('the day a find is for crosses as `date`, and a date in free text never
         subject,
         window: 'today Sunday',
         date: '2026-08-09 (Sunday)',
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
         today,
       },
     });
     if (!result.ok) throw new Error('unreachable');
     expect(groundUserMessage(result.query)).toBe(
-      '{"subject":"things to do","town":"Halton Hills","stage":"toddler","window":"today Sunday","date":"2026-08-09 (Sunday)","today":"2026-08-09 (Sunday)"}',
+      `{"subject":"things to do","town":"${FIXTURE_CITY}","stage":"toddler","window":"today Sunday","date":"2026-08-09 (Sunday)","today":"2026-08-09 (Sunday)"}`,
     );
   });
 
@@ -279,7 +279,7 @@ describe('the day a find is for crosses as `date`, and a date in free text never
       query: {
         subject,
         window: 'Saturday',
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
         today,
       },
@@ -289,7 +289,7 @@ describe('the day a find is for crosses as `date`, and a date in free text never
   it('drops a `date` when there is no family clock to hold it against', () => {
     expect(deidentifyActivityQuery({ ...base, subject, date: '2026-08-09' })).toEqual({
       ok: true,
-      query: { subject, window: null, town: 'Halton Hills', stage: 'toddler' },
+      query: { subject, window: null, town: FIXTURE_CITY, stage: 'toddler' },
     });
   });
 });

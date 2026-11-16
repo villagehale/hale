@@ -3822,12 +3822,12 @@
       "diagnostics": null
     }
   },
-  "564c88d161abac5462beba80f4b85561c99e27e3f849b78db2eac31aaac63b6f": {
-    "key": "564c88d161abac5462beba80f4b85561c99e27e3f849b78db2eac31aaac63b6f",
+  "5a5f6a86bda874b8de81384b8c569dc8b1497669fe8707eb92bb432849a724cb": {
+    "key": "5a5f6a86bda874b8de81384b8c569dc8b1497669fe8707eb92bb432849a724cb",
     "recordedAt": "2026-11-09T23:06:39.790Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Gellert Community Centre (4 months to 3 years) runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons - the Town of Halton Hills site says. Registration opens Tuesday, September 1.\"}"
+      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Riverside Community Centre (4 months to 3 years) runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons - the Town of Kingston site says. Registration opens Tuesday, September 1.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -3863,12 +3863,12 @@
       "diagnostics": null
     }
   },
-  "f14e983d21bb6583a08b6e45130d4f4dfd58f2d83411a610cecb1311e1a702c8": {
-    "key": "f14e983d21bb6583a08b6e45130d4f4dfd58f2d83411a610cecb1311e1a702c8",
+  "fa88d22d98b95326b4c406b170fd2939628279e695a368ffcb289662eebd1730": {
+    "key": "fa88d22d98b95326b4c406b170fd2939628279e695a368ffcb289662eebd1730",
     "recordedAt": "2026-11-09T23:06:44.333Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Gellert Community Centre has Parent and Tot 1, 2 and 3 for ages 4 months to 3 years - the Town of Halton Hills site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I have them.\"}"
+      "userMessage": "{\"draft\":\"Riverside Community Centre has Parent and Tot 1, 2 and 3 for ages 4 months to 3 years - the Town of Kingston site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I have them.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -3904,12 +3904,12 @@
       "diagnostics": null
     }
   },
-  "7f72a41f297a7272c55d751ea5413ba5e2ccb599e3d5e7bb319423435f8278eb": {
-    "key": "7f72a41f297a7272c55d751ea5413ba5e2ccb599e3d5e7bb319423435f8278eb",
+  "953393aa823a9dfaa85ab03d478ff3de4a21527f968029dca8751a09e285dc26": {
+    "key": "953393aa823a9dfaa85ab03d478ff3de4a21527f968029dca8751a09e285dc26",
     "recordedAt": "2026-11-09T23:06:48.379Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Gellert Community Centre cover 4 months to 3 years - the Town of Halton Hills site says, and registration opens Tuesday, September 1, though no day, time or price is posted yet. I'll keep watching and text you when they post them.\"}"
+      "userMessage": "{\"draft\":\"Parent and Tot 1, 2 and 3 at Riverside Community Centre cover 4 months to 3 years - the Town of Kingston site says, and registration opens Tuesday, September 1, though no day, time or price is posted yet. I'll keep watching and text you when they post them.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -4114,12 +4114,12 @@
       "diagnostics": null
     }
   },
-  "1048d0a1b8aa044e61337d6d42b79fea3d663f758ad27c26816b6e48dcda693f": {
-    "key": "1048d0a1b8aa044e61337d6d42b79fea3d663f758ad27c26816b6e48dcda693f",
+  "0fdde80e100f6afe96a056089c192c608d9cd40a4bf7718ace220e52fba50673": {
+    "key": "0fdde80e100f6afe96a056089c192c608d9cd40a4bf7718ace220e52fba50673",
     "recordedAt": "2026-11-10T01:35:52.245Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Gellert Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_schedule\",\"watch\":false,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Gellert Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":\"Mondays 10:00-10:30AM, Oct 05 - Dec 07\",\"price\":\"$86.22 for 9 lessons\",\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Halton Hills\",\"source\":\"web\"}]}"
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Riverside Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_schedule\",\"watch\":false,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Riverside Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":\"Mondays 10:00-10:30AM, Oct 05 - Dec 07\",\"price\":\"$86.22 for 9 lessons\",\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Kingston\",\"source\":\"web\"}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
@@ -4129,7 +4129,7 @@
       "content": [
         {
           "type": "text",
-          "text": "{\"message\":\"Parent and Tot 1, 2, 3 at Gellert Community Centre runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons, for ages 4 months to 3 years - the Town of Halton Hills site says. Registration opens Tuesday, September 1.\",\"commits_to_return\":false}"
+          "text": "{\"message\":\"Parent and Tot 1, 2, 3 at Riverside Community Centre runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons, for ages 4 months to 3 years - the Town of Kingston site says. Registration opens Tuesday, September 1.\",\"commits_to_return\":false}"
         }
       ],
       "container": null,
@@ -4155,12 +4155,12 @@
       "diagnostics": null
     }
   },
-  "1d8d1797e42aa7ad4da85f5b5449b890909022b3711cafac7622bad48457bb74": {
-    "key": "1d8d1797e42aa7ad4da85f5b5449b890909022b3711cafac7622bad48457bb74",
+  "20c5f4e7baab113c7e0f9bfe6c2b856ebda1d687b503bb65167453fde87b6b9a": {
+    "key": "20c5f4e7baab113c7e0f9bfe6c2b856ebda1d687b503bb65167453fde87b6b9a",
     "recordedAt": "2026-11-10T01:35:53.936Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Parent and Tot 1, 2, 3 at Gellert Community Centre runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons, for ages 4 months to 3 years - the Town of Halton Hills site says. Registration opens Tuesday, September 1.\"}"
+      "userMessage": "{\"draft\":\"Parent and Tot 1, 2, 3 at Riverside Community Centre runs Mondays 10:00-10:30AM, Oct 5 to Dec 7, $86.22 for 9 lessons, for ages 4 months to 3 years - the Town of Kingston site says. Registration opens Tuesday, September 1.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -4196,12 +4196,12 @@
       "diagnostics": null
     }
   },
-  "2776606052eb59d6f2e7d7393b77e24b5da1c6e6e770bdf5ea87e2cbcd1f1624": {
-    "key": "2776606052eb59d6f2e7d7393b77e24b5da1c6e6e770bdf5ea87e2cbcd1f1624",
+  "20a2b890ce17ef1c1a39c03f5a6b27c6912f3a53ebffb2c7062195ac5e9a533d": {
+    "key": "20a2b890ce17ef1c1a39c03f5a6b27c6912f3a53ebffb2c7062195ac5e9a533d",
     "recordedAt": "2026-11-10T01:36:02.599Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Gellert Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_schedule\",\"watch\":true,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Gellert Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":null,\"price\":null,\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Halton Hills\",\"source\":\"web\"}]}"
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Riverside Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_schedule\",\"watch\":true,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Riverside Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":null,\"price\":null,\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Kingston\",\"source\":\"web\"}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
@@ -4216,7 +4216,7 @@
         },
         {
           "type": "text",
-          "text": "{\"message\":\"Gellert Community Centre has Parent and Tot 1, 2 and 3, covering 4 months to 3 years - the Town of Halton Hills' site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I do.\",\"commits_to_return\":true}"
+          "text": "{\"message\":\"Riverside Community Centre has Parent and Tot 1, 2 and 3, covering 4 months to 3 years - the Town of Kingston' site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I do.\",\"commits_to_return\":true}"
         }
       ],
       "container": null,
@@ -4242,12 +4242,12 @@
       "diagnostics": null
     }
   },
-  "85ba0291a0a101e6236ddb79ee4456dff6c47de9feed61e977fec35e6d30fd4a": {
-    "key": "85ba0291a0a101e6236ddb79ee4456dff6c47de9feed61e977fec35e6d30fd4a",
+  "45095d72e92b7040562dbf3d41080d7822e9ccc10d95d6d644eb56912ece9452": {
+    "key": "45095d72e92b7040562dbf3d41080d7822e9ccc10d95d6d644eb56912ece9452",
     "recordedAt": "2026-11-10T01:36:04.415Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Gellert Community Centre has Parent and Tot 1, 2 and 3, covering 4 months to 3 years - the Town of Halton Hills' site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I do.\"}"
+      "userMessage": "{\"draft\":\"Riverside Community Centre has Parent and Tot 1, 2 and 3, covering 4 months to 3 years - the Town of Kingston' site says, and registration opens Tuesday, September 1. I could not pin down the day or the price, so I'll keep watching and text you when I do.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -4283,12 +4283,12 @@
       "diagnostics": null
     }
   },
-  "349ab93987b1823d17c1bb393af308b7068845dc4326a5ae28b45dc764659dd6": {
-    "key": "349ab93987b1823d17c1bb393af308b7068845dc4326a5ae28b45dc764659dd6",
+  "52a310e41dc3da2b974740d20bf0c22eef4a7c33b433d6ce97890f11b6c9df2b": {
+    "key": "52a310e41dc3da2b974740d20bf0c22eef4a7c33b433d6ce97890f11b6c9df2b",
     "recordedAt": "2026-11-10T01:36:13.330Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Gellert Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_no_schedule\",\"watch\":true,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Gellert Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":null,\"price\":null,\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Halton Hills\",\"source\":\"web\"}]}"
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Riverside Community Centre fall swim schedule\",\"language\":\"en\",\"page_evidence\":\"page_has_no_schedule\",\"watch\":true,\"picks\":[{\"name\":\"Parent and Tot 1, 2, 3, Riverside Community Centre\",\"age_fit\":\"Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years\",\"when\":null,\"price\":null,\"registration\":\"Registration opens Tuesday, September 1\",\"source_name\":\"Town of Kingston\",\"source\":\"web\"}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
@@ -4303,7 +4303,7 @@
         },
         {
           "type": "text",
-          "text": "{\"message\":\"Gellert Community Centre runs Parent and Tot 1, 2 and 3 for 4 months to 3 years - the Town of Halton Hills site says registration opens Tuesday, September 1, but no days, times or prices are posted yet. I'll keep watching and text you when they go up.\",\"commits_to_return\":true}"
+          "text": "{\"message\":\"Riverside Community Centre runs Parent and Tot 1, 2 and 3 for 4 months to 3 years - the Town of Kingston site says registration opens Tuesday, September 1, but no days, times or prices are posted yet. I'll keep watching and text you when they go up.\",\"commits_to_return\":true}"
         }
       ],
       "container": null,
@@ -4329,12 +4329,12 @@
       "diagnostics": null
     }
   },
-  "4929eefae41b69202ca1cd176f2aadcde73c767976d87b4d512558c250ad1893": {
-    "key": "4929eefae41b69202ca1cd176f2aadcde73c767976d87b4d512558c250ad1893",
+  "d7eceb0f2bbc54bb87c1b1379a3647e01383bfc1be4ed93c05b19a41d099bc45": {
+    "key": "d7eceb0f2bbc54bb87c1b1379a3647e01383bfc1be4ed93c05b19a41d099bc45",
     "recordedAt": "2026-11-10T01:36:14.629Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Gellert Community Centre runs Parent and Tot 1, 2 and 3 for 4 months to 3 years - the Town of Halton Hills site says registration opens Tuesday, September 1, but no days, times or prices are posted yet. I'll keep watching and text you when they go up.\"}"
+      "userMessage": "{\"draft\":\"Riverside Community Centre runs Parent and Tot 1, 2 and 3 for 4 months to 3 years - the Town of Kingston site says registration opens Tuesday, September 1, but no days, times or prices are posted yet. I'll keep watching and text you when they go up.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",

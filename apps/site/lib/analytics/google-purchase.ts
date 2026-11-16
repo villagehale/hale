@@ -1,7 +1,7 @@
 /**
  * Browser Google Ads Purchase on the checkout success page.
  *
- * Website conversion (account 427-742-0829). send_to comes from
+ * Website conversion (send_to AW-18412881223/…). send_to comes from
  * NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_SEND_TO. Value, currency, and
  * transaction_id are server-read from the Stripe Checkout Session.
  */
