@@ -114,6 +114,7 @@ export const FLAGS = [
     allowlistMode: 'arm',
   }),
   exact('family-memory-kinds', 'FAMILY_MEMORY_KINDS_ENABLED'),
+  exact('family-home-metro', 'FAMILY_HOME_METRO_ENABLED'),
   exact('first-reply-action-line', 'FIRST_REPLY_ACTION_LINE'),
   exact('first-touch-location-card', 'FIRST_TOUCH_LOCATION_CARD_ENABLED'),
   exact('followup-asks', 'FOLLOWUP_ASKS_ENABLED', {
