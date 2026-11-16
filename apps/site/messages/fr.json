@@ -103,6 +103,7 @@
     "seeAlsoPre": "Voir aussi notre"
   },
   "CheckoutSuccess": {
+    "plan": "Tu es sur {plan}.",
     "metaTitle": "C’est fait · Hale",
     "heading": "C’est fait.",
     "lede": "Texte Hale pour commencer. Hale n’écrit pas en premier.",

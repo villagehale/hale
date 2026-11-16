@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { ATTRIBUTION_STORAGE_KEY } from '~/lib/analytics/attribution';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { APP_URL } from '~/lib/app-url';
-import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
+import { PLAN_TIER, type PromoPhase, type PromoTier } from '~/lib/promo/holiday';
 
 /** The app page that starts founding checkout for a signed-in family. */
 export const FOUNDING_CHECKOUT_PATH = '/settings/founding';
@@ -32,15 +32,16 @@ export function FoundingCheckoutLink({
   phase: PromoPhase;
   currency: 'CAD' | 'USD';
   /**
-   * Which paid tier the visitor picked. Sent as `?plan=` so the app can open
-   * the matching founding checkout. apps/web does not read it yet (Noah).
+   * Which paid tier the visitor picked. Sent as `?plan=plus|family` (the app's
+   * PlanTier names; `family` is Max) so the app can open the matching promo
+   * checkout. The app must treat it as a hint only and price server-side.
    */
   plan: PromoTier;
   className?: string;
   children: ReactNode;
 }) {
   const capture = useAnalytics();
-  const href = `${foundingCheckoutHref()}?plan=${plan}`;
+  const href = `${foundingCheckoutHref()}?plan=${PLAN_TIER[plan]}`;
   return (
     <a
       href={href}

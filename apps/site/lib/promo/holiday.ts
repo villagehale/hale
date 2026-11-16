@@ -53,21 +53,43 @@ export interface PromoTierPrice {
 }
 
 /**
- * Regular annual prices come from the site's existing public price copy:
- * Plus $159 CAD / $119 USD (PLUS_LIST_PRICE_DISPLAY in @hale/types), Max
- * $329 CAD / $259 USD (apps/site/lib/faq/index.ts, apps/site/app/llms.txt).
- * There is no Stripe Max price in the repo.
+ * LOCAL MIRROR of `PROMO_PRICE_DISPLAY` from @hale/types, added by Noah's
+ * #1290 (not merged when this was written). Same shape and amounts; `family`
+ * is the Max plan (PlanTier name). Once #1290 lands, delete this block and
+ * `import { PROMO_PRICE_DISPLAY } from '@hale/types'` instead.
+ * The old FOUNDING_PRICE_DISPLAY ($79 / $59 Plus-only) is no longer read here.
  */
-export const PROMO_TIER_PRICES: Record<
-  BillingCurrency,
-  Record<PromoTier, { regular: number; sale: number }>
+export const PROMO_PRICE_DISPLAY: Record<
+  'plus' | 'family',
+  Record<BillingCurrency, { symbol: '$'; amount: number; perYear: string }>
 > = {
-  CAD: { plus: { regular: 159, sale: 59 }, max: { regular: 329, sale: 99 } },
-  USD: { plus: { regular: 119, sale: 39 }, max: { regular: 259, sale: 79 } },
+  plus: {
+    CAD: { symbol: '$', amount: 59, perYear: '$59/yr' },
+    USD: { symbol: '$', amount: 39, perYear: '$39/yr' },
+  },
+  family: {
+    CAD: { symbol: '$', amount: 99, perYear: '$99/yr' },
+    USD: { symbol: '$', amount: 79, perYear: '$79/yr' },
+  },
 };
 
+/**
+ * Regular annual prices (struck through), from the site's existing public
+ * price copy: Plus $159 CAD / $119 USD (PLUS_LIST_PRICE_DISPLAY in
+ * @hale/types), Max $329 CAD / $259 USD (apps/site/lib/faq/index.ts,
+ * apps/site/app/llms.txt, copy.md). There is no Stripe regular Max price.
+ */
+export const REGULAR_ANNUAL_DISPLAY: Record<BillingCurrency, Record<PromoTier, number>> = {
+  CAD: { plus: 159, max: 329 },
+  USD: { plus: 119, max: 259 },
+};
+
+/** Site tier name → the app's PlanTier (`family` is Max). */
+export const PLAN_TIER: Record<PromoTier, 'plus' | 'family'> = { plus: 'plus', max: 'family' };
+
 function tierPrice(currency: BillingCurrency, tier: PromoTier): PromoTierPrice {
-  const { regular, sale } = PROMO_TIER_PRICES[currency][tier];
+  const regular = REGULAR_ANNUAL_DISPLAY[currency][tier];
+  const sale = PROMO_PRICE_DISPLAY[PLAN_TIER[tier]][currency].amount;
   return {
     tier,
     name: tier === 'plus' ? 'Plus' : 'Max',

@@ -103,7 +103,7 @@ for (const { phase, currency } of CASES) {
           expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
           expect(c).toContain(FOUNDING_REFUND_LINE);
           expect(text(c)).toContain(`Lock in ${sale}`);
-          expect(c).toContain(`/settings/founding?plan=${tier}`);
+          expect(c).toContain(`/settings/founding?plan=${tier === 'max' ? 'family' : 'plus'}`);
           expect(c).not.toContain('Coming soon');
           expect(c).not.toMatch(/\/mo\b/);
         }
@@ -163,7 +163,7 @@ for (const { phase, currency } of CASES) {
 
       it('offers the founding checkout door and a mobile sticky CTA', () => {
         expect(html).toContain('data-cta="promo_cta_click"');
-        expect(html).toContain('https://app.villagehale.com/settings/founding?plan=max');
+        expect(html).toContain('https://app.villagehale.com/settings/founding?plan=family');
         expect(html).toContain('promo-sticky');
       });
     });

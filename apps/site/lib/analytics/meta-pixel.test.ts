@@ -1,10 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  conversionsPageViewEnabled,
-  metaPixelIdWhenConversionsEnabled,
-} from './meta-pixel.js';
+import { conversionsPageViewEnabled, metaPixelIdWhenConversionsEnabled } from './meta-pixel.js';
 
 const PIXEL_ID = '1460101092968766';
 

@@ -15,6 +15,7 @@ import {
   googlePurchaseFromPaidSession,
   metaPixelIdFromEnv,
   metaPurchaseFromPaidSession,
+  paidPlanName,
 } from '~/lib/billing/checkout-success';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { buildSmsHref, readSmsNumber } from '~/lib/text-entry';
@@ -49,6 +50,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
   const sessionId = checkoutSessionIdFromSearch(search);
   const facts = sessionId ? await fetchCheckoutSessionFacts(sessionId) : null;
   const paid = facts?.paid === true;
+  const planName = paidPlanName(facts);
   const conversionsEnabled = conversionsApiEnabled();
   const googlePurchase = facts
     ? googlePurchaseFromPaidSession({
@@ -75,6 +77,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
           <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
           {paid ? (
             <>
+              {planName ? <p className="sp-lede">{t('plan', { plan: planName })}</p> : null}
               <p className="sp-lede">{t('lede')}</p>
               <p className="sp-lede">
                 {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
@@ -84,8 +87,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
             </>
           ) : (
             <p className="sp-lede">
-              {t('unpaidLede')}{' '}
-              <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+              {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
             </p>
           )}
         </main>

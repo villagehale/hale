@@ -107,6 +107,7 @@
     "metaDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。"
   },
   "CheckoutSuccess": {
+    "plan": "你现在用的是 {plan}。",
     "metaTitle": "已经完成 · Hale",
     "heading": "已经完成。",
     "lede": "先给 Hale 发短信。Hale 不会先发消息。",

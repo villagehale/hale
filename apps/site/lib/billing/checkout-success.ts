@@ -47,6 +47,8 @@ export interface CheckoutSessionFacts {
   readonly value: number;
   readonly currency: string;
   readonly paid: boolean;
+  /** Verified paid tier from the app's Stripe retrieve. `family` is Max. */
+  readonly tier: 'plus' | 'family' | null;
 }
 
 export function googlePurchaseFromPaidSession(input: {
@@ -79,14 +81,21 @@ export function metaPurchaseFromPaidSession(input: {
   };
 }
 
+/** Plan name for the success page, from the verified tier only. */
+export function paidPlanName(facts: CheckoutSessionFacts | null): 'Plus' | 'Max' | null {
+  if (!facts?.paid) return null;
+  if (facts.tier === 'plus') return 'Plus';
+  if (facts.tier === 'family') return 'Max';
+  return null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | null {
   if (!isRecord(payload)) return null;
-  const transactionId =
-    typeof payload.transactionId === 'string' ? payload.transactionId : null;
+  const transactionId = typeof payload.transactionId === 'string' ? payload.transactionId : null;
   const currency = typeof payload.currency === 'string' ? payload.currency : null;
   const value = typeof payload.value === 'number' ? payload.value : null;
   if (!transactionId || !SESSION_ID.test(transactionId) || !currency || value === null) {
@@ -97,6 +106,7 @@ export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | 
     value,
     currency,
     paid: payload.paid === true,
+    tier: payload.tier === 'plus' || payload.tier === 'family' ? payload.tier : null,
   };
 }
 

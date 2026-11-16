@@ -47,8 +47,16 @@ export const PROMO_IMAGES: Record<PromoPhase, [PromoImage, PromoImage, PromoImag
       bfCounter960,
       'A kitchen counter after school: an open lunchbox, activity flyers, a signed form and a parent’s hand on a phone.',
     ),
-    pair(bfHall480, bfHall960, 'Kids’ snowy boots, backpacks and mittens piled in a front hallway.'),
-    pair(bfCar480, bfCar960, 'A parent waiting in the car at school pickup, seen from the back seat.'),
+    pair(
+      bfHall480,
+      bfHall960,
+      'Kids’ snowy boots, backpacks and mittens piled in a front hallway.',
+    ),
+    pair(
+      bfCar480,
+      bfCar960,
+      'A parent waiting in the car at school pickup, seen from the back seat.',
+    ),
   ],
   holiday: [
     pair(
@@ -56,7 +64,15 @@ export const PROMO_IMAGES: Record<PromoPhase, [PromoImage, PromoImage, PromoImag
       holFridge960,
       'A family fridge in December covered in kids’ drawings, a paper calendar and a paper snowflake.',
     ),
-    pair(holFort480, holFort960, 'Kids in pyjamas inside a blanket fort with fairy lights on winter break.'),
-    pair(holWalk480, holWalk960, 'A parent and a small child pulling a sled down a snowy street, seen from behind.'),
+    pair(
+      holFort480,
+      holFort960,
+      'Kids in pyjamas inside a blanket fort with fairy lights on winter break.',
+    ),
+    pair(
+      holWalk480,
+      holWalk960,
+      'A parent and a small child pulling a sled down a snowy street, seen from behind.',
+    ),
   ],
 };
