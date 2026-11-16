@@ -819,7 +819,7 @@ export interface OpenQuestionSources {
   weekdayCare(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date; scope?: string } | null>;
+  ): Promise<{ id: string; askedAt: Date | null; scope?: string } | null>;
   /**
    * The empty-Saturday ask, while it is Hale's last word to this parent and inside
    * its 48h window — or null (VIL-365, channel/nudge/empty-saturday-question.ts).
