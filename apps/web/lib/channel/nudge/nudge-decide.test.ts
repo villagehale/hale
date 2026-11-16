@@ -5,6 +5,7 @@ import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-deci
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
   REGISTRATION_HORIZON_DAYS,
@@ -441,8 +442,8 @@ describe('decideNudge — no health checkpoint', () => {
 
   it('says nothing about the 18-month window either', () => {
     const toddler = [healthChild({ ageMonths: 18 })];
-    expect(inWindow(toddler, 'L7G')).toContain('immunization_18_months');
-    expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
+    expect(inWindow(toddler, FIXTURE_FSA)).toContain('immunization_18_months');
+    expect(decide({ healthChildren: toddler, areaCoarse: FIXTURE_FSA })).toBeNull();
   });
 
   it('says nothing to a household whose only child is 13 or older', () => {

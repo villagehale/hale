@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { FIXTURE_CITY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { makeFakeDb } from './fakes.js';
 import {
@@ -62,7 +63,11 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
-const TOWNS: Record<string, string> = { M5V: 'Toronto', L7G: 'Halton Hills', M1B: 'Toronto' };
+const TOWNS: Record<string, string> = {
+  M5V: 'Toronto',
+  [FIXTURE_FSA]: FIXTURE_CITY,
+  M1B: 'Toronto',
+};
 
 /** The area, the place the finds search, and the family zone, as intake hands them in. */
 function at(areaCoarse: string | null) {
@@ -104,7 +109,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      ...at('L7G'),
+      ...at(FIXTURE_FSA),
     });
 
     expect(payload.weekendPickOffered).toBe(false);
@@ -135,7 +140,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      ...at('L7G'),
+      ...at(FIXTURE_FSA),
     });
 
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
@@ -149,11 +154,11 @@ describe('createRadarComposer', () => {
     expect(payload.firstFindPromised).toBe(false);
   });
 
-  it('does not answer a Halton Hills family with the registration date', async () => {
+  it('does not answer a family outside civic adapters with the registration date', async () => {
     const db = makeFakeDb();
-    // Halton Hills opened Fall 2026 on Sep 1. It is now Sep 17 and winter is not posted:
-    // the production shape of 2026-09-16, where this family was told nothing was on the
-    // radar and their own town was never named.
+    // Fall 2026 opened on Sep 1. It is now Sep 17 and winter is not posted: the
+    // production shape of 2026-09-16, where the radar named nothing and the
+    // family's own town was never said.
 
     const payload = await createRadarComposer({
       database: db.db,
@@ -161,11 +166,11 @@ describe('createRadarComposer', () => {
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-17T15:00:00.000Z'),
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('L7G') });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at(FIXTURE_FSA) });
 
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
-    expect(payload.message).not.toContain('Halton Hills');
+    expect(payload.message).not.toContain(FIXTURE_CITY);
     expect(payload.message).not.toContain('Fall 2026');
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
     expect(payload.findWon).toBe(false);
@@ -186,7 +191,7 @@ describe('createRadarComposer', () => {
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-23T15:00:00.000Z'),
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('L7G') });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at(FIXTURE_FSA) });
 
     expect(payload.message).not.toContain('registration already opened');
     expect(payload.message).not.toContain('Winter 2027');
@@ -260,7 +265,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
-      ...at('L7G'),
+      ...at(FIXTURE_FSA),
     });
 
     // The first find IS the pre-consent message — the watch offer rides on it. An
@@ -283,10 +288,10 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
-      ...at('L7G'),
+      ...at(FIXTURE_FSA),
     });
 
-    // Halton Hills: no civic adapter, no registration windows, nothing discovered yet.
+    // Outside civic adapters: no registration windows, nothing discovered yet.
     // The child is 18 months old and inside a reviewed window — but this message is the
     // PRE-CONSENT first find, so the honest empty-handed answer goes out instead, with
     // the first-find promise on it. The 48h nudge raises the checkpoint post-consent.
@@ -432,7 +437,7 @@ describe('createRadarComposer', () => {
     expect(payload.message).toContain('Library story time');
   });
 
-  it('fills an empty Halton Hills reply from a live search, for a 17-month-old', async () => {
+  it('fills an empty reply from a live search, for a 17-month-old', async () => {
     const db = makeFakeDb();
     const payload = await createRadarComposer({
       database: db.db,
@@ -442,10 +447,10 @@ describe('createRadarComposer', () => {
       yearFinder: {
         async find(query) {
           expect(query.subject).toBe(YEAR_OPEN_SUBJECT);
-          expect(query.town).toBe('Halton Hills');
+          expect(query.town).toBe(FIXTURE_CITY);
           expect(query.window).toBe('this year');
           expect(JSON.stringify(query)).not.toContain('Seb');
-          expect(JSON.stringify(query)).not.toContain('L7G');
+          expect(JSON.stringify(query)).not.toContain(FIXTURE_FSA);
           return {
             found: true,
             picks: [
@@ -454,7 +459,7 @@ describe('createRadarComposer', () => {
                 ageFit: '12-24 months',
                 when: 'Tuesdays',
                 price: 'free',
-                sourceName: 'Halton Hills library',
+                sourceName: 'Town library',
                 source: 'web',
               },
             ],
@@ -464,7 +469,7 @@ describe('createRadarComposer', () => {
     }).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Seb', ageMonths: 17, agePrecision: 'months' }],
-      ...at('L7G'),
+      ...at(FIXTURE_FSA),
     });
 
     expect(payload.findWon).toBe(true);
@@ -495,7 +500,7 @@ describe('createRadarComposer age fit for a stated age', () => {
       client: null,
       now: () => NOW,
       yearFinder: { find: async () => ({ found: true, picks: [babyCircle, toddlerGym] }) },
-    }).compose({ familyId: FAMILY_ID, children: [{ name: 'Wren', ...child }], ...at('L7G') });
+    }).compose({ familyId: FAMILY_ID, children: [{ name: 'Wren', ...child }], ...at(FIXTURE_FSA) });
     return payload.titles;
   }
 

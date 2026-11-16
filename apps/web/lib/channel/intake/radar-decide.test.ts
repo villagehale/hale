@@ -5,6 +5,7 @@ import type {
   PastRegistrationCycle,
   RegistrationMatch,
 } from '~/lib/registration/match-registration-windows';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
   CLEARLY_BETTER_MARGIN,
@@ -568,13 +569,12 @@ describe('decideRadar — honest degradation', () => {
  */
 describe('decideRadar — the age checkpoint', () => {
   it('names an Ontario checkpoint for a family with no window and no candidate at all', () => {
-    // Halton Hills: outside every civic adapter, no registration windows. The live-gate
-    // family whose first message was a shrug.
+    // An Ontario FSA outside every civic adapter, no registration windows.
     const decision = decide({
       candidates: [],
       windows: [],
       healthChildren: [healthChild({ ageMonths: 18 })],
-      areaCoarse: 'L7G',
+      areaCoarse: FIXTURE_FSA,
     });
 
     expect(decision.weekendPick).toBeNull();
@@ -585,12 +585,18 @@ describe('decideRadar — the age checkpoint', () => {
   });
 
   it('holds the band edges the reviewed table draws, and says nothing between them', () => {
-    const at23 = decide({ healthChildren: [healthChild({ ageMonths: 23 })], areaCoarse: 'L7G' });
+    const at23 = decide({
+      healthChildren: [healthChild({ ageMonths: 23 })],
+      areaCoarse: FIXTURE_FSA,
+    });
     expect(at23.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
 
     // 24 months is past the last infant band and years short of the first school one.
     // The verified table has no row there, and a checkpoint is never invented to fill it.
-    const at24 = decide({ healthChildren: [healthChild({ ageMonths: 24 })], areaCoarse: 'L7G' });
+    const at24 = decide({
+      healthChildren: [healthChild({ ageMonths: 24 })],
+      areaCoarse: FIXTURE_FSA,
+    });
     expect(at24.checkpoint).toBeNull();
   });
 
@@ -620,7 +626,7 @@ describe('decideRadar — the age checkpoint', () => {
 
     const decision = decide({
       healthChildren: children,
-      areaCoarse: 'L7G',
+      areaCoarse: FIXTURE_FSA,
       suppressedCheckpointRefs: suppressed,
     });
     // The next row in the same band, not silence and not the suppressed one.
@@ -643,7 +649,7 @@ describe('decideRadar — the age checkpoint', () => {
       candidates: [candidate()],
       windows: [match()],
       healthChildren: [healthChild({ ageMonths: 18 })],
-      areaCoarse: 'L7G',
+      areaCoarse: FIXTURE_FSA,
     });
 
     expect(decision.registrationLine).not.toBeNull();
@@ -659,7 +665,7 @@ describe('decideRadar — the age checkpoint', () => {
   it('carries the identity the told-marker keys on, not just the row id', () => {
     const decision = decide({
       healthChildren: [healthChild({ id: 'kid-1', ageMonths: 18 })],
-      areaCoarse: 'L7G',
+      areaCoarse: FIXTURE_FSA,
     });
 
     // The matcher's own ref: per child for a one-time visit. Rebuilding it downstream is

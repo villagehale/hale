@@ -256,13 +256,13 @@ describe('scrubResidualPii', () => {
   /**
    * A STREET ADDRESS AND A SCHOOL NAME — the two location classes the doc block promised
    * and the patterns did not hold. A postal code was already caught, which made the gap
-   * easy to miss: "L7G 4S6" fell and "42 Wallace St" did not, and the second one is the
+   * easy to miss: a postal code fell and "42 Wallace St" did not, and the second one is the
    * more precise of the two.
    */
   it('redacts a street address in the forms a parent actually types', () => {
     expect(scrubResidualPii('we are at 42 Wallace St')).toBe('we are at [redacted]');
     expect(scrubResidualPii('121 Maple Ave, Oakville')).toBe('[redacted], Oakville');
-    expect(scrubResidualPii('12 Guelph Street L7G 4A1')).toBe('[redacted] [redacted]');
+    expect(scrubResidualPii('12 Guelph Street K7L 1A1')).toBe('[redacted] [redacted]');
     expect(scrubResidualPii('87 Bayview Crescent')).toBe('[redacted]');
     expect(scrubResidualPii('9 Sunset Boulevard')).toBe('[redacted]');
     // The ambiguous suffixes ("Drive", "Court", "Way") need a capitalized street name in

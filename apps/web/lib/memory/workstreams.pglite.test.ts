@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { loadAgentContext } from '~/lib/coach/context';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { rememberWorkstreamTurn, renderWorkstreamExtractInput } from './workstream-extract';
 import { followupBackoffUntil, runWorkstreamFollowupSweep } from './workstream-followup';
@@ -18,7 +19,7 @@ import {
 } from './workstreams';
 
 const NOW = new Date('2026-08-12T15:00:00.000Z');
-const SWIM = 'Saturday swim for Sebastian near L7G';
+const SWIM = `Saturday swim for Sebastian near ${FIXTURE_FSA}`;
 
 function usage(): Anthropic.Usage {
   return {
@@ -294,8 +295,8 @@ describe('a swim search carried across turns', () => {
     const { familyId } = await seedFamily(db.database, 'Sebastian');
     const sebastian = await seedChild(db.database, familyId, 'Sebastian', 36, undefined, NOW);
 
-    const parentAsk = 'Can you find a Saturday swim for Sebastian near L7G?';
-    const haleOptions = 'I found three Saturday swims near L7G. Want me to hold one?';
+    const parentAsk = `Can you find a Saturday swim for Sebastian near ${FIXTURE_FSA}?`;
+    const haleOptions = `I found three Saturday swims near ${FIXTURE_FSA}. Want me to hold one?`;
     const opened = await rememberWorkstreamTurn({
       database: db.database,
       familyId,
@@ -362,8 +363,8 @@ describe('a swim search carried across turns', () => {
     const opened = await rememberWorkstreamTurn({
       database: db.database,
       familyId,
-      parentText: 'Can you find a Saturday swim for Sebastian near L7G?',
-      haleText: 'Three options near L7G.',
+      parentText: `Can you find a Saturday swim for Sebastian near ${FIXTURE_FSA}?`,
+      haleText: `Three options near ${FIXTURE_FSA}.`,
       provenance: 'msg-a',
       now: NOW,
       client: toolClient({

@@ -218,7 +218,7 @@ export function pairKey(familyIdA: string, familyIdB: string): string {
 interface Ready {
   familyId: string;
   /** This family's OWN FSA, kept alongside the area it was bucketed into: the pair
-   * records a real FSA, and across a municipality the two sides differ. */
+   * records that code, and across a municipality the two sides differ. */
   fsa: string;
   /** Anchor children grouped by band, each already in oldest-first order. */
   byStage: Map<FamilyStage, AnchorChild[]>;

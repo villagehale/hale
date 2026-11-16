@@ -7,6 +7,7 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
+import { FIXTURE_CITY, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   type FriendComposed,
   type FriendVoiceComposer,
@@ -886,8 +887,14 @@ describe('friend-voice judge', () => {
       ),
     ).toEqual({ ok: false, reason: 'compliance' });
     // A parent who is not challenging Hale is not made to hear the company name.
-    const plain = blank({ step: 'kids_names', placeLabel: 'Burlington', parentWords: 'L7G 4S8' });
-    expect(judgeFriendReply('Burlington, got it. Who are the kids?', plain)).toEqual({ ok: true });
+    const plain = blank({
+      step: 'kids_names',
+      placeLabel: FIXTURE_CITY,
+      parentWords: FIXTURE_POSTAL,
+    });
+    expect(judgeFriendReply(`${FIXTURE_CITY}, got it. Who are the kids?`, plain)).toEqual({
+      ok: true,
+    });
   });
 
   it('lets a connected reply name one synced title, and nothing the snapshot does not have', () => {
