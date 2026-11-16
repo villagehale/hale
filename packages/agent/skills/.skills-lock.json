@@ -527,6 +527,10 @@
     "file": "onboarding-friend.md",
     "sha256": "71061a434f3640c9f1963f4ea2766468fd3dc25304314b0d797cd6e727f6e5dd"
   },
+  "onboarding-stated-place.md": {
+    "file": "onboarding-stated-place.md",
+    "sha256": "a452830d46e13edb7532d80e3bfe307984fc91b2829b7e0ab4df4ffb7599f547"
+  },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
     "sha256": "7a7a4350c4e133f709774debc8a5cfd261ca0e55bde8580e4ea61c6413d7246d"

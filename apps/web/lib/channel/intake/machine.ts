@@ -96,6 +96,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import { type IntakeAnswerComposer, OWED_LINES } from './answer';
+import { acceptCalendarDate } from './calendar-date';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
@@ -111,7 +112,6 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { acceptCalendarDate } from './calendar-date';
 import {
   type PostalContext,
   crisisRegionForPlace,
@@ -162,7 +162,7 @@ import {
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
-import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
+import { type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import { writeScheduleAdds } from './schedule-adds';
@@ -183,6 +183,13 @@ import {
   transcriptHasOutbound,
 } from './session';
 import type { SignupStepReader } from './signup-step';
+import {
+  type IntakeLocation,
+  currencyOfPlace,
+  intakeLocationFromPlace,
+  intakeStatedPlaceEnabled,
+  resolveStatedPlace,
+} from './stated-place';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -621,11 +628,7 @@ async function runIntakeTurn(
   // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
   // unread text) from a number that has not stopped intake: their draw is this turn's reply,
   // and the kid-oriented greeting does not run on it. Intake can start on a later turn.
-  if (
-    inbound.isGroup !== true &&
-    turnIntent === 'none' &&
-    session?.state !== 'stopped'
-  ) {
+  if (inbound.isGroup !== true && turnIntent === 'none' && session?.state !== 'stopped') {
     const owed = await owedGuestDraws(database, phoneHash);
     if (owed.length > 0) {
       return claimedTurn(database, inbound, now, async () => {
@@ -1582,6 +1585,13 @@ function friendAddress(ctx: SendContext): 'tu' | 'vous' {
   return ctx.pipe.isGroup ? 'vous' : 'tu';
 }
 
+function placeCurrency(
+  place: Parameters<typeof currencyOfPlace>[0],
+): { currency: 'CAD' | 'USD' } | Record<string, never> {
+  const currency = currencyOfPlace(place);
+  return currency ? { currency } : {};
+}
+
 function friendFields(
   step: FriendStep,
   language: ReplyLanguage | null,
@@ -2060,6 +2070,7 @@ async function friendOnboardingTurn(
         introduce: opening && !transcriptHasOutbound(transcript),
         parentWords: inbound.body,
         placeLabel: place?.city || place?.areaCoarse || null,
+        ...placeCurrency(place),
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2077,8 +2088,9 @@ async function friendOnboardingTurn(
       ...(opening ? { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS } : {}),
       // Place and an age provision this turn: the map and the name ask are the
       // reply, written next. This draft is read for its facts only.
-      replyDiscardedWhen: (capture) => {
+      replyDiscardedWhen: async (capture) => {
         const next = storedFromCapture(prior, capture);
+        next.place = await withStatedPlace(capture, next.place);
         next.collectedChildren = fillAgesFromDates(next.collectedChildren, now);
         const kids = withKnownAges(next.collectedChildren, now);
         const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
@@ -2090,6 +2102,7 @@ async function friendOnboardingTurn(
   );
   language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
+  stored.place = await withStatedPlace(spoken.capture, stored.place);
   stored.collectedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
@@ -2495,6 +2508,7 @@ async function friendColdTurn(
         parentWords: inbound.body,
         placeLabel:
           session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        ...placeCurrency(session.firstTouch?.place),
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2557,6 +2571,7 @@ async function friendColdTurn(
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session.firstTouch?.place),
       agesLabel: summarizeChildren(session.collected.children),
       ageMonths: session.collected.children.flatMap((child) =>
         child.ageMonths == null ? [] : [child.ageMonths],
@@ -2882,14 +2897,32 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
+    ...(place.countryCode ? { countryCode: place.countryCode } : {}),
+    ...(place.province ? { province: place.province } : {}),
+    ...(place.timezone ? { timezone: place.timezone } : {}),
+    ...(place.currency ? { currency: place.currency } : {}),
   };
+}
+
+async function withStatedPlace(
+  capture: OnboardingCapture,
+  place: FirstTouchPlace | null,
+): Promise<FirstTouchPlace | null> {
+  if (!intakeStatedPlaceEnabled()) return place;
+  const stated = await resolveStatedPlace({
+    postalCode: capture.postalCode,
+    city: capture.city,
+    country: capture.country ?? null,
+    region: capture.region ?? null,
+  });
+  return stated ?? place;
 }
 
 function intakeLocationFor(
   place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
 ): IntakeLocation | null {
-  if (place.kind !== 'postal') return null;
-  return parseIntakePostal(place.postalCode ?? place.areaCoarse);
+  return intakeLocationFromPlace(place);
 }
 
 /**
@@ -3941,6 +3974,7 @@ async function helpBody(
       parentWords,
       placeLabel:
         session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session?.firstTouch?.place),
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,

@@ -141,6 +141,11 @@ export interface FirstTouchPersisted {
     postalCode: string | null;
     municipality: string | null;
     city: string | null;
+    country?: 'Canada' | 'United States';
+    countryCode?: 'CA' | 'US';
+    province?: string | null;
+    timezone?: string | null;
+    currency?: 'CAD' | 'USD';
   } | null;
   locationRequest: {
     at: string;
@@ -602,15 +607,28 @@ function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {
     postalCode?: unknown;
     municipality?: unknown;
     city?: unknown;
+    country?: unknown;
+    countryCode?: unknown;
+    province?: unknown;
+    timezone?: unknown;
+    currency?: unknown;
   };
   if (row.kind !== 'postal' && row.kind !== 'city') return null;
   if (typeof row.areaCoarse !== 'string' || row.areaCoarse.length === 0) return null;
+  const country = row.country === 'Canada' || row.country === 'United States' ? row.country : null;
+  const countryCode = row.countryCode === 'CA' || row.countryCode === 'US' ? row.countryCode : null;
+  const currency = row.currency === 'CAD' || row.currency === 'USD' ? row.currency : null;
   return {
     kind: row.kind,
     areaCoarse: row.areaCoarse,
     postalCode: typeof row.postalCode === 'string' ? row.postalCode : null,
     municipality: typeof row.municipality === 'string' ? row.municipality : null,
     city: typeof row.city === 'string' ? row.city : null,
+    ...(country ? { country } : {}),
+    ...(countryCode ? { countryCode } : {}),
+    ...(typeof row.province === 'string' ? { province: row.province } : {}),
+    ...(typeof row.timezone === 'string' ? { timezone: row.timezone } : {}),
+    ...(currency ? { currency } : {}),
   };
 }
 

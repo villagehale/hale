@@ -41,6 +41,7 @@ import {
   mergeCaptures,
   onboardingMissing,
 } from './onboarding-turn';
+import { intakeStatedPlaceEnabled } from './stated-place';
 
 /**
  * VIL-413 / VIL-417. The onboarding reply, written from a per-step direction.
@@ -250,6 +251,11 @@ export interface FriendVoiceInput {
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
+   * CAD or USD for the place already stored. Absent when the place is unknown
+   * or INTAKE_STATED_PLACE_ENABLED is off, so a turn without it keeps its bytes.
+   */
+  currency?: 'CAD' | 'USD';
+  /**
    * VIL-641. Code's record that an earlier reply asked for the coarse code after a
    * first no, so a no now is the second one. Absent when it did not.
    */
@@ -400,7 +406,7 @@ export interface SpeakOptions {
    * The reply will not be sent whatever it says (the turn hands over to the
    * map). The first draft's capture is taken as is: no judging, no retry, no page.
    */
-  replyDiscardedWhen?: (capture: OnboardingCapture) => boolean;
+  replyDiscardedWhen?: (capture: OnboardingCapture) => boolean | Promise<boolean>;
   /**
    * Real data appended under the prose after judging, as its own lines: the
    * co-parent join line and phrase. Never written by the model.
@@ -545,6 +551,8 @@ const replyFields = z.object({
     .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   placeAsk: z.enum(PLACE_ASKS).nullable().optional().default(null).catch(null),
+  country: z.enum(['CA', 'US', 'other']).nullable().optional().default(null).catch(null),
+  region: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
@@ -662,11 +670,18 @@ export function onboardingReplyToolSchema(
   const schema = linqGroupOnboardingV2Enabled()
     ? replyJsonSchema
     : { ...replyJsonSchema, properties: flagOff };
-  if (!input || !placeInPlay(input)) return schema;
+  const stated = intakeStatedPlaceEnabled()
+    ? {
+        country: { type: ['string', 'null'], enum: ['CA', 'US', 'other', null] },
+        region: { type: ['string', 'null'] },
+      }
+    : {};
+  const withStated = { ...schema, properties: { ...schema.properties, ...stated } };
+  if (!input || !placeInPlay(input)) return withStated;
   return {
-    ...schema,
-    properties: { ...schema.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
-    required: [...schema.required, 'placeAsk'],
+    ...withStated,
+    properties: { ...withStated.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
+    required: [...withStated.required, 'placeAsk'],
   };
 }
 
@@ -904,6 +919,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
             }
         : null,
       coparentGroup: input.coparentGroup ?? null,
+      ...(input.currency ? { currency: input.currency } : {}),
       // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
       ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
       // Who runs Hale is for when they ask; otherwise the founder's name is
@@ -2153,7 +2169,7 @@ export async function speakFriend(
             )
           : empty;
       const draft = composed.reply.trim();
-      if (options.replyDiscardedWhen?.(capture)) {
+      if (await options.replyDiscardedWhen?.(capture)) {
         return {
           prose: '',
           bubbles: [],
@@ -2728,7 +2744,10 @@ export async function friendVoiceSystem(
   // VIL-568: the age-fit correction addendum rides only when the flag is on, so
   // every other onboarding turn (and its eval cache key) keeps its bytes.
   const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
-  const extras = [choice, group, place, ageFit].flatMap((part) =>
+  const statedPlace = intakeStatedPlaceEnabled()
+    ? await loadCronSkill('onboarding-stated-place')
+    : null;
+  const extras = [choice, group, place, ageFit, statedPlace].flatMap((part) =>
     part ? [part.instructions] : [],
   );
   const system = [skill.instructions, ...extras].join('\n\n');
@@ -2758,6 +2777,8 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
       nameTakenBack: value.nameTakenBack,
       kidsNamesDeclined: value.kidsNamesDeclined,
       placeDeclined: value.placeDeclined,
+      ...(value.country ? { country: value.country } : {}),
+      ...(value.region ? { region: value.region } : {}),
       calendarLater: value.calendarLater,
       gmailLater: value.gmailLater,
       stopAsking: value.stopAsking,
