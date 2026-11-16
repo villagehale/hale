@@ -25,3 +25,23 @@ export async function countFamilyLiveWatches(
     );
   return (spots?.n ?? 0) + (subs?.n ?? 0);
 }
+
+/** True when this family already has a live watched-spot row for this page. */
+export async function familyHasLiveSpotWatch(
+  database: Database,
+  familyId: string,
+  sourceUrl: string,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.watchedSpots.id })
+    .from(schema.watchedSpots)
+    .where(
+      and(
+        eq(schema.watchedSpots.familyId, familyId),
+        eq(schema.watchedSpots.sourceUrl, sourceUrl),
+        isNull(schema.watchedSpots.releasedAt),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}

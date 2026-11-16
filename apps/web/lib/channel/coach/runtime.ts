@@ -89,7 +89,7 @@ import {
   releaseWatchByParent,
 } from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
-import { countFamilyLiveWatches } from '~/lib/channel/watches/live-count';
+import { countFamilyLiveWatches, familyHasLiveSpotWatch } from '~/lib/channel/watches/live-count';
 import {
   type AgentContext,
   type LoadAgentContextInput,
@@ -1286,6 +1286,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           parentWords: turn.body,
           linksThisTurn: watchLinks,
           countLiveWatches: (familyId) => countFamilyLiveWatches(database, familyId),
+          hasLiveSpotWatch: (familyId, sourceUrl) =>
+            familyHasLiveSpotWatch(database, familyId, sourceUrl),
         },
         onDraft,
         onOffer,

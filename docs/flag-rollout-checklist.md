@@ -8,7 +8,7 @@ Parsers cited at origin/main `1017409437f8`. `apps/worker` reads one product fla
 
 Kill switch, every time: set the value on the Vercel production project for `apps/web`, then redeploy that project.
 
-Launch flags are also catalogued in `@hale/flags` and evaluated through `isEnabled` / `flagValue`. `POSTHOG_FLAGS_ENABLED` is off unless exactly `true`; while off, every reader is today's env parser. Once on, an explicit env `false`/`off` (or `VOICE_DISABLED=true`) kills the flag regardless of PostHog; otherwise the family-hashed local PostHog flag is used, and a miss falls back to the env value. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED`, `LINQ_APP_CLIP_PAY_ENABLED`, `ANTHROPIC_CREDIT_ALERT_ENABLED`, `HOLIDAY_PROMO_ENABLED`, `CONVERSIONS_API_ENABLED`, and `META_CAPI_ENABLED` stay env-only. Sync PostHog with `pnpm posthog:sync-flags -- --dry`.
+Launch flags are also catalogued in `@hale/flags` and evaluated through `isEnabled` / `flagValue`. `POSTHOG_FLAGS_ENABLED` is off unless exactly `true`; while off, every reader is today's env parser. Once on, an explicit env `false`/`off` (or `VOICE_DISABLED=true`) kills the flag regardless of PostHog; otherwise the family-hashed local PostHog flag is used, and a miss falls back to the env value. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED`, `LINQ_APP_CLIP_PAY_ENABLED`, `ANTHROPIC_CREDIT_ALERT_ENABLED`, `HOLIDAY_PROMO_ENABLED`, `CONVERSIONS_API_ENABLED`, `META_CAPI_ENABLED`, and `MAX_ENTITLEMENTS_ENABLED` stay env-only. Sync PostHog with `pnpm posthog:sync-flags -- --dry`.
 
 `true` means the value is exactly `true`, with no extra characters. `trimmed true` (written `true` (trimmed)) means trim, then exactly `true`. `on` means trim, then exactly `on`. `on` (no trim) means exactly `on`, with no trim (`SOCIAL_WATCHLIST`). `true`, `ON`, and `1` do not turn an `on` flag on.
 
@@ -118,7 +118,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_POLLS` | `apps/web/lib/channel/linq/config.ts:63` | `on` | OFF | empty, or `off` | Sloane |
 | `LINQ_REACTIONS_ENABLED` | `apps/web/lib/channel/linq/tapback.ts:124` (trimmed, `!== 'false'`) | unset (anything except `false`) | ON | `false` | Sloane |
 | `LOOP_SEND_ENABLED` | `apps/web/lib/loop/send.ts:4` | `true` | OFF | `false` | Noah |
-| `MAX_ENTITLEMENTS_ENABLED` | `apps/web/lib/billing/max-entitlements.ts:16` | `true` | OFF | `false` | Barton |
+| `MAX_ENTITLEMENTS_ENABLED` | `apps/web/lib/billing/max-entitlements.ts:16` | `true` (exact, env-only; nothing in PostHog may turn this on) | OFF | empty, or `false` | Barton |
 | `MEMORY_DIGEST_APPLY` | `apps/web/lib/memory/digest.ts:40` | `true` | OFF | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `apps/web/lib/memory/synthesis.ts:44` | `true` | OFF | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `apps/web/lib/channel/mid-activity/flag.ts:14` | `true` | OFF | `false` | Noah |

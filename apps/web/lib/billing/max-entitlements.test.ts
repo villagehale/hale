@@ -11,6 +11,30 @@ describe('maxEntitlementsEnabled', () => {
     expect(maxEntitlementsEnabled({ MAX_ENTITLEMENTS_ENABLED: '1' })).toBe(false);
     expect(maxEntitlementsEnabled({ MAX_ENTITLEMENTS_ENABLED: 'true' })).toBe(true);
   });
+
+  it('ignores PostHog: unset env stays off even when POSTHOG_FLAGS_ENABLED is on', () => {
+    expect(
+      maxEntitlementsEnabled({
+        POSTHOG_FLAGS_ENABLED: 'true',
+        MAX_ENTITLEMENTS_ENABLED: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      maxEntitlementsEnabled({
+        POSTHOG_FLAGS_ENABLED: 'true',
+        MAX_ENTITLEMENTS_ENABLED: 'TRUE',
+      }),
+    ).toBe(false);
+  });
+
+  it('stays on from exact env true even when POSTHOG_FLAGS_ENABLED is on', () => {
+    expect(
+      maxEntitlementsEnabled({
+        POSTHOG_FLAGS_ENABLED: 'true',
+        MAX_ENTITLEMENTS_ENABLED: 'true',
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('entitlementsForFamily', () => {

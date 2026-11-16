@@ -140,6 +140,21 @@ describe('watch_for_opening — the dark gate', () => {
     expect(armed).toEqual([]);
   });
 
+  it('still arms a class this Plus household already watches when the cap is full', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 8,
+      hasLiveSpotWatch: async () => true,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
   it('still arms a Max household under its higher cap when MAX_ENTITLEMENTS_ENABLED is on', async () => {
     vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
     const { tool, fetchBody, armed } = ports({

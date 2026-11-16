@@ -202,11 +202,32 @@ export function providerWatchTools(ports: WatchToolPorts): RegisteredTool[] {
           'That sourceRef is not one Hale knows for this family. Call list_watch_targets and use a sourceRef it returned.',
         );
       }
+      const db = ports.database;
+      const [existingTarget] = await db
+        .select({ id: schema.providerWatchTargets.id })
+        .from(schema.providerWatchTargets)
+        .where(
+          and(
+            eq(schema.providerWatchTargets.sourceUrl, source.url),
+            eq(schema.providerWatchTargets.kind, input.kind),
+          ),
+        )
+        .limit(1);
+      if (existingTarget) {
+        const existing = (await liveWatches(ports)).find((w) => w.targetId === existingTarget.id);
+        if (existing) {
+          return {
+            watching: true as const,
+            watchId: existing.watchId,
+            provider: source.provider,
+            kind: input.kind,
+          };
+        }
+      }
       const watchCap = entitlementsForFamily(ports.planTier ?? 'plus').liveWatches;
       const liveCount = await countFamilyLiveWatches(ports.database, ports.familyId);
       const capRefusal = liveWatchCapRefusal(liveCount, watchCap);
       if (capRefusal) throw new Error(capRefusal);
-      const db = ports.database;
       await db
         .insert(schema.providerWatchTargets)
         .values({ providerHost: source.provider, sourceUrl: source.url, kind: input.kind })

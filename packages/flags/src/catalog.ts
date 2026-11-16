@@ -138,7 +138,6 @@ export const FLAGS = [
   exact('inbound-photo-facts', 'INBOUND_PHOTO_FACTS_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
-  exact('max-entitlements', 'MAX_ENTITLEMENTS_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',
     allowlistMode: 'both',
