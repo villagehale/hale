@@ -207,7 +207,7 @@ test('/admin is gone: a plain portal 404, and the address does not move', async 
   }
 });
 
-test('/api/billing/checkout is gone: a signed-in parent gets 404', async ({ browser }) => {
+test('/api/billing/checkout 404s while HOLIDAY_PROMO_ENABLED is off', async ({ browser }) => {
   const { page } = await openPage(browser, 'member');
   // Positive control: the same signed-in context reaches a live API route.
   expect((await page.request.get('/api/health')).status()).toBe(200);

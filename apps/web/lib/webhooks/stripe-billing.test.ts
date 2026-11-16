@@ -138,6 +138,19 @@ describe('planTierFromStripeEvent', () => {
     };
     expect(planTierFromStripeEvent(unknown, MAP)).toBeNull();
   });
+
+  it('keeps a founding yearly invoice.paid on plus after the promo cutoff', () => {
+    const map = priceTierMapFromEnv({
+      STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+    });
+    const paid = {
+      id: 'evt_renew',
+      type: 'invoice.paid',
+      data: { object: { lines: { data: [{ price: { id: 'price_founding_usd' } }] } } },
+    };
+    expect(map.price_founding_usd).toBe('plus');
+    expect(planTierFromStripeEvent(paid, map)).toBe('plus');
+  });
 });
 
 describe('familyIdFromStripeEvent', () => {
@@ -208,6 +221,22 @@ describe('priceTierMapFromEnv', () => {
   it('omits price ids that are absent', () => {
     expect(priceTierMapFromEnv({ STRIPE_PRICE_PLUS_MONTHLY: 'p_m' })).toEqual({ p_m: 'plus' });
     expect(priceTierMapFromEnv({})).toEqual({});
+  });
+
+  it('maps founding yearly and Plus USD list ids to plus', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+        STRIPE_PRICE_PLUS_MONTHLY_USD: 'price_usd_mo',
+        STRIPE_PRICE_PLUS_ANNUAL_USD: 'price_usd_yr',
+      }),
+    ).toEqual({
+      price_founding_cad: 'plus',
+      price_founding_usd: 'plus',
+      price_usd_mo: 'plus',
+      price_usd_yr: 'plus',
+    });
   });
 });
 

@@ -13,6 +13,7 @@ import ContactPage from '../app/[locale]/contact/page.js';
 import FaqPage from '../app/[locale]/faq/page.js';
 import LandingPage from '../app/[locale]/page.js';
 import PricingPage from '../app/[locale]/pricing/page.js';
+import CheckoutSuccessPage from '../app/[locale]/checkout/success/page.js';
 import TextPage from '../app/[locale]/text/page.js';
 import { allAnswers } from '../lib/answers/index.js';
 
@@ -60,6 +61,11 @@ const PAGES: Record<string, () => unknown> = {
   // column stays the conversion door; chrome is not a second shell.
   '/text': () =>
     TextPage({
+      params: Promise.resolve(EN),
+      searchParams: Promise.resolve({}),
+    }),
+  '/checkout/success': () =>
+    CheckoutSuccessPage({
       params: Promise.resolve(EN),
       searchParams: Promise.resolve({}),
     }),

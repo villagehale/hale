@@ -38,6 +38,7 @@ describe('sitemap', () => {
     expect(urls).toContain(`${SITE_URL}/contact`);
     expect(urls).not.toContain(`${SITE_URL}/for-centres`);
     expect(urls).toContain(`${SITE_URL}/pricing`);
+    expect(urls).not.toContain(`${SITE_URL}/checkout/success`);
   });
 
   it('lists exactly the published answer slugs (and the /answers index)', () => {

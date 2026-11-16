@@ -106,6 +106,11 @@
     "metaTitle": "Text Hale",
     "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids."
   },
+  "CheckoutSuccess": {
+    "metaTitle": "You're in · Hale",
+    "heading": "You're in.",
+    "continue": "Open Hale"
+  },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",
     "appDescription": "Your kids’ year, handled. A planner for your kids’ year: Hale finds what’s on, watches for spots, and comes back to ask how it went."

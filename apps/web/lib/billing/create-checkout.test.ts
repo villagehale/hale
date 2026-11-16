@@ -60,6 +60,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(result).toEqual({
@@ -74,7 +75,10 @@ describe('createBillingCheckout', () => {
       period: 'annual',
       customerEmail: 'parent@example.com',
     });
-    expect(calls[0]?.successUrl).toContain('https://app.example.com');
+    expect(calls[0]?.successUrl).toBe(
+      'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+    );
+    expect(calls[0]?.cancelUrl).toBe('https://app.example.com/settings?checkout=cancelled#billing');
   });
 
   it('writes a billing_checkout_started audit row for the family (rule #6)', async () => {
@@ -91,6 +95,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(audits).toHaveLength(1);
@@ -100,7 +105,7 @@ describe('createBillingCheckout', () => {
       actionTaken: 'billing_checkout_started',
       targetTable: 'families',
       targetId: 'fam-9',
-      after: { tier: 'family', period: 'monthly' },
+      after: { tier: 'family', period: 'monthly', sku: null, currency: null },
     });
   });
 
@@ -117,6 +122,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(result).toEqual({ status: 'not_found' });
@@ -139,6 +145,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     // A family that arrived by text has no address on file. Refusing checkout over that

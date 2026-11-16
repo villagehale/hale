@@ -8,6 +8,7 @@ import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from '
 import { posthogReplayEnabled, posthogWebEnabled } from './flags';
 import { hasAnalyticsOptOut } from './opt-out';
 import { POSTHOG_PROXY_PATH, posthogUiHost } from './posthog-proxy';
+import { readFirstTouchAttribution } from './attribution';
 import { type SessionLike, readFirstTouchSourceCode } from './source-code';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -123,10 +124,16 @@ export function PostHogProvider({
   useEffect(() => {
     if (!KEY || !posthogWebEnabled()) return;
     let active = true;
-    const sourceCode = readFirstTouchSourceCode(window.location.search, sessionStorageOrNull());
+    const storage = sessionStorageOrNull();
+    const sourceCode = readFirstTouchSourceCode(window.location.search, storage);
+    const attribution = readFirstTouchAttribution(window.location.search, storage);
     // An untagged visit has no source, and that stays ABSENT rather than becoming a
     // string like 'direct' — a bucket that means "no card" must not look like a card.
-    const base: EventProperties = { locale, ...(sourceCode ? { source_code: sourceCode } : {}) };
+    const base: EventProperties = {
+      locale,
+      ...(sourceCode ? { source_code: sourceCode } : {}),
+      ...attribution,
+    };
 
     const start = () => {
       if (!active || readConsent() !== 'granted' || hasAnalyticsOptOut()) return;

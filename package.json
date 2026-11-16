@@ -25,7 +25,9 @@
     "db:migrate": "pnpm --filter @hale/db migrate",
     "db:check-migrations": "pnpm --filter @hale/db check-migrations",
     "db:studio": "pnpm --filter @hale/db studio",
-    "posthog:sync-flags": "pnpm --filter @hale/flags sync"
+    "posthog:sync-flags": "pnpm --filter @hale/flags sync",
+    "stripe:create-founding-prices": "pnpm --filter @hale/web exec tsx scripts/stripe-create-founding-prices.ts",
+    "stripe:refund-family": "pnpm --filter @hale/web exec tsx scripts/stripe-refund-family.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

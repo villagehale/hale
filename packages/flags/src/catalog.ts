@@ -285,6 +285,24 @@ export const PAYMENT_ENV_ONLY = [
     type: 'boolean' as const,
     note: 'env-only; stays OFF; nothing in PostHog may turn this on',
   },
+  {
+    env: 'HOLIDAY_PROMO_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; founding checkout + USD list path; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'CONVERSIONS_API_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; Google Ads Website Purchase + Meta Pixel PageView; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'META_CAPI_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; Meta Conversions API Purchase; nothing in PostHog may turn this on',
+  },
 ] as const;
 
 export function getFlag(key: string): FlagSpec {

@@ -25,6 +25,7 @@ Treat as severe any change that weakens one of them, and any new path that bypas
 - **Recorded decisions.** A limit that the PR body, a ticket or a comment records as a decision ("Known limitation", "Stated limit", a design ruling) is not a new bug. Flag it only when the stated limit is wrong or the code exceeds it. A recorded decision never exempts a hard rule.
 - **Migrations** are hand-written, additive SQL in `packages/db/drizzle`. A missing *generated* migration is intended. A schema change without its hand-written SQL is a bug.
 - **Dark features.** Code behind a flag that is off is still reviewed; say in the finding that it is behind a flag.
+- **Holiday 2026 founding checkout.** Founding is a Stripe yearly price (CAD 7900 / USD 5900), locked for life — not a first-year coupon. The cutoff only stops NEW founding checkouts; existing founding subscriptions keep that price. No referral program and no gift-a-year in this promo. Checkout 404s until `HOLIDAY_PROMO_ENABLED` is exactly `true`. Ads click cookies, client IP, and user agent live on Stripe session metadata only, never on Attribution and never in PostHog. Meta Pixel PageView on the product app when `CONVERSIONS_API_ENABLED` is on is intended; Google Ads stays off the product app. CAPI is dormant without `META_CAPI_ACCESS_TOKEN`.
 
 ## Ignore
 

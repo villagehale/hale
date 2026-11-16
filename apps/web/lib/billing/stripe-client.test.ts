@@ -30,6 +30,14 @@ describe('stripeCheckoutClientFromEnv', () => {
       successUrl: 'https://app.example.com/settings?checkout=success#billing',
       cancelUrl: 'https://app.example.com/settings?checkout=cancelled#billing',
       customerEmail: 'p@example.com',
+      sku: 'founding_annual',
+      currency: 'CAD',
+      attribution: { utm_source: 'google', gclid: 'Click1' },
+      adsContext: {
+        fbp: 'fb.1.1.cookie',
+        clientIp: '203.0.113.9',
+        clientUserAgent: 'Mozilla/5.0 HaleTest',
+      },
     });
 
     expect(result).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' });
@@ -46,9 +54,41 @@ describe('stripeCheckoutClientFromEnv', () => {
     expect(body.get('metadata[priceId]')).toBe('price_plus_annual');
     expect(body.get('subscription_data[metadata][familyId]')).toBe('fam-7');
     expect(body.get('subscription_data[metadata][tier]')).toBe('plus');
+    expect(body.get('metadata[sku]')).toBe('founding_annual');
+    expect(body.get('subscription_data[metadata][sku]')).toBe('founding_annual');
+    expect(body.get('metadata[currency]')).toBe('CAD');
+    expect(body.get('metadata[utm_source]')).toBe('google');
+    expect(body.get('metadata[gclid]')).toBe('Click1');
+    expect(body.get('subscription_data[metadata][gclid]')).toBe('Click1');
+    expect(body.get('metadata[fbp]')).toBe('fb.1.1.cookie');
+    expect(body.get('metadata[client_ip]')).toBe('203.0.113.9');
+    expect(body.get('metadata[client_ua]')).toBe('Mozilla/5.0 HaleTest');
+    expect(body.has('subscription_data[metadata][fbp]')).toBe(false);
+    expect(body.has('subscription_data[metadata][client_ip]')).toBe(false);
     expect(body.get('customer_email')).toBe('p@example.com');
     expect(body.get('integration_identifier')).toMatch(/^hale-checkout-[a-z]{8}$/);
     expect(body.has('payment_method_types')).toBe(false);
+  });
+
+  it('retrieves a Checkout Session by id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'cs_test_1',
+          payment_status: 'paid',
+          amount_total: 7900,
+          currency: 'cad',
+        }),
+        { status: 200 },
+      ),
+    );
+    const client = stripeCheckoutClientFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchMock);
+    if (!client?.retrieveCheckoutSession) throw new Error('expected retrieve');
+    const session = await client.retrieveCheckoutSession('cs_test_1');
+    expect(session).toMatchObject({ id: 'cs_test_1', amount_total: 7900, currency: 'cad' });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.stripe.com/v1/checkout/sessions/cs_test_1',
+    );
   });
 
   it('throws (never returns a broken url) when Stripe responds non-2xx', async () => {

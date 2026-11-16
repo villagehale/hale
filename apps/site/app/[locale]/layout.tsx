@@ -3,10 +3,12 @@ import type { Metadata, Viewport } from 'next';
 import { hasLocale } from 'next-intl';
 import localFont from 'next/font/local';
 import { notFound } from 'next/navigation';
+import { AttributionCapture } from '~/components/attribution-capture';
 import { ConsentBanner } from '~/components/consent-banner';
 import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { metaPixelIdWhenConversionsEnabled } from '~/lib/analytics/meta-pixel';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
 import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
@@ -109,6 +111,7 @@ export default async function RootLayout({
   const t = getTranslator(locale, 'Common');
   const consent = getTranslator(locale, 'Consent');
   const footer = getTranslator(locale, 'Footer');
+  const metaPixelId = metaPixelIdWhenConversionsEnabled();
 
   return (
     <html
@@ -136,7 +139,9 @@ export default async function RootLayout({
           rejectLabel={consent('reject')}
           acceptLabel={consent('accept')}
           regionLabel={consent('region')}
+          pixelId={metaPixelId}
         />
+        <AttributionCapture />
         <PostHogProvider locale={locale}>{children}</PostHogProvider>
         <SpeedInsights />
       </body>

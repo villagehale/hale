@@ -143,6 +143,33 @@ describe('buildEvent privacy gate', () => {
     });
   });
 
+  it('keeps advertising attribution keys, including utm_content', () => {
+    const built = buildEvent('purchase', {
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'holiday',
+      utm_term: 'hale',
+      utm_content: 'hero',
+      gclid: 'Gw',
+      fbclid: 'Fb',
+      currency: 'CAD',
+      value: 79,
+      email: 'sam@example.com',
+    });
+    expect(built.event).toBe('purchase');
+    expect(built.properties).toEqual({
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'holiday',
+      utm_term: 'hale',
+      utm_content: 'hero',
+      gclid: 'Gw',
+      fbclid: 'Fb',
+      currency: 'CAD',
+      value: 79,
+    });
+  });
+
   it('never lets a name/email/content field through under any casing', () => {
     const built = buildEvent('endorse', {
       ChildName: 'Maya',
