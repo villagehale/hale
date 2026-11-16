@@ -646,6 +646,7 @@ describe('runProactiveReview', () => {
 
     it('wakes while it can still be sent before the doors open, and is sent', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
       const asked = new Date('2026-11-28T15:00:00.000Z');
       const id = await enqueue('registration-opening:held', opening);
 
@@ -667,6 +668,7 @@ describe('runProactiveReview', () => {
 
     it('is dropped by name when no moment is left to send it before the doors open', async () => {
       vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
       // Nov 30, 19:30 in the family's zone: past the last hour it could still be sent.
       const tooLate = new Date('2026-12-01T00:30:00.000Z');
       const id = await enqueue('registration-opening:late', opening);
