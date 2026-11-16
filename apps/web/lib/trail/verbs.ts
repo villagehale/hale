@@ -100,6 +100,8 @@ export const AUDIT_VERBS = [
   'family_plan_updated',
   'family_plan_change_refused',
   'family_plan_comped',
+  'billing_refund_ready',
+  'billing_grant_blocked',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -721,6 +723,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   family_plan_comped: {
     sentence: 'your family got the Family plan, free for life',
     family: 'done',
+  },
+  billing_refund_ready: {
+    sentence: 'a payment came in at the wrong price and was not added to your plan',
+    family: 'problem',
+  },
+  billing_grant_blocked: {
+    sentence: 'a later charge for that same payment was not added to your plan',
+    family: 'problem',
   },
   family_intents_updated: { sentence: 'you updated what you’d like help with', family: 'done' },
   parent_name_updated: { sentence: 'you updated your name', family: 'done' },

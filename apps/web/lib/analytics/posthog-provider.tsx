@@ -39,15 +39,31 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
  * there stores the URL as the person's initial URL, which the flags request sends past
  * `before_send`. Anything that still names one (a client-side visit, the page after it)
  * goes out as `/l/[code]`, raw or URL-encoded, in any string or key.
+ *
+ * `/founding?preview=` is the same class of secret (it unlocks founding checkout while
+ * the live flags stay off). PostHog does not load when that query is present, and
+ * `before_send` still strips `preview=` from any later event.
  */
 const LOGIN_LINK_CODE = /(\/|%2F)l(\/|%2F)[^/?#&\s"'\\]+/gi;
+const PREVIEW_QUERY = /([?&]|%3F|%26)preview(=|%3D)[^&#"'\\\s]*/gi;
 
 export function isLoginLinkPath(pathname: string): boolean {
   return pathname.startsWith('/l/');
 }
 
+export function hasPromoPreviewQuery(search: string): boolean {
+  const raw = search.startsWith('?') ? search.slice(1) : search;
+  return new URLSearchParams(raw).has('preview');
+}
+
+function redactSecrets(value: string): string {
+  return value
+    .replace(LOGIN_LINK_CODE, '$1l$2[code]')
+    .replace(PREVIEW_QUERY, '$1preview$2[preview]');
+}
+
 function redactCodes<T>(value: T): T {
-  if (typeof value === 'string') return value.replace(LOGIN_LINK_CODE, '$1l$2[code]') as T;
+  if (typeof value === 'string') return redactSecrets(value) as T;
   if (Array.isArray(value)) return value.map(redactCodes) as T;
   if (value && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(
@@ -85,7 +101,8 @@ export function redactLoginLinkCodes(event: CaptureResult | null): CaptureResult
  *  - capture_exceptions ON. Console errors are left out (they may carry PII).
  *  - respect_dnt ON, plus the first-party opt-out in opt-out.ts.
  *  - events go through the /ingest rewrite, not *.i.posthog.com.
- *  - before_send takes any /l/<code> out of every event (see redactLoginLinkCodes).
+ *  - before_send takes any /l/<code> and `preview=` query out of every event
+ *    (see redactLoginLinkCodes).
  * Identity is the HMAC'd family id only — set later via `identify`, never email.
  */
 export const POSTHOG_PII_SELECTOR = '[data-hale-pii], [data-hale-mask-input]';
@@ -121,7 +138,14 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<PostHog | null>(null);
 
   useEffect(() => {
-    if (!KEY || !posthogWebEnabled() || isLoginLinkPath(window.location.pathname)) return;
+    if (
+      !KEY ||
+      !posthogWebEnabled() ||
+      isLoginLinkPath(window.location.pathname) ||
+      hasPromoPreviewQuery(window.location.search)
+    ) {
+      return;
+    }
     let cancelled = false;
     void import('posthog-js').then(({ default: posthog }) => {
       if (cancelled) return;

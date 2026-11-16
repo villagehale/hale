@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse, after } from 'next/server';
+import { reportBillingPurchase } from '~/lib/billing/conversions';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
@@ -8,7 +9,6 @@ import { pushWebhookDeps } from '~/lib/integrations/google-push-runtime';
 import { getQueue } from '~/lib/queue';
 import { getAdapter } from '~/lib/webhooks/registry';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';
-import { reportBillingPurchase } from '~/lib/billing/conversions';
 import { verifyStripeBillingSignature } from '~/lib/webhooks/stripe-billing';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 
@@ -66,7 +66,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
       }
     }
-    return NextResponse.json({ status: applied.status }, { status: 200 });
+    const body: { status: string; opsAlert?: string } = { status: applied.status };
+    if (applied.status === 'refund_ready') {
+      body.opsAlert = applied.opsAlert;
+    }
+    return NextResponse.json(body, { status: 200 });
   }
 
   // ── Gmail / Calendar push (VIL-401) ───────────────────────────────────────

@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { promoNewVisitorCheckoutEnabled } from '~/lib/billing/flags';
+import { authRateLimited } from '~/lib/auth/rate-limit';
 import { verifyPromoJoinCode } from '~/lib/billing/new-visitor-join';
-import { foundingPromoOpen } from '~/lib/billing/prices';
+import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import {
   PROMO_JOIN_COOKIE,
   PROMO_JOIN_TTL_SECONDS,
   signPromoJoinBinding,
 } from '~/lib/billing/promo-join-cookie';
-import { authRateLimited } from '~/lib/auth/rate-limit';
 import { db } from '~/lib/db';
 
 export const runtime = 'nodejs';
@@ -17,7 +16,7 @@ export const runtime = 'nodejs';
  * family, set the short-lived join cookie. Collapses every refusal to 401.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!promoNewVisitorCheckoutEnabled() || !foundingPromoOpen(new Date())) {
+  if (!newVisitorFoundingAllowedFromRequest(req)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 

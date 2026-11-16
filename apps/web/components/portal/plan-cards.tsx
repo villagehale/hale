@@ -93,6 +93,27 @@ export function PromoOfferPlan({ currency }: { currency: BillingCurrency }) {
   );
 }
 
+/**
+ * Unpaid Plan cards. `founding` is Free + the yearly founding offer — no monthly
+ * toggle, no regular annual, no disabled list option. `list` is monthly + annual
+ * after the cutoff.
+ */
+export function PlanOffer({
+  currency,
+  surface,
+}: {
+  currency: BillingCurrency;
+  surface: 'founding' | 'list';
+}) {
+  if (surface === 'list') return <ListPlan currency={currency} />;
+  return (
+    <>
+      <FoundingPlan badge="Free" />
+      <PromoOfferPlan currency={currency} />
+    </>
+  );
+}
+
 export function ListPlan({ currency }: { currency: BillingCurrency }) {
   const list = plusListPriceLabels(currency);
   return (

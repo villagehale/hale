@@ -2,32 +2,27 @@ import { currencyFromIpCountry } from '@hale/types';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { PortalHeading } from '~/components/portal/heading';
-import { FoundingPlan, ListPlan, PaidPlan, PromoOfferPlan } from '~/components/portal/plan-cards';
+import { FoundingPlan, PaidPlan, PlanOffer } from '~/components/portal/plan-cards';
 import styles from '~/components/portal/portal.module.css';
-import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { foundingPromoOpen } from '~/lib/billing/prices';
+import { unpaidPlanSurface } from '~/lib/billing/promo-access';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
+import { currentFamilyId } from '~/lib/family';
 
 export const metadata: Metadata = { title: 'Plan' };
 
 export default async function SettingsPlanPage() {
   const basics = await loadFamilyBasics();
+  const familyId = await currentFamilyId();
   const currency = currencyFromIpCountry((await headers()).get('x-vercel-ip-country'));
-  const promo = holidayPromoEnabled();
-  const windowOpen = foundingPromoOpen(new Date());
+  const surface = unpaidPlanSurface(familyId, new Date());
 
   const card =
     basics.planTier === 'plus' || basics.planTier === 'family' ? (
       <PaidPlan tier={basics.planTier} />
-    ) : !promo ? (
-      <FoundingPlan />
-    ) : windowOpen ? (
-      <>
-        <FoundingPlan badge="Free" />
-        <PromoOfferPlan currency={currency} />
-      </>
+    ) : surface === 'founding' || surface === 'list' ? (
+      <PlanOffer currency={currency} surface={surface} />
     ) : (
-      <ListPlan currency={currency} />
+      <FoundingPlan />
     );
 
   return (

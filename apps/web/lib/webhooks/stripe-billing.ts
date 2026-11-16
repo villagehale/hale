@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BillingPeriod, PlanTier } from '@hale/types';
-import { plusPriceIdsFromEnv } from '~/lib/billing/prices';
+import { foundingWindowOpen, plusPriceIdsFromEnv } from '~/lib/billing/prices';
 
 /**
  * Stripe billing webhook contract (B18).
@@ -54,6 +54,8 @@ export type PaidTier = Exclude<PlanTier, 'free'>;
 export interface StripeTierOptions {
   paymentLinkId?: string | null;
   paymentLinkTier?: PaidTier | null;
+  /** False during the founding window — never grant Plus from an old Payment Link. */
+  allowPaymentLink?: boolean;
 }
 
 type VerifyResult =
@@ -204,11 +206,13 @@ export function isStripeCheckoutConfigured(
  */
 export function paymentLinkTierOptionsFromEnv(
   env: Record<string, string | undefined> = process.env,
+  now: Date = new Date(),
 ): StripeTierOptions {
   const tier = env.STRIPE_PAYMENT_LINK_TIER?.trim();
   return {
     paymentLinkId: env.STRIPE_PAYMENT_LINK_ID?.trim() || null,
     paymentLinkTier: tier === 'plus' || tier === 'family' ? tier : null,
+    allowPaymentLink: !foundingWindowOpen(now, env),
   };
 }
 
@@ -278,8 +282,27 @@ export function stripeRefsFromStripeEvent(payload: unknown): {
   const details = subscriptionDetails(object);
   return {
     customerId: readId(object.customer),
-    subscriptionId: readId(object.subscription) ?? (details ? readId(details.subscription) : null),
+    subscriptionId:
+      readId(object.subscription) ??
+      (details ? readId(details.subscription) : null) ??
+      // customer.subscription.* objects are the subscription: their id is the sub id.
+      (object.items !== undefined ? readId(object.id) : null),
   };
+}
+
+/**
+ * When Stripe says this paid event happened. `created` is unix seconds on the
+ * event envelope. A late delivery after the founding cutoff must not reopen a
+ * list-price grant that was paid during the window — receipt time is the
+ * wrong clock. Missing / non-numeric `created` falls back to `fallback`.
+ */
+export function paidEventOccurredAt(payload: unknown, fallback: Date = new Date()): Date {
+  if (!isRecord(payload)) return fallback;
+  const created = payload.created;
+  if (typeof created === 'number' && Number.isFinite(created) && created > 0) {
+    return new Date(created * 1000);
+  }
+  return fallback;
 }
 
 /** The Stripe event id (`evt_…`) — the natural idempotency key. Null if malformed. */
@@ -293,6 +316,7 @@ function paymentLinkTierFrom(
   object: Record<string, unknown>,
   options: StripeTierOptions,
 ): PaidTier | null {
+  if (options.allowPaymentLink === false) return null;
   if (!options.paymentLinkId || !options.paymentLinkTier) return null;
   if (!isPaidTier(options.paymentLinkTier)) return null;
   if (readString(object.payment_link) !== options.paymentLinkId) return null;

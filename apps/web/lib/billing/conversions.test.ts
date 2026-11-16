@@ -159,6 +159,39 @@ describe('senders no-op without flags or env', () => {
     expect(body).not.toHaveProperty('test_event_code');
   });
 
+  it('skips preview-family purchases unless META_CAPI_TEST_EVENT_CODE is set', async () => {
+    const fetchImpl = vi.fn();
+    expect(
+      await sendMetaPurchase(
+        purchase,
+        {
+          META_CAPI_ENABLED: 'true',
+          NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+          META_CAPI_ACCESS_TOKEN: 'token-1',
+          PROMO_PREVIEW_FAMILY_IDS: 'fam-1',
+        },
+        fetchImpl,
+      ),
+    ).toEqual({ status: 'skipped', reason: 'preview' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('sends a preview-family purchase when the test event code is set, even if CAPI is off', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    const result = await sendMetaPurchase(
+      purchase,
+      {
+        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+        PROMO_PREVIEW_FAMILY_IDS: 'fam-1',
+        META_CAPI_TEST_EVENT_CODE: 'TEST12345',
+      },
+      fetchImpl,
+    );
+    expect(result).toEqual({ status: 'sent' });
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
   it('adds test_event_code when META_CAPI_TEST_EVENT_CODE is set', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     await sendMetaPurchase(
@@ -205,9 +238,9 @@ describe('Meta Test Events ops probe', () => {
   });
 
   it('sends a hashed fake Purchase with test_event_code and returns status plus events_received', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ events_received: 1 }), { status: 200 }),
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
     const result = await sendMetaTestPurchase(
       {
         NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
