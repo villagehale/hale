@@ -43,7 +43,10 @@ describe('POST /api/billing/checkout', () => {
     vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_USD', 'price_founding_usd');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
     vi.stubEnv('APP_URL', 'https://app.example.com');
-    createMock.mockResolvedValue({ status: 'created', url: 'https://checkout.stripe.com/c/pay/cs_1' });
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
 
     const res = await post(
       { period: 'annual', gclid: 'Click1', utm_source: 'google' },
@@ -74,13 +77,45 @@ describe('POST /api/billing/checkout', () => {
     vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
     vi.stubEnv('APP_URL', 'https://app.example.com');
-    createMock.mockResolvedValue({ status: 'created', url: 'https://checkout.stripe.com/c/pay/cs_1' });
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
 
     const res = await post({ period: 'annual' });
     expect(res.status).toBe(200);
     const arg = createMock.mock.calls[0]?.[0] as { priceId: string; currency: string };
     expect(arg.priceId).toBe('price_founding_cad');
     expect(arg.currency).toBe('CAD');
+  });
+
+  it('refuses a founding confirmation whose shown currency no longer matches geo', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+
+    const res = await post(
+      { period: 'annual', offer: 'founding', expectedCurrency: 'CAD' },
+      { 'x-vercel-ip-country': 'US' },
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'currency_changed' });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('never silently falls back to a list price when the founding offer is asked for', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_plus_annual_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+
+    const res = await post({ period: 'annual', offer: 'founding', expectedCurrency: 'CAD' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'founding_unavailable' });
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it('409s when the family already has a subscription', async () => {

@@ -9,10 +9,11 @@ import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
+import { requestHolidayPromo } from '~/lib/promo/server';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
-  searchParams?: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 /** Request-time promo flag + cutoff; see the homepage note. */
@@ -49,6 +50,7 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
       smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
       prefill={intakePrefill(locale)}
       source={await pageSource(searchParams)}
+      promo={await requestHolidayPromo(locale, searchParams)}
       priceSurface={priceSurface}
       currency={currency}
     />

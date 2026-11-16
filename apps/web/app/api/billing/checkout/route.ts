@@ -6,7 +6,7 @@ import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { resolveCheckoutPrice } from '~/lib/billing/prices';
+import { foundingPromoOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
 import { db as defaultDb } from '~/lib/db';
@@ -37,6 +37,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const body = (await req.json().catch(() => null)) as {
     period?: unknown;
+    /** The founding confirmation page refuses a silent fallback to a list price. */
+    offer?: unknown;
+    expectedCurrency?: unknown;
     utm_source?: unknown;
     utm_medium?: unknown;
     utm_campaign?: unknown;
@@ -52,7 +55,22 @@ export async function POST(req: Request): Promise<Response> {
   }
   const period = periodRaw as BillingPeriod;
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
-  const selected = resolveCheckoutPrice({ currency, period, now: new Date() });
+  // The confirmation page names the currency it showed. If a family crossed a
+  // border (or the two hosts disagree on geo), make them review it again before
+  // creating a Stripe session. Never take a client-supplied currency as the price.
+  if (body?.expectedCurrency !== undefined && body.expectedCurrency !== currency) {
+    return NextResponse.json({ error: 'currency_changed' }, { status: 409 });
+  }
+  const now = new Date();
+  const selected = resolveCheckoutPrice({ currency, period, now });
+  if (
+    body?.offer === 'founding' &&
+    (!foundingPromoOpen(now) ||
+      selected.status !== 'selected' ||
+      selected.price.sku !== 'founding_annual')
+  ) {
+    return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
+  }
   if (selected.status === 'unavailable') {
     return NextResponse.json(
       { error: 'stripe_billing_not_live', reason: selected.reason },

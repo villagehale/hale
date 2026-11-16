@@ -23,18 +23,6 @@ export type BillingCurrency = 'CAD' | 'USD';
 export const DEFAULT_FOUNDING_PROMO_ENDS_AT = '2027-01-01T00:00:00-05:00';
 
 /**
- * Founding yearly display. Checkout charges the Stripe founding price ids
- * (CAD 7900 / USD 5900), not these numbers.
- */
-export const FOUNDING_PRICE_DISPLAY: Record<
-  BillingCurrency,
-  { symbol: 'C$' | 'US$'; amount: number; perYear: string }
-> = {
-  CAD: { symbol: 'C$', amount: 79, perYear: 'C$79/yr' },
-  USD: { symbol: 'US$', amount: 59, perYear: 'US$59/yr' },
-};
-
-/**
  * Plus list display. CAD matches the existing public Plus copy for
  * STRIPE_PRICE_PLUS_{MONTHLY,ANNUAL}. USD matches create-prices (1400 / 11900).
  */
@@ -60,9 +48,7 @@ export const PLUS_LIST_PRICE_DISPLAY: Record<
  * US → USD; every other country code, and a missing header, → CAD.
  * Reads Vercel's `x-vercel-ip-country` value (ISO 3166-1 alpha-2).
  */
-export function currencyFromIpCountry(
-  countryHeader: string | null | undefined,
-): BillingCurrency {
+export function currencyFromIpCountry(countryHeader: string | null | undefined): BillingCurrency {
   const country = countryHeader?.trim().toUpperCase();
   return country === 'US' ? 'USD' : 'CAD';
 }
@@ -88,3 +74,33 @@ export function isFoundingPromoWindowOpen(
 ): boolean {
   return now.getTime() < endsAt.getTime();
 }
+
+/** First moment the founding offer shows: 2026-11-16 00:00 America/Toronto. */
+export const FOUNDING_PROMO_STARTS_AT = '2026-11-16T00:00:00-05:00';
+
+/** "Black Friday Sale" becomes "Holiday Sale" at 2026-11-28 00:00 America/Toronto. */
+export const HOLIDAY_SALE_STARTS_AT = '2026-11-28T00:00:00-05:00';
+
+export type PromoPhase = 'black_friday' | 'holiday';
+
+export function promoPhaseAt(now: Date): PromoPhase {
+  return now.getTime() < new Date(HOLIDAY_SALE_STARTS_AT).getTime() ? 'black_friday' : 'holiday';
+}
+
+/**
+ * What the founding price LOOKS like on a page. Display only: checkout charges
+ * the Stripe founding price ids in env (STRIPE_PRICE_FOUNDING_ANNUAL_*, CAD 7900 /
+ * USD 5900), so a change to the amount has to land in Stripe and here together.
+ *
+ * Both countries show a plain "$" (Barton, Nov 16). The currency code rides
+ * along quietly so the price is never ambiguous: `perYear` is "$79/yr" for the
+ * big numeral, `perYearCode` is "$79/yr CAD" for every sentence and button.
+ */
+export const FOUNDING_PRICE_DISPLAY: Record<
+  BillingCurrency,
+  { symbol: '$'; amount: number; perYear: string; perYearCode: string; code: BillingCurrency }
+> = {
+  CAD: { symbol: '$', amount: 79, perYear: '$79/yr', perYearCode: '$79/yr CAD', code: 'CAD' },
+  USD: { symbol: '$', amount: 59, perYear: '$59/yr', perYearCode: '$59/yr USD', code: 'USD' },
+};
+

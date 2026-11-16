@@ -100,7 +100,11 @@ export async function createBillingCheckout(input: {
     tier,
     period,
     successUrl: checkoutSuccessUrl(marketingOrigin),
-    cancelUrl: input.cancelUrl ?? `${origin}/settings?checkout=cancelled#billing`,
+    cancelUrl:
+      input.cancelUrl ??
+      (sku === 'founding_annual'
+        ? `${origin}/settings/founding?checkout=cancelled`
+        : `${origin}/settings?checkout=cancelled#billing`),
     customerEmail: family.stripeCustomerId ? null : customerEmail,
     customerId: family.stripeCustomerId,
     sku,

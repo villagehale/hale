@@ -1,0 +1,632 @@
+/* Phase-specific promo themes. Text uses opaque AA-tested tokens, never photo overlays. */
+.rd {
+  --promo-amber: #f3ce79;
+  --promo-night: #111110;
+  --promo-night-hi: #29251c;
+  --promo-on-night: #fffaf0;
+  --promo-on-night-2: #e0d9ca;
+  --promo-on-night-3: #c6bdac;
+  --promo-night-line: #5c5342;
+  --promo-sticky-h: 72px;
+}
+[data-promo-phase="holiday"] {
+  --promo-amber: #f6e9cd;
+  --promo-night: #102e25;
+  --promo-night-hi: #214438;
+  --promo-on-night: #fff8e9;
+  --promo-on-night-2: #e4dfcf;
+  --promo-on-night-3: #c9cebc;
+  --promo-night-line: #617166;
+}
+
+/* ── Banner strip above the header ── */
+.rd.promo-bar {
+  position: relative;
+  z-index: 11;
+  background: var(--promo-night);
+  color: var(--promo-on-night);
+}
+.rd.promo-bar .promo-bar-in {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 10px var(--s5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--s3);
+  row-gap: 2px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+.rd .promo-bar-sale {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  background: var(--promo-amber);
+  color: var(--promo-night);
+  padding: 2px 10px;
+  border-radius: var(--r-full);
+}
+.rd .promo-bar-offer b {
+  font-weight: 800;
+}
+.rd .promo-bar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-weight: 700;
+  color: var(--promo-on-night);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  min-height: 32px;
+  touch-action: manipulation;
+}
+.rd .promo-bar-link svg {
+  width: 14px;
+  height: 14px;
+}
+@media (max-width: 640px) {
+  .rd.promo-bar .promo-bar-in {
+    font-size: 13px;
+    padding: 8px var(--s4);
+  }
+  .rd .promo-bar-long {
+    display: none;
+  }
+  .rd .promo-bar-link {
+    min-height: 28px;
+  }
+}
+
+/* ── The offer ── */
+.rd .promo-sec {
+  padding-top: 96px;
+  padding-bottom: 96px;
+  scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+.rd .promo-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s7);
+  padding: 64px;
+  border-radius: 28px;
+  color: var(--promo-on-night);
+  background: var(--promo-night);
+  border: 1px solid var(--promo-night-line);
+  box-shadow: 0 40px 80px -40px rgb(12 26 54 / 0.55);
+}
+.rd .promo-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 14px 6px 12px;
+  border-radius: var(--r-full);
+  background: rgb(255 255 255 / 0.09);
+}
+.rd .promo-kicker::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--promo-amber);
+}
+.rd .promo-sale > span {
+  display: block;
+}
+.rd .promo-sale {
+  margin-top: var(--s5);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: clamp(48px, 7vw, 88px);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  color: var(--promo-on-night);
+  text-wrap: balance;
+}
+.rd .promo-price {
+  margin-top: var(--s4);
+  display: flex;
+  align-items: flex-start;
+  font-family: var(--font-ui);
+  font-weight: 800;
+  line-height: 0.85;
+  letter-spacing: -0.04em;
+}
+.rd .promo-price-sym {
+  font-size: clamp(32px, 4vw, 48px);
+  margin-top: 0.35em;
+  color: var(--promo-on-night-2);
+}
+.rd .promo-price-num {
+  font-size: clamp(112px, 15vw, 184px);
+  color: var(--promo-amber);
+}
+.rd .promo-price-code {
+  align-self: flex-end;
+  margin: 0 0 0.7em 8px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--promo-on-night-2);
+}
+.rd .promo-price-per {
+  align-self: flex-end;
+  font-size: clamp(28px, 3.4vw, 44px);
+  color: var(--promo-on-night-2);
+  margin-left: 4px;
+  margin-bottom: 0.2em;
+}
+.rd .promo-lede {
+  margin-top: var(--s5);
+  max-width: 40ch;
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--promo-on-night-2);
+}
+.rd .promo-chips {
+  margin-top: var(--s5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  list-style: none;
+}
+.rd .promo-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 8px 14px;
+  border-radius: var(--r-full);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  background: rgb(255 255 255 / 0.07);
+  border: 1px solid var(--promo-night-line);
+}
+.rd .promo-chips li::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--promo-amber);
+}
+.rd .promo-ctas {
+  margin-top: var(--s6);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3) var(--s5);
+}
+.rd .promo-btn {
+  background: var(--promo-amber);
+  color: var(--promo-night);
+  font-weight: 800;
+  min-height: 52px;
+  padding-inline: 28px;
+}
+.rd .promo-btn:hover {
+  background: var(--promo-on-night);
+}
+.rd .promo-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.rd .promo-lockin {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--promo-on-night);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: rgb(255 255 255 / 0.4);
+  touch-action: manipulation;
+}
+.rd .promo-lockin:hover {
+  text-decoration-color: var(--promo-amber);
+}
+.rd .promo-lockin svg {
+  width: 14px;
+  height: 14px;
+}
+.rd .promo-fine {
+  margin-top: var(--s4);
+  font-family: var(--font-ui);
+  font-size: 13.6px;
+  color: var(--promo-on-night-3);
+}
+.rd .promo-card :focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--promo-night), 0 0 0 5px var(--promo-amber);
+  border-radius: var(--r-sm);
+}
+
+.rd .promo-points {
+  grid-column: 1 / -1;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s4);
+  align-content: center;
+}
+.rd .promo-points li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--s3);
+  padding: var(--s5);
+  border-radius: var(--r-lg);
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid var(--promo-night-line);
+}
+.rd .promo-pt-ic {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--promo-amber);
+  color: var(--promo-night);
+}
+.rd .promo-pt-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.rd .promo-points h3 {
+  color: var(--promo-on-night);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.rd .promo-points p {
+  margin-top: var(--s1);
+  font-family: var(--font-ui);
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--promo-on-night-2);
+}
+.rd .promo-points a {
+  color: var(--promo-on-night);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1023.98px) {
+  .rd .promo-card {
+    grid-template-columns: 1fr;
+    padding: 48px 40px;
+    gap: var(--s6);
+  }
+}
+@media (max-width: 640px) {
+  .rd .promo-sec {
+    padding: 48px var(--s3);
+  }
+  .rd .promo-card {
+    padding: 32px 22px;
+    border-radius: 22px;
+    gap: var(--s5);
+  }
+  .rd .promo-lede {
+    font-size: 17px;
+  }
+  .rd .promo-chips li {
+    font-size: 14px;
+    padding: 6px 12px;
+  }
+  .rd .promo-ctas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .rd .promo-btn {
+    justify-content: center;
+  }
+  .rd .promo-lockin {
+    justify-content: center;
+    font-size: 15px;
+  }
+  .rd .promo-points li {
+    padding: var(--s4);
+  }
+}
+
+/* ── Mobile sticky bar ── */
+.rd.promo-sticky {
+  display: none;
+}
+@media (max-width: 640px) {
+  .rd.promo-sticky {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: transparent;
+    padding: 0 var(--s3) calc(var(--s3) + env(safe-area-inset-bottom));
+    transform: translateY(120%);
+    transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .rd.promo-sticky[data-show="true"] {
+    transform: none;
+  }
+  .rd .promo-sticky-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    min-height: var(--promo-sticky-h);
+    padding: 10px 10px 10px 18px;
+    border-radius: 20px;
+    color: var(--promo-on-night);
+    background: var(--promo-night);
+    box-shadow: 0 18px 40px -16px rgb(12 26 54 / 0.6);
+    border: 1px solid var(--promo-night-line);
+  }
+  .rd .promo-sticky-copy {
+    display: grid;
+    font-family: var(--font-ui);
+    line-height: 1.25;
+    min-width: 0;
+  }
+  .rd .promo-sticky-copy strong {
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .rd .promo-sticky-copy span {
+    font-size: 13.5px;
+    color: var(--promo-on-night-2);
+  }
+  .rd .promo-sticky-copy small {
+    font-size: 11.5px;
+    color: var(--promo-on-night-3);
+  }
+  .rd .promo-sticky-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 0 20px;
+    border-radius: var(--r-full);
+    background: var(--promo-amber);
+    color: var(--promo-night);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 800;
+    touch-action: manipulation;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd.promo-sticky {
+    transition: none;
+  }
+}
+
+/* Plus card while the promo runs (pricing page) */
+.rd .hs-tier .promo-tier-tag {
+  display: inline-block;
+  margin-top: var(--s2);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  line-height: 1.4;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--amber-tint);
+  color: var(--navy);
+}
+
+/* Images remain separate from live text: no text baked into generated pictures. */
+.rd .promo-media {
+  min-width: 0;
+  align-self: center;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.rd .promo-ph {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.rd .promo-ph-feature {
+  grid-column: 1 / -1;
+  height: 340px;
+}
+.rd .promo-sale-word {
+  color: var(--promo-amber);
+}
+.rd [data-promo-phase="holiday"] .promo-card {
+  background: radial-gradient(ellipse at top right, #214438 0%, #102e25 68%);
+}
+.rd [data-promo-phase="holiday"] .promo-kicker {
+  background: #752d3a;
+}
+.rd [data-promo-phase="holiday"] .promo-ph {
+  border: 1px solid #617166;
+}
+.rd.promo-bar[data-promo-phase="holiday"] {
+  border-bottom: 3px solid #a84b59;
+}
+.rd.promo-sticky[data-promo-phase="holiday"] .promo-sticky-in {
+  border-top: 3px solid #a84b59;
+}
+.rd .promo-tier-tag[data-promo-phase] {
+  background: var(--promo-night);
+  color: var(--promo-on-night);
+}
+@media (max-width: 1023.98px) {
+  .rd .promo-media {
+    grid-row: 2;
+  }
+  .rd .promo-points {
+    grid-template-columns: 1fr;
+  }
+  .rd .promo-ph-feature {
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+}
+@media (max-width: 640px) {
+  .rd .promo-sale {
+    font-size: clamp(44px, 12vw, 70px);
+  }
+  .rd .promo-price-num {
+    font-size: 120px;
+  }
+  .rd .promo-price-per {
+    font-size: 27px;
+  }
+  .rd .promo-price-sym {
+    font-size: 32px;
+  }
+  .rd .promo-price-code {
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .rd .promo-ph {
+    height: 120px;
+    border-radius: 10px;
+  }
+  .rd .promo-ph-feature {
+    height: auto;
+  }
+  .rd .promo-media {
+    gap: 8px;
+  }
+}
+
+/* ── Black Friday: retail night. Near-black, gold, a big uppercase sale line. ── */
+.rd [data-promo-phase="black_friday"] .promo-card {
+  background: radial-gradient(60% 55% at 100% 0%, rgb(243 206 121 / 0.16) 0%, transparent 70%),
+    linear-gradient(180deg, #161512 0%, #0b0b0a 100%);
+  border-color: #3a3326;
+  box-shadow: inset 0 3px 0 #f3ce79, 0 40px 80px -40px rgb(0 0 0 / 0.7);
+}
+.rd [data-promo-phase="black_friday"] .promo-sale {
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  font-size: clamp(48px, 6.4vw, 92px);
+}
+.rd [data-promo-phase="black_friday"] .promo-kicker {
+  background: #26221a;
+  color: #f3ce79;
+}
+.rd [data-promo-phase="black_friday"] .promo-ph {
+  border: 1px solid #3a3326;
+}
+.rd [data-promo-phase="black_friday"] .promo-btn:hover {
+  background: #fffaf0;
+}
+
+/* ── Holiday: deep green, cranberry and cream, soft lights and a light snowfall. ── */
+.rd [data-promo-phase="holiday"] .promo-card::before,
+.rd [data-promo-phase="holiday"] .promo-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.rd [data-promo-phase="holiday"] .promo-card::before {
+  /* snow: three offset dot fields, very faint */
+  background-image: radial-gradient(circle, rgb(255 248 233 / 0.2) 1.4px, transparent 1.8px),
+    radial-gradient(circle, rgb(255 248 233 / 0.12) 1px, transparent 1.4px),
+    radial-gradient(circle, rgb(255 248 233 / 0.08) 2px, transparent 2.6px);
+  background-size: 64px 64px, 37px 37px, 113px 113px;
+  background-position: 0 0, 19px 23px, 41px 7px;
+}
+.rd [data-promo-phase="holiday"] .promo-card::after {
+  /* soft string-light glow along the top edge */
+  background: radial-gradient(18% 14% at 12% 0%, rgb(255 214 140 / 0.22), transparent 70%),
+    radial-gradient(16% 12% at 38% 0%, rgb(255 214 140 / 0.16), transparent 70%),
+    radial-gradient(18% 14% at 66% 0%, rgb(255 214 140 / 0.2), transparent 70%),
+    radial-gradient(16% 12% at 92% 0%, rgb(255 214 140 / 0.16), transparent 70%);
+}
+.rd [data-promo-phase="holiday"] .promo-card {
+  border-color: #2f5547;
+  box-shadow: inset 0 3px 0 #a84b59, 0 40px 80px -40px rgb(8 30 24 / 0.6);
+}
+.rd [data-promo-phase="holiday"] .promo-sale-word {
+  color: #f2b8c0;
+}
+.rd [data-promo-phase="holiday"] .promo-kicker {
+  color: #fff8e9;
+}
+.rd [data-promo-phase="holiday"] .promo-kicker::before,
+.rd [data-promo-phase="holiday"] .promo-chips li::before {
+  background: #f2b8c0;
+}
+.rd [data-promo-phase="holiday"] .promo-btn {
+  background: #9b2236;
+  color: #fff8e9;
+}
+.rd [data-promo-phase="holiday"] .promo-btn:hover {
+  background: #b12a40;
+  color: #fff8e9;
+}
+.rd [data-promo-phase="holiday"] .promo-pt-ic {
+  background: #9b2236;
+  color: #fff8e9;
+}
+.rd [data-promo-phase="holiday"] .promo-points li {
+  background: rgb(255 248 233 / 0.06);
+}
+.rd [data-promo-phase="holiday"] .promo-card :focus-visible {
+  box-shadow: 0 0 0 3px #102e25, 0 0 0 5px #f2b8c0;
+}
+.rd.promo-bar[data-promo-phase="holiday"] {
+  background: #7a1b2d;
+  color: #fff8e9;
+}
+.rd.promo-bar[data-promo-phase="holiday"] .promo-bar-sale {
+  background: #fff8e9;
+  color: #7a1b2d;
+}
+.rd.promo-bar[data-promo-phase="holiday"] .promo-bar-link {
+  color: #fff8e9;
+}
+.rd.promo-bar[data-promo-phase="black_friday"] {
+  background: #0b0b0a;
+  border-bottom: 1px solid #3a3326;
+}
+.rd.promo-bar[data-promo-phase="black_friday"] .promo-bar-sale {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rd.promo-sticky[data-promo-phase="holiday"] .promo-sticky-btn {
+  background: #9b2236;
+  color: #fff8e9;
+}
+.rd.promo-sticky[data-promo-phase="black_friday"] .promo-sticky-in {
+  border-color: #3a3326;
+  box-shadow: inset 0 2px 0 #f3ce79, 0 18px 40px -16px rgb(0 0 0 / 0.7);
+}
+.rd .promo-tier-tag[data-promo-phase="black_friday"] {
+  background: #111110;
+  color: #f3ce79;
+}
+.rd .promo-tier-tag[data-promo-phase="holiday"] {
+  background: #102e25;
+  color: #fff8e9;
+  border-left: 3px solid #a84b59;
+}
+@media (max-width: 640px) {
+  .rd [data-promo-phase="black_friday"] .promo-sale {
+    font-size: clamp(34px, 10vw, 60px);
+  }
+}
