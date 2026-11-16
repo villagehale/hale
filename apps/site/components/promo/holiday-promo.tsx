@@ -9,7 +9,7 @@ import { PromoStickyReveal } from './promo-sticky';
  * Holiday founding-family promo surfaces (Design, Nov 2026).
  *
  * Copy rules this file is held to (holiday-promo.test.ts):
- *  - the sale name leads; the founding price sits beside it in the amber block;
+ *  - the sale name leads, with the founding price as the big numeral under it (ad 05);
  *  - never was / save / % off / strikethrough anywhere near "Sale";
  *  - every Canadian surface carries "Plus is C$159/yr after Dec 31.";
  *  - registration stays "helps you get registered"; no camp-finding, no child
