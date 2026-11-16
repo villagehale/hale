@@ -20,4 +20,13 @@ describe('/founding', () => {
     expect(form).toContain('Text Hale');
     expect(form).not.toContain('parentChannels');
   });
+
+  it('shows Free next to founding join, with hale-web $ labels', () => {
+    expect(page).toContain('FreeJoinCard');
+    expect(page).toContain('FoundingJoinForm');
+    expect(page).toContain('foundingPriceLabel');
+    expect(page).toContain('pairRow');
+    expect(page).not.toContain('FOUNDING_PRICE_DISPLAY');
+    expect(page).not.toContain('perYear');
+  });
 });

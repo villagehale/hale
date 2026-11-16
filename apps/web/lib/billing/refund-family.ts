@@ -2,9 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 
 /**
- * Ops path: refund a family's latest Stripe payment and cancel the subscription.
- * No parent-visible copy. Dry-run unless apply is true. Named outcomes, never a
- * silent no-op (rule #11).
+ * Ops path: full refund of a family's latest paid Stripe charge, then cancel
+ * the subscription. Omitting `amount` on Stripe's Refunds API is a full refund
+ * of that charge — no pro-rating, no time window. No parent-visible copy.
+ * Dry-run unless apply is true. Named outcomes, never a silent no-op (rule #11).
  */
 
 export type RefundFamilyResult =
@@ -14,7 +15,9 @@ export type RefundFamilyResult =
   | { status: 'failed'; reason: 'stripe_error' };
 
 export interface StripeRefundApi {
-  latestPaidCharge(customerId: string): Promise<{ chargeId: string; paymentIntentId: string | null } | null>;
+  latestPaidCharge(
+    customerId: string,
+  ): Promise<{ chargeId: string; paymentIntentId: string | null } | null>;
   refundCharge(chargeId: string): Promise<{ refundId: string }>;
   cancelSubscription(subscriptionId: string): Promise<void>;
 }
@@ -122,6 +125,8 @@ export function stripeRefundApiFromEnv(
       return { chargeId: charge.id, paymentIntentId: paymentIntent };
     },
     async refundCharge(chargeId) {
+      // Full refund of this charge: Stripe refunds the whole amount when
+      // `amount` is omitted. Do not add a window or a partial amount here.
       const res = await fetchImpl('https://api.stripe.com/v1/refunds', {
         method: 'POST',
         headers,

@@ -1,16 +1,11 @@
+import { currencyFromIpCountry } from '@hale/types';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { currencyFromIpCountry } from '@hale/types';
 import { PortalHeading } from '~/components/portal/heading';
-import {
-  FoundingPlan,
-  ListPlan,
-  PaidPlan,
-  PromoOfferPlan,
-} from '~/components/portal/plan-cards';
+import { FoundingPlan, ListPlan, PaidPlan, PromoOfferPlan } from '~/components/portal/plan-cards';
 import styles from '~/components/portal/portal.module.css';
-import { foundingPromoOpen } from '~/lib/billing/prices';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
+import { foundingPromoOpen } from '~/lib/billing/prices';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 
 export const metadata: Metadata = { title: 'Plan' };
@@ -27,7 +22,10 @@ export default async function SettingsPlanPage() {
     ) : !promo ? (
       <FoundingPlan />
     ) : windowOpen ? (
-      <PromoOfferPlan currency={currency} />
+      <>
+        <FoundingPlan badge="Free" />
+        <PromoOfferPlan currency={currency} />
+      </>
     ) : (
       <ListPlan currency={currency} />
     );
