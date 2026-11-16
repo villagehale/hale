@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PROMO_PREVIEW_COOKIE,
   isPromoPreviewFamily,
+  promoPreviewCookieFromHeader,
   promoPreviewFamilyIds,
   promoPreviewTokenFromSearch,
   promoPreviewTokenMatches,
+  readPromoPreviewCookie,
+  signPromoPreviewCookie,
   stripePaymentLinkUrl,
 } from './promo-preview';
 
@@ -37,6 +41,30 @@ describe('promo preview token', () => {
       'preview-secret',
     );
     expect(promoPreviewTokenFromSearch(new URLSearchParams('gclid=1'))).toBeNull();
+  });
+});
+
+describe('promo preview cookie', () => {
+  const env = { AUTH_SECRET: 'test-secret', PROMO_PREVIEW_TOKEN: 'preview-secret' };
+
+  it('round-trips a signed cookie and expires', () => {
+    const signed = signPromoPreviewCookie(env, { now: 1_000_000, ttlSeconds: 10 });
+    expect(signed).toBeTruthy();
+    expect(readPromoPreviewCookie(signed, env, { now: 1_000_000 })).toBe(true);
+    expect(readPromoPreviewCookie(signed, env, { now: 1_000_000 + 11_000 })).toBe(false);
+  });
+
+  it('rejects a cookie signed with a different token or secret', () => {
+    const signed = signPromoPreviewCookie(env);
+    expect(readPromoPreviewCookie(signed, { ...env, PROMO_PREVIEW_TOKEN: 'other' })).toBe(false);
+    expect(readPromoPreviewCookie(signed, { ...env, AUTH_SECRET: 'other' })).toBe(false);
+    expect(signPromoPreviewCookie({ AUTH_SECRET: 'test-secret' })).toBeNull();
+  });
+
+  it('reads hale_promo_preview from a Cookie header', () => {
+    const signed = signPromoPreviewCookie(env);
+    expect(promoPreviewCookieFromHeader(`${PROMO_PREVIEW_COOKIE}=${signed}`)).toBe(signed);
+    expect(promoPreviewCookieFromHeader('other=1')).toBeNull();
   });
 });
 

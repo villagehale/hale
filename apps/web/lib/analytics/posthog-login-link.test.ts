@@ -191,4 +191,36 @@ describe('redactLoginLinkCodes', () => {
     expect(out?.$set_once).toEqual({ $initial_current_url: '/l/[code]#top' });
     expect(redactLoginLinkCodes(null)).toBeNull();
   });
+
+  it('strips ?preview= the same way, including encoded forms', async () => {
+    const { redactLoginLinkCodes } = await import('./posthog-provider');
+    const SECRET = 'preview-secret-token';
+    const out = redactLoginLinkCodes({
+      uuid: 'u',
+      event: '$pageview',
+      properties: {
+        $current_url: `https://app.example.test/founding?preview=${SECRET}&checkout=cancelled`,
+        next: `%3Fpreview%3D${SECRET}`,
+      },
+    });
+    const text = JSON.stringify(out);
+    expect(text).not.toContain(SECRET);
+    expect(out?.properties).toEqual({
+      $current_url: 'https://app.example.test/founding?preview=[preview]&checkout=cancelled',
+      next: '%3Fpreview%3D[preview]',
+    });
+  });
+});
+
+describe('the /founding?preview= secret never reaches PostHog', () => {
+  const SECRET = 'preview-secret-token';
+
+  it('PostHog does not load on /founding?preview=: no request leaves at all', async () => {
+    await mountProvider(`/founding?preview=${SECRET}`);
+    expect(sent).toEqual([]);
+    expect(sent.join('\n')).not.toContain(SECRET);
+
+    await mountProvider('/founding?checkout=cancelled');
+    expect(sent.some((r) => r.includes('/flags'))).toBe(true);
+  });
 });

@@ -1,6 +1,12 @@
 import { holidayPromoEnabled, promoNewVisitorCheckoutEnabled } from './flags.js';
 import { foundingWindowOpen } from './prices.js';
-import { isPromoPreviewFamily, promoPreviewTokenMatches } from './promo-preview.js';
+import {
+  isPromoPreviewFamily,
+  promoPreviewCookieFromHeader,
+  promoPreviewTokenFromSearch,
+  promoPreviewTokenMatches,
+  readPromoPreviewCookie,
+} from './promo-preview.js';
 
 /**
  * Signed-in founding checkout (Plan, /settings/founding, POST /api/billing/checkout).
@@ -43,8 +49,25 @@ export function newVisitorFoundingAllowed(
   now: Date,
   token: string | null | undefined,
   env: Record<string, string | undefined> = process.env,
+  previewCookie: string | null | undefined = null,
 ): boolean {
   if (!foundingWindowOpen(now, env)) return false;
   if (promoNewVisitorCheckoutEnabled(env) && holidayPromoEnabled(env)) return true;
-  return promoPreviewTokenMatches(token, env);
+  if (promoPreviewTokenMatches(token, env)) return true;
+  return readPromoPreviewCookie(previewCookie, env);
+}
+
+/** Query token or the HttpOnly preview cookie — used by join APIs. */
+export function newVisitorFoundingAllowedFromRequest(
+  req: Request,
+  now: Date = new Date(),
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const url = new URL(req.url);
+  return newVisitorFoundingAllowed(
+    now,
+    promoPreviewTokenFromSearch(url.searchParams),
+    env,
+    promoPreviewCookieFromHeader(req.headers.get('cookie')),
+  );
 }

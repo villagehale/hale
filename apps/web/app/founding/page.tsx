@@ -1,6 +1,6 @@
 import { currencyFromIpCountry } from '@hale/types';
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { FoundingJoinForm } from '~/components/billing/founding-join-form';
 import { FreeJoinCard } from '~/components/billing/free-join-card';
@@ -8,6 +8,12 @@ import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import stage from '~/components/hale/connect/connect.module.css';
 import { foundingPriceLabel } from '~/lib/billing/price-display';
 import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
+import {
+  PROMO_PREVIEW_COOKIE,
+  PROMO_PREVIEW_COOKIE_TTL_SECONDS,
+  promoPreviewTokenMatches,
+  signPromoPreviewCookie,
+} from '~/lib/billing/promo-preview';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 
 export const metadata: Metadata = { title: 'Join as a founding family' };
@@ -26,7 +32,21 @@ interface PageProps {
 export default async function FoundingJoinPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const token = typeof params.preview === 'string' ? params.preview : null;
-  if (!newVisitorFoundingAllowed(new Date(), token)) {
+  const jar = await cookies();
+  const previewCookie = jar.get(PROMO_PREVIEW_COOKIE)?.value ?? null;
+  if (promoPreviewTokenMatches(token)) {
+    const signed = signPromoPreviewCookie();
+    if (signed) {
+      jar.set(PROMO_PREVIEW_COOKIE, signed, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: PROMO_PREVIEW_COOKIE_TTL_SECONDS,
+      });
+    }
+  }
+  if (!newVisitorFoundingAllowed(new Date(), token, process.env, previewCookie)) {
     notFound();
   }
 

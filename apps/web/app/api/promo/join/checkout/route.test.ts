@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROMO_JOIN_COOKIE, signPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
+import { PROMO_PREVIEW_COOKIE, signPromoPreviewCookie } from '~/lib/billing/promo-preview';
 
 const createMock = vi.fn();
 const clientMock = { createCheckoutSession: vi.fn() };
@@ -60,6 +61,39 @@ describe('POST /api/promo/join/checkout', () => {
     );
     expect(res.status).toBe(404);
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('opens founding checkout with the preview cookie and never puts ?preview= on cancel', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    const join = signPromoJoinBinding({
+      familyId: 'fam-9',
+      userId: 'user-9',
+      externalAuthId: 'sms:abc',
+    });
+    const preview = signPromoPreviewCookie({
+      AUTH_SECRET: 'test-secret',
+      PROMO_PREVIEW_TOKEN: 'secret',
+    });
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs',
+    });
+
+    const res = await post(
+      `${PROMO_JOIN_COOKIE}=${join}; ${PROMO_PREVIEW_COOKIE}=${preview}`,
+      'CA',
+      'https://app.example.com/api/promo/join/checkout',
+    );
+    expect(res.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      sku: 'founding_annual',
+      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+    });
+    expect(String(createMock.mock.calls[0]?.[0].cancelUrl)).not.toContain('preview=');
   });
 
   it('opens founding checkout with a matching preview token while flags stay off', async () => {

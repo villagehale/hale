@@ -4,6 +4,7 @@ import {
   newVisitorFoundingAllowed,
   unpaidPlanSurface,
 } from './promo-access';
+import { signPromoPreviewCookie } from './promo-preview';
 
 const BEFORE = new Date('2026-11-16T12:00:00-05:00');
 const AFTER = new Date('2027-01-01T00:00:00-05:00');
@@ -90,5 +91,12 @@ describe('newVisitorFoundingAllowed', () => {
         PROMO_PREVIEW_TOKEN: 'secret',
       }),
     ).toBe(false);
+  });
+
+  it('lets testers in with the HttpOnly preview cookie while flags stay off', () => {
+    const env = { AUTH_SECRET: 'test-secret', PROMO_PREVIEW_TOKEN: 'secret' };
+    const cookie = signPromoPreviewCookie(env);
+    expect(newVisitorFoundingAllowed(BEFORE, null, env, cookie)).toBe(true);
+    expect(newVisitorFoundingAllowed(BEFORE, null, env, 'tampered')).toBe(false);
   });
 });

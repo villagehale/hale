@@ -6,6 +6,7 @@ import {
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
+  paidEventOccurredAt,
   paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
@@ -214,6 +215,39 @@ describe('stripeRefsFromStripeEvent', () => {
       customerId: 'cus_1',
       subscriptionId: 'sub_1',
     });
+  });
+
+  it('uses the subscription object id when the event is customer.subscription.*', () => {
+    const event = {
+      id: 'evt_sub',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_self',
+          customer: 'cus_1',
+          items: { data: [{ price: { id: 'price_plus' } }] },
+        },
+      },
+    };
+    expect(stripeRefsFromStripeEvent(event)).toEqual({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_self',
+    });
+  });
+});
+
+describe('paidEventOccurredAt', () => {
+  it('reads Stripe event.created unix seconds and ignores a later fallback', () => {
+    const during = Math.floor(new Date('2026-11-16T12:00:00-05:00').getTime() / 1000);
+    const after = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ created: during }, after)).toEqual(
+      new Date('2026-11-16T12:00:00-05:00'),
+    );
+  });
+
+  it('falls back when created is missing', () => {
+    const fallback = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ id: 'evt_1' }, fallback)).toBe(fallback);
   });
 });
 

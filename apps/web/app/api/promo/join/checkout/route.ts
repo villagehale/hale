@@ -5,9 +5,14 @@ import { attributionFromRequest } from '~/lib/billing/attribution';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
 import { resolveCheckoutPrice } from '~/lib/billing/prices';
-import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
+import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import { PROMO_JOIN_COOKIE, readPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
-import { promoPreviewTokenFromSearch } from '~/lib/billing/promo-preview';
+import {
+  promoPreviewCookieFromHeader,
+  promoPreviewTokenFromSearch,
+  promoPreviewTokenMatches,
+  readPromoPreviewCookie,
+} from '~/lib/billing/promo-preview';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
 import { db as defaultDb } from '~/lib/db';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
@@ -22,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const token = promoPreviewTokenFromSearch(url.searchParams);
   const now = new Date();
-  if (!newVisitorFoundingAllowed(now, token)) {
+  if (!newVisitorFoundingAllowedFromRequest(req, now)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
@@ -44,7 +49,9 @@ export async function POST(req: Request): Promise<Response> {
     currency,
     period: 'annual',
     now,
-    preview: Boolean(token),
+    preview:
+      promoPreviewTokenMatches(token) ||
+      readPromoPreviewCookie(promoPreviewCookieFromHeader(cookieHeader)),
   });
   if (selected.status === 'unavailable' || selected.price.sku !== 'founding_annual') {
     return NextResponse.json(

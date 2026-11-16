@@ -282,8 +282,27 @@ export function stripeRefsFromStripeEvent(payload: unknown): {
   const details = subscriptionDetails(object);
   return {
     customerId: readId(object.customer),
-    subscriptionId: readId(object.subscription) ?? (details ? readId(details.subscription) : null),
+    subscriptionId:
+      readId(object.subscription) ??
+      (details ? readId(details.subscription) : null) ??
+      // customer.subscription.* objects are the subscription: their id is the sub id.
+      (object.items !== undefined ? readId(object.id) : null),
   };
+}
+
+/**
+ * When Stripe says this paid event happened. `created` is unix seconds on the
+ * event envelope. A late delivery after the founding cutoff must not reopen a
+ * list-price grant that was paid during the window — receipt time is the
+ * wrong clock. Missing / non-numeric `created` falls back to `fallback`.
+ */
+export function paidEventOccurredAt(payload: unknown, fallback: Date = new Date()): Date {
+  if (!isRecord(payload)) return fallback;
+  const created = payload.created;
+  if (typeof created === 'number' && Number.isFinite(created) && created > 0) {
+    return new Date(created * 1000);
+  }
+  return fallback;
 }
 
 /** The Stripe event id (`evt_…`) — the natural idempotency key. Null if malformed. */
