@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
@@ -25,7 +25,12 @@ export interface CheckoutSessionParams {
   readonly customerEmail?: string | null;
   /** Reuses an existing Stripe Customer so a family cannot mint a second one. */
   readonly customerId?: string | null;
-  /** Stripe Idempotency-Key — same family cannot open two founding sessions. */
+  /**
+   * Optional Stripe Idempotency-Key for retrying the same request. Not a
+   * lifetime lock: Checkout bodies include ads IP/UA, so a family-wide key
+   * rejects a later legitimate session. Duplicate live subscriptions are
+   * blocked by plan_tier + reused Stripe Customer.
+   */
   readonly idempotencyKey?: string;
   readonly sku?: CheckoutSku;
   readonly currency?: BillingCurrency;
@@ -111,7 +116,7 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     'metadata[priceId]': params.priceId,
     'subscription_data[metadata][familyId]': params.familyId,
     'subscription_data[metadata][tier]': params.tier,
-    integration_identifier: integrationIdentifier(),
+    integration_identifier: integrationIdentifier(params.familyId),
   });
   if (params.sku) {
     form.set('metadata[sku]', params.sku);
@@ -138,11 +143,14 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
   return form;
 }
 
-/** Dashboard label. The 8-letter suffix is what Stripe asks for on this field. */
-function integrationIdentifier(): string {
+/**
+ * Dashboard label. The 8-letter suffix is what Stripe asks for on this field.
+ * Derived from the family so two calls with the same params stay identical.
+ */
+export function integrationIdentifier(familyId: string): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  const bytes = randomBytes(8);
+  const digest = createHash('sha256').update(familyId).digest();
   let suffix = '';
-  for (const byte of bytes) suffix += alphabet[byte % 26];
+  for (let i = 0; i < 8; i++) suffix += alphabet[(digest[i] ?? 0) % 26];
   return `hale-checkout-${suffix}`;
 }

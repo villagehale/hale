@@ -1,13 +1,15 @@
 import type { PlanTier } from '@hale/types';
 
-/** True when this household already has a live paid plan or a Stripe subscription. */
+/**
+ * True when this household currently has a paid plan.
+ *
+ * `stripeSubscriptionId` is a historical Stripe reference. Cancellation /
+ * deletion webhooks downgrade `plan_tier` to free and keep the id, so a leftover
+ * id is not proof of a live subscription. Live entitlement is the tier.
+ */
 export function familyAlreadySubscribed(family: {
   planTier: PlanTier | string;
-  stripeSubscriptionId: string | null;
+  stripeSubscriptionId?: string | null;
 }): boolean {
-  return (
-    family.planTier === 'plus' ||
-    family.planTier === 'family' ||
-    Boolean(family.stripeSubscriptionId)
-  );
+  return family.planTier === 'plus' || family.planTier === 'family';
 }

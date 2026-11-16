@@ -37,6 +37,8 @@ describe('promo Plan cards', () => {
     const listCad = renderToStaticMarkup(createElement(ListPlan, { currency: 'CAD' }));
     expect(listCad).toContain('C$19/mo');
     expect(listCad).toContain('C$159/yr');
+    expect(listCad).toContain('Continue · C$19/mo');
+    expect(listCad).toContain('Continue · C$159/yr');
     const listUsd = renderToStaticMarkup(createElement(ListPlan, { currency: 'USD' }));
     expect(listUsd).toContain('US$14/mo');
     expect(listUsd).toContain('US$119/yr');

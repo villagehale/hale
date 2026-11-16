@@ -179,6 +179,13 @@ describe('verifyPromoJoinCode', () => {
       alreadyPaid: false,
     });
     expect(db.writes.some((w) => w.table === schema.parentChannels)).toBe(false);
+    expect(
+      db.writes.some(
+        (w) =>
+          w.table === schema.auditLog &&
+          (w.payload as { actionTaken?: string }).actionTaken === 'promo_join_verified',
+      ),
+    ).toBe(true);
   });
 
   it('marks alreadyPaid when the reused family is on Plus', async () => {
@@ -203,6 +210,13 @@ describe('verifyPromoJoinCode', () => {
       now: NOW,
     });
     expect(result).toMatchObject({ status: 'ok', alreadyPaid: true });
+    expect(
+      db.writes.filter(
+        (w) =>
+          w.table === schema.auditLog &&
+          (w.payload as { actionTaken?: string }).actionTaken === 'promo_join_verified',
+      ),
+    ).toHaveLength(1);
   });
 
   it('refuses a wrong code', async () => {

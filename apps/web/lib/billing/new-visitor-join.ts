@@ -275,6 +275,14 @@ export async function verifyPromoJoinCode(
   if (!burned[0]) return refuse('no_pending_code');
 
   const family = await ensurePendingFamily(database, { userId: user.id, now });
+  await database.insert(schema.auditLog).values({
+    familyId: family.familyId,
+    actor: user.id,
+    actionTaken: 'promo_join_verified',
+    targetTable: 'phone_verifications',
+    targetId: pending.id,
+    occurredAt: now,
+  });
   const [billing] = await database
     .select({
       planTier: schema.families.planTier,

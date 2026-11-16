@@ -37,9 +37,12 @@ export async function POST(req: Request): Promise<Response> {
 
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
   const selected = resolveCheckoutPrice({ currency, period: 'annual', now: new Date() });
-  if (selected.status === 'unavailable') {
+  if (selected.status === 'unavailable' || selected.price.sku !== 'founding_annual') {
     return NextResponse.json(
-      { error: 'stripe_billing_not_live', reason: selected.reason },
+      {
+        error: 'stripe_billing_not_live',
+        reason: selected.status === 'unavailable' ? selected.reason : 'not_founding',
+      },
       { status: 501 },
     );
   }

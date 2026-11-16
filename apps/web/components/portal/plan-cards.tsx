@@ -109,7 +109,8 @@ export function ListPlan({ currency }: { currency: BillingCurrency }) {
       </h2>
       <p className={styles['fp-body']}>Continue to checkout when you are ready.</p>
       <div className={styles['fp-rule']} />
-      <PlanCheckoutButton />
+      <PlanCheckoutButton period="monthly" label={`Continue · ${list.monthlyLabel}`} />
+      <PlanCheckoutButton period="annual" label={`Continue · ${list.annualLabel}`} />
     </section>
   );
 }

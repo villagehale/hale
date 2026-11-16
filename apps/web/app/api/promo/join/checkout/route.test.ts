@@ -12,10 +12,14 @@ vi.mock('~/lib/billing/stripe-client', () => ({
   stripeCheckoutClientFromEnv: () => clientMock,
 }));
 
-async function post(cookie?: string, country = 'CA') {
+async function post(
+  cookie?: string,
+  country = 'CA',
+  url = 'https://app.example.com/api/promo/join/checkout',
+) {
   const { POST } = await import('./route');
   return POST(
-    new Request('https://app.example.com/api/promo/join/checkout', {
+    new Request(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -61,17 +65,41 @@ describe('POST /api/promo/join/checkout', () => {
     });
     createMock.mockResolvedValue({ status: 'created', url: 'https://checkout.stripe.com/c/pay/cs' });
 
-    const res = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    const res = await post(
+      `${PROMO_JOIN_COOKIE}=${token}`,
+      'CA',
+      'https://app.example.com/api/promo/join/checkout?gclid=Click1&utm_source=google',
+    );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs' });
     expect(createMock.mock.calls[0]?.[0]).toMatchObject({
       familyId: 'fam-9',
       externalAuthId: 'sms:abc',
       cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      sku: 'founding_annual',
+      attribution: { gclid: 'Click1', utm_source: 'google' },
     });
 
     createMock.mockResolvedValue({ status: 'already_paid' });
     const paid = await post(`${PROMO_JOIN_COOKIE}=${token}`);
     expect(paid.status).toBe(409);
+  });
+
+  it('501s during the window when the founding price id is missing', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
+    const token = signPromoJoinBinding({
+      familyId: 'fam-9',
+      userId: 'user-9',
+      externalAuthId: 'sms:abc',
+    });
+
+    const res = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(res.status).toBe(501);
+    expect(createMock).not.toHaveBeenCalled();
   });
 });

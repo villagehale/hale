@@ -490,6 +490,7 @@ export const AUDIT_VERBS = [
   'user_preferences_updated',
   'billing_checkout_started',
   'promo_join_family_created',
+  'promo_join_verified',
   'billing_refunded',
   'upgrade_ask_sent',
   'upgrade_link_sent',
@@ -1869,6 +1870,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
   promo_join_family_created: {
     sentence: 'you started a founding family from a text code',
+    family: 'note',
+  },
+  promo_join_verified: {
+    sentence: 'you confirmed the founding text code',
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },

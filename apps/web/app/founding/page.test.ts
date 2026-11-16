@@ -15,7 +15,8 @@ describe('/founding', () => {
     expect(page).toContain('notFound');
     expect(form).toContain('/api/promo/join/request');
     expect(form).toContain('/api/promo/join/verify');
-    expect(form).toContain('/api/promo/join/checkout');
+    expect(form).toContain('/api/promo/join/checkout${window.location.search}');
+    expect(form).toContain('setVerified(true)');
     expect(form).toContain('Text Hale');
     expect(form).not.toContain('parentChannels');
   });

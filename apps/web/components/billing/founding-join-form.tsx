@@ -36,6 +36,7 @@ export function FoundingJoinForm({
   const [error, setError] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [verified, setVerified] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -85,59 +86,72 @@ export function FoundingJoinForm({
     }
   }
 
+  async function openCheckout() {
+    const checkout = await fetch(`/api/promo/join/checkout${window.location.search}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: '{}',
+    });
+    if (checkout.status === 409) {
+      setStep('paid');
+      return;
+    }
+    if (checkout.status === 401) {
+      setVerified(false);
+      setError(CLAIM_CODE_ERROR);
+      return;
+    }
+    if (!checkout.ok) {
+      setError(CLAIM_CONNECTION_ERROR);
+      return;
+    }
+    const payload = (await checkout.json()) as { url?: string };
+    if (typeof payload.url !== 'string' || payload.url.length === 0) {
+      setError(CLAIM_CONNECTION_ERROR);
+      return;
+    }
+    window.location.assign(payload.url);
+  }
+
   async function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = code.trim();
-    if (value.length === 0 || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const verify = await fetch('/api/promo/join/verify', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ phone: phone.trim(), code: value }),
-      });
-      if (verify.status === 429) {
-        setError(CLAIM_RATE_LIMIT);
-        return;
-      }
-      if (!verify.ok) {
-        const next = tries + 1;
-        setTries(next);
-        if (claimFailureStep(next) === 'expired') {
-          setStep('expired');
-          setError(null);
-        } else {
-          setError(CLAIM_CODE_ERROR);
+      if (!verified) {
+        const value = code.trim();
+        if (value.length === 0) return;
+        const verify = await fetch('/api/promo/join/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ phone: phone.trim(), code: value }),
+        });
+        if (verify.status === 429) {
+          setError(CLAIM_RATE_LIMIT);
+          return;
         }
-        return;
+        if (!verify.ok) {
+          const next = tries + 1;
+          setTries(next);
+          if (claimFailureStep(next) === 'expired') {
+            setStep('expired');
+            setError(null);
+          } else {
+            setError(CLAIM_CODE_ERROR);
+          }
+          return;
+        }
+        const body = (await verify.json()) as { alreadyPaid?: boolean };
+        if (body.alreadyPaid) {
+          setStep('paid');
+          return;
+        }
+        setVerified(true);
       }
-      const body = (await verify.json()) as { alreadyPaid?: boolean };
-      if (body.alreadyPaid) {
-        setStep('paid');
-        return;
-      }
-      const checkout = await fetch('/api/promo/join/checkout', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: '{}',
-      });
-      if (checkout.status === 409) {
-        setStep('paid');
-        return;
-      }
-      if (!checkout.ok) {
-        setError(CLAIM_CONNECTION_ERROR);
-        return;
-      }
-      const payload = (await checkout.json()) as { url?: string };
-      if (typeof payload.url !== 'string' || payload.url.length === 0) {
-        setError(CLAIM_CONNECTION_ERROR);
-        return;
-      }
-      window.location.assign(payload.url);
+      await openCheckout();
     } catch {
       setError(CLAIM_CONNECTION_ERROR);
     } finally {
@@ -151,6 +165,7 @@ export function FoundingJoinForm({
     setError(null);
     setTries(0);
     setExpiresAt(null);
+    setVerified(false);
   }
 
   const CODE_SLOTS = ['1', '2', '3', '4', '5', '6'] as const;

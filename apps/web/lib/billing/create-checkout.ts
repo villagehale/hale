@@ -16,10 +16,11 @@ import type { StripeCheckoutClient } from './stripe-client.js';
  * them here — so this is exercised with fakes (no live Stripe, no real DB).
  *
  * Returns not_found (and creates nothing) when the caller has no family, matching
- * the other family-scoped mutations. already_paid when the family already has a
- * live paid plan or Stripe subscription, so the same phone/family cannot open a
- * second subscription. The audit row is the billing intent — the user chose to
- * upgrade — written once the session is created.
+ * the other family-scoped mutations. already_paid when the family is on plus or
+ * family — a leftover stripeSubscriptionId after cancel/delete is not live.
+ * Duplicate live subscriptions are blocked by that tier check plus reusing the
+ * Stripe Customer. The audit row is the billing intent, written once the session
+ * is created.
  */
 export type CreateBillingCheckoutResult =
   | { status: 'created'; url: string }
@@ -102,7 +103,6 @@ export async function createBillingCheckout(input: {
     cancelUrl: input.cancelUrl ?? `${origin}/settings?checkout=cancelled#billing`,
     customerEmail: family.stripeCustomerId ? null : customerEmail,
     customerId: family.stripeCustomerId,
-    idempotencyKey: `hale-checkout-${familyId}`,
     sku,
     currency,
     attribution,

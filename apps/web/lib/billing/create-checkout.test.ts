@@ -95,7 +95,7 @@ describe('createBillingCheckout', () => {
     expect(calls[0]?.successUrl).toBe(
       'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
     );
-    expect(calls[0]?.idempotencyKey).toBe('hale-checkout-fam-9');
+    expect(calls[0]?.idempotencyKey).toBeUndefined();
     expect(calls[0]?.cancelUrl).toBe('https://app.example.com/settings?checkout=cancelled#billing');
   });
 
@@ -197,6 +197,31 @@ describe('createBillingCheckout', () => {
     expect(result).toEqual({ status: 'already_paid' });
     expect(calls).toEqual([]);
     expect(audits).toEqual([]);
+  });
+
+  it('lets a cancelled household (free, leftover Stripe id) open checkout again', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb({
+      planTier: 'free',
+      stripeSubscriptionId: 'sub_old',
+      stripeCustomerId: 'cus_existing',
+    });
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+    });
+
+    expect(result.status).toBe('created');
+    expect(calls[0]?.customerId).toBe('cus_existing');
   });
 
   it('reuses the Stripe Customer and honors a founding cancel URL', async () => {

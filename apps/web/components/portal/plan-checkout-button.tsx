@@ -1,10 +1,17 @@
 'use client';
 
 import { useState } from 'react';
+import type { BillingPeriod } from '@hale/types';
 import stage from '~/components/hale/connect/connect.module.css';
 import styles from './signin.module.css';
 
-export function PlanCheckoutButton() {
+export function PlanCheckoutButton({
+  period = 'annual',
+  label = 'Continue to checkout',
+}: {
+  period?: BillingPeriod;
+  label?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +23,7 @@ export function PlanCheckoutButton() {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ period: 'annual' }),
+        body: JSON.stringify({ period }),
       });
       if (res.status === 409) {
         setError('This family already has a paid plan.');
@@ -47,7 +54,7 @@ export function PlanCheckoutButton() {
         disabled={busy}
         onClick={start}
       >
-        {busy ? 'Opening checkout' : 'Continue to checkout'}
+        {busy ? 'Opening checkout' : label}
       </button>
       {error ? (
         <p className={styles.alert} role="alert">
