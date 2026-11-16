@@ -2096,7 +2096,6 @@ export async function takeMultiFamilyTurn(
   if (channel && linqGroupCarpoolEnabled()) {
     const ride = await considerSharedCarpoolTurn(database, {
       chatId: input.chatId,
-      ledgerFamilyId: host.familyId,
       senderHandle: input.senderHandle,
       senderUserId: channel.userId,
       senderFamilyId: channel.familyId,
