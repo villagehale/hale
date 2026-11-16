@@ -12,6 +12,7 @@ import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
+import { OWN_CITY_REGISTRATION_ENABLED_ENV } from '~/lib/registration/city/flag';
 import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import type {
   BindReadClaimResult,
@@ -740,6 +741,10 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     await placeDb.close();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   async function familyAt(place: {
     countryCode: string;
     city: string | null;
@@ -874,6 +879,7 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
   });
 
   it("leaves a date question to the coach once the family's own city has a reading", async () => {
+    vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'true');
     const markham = await familyAt({
       countryCode: 'CA',
       country: 'Canada',
