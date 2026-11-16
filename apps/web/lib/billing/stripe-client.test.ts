@@ -30,7 +30,7 @@ describe('stripeCheckoutClientFromEnv', () => {
       successUrl: 'https://app.example.com/settings?checkout=success#billing',
       cancelUrl: 'https://app.example.com/settings?checkout=cancelled#billing',
       customerEmail: 'p@example.com',
-      sku: 'founding_annual',
+      sku: 'promo_plus_annual',
       currency: 'CAD',
       attribution: { utm_source: 'google', gclid: 'Click1' },
       adsContext: {
@@ -54,8 +54,8 @@ describe('stripeCheckoutClientFromEnv', () => {
     expect(body.get('metadata[priceId]')).toBe('price_plus_annual');
     expect(body.get('subscription_data[metadata][familyId]')).toBe('fam-7');
     expect(body.get('subscription_data[metadata][tier]')).toBe('plus');
-    expect(body.get('metadata[sku]')).toBe('founding_annual');
-    expect(body.get('subscription_data[metadata][sku]')).toBe('founding_annual');
+    expect(body.get('metadata[sku]')).toBe('promo_plus_annual');
+    expect(body.get('subscription_data[metadata][sku]')).toBe('promo_plus_annual');
     expect(body.get('metadata[currency]')).toBe('CAD');
     expect(body.get('metadata[utm_source]')).toBe('google');
     expect(body.get('metadata[gclid]')).toBe('Click1');

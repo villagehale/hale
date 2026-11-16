@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FOUNDING_CAD_CENTS,
-  FOUNDING_PROMO_METADATA,
-  FOUNDING_USD_CENTS,
   PLUS_USD_ANNUAL_CENTS,
   PLUS_USD_LIST_METADATA,
   PLUS_USD_MONTHLY_CENTS,
+  PROMO_LOOKUP,
+  PROMO_MAX_CAD_CENTS,
+  PROMO_MAX_USD_CENTS,
+  PROMO_PLUS_CAD_CENTS,
+  PROMO_PLUS_USD_CENTS,
   type StripeCatalogApi,
   type StripePriceRecord,
   type StripeProductRecord,
   ensurePromoPrices,
   formatCreatedPriceIds,
+  promoPriceMetadata,
 } from './create-prices.js';
 
 function fakeApi(seed: {
@@ -48,6 +51,7 @@ function fakeApi(seed: {
           interval: input.interval,
           metadata: input.metadata,
           productId: input.productId,
+          lookupKey: input.lookupKey ?? null,
         };
         prices.push(price);
         createdPrices.push(price);
@@ -58,23 +62,39 @@ function fakeApi(seed: {
 }
 
 describe('ensurePromoPrices', () => {
-  it('creates founding CAD 7900 / USD 5900 yearly and Plus USD 1400 monthly / 11900 yearly', async () => {
+  it('creates four promo yearly prices and Plus USD list monthly/annual', async () => {
     const { api, createdPrices } = fakeApi({});
     const result = await ensurePromoPrices(api);
-    expect(createdPrices).toHaveLength(4);
+    expect(createdPrices).toHaveLength(6);
     expect(createdPrices).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           currency: 'cad',
-          unitAmount: FOUNDING_CAD_CENTS,
+          unitAmount: PROMO_PLUS_CAD_CENTS,
           interval: 'year',
-          metadata: FOUNDING_PROMO_METADATA,
+          metadata: promoPriceMetadata('plus', 'cad'),
+          lookupKey: PROMO_LOOKUP.plusCad,
         }),
         expect.objectContaining({
           currency: 'usd',
-          unitAmount: FOUNDING_USD_CENTS,
+          unitAmount: PROMO_PLUS_USD_CENTS,
           interval: 'year',
-          metadata: FOUNDING_PROMO_METADATA,
+          metadata: promoPriceMetadata('plus', 'usd'),
+          lookupKey: PROMO_LOOKUP.plusUsd,
+        }),
+        expect.objectContaining({
+          currency: 'cad',
+          unitAmount: PROMO_MAX_CAD_CENTS,
+          interval: 'year',
+          metadata: promoPriceMetadata('max', 'cad'),
+          lookupKey: PROMO_LOOKUP.maxCad,
+        }),
+        expect.objectContaining({
+          currency: 'usd',
+          unitAmount: PROMO_MAX_USD_CENTS,
+          interval: 'year',
+          metadata: promoPriceMetadata('max', 'usd'),
+          lookupKey: PROMO_LOOKUP.maxUsd,
         }),
         expect.objectContaining({
           currency: 'usd',
@@ -90,35 +110,59 @@ describe('ensurePromoPrices', () => {
         }),
       ]),
     );
-    expect(FOUNDING_CAD_CENTS).toBe(7900);
-    expect(FOUNDING_USD_CENTS).toBe(5900);
+    expect(PROMO_PLUS_CAD_CENTS).toBe(5900);
+    expect(PROMO_PLUS_USD_CENTS).toBe(3900);
+    expect(PROMO_MAX_CAD_CENTS).toBe(9900);
+    expect(PROMO_MAX_USD_CENTS).toBe(7900);
     expect(PLUS_USD_MONTHLY_CENTS).toBe(1400);
     expect(PLUS_USD_ANNUAL_CENTS).toBe(11900);
     expect(formatCreatedPriceIds(result).split('\n')).toEqual([
-      `STRIPE_PRICE_FOUNDING_ANNUAL_CAD=${result.foundingCad}`,
-      `STRIPE_PRICE_FOUNDING_ANNUAL_USD=${result.foundingUsd}`,
+      `STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD=${result.plusCad}`,
+      `STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD=${result.plusUsd}`,
+      `STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD=${result.maxCad}`,
+      `STRIPE_PRICE_PROMO_MAX_ANNUAL_USD=${result.maxUsd}`,
       `STRIPE_PRICE_PLUS_MONTHLY_USD=${result.plusMonthlyUsd}`,
       `STRIPE_PRICE_PLUS_ANNUAL_USD=${result.plusAnnualUsd}`,
     ]);
   });
 
-  it('does nothing when prices tagged promo=founding-2026 and list=plus-usd already exist', async () => {
+  it('does nothing when lookup-keyed promo prices and Plus USD list already exist', async () => {
     const existing: StripePriceRecord[] = [
       {
-        id: 'price_exist_cad',
+        id: 'price_exist_plus_cad',
         currency: 'cad',
-        unitAmount: 7900,
-        interval: 'year',
-        metadata: { promo: 'founding-2026' },
-        productId: 'prod_f',
-      },
-      {
-        id: 'price_exist_usd',
-        currency: 'usd',
         unitAmount: 5900,
         interval: 'year',
-        metadata: { promo: 'founding-2026' },
-        productId: 'prod_f',
+        metadata: promoPriceMetadata('plus', 'cad'),
+        productId: 'prod_plus',
+        lookupKey: PROMO_LOOKUP.plusCad,
+      },
+      {
+        id: 'price_exist_plus_usd',
+        currency: 'usd',
+        unitAmount: 3900,
+        interval: 'year',
+        metadata: promoPriceMetadata('plus', 'usd'),
+        productId: 'prod_plus',
+        lookupKey: PROMO_LOOKUP.plusUsd,
+      },
+      {
+        id: 'price_exist_max_cad',
+        currency: 'cad',
+        unitAmount: 9900,
+        interval: 'year',
+        metadata: promoPriceMetadata('max', 'cad'),
+        productId: 'prod_max',
+        lookupKey: PROMO_LOOKUP.maxCad,
+      },
+      {
+        id: 'price_exist_max_usd',
+        currency: 'usd',
+        unitAmount: 7900,
+        interval: 'year',
+        metadata: promoPriceMetadata('max', 'usd'),
+        productId: 'prod_max',
+        lookupKey: PROMO_LOOKUP.maxUsd,
       },
       {
         id: 'price_exist_mo',
@@ -140,7 +184,8 @@ describe('ensurePromoPrices', () => {
     const { api, createdPrices, createdProducts } = fakeApi({
       prices: existing,
       products: [
-        { id: 'prod_f', name: 'Hale Founding Family', metadata: { promo: 'founding-2026' } },
+        { id: 'prod_plus', name: 'Hale Plus', metadata: { promo: 'holiday-2026', tier: 'plus' } },
+        { id: 'prod_max', name: 'Hale Max', metadata: { promo: 'holiday-2026', tier: 'max' } },
         { id: 'prod_p', name: 'Hale Plus USD', metadata: { list: 'plus-usd' } },
       ],
     });
@@ -148,12 +193,30 @@ describe('ensurePromoPrices', () => {
     expect(createdPrices).toEqual([]);
     expect(createdProducts).toEqual([]);
     expect(result).toEqual({
-      foundingCad: 'price_exist_cad',
-      foundingUsd: 'price_exist_usd',
+      plusCad: 'price_exist_plus_cad',
+      plusUsd: 'price_exist_plus_usd',
+      maxCad: 'price_exist_max_cad',
+      maxUsd: 'price_exist_max_usd',
       plusMonthlyUsd: 'price_exist_mo',
       plusAnnualUsd: 'price_exist_yr',
       created: [],
+      wouldCreate: [],
     });
     expect(formatCreatedPriceIds(result)).toBe('');
+  });
+
+  it('dry-run lists missing env names and creates nothing', async () => {
+    const { api, createdPrices } = fakeApi({});
+    const result = await ensurePromoPrices(api, { apply: false });
+    expect(createdPrices).toEqual([]);
+    expect(result.created).toEqual([]);
+    expect(result.wouldCreate).toEqual([
+      'STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD',
+      'STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD',
+      'STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD',
+      'STRIPE_PRICE_PROMO_MAX_ANNUAL_USD',
+      'STRIPE_PRICE_PLUS_MONTHLY_USD',
+      'STRIPE_PRICE_PLUS_ANNUAL_USD',
+    ]);
   });
 });

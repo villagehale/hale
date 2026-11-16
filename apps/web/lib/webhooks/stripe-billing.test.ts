@@ -161,17 +161,25 @@ describe('planTierFromStripeEvent', () => {
     expect(planTierFromStripeEvent(unknown, MAP)).toBeNull();
   });
 
-  it('keeps a founding yearly invoice.paid on plus after the promo cutoff', () => {
+  it('keeps a promo yearly invoice.paid on plus or family after the promo cutoff', () => {
     const map = priceTierMapFromEnv({
-      STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+      STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD: 'price_plus_usd',
+      STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
     });
-    const paid = {
+    const plusPaid = {
       id: 'evt_renew',
       type: 'invoice.paid',
-      data: { object: { lines: { data: [{ price: { id: 'price_founding_usd' } }] } } },
+      data: { object: { lines: { data: [{ price: { id: 'price_plus_usd' } }] } } },
     };
-    expect(map.price_founding_usd).toBe('plus');
-    expect(planTierFromStripeEvent(paid, map)).toBe('plus');
+    const maxPaid = {
+      id: 'evt_renew_max',
+      type: 'invoice.paid',
+      data: { object: { lines: { data: [{ price: { id: 'price_max_cad' } }] } } },
+    };
+    expect(map.price_plus_usd).toBe('plus');
+    expect(map.price_max_cad).toBe('family');
+    expect(planTierFromStripeEvent(plusPaid, map)).toBe('plus');
+    expect(planTierFromStripeEvent(maxPaid, map)).toBe('family');
   });
 });
 
@@ -278,19 +286,35 @@ describe('priceTierMapFromEnv', () => {
     expect(priceTierMapFromEnv({})).toEqual({});
   });
 
-  it('maps founding yearly and Plus USD list ids to plus', () => {
+  it('maps promo yearly and Plus USD list ids to the right tier', () => {
     expect(
       priceTierMapFromEnv({
-        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
-        STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus_cad',
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD: 'price_plus_usd',
+        STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
+        STRIPE_PRICE_PROMO_MAX_ANNUAL_USD: 'price_max_usd',
         STRIPE_PRICE_PLUS_MONTHLY_USD: 'price_usd_mo',
         STRIPE_PRICE_PLUS_ANNUAL_USD: 'price_usd_yr',
       }),
     ).toEqual({
-      price_founding_cad: 'plus',
-      price_founding_usd: 'plus',
+      price_plus_cad: 'plus',
+      price_plus_usd: 'plus',
+      price_max_cad: 'family',
+      price_max_usd: 'family',
       price_usd_mo: 'plus',
       price_usd_yr: 'plus',
+    });
+  });
+
+  it('still maps leftover founding env names to plus', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+      }),
+    ).toEqual({
+      price_founding_cad: 'plus',
+      price_founding_usd: 'plus',
     });
   });
 });

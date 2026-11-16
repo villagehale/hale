@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
 import type { BillingPeriod } from '@hale/types';
+import { useState } from 'react';
 import stage from '~/components/hale/connect/connect.module.css';
+import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import styles from './signin.module.css';
 
 export function PlanCheckoutButton({
   period = 'annual',
   label = 'Continue to checkout',
+  tier = 'plus',
 }: {
   period?: BillingPeriod;
   label?: string;
+  tier?: PaidTier;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +26,7 @@ export function PlanCheckoutButton({
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ period }),
+        body: JSON.stringify({ period, tier }),
       });
       if (res.status === 409) {
         setError('This family already has a paid plan.');

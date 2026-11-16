@@ -1,24 +1,52 @@
 /**
  * Idempotent Stripe price bootstrap for the 2026 holiday promo.
  *
- * Founding-family product: yearly CAD 7900 / USD 5900, metadata promo=founding-2026.
- * Plus USD list: monthly 1400 / yearly 11900, metadata list=plus-usd.
+ * Promo annual (lifetime lock, not a first-year coupon):
+ *   Plus CAD 5900 / USD 3900, Max CAD 9900 / USD 7900.
+ *   lookup_key hale_promo_{plus|max}_annual_{cad|usd}
+ *   metadata { promo: holiday-2026, tier, currency }
+ *
+ * Plus USD list (after the cutoff): monthly 1400 / yearly 11900,
+ * metadata list=plus-usd.
  *
  * Amounts live here and in tests/docs only. Runtime checkout never reads them —
  * it uses the price ids this script prints. Do not run against live Stripe from
- * an agent; the operator runs `pnpm stripe:create-founding-prices`.
+ * an agent; the operator runs `pnpm stripe:create-founding-prices` (dry-run
+ * unless `--apply`).
  */
 
-export const FOUNDING_CAD_CENTS = 7900;
-export const FOUNDING_USD_CENTS = 5900;
+export const PROMO_PLUS_CAD_CENTS = 5900;
+export const PROMO_PLUS_USD_CENTS = 3900;
+export const PROMO_MAX_CAD_CENTS = 9900;
+export const PROMO_MAX_USD_CENTS = 7900;
 export const PLUS_USD_MONTHLY_CENTS = 1400;
 export const PLUS_USD_ANNUAL_CENTS = 11900;
 
-export const FOUNDING_PROMO_METADATA = { promo: 'founding-2026' } as const;
+/** @deprecated Plus promo CAD cents. Prefer PROMO_PLUS_CAD_CENTS. */
+export const FOUNDING_CAD_CENTS = PROMO_PLUS_CAD_CENTS;
+/** @deprecated Plus promo USD cents. Prefer PROMO_PLUS_USD_CENTS. */
+export const FOUNDING_USD_CENTS = PROMO_PLUS_USD_CENTS;
+
+export const HOLIDAY_PROMO = 'holiday-2026' as const;
 export const PLUS_USD_LIST_METADATA = { list: 'plus-usd' } as const;
 
-export const FOUNDING_PRODUCT_NAME = 'Hale Founding Family';
+export const PLUS_PRODUCT_NAME = 'Hale Plus';
+export const MAX_PRODUCT_NAME = 'Hale Max';
 export const PLUS_USD_PRODUCT_NAME = 'Hale Plus USD';
+
+export const PROMO_LOOKUP = {
+  plusCad: 'hale_promo_plus_annual_cad',
+  plusUsd: 'hale_promo_plus_annual_usd',
+  maxCad: 'hale_promo_max_annual_cad',
+  maxUsd: 'hale_promo_max_annual_usd',
+} as const;
+
+export function promoPriceMetadata(
+  tier: 'plus' | 'max',
+  currency: 'cad' | 'usd',
+): { promo: typeof HOLIDAY_PROMO; tier: 'plus' | 'max'; currency: 'cad' | 'usd' } {
+  return { promo: HOLIDAY_PROMO, tier, currency };
+}
 
 export interface StripePriceRecord {
   readonly id: string;
@@ -27,6 +55,7 @@ export interface StripePriceRecord {
   readonly interval: 'month' | 'year';
   readonly metadata: Record<string, string>;
   readonly productId: string;
+  readonly lookupKey?: string | null;
 }
 
 export interface StripeProductRecord {
@@ -48,30 +77,41 @@ export interface StripeCatalogApi {
     unitAmount: number;
     interval: 'month' | 'year';
     metadata: Record<string, string>;
+    lookupKey?: string;
   }): Promise<StripePriceRecord>;
 }
 
 export interface PromoPriceSet {
-  foundingCad: string;
-  foundingUsd: string;
+  plusCad: string;
+  plusUsd: string;
+  maxCad: string;
+  maxUsd: string;
   plusMonthlyUsd: string;
   plusAnnualUsd: string;
   created: string[];
+  wouldCreate: string[];
 }
 
 function matchPrice(
   prices: StripePriceRecord[],
-  metadata: Record<string, string>,
-  currency: string,
-  unitAmount: number,
-  interval: 'month' | 'year',
+  input: {
+    metadata: Record<string, string>;
+    currency: string;
+    unitAmount: number;
+    interval: 'month' | 'year';
+    lookupKey?: string;
+  },
 ): StripePriceRecord | undefined {
+  if (input.lookupKey) {
+    const byKey = prices.find((price) => price.lookupKey === input.lookupKey);
+    if (byKey) return byKey;
+  }
   return prices.find(
     (price) =>
-      price.currency === currency &&
-      price.unitAmount === unitAmount &&
-      price.interval === interval &&
-      Object.entries(metadata).every(([key, value]) => price.metadata[key] === value),
+      price.currency === input.currency &&
+      price.unitAmount === input.unitAmount &&
+      price.interval === input.interval &&
+      Object.entries(input.metadata).every(([key, value]) => price.metadata[key] === value),
   );
 }
 
@@ -92,9 +132,11 @@ async function ensureProduct(
   products: StripeProductRecord[],
   name: string,
   metadata: Record<string, string>,
-): Promise<string> {
+  apply: boolean,
+): Promise<string | null> {
   const existing = matchProduct(products, metadata, name);
   if (existing) return existing.id;
+  if (!apply) return null;
   const created = await api.createProduct({ name, metadata });
   products.push(created);
   return created.id;
@@ -104,87 +146,186 @@ async function ensurePrice(
   api: StripeCatalogApi,
   prices: StripePriceRecord[],
   created: string[],
+  wouldCreate: string[],
+  apply: boolean,
+  envName: string,
   input: {
-    productId: string;
+    productId: string | null;
     currency: string;
     unitAmount: number;
     interval: 'month' | 'year';
     metadata: Record<string, string>;
+    lookupKey?: string;
   },
 ): Promise<string> {
-  const existing = matchPrice(
-    prices,
-    input.metadata,
-    input.currency,
-    input.unitAmount,
-    input.interval,
-  );
+  const existing = matchPrice(prices, input);
   if (existing) return existing.id;
-  const price = await api.createPrice(input);
+  wouldCreate.push(envName);
+  if (!apply || !input.productId) return '';
+  const price = await api.createPrice({
+    productId: input.productId,
+    currency: input.currency,
+    unitAmount: input.unitAmount,
+    interval: input.interval,
+    metadata: input.metadata,
+    lookupKey: input.lookupKey,
+  });
   prices.push(price);
   created.push(price.id);
   return price.id;
 }
 
-export async function ensurePromoPrices(api: StripeCatalogApi): Promise<PromoPriceSet> {
+export async function ensurePromoPrices(
+  api: StripeCatalogApi,
+  options: { apply?: boolean } = {},
+): Promise<PromoPriceSet> {
+  const apply = options.apply !== false;
   const prices = await api.listPrices();
   const products = await api.listProducts();
   const created: string[] = [];
+  const wouldCreate: string[] = [];
 
-  const foundingProductId = await ensureProduct(
+  const plusProductId = await ensureProduct(
     api,
     products,
-    FOUNDING_PRODUCT_NAME,
-    FOUNDING_PROMO_METADATA,
+    PLUS_PRODUCT_NAME,
+    { promo: HOLIDAY_PROMO, tier: 'plus' },
+    apply,
+  );
+  const maxProductId = await ensureProduct(
+    api,
+    products,
+    MAX_PRODUCT_NAME,
+    { promo: HOLIDAY_PROMO, tier: 'max' },
+    apply,
   );
   const plusUsdProductId = await ensureProduct(
     api,
     products,
     PLUS_USD_PRODUCT_NAME,
     PLUS_USD_LIST_METADATA,
+    apply,
   );
 
-  const foundingCad = await ensurePrice(api, prices, created, {
-    productId: foundingProductId,
-    currency: 'cad',
-    unitAmount: FOUNDING_CAD_CENTS,
-    interval: 'year',
-    metadata: { ...FOUNDING_PROMO_METADATA },
-  });
-  const foundingUsd = await ensurePrice(api, prices, created, {
-    productId: foundingProductId,
-    currency: 'usd',
-    unitAmount: FOUNDING_USD_CENTS,
-    interval: 'year',
-    metadata: { ...FOUNDING_PROMO_METADATA },
-  });
-  const plusMonthlyUsd = await ensurePrice(api, prices, created, {
-    productId: plusUsdProductId,
-    currency: 'usd',
-    unitAmount: PLUS_USD_MONTHLY_CENTS,
-    interval: 'month',
-    metadata: { ...PLUS_USD_LIST_METADATA },
-  });
-  const plusAnnualUsd = await ensurePrice(api, prices, created, {
-    productId: plusUsdProductId,
-    currency: 'usd',
-    unitAmount: PLUS_USD_ANNUAL_CENTS,
-    interval: 'year',
-    metadata: { ...PLUS_USD_LIST_METADATA },
-  });
+  const plusCad = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD',
+    {
+      productId: plusProductId,
+      currency: 'cad',
+      unitAmount: PROMO_PLUS_CAD_CENTS,
+      interval: 'year',
+      metadata: promoPriceMetadata('plus', 'cad'),
+      lookupKey: PROMO_LOOKUP.plusCad,
+    },
+  );
+  const plusUsd = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD',
+    {
+      productId: plusProductId,
+      currency: 'usd',
+      unitAmount: PROMO_PLUS_USD_CENTS,
+      interval: 'year',
+      metadata: promoPriceMetadata('plus', 'usd'),
+      lookupKey: PROMO_LOOKUP.plusUsd,
+    },
+  );
+  const maxCad = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD',
+    {
+      productId: maxProductId,
+      currency: 'cad',
+      unitAmount: PROMO_MAX_CAD_CENTS,
+      interval: 'year',
+      metadata: promoPriceMetadata('max', 'cad'),
+      lookupKey: PROMO_LOOKUP.maxCad,
+    },
+  );
+  const maxUsd = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PROMO_MAX_ANNUAL_USD',
+    {
+      productId: maxProductId,
+      currency: 'usd',
+      unitAmount: PROMO_MAX_USD_CENTS,
+      interval: 'year',
+      metadata: promoPriceMetadata('max', 'usd'),
+      lookupKey: PROMO_LOOKUP.maxUsd,
+    },
+  );
+  const plusMonthlyUsd = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PLUS_MONTHLY_USD',
+    {
+      productId: plusUsdProductId,
+      currency: 'usd',
+      unitAmount: PLUS_USD_MONTHLY_CENTS,
+      interval: 'month',
+      metadata: { ...PLUS_USD_LIST_METADATA },
+    },
+  );
+  const plusAnnualUsd = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_PLUS_ANNUAL_USD',
+    {
+      productId: plusUsdProductId,
+      currency: 'usd',
+      unitAmount: PLUS_USD_ANNUAL_CENTS,
+      interval: 'year',
+      metadata: { ...PLUS_USD_LIST_METADATA },
+    },
+  );
 
-  return { foundingCad, foundingUsd, plusMonthlyUsd, plusAnnualUsd, created };
+  return {
+    plusCad,
+    plusUsd,
+    maxCad,
+    maxUsd,
+    plusMonthlyUsd,
+    plusAnnualUsd,
+    created,
+    wouldCreate,
+  };
 }
 
 export function formatCreatedPriceIds(result: PromoPriceSet): string {
   const lines: string[] = [];
   const envById: Record<string, string> = {
-    [result.foundingCad]: 'STRIPE_PRICE_FOUNDING_ANNUAL_CAD',
-    [result.foundingUsd]: 'STRIPE_PRICE_FOUNDING_ANNUAL_USD',
+    [result.plusCad]: 'STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD',
+    [result.plusUsd]: 'STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD',
+    [result.maxCad]: 'STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD',
+    [result.maxUsd]: 'STRIPE_PRICE_PROMO_MAX_ANNUAL_USD',
     [result.plusMonthlyUsd]: 'STRIPE_PRICE_PLUS_MONTHLY_USD',
     [result.plusAnnualUsd]: 'STRIPE_PRICE_PLUS_ANNUAL_USD',
   };
   for (const id of result.created) {
+    if (!id) continue;
     const env = envById[id];
     if (env) lines.push(`${env}=${id}`);
   }
@@ -227,17 +368,18 @@ function readMetadata(value: unknown): Record<string, string> {
   return out;
 }
 
-async function listAll(
-  secret: string,
-  path: string,
-  fetchImpl: typeof fetch,
-): Promise<unknown[]> {
+async function listAll(secret: string, path: string, fetchImpl: typeof fetch): Promise<unknown[]> {
   const data: unknown[] = [];
   let startingAfter: string | undefined;
   for (let page = 0; page < 20; page += 1) {
     const query = new URLSearchParams({ limit: '100', active: 'true' });
     if (startingAfter) query.set('starting_after', startingAfter);
-    const json = (await stripeJson(secret, `${path}?${query.toString()}`, { method: 'GET' }, fetchImpl)) as {
+    const json = (await stripeJson(
+      secret,
+      `${path}?${query.toString()}`,
+      { method: 'GET' },
+      fetchImpl,
+    )) as {
       data?: unknown[];
       has_more?: boolean;
     };
@@ -268,6 +410,7 @@ export function stripeCatalogApiFromSecret(
           recurring?: { interval?: unknown };
           metadata?: unknown;
           product?: unknown;
+          lookup_key?: unknown;
         };
         if (typeof record.id !== 'string') return [];
         const interval = record.recurring?.interval;
@@ -289,6 +432,7 @@ export function stripeCatalogApiFromSecret(
             interval,
             metadata: readMetadata(record.metadata),
             productId,
+            lookupKey: typeof record.lookup_key === 'string' ? record.lookup_key : null,
           },
         ];
       });
@@ -322,6 +466,7 @@ export function stripeCatalogApiFromSecret(
         unit_amount: String(input.unitAmount),
         'recurring[interval]': input.interval,
       };
+      if (input.lookupKey) body.lookup_key = input.lookupKey;
       for (const [key, value] of Object.entries(input.metadata)) {
         body[`metadata[${key}]`] = value;
       }
@@ -337,6 +482,7 @@ export function stripeCatalogApiFromSecret(
         recurring?: { interval?: 'month' | 'year' };
         metadata?: Record<string, string>;
         product?: string;
+        lookup_key?: string | null;
       };
       return {
         id: json.id,
@@ -345,6 +491,7 @@ export function stripeCatalogApiFromSecret(
         interval: json.recurring?.interval === 'month' ? 'month' : 'year',
         metadata: json.metadata ?? {},
         productId: typeof json.product === 'string' ? json.product : input.productId,
+        lookupKey: json.lookup_key ?? input.lookupKey ?? null,
       };
     },
   };

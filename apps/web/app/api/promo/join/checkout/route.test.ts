@@ -17,6 +17,7 @@ async function post(
   cookie?: string,
   country = 'CA',
   url = 'https://app.example.com/api/promo/join/checkout',
+  body: unknown = {},
 ) {
   const { POST } = await import('./route');
   return POST(
@@ -27,7 +28,7 @@ async function post(
         ...(cookie ? { cookie } : {}),
         'x-vercel-ip-country': country,
       },
-      body: '{}',
+      body: JSON.stringify(body),
     }),
   );
 }
@@ -68,7 +69,7 @@ describe('POST /api/promo/join/checkout', () => {
     vi.stubEnv('AUTH_SECRET', 'test-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
-    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
     const join = signPromoJoinBinding({
       familyId: 'fam-9',
       userId: 'user-9',
@@ -90,7 +91,7 @@ describe('POST /api/promo/join/checkout', () => {
     );
     expect(res.status).toBe(200);
     expect(createMock.mock.calls[0]?.[0]).toMatchObject({
-      sku: 'founding_annual',
+      sku: 'promo_plus_annual',
       cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
     });
     expect(String(createMock.mock.calls[0]?.[0].cancelUrl)).not.toContain('preview=');
@@ -101,7 +102,7 @@ describe('POST /api/promo/join/checkout', () => {
     vi.stubEnv('AUTH_SECRET', 'test-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
-    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
     const token = signPromoJoinBinding({
       familyId: 'fam-9',
       userId: 'user-9',
@@ -118,7 +119,7 @@ describe('POST /api/promo/join/checkout', () => {
       'https://app.example.com/api/promo/join/checkout?preview=secret',
     );
     expect(res.status).toBe(200);
-    expect(createMock.mock.calls[0]?.[0]).toMatchObject({ sku: 'founding_annual' });
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({ sku: 'promo_plus_annual' });
   });
 
   it('opens Checkout for the bound family and 409s on a second subscription', async () => {
@@ -127,7 +128,7 @@ describe('POST /api/promo/join/checkout', () => {
     vi.stubEnv('AUTH_SECRET', 'test-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
-    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
     const token = signPromoJoinBinding({
       familyId: 'fam-9',
       userId: 'user-9',
@@ -149,13 +150,40 @@ describe('POST /api/promo/join/checkout', () => {
       familyId: 'fam-9',
       externalAuthId: 'sms:abc',
       cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
-      sku: 'founding_annual',
+      sku: 'promo_plus_annual',
       attribution: { gclid: 'Click1', utm_source: 'google' },
     });
 
     createMock.mockResolvedValue({ status: 'already_paid' });
     const paid = await post(`${PROMO_JOIN_COOKIE}=${token}`);
     expect(paid.status).toBe(409);
+  });
+
+  it('opens Max promo checkout when the body asks for max', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+    vi.stubEnv('STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD', 'price_max_cad');
+    const token = signPromoJoinBinding({
+      familyId: 'fam-9',
+      userId: 'user-9',
+      externalAuthId: 'sms:abc',
+    });
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs',
+    });
+
+    const res = await post(`${PROMO_JOIN_COOKIE}=${token}`, 'CA', undefined, { tier: 'max' });
+    expect(res.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      sku: 'promo_max_annual',
+      tier: 'family',
+      priceId: 'price_max_cad',
+    });
   });
 
   it('501s during the window when the founding price id is missing', async () => {

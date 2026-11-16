@@ -17,6 +17,8 @@ export interface PaidCheckoutFacts {
   readonly value: number;
   readonly currency: string;
   readonly paid: boolean;
+  /** Verified paid tier from session metadata. `family` is Max. */
+  readonly tier: 'plus' | 'family' | null;
 }
 
 export function checkoutSessionIdFromUnknown(raw: unknown): string | null {
@@ -38,8 +40,16 @@ function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function paidTierFromSession(payload: Record<string, unknown>): 'plus' | 'family' | null {
+  const metadata = isRecord(payload.metadata) ? payload.metadata : null;
+  const raw = metadata ? readString(metadata.tier) : null;
+  if (raw === 'plus') return 'plus';
+  if (raw === 'family' || raw === 'max') return 'family';
+  return null;
+}
+
 /**
- * Reads amount_total (cents) and currency off a Checkout Session object.
+ * Reads amount_total (cents), currency, and metadata.tier off a Checkout Session.
  * `paid` is true only for payment_status=paid — an unpaid session must not fire.
  */
 export function paidCheckoutFactsFromStripeSession(payload: unknown): PaidCheckoutFacts | null {
@@ -55,6 +65,7 @@ export function paidCheckoutFactsFromStripeSession(payload: unknown): PaidChecko
     value: amountTotal / 100,
     currency,
     paid: readString(payload.payment_status) === 'paid',
+    tier: paidTierFromSession(payload),
   };
 }
 
