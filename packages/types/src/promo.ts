@@ -31,14 +31,14 @@ export const PLUS_LIST_PRICE_DISPLAY: Record<
   { monthlyLabel: string; annualLabel: string; monthlyCents: number; annualCents: number }
 > = {
   CAD: {
-    monthlyLabel: 'C$19/mo',
-    annualLabel: 'C$159/yr',
+    monthlyLabel: '$19/mo CAD',
+    annualLabel: '$159/yr CAD',
     monthlyCents: 1900,
     annualCents: 15900,
   },
   USD: {
-    monthlyLabel: 'US$14/mo',
-    annualLabel: 'US$119/yr',
+    monthlyLabel: '$14/mo USD',
+    annualLabel: '$119/yr USD',
     monthlyCents: 1400,
     annualCents: 11900,
   },
@@ -103,4 +103,3 @@ export const FOUNDING_PRICE_DISPLAY: Record<
   CAD: { symbol: '$', amount: 79, perYear: '$79/yr', perYearCode: '$79/yr CAD', code: 'CAD' },
   USD: { symbol: '$', amount: 59, perYear: '$59/yr', perYearCode: '$59/yr USD', code: 'USD' },
 };
-

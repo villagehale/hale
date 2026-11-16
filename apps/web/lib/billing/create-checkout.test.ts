@@ -275,4 +275,33 @@ describe('createBillingCheckout', () => {
     expect(calls[0]?.customerEmail).toBeNull();
     expect(calls[0]?.cancelUrl).toBe('https://app.example.com/founding?checkout=cancelled');
   });
+
+  it('refuses a list price while the promo window is open', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db, audits } = fakeDb();
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'monthly',
+      priceId: 'price_cad_mo',
+      sku: 'plus_monthly',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+      now: new Date('2026-11-16T12:00:00-05:00'),
+      env: {
+        HOLIDAY_PROMO_ENABLED: 'true',
+        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_PLUS_MONTHLY: 'price_cad_mo',
+      },
+    });
+
+    expect(result).toEqual({ status: 'founding_only' });
+    expect(calls).toEqual([]);
+    expect(audits).toEqual([]);
+  });
 });

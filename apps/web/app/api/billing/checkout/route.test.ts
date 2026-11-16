@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const createMock = vi.fn();
+const resolveFamilyMock = vi.fn();
 const clientMock = { createCheckoutSession: vi.fn() };
 
 vi.mock('~/auth', () => ({
   auth: async () => ({ user: { id: 'auth-1', email: 'p@example.com' } }),
 }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
+vi.mock('~/lib/family', () => ({
+  resolveFamilyForUser: (...args: unknown[]) => resolveFamilyMock(...args),
+}));
 vi.mock('~/lib/billing/create-checkout', () => ({
   createBillingCheckout: (...args: unknown[]) => createMock(...args),
 }));
@@ -30,6 +34,7 @@ describe('POST /api/billing/checkout', () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     createMock.mockReset();
+    resolveFamilyMock.mockReset();
   });
 
   it('404s when HOLIDAY_PROMO_ENABLED is off (the dormant default)', async () => {
@@ -116,6 +121,116 @@ describe('POST /api/billing/checkout', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'founding_unavailable' });
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('rewrites a monthly list request during the window to founding', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_PLUS_MONTHLY', 'price_cad_mo');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const res = await post({ period: 'monthly', priceId: 'price_cad_mo', tier: 'plus' });
+    expect(res.status).toBe(200);
+    const arg = createMock.mock.calls[0]?.[0] as { priceId: string; sku: string; period: string };
+    expect(arg.priceId).toBe('price_founding_cad');
+    expect(arg.sku).toBe('founding_annual');
+    expect(arg.period).toBe('annual');
+  });
+
+  it('cannot start a monthly or list-price checkout from a crafted POST while the promo is active', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_USD', 'price_founding_usd');
+    vi.stubEnv('STRIPE_PRICE_PLUS_MONTHLY', 'price_cad_mo');
+    vi.stubEnv('STRIPE_PRICE_PLUS_MONTHLY_USD', 'price_usd_mo');
+    vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const cadMonthly = await post({
+      period: 'monthly',
+      priceId: 'price_cad_mo',
+      sku: 'plus_monthly',
+      tier: 'plus',
+    });
+    expect(cadMonthly.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      priceId: 'price_founding_cad',
+      sku: 'founding_annual',
+      period: 'annual',
+    });
+
+    const usdMonthly = await post(
+      { period: 'monthly', priceId: 'price_usd_mo', sku: 'plus_monthly' },
+      { 'x-vercel-ip-country': 'US' },
+    );
+    expect(usdMonthly.status).toBe(200);
+    expect(createMock.mock.calls[1]?.[0]).toMatchObject({
+      priceId: 'price_founding_usd',
+      sku: 'founding_annual',
+      period: 'annual',
+    });
+
+    const cadAnnual = await post({ period: 'annual', priceId: 'price_cad_yr', sku: 'plus_annual' });
+    expect(cadAnnual.status).toBe(200);
+    expect(createMock.mock.calls[2]?.[0]).toMatchObject({
+      priceId: 'price_founding_cad',
+      sku: 'founding_annual',
+    });
+  });
+
+  it('lets list prices through after the cutoff', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
+    vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const res = await post({ period: 'annual' });
+    expect(res.status).toBe(200);
+    const arg = createMock.mock.calls[0]?.[0] as { priceId: string; sku: string };
+    expect(arg.priceId).toBe('price_cad_yr');
+    expect(arg.sku).toBe('plus_annual');
+  });
+
+  it('404s when the flag is off and the family is not listed', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-other');
+    vi.stubEnv('PROMO_PREVIEW_FAMILY_IDS', 'fam-preview');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    const res = await post({ period: 'annual' });
+    expect(res.status).toBe(404);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('opens founding checkout for a listed preview family while the flag is off', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-preview');
+    vi.stubEnv('PROMO_PREVIEW_FAMILY_IDS', 'fam-preview');
+    vi.stubEnv('STRIPE_PRICE_FOUNDING_ANNUAL_CAD', 'price_founding_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const res = await post({ period: 'monthly' });
+    expect(res.status).toBe(200);
+    const arg = createMock.mock.calls[0]?.[0] as { priceId: string; sku: string };
+    expect(arg.priceId).toBe('price_founding_cad');
+    expect(arg.sku).toBe('founding_annual');
   });
 
   it('409s when the family already has a subscription', async () => {

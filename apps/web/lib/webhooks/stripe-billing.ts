@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BillingPeriod, PlanTier } from '@hale/types';
-import { plusPriceIdsFromEnv } from '~/lib/billing/prices';
+import { foundingWindowOpen, plusPriceIdsFromEnv } from '~/lib/billing/prices';
 
 /**
  * Stripe billing webhook contract (B18).
@@ -54,6 +54,8 @@ export type PaidTier = Exclude<PlanTier, 'free'>;
 export interface StripeTierOptions {
   paymentLinkId?: string | null;
   paymentLinkTier?: PaidTier | null;
+  /** False during the founding window — never grant Plus from an old Payment Link. */
+  allowPaymentLink?: boolean;
 }
 
 type VerifyResult =
@@ -204,11 +206,13 @@ export function isStripeCheckoutConfigured(
  */
 export function paymentLinkTierOptionsFromEnv(
   env: Record<string, string | undefined> = process.env,
+  now: Date = new Date(),
 ): StripeTierOptions {
   const tier = env.STRIPE_PAYMENT_LINK_TIER?.trim();
   return {
     paymentLinkId: env.STRIPE_PAYMENT_LINK_ID?.trim() || null,
     paymentLinkTier: tier === 'plus' || tier === 'family' ? tier : null,
+    allowPaymentLink: !foundingWindowOpen(now, env),
   };
 }
 
@@ -293,6 +297,7 @@ function paymentLinkTierFrom(
   object: Record<string, unknown>,
   options: StripeTierOptions,
 ): PaidTier | null {
+  if (options.allowPaymentLink === false) return null;
   if (!options.paymentLinkId || !options.paymentLinkTier) return null;
   if (!isPaidTier(options.paymentLinkTier)) return null;
   if (readString(object.payment_link) !== options.paymentLinkId) return null;

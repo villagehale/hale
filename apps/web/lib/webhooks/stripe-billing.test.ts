@@ -6,6 +6,7 @@ import {
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
+  paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
   stripeRefsFromStripeEvent,
@@ -120,6 +121,26 @@ describe('planTierFromStripeEvent', () => {
       }),
     ).toBeNull();
     expect(planTierFromStripeEvent(event, MAP)).toBeNull();
+    expect(
+      planTierFromStripeEvent(event, MAP, {
+        paymentLinkId: 'plink_year',
+        paymentLinkTier: 'plus',
+        allowPaymentLink: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('disables the Payment Link fallback while the founding window is open', () => {
+    const env = {
+      STRIPE_PAYMENT_LINK_ID: 'plink_year',
+      STRIPE_PAYMENT_LINK_TIER: 'plus',
+    };
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2026-11-16T12:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: false },
+    );
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2027-01-01T00:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: true },
+    );
   });
 
   it('maps invoice.paid from the line price and refuses an unknown price', () => {

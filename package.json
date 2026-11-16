@@ -27,6 +27,7 @@
     "db:studio": "pnpm --filter @hale/db studio",
     "posthog:sync-flags": "pnpm --filter @hale/flags sync",
     "stripe:create-founding-prices": "pnpm --filter @hale/web exec tsx scripts/stripe-create-founding-prices.ts",
+    "stripe:promo-lockdown": "pnpm --filter @hale/web exec tsx scripts/stripe-promo-lockdown.ts",
     "stripe:refund-family": "pnpm --filter @hale/web exec tsx scripts/stripe-refund-family.ts",
     "meta:test-purchase": "pnpm --filter @hale/web exec tsx scripts/meta-test-purchase.ts"
   },

@@ -56,14 +56,14 @@ describe('founding promo window', () => {
 describe('Plus list display', () => {
   it('pins CAD to the existing public Plus copy and USD to create-prices cents', () => {
     expect(PLUS_LIST_PRICE_DISPLAY.CAD).toEqual({
-      monthlyLabel: 'C$19/mo',
-      annualLabel: 'C$159/yr',
+      monthlyLabel: '$19/mo CAD',
+      annualLabel: '$159/yr CAD',
       monthlyCents: 1900,
       annualCents: 15900,
     });
     expect(PLUS_LIST_PRICE_DISPLAY.USD).toEqual({
-      monthlyLabel: 'US$14/mo',
-      annualLabel: 'US$119/yr',
+      monthlyLabel: '$14/mo USD',
+      annualLabel: '$119/yr USD',
       monthlyCents: 1400,
       annualCents: 11900,
     });

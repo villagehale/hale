@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   foundingPromoOpen,
   isFoundingPriceId,
+  paymentLinkUrlWhilePromoAllows,
   plusPriceIdsFromEnv,
   renewalPriceIdForSubscription,
   resolveCheckoutPrice,
@@ -71,7 +72,7 @@ describe('resolveCheckoutPrice', () => {
     });
   });
 
-  it('uses the USD monthly list id when it is set and the visitor asked for monthly', () => {
+  it('rewrites a monthly or list request during the window to founding yearly', () => {
     expect(
       resolveCheckoutPrice({
         currency: 'USD',
@@ -82,12 +83,94 @@ describe('resolveCheckoutPrice', () => {
     ).toEqual({
       status: 'selected',
       price: {
-        priceId: 'price_usd_mo',
-        sku: 'plus_monthly',
+        priceId: 'price_founding_usd',
+        sku: 'founding_annual',
         currency: 'USD',
-        period: 'monthly',
+        period: 'annual',
       },
     });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: BEFORE,
+        env: WITH_LIST,
+      }),
+    ).toMatchObject({ price: { priceId: 'price_founding_cad', sku: 'founding_annual' } });
+  });
+
+  it('does not honor period monthly or list annual during the promo when list env ids are set', () => {
+    const cadMonthly = resolveCheckoutPrice({
+      currency: 'CAD',
+      period: 'monthly',
+      now: BEFORE,
+      env: WITH_LIST,
+    });
+    const usdMonthly = resolveCheckoutPrice({
+      currency: 'USD',
+      period: 'monthly',
+      now: BEFORE,
+      env: WITH_LIST,
+    });
+    const cadAnnual = resolveCheckoutPrice({
+      currency: 'CAD',
+      period: 'annual',
+      now: BEFORE,
+      env: WITH_LIST,
+    });
+    expect(cadMonthly).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_founding_cad',
+        sku: 'founding_annual',
+        currency: 'CAD',
+        period: 'annual',
+      },
+    });
+    expect(usdMonthly).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_founding_usd',
+        sku: 'founding_annual',
+        currency: 'USD',
+        period: 'annual',
+      },
+    });
+    expect(cadAnnual).toMatchObject({
+      price: { priceId: 'price_founding_cad', sku: 'founding_annual', period: 'annual' },
+    });
+    expect(JSON.stringify([cadMonthly, usdMonthly, cadAnnual])).not.toContain('price_cad_mo');
+    expect(JSON.stringify([cadMonthly, usdMonthly, cadAnnual])).not.toContain('price_usd_mo');
+    expect(JSON.stringify([cadMonthly, usdMonthly, cadAnnual])).not.toContain('price_cad_yr');
+  });
+
+  it('lets a preview caller buy founding while the live flag is off', () => {
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'monthly',
+        now: BEFORE,
+        preview: true,
+        env: {
+          STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+          STRIPE_PRICE_PLUS_ANNUAL: 'price_cad_yr',
+        },
+      }),
+    ).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_founding_cad',
+        sku: 'founding_annual',
+        currency: 'CAD',
+        period: 'annual',
+      },
+    });
+  });
+
+  it('never serves the Payment Link URL during the window', () => {
+    const env = { STRIPE_PAYMENT_LINK_URL: 'https://buy.stripe.com/plus' };
+    expect(paymentLinkUrlWhilePromoAllows(BEFORE, env)).toBeNull();
+    expect(paymentLinkUrlWhilePromoAllows(AFTER, env)).toBe('https://buy.stripe.com/plus');
   });
 
   it('stops offering founding after the cutoff and uses list prices instead', () => {

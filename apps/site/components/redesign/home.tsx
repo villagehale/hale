@@ -346,7 +346,7 @@ export function RedesignHome({
   <div className="hs-head">
    <p className="hs-eyebrow">{t("Pricing")}</p>
    <h2 className="hs-h2">{list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h2>
-   <p className="hs-lede">{list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders and the group chats. Plus and Max are on the way.")}</p>
+   <p className="hs-lede">{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders and the group chats. Plus and Max are on the way.")}</p>
   </div>
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
@@ -360,7 +360,7 @@ export function RedesignHome({
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
     <h3>{list ? plusList.monthlyLabel : t("$19 CAD/mo")}{list ? null : <span className="hs-tier-usd">{t("$15 USD/mo")}</span>}</h3>
-    <p className="hs-tier-meta">{list ? t(currency === 'USD' ? 'or US$119/yr' : 'or C$159/yr') : t("or $159 CAD / $129 USD a year, about three months free")}</p>
+    <p className="hs-tier-meta">{list ? t(currency === 'USD' ? 'or $119/yr USD' : 'or $159/yr CAD') : t("or $159 CAD / $129 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
@@ -388,7 +388,7 @@ export function RedesignHome({
   <div className="hs-faq-r">
    {promo ? <PromoFaqItems promo={promo} /> : (<>
    <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t("Yes, when you say yes. Hale finds the class, watches for spots and texts you before sign-ups open. Say yes and it signs your kid up, then hands you the payment step. You always pay yourself.")}</FaqItem>
-   <FaqItem id="is-it-free" question={list ? t("What does Plus cost?") : t("Is it free?")}>{list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US. Text Hale to start.") : t("Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.")}</FaqItem>
+   <FaqItem id="is-it-free" question={list ? t("What does Plus cost?") : t("Is it free?")}>{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US. Text Hale to start.") : t("Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.")}</FaqItem>
    </>)}
    <FaqItem id="do-i-need-an-app" question={t("Do I need an app?")}>{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</FaqItem>
    <FaqItem id="what-about-our-privacy" question={t("What about our privacy?")}><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></FaqItem>
@@ -408,7 +408,7 @@ export function RedesignHome({
     <p className="hs-close-sub">{promo.saleName}. Join by Dec 31. Refund anytime.</p>
     </>) : (<>
     <h2>{list ? t("Start with a text.") : closeHeading(t("Founding families join free."))}</h2>
-    <p className="hs-close-sub">{list ? t("Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.") : t("Founding families get everything free until paid plans start.")}</p>
+    <p className="hs-close-sub">{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Founding families get everything free until paid plans start.")}</p>
     </>)}
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="closing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
     <p className="hs-close-terms">{promo ? "You text first; standard message rates apply, reply STOP any time." : list ? t("You text first; standard message rates apply, reply STOP any time.") : t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>

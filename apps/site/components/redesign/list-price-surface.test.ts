@@ -23,14 +23,16 @@ describe('post-promo list prices on the marketing site', () => {
       createElement(RedesignPricing, { ...base, priceSurface: 'list', currency: 'CAD' }),
     );
 
-    expect(homeCad).toContain('C$19/mo');
-    expect(homeCad).toContain('C$159/yr');
-    expect(homeUsd).toContain('US$14/mo');
-    expect(homeUsd).toContain('US$119/yr');
+    expect(homeCad).toContain('$19/mo CAD');
+    expect(homeCad).toContain('$159/yr CAD');
+    expect(homeUsd).toContain('$14/mo USD');
+    expect(homeUsd).toContain('$119/yr USD');
+    expect(homeCad).not.toContain('C$');
+    expect(homeUsd).not.toContain('US$');
     expect(homeCad).not.toContain('Only Free is available today.');
     expect(homeCad).not.toContain('Founding families join free.');
     expect(homeCad).toContain('Plus is available today.');
-    expect(pricing).toContain('C$19/mo');
+    expect(pricing).toContain('$19/mo CAD');
     expect(pricing).not.toContain('Plus and Max are on the way.');
 
     for (const locale of ['fr', 'zh'] as const) {
@@ -57,6 +59,6 @@ describe('post-promo list prices on the marketing site', () => {
     expect(html).toContain('Only Free is available today.');
     expect(html).toContain('Founding families');
     expect(html).toContain('join free.');
-    expect(html).not.toContain('C$19/mo');
+    expect(html).not.toContain('$19/mo CAD');
   });
 });

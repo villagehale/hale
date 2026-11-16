@@ -6,7 +6,9 @@ import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
 import { familyAlreadySubscribed } from './already-subscribed.js';
 import { checkoutSuccessUrl } from './checkout-session.js';
-import type { CheckoutSku } from './prices.js';
+import { holidayPromoEnabled } from './flags.js';
+import { type CheckoutSku, foundingWindowOpen, isFoundingPriceId } from './prices.js';
+import { isPromoPreviewFamily } from './promo-preview.js';
 import type { StripeCheckoutClient } from './stripe-client.js';
 
 /**
@@ -25,7 +27,8 @@ import type { StripeCheckoutClient } from './stripe-client.js';
 export type CreateBillingCheckoutResult =
   | { status: 'created'; url: string }
   | { status: 'not_found' }
-  | { status: 'already_paid' };
+  | { status: 'already_paid' }
+  | { status: 'founding_only' };
 
 export { familyAlreadySubscribed } from './already-subscribed.js';
 
@@ -55,6 +58,8 @@ export async function createBillingCheckout(input: {
   familyId?: string;
   /** Defaults to the settings billing hash. Founding join cancels back to /founding. */
   cancelUrl?: string;
+  now?: Date;
+  env?: Record<string, string | undefined>;
 }): Promise<CreateBillingCheckoutResult> {
   const {
     tier,
@@ -92,6 +97,15 @@ export async function createBillingCheckout(input: {
   }
   if (familyAlreadySubscribed(family)) {
     return { status: 'already_paid' };
+  }
+
+  const now = input.now ?? new Date();
+  const env = input.env ?? process.env;
+  const promoActive =
+    foundingWindowOpen(now, env) &&
+    (holidayPromoEnabled(env) || isPromoPreviewFamily(familyId, env));
+  if (promoActive && (!isFoundingPriceId(priceId, env) || period !== 'annual')) {
+    return { status: 'founding_only' };
   }
 
   const { url } = await client.createCheckoutSession({

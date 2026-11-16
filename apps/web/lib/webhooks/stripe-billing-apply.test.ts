@@ -256,4 +256,102 @@ describe('applyStripeBillingEvent', () => {
       { tier: 'plus', stripeCustomerId: 'cus_9', stripeSubscriptionId: 'sub_9' },
     ]);
   });
+
+  it('does not grant Plus for a list-price Payment Link during the promo; audits refund-ready and alerts', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free' });
+    const alerts: Array<Record<string, unknown>> = [];
+    const event = {
+      id: 'evt_plink',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_plink',
+          payment_link: 'plink_year',
+          client_reference_id: FAMILY_ID,
+          metadata: { familyId: FAMILY_ID, tier: 'plus', priceId: 'price_cad_mo' },
+          line_items: { data: [{ price: { id: 'price_cad_mo' } }] },
+        },
+      },
+    };
+
+    const result = await applyStripeBillingEvent(
+      event,
+      db,
+      MAP,
+      {},
+      {
+        now: new Date('2026-11-16T12:00:00-05:00'),
+        env: {
+          STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+          STRIPE_PRICE_PLUS_MONTHLY: 'price_cad_mo',
+          STRIPE_PAYMENT_LINK_ID: 'plink_year',
+          STRIPE_PAYMENT_LINK_TIER: 'plus',
+        },
+        onDisallowedPrice: async (info) => {
+          alerts.push(info);
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: 'refund_ready' });
+    expect(rec.planWrites).toEqual([]);
+    expect(rec.audits).toEqual([
+      expect.objectContaining({
+        familyId: FAMILY_ID,
+        actionTaken: 'billing_refund_ready',
+        after: expect.objectContaining({
+          stripeEventId: 'evt_plink',
+          sessionId: 'cs_plink',
+          priceIds: ['price_cad_mo'],
+          reason: 'list_price',
+          refund: 'ready',
+          autoRefund: false,
+        }),
+      }),
+    ]);
+    expect(alerts).toEqual([
+      {
+        eventId: 'evt_plink',
+        sessionId: 'cs_plink',
+        priceIds: ['price_cad_mo'],
+        reason: 'list_price',
+      },
+    ]);
+    expect(JSON.stringify(alerts)).not.toMatch(/email|@|phone/i);
+  });
+
+  it('is idempotent on a redelivered disallowed session: no second alert, no grant', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free', preClaimed: ['evt_plink'] });
+    const alerts: unknown[] = [];
+    const event = {
+      id: 'evt_plink',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_plink',
+          payment_link: 'plink_year',
+          metadata: { familyId: FAMILY_ID, tier: 'plus' },
+        },
+      },
+    };
+
+    const result = await applyStripeBillingEvent(
+      event,
+      db,
+      MAP,
+      {},
+      {
+        now: new Date('2026-11-16T12:00:00-05:00'),
+        env: { STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad' },
+        onDisallowedPrice: async (info) => {
+          alerts.push(info);
+        },
+      },
+    );
+
+    expect(result).toEqual({ status: 'duplicate' });
+    expect(rec.planWrites).toEqual([]);
+    expect(rec.audits).toEqual([]);
+    expect(alerts).toEqual([]);
+  });
 });

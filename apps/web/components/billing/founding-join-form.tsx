@@ -69,7 +69,7 @@ export function FoundingJoinForm({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch('/api/promo/join/request', {
+      const res = await fetch(`/api/promo/join/request${window.location.search}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ phone: value }),
@@ -127,7 +127,7 @@ export function FoundingJoinForm({
       if (!verified) {
         const value = code.trim();
         if (value.length === 0) return;
-        const verify = await fetch('/api/promo/join/verify', {
+        const verify = await fetch(`/api/promo/join/verify${window.location.search}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           credentials: 'include',

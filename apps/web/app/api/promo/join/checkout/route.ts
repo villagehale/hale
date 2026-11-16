@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
 import { currencyFromIpCountry } from '@hale/types';
+import { NextResponse } from 'next/server';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
-import { promoNewVisitorCheckoutEnabled } from '~/lib/billing/flags';
-import { foundingPromoOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
+import { resolveCheckoutPrice } from '~/lib/billing/prices';
+import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
 import { PROMO_JOIN_COOKIE, readPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
+import { promoPreviewTokenFromSearch } from '~/lib/billing/promo-preview';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
 import { db as defaultDb } from '~/lib/db';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
@@ -18,7 +19,10 @@ export const runtime = 'nodejs';
  * by the join cookie. No Auth.js session: the parent has not texted Hale yet.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!promoNewVisitorCheckoutEnabled() || !foundingPromoOpen(new Date())) {
+  const url = new URL(req.url);
+  const token = promoPreviewTokenFromSearch(url.searchParams);
+  const now = new Date();
+  if (!newVisitorFoundingAllowed(now, token)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
@@ -36,7 +40,12 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
-  const selected = resolveCheckoutPrice({ currency, period: 'annual', now: new Date() });
+  const selected = resolveCheckoutPrice({
+    currency,
+    period: 'annual',
+    now,
+    preview: Boolean(token),
+  });
   if (selected.status === 'unavailable' || selected.price.sku !== 'founding_annual') {
     return NextResponse.json(
       {
@@ -47,7 +56,6 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const url = new URL(req.url);
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const attribution = attributionFromRequest({
     cookieHeader,
@@ -83,6 +91,9 @@ export async function POST(req: Request): Promise<Response> {
     }
     if (result.status === 'already_paid') {
       return NextResponse.json({ error: 'already_paid' }, { status: 409 });
+    }
+    if (result.status === 'founding_only') {
+      return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
     }
     return NextResponse.json({ url: result.url }, { status: 200 });
   } catch {

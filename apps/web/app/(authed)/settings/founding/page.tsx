@@ -1,19 +1,16 @@
+import { FOUNDING_PROMO_STARTS_AT, currencyFromIpCountry, promoPhaseAt } from '@hale/types';
 import type { Metadata } from 'next';
 import { cookies, headers } from 'next/headers';
-import {
-  FOUNDING_PROMO_STARTS_AT,
-  currencyFromIpCountry,
-  isFoundingPromoWindowOpen,
-  parseFoundingPromoEndsAt,
-  promoPhaseAt,
-} from '@hale/types';
+import { notFound } from 'next/navigation';
 import { FoundingCheckout } from '~/components/billing/founding-checkout';
 import { PortalHeading } from '~/components/portal/heading';
 import styles from '~/components/portal/portal.module.css';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { resolveCheckoutPrice } from '~/lib/billing/prices';
+import { foundingWindowOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
+import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
+import { currentFamilyId } from '~/lib/family';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 
 export const metadata: Metadata = { title: 'Founding family checkout' };
@@ -40,6 +37,7 @@ export default async function FoundingCheckoutPage({
   });
   const now = new Date();
   const currency = currencyFromIpCountry(h.get('x-vercel-ip-country'));
+  const familyId = await currentFamilyId();
   const basics = await loadFamilyBasics();
   if (basics.planTier !== 'free') {
     return (
@@ -62,8 +60,7 @@ export default async function FoundingCheckoutPage({
     );
   }
   const open =
-    now.getTime() >= new Date(FOUNDING_PROMO_STARTS_AT).getTime() &&
-    isFoundingPromoWindowOpen(now, parseFoundingPromoEndsAt(process.env.PROMO_FOUNDING_ENDS_AT));
+    now.getTime() >= new Date(FOUNDING_PROMO_STARTS_AT).getTime() && foundingWindowOpen(now);
   if (!open) {
     return (
       <>
@@ -79,9 +76,16 @@ export default async function FoundingCheckoutPage({
       </>
     );
   }
-  const selection = resolveCheckoutPrice({ currency, period: 'annual', now });
+  if (!familyMayUseFoundingCheckout(familyId, now)) {
+    notFound();
+  }
+  const selection = resolveCheckoutPrice({
+    currency,
+    period: 'annual',
+    now,
+    preview: !holidayPromoEnabled(),
+  });
   const ready =
-    holidayPromoEnabled() &&
     selection.status === 'selected' &&
     selection.price.sku === 'founding_annual' &&
     selection.price.currency === currency &&

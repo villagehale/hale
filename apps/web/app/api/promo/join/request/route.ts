@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { promoNewVisitorCheckoutEnabled } from '~/lib/billing/flags';
-import { requestPromoJoinCode } from '~/lib/billing/new-visitor-join';
-import { foundingPromoOpen } from '~/lib/billing/prices';
 import { createClaimCodeSender } from '~/lib/auth/claim-code-sender';
 import { authRateLimited } from '~/lib/auth/rate-limit';
+import { requestPromoJoinCode } from '~/lib/billing/new-visitor-join';
+import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
+import { promoPreviewTokenFromSearch } from '~/lib/billing/promo-preview';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
@@ -20,7 +20,8 @@ export const runtime = 'nodejs';
  * 'accepted' }`. Only the holder of the number can tell whether an SMS arrived.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!promoNewVisitorCheckoutEnabled() || !foundingPromoOpen(new Date())) {
+  const token = promoPreviewTokenFromSearch(new URL(req.url).searchParams);
+  if (!newVisitorFoundingAllowed(new Date(), token)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 

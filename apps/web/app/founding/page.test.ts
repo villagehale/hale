@@ -1,32 +1,57 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const page = readFileSync(fileURLToPath(new URL('./page.tsx', import.meta.url)), 'utf8');
-const form = readFileSync(
-  fileURLToPath(new URL('../../components/billing/founding-join-form.tsx', import.meta.url)),
-  'utf8',
-);
+vi.mock('next/headers', () => ({
+  headers: async () => ({ get: () => 'CA' }),
+}));
+vi.mock('next/navigation', () => ({
+  notFound: () => {
+    throw new Error('NEXT_NOT_FOUND');
+  },
+}));
+vi.mock('~/lib/channel/connect/hale-texts-href', () => ({
+  haleTextsNumber: () => '+15555550100',
+}));
 
-describe('/founding', () => {
-  it('stays dark unless both payment flags are on, and never enrols a channel from the form', () => {
-    expect(page).toContain('promoNewVisitorCheckoutEnabled');
-    expect(page).toContain('foundingPromoOpen');
-    expect(page).toContain('notFound');
-    expect(form).toContain('/api/promo/join/request');
-    expect(form).toContain('/api/promo/join/verify');
-    expect(form).toContain('/api/promo/join/checkout${window.location.search}');
-    expect(form).toContain('setVerified(true)');
-    expect(form).toContain('Text Hale');
-    expect(form).not.toContain('parentChannels');
+async function renderFounding(
+  search: { checkout?: string; preview?: string } = {},
+): Promise<string> {
+  const { default: FoundingJoinPage } = await import('./page');
+  return renderToStaticMarkup(await FoundingJoinPage({ searchParams: Promise.resolve(search) }));
+}
+
+describe('/founding offer surface', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
   });
 
-  it('shows Free next to founding join, with hale-web $ labels', () => {
-    expect(page).toContain('FreeJoinCard');
-    expect(page).toContain('FoundingJoinForm');
-    expect(page).toContain('foundingPriceLabel');
-    expect(page).toContain('pairRow');
-    expect(page).not.toContain('FOUNDING_PRICE_DISPLAY');
-    expect(page).not.toContain('perYear');
+  it('during the window shows Free and founding annual, not monthly or list annual', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    const html = await renderFounding();
+    expect(html).toContain('Free');
+    expect(html).toContain('Join as a founding family');
+    expect(html).toContain('$79/yr');
+    expect(html).not.toContain('/mo');
+    expect(html).not.toContain('$159/yr');
+    expect(html).not.toContain('$19');
+    expect(html).not.toContain('Continue ·');
+    expect(html).not.toMatch(/grey|gray/i);
+  });
+
+  it('shows the same two options with a matching preview token while flags stay off', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    const html = await renderFounding({ preview: 'secret' });
+    expect(html).toContain('Free');
+    expect(html).toContain('$79/yr');
+    expect(html).not.toContain('/mo');
+  });
+
+  it('after the cutoff is not found — monthly does not come back on this page', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
+    await expect(renderFounding()).rejects.toThrow('NEXT_NOT_FOUND');
   });
 });
