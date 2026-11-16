@@ -202,6 +202,7 @@ describe('POST /api/billing/checkout', () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
     vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
+    vi.stubEnv('STRIPE_PRICE_FAMILY_ANNUAL', 'price_family_yr');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     createMock.mockResolvedValue({
@@ -214,6 +215,12 @@ describe('POST /api/billing/checkout', () => {
     const arg = createMock.mock.calls[0]?.[0] as { priceId: string; sku: string };
     expect(arg.priceId).toBe('price_cad_yr');
     expect(arg.sku).toBe('plus_annual');
+    expect(arg).toMatchObject({ tier: 'plus' });
+
+    createMock.mockClear();
+    const maxAfter = await post({ period: 'annual', tier: 'max' });
+    expect(maxAfter.status).toBe(501);
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it('404s when the flag is off and the family is not listed', async () => {

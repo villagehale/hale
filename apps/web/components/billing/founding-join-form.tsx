@@ -90,31 +90,35 @@ export function FoundingJoinForm({
   }
 
   async function openCheckout(tier: PaidTier) {
-    const checkout = await fetch(`/api/promo/join/checkout${window.location.search}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ tier }),
-    });
-    if (checkout.status === 409) {
-      setStep('paid');
-      return;
-    }
-    if (checkout.status === 401) {
-      setVerified(false);
-      setError(CLAIM_CODE_ERROR);
-      return;
-    }
-    if (!checkout.ok) {
+    try {
+      const checkout = await fetch(`/api/promo/join/checkout${window.location.search}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ tier }),
+      });
+      if (checkout.status === 409) {
+        setStep('paid');
+        return;
+      }
+      if (checkout.status === 401) {
+        setVerified(false);
+        setError(CLAIM_CODE_ERROR);
+        return;
+      }
+      if (!checkout.ok) {
+        setError(CLAIM_CONNECTION_ERROR);
+        return;
+      }
+      const payload = (await checkout.json()) as { url?: string };
+      if (typeof payload.url !== 'string' || payload.url.length === 0) {
+        setError(CLAIM_CONNECTION_ERROR);
+        return;
+      }
+      window.location.assign(payload.url);
+    } catch {
       setError(CLAIM_CONNECTION_ERROR);
-      return;
     }
-    const payload = (await checkout.json()) as { url?: string };
-    if (typeof payload.url !== 'string' || payload.url.length === 0) {
-      setError(CLAIM_CONNECTION_ERROR);
-      return;
-    }
-    window.location.assign(payload.url);
   }
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   foundingPromoOpen,
   isPromoPriceId,
+  paidTierFromSku,
   paidTierFromUnknown,
   paymentLinkUrlWhilePromoAllows,
   plusPriceIdsFromEnv,
@@ -38,6 +39,15 @@ describe('paidTierFromUnknown', () => {
     expect(paidTierFromUnknown('plus')).toBe('plus');
     expect(paidTierFromUnknown(undefined)).toBe('plus');
     expect(paidTierFromUnknown('nope')).toBe('plus');
+  });
+});
+
+describe('paidTierFromSku', () => {
+  it('grants Max only from the Max promo sku', () => {
+    expect(paidTierFromSku('promo_max_annual')).toBe('family');
+    expect(paidTierFromSku('promo_plus_annual')).toBe('plus');
+    expect(paidTierFromSku('plus_annual')).toBe('plus');
+    expect(paidTierFromSku('plus_monthly')).toBe('plus');
   });
 });
 
@@ -203,7 +213,7 @@ describe('resolveCheckoutPrice', () => {
     });
   });
 
-  it('reads leftover STRIPE_PRICE_FOUNDING_ANNUAL_* when the new Plus promo env is unset', () => {
+  it('does not charge leftover founding ids as the new Plus promo', () => {
     expect(
       resolveCheckoutPrice({
         currency: 'CAD',
@@ -214,9 +224,7 @@ describe('resolveCheckoutPrice', () => {
           STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
         },
       }),
-    ).toMatchObject({
-      price: { priceId: 'price_founding_cad', sku: 'promo_plus_annual' },
-    });
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
   it('never serves the Payment Link URL during the window', () => {
@@ -245,6 +253,18 @@ describe('resolveCheckoutPrice', () => {
     ).toMatchObject({ price: { priceId: 'price_cad_yr', sku: 'plus_annual' } });
     expect(
       resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: AFTER, env: PROMO }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          ...WITH_LIST,
+          STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
+        },
+      }),
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
@@ -307,5 +327,11 @@ describe('promo renewal after the cutoff', () => {
       expect.arrayContaining(['price_max_cad', 'price_max_usd']),
     );
     expect(promoPriceIdsFromEnv(env)).toHaveLength(4);
+    const leftover = {
+      ...env,
+      STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+    };
+    expect(plusPriceIdsFromEnv(leftover)).toContain('price_founding_cad');
+    expect(promoPriceIdsFromEnv(leftover)).not.toContain('price_founding_cad');
   });
 });

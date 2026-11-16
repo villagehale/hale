@@ -10,6 +10,7 @@ import { holidayPromoEnabled } from '~/lib/billing/flags';
 import {
   foundingWindowOpen,
   isPromoAnnualSku,
+  paidTierFromSku,
   paidTierFromUnknown,
   resolveCheckoutPrice,
 } from '~/lib/billing/prices';
@@ -122,7 +123,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const result = await createBillingCheckout({
-      tier,
+      tier: paidTierFromSku(selected.price.sku),
       period: selected.price.period,
       priceId: selected.price.priceId,
       sku: selected.price.sku,

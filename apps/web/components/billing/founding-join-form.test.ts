@@ -1,8 +1,24 @@
-import { createElement } from 'react';
+/**
+ * @vitest-environment happy-dom
+ */
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CLAIM_CONNECTION_ERROR } from '~/lib/auth/claim-phone-copy';
 import { FoundingJoinForm } from './founding-join-form';
 import { FreeJoinCard } from './free-join-card';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: ReturnType<typeof createRoot> | null = null;
+
+afterEach(() => {
+  root?.unmount();
+  root = null;
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
 
 describe('FoundingJoinForm', () => {
   it('shows Plus and Max yearly prices with a plain $ and a full refund anytime', () => {
@@ -48,5 +64,66 @@ describe('/founding three-option pair', () => {
     expect(html).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('Continue ·');
+  });
+});
+
+function setInputValue(el: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+describe('FoundingJoinForm checkout errors', () => {
+  it('shows a connection error when Plus checkout fetch rejects', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/promo/join/request')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (url.includes('/api/promo/join/verify')) {
+        return new Response(JSON.stringify({ alreadyPaid: false }), { status: 200 });
+      }
+      throw new Error('network');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(createElement(FoundingJoinForm, { plusLabel: '$59/yr', maxLabel: '$99/yr' }));
+    });
+
+    const phone = container.querySelector('#founding-phone') as HTMLInputElement;
+    await act(async () => {
+      setInputValue(phone, '5555551234');
+    });
+    await act(async () => {
+      (container.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    });
+
+    const code = container.querySelector('#founding-code') as HTMLInputElement;
+    expect(code).toBeTruthy();
+    await act(async () => {
+      setInputValue(code, '123456');
+    });
+    await act(async () => {
+      (container.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    });
+
+    const plus = [...container.querySelectorAll('button')].find((el) =>
+      el.textContent?.includes('Continue · Plus'),
+    );
+    expect(plus).toBeTruthy();
+    await act(async () => {
+      plus?.click();
+    });
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe(CLAIM_CONNECTION_ERROR);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/promo/join/checkout'),
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });

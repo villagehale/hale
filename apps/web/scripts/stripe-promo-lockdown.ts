@@ -9,8 +9,8 @@
 //   pnpm stripe:promo-lockdown -- --apply
 //
 // Needs STRIPE_SECRET_KEY. Promo ids come from
-// STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD} (Plus also reads leftover
-// STRIPE_PRICE_FOUNDING_ANNUAL_*).
+// STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD} only. Leftover
+// STRIPE_PRICE_FOUNDING_ANNUAL_* ids are not kept live.
 
 import { promoPriceIdsFromEnv } from '../lib/billing/prices';
 import { runPromoLockdown, stripePromoLockdownApiFromSecret } from '../lib/billing/promo-lockdown';

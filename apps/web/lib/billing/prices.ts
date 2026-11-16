@@ -9,8 +9,9 @@ type PaidTier = 'plus' | 'family';
  * Env-driven Stripe price selection for the holiday promo and the USD list path.
  *
  * Amounts are never read here. Promo yearly ids arrive as
- * STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD}. Plus promo ids still read the
- * old STRIPE_PRICE_FOUNDING_ANNUAL_* names when the new ones are unset.
+ * STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD}. Leftover
+ * STRIPE_PRICE_FOUNDING_ANNUAL_* names still map existing subscriptions to
+ * plus on the webhook; they are never selected for a new checkout.
  *
  * During the window every new checkout is that tier's promo yearly price for
  * the visitor's currency — never a list or monthly id, even if the client asked.
@@ -89,20 +90,17 @@ export function isPromoAnnualSku(sku: CheckoutSku): boolean {
   return sku === 'promo_plus_annual' || sku === 'promo_max_annual';
 }
 
+export function paidTierFromSku(sku: CheckoutSku): PaidTier {
+  return sku === 'promo_max_annual' ? 'family' : 'plus';
+}
+
 export function promoPlusAnnualPriceId(
   currency: BillingCurrency,
   env: Record<string, string | undefined> = process.env,
 ): string | null {
-  if (currency === 'USD') {
-    return (
-      trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD_ENV]) ??
-      trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_USD_ENV])
-    );
-  }
-  return (
-    trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD_ENV]) ??
-    trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_CAD_ENV])
-  );
+  return currency === 'USD'
+    ? trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD_ENV])
+    : trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD_ENV]);
 }
 
 export function promoMaxAnnualPriceId(
@@ -139,14 +137,21 @@ export function plusListPriceId(
     : trimId(env.STRIPE_PRICE_PLUS_MONTHLY);
 }
 
+export function leftoverFoundingPriceIdsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
+}
+
 export function promoPlusPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
   return [
     trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD_ENV]),
     trimId(env[STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD_ENV]),
-    trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_CAD_ENV]),
-    trimId(env[STRIPE_PRICE_FOUNDING_ANNUAL_USD_ENV]),
   ].filter((id): id is string => id !== null);
 }
 
@@ -159,7 +164,7 @@ export function promoMaxPriceIdsFromEnv(
   ].filter((id): id is string => id !== null);
 }
 
-/** The four promo yearly ids (Plus CAD/USD, Max CAD/USD), plus any leftover founding names. */
+/** The four promo yearly ids. Leftover founding names are not in this set. */
 export function promoPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
@@ -202,7 +207,11 @@ export function familyPriceIdsFromEnv(
 export function plusPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
-  return [...listPriceIdsFromEnv(env), ...promoPlusPriceIdsFromEnv(env)];
+  return [
+    ...listPriceIdsFromEnv(env),
+    ...promoPlusPriceIdsFromEnv(env),
+    ...leftoverFoundingPriceIdsFromEnv(env),
+  ];
 }
 
 export function isPromoPriceId(
@@ -271,8 +280,10 @@ function promoSelection(
  * 2. Window open → that tier's promo yearly for the visitor's currency.
  *    Client period / list / monthly env ids are ignored. Missing promo id
  *    is unavailable.
- * 3. After the window, the list price for that currency, then CAD as fallback.
- *    Preview callers do not get list prices after the cutoff.
+ * 3. After the window, the Plus list price for that currency, then CAD as
+ *    fallback. Max has no list offer — a Max request is unavailable so we
+ *    never charge Plus while writing family metadata. Preview callers do
+ *    not get list prices after the cutoff.
  */
 export function resolveCheckoutPrice(input: {
   currency: BillingCurrency;
@@ -298,6 +309,10 @@ export function resolveCheckoutPrice(input: {
 
   if (!holidayPromoEnabled(env)) {
     return { status: 'unavailable', reason: 'flag_off' };
+  }
+
+  if (tier === 'family') {
+    return { status: 'unavailable', reason: 'no_price' };
   }
 
   const native = listSelection(input.currency, input.period, env);

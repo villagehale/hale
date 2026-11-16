@@ -4,7 +4,12 @@ import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
-import { isPromoAnnualSku, paidTierFromUnknown, resolveCheckoutPrice } from '~/lib/billing/prices';
+import {
+  isPromoAnnualSku,
+  paidTierFromSku,
+  paidTierFromUnknown,
+  resolveCheckoutPrice,
+} from '~/lib/billing/prices';
 import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import { PROMO_JOIN_COOKIE, readPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
 import {
@@ -78,7 +83,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const result = await createBillingCheckout({
-      tier,
+      tier: paidTierFromSku(selected.price.sku),
       period: selected.price.period,
       priceId: selected.price.priceId,
       sku: selected.price.sku,
