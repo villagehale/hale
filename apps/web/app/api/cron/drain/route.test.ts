@@ -110,7 +110,7 @@ describe('GET /api/cron/drain', () => {
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'db_unavailable' });
-  });
+  }, 15_000);
 
   it('still throws every other failure — a handler bug is not a fleet-wide back-off', async () => {
     const { GET } = await import('./route');
@@ -175,6 +175,7 @@ describe('GET /api/cron/drain', () => {
       groupReminders: { skipped: 'flag_off' },
       heldReminders: { held: 0 },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
+      anthropicCredit: { skipped: 'flag_off' },
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
   });
@@ -398,6 +399,7 @@ describe('GET /api/cron/drain', () => {
     expect(await response.json()).toMatchObject({
       optOutRecovery: { skipped: 'preview' },
       heldReminders: { skipped: 'preview' },
+      anthropicCredit: { skipped: 'preview' },
     });
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();
     expect(recheckHeldRemindersMock).not.toHaveBeenCalled();

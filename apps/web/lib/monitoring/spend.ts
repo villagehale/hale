@@ -10,8 +10,9 @@ import { type ProviderIncidentDeps, raiseProviderIncident } from '~/lib/monitori
  * so a runaway agent loop is caught early instead of surfacing on the bill.
  *
  * The sum misses lanes that write no cost row, the pre-flight probes, and eval/dev spend
- * on the same account, so it is NOT an early warning for the provider's usage-limit 400;
- * the provider-health classifier is the alarm for that.
+ * on the same account, so it is NOT an early warning for prepaid-credit exhaustion or
+ * the provider's usage-limit 400; anthropic-credit.ts pages remaining credit, and the
+ * provider-health classifier is the alarm for a usage-limit 400.
  *
  * The summing/threshold logic is the pure summarizeSpend so it is unit-tested
  * without a DB; the cron route owns the month-window query and the alert.

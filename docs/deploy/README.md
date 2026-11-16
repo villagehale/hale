@@ -72,6 +72,8 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `APP_URL` | ✓ | — | Public app origin |
 | (none app-specific) | — | ✓ | site is static marketing |
 
+Prepaid Anthropic credit #ops alert (optional, dark): `ANTHROPIC_CREDIT_ALERT_ENABLED` (exact `true`), `ANTHROPIC_CREDIT_START_USD`, `ANTHROPIC_CREDIT_START_AT`, optional `ANTHROPIC_CREDIT_ALERT_USD` (default 40), optional `ANTHROPIC_CREDIT_EXPIRES_AT`, and optional `ANTHROPIC_CREDIT_EXPIRY_WARN_DAYS` (default 7,3). Pages Slack #ops from `/api/cron/spend-alert` and the scheduled drain when remaining credit drops below the thresholds, once per expiry warning day at 10:00 America/Toronto, and at once on a credit/billing API error. Never a parent text. See `.env.example`.
+
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
 These drive `.github/workflows/deploy.yml` (which has one leg, `migrate`;

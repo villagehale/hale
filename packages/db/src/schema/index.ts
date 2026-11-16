@@ -22,6 +22,7 @@ export * from './events.js';
 export * from './actions.js';
 export * from './audit.js';
 export * from './agent-runs.js';
+export * from './anthropic-spend.js';
 export * from './outbound-sends.js';
 export * from './stripe-billing-events.js';
 export * from './family-upgrade-offers.js';
