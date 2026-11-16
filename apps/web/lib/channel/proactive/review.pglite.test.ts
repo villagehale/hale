@@ -161,6 +161,7 @@ interface Harness {
   composed: number;
   written: ToolCandidate[][];
   rechecked: string[];
+  pages: Array<{ site: string; facts: { reason: string } }>;
 }
 
 function harness(
@@ -175,6 +176,7 @@ function harness(
     composed: 0,
     written: [],
     rechecked: [],
+    pages: [],
   };
   state.deps = {
     client: null,
@@ -199,6 +201,13 @@ function harness(
     recheckOpenAsk: async (_db, item) => {
       state.rechecked.push(item.dedupeKey);
       return { verdict: 'owed', timeZone: TZ };
+    },
+    page: async (opsPage) => {
+      state.pages.push({
+        site: opsPage.site,
+        facts: opsPage.facts as { reason: string },
+      });
+      return 'paged';
     },
     ...over,
   };
@@ -1207,8 +1216,9 @@ describe('runProactiveReview', () => {
     expect(held.map((row) => row.after)).toEqual([
       { reason: 'delivery_3001', itemIds: [coded], mode: 'live' },
       { reason: 'delivery_other', itemIds: [coded, worded], mode: 'live' },
-      { reason: 'delivery_other', itemIds: [coded, worded, overlong], mode: 'live' },
-      { reason: 'delivery_other', itemIds: [coded, worded, overlong, spaced], mode: 'live' },
+      // Earlier holds are still on their reopen clock, so a new miss does not pull them back in.
+      { reason: 'delivery_other', itemIds: [overlong], mode: 'live' },
+      { reason: 'delivery_other', itemIds: [spaced], mode: 'live' },
     ]);
   });
 
@@ -1930,6 +1940,30 @@ describe('runProactiveReview', () => {
 
       await runProactiveReview(db.database, h.deps, HOUR_AFTER);
       expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
+    });
+
+    it('when live, a model failure pages #ops and leaves the row queued for the next hour', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const id = await enqueue();
+      const h = skipsOnce('model_failed');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.pages).toEqual([
+        { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+      ]);
+      expect(await candidate(id)).toMatchObject({ status: 'queued' });
+      expect(h.transport.sent).toEqual([]);
+    });
+
+    it('in shadow, a model failure does not page, because the old path still sends', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      await enqueue();
+      const h = skipsOnce('model_failed');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.pages).toEqual([]);
     });
 
     it('when live, writes no read mark, so the pace request is read again and kept', async () => {
@@ -2766,6 +2800,39 @@ describe('runProactiveReview', () => {
     warn.mockRestore();
   });
 
+  it('reopens a line-health hold on its own clock and sends once the line is clear', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    let paused = true;
+    const h = harness(sendAll, { lineHold: async () => (paused ? 'line_health' : null) });
+    const hour = 60 * 60_000;
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+      new Date(THURSDAY_EVENING.getTime() + hour).toISOString(),
+    );
+    expect(h.transport.sent).toEqual([]);
+
+    await runProactiveReview(
+      db.database,
+      h.deps,
+      new Date(THURSDAY_EVENING.getTime() + 30 * 60_000),
+    );
+    expect(h.snapshots).toHaveLength(1);
+
+    const due = new Date(THURSDAY_EVENING.getTime() + hour);
+    await runProactiveReview(db.database, h.deps, due);
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.transport.sent).toEqual([]);
+    expect((await candidate(id))?.status).toBe('held');
+
+    paused = false;
+    const clear = new Date(due.getTime() + hour);
+    await runProactiveReview(db.database, h.deps, clear);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+  });
+
   it('keeps a clock-less code hold from the model until something new arrives', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     // Spelled as an env var may be: the stored row below is the same line.
@@ -2776,6 +2843,12 @@ describe('runProactiveReview', () => {
     const hourAfter = new Date(nextEvening.getTime() + 60 * 60_000);
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    // A row stored with no clock (written before holds carried a reopen) still waits
+    // for a signal. New holds get a clock; this clears it to keep that case.
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ holdUntil: null })
+      .where(eq(schema.proactiveCandidates.id, id));
     expect(await candidate(id)).toMatchObject({
       status: 'held',
       reason: 'line_health',
@@ -2849,9 +2922,11 @@ describe('runProactiveReview', () => {
       expect(await candidate(id)).toMatchObject({
         status: 'held',
         reason: 'no_watch_consent',
-        holdUntil: null,
         what: 'Indoor climbing by the river',
       });
+      expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+        new Date(THURSDAY_EVENING.getTime() + 60 * 60_000).toISOString(),
+      );
 
       const summary = await runProactiveReview(
         db.database,
@@ -3267,7 +3342,7 @@ describe('the next-day check-back', () => {
     expect(skipped?.after).toMatchObject({ reason: 'finished_elsewhere', itemIds: [id] });
   });
 
-  it('holds an ask it could not re-check, with no clock, and sends nothing', async () => {
+  it('holds an ask it could not re-check until the next hour, and sends nothing', async () => {
     const id = await enqueueCheckback(await waitingAsk());
     const h = harness(sendAll, {
       recheckOpenAsk: async () => ({ verdict: 'unchecked', reason: 'recheck_failed' }),
@@ -3280,8 +3355,10 @@ describe('the next-day check-back', () => {
     expect(await candidate(id)).toMatchObject({
       status: 'held',
       reason: 'recheck_failed',
-      holdUntil: null,
     });
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000).toISOString(),
+    );
   });
 
   it('still sends the rest of a batch whose check-back closed', async () => {

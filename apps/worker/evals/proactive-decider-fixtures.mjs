@@ -331,4 +331,98 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       ],
     }),
   },
+  // VIL-691 · news and time-critical classes. Thursday 6:00 PM is evening, not quiet
+  // hours. A full week and an unanswered streak do not hold these.
+  {
+    id: 'email-alert-soon',
+    expect: { action: 'send_now', includes: ['mail'], frequency: null },
+    snapshot: snapshot({
+      candidates: [
+        candidate({
+          id: 'mail',
+          kind: 'email_alert',
+          why: 'email_alert occasion soon',
+          worthlessAfter: '2026-10-09T16:00:00.000Z',
+        }),
+      ],
+      recentSends: UNANSWERED,
+      unansweredStreak: 3,
+    }),
+  },
+  {
+    id: 'calendar-alert-moved',
+    expect: { action: 'send_now', includes: ['moved'], frequency: null },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [candidate({ id: 'moved', kind: 'calendar_alert', why: 'calendar_alert' })],
+    }),
+  },
+  {
+    id: 'spot-open-seat',
+    expect: { action: 'send_now', includes: ['seat'], frequency: null },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [
+        candidate({
+          id: 'seat',
+          kind: 'spot_open',
+          why: 'spot_open',
+          worthlessAfter: '2026-10-08T23:30:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    id: 'village-intro-ask',
+    expect: { action: 'send_now', includes: ['intro'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'intro', kind: 'village_intro', why: 'village_intro' })],
+    }),
+  },
+  {
+    id: 'followup-due',
+    expect: { action: 'send_now', includes: ['back'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'back', kind: 'followup', why: 'followup' })],
+    }),
+  },
+  {
+    id: 'plan-check-in-due',
+    expect: { action: 'send_now', includes: ['plan'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'plan', kind: 'plan_check_in', why: 'plan_check_in' })],
+    }),
+  },
+  {
+    id: 'activity-followup-due',
+    expect: { action: 'send_now', includes: ['activity'], frequency: null },
+    snapshot: snapshot({
+      candidates: [
+        candidate({ id: 'activity', kind: 'activity_followup', why: 'activity_followup' }),
+      ],
+    }),
+  },
+  {
+    id: 'duty-ask-evening',
+    expect: { action: 'send_now', includes: ['duty'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'duty', kind: 'duty_ask', why: 'duty_ask' })],
+    }),
+  },
+];
+
+/**
+ * VIL-691 · news and time-critical classes the decider must send at Thursday 6:00 PM,
+ * even when the week is full or several texts went unanswered. Recorded once; the
+ * cached-only runner grades them.
+ */
+export const PROACTIVE_DECIDER_LIVE_KINDS = [
+  'email_alert',
+  'calendar_alert',
+  'spot_open',
+  'village_intro',
+  'followup',
+  'plan_check_in',
+  'activity_followup',
+  'duty_ask',
 ];

@@ -19,8 +19,8 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -903,6 +903,8 @@ export interface WorkstreamFollowupDeps {
   ) => Promise<boolean>;
   buildGate?: (database: Database) => OutboundGatePorts;
   dedupeActive?: (database: Database, dedupeKey: string) => Promise<boolean>;
+  /** Live cadence already holds this check-back. Checked before compose. */
+  queuedForDecider?: (database: Database, familyId: string, dedupeKey: string) => Promise<boolean>;
   resolvePhone?: (database: Database, parentUserId: string) => Promise<string | null>;
   compose?: (row: DueWorkstream) => Promise<WorkstreamComposeResult>;
   deliver?: typeof deliverFamilyOutbound;
@@ -1237,6 +1239,8 @@ export async function runWorkstreamFollowupSweep(
   const teen = deps.linkedTeen ?? linkedTeen;
   const buildGate = deps.buildGate ?? buildOutboundGatePorts;
   const claimed = deps.dedupeActive ?? ((db, key) => dedupeActive(key, db));
+  const queuedForDecider =
+    deps.queuedForDecider ?? ((db, familyId, key) => isQueuedForDecider(db, familyId, key));
   const phoneFor = deps.resolvePhone ?? resolveSendablePhone;
   const compose = deps.compose ?? ((row: DueWorkstream) => defaultCompose(database, row, now));
   const deliver = deps.deliver ?? deliverFamilyOutbound;
@@ -1322,6 +1326,10 @@ export async function runWorkstreamFollowupSweep(
           now,
         });
       };
+      if (await queuedForDecider(database, row.familyId, dedupeKey)) {
+        result.queued += 1;
+        continue;
+      }
       const composed = await compose(row);
       if (!composed.ok) {
         if (composed.reason === 'not_configured') {
@@ -1343,10 +1351,6 @@ export async function runWorkstreamFollowupSweep(
       if (!composed.body) {
         await stamp(database, row.id, now);
         result.skipped.nothing_to_say += 1;
-        continue;
-      }
-      if (await isQueuedForDecider(database, row.familyId, dedupeKey)) {
-        result.queued += 1;
         continue;
       }
       const handedOff = await handOffProactive(

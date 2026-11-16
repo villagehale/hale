@@ -203,6 +203,7 @@ export const OPS_PAGE_VOCABULARY = {
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
+  proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
   inbound_canary_failed: {
     stage: [
       'not_configured',

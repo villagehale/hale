@@ -24,6 +24,12 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import {
+  emailAlertOccasionReserved,
+  releaseEmailAlertReservation,
+  reserveEmailAlertOccasion,
+} from '~/lib/channel/proactive/after-send';
+import { proactiveCadence } from '~/lib/channel/proactive/flag';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -446,6 +452,9 @@ async function occasionClaim(
       classIdentity(senderHost(from), sanitizedTitle(extraction.event.title)),
     ),
   ];
+  if (proactiveCadence() === 'live' && (await emailAlertOccasionReserved(database, base))) {
+    return { occasionKey: base, anchorKeys, told: 'already_sent' };
+  }
   const last = await lastToldClaim(database, instantKeys);
   if (last !== undefined && isClaimOf(last.occasionKey, base)) {
     return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
@@ -970,56 +979,77 @@ export async function alertParentForEmail(
     now,
   });
 
-  const handedOff = await handOffProactive(
-    database,
-    [
-      {
-        familyId,
-        parentUserId,
-        kind: 'email_alert',
-        category: 'email_alert',
-        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-        what: notice.text,
-        why: 'email_alert',
-        sourceUrl: null,
-        worthlessAfter: null,
-        parentRequested: false,
-        dedupeKey,
-        payload: {
-          auditVerb: 'email_alert_sent',
-          emailAlert: {
-            occasionKey,
-            anchorKeys,
-            receivedAt: receivedAt.toISOString(),
-            integrationId,
-            messageId,
-            offer:
-              offer === null
-                ? null
-                : {
-                    kind: offer.kind,
-                    title: offer.title,
-                    startsAt: offer.startsAt.toISOString(),
-                    location: offer.location,
-                  },
-            booking:
-              draft === null || !draft.ok
-                ? null
-                : {
-                    providerHost: draft.draft.providerHost,
-                    title: draft.draft.title,
-                    firstSessionAt: draft.draft.firstSessionAt.toISOString(),
-                    location: draft.draft.location,
-                    address: draft.draft.address,
-                    eventId: draft.draft.eventId,
-                    sessionKey: draft.draft.sessionKey,
-                  },
+  // LIVE claims the occasion before the queue, the way the immediate path claims it
+  // before the send. A second message in this thread then reads already_sent and is
+  // not written. The reservation is not a text: it has no dedupe key.
+  let reserved = false;
+  if (proactiveCadence() === 'live') {
+    reserved = await reserveEmailAlertOccasion(database, {
+      familyId,
+      parentUserId,
+      occasionKey,
+      anchorKeys,
+      receivedAt,
+    });
+    if (!reserved) return { alert: 'already_sent', booking: null, going: null };
+  }
+
+  let handedOff: Awaited<ReturnType<typeof handOffProactive>>;
+  try {
+    handedOff = await handOffProactive(
+      database,
+      [
+        {
+          familyId,
+          parentUserId,
+          kind: 'email_alert',
+          category: 'email_alert',
+          templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+          what: notice.text,
+          why: 'email_alert',
+          sourceUrl: null,
+          worthlessAfter: null,
+          parentRequested: false,
+          dedupeKey,
+          payload: {
+            auditVerb: 'email_alert_sent',
+            emailAlert: {
+              occasionKey,
+              anchorKeys,
+              receivedAt: receivedAt.toISOString(),
+              integrationId,
+              messageId,
+              offer:
+                offer === null
+                  ? null
+                  : {
+                      kind: offer.kind,
+                      title: offer.title,
+                      startsAt: offer.startsAt.toISOString(),
+                      location: offer.location,
+                    },
+              booking:
+                draft === null || !draft.ok
+                  ? null
+                  : {
+                      providerHost: draft.draft.providerHost,
+                      title: draft.draft.title,
+                      firstSessionAt: draft.draft.firstSessionAt.toISOString(),
+                      location: draft.draft.location,
+                      address: draft.draft.address,
+                      eventId: draft.draft.eventId,
+                      sessionKey: draft.draft.sessionKey,
+                    },
+            },
           },
         },
-      },
-    ],
-    'candidate',
-  );
+      ],
+      'candidate',
+    );
+  } catch (err) {
+    if (reserved) await releaseEmailAlertReservation(database, occasionKey);
+    throw err;
+  }
   if (handedOff === 'queued') {
     await database.insert(schema.auditLog).values({
       familyId,
@@ -1031,6 +1061,7 @@ export async function alertParentForEmail(
     });
     return { alert: 'queued', booking: null, going: counted ? goingOutcome(counted) : null };
   }
+  if (reserved) await releaseEmailAlertReservation(database, occasionKey);
 
   // CLAIM FIRST, by the inserts rather than by a read a concurrent sweep can race. The two
   // reads above are the cost guards; these are the correctness ones: the message's key on

@@ -65,12 +65,13 @@ import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
 import { REGISTRATION_OPENING_KIND } from '~/lib/registration/city/context';
 import { ownCityRegistrationEnabled } from '~/lib/registration/city/flag';
 import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
-import { applyCandidateAfterSend, payloadOf } from './after-send';
+import { applyCandidateAfterSend, payloadOf, releaseEmailAlertReservationsFor } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -163,6 +164,8 @@ export interface ProactiveReviewDeps {
   /** VIL-681 · is a next-day check-back still unfinished at send time. Required: a
    * check-back sent without it could text a parent about something they already did. */
   recheckOpenAsk: RecheckOpenAsk;
+  /** Pages #ops when a live decision fails. Defaults to failure-page.ts. */
+  page?(page: OpsPage): Promise<unknown>;
   fetch?: typeof fetch;
 }
 
@@ -230,6 +233,12 @@ const SENT_TO_MODEL: readonly DecideSkip[] = ['model_failed', 'unparsed'];
  * so they cannot keep a fresh row out of the review.
  */
 export const FAMILY_ROWS = 40;
+/**
+ * How long a hold the code placed after `send_now` waits before the next review tries
+ * again. Quiet hours pass their own end. A pause, a refused gate, or a missed delivery
+ * otherwise never reopens.
+ */
+export const CODE_HOLD_REOPEN_MS = 60 * 60 * 1000;
 /**
  * An infra bound on the holds still on their clock that one review reads, newest first.
  * They are never offered; they only show the decider its prior holds and anchor the
@@ -671,12 +680,16 @@ export async function mark(
         inArray(schema.proactiveCandidates.id, [...ids]),
       ),
     );
+  if (set.status === 'dropped') {
+    await releaseEmailAlertReservationsFor(database, familyId, ids);
+  }
 }
 
 /**
  * A named hold that the decider did not choose: the red lines at send time. The decider
  * chose `send_now`, and the row keeps that, so the hourly plan (hold.ts) does not hand it
- * back to the model on the day turning. Quiet hours carry their end as the clock.
+ * back to the model on the day turning. Quiet hours carry their end as the clock. Every
+ * other hold carries an hour, so a pause or a refused gate sends on its own once it lifts.
  */
 async function holdByName(
   database: Database,
@@ -687,11 +700,12 @@ async function holdByName(
   held: { holdUntil?: Date; parentUserId?: string } = {},
 ): Promise<void> {
   const itemIds = items.map((item) => item.id);
+  const reopenAt = held.holdUntil ?? new Date(now.getTime() + CODE_HOLD_REOPEN_MS);
   await mark(database, familyId, itemIds, {
     status: 'held',
     reason,
     decision: 'send_now',
-    holdUntil: held.holdUntil ? held.holdUntil.toISOString() : null,
+    holdUntil: reopenAt.toISOString(),
     now,
   });
   await audit(database, familyId, 'proactive_cadence_held', {
@@ -1012,6 +1026,12 @@ async function reviewFamily(
       ...(readInShadow && textsRead ? { parentTextsRead: textsRead } : {}),
       mode,
     });
+    // Under live the old path is gone. A decision that did not come back leaves the
+    // lane queued and retried every hour, which is an outage unless #ops is told.
+    if (mode === 'live' && (skipped === 'model_failed' || skipped === 'unparsed')) {
+      const page = deps.page ?? ((opsPage: OpsPage) => pageOps(database, opsPage));
+      await page({ site: 'proactive_decider_failed', facts: { reason: skipped } });
+    }
     return;
   }
   summary.decided += 1;
