@@ -109,7 +109,7 @@ describe('createBillingCheckout', () => {
       tier: 'plus',
       period: 'annual',
       priceId: 'price_founding_cad',
-      sku: 'founding_annual',
+      sku: 'promo_plus_annual',
       currency: 'CAD',
       ...CALLER,
       database: db,
@@ -295,7 +295,7 @@ describe('createBillingCheckout', () => {
       now: new Date('2026-11-16T12:00:00-05:00'),
       env: {
         HOLIDAY_PROMO_ENABLED: 'true',
-        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_founding_cad',
         STRIPE_PRICE_PLUS_MONTHLY: 'price_cad_mo',
       },
     });

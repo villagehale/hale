@@ -20,13 +20,13 @@ function checkoutPaid(overrides: Record<string, unknown> = {}) {
       object: {
         id: 'cs_1',
         payment_status: 'paid',
-        amount_total: 7900,
+        amount_total: 5900,
         currency: 'cad',
         payment_intent: 'pi_1',
         customer_details: { email: 'Sam@Example.com', phone: '+1 (416) 555-0100' },
         metadata: {
           familyId: 'fam-1',
-          sku: 'founding_annual',
+          sku: 'promo_plus_annual',
           utm_source: 'google',
           gclid: 'Click1',
           fbp: 'fb.1.1.cookie',
@@ -47,12 +47,12 @@ describe('purchaseFromStripeEvent', () => {
     expect(purchase).toMatchObject({
       eventId: 'cs_1',
       orderId: 'cs_1',
-      value: 79,
+      value: 59,
       currency: 'CAD',
       email: 'Sam@Example.com',
       phone: '+1 (416) 555-0100',
       familyId: 'fam-1',
-      sku: 'founding_annual',
+      sku: 'promo_plus_annual',
       attribution: { utm_source: 'google', gclid: 'Click1' },
       ads: {
         fbp: 'fb.1.1.cookie',
@@ -63,10 +63,16 @@ describe('purchaseFromStripeEvent', () => {
     });
   });
 
-  it('reads USD 59 from amount_total', () => {
+  it('reads the paid session amount for each promo tier and currency', () => {
     expect(
-      purchaseFromStripeEvent(checkoutPaid({ amount_total: 5900, currency: 'usd' })),
-    ).toMatchObject({ value: 59, currency: 'USD' });
+      purchaseFromStripeEvent(checkoutPaid({ amount_total: 3900, currency: 'usd' })),
+    ).toMatchObject({ value: 39, currency: 'USD' });
+    expect(
+      purchaseFromStripeEvent(checkoutPaid({ amount_total: 9900, currency: 'cad' })),
+    ).toMatchObject({ value: 99, currency: 'CAD' });
+    expect(
+      purchaseFromStripeEvent(checkoutPaid({ amount_total: 7900, currency: 'usd' })),
+    ).toMatchObject({ value: 79, currency: 'USD' });
   });
 
   it('ignores invoice.paid renewals and unpaid sessions', () => {
@@ -145,7 +151,7 @@ describe('senders no-op without flags or env', () => {
     };
     expect(body.data[0]?.event_name).toBe('Purchase');
     expect(body.data[0]?.event_id).toBe('cs_1');
-    expect(body.data[0]?.custom_data).toMatchObject({ value: 79, currency: 'CAD' });
+    expect(body.data[0]?.custom_data).toMatchObject({ value: 59, currency: 'CAD' });
     expect(body.data[0]?.user_data.em).toEqual([hashEmailForAds('Sam@Example.com')]);
     expect(body.data[0]?.user_data.ph).toEqual([hashPhoneForAds('+1 (416) 555-0100')]);
     expect(body.data[0]?.user_data.fbp).toBe('fb.1.1.cookie');

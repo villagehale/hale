@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, LockKeyhole } from 'lucide-react';
 import {
   type Attribution,
   type BillingCurrency,
-  FOUNDING_PRICE_DISPLAY,
+  PROMO_PRICE_DISPLAY,
   type PromoPhase,
 } from '@hale/types';
+import { ArrowLeft, ArrowRight, Check, LockKeyhole } from 'lucide-react';
+import { useState } from 'react';
+import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import styles from './founding-checkout.module.css';
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
   reviewOnly?: boolean;
   /** Back from Stripe's cancel link. */
   cancelled?: boolean;
+  /** plus or family (Max). */
+  tier?: PaidTier;
 }
 
 const ERROR_TEXT: Record<string, string> = {
@@ -46,10 +49,12 @@ export function FoundingCheckout({
   attribution,
   reviewOnly = false,
   cancelled = false,
+  tier = 'plus',
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const display = FOUNDING_PRICE_DISPLAY[currency];
+  const display = PROMO_PRICE_DISPLAY[tier][currency];
+  const planName = tier === 'family' ? 'Max' : 'Plus';
   const saleName = phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale';
 
   async function begin() {
@@ -67,7 +72,8 @@ export function FoundingCheckout({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           period: 'annual',
-          offer: 'founding',
+          offer: 'promo',
+          tier,
           expectedCurrency: currency,
           ...attribution,
         }),
@@ -95,20 +101,17 @@ export function FoundingCheckout({
   }
 
   return (
-    <section className={styles.card} aria-labelledby="founding-title">
+    <section className={styles.card} aria-labelledby={`founding-title-${tier}`}>
       <a href="/settings/plan" className={styles.back}>
         <ArrowLeft aria-hidden="true" /> Your plan
       </a>
       <div className={styles.grid}>
         <div>
-          <p className={styles.kicker}>Founding families</p>
-          <h1 id="founding-title" className={styles.sale}>
+          <p className={styles.kicker}>{planName}</p>
+          <h1 id={`founding-title-${tier}`} className={styles.sale}>
             {saleName}
           </h1>
-          <p
-            className={styles.price}
-            aria-label={`${display.perYear.replace('/yr', ' a year')} ${display.code}`}
-          >
+          <p className={styles.price} aria-label={`${display.perYear.replace('/yr', ' a year')}`}>
             <span className={styles.symbol} aria-hidden="true">
               {display.symbol}
             </span>
@@ -118,16 +121,11 @@ export function FoundingCheckout({
             <span className={styles.per} aria-hidden="true">
               /yr
             </span>
-            <span className={styles.code} aria-hidden="true">
-              {display.code}
-            </span>
           </p>
           <p className={styles.lede}>
-            Your founding price, locked in for as long as you’re a member.
+            Your {planName} price, locked in for as long as you’re a member.
           </p>
-          <p className={styles.after}>
-            Join by Dec 31. Refund anytime.
-          </p>
+          <p className={styles.after}>Join by Dec 31. Refund anytime.</p>
         </div>
         <div className={styles.summary}>
           {cancelled ? (
@@ -139,7 +137,7 @@ export function FoundingCheckout({
           <ul>
             <li>
               <Check aria-hidden="true" />
-              <span>Billed {display.perYearCode}, starting today.</span>
+              <span>Billed {display.perYear}, starting today.</span>
             </li>
             <li>
               <Check aria-hidden="true" />
@@ -154,8 +152,8 @@ export function FoundingCheckout({
             </li>
           </ul>
           <p className={styles.note}>
-            If you cancel, the founding price ends with your membership. Your payment details go
-            directly to Stripe.
+            If you cancel, this price ends with your membership. Your payment details go directly to
+            Stripe.
           </p>
           {!ready ? (
             <output className={styles.error}>
@@ -163,7 +161,7 @@ export function FoundingCheckout({
             </output>
           ) : null}
           <button type="button" className={styles.button} onClick={begin} disabled={busy || !ready}>
-            {busy ? 'Opening checkout…' : `Continue to checkout · ${display.perYearCode}`}
+            {busy ? 'Opening checkout…' : `Continue to checkout · ${display.perYear}`}
             <ArrowRight aria-hidden="true" />
           </button>
           <p className={styles.secure}>

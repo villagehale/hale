@@ -29,8 +29,9 @@ describe('GET /api/billing/checkout-session', () => {
     retrieveMock.mockResolvedValue({
       id: 'cs_test_paid',
       payment_status: 'paid',
-      amount_total: 7900,
+      amount_total: 5900,
       currency: 'cad',
+      metadata: { tier: 'plus' },
     });
     const res = await get(
       'https://app.example.com/api/billing/checkout-session?session_id=cs_test_paid&value=1&currency=USD',
@@ -38,9 +39,10 @@ describe('GET /api/billing/checkout-session', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       transactionId: 'cs_test_paid',
-      value: 79,
+      value: 59,
       currency: 'CAD',
       paid: true,
+      tier: 'plus',
     });
     expect(retrieveMock).toHaveBeenCalledWith('cs_test_paid');
   });

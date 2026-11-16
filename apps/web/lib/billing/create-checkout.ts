@@ -7,7 +7,12 @@ import type { AdsCheckoutContext } from './ads-context.js';
 import { familyAlreadySubscribed } from './already-subscribed.js';
 import { checkoutSuccessUrl } from './checkout-session.js';
 import { holidayPromoEnabled } from './flags.js';
-import { type CheckoutSku, foundingWindowOpen, isFoundingPriceId } from './prices.js';
+import {
+  type CheckoutSku,
+  foundingWindowOpen,
+  isPromoAnnualSku,
+  isPromoPriceId,
+} from './prices.js';
 import { isPromoPreviewFamily } from './promo-preview.js';
 import type { StripeCheckoutClient } from './stripe-client.js';
 
@@ -104,7 +109,7 @@ export async function createBillingCheckout(input: {
   const promoActive =
     foundingWindowOpen(now, env) &&
     (holidayPromoEnabled(env) || isPromoPreviewFamily(familyId, env));
-  if (promoActive && (!isFoundingPriceId(priceId, env) || period !== 'annual')) {
+  if (promoActive && (!isPromoPriceId(priceId, env) || period !== 'annual')) {
     return { status: 'founding_only' };
   }
 
@@ -116,7 +121,7 @@ export async function createBillingCheckout(input: {
     successUrl: checkoutSuccessUrl(marketingOrigin),
     cancelUrl:
       input.cancelUrl ??
-      (sku === 'founding_annual'
+      (sku && isPromoAnnualSku(sku)
         ? `${origin}/settings/founding?checkout=cancelled`
         : `${origin}/settings?checkout=cancelled#billing`),
     customerEmail: family.stripeCustomerId ? null : customerEmail,

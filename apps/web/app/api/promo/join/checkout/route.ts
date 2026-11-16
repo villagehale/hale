@@ -4,7 +4,7 @@ import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
-import { resolveCheckoutPrice } from '~/lib/billing/prices';
+import { isPromoAnnualSku, paidTierFromUnknown, resolveCheckoutPrice } from '~/lib/billing/prices';
 import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import { PROMO_JOIN_COOKIE, readPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
 import {
@@ -44,6 +44,8 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'stripe_billing_not_live' }, { status: 501 });
   }
 
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  const tier = paidTierFromUnknown(body?.tier);
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
   const selected = resolveCheckoutPrice({
     currency,
@@ -52,18 +54,17 @@ export async function POST(req: Request): Promise<Response> {
     preview:
       promoPreviewTokenMatches(token) ||
       readPromoPreviewCookie(promoPreviewCookieFromHeader(cookieHeader)),
+    tier,
   });
-  if (selected.status === 'unavailable' || selected.price.sku !== 'founding_annual') {
+  if (selected.status === 'unavailable' || !isPromoAnnualSku(selected.price.sku)) {
     return NextResponse.json(
       {
         error: 'stripe_billing_not_live',
-        reason: selected.status === 'unavailable' ? selected.reason : 'not_founding',
+        reason: selected.status === 'unavailable' ? selected.reason : 'not_promo',
       },
       { status: 501 },
     );
   }
-
-  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const attribution = attributionFromRequest({
     cookieHeader,
     search: url.searchParams,
@@ -77,7 +78,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const result = await createBillingCheckout({
-      tier: 'plus',
+      tier,
       period: selected.price.period,
       priceId: selected.price.priceId,
       sku: selected.price.sku,

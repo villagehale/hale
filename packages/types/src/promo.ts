@@ -88,13 +88,31 @@ export function promoPhaseAt(now: Date): PromoPhase {
 }
 
 /**
- * What the founding price LOOKS like on a page. Display only: checkout charges
- * the Stripe founding price ids in env (STRIPE_PRICE_FOUNDING_ANNUAL_*, CAD 7900 /
- * USD 5900), so a change to the amount has to land in Stripe and here together.
+ * Holiday 2026 promo annual amounts (display only). Checkout charges the Stripe
+ * price ids in env (STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD}).
  *
- * Both countries show a plain "$" (Barton, Nov 16). The currency code rides
- * along quietly so the price is never ambiguous: `perYear` is "$79/yr" for the
- * big numeral, `perYearCode` is "$79/yr CAD" for every sentence and button.
+ * Barton, Nov 16: Plus CAD $59 / USD $39, Max CAD $99 / USD $79, yearly only.
+ * Promo surfaces show a plain "$" with no CAD/USD label; currency still comes
+ * from visitor geo. `family` is the Max plan (PlanTier name).
+ */
+export const PROMO_PRICE_DISPLAY: Record<
+  'plus' | 'family',
+  Record<BillingCurrency, { symbol: '$'; amount: number; perYear: string }>
+> = {
+  plus: {
+    CAD: { symbol: '$', amount: 59, perYear: '$59/yr' },
+    USD: { symbol: '$', amount: 39, perYear: '$39/yr' },
+  },
+  family: {
+    CAD: { symbol: '$', amount: 99, perYear: '$99/yr' },
+    USD: { symbol: '$', amount: 79, perYear: '$79/yr' },
+  },
+};
+
+/**
+ * Site #1288 still reads this (Plus-only founding copy with a CAD/USD note).
+ * Hale-web promo surfaces use PROMO_PRICE_DISPLAY and do not show a currency
+ * code. Do not reuse these amounts on new promo UI.
  */
 export const FOUNDING_PRICE_DISPLAY: Record<
   BillingCurrency,

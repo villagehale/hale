@@ -20,29 +20,41 @@ describe('checkoutSessionIdFromUnknown', () => {
 });
 
 describe('paidCheckoutFactsFromStripeSession', () => {
-  it('reads CAD 79 and USD 59 from amount_total, never from extra fields', () => {
+  it('reads amount, currency, and verified tier from the session, never extra fields', () => {
     expect(
       paidCheckoutFactsFromStripeSession({
         id: 'cs_test_cad',
         payment_status: 'paid',
-        amount_total: 7900,
+        amount_total: 5900,
         currency: 'cad',
         amount_subtotal: 1,
+        metadata: { tier: 'plus' },
       }),
     ).toEqual({
       transactionId: 'cs_test_cad',
-      value: 79,
+      value: 59,
       currency: 'CAD',
       paid: true,
+      tier: 'plus',
     });
     expect(
       paidCheckoutFactsFromStripeSession({
         id: 'cs_test_usd',
         payment_status: 'paid',
-        amount_total: 5900,
+        amount_total: 7900,
         currency: 'usd',
+        metadata: { tier: 'max' },
       }),
-    ).toMatchObject({ value: 59, currency: 'USD', paid: true });
+    ).toMatchObject({ value: 79, currency: 'USD', paid: true, tier: 'family' });
+    expect(
+      paidCheckoutFactsFromStripeSession({
+        id: 'cs_test_max_cad',
+        payment_status: 'paid',
+        amount_total: 9900,
+        currency: 'cad',
+        metadata: { tier: 'family' },
+      }),
+    ).toMatchObject({ value: 99, currency: 'CAD', tier: 'family' });
   });
 
   it('marks unpaid sessions so the success page will not fire', () => {
@@ -50,10 +62,10 @@ describe('paidCheckoutFactsFromStripeSession', () => {
       paidCheckoutFactsFromStripeSession({
         id: 'cs_test_unpaid',
         payment_status: 'unpaid',
-        amount_total: 7900,
+        amount_total: 5900,
         currency: 'cad',
       }),
-    ).toMatchObject({ paid: false, value: 79, currency: 'CAD' });
+    ).toMatchObject({ paid: false, value: 59, currency: 'CAD', tier: null });
   });
 });
 

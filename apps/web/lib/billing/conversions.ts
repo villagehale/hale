@@ -227,14 +227,14 @@ async function postMetaCapiPurchase(
 export const META_TEST_PURCHASE: PurchaseConversion = {
   eventId: 'cs_test_ops',
   orderId: 'cs_test_ops',
-  value: 79,
+  value: 59,
   currency: 'CAD',
   email: 'capi.test@example.com',
   phone: '+1 555 010 0100',
   familyId: null,
   attribution: {},
   ads: {},
-  sku: 'founding_annual',
+  sku: 'promo_plus_annual',
 };
 
 export type MetaTestPurchaseResult =

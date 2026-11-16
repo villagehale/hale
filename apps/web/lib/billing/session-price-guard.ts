@@ -1,18 +1,18 @@
 import {
   familyPriceIdsFromEnv,
-  foundingPriceIdsFromEnv,
   foundingWindowOpen,
   listPriceIdsFromEnv,
+  promoPriceIdsFromEnv,
 } from './prices.js';
 
 /**
  * Promo-window grant gate for paid Stripe Checkout Sessions (and a Payment Link
  * subscription.created that carries a list price).
  *
- * During the window the only allowed new-checkout prices are the founding CAD/USD
- * yearly ids. A list monthly/annual id, an unknown id, or a Payment Link with no
- * visible founding price must not grant Plus. After the cutoff, list prices are
- * allowed again; in-flight founding ids still grant.
+ * During the window the only allowed new-checkout prices are the four promo
+ * yearly ids (Plus/Max × CAD/USD). A list monthly/annual id, an unknown id, or
+ * a Payment Link with no visible promo price must not grant. After the cutoff,
+ * list prices are allowed again; in-flight promo ids still grant.
  */
 
 export type DisallowedPriceReason = 'list_price' | 'unknown_price' | 'payment_link';
@@ -99,7 +99,7 @@ function eventObject(payload: unknown): { type: string; object: Record<string, u
  * Whether this paid event may grant a paid tier.
  *
  * checkout.session.completed: every visible price must be in the window's allowed
- * set. A Payment Link with no founding price during the window is refused.
+ * set. A Payment Link with no promo yearly price during the window is refused.
  * customer.subscription.created: a list price during the window is refused (the
  * Payment Link completion path).
  */
@@ -111,7 +111,7 @@ export function decidePaidSessionGrant(
   const event = eventObject(payload);
   if (!event) return { status: 'allow' };
 
-  const founding = new Set(foundingPriceIdsFromEnv(env));
+  const promo = new Set(promoPriceIdsFromEnv(env));
   const list = new Set([...listPriceIdsFromEnv(env), ...familyPriceIdsFromEnv(env)]);
   const windowOpen = foundingWindowOpen(now, env);
 
@@ -147,7 +147,7 @@ export function decidePaidSessionGrant(
   const priceIds = paidSessionPriceIds(event.object);
   const paymentLink = readString(event.object.payment_link);
   const sessionId = readString(event.object.id);
-  const allowed = windowOpen ? founding : new Set([...founding, ...list]);
+  const allowed = windowOpen ? promo : new Set([...promo, ...list]);
 
   if (priceIds.some((id) => !allowed.has(id))) {
     const reason: DisallowedPriceReason = priceIds.some((id) => list.has(id))
@@ -156,7 +156,7 @@ export function decidePaidSessionGrant(
     return { status: 'disallowed', priceIds, reason, sessionId };
   }
 
-  if (windowOpen && paymentLink && !priceIds.some((id) => founding.has(id))) {
+  if (windowOpen && paymentLink && !priceIds.some((id) => promo.has(id))) {
     return { status: 'disallowed', priceIds, reason: 'payment_link', sessionId };
   }
 

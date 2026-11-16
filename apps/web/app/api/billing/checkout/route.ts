@@ -7,7 +7,12 @@ import { attributionFromRequest } from '~/lib/billing/attribution';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
-import { foundingWindowOpen, resolveCheckoutPrice } from '~/lib/billing/prices';
+import {
+  foundingWindowOpen,
+  isPromoAnnualSku,
+  paidTierFromUnknown,
+  resolveCheckoutPrice,
+} from '~/lib/billing/prices';
 import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
 import { db as defaultDb } from '~/lib/db';
@@ -45,7 +50,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const body = (await req.json().catch(() => null)) as {
     period?: unknown;
-    /** The founding confirmation page refuses a silent fallback to a list price. */
+    /** plus | family | max. Unrecognised values are Plus. */
+    tier?: unknown;
+    /** Promo confirmation refuses a silent fallback to a list price. */
     offer?: unknown;
     expectedCurrency?: unknown;
     utm_source?: unknown;
@@ -62,6 +69,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'invalid_period' }, { status: 400 });
   }
   const period = periodRaw as BillingPeriod;
+  const tier = paidTierFromUnknown(body?.tier);
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
   // The confirmation page names the currency it showed. If a family crossed a
   // border (or the two hosts disagree on geo), make them review it again before
@@ -74,18 +82,17 @@ export async function POST(req: Request): Promise<Response> {
     period,
     now,
     preview: !live,
+    tier,
   });
   if (
     foundingWindowOpen(now) &&
     selected.status === 'selected' &&
-    selected.price.sku !== 'founding_annual'
+    !isPromoAnnualSku(selected.price.sku)
   ) {
     return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
   }
-  if (
-    body?.offer === 'founding' &&
-    (selected.status !== 'selected' || selected.price.sku !== 'founding_annual')
-  ) {
+  const wantsPromo = body?.offer === 'founding' || body?.offer === 'promo';
+  if (wantsPromo && (selected.status !== 'selected' || !isPromoAnnualSku(selected.price.sku))) {
     return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });
   }
   if (selected.status === 'unavailable') {
@@ -115,7 +122,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const result = await createBillingCheckout({
-      tier: 'plus',
+      tier,
       period: selected.price.period,
       priceId: selected.price.priceId,
       sku: selected.price.sku,

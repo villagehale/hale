@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BillingPeriod, PlanTier } from '@hale/types';
-import { foundingWindowOpen, plusPriceIdsFromEnv } from '~/lib/billing/prices';
+import {
+  foundingWindowOpen,
+  plusPriceIdsFromEnv,
+  promoMaxPriceIdsFromEnv,
+} from '~/lib/billing/prices';
 
 /**
  * Stripe billing webhook contract (B18).
@@ -156,10 +160,14 @@ export function priceTierMapFromEnv(
       if (priceId) map[priceId] = tier;
     }
   }
-  // Founding yearly and Plus USD list ids also grant plus. invoice.paid after
-  // the promo cutoff still maps a founding price to plus — we never migrate it.
+  // Promo Plus yearly and Plus USD list ids grant plus. Max promo yearly
+  // grants family. invoice.paid after the cutoff still maps those prices —
+  // we never migrate a locked promo subscription to list.
   for (const priceId of plusPriceIdsFromEnv(env)) {
     if (!(priceId in map)) map[priceId] = 'plus';
+  }
+  for (const priceId of promoMaxPriceIdsFromEnv(env)) {
+    if (!(priceId in map)) map[priceId] = 'family';
   }
   return map;
 }

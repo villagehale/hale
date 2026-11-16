@@ -1,7 +1,6 @@
 import type { BillingCurrency, PlanTier } from '@hale/types';
 import { Bell, Star } from 'lucide-react';
-import { PriceWithCurrency } from '~/components/billing/price-with-currency';
-import { foundingPriceLabel, plusListPriceLabels } from '~/lib/billing/price-display';
+import { plusListPriceLabels, promoPriceLabel } from '~/lib/billing/price-display';
 import { PlanCheckoutButton } from './plan-checkout-button';
 import styles from './portal.module.css';
 
@@ -40,7 +39,7 @@ export function FoundingPlan({ badge = 'Founding family' }: { badge?: string }) 
 }
 
 export function PaidPlan({ tier }: { tier: Exclude<PlanTier, 'free'> }) {
-  const label = tier === 'family' ? 'Family' : 'Plus';
+  const label = tier === 'family' ? 'Max' : 'Plus';
   return (
     <section className={`${styles.card} ${styles['fp-card']}`}>
       <div className={styles['fp-head']}>
@@ -62,7 +61,15 @@ export function PaidPlan({ tier }: { tier: Exclude<PlanTier, 'free'> }) {
   );
 }
 
-export function PromoOfferPlan({ currency }: { currency: BillingCurrency }) {
+export function PromoOfferPlan({
+  currency,
+  tier,
+}: {
+  currency: BillingCurrency;
+  tier: 'plus' | 'family';
+}) {
+  const label = tier === 'family' ? 'Max' : 'Plus';
+  const amount = promoPriceLabel(tier, currency);
   return (
     <section className={`${styles.card} ${styles['fp-card']}`}>
       <div className={styles['fp-head']}>
@@ -74,29 +81,22 @@ export function PromoOfferPlan({ currency }: { currency: BillingCurrency }) {
             strokeWidth={0}
           />
         </span>
-        <span className={styles['fp-badge']}>Founding offer</span>
+        <span className={styles['fp-badge']}>{label}</span>
       </div>
-      <h2 className={styles['fp-title']}>
-        <PriceWithCurrency
-          amount={foundingPriceLabel(currency)}
-          currency={currency}
-          noteClassName={styles['fp-currency']}
-          after=", locked for life."
-        />
-      </h2>
+      <h2 className={styles['fp-title']}>{amount}, locked for life.</h2>
       <p className={styles['fp-body']}>
         Yearly, at this price, for as long as you keep it. Full refund anytime.
       </p>
       <div className={styles['fp-rule']} />
-      <PlanCheckoutButton />
+      <PlanCheckoutButton tier={tier} />
     </section>
   );
 }
 
 /**
- * Unpaid Plan cards. `founding` is Free + the yearly founding offer — no monthly
- * toggle, no regular annual, no disabled list option. `list` is monthly + annual
- * after the cutoff.
+ * Unpaid Plan cards. `founding` is Free + Plus annual promo + Max annual promo
+ * — no monthly toggle, no regular annual, no disabled list option. `list` is
+ * monthly + annual after the cutoff.
  */
 export function PlanOffer({
   currency,
@@ -109,7 +109,8 @@ export function PlanOffer({
   return (
     <>
       <FoundingPlan badge="Free" />
-      <PromoOfferPlan currency={currency} />
+      <PromoOfferPlan currency={currency} tier="plus" />
+      <PromoOfferPlan currency={currency} tier="family" />
     </>
   );
 }

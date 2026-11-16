@@ -1,8 +1,6 @@
 'use client';
 
-import type { BillingCurrency } from '@hale/types';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { PriceWithCurrency } from '~/components/billing/price-with-currency';
 import stage from '~/components/hale/connect/connect.module.css';
 import { DeviceTextLink } from '~/components/hale/device-text-link';
 import styles from '~/components/portal/signin.module.css';
@@ -16,6 +14,7 @@ import {
 } from '~/lib/auth/claim-phone-copy';
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
 import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
+import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 
 /**
  * Ads new-visitor founding join. Phone → OTP (the one allowed fixed SMS) →
@@ -23,13 +22,13 @@ import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
  * Text Hale.
  */
 export function FoundingJoinForm({
-  priceLabel,
-  currency,
+  plusLabel,
+  maxLabel,
   smsNumber = '',
   cancelled = false,
 }: {
-  priceLabel: string;
-  currency: BillingCurrency;
+  plusLabel: string;
+  maxLabel: string;
   smsNumber?: string;
   cancelled?: boolean;
 }) {
@@ -90,12 +89,12 @@ export function FoundingJoinForm({
     }
   }
 
-  async function openCheckout() {
+  async function openCheckout(tier: PaidTier) {
     const checkout = await fetch(`/api/promo/join/checkout${window.location.search}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
-      body: '{}',
+      body: JSON.stringify({ tier }),
     });
     if (checkout.status === 409) {
       setStep('paid');
@@ -154,8 +153,9 @@ export function FoundingJoinForm({
           return;
         }
         setVerified(true);
+        return;
       }
-      await openCheckout();
+      await openCheckout('plus');
     } catch {
       setError(CLAIM_CONNECTION_ERROR);
     } finally {
@@ -196,20 +196,15 @@ export function FoundingJoinForm({
       ? 'Time for a new code'
       : step === 'code'
         ? 'Check your texts'
-        : 'Join as a founding family';
+        : verified
+          ? 'Choose Plus or Max'
+          : 'Join as a founding family';
   const lede =
-    step === 'expired' ? (
-      'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
-    ) : step === 'code' ? (
-      'A code is on its way to this number.'
-    ) : (
-      <PriceWithCurrency
-        amount={priceLabel}
-        currency={currency}
-        noteClassName={styles.currencyNote}
-        after=", locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime. Hale will not text first."
-      />
-    );
+    step === 'expired'
+      ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
+      : step === 'code' && !verified
+        ? 'A code is on its way to this number.'
+        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime. Hale will not text first.`;
 
   return (
     <section className={`${stage.card} ${stage.door}`}>
@@ -258,7 +253,49 @@ export function FoundingJoinForm({
             </form>
           ) : null}
 
-          {step === 'code' ? (
+          {step === 'code' && verified ? (
+            <div>
+              {error ? (
+                <p className={styles.err} role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className={`${stage.btn} ${styles.full}`}
+                disabled={busy}
+                onClick={async () => {
+                  if (busy) return;
+                  setBusy(true);
+                  try {
+                    await openCheckout('plus');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Continue · Plus {plusLabel}
+              </button>
+              <button
+                type="button"
+                className={`${stage.btn} ${styles.full}`}
+                disabled={busy}
+                onClick={async () => {
+                  if (busy) return;
+                  setBusy(true);
+                  try {
+                    await openCheckout('family');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Continue · Max {maxLabel}
+              </button>
+            </div>
+          ) : null}
+
+          {step === 'code' && !verified ? (
             <form onSubmit={submitCode}>
               <p className={styles.sent}>
                 <span>
