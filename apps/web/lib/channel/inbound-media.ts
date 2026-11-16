@@ -267,7 +267,7 @@ export async function readInboundMedia(
         unwatched.push({ kind: 'image' });
         continue;
       }
-      let bytes = Buffer.from(await response.arrayBuffer());
+      let bytes: Buffer = Buffer.from(await response.arrayBuffer());
       if (bytes.byteLength === 0 || bytes.byteLength > IMAGE_BYTE_CAP) {
         unwatched.push({ kind: 'image' });
         continue;
@@ -278,7 +278,7 @@ export async function readInboundMedia(
         const jpeg = await options.convertHeic(bytes);
         const sniffed = jpeg ? sniffedMime(jpeg) : null;
         if (jpeg && sniffed === 'image/jpeg' && jpeg.byteLength <= IMAGE_BYTE_CAP) {
-          bytes = jpeg;
+          bytes = Buffer.from(jpeg);
           mime = sniffed;
         }
       }
