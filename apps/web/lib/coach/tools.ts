@@ -188,12 +188,11 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the ask is for one day, pass that day as `date` (YYYY-MM-DD, worked out from `localNow`); a full date written in query or window is removed before the search. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history. When they asked you to register a child, pass need_page true so a find without its registration page is not enough, and search for that page before asking them to send a link.',
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the ask is for one day, pass that day as `date` (YYYY-MM-DD, worked out from `localNow`); a full date written in query or window is removed before the search. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
     inputSchema: z.object({
       query: z.string().optional(),
       window: z.string().optional(),
       area: z.string().min(1).optional(),
-      need_page: z.boolean().optional(),
       // Last on purpose. A strict tool's arguments come out in schema order, so with
       // `area` after it, a coach that wrote the day first could add only `area`, and put
       // the day's words ("today") there.
@@ -229,7 +228,7 @@ export function searchVillageTool(
         today: await readFamilyToday(database, ctx.familyId, now),
       });
       const query = searched;
-      const needPage = input.need_page === true || signupOfferToolEnabled();
+      const needPage = signupOfferToolEnabled();
       const picks =
         found.reason === null && query
           ? (
