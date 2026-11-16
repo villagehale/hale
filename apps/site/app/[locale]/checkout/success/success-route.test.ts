@@ -37,7 +37,7 @@ describe('/checkout/success', () => {
     expect(html).not.toContain('Text Hale');
   });
 
-  it('shows You\'re in and Text Hale only after a paid session', async () => {
+  it("shows You're in and Text Hale only after a paid session", async () => {
     vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16462352164');
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(
@@ -60,6 +60,60 @@ describe('/checkout/success', () => {
     expect(html).toContain('You&#x27;re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('sms:+16462352164');
+  });
+
+  it('names the plan only from the verified session tier, never the query string', async () => {
+    for (const [tier, name] of [
+      ['family', 'Max'],
+      ['plus', 'Plus'],
+    ] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response(
+              JSON.stringify({
+                transactionId: 'cs_test_t',
+                value: 99,
+                currency: 'CAD',
+                paid: true,
+                tier,
+              }),
+              { status: 200 },
+            ),
+          ),
+      );
+      const html = renderToStaticMarkup(
+        await CheckoutSuccessPage({
+          params: Promise.resolve({ locale: 'en' as const }),
+          searchParams: Promise.resolve({
+            session_id: 'cs_test_t',
+            plan: 'plus',
+            tier: 'plus',
+          } as never),
+        }),
+      );
+      expect(html).toContain(`You’re on ${name}.`);
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ transactionId: 'cs_test_n', value: 99, currency: 'CAD', paid: true }),
+            { status: 200 },
+          ),
+        ),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_n' }),
+      }),
+    );
+    expect(html).not.toMatch(/You’re on/);
   });
 
   it('stays unpaid when Stripe says the session is not paid', async () => {

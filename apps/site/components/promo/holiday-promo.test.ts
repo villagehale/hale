@@ -3,14 +3,27 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { RedesignHome } from '~/components/redesign/home';
 import { RedesignPricing } from '~/components/redesign/pricing';
-import { buildHolidayPromo, type PromoPhase } from '~/lib/promo/holiday';
-import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from './holiday-promo';
+import { type PromoPhase, buildHolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import {
+  PromoBanner,
+  PromoFaqItems,
+  PromoSection,
+  PromoStickyCta,
+  foundingAfterLine,
+} from './holiday-promo';
 
 /**
  * Barton's promo copy rules, checked on the rendered pages (both phases, both
- * currencies, home and pricing): the sale name leads; nothing that reads as a
- * markdown sits beside "Sale"; no after-Dec-31 or regular price beside the
- * sale (the FAQ answers it neutrally); registration stays soft; no camp-finding, referral or gift offer.
+ * countries, home and pricing):
+ *  - the sale name leads; the headline features the Max sale price, with the
+ *    regular Max price struck beside it (Barton, Nov 16 1:07 PM ET);
+ *  - Plus and Max each show regular → sale, struck; Free stays $0;
+ *  - CA: Plus $59/yr (regular $159), Max $99/yr (regular $329);
+ *    US: Plus $39/yr (regular $119), Max $79/yr (regular $259);
+ *  - plain "$", never CAD / USD / C$ / US$ beside a price;
+ *  - yearly only: no monthly option, no trial wording;
+ *  - no was / save / % off wording; registration stays soft; no camp-finding,
+ *    referral or gift offer.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -30,10 +43,22 @@ const CASES: { phase: PromoPhase; currency: 'CAD' | 'USD' }[] = [
   { phase: 'holiday', currency: 'USD' },
 ];
 
+const PRICES = {
+  CAD: { plus: ['$159/yr', '$59/yr'], max: ['$329/yr', '$99/yr'] },
+  USD: { plus: ['$119/yr', '$39/yr'], max: ['$259/yr', '$79/yr'] },
+} as const;
+
 const door = { locale: 'en' as const, smsNumber: '+16475551234', prefill: 'Hi Hale' };
+
+const card = (html: string, tier: 'plus' | 'max') =>
+  html.match(
+    new RegExp(`<li class="hs-tier t-${tier}">[\\s\\S]*?(?=<li class="hs-tier |</ol>)`),
+  )?.[0] ?? '';
 
 for (const { phase, currency } of CASES) {
   const promo = buildHolidayPromo(phase, currency);
+  const want = PRICES[currency];
+  const other = PRICES[currency === 'USD' ? 'CAD' : 'USD'];
   const pages = {
     home: renderToStaticMarkup(createElement(RedesignHome, { ...door, promo })),
     pricing: renderToStaticMarkup(createElement(RedesignPricing, { ...door, promo })),
@@ -41,49 +66,60 @@ for (const { phase, currency } of CASES) {
   for (const [name, html] of Object.entries(pages)) {
     describe(`${name} · ${phase} · ${currency}`, () => {
       const body = text(html);
+      const offer = html.match(/id="founding"[\s\S]*?<\/section>/)?.[0] ?? '';
 
-      it('leads with the sale name and the geo price', () => {
+      it('leads with the sale name and features the Max sale price', () => {
         expect(body).toContain(phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale');
         expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
         expect(html).toContain('id="founding"');
-        expect(body).toContain(currency === 'USD' ? '$59/yr USD' : '$79/yr CAD');
-        expect(body).not.toContain(currency === 'USD' ? '$79' : '$59');
+        const sale = want.max[1].replace('$', '').replace('/yr', '');
+        expect(offer).toMatch(/class="promo-offer-tier"[^>]*>Max</);
+        expect(offer).toMatch(new RegExp(`class="promo-price-num"[^>]*>${sale}<`));
+        expect(offer).toContain(`<s class="promo-price-regular">${want.max[0]}</s>`);
+        expect(offer).toContain(`<s class="promo-price-regular">${want.plus[0]}</s>`);
+        expect(text(offer)).toContain(`Plus ${want.plus[0]} ${want.plus[1]}`);
       });
 
-      it('shows a plain "$" with a quiet currency code, never a C$ / US$ prefix', () => {
+      it('shows only this country’s numbers, with a plain "$" and no currency code', () => {
         expect(body).not.toMatch(/C\$|US\$/);
-        // the big numeral carries its code beside it
-        expect(html).toMatch(new RegExp(`class="promo-price-code"[^>]*>${currency}<`));
-        // no price in the other country's currency
-        const other = currency === 'USD' ? 'CAD' : 'USD';
-        expect(body).not.toMatch(new RegExp(`\\$\\d[\\d.]*(/(yr|mo))? ${other}`));
+        expect(body).not.toMatch(/\$\d[\d.]*(\/(yr|mo))? ?(CAD|USD)\b/);
+        expect(body).not.toMatch(/\b(CAD|USD)\b/);
+        for (const label of [...other.plus, ...other.max]) {
+          if (![...want.plus, ...want.max].includes(label as never)) {
+            expect(body).not.toContain(label);
+          }
+        }
       });
 
-      it('keeps any after-Dec-31 or regular price off the sale surfaces', () => {
-        // Barton, Nov 16: no "Plus is $159/yr CAD after Dec 31" line on any surface.
-        expect(body).not.toMatch(/Plus is \$?C?\$?159/);
-        const promoOnly = text(
-          renderToStaticMarkup(
-            createElement('div', null, [
-              createElement(PromoBanner, { key: 'b', promo }),
-              createElement(PromoSection, { key: 's', promo, ...door, mode: 'chooser' }),
-              createElement(PromoStickyCta, { key: 'k', promo, ...door, mode: 'chooser' }),
-            ]),
-          ),
-        );
-        expect(promoOnly).not.toMatch(/\$159|\$14\/mo|\$119/);
-        expect(promoOnly).not.toMatch(/after Dec 31/i);
-        // The FAQ answers it as a neutral fact, with no number.
+      it('puts the regular price struck next to each paid sale price on pricing', () => {
+        if (name !== 'pricing') {
+          expect(html).not.toMatch(/promo-tier-price/);
+          return;
+        }
+        for (const tier of ['plus', 'max'] as const) {
+          const c = card(html, tier);
+          const [regular, sale] = want[tier];
+          expect(c).toContain(`<s class="promo-tier-regular">${regular}</s>`);
+          expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
+          expect(c).toContain(FOUNDING_REFUND_LINE);
+          expect(text(c)).toContain(`Lock in ${sale}`);
+          expect(c).toContain(`/settings/founding?plan=${tier === 'max' ? 'family' : 'plus'}`);
+          expect(c).not.toContain('Coming soon');
+          expect(c).not.toMatch(/\/mo\b/);
+        }
+        expect(body).toContain(`Max for ${want.max[1]}`);
+      });
+
+      it('answers after Dec 31 neutrally in the FAQ', () => {
+        expect(body).not.toMatch(/Plus is \$1\d\d/);
         const faq = text(renderToStaticMarkup(createElement(PromoFaqItems, { promo })));
-        expect(faq).toContain(
-          `Founding families who join by Dec 31 keep ${promo.price} for as long as they’re members. Families who join after that pay the regular Plus price.`,
+        expect(faq).toContain(foundingAfterLine(promo));
+        expect(foundingAfterLine(promo)).toBe(
+          `Founding families who join by Dec 31 keep ${want.max[1]} for Max or ${want.plus[1]} for Plus for as long as they’re members. Families who join after that pay the regular price.`,
         );
-        expect(faq).not.toMatch(/\$159|\$119|\$14\b/);
       });
 
-      it('never pairs the sale with was / save / % off / strikethrough', () => {
-        expect(html).not.toMatch(/<(s|del|strike)[\s>]/i);
-        expect(html).not.toMatch(/line-through/i);
+      it('never uses was / save / % off wording', () => {
         expect(body).not.toMatch(/\bwas\s+(C\$|US\$|\$)/i);
         expect(body).not.toMatch(/\bsave\b|\bsaving|% ?off|percent off|months free|half price/i);
       });
@@ -106,14 +142,28 @@ for (const { phase, currency } of CASES) {
         expect(body).not.toMatch(/join(s)? free|nothing to pay/i);
       });
 
-      it('promises refunds anytime and the lifetime lock', () => {
+      it('promises refunds anytime and the lifetime lock, with no trial wording', () => {
         expect(body).toMatch(/Refund anytime/);
+        expect(body).toContain(FOUNDING_REFUND_LINE);
         expect(body).toMatch(/locked in for as long as you’re a member/);
+        expect(body).not.toMatch(
+          /try it for a month|try a month|free trial|\btrial\b|first month/i,
+        );
+      });
+
+      it('places the refund line right under the sale prices, and shows no paid monthly option', () => {
+        expect(offer).toMatch(
+          new RegExp(
+            `class="promo-offer-plus"[\\s\\S]*?class="promo-price-note"[^>]*>${FOUNDING_REFUND_LINE}`,
+          ),
+        );
+        expect(body).not.toMatch(/\$14\/mo|\$15\/mo|\$19\/mo|\$29\/mo|\$39\/mo/);
+        expect(body).not.toMatch(/by the year or the month/i);
       });
 
       it('offers the founding checkout door and a mobile sticky CTA', () => {
         expect(html).toContain('data-cta="promo_cta_click"');
-        expect(html).toContain('https://app.villagehale.com/settings/founding');
+        expect(html).toContain('https://app.villagehale.com/settings/founding?plan=family');
         expect(html).toContain('promo-sticky');
       });
     });
@@ -126,5 +176,14 @@ describe('promo off', () => {
     expect(html).not.toContain('id="founding"');
     expect(html).not.toContain('promo-bar');
     expect(text(html)).toContain('Founding families join free.');
+  });
+
+  it('leaves the pricing Plus card unchanged, with no strikethrough', () => {
+    const html = renderToStaticMarkup(createElement(RedesignPricing, { ...door }));
+    const card = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
+    expect(card).toContain('$19 CAD/mo');
+    expect(card).toContain('$14 USD/mo');
+    expect(card).toContain('or $159 CAD / $119 USD a year, about three months free');
+    expect(card).not.toMatch(/<(s|del|strike)[\s>]|promo-tier-regular|line-through/i);
   });
 });

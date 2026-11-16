@@ -107,6 +107,7 @@
     "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids."
   },
   "CheckoutSuccess": {
+    "plan": "You’re on {plan}.",
     "metaTitle": "You're in · Hale",
     "heading": "You're in.",
     "lede": "Text Hale to start. Hale will not text first.",

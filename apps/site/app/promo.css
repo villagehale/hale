@@ -132,7 +132,6 @@
   text-wrap: balance;
 }
 .rd .promo-price {
-  margin-top: var(--s4);
   display: flex;
   align-items: flex-start;
   font-family: var(--font-ui);
@@ -149,19 +148,74 @@
   font-size: clamp(112px, 15vw, 184px);
   color: var(--promo-amber);
 }
-.rd .promo-price-code {
-  align-self: flex-end;
-  margin: 0 0 0.7em 8px;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--promo-on-night-2);
+.rd .promo-price-side {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin-left: 10px;
+  padding: 0.55em 0 0.12em;
 }
 .rd .promo-price-per {
-  align-self: flex-end;
   font-size: clamp(28px, 3.4vw, 44px);
   color: var(--promo-on-night-2);
-  margin-left: 4px;
-  margin-bottom: 0.2em;
+}
+/* The struck regular Max price beside the big numeral, and on the Plus line.
+   #e0d9ca on #111110 is 13.4:1 (#e4dfcf on #102e25, 10.9:1); coral #ff9a80 line, 9.2:1 / 7.1:1. */
+.rd .promo-price-regular {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--promo-on-night-2);
+  text-decoration-line: line-through;
+  text-decoration-thickness: 3px;
+  text-decoration-color: #ff9a80;
+  text-decoration-skip-ink: none;
+}
+.rd .promo-price-side .promo-price-regular {
+  font-size: clamp(22px, 2.4vw, 30px);
+  line-height: 1;
+}
+.rd .promo-offer {
+  margin-top: var(--s4);
+}
+.rd .promo-offer-tier {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: var(--r-full);
+  background: var(--promo-amber);
+  color: var(--promo-night);
+}
+.rd .promo-offer .promo-price {
+  margin-top: var(--s2);
+}
+.rd .promo-offer-plus {
+  margin-top: var(--s3);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--promo-on-night);
+}
+.rd .promo-offer-plus .promo-price-regular {
+  text-decoration-thickness: 2px;
+  margin: 0 0.2em;
+}
+.rd .promo-offer-plus b {
+  font-weight: 800;
+  color: var(--promo-amber);
+}
+.rd .promo-price-note {
+  margin-top: var(--s3);
+  max-width: 28ch;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--promo-on-night-2);
 }
 .rd .promo-lede {
   margin-top: var(--s5);
@@ -414,7 +468,79 @@
   }
 }
 
-/* Plus card while the promo runs (pricing page) */
+/* Paid tier cards while the promo runs (pricing page).
+   Barton, Nov 16 1:07 PM ET: Plus and Max each show the regular annual price
+   struck through next to the sale price. The struck price must stay easy to
+   read: solid text at AA contrast (>= 4.5:1) on its own card, and a 2px
+   brick / coral line that reads as a strike, not a smudge. Colours are set
+   per card, light and dark, never one "dark" override for all of them. */
+.rd .promo-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.rd .hs-tier .promo-tier-price,
+.rd .promo-tier-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.45em;
+  row-gap: 0.1em;
+}
+.rd .promo-tier-regular {
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+}
+.rd .promo-tier-sale {
+  font-weight: 700;
+}
+/* Plus, light: #4a5570 on the card is 6.2–6.5:1; the brick line #b5402a is 4.7–4.9:1. */
+.rd .t-plus .promo-tier-regular {
+  color: #4a5570;
+  text-decoration-color: #b5402a;
+}
+/* Max, navy card: #d6dae4 on #17294a is 10.3:1; coral line #ff9a80 is 7.0:1. */
+.rd .t-max .promo-tier-regular {
+  color: #d6dae4;
+  text-decoration-color: #ff9a80;
+}
+.rd .t-max .promo-tier-sale {
+  color: #fff;
+}
+.rd .t-max .promo-max-btn {
+  background: #f3ce79;
+  color: #17294a;
+}
+.rd .t-max .promo-max-btn:hover {
+  background: #f7dc9c;
+}
+.rd .promo-tier-refund {
+  font-weight: 600;
+}
+.rd .t-max .promo-tier-refund {
+  color: rgb(247 244 236 / 0.86);
+}
+:root[data-theme="dark"] .rd .t-plus .promo-tier-regular,
+:root.dark .rd .t-plus .promo-tier-regular {
+  color: #ded6c9;
+  text-decoration-color: #ff9a80;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .rd .t-plus .promo-tier-regular {
+    color: #ded6c9;
+    text-decoration-color: #ff9a80;
+  }
+}
 .rd .hs-tier .promo-tier-tag {
   display: inline-block;
   margin-top: var(--s2);
@@ -494,9 +620,11 @@
   .rd .promo-price-sym {
     font-size: 32px;
   }
-  .rd .promo-price-code {
-    font-size: 11px;
-    margin-left: 6px;
+  .rd .promo-price-side .promo-price-regular {
+    font-size: 21px;
+  }
+  .rd .promo-offer-plus {
+    font-size: 19px;
   }
   .rd .promo-ph {
     height: 120px;

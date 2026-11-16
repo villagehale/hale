@@ -95,6 +95,8 @@ describe('public SMS number', () => {
     }
     expect(hits).toEqual([]);
     // Positive control: the scan sees the Linq line where it is published.
-    expect(readFileSync(join(REPO, 'tools/posters/render.mjs'), 'utf8').match(FORMATTED_NANP)).not.toBeNull();
+    expect(
+      readFileSync(join(REPO, 'tools/posters/render.mjs'), 'utf8').match(FORMATTED_NANP),
+    ).not.toBeNull();
   });
 });

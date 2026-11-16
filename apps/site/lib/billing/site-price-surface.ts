@@ -1,7 +1,4 @@
-import {
-  isFoundingPromoWindowOpen,
-  parseFoundingPromoEndsAt,
-} from '@hale/types';
+import { isFoundingPromoWindowOpen, parseFoundingPromoEndsAt } from '@hale/types';
 
 /**
  * Marketing-site price copy. Flag off keeps today's free claims. During the

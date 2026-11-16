@@ -53,17 +53,17 @@ describe('resolveHolidayPromo', () => {
     const us = resolveHolidayPromo({ now, country: 'US', env: ON });
     expect(us).toMatchObject({
       currency: 'USD',
-      price: '$59/yr USD',
-      code: 'USD',
       symbol: '$',
+      plus: { regular: 119, sale: 39, regularLabel: '$119/yr', saleLabel: '$39/yr' },
+      max: { regular: 259, sale: 79, regularLabel: '$259/yr', saleLabel: '$79/yr' },
     });
     for (const country of ['CA', 'GB', null]) {
       const ca = resolveHolidayPromo({ now, country, env: ON });
       expect(ca).toMatchObject({
         currency: 'CAD',
-        price: '$79/yr CAD',
-        code: 'CAD',
         symbol: '$',
+        plus: { regular: 159, sale: 59, regularLabel: '$159/yr', saleLabel: '$59/yr' },
+        max: { regular: 329, sale: 99, regularLabel: '$329/yr', saleLabel: '$99/yr' },
       });
     }
   });

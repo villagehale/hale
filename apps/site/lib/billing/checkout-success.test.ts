@@ -14,6 +14,7 @@ const PAID = {
   value: 79,
   currency: 'CAD',
   paid: true,
+  tier: 'family' as const,
 };
 
 describe('checkoutSessionIdFromSearch', () => {
@@ -106,12 +107,19 @@ describe('conversions flag and send_to', () => {
 
 describe('fetchCheckoutSessionFacts', () => {
   it('asks the app for Stripe facts by session id', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(PAID), { status: 200 }),
-    );
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(PAID), { status: 200 }));
     await expect(
       fetchCheckoutSessionFacts('cs_test_1', 'https://app.villagehale.com', fetchImpl),
     ).resolves.toEqual(PAID);
+    // An unknown tier from the app reads as null, never a guess.
+    fetchImpl.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...PAID, tier: 'max' }), { status: 200 }),
+    );
+    await expect(
+      fetchCheckoutSessionFacts('cs_test_1', 'https://app.villagehale.com', fetchImpl),
+    ).resolves.toEqual({ ...PAID, tier: null });
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
       'https://app.villagehale.com/api/billing/checkout-session?session_id=cs_test_1',
     );

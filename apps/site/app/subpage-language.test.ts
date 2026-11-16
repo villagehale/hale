@@ -230,7 +230,7 @@ describe('/pricing — the tier cards have anatomy', () => {
         'Everything in Plus',
         'The highest limits on searches and spot watches',
         'Priority support',
-        'Sign-ups for a whole season in one go',
+        'Help with sign-ups',
       ],
     },
   ];

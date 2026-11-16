@@ -64,7 +64,10 @@ describe('Google Ads tag — marketing site, after consent', () => {
 describe('Google Ads snippet', () => {
   it('loads gtag.js once, with Consent Mode denied then granted, before config', async () => {
     const { GOOGLE_ADS_ID, GOOGLE_ADS_GTAG_SRC } = await import('./google-ads.js');
-    const client = readFileSync(fileURLToPath(new URL('./google-ads-client.ts', import.meta.url)), 'utf8');
+    const client = readFileSync(
+      fileURLToPath(new URL('./google-ads-client.ts', import.meta.url)),
+      'utf8',
+    );
 
     expect(GOOGLE_ADS_ID).toBe(ADS_ID);
     expect(GOOGLE_ADS_GTAG_SRC).toBe(`https://www.googletagmanager.com/gtag/js?id=${ADS_ID}`);
@@ -74,8 +77,8 @@ describe('Google Ads snippet', () => {
     expect(deniedAt).toBeGreaterThan(-1);
     expect(deniedAt).toBeLessThan(grantedAt);
     expect(grantedAt).toBeLessThan(configAt);
-    expect(client).toContain('ad_storage: \'denied\'');
-    expect(client).toContain('ad_storage: \'granted\'');
+    expect(client).toContain("ad_storage: 'denied'");
+    expect(client).toContain("ad_storage: 'granted'");
     expect([...client.matchAll(/googletagmanager/g)]).toHaveLength(0);
     expect(client).toContain('GOOGLE_ADS_GTAG_SRC');
   });

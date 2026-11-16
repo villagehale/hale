@@ -82,14 +82,24 @@ export function aboutJsonLd(locale: Locale = routing.defaultLocale): Record<stri
       description: t('orgDescription'),
       email: 'aloha@villagehale.com',
       foundingDate: '2026-06-24',
-      address: { '@type': 'PostalAddress', addressLocality: 'Georgetown', addressRegion: 'ON', addressCountry: 'CA' },
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: 'Georgetown',
+        addressRegion: 'ON',
+        addressCountry: 'CA',
+      },
       areaServed: [
         { '@type': 'Country', name: 'United States' },
         { '@type': 'Country', name: 'Canada' },
       ],
       founder: [
         { '@type': 'Person', name: 'Barton Dong', jobTitle: 'CEO' },
-        { '@type': 'Person', name: 'Eugene Song', jobTitle: 'CTO', sameAs: 'https://www.linkedin.com/in/yuhang-eugene-song-53b692172' },
+        {
+          '@type': 'Person',
+          name: 'Eugene Song',
+          jobTitle: 'CTO',
+          sameAs: 'https://www.linkedin.com/in/yuhang-eugene-song-53b692172',
+        },
       ],
     },
   };

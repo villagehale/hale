@@ -1,7 +1,4 @@
-import {
-  GOOGLE_ADS_ID,
-  GOOGLE_ADS_GTAG_SRC,
-} from './google-ads';
+import { GOOGLE_ADS_ID, GOOGLE_ADS_GTAG_SRC } from './google-ads';
 
 const DENIED = {
   ad_storage: 'denied',
