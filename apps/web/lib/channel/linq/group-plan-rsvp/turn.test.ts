@@ -427,6 +427,40 @@ describe('takeGroupPlanRsvpTurn', () => {
     expect(failed).toMatchObject({ notice: { skipped: 'not_sent' } });
   });
 
+  it('keys a named Apple-ID sender by their handle, so two people called Sam are two rows', async () => {
+    const { world, store } = await startPicnic();
+    const plan = [...world.plans.values()][0];
+    if (!plan) throw new Error('no plan');
+    const turn = (handle: string) =>
+      takeGroupPlanRsvpTurn(
+        {
+          chatId: CHAT,
+          senderHandle: handle,
+          senderName: 'Sam',
+          text: 'in',
+          tapback: null,
+          language: 'en',
+          now: NOW,
+        },
+        {
+          store,
+          reader: readerOf(rsvp('yes')),
+          composer: fakeGroupPlanRsvpComposer(),
+          send: async () => ({ providerMessageId: 'x' }),
+          enabled: () => true,
+        },
+      );
+
+    await turn('first.sam@example.com');
+    await turn('second.sam@example.com');
+    const keys = [...plan.rsvps.keys()];
+    expect(keys).toHaveLength(2);
+    for (const key of keys) expect(key).toMatch(/^handle:[0-9a-f]{64}$/);
+    expect(keys).not.toContain(nameKey('Sam'));
+    // The name is still what the group sees.
+    expect([...plan.rsvps.values()].map((row) => row.displayName)).toEqual(['Sam', 'Sam']);
+  });
+
   it('keys a nameless Apple-ID sender without their address, and still finds their legacy row', async () => {
     const { world, store } = await startPicnic();
     const plan = [...world.plans.values()][0];

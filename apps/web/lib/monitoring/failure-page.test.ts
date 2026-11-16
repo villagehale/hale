@@ -740,14 +740,14 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(texts[0]).toContain('reason link');
     expect(texts[0]).toContain('writes 2');
     expect(texts[0]).not.toContain('example');
-    expect(texts[0]).not.toContain('988');
     expect(texts[0]).not.toContain(family.familyId);
     expect(texts[0]).not.toContain(INBOUND);
-    // The claim's random uuid can hold a run of seven digits; it is the one reference.
-    assertNoParentPayload(
-      texts[0] ?? '',
-      ...(texts[0]?.match(/ref ([0-9a-f-]{36})\./)?.slice(1) ?? []),
-    );
+    // The claim's random uuid can hold a run of seven digits (including "988"); it is
+    // the one reference. Parent payload is checked on the rest of the line.
+    const ref = texts[0]?.match(/ref ([0-9a-f-]{36})\./)?.[1];
+    const pageWithoutRef = ref ? (texts[0] ?? '').replaceAll(ref, '') : (texts[0] ?? '');
+    expect(pageWithoutRef).not.toContain('988');
+    assertNoParentPayload(texts[0] ?? '', ...(ref ? [ref] : []));
     const audited = (await auditActions()).filter(
       (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
     );

@@ -9,7 +9,25 @@ import { and, asc, inArray, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
  * | Table | Clock | Approach | Why |
  * | --- | --- | --- | --- |
  * | `family_memory_episodes`, removed by the parent | 30 days after `deleted_at` | BLANK `summary` and `payload`, keep `occurred_at` and `episode_type` | The soft delete keeps the row so audit rows that point at it still resolve. The words are what the parent removed, and thirty days is the erasure window the site promises. An episode's audit rows carry its time and type, not its words (companion/log-write.ts). |
- * | `proactive_candidates`, any status | 365 days after `created_at` | DELETE the row | A text Hale considered sending, kept as long as a sent message is. A settled row already holds no composed text (proactive/review.ts `mark`); its ids, codes and source link go with it. Every queued key names a day, a week, a trip, an offer or a registration window, so a year-old key is not one a sweep still writes. |
+ * | `proactive_candidates`, any status | 365 days after `created_at` | DELETE the row | A text Hale considered sending, kept as long as a sent message is. A settled row already holds no composed text (proactive/review.ts `mark`); its ids, codes and source link go with it. |
+ *
+ * What each clock leaves behind, decided:
+ *
+ * - A fact an inferencer derived from a removed episode: KEPT. A fact records no episode
+ *   it came from, so the blank cannot find it. It is the household's record like any
+ *   other fact, it is in the access export, and the parent can have it forgotten by name
+ *   (memory/forget.ts). The inferencer stops reading the episode the moment it is
+ *   removed (`episodesForContext` skips `deleted_at`).
+ * - A reader that ignores `deleted_at`: NONE in production. Every reader of the table
+ *   skips a removed episode or shows none of its words: export-memory.ts sends its time,
+ *   type and removal date only, and timeline/replay.ts is the eval harness on its own
+ *   pglite database. retention-reach.guard.test.ts lists each reader and fails on a new one.
+ * - The (family_id, dedupe_key) slot a deleted candidate frees: SAFE. Most keys name a
+ *   day, a week, a trip, a departure or a registration window, so no sweep writes them a
+ *   year on. The weekday-care asks are keyed per prompt with no date: a year after a
+ *   dropped ask Hale may weigh it once more, and a sent one stays claimed in
+ *   `channel_messages`, which is never deleted and which the decider reads before any
+ *   send. The same guard test lists every module that queues a candidate.
  *
  * Age is strict: a row exactly at the boundary is kept. Each table is capped at
  * {@link RECORD_RETENTION_BATCH} rows a run, and a second run is a no-op. Only
