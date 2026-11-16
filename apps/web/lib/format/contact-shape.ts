@@ -1,4 +1,4 @@
-import { inShape } from '../channel/place-token';
+import { inShape } from '@hale/types';
 import { asHandsetReads, linksOutside, wordsAsHandsetReads } from './link-shape';
 
 /**
