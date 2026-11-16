@@ -16,6 +16,13 @@ describe('POSTHOG_FLAGS_ENABLED off (default)', () => {
     expect(isEnabled('f14', undefined, { F14_ENABLED: 'true' })).toBe(true);
     expect(isEnabled('f14', undefined, { F14_ENABLED: 'true\n' })).toBe(false);
     expect(isEnabled('f14', undefined, { F14_ENABLED: 'TRUE' })).toBe(false);
+    expect(isEnabled('max-entitlements', undefined, {})).toBe(false);
+    expect(isEnabled('max-entitlements', undefined, { MAX_ENTITLEMENTS_ENABLED: 'true' })).toBe(
+      true,
+    );
+    expect(isEnabled('max-entitlements', undefined, { MAX_ENTITLEMENTS_ENABLED: 'true\n' })).toBe(
+      false,
+    );
   });
 
   it('matches trimmed-on for authorized signup', () => {

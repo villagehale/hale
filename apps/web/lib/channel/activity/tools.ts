@@ -1,5 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import type { PlanTier } from '@hale/types';
 import { z } from 'zod';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import {
   type AreaRefusal,
@@ -10,7 +12,7 @@ import {
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
-import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
+import type { ActivityFinder } from './lane';
 import type { BoundActivityReader } from './reader';
 
 /**
@@ -62,6 +64,8 @@ export interface ActivityToolArgs {
   onPromise(promise: ActivityPromise): void;
   /** Pages the turn may append after the reply names the pick. */
   onLinks?(links: readonly { title: string; url: string }[]): void;
+  /** The family row's plan. Absent treats the household as Plus (today's budgets). */
+  planTier?: PlanTier;
 }
 
 /** The model sometimes fills an optional `area` with "" to mean "none named". That is the
@@ -114,12 +118,13 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
     // on a parent's behalf (rule #1/#5). A household-wide search names nobody and passes.
     touchesChildContent: true,
     handler: async (input, ctx) => {
+      const limits = entitlementsForFamily(args.planTier ?? 'plus');
       // The per-turn ceiling, refused as a sentence the model reads mid-turn rather than
       // as a silent empty result: a model that has looked twice and wants a third go is
       // told to answer with what it has (rule #11 — never a no-op dressed as an outcome).
-      if (callsThisTurn >= MAX_ACTIVITY_CALLS_PER_TURN) {
+      if (callsThisTurn >= limits.activityCallsPerTurn) {
         throw new Error(
-          `You have already searched the web ${MAX_ACTIVITY_CALLS_PER_TURN} times this turn. Answer with what those searches found.`,
+          `You have already searched the web ${limits.activityCallsPerTurn} times this turn. Answer with what those searches found.`,
         );
       }
       callsThisTurn += 1;
@@ -169,7 +174,9 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         throw new Error(refusalSentence(deidentified.refusal));
       }
 
-      const result = await args.finder.find(deidentified.query);
+      const result = await args.finder.find(deidentified.query, {
+        maxSearches: limits.activitySearchesPerCall,
+      });
       if (!result.found) {
         // A SEARCH THAT RAN OUT OF THE CALLER'S TIME REGISTERS ITS OWN FOLLOW-UP.
         //
@@ -204,9 +211,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       //
       // `recordActivityPromise` supersedes, so a turn that ALSO says the sentence and
       // calls the verb writes one row rather than two — the newest promise is the promise.
-      if (
-        result.picks.some((pick) => pick.when === null || pick.price === null || !pick.url)
-      ) {
+      if (result.picks.some((pick) => pick.when === null || pick.price === null || !pick.url)) {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
       const linked = result.picks.flatMap((pick) =>

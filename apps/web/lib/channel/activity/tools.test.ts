@@ -1,5 +1,5 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NamedArea, NamedAreaReader } from '~/lib/channel/named-area';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
@@ -307,6 +307,71 @@ describe('find_activities', () => {
       onPromise: () => {},
     });
     await expect(call(second, { subject: 'music class' })).resolves.toMatchObject({ found: true });
+  });
+
+  describe('MAX_ENTITLEMENTS_ENABLED search budgets', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('keeps two calls per turn for Plus when the flag is on', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+        planTier: 'plus',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await expect(call(tool, { subject: 'music class' })).rejects.toThrow(/already searched/);
+      expect(seen).toHaveLength(2);
+    });
+
+    it('lets Max search four times per turn when the flag is on', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seen: unknown[] = [];
+      const options: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: {
+          async find(query, findOptions) {
+            seen.push(query);
+            options.push(findOptions);
+            return { found: true, picks: [PICK] };
+          },
+        },
+        onPromise: () => {},
+        planTier: 'family',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await call(tool, { subject: 'music class' });
+      await call(tool, { subject: 'pottery' });
+      await expect(call(tool, { subject: 'soccer' })).rejects.toThrow(/already searched the web 4/);
+      expect(seen).toHaveLength(4);
+      expect(options[0]).toEqual({ maxSearches: 8 });
+    });
+
+    it('does not raise Max above two calls while the flag is off', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+        planTier: 'family',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await expect(call(tool, { subject: 'music class' })).rejects.toThrow(
+        /already searched the web 2/,
+      );
+      expect(seen).toHaveLength(2);
+    });
   });
 
   it('carries a named failure through rather than pretending nothing was asked', async () => {

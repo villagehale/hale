@@ -13,6 +13,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { maxEntitlementsEnabled } from '~/lib/billing/max-entitlements';
 import { aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import {
   aggregateMedicalAnswers,
@@ -214,6 +215,12 @@ export interface OpsDailyReport {
   linqChatIds: number;
   /** The inbound pg-boss queue at the moment of the post. Counts only. */
   queue: InboundQueueSnapshot;
+  /**
+   * Max (`family`) families in the 24h real set, and how many of them have an
+   * unanswered step. Absent while MAX_ENTITLEMENTS_ENABLED is off, so the daily
+   * post stays the same 18 lines. Counts only — never a family id.
+   */
+  prioritySupport?: { maxFamilies: number; withUnanswered: number } | null;
 }
 
 export type OpsDailyOutcome = 'posted' | 'already_posted' | 'failed' | 'skipped_not_configured';
@@ -639,6 +646,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     loadInboundQueueStall(database),
   ]);
   const graded = w4Cohorts.filter((row) => row.weekN === RETENTION_GRADED_WEEK);
+  const prioritySupport = await loadPrioritySupport(database, realIds, window);
 
   return {
     window,
@@ -677,7 +685,37 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     week,
     linqChatIds,
     queue,
+    ...(prioritySupport ? { prioritySupport } : {}),
   };
+}
+
+async function loadPrioritySupport(
+  database: Database,
+  realIds: string[],
+  window: { start: Date; end: Date },
+): Promise<{ maxFamilies: number; withUnanswered: number } | null> {
+  if (!maxEntitlementsEnabled()) return null;
+  if (realIds.length === 0) return { maxFamilies: 0, withUnanswered: 0 };
+  const f = schema.families;
+  const a = schema.auditLog;
+  const [maxRow] = await database
+    .select({ n: sql<number>`count(*)::int` })
+    .from(f)
+    .where(and(inArray(f.id, realIds), eq(f.planTier, 'family')));
+  const unanswered = await database
+    .selectDistinct({ familyId: a.familyId })
+    .from(a)
+    .innerJoin(f, eq(f.id, a.familyId))
+    .where(
+      and(
+        inArray(a.familyId, realIds),
+        eq(f.planTier, 'family'),
+        eq(a.actionTaken, TURN_UNANSWERED_AUDIT_ACTION),
+        gte(a.occurredAt, window.start),
+        lt(a.occurredAt, window.end),
+      ),
+    );
+  return { maxFamilies: maxRow?.n ?? 0, withUnanswered: unanswered.length };
 }
 
 // ── the post ─────────────────────────────────────────────────────────────────
@@ -752,6 +790,11 @@ function papercutLine(p: OpsDailyReport['week']['papercuts']): string {
   return `Papercuts (7d): unmet ${p.unmet_intent} | medical fallback ${p.medical_fallback} | reply fallback ${p.reply_fallback} | voice fallback ${p.voice_failure} | turn failures ${p.turn_failure}`;
 }
 
+function prioritySupportLine(priority: OpsDailyReport['prioritySupport']): string | null {
+  if (!priority) return null;
+  return `Priority support: ${priority.maxFamilies} Max families | unanswered ${priority.withUnanswered}`;
+}
+
 /** The #ops text. ASCII, counts and closed-vocabulary reasons only. */
 export function composeOpsDailyPost(report: OpsDailyReport): string {
   const end = `${report.window.end.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -784,9 +827,12 @@ export function composeOpsDailyPost(report: OpsDailyReport): string {
     loopLine(report.week),
     unmetLine(report.week.unmetIntents),
     papercutLine(report.week.papercuts),
+    prioritySupportLine(report.prioritySupport),
     `Linq chat IDs (DB): ${report.linqChatIds} of ${LINQ_CHAT_ID_LIMIT}`,
     queueLine(report.queue),
-  ].join('\n');
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n');
 }
 
 // ── claim and post ───────────────────────────────────────────────────────────

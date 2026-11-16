@@ -12,7 +12,7 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
-import { type FamilyCountry, familyCountryOf } from '@hale/types';
+import { type FamilyCountry, type PlanTier, familyCountryOf } from '@hale/types';
 import type { FactReader } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
@@ -89,6 +89,7 @@ import {
   releaseWatchByParent,
 } from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
+import { countFamilyLiveWatches } from '~/lib/channel/watches/live-count';
 import {
   type AgentContext,
   type LoadAgentContextInput,
@@ -315,6 +316,8 @@ export interface ChannelCoachPorts {
     familyCountry: FamilyCountry | null,
     /** Every sign-up offer the turn recorded, which the router stamps after the send. */
     onSignupOffer: (offer: RecordedSignupOffer) => void,
+    /** The family row's plan. Absent treats the household as Plus (today's budgets). */
+    planTier?: PlanTier,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -774,6 +777,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 (offer) => {
                   signupOffers.push(offer);
                 },
+                familyContext.planTier,
               );
               // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
               // are busy-only, on every group turn. VIL-615: once read_email returns text,
@@ -1205,6 +1209,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       onUndo,
       familyCountry,
       onSignupOffer,
+      planTier,
     ) => {
       const listJournal = createGroupListJournal();
       const factReader: FactReader =
@@ -1233,6 +1238,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       ];
       return buildChannelCoachTools({
         familyId: turn.familyId,
+        planTier,
         familyCountry,
         reader: channelScheduleReader(database, turn.now),
         // VIL-443: a calendar_add drafted in the family group records that origin, so its
@@ -1279,6 +1285,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           ),
           parentWords: turn.body,
           linksThisTurn: watchLinks,
+          countLiveWatches: (familyId) => countFamilyLiveWatches(database, familyId),
         },
         onDraft,
         onOffer,

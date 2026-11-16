@@ -1,9 +1,12 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import type { PlanTier } from '@hale/types';
 import { z } from 'zod';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
+import { liveWatchCapRefusal } from '~/lib/channel/watches/cap';
 import type {
   ClassAvailabilityReader,
   ClassAvailabilityReading,
@@ -66,6 +69,10 @@ export interface SpotWatchPorts {
   /** Pages a tool put in front of the parent this turn. Never a URL read off a photo or a
    * PDF that the parent did not type (photoFactWatchLinks). */
   linksThisTurn: () => readonly { title: string; url: string }[];
+  /** The family row's plan. Absent treats the household as Plus. */
+  planTier?: PlanTier;
+  /** Live watches already on this household (spots + provider subscriptions). */
+  countLiveWatches?: (familyId: string) => Promise<number>;
 }
 
 export interface SpotWatchToolArgs extends SpotWatchPorts {
@@ -229,6 +236,18 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
         throw new Error(
           'This household has not said yes to Hale texting them first, so I cannot watch anything for them. Say so plainly and give them the page to check themselves.',
         );
+      }
+
+      const watchCap = entitlementsForFamily(args.planTier ?? 'plus').liveWatches;
+      if (watchCap !== null) {
+        if (!args.countLiveWatches) {
+          throw new Error(
+            'I cannot tell how many classes this household is already watching, so I have not started another. Tell the parent that and ask them to send it again in a bit.',
+          );
+        }
+        const live = await args.countLiveWatches(ctx.familyId);
+        const capRefusal = liveWatchCapRefusal(live, watchCap);
+        if (capRefusal) throw new Error(capRefusal);
       }
 
       // A link outside the registry is a page the model reader may watch, while that flag

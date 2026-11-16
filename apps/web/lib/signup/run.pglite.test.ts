@@ -1215,6 +1215,7 @@ describe('authorized signup runner', () => {
       await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
       vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
       vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', '');
     });
 
     async function withProviderSession(
@@ -1243,6 +1244,41 @@ describe('authorized signup runner', () => {
         now: NOW,
       };
     }
+
+    it('skips Browser Use for Plus while MAX_ENTITLEMENTS_ENABLED is on and uses the existing path', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seeded = await familyWithOffer({ ageMonths: 36, url: `${ORIGIN}/register` });
+      const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(run).not.toHaveBeenCalled();
+      expect(calls.opened).toBeGreaterThan(0);
+      expect(result.claimed).toBe(true);
+      expect(result.browserUse).toBeUndefined();
+    });
+
+    it('still uses Browser Use for Max while MAX_ENTITLEMENTS_ENABLED is on', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      await db.database
+        .update(schema.families)
+        .set({ planTier: 'family' })
+        .where(eq(schema.families.id, seeded.familyId));
+      await withProviderSession(seeded);
+      const { browser, calls } = browserFor(SAFE);
+      const run = vi.fn(async () => CHECKOUT);
+      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-max'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(calls.opened).toBe(0);
+      expect(result).toMatchObject({ claimed: true, outcome: 'reached_checkout' });
+      expect(result.browserUse?.liveViewUrl).toBe(CHECKOUT.liveViewUrl);
+    });
 
     it('drives an ActiveNet host to checkout and returns the live view with no fixed copy', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
