@@ -1,5 +1,5 @@
 import type { Locale } from '~/i18n/routing';
-import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import { type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import { FoundingCheckoutLink } from './founding-checkout-link';
@@ -10,11 +10,13 @@ import { PromoStickyReveal } from './promo-sticky';
  * Holiday founding-family promo surfaces (Design, Nov 2026).
  *
  * Copy rules this file is held to (holiday-promo.test.ts):
- *  - the sale name leads, with the founding price as the big numeral under it (ad 05);
- *  - never was / save / % off / strikethrough anywhere near "Sale";
- *  - no regular or after-Dec-31 price beside the sale (Barton, Nov 16): the FAQ
- *    answers "what happens after Dec 31" as a neutral fact, away from the headline;
- *  - plain "$" in both countries, with CAD / USD quietly beside every price;
+ *  - the sale name leads, with the Max sale price as the big numeral under it
+ *    and the regular Max price struck beside it (Barton, Nov 16 1:07 PM ET);
+ *    Plus sits on the line below, also struck regular → sale;
+ *  - never was / save / % off wording; the struck price says it;
+ *  - plain "$" in both countries and no CAD / USD beside any price: the
+ *    numbers themselves change with the visitor's country;
+ *  - yearly only, no monthly option and no trial wording;
  *  - registration stays "helps you get registered"; no camp-finding, no child
  *    names, no referral or gift offer.
  *
@@ -74,7 +76,7 @@ function Check() {
   );
 }
 
-/** Thin strip above the header: sale name, price, the CA line, a jump to the offer. */
+/** Thin strip above the header: sale name, the Max and Plus prices, a jump to the offer. */
 export function PromoBanner({ promo }: { promo: HolidayPromo }) {
   return (
     <div
@@ -85,8 +87,9 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
       <p className="promo-bar-in">
         <strong className="promo-bar-sale">{promo.saleName}</strong>
         <span className="promo-bar-offer">
-          <span className="promo-bar-long">Founding families: </span>
-          <b>{promo.price}</b>, locked in<span className="promo-bar-long">. Join by Dec 31</span>.
+          Max <b>{promo.max.saleLabel}</b>
+          <span className="promo-bar-long">, Plus {promo.plus.saleLabel}</span>, locked in
+          <span className="promo-bar-long">. Join by Dec 31</span>.
         </span>
         <a className="promo-bar-link" href="#founding">
           See<span className="promo-bar-long"> the</span> offer
@@ -97,23 +100,40 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-/** The big founding price: "$79/yr" with the currency code set small beside it. */
+/** The big Max sale price, with the regular Max price struck beside it. */
 function PriceLockup({ promo }: { promo: HolidayPromo }) {
+  const { max } = promo;
   return (
-    <p className="promo-price" aria-label={promo.price.replace('/yr', ' a year')}>
-      <span className="promo-price-sym" aria-hidden="true">
-        {promo.symbol}
-      </span>
-      <span className="promo-price-num" aria-hidden="true">
-        {promo.amount}
-      </span>
-      <span className="promo-price-per" aria-hidden="true">
-        /yr
-      </span>
-      <span className="promo-price-code" aria-hidden="true">
-        {promo.code}
-      </span>
-    </p>
+    <div className="promo-offer">
+      <p className="promo-offer-tier">Max</p>
+      <p className="promo-price">
+        <span className="promo-sr">
+          Max: {max.saleLabel.replace('/yr', ' a year')}, regular price{' '}
+          {max.regularLabel.replace('/yr', ' a year')}.
+        </span>
+        <span className="promo-price-sym" aria-hidden="true">
+          {promo.symbol}
+        </span>
+        <span className="promo-price-num" aria-hidden="true">
+          {max.sale}
+        </span>
+        <span className="promo-price-side" aria-hidden="true">
+          <s className="promo-price-regular">{max.regularLabel}</s>
+          <span className="promo-price-per">/yr</span>
+        </span>
+      </p>
+      <p className="promo-offer-plus">
+        <span className="promo-sr">
+          Plus: {promo.plus.saleLabel.replace('/yr', ' a year')}, regular price{' '}
+          {promo.plus.regularLabel.replace('/yr', ' a year')}.
+        </span>
+        <span aria-hidden="true">
+          <span className="promo-offer-plus-name">Plus</span>{' '}
+          <s className="promo-price-regular">{promo.plus.regularLabel}</s>{' '}
+          <b>{promo.plus.saleLabel}</b>
+        </span>
+      </p>
+    </div>
   );
 }
 
@@ -149,7 +169,6 @@ const CHIPS = ['Watches the dates', 'Reads flyers', 'Plans winter break', 'Lives
 
 /** The founding-family offer. `id="founding"` is what the banner and sticky bar jump to. */
 export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
-  const currencyName = promo.currency === 'USD' ? 'USD' : 'CAD';
   return (
     <section
       className="hs promo-sec"
@@ -169,8 +188,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
             <PriceLockup promo={promo} />
             <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
-              Founding families: locked in for as long as you’re a member. Join by Dec 31. Refund
-              anytime.
+              Founding families: your price is locked in for as long as you’re a member. Join by
+              Dec 31. Refund anytime.
             </p>
             <ul className="promo-chips">
               {CHIPS.map((chip) => (
@@ -187,14 +206,14 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 placement="promo_section"
                 phase={promo.phase}
                 currency={promo.currency}
+                plan="max"
               >
-                Already texting Hale? Lock in {promo.price}
+                Already texting Hale? Lock in Max at {promo.max.saleLabel}
                 <Arrow />
               </FoundingCheckoutLink>
             </div>
             <p className="promo-fine">
-              Billed once a year in {currencyName}. The founding price is for families who join by
-              Dec 31, 2026.
+              Billed once a year. Founding prices are for families who join by Dec 31, 2026.
             </p>
           </div>
           <PromoMedia promo={promo} />
@@ -206,7 +225,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               <div>
                 <h3>Locked in for life</h3>
                 <p>
-                  Join by Dec 31 and {promo.price} stays your price for as long as you’re a member.
+                  Join by Dec 31 and your price ({promo.max.saleLabel} for Max,{' '}
+                  {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member.
                   It doesn’t go up at renewal. If you cancel, the founding price ends with the
                   membership.
                 </p>
@@ -244,9 +264,14 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
   );
 }
 
-/** The three promo questions, in the site's FAQ rows. */
+/** The FAQ's neutral "after Dec 31" fact. Exported for the tests. */
+export function foundingAfterLine(promo: HolidayPromo): string {
+  return `Founding families who join by Dec 31 keep ${promo.max.saleLabel} for Max or ${promo.plus.saleLabel} for Plus for as long as they’re members. Families who join after that pay the regular price.`;
+}
+
+/** The promo questions, in the site's FAQ rows. */
 export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
-  const after = `Founding families who join by Dec 31 keep ${promo.price} for as long as they’re members. Families who join after that pay the regular Plus price.`;
+  const after = foundingAfterLine(promo);
   return (
     <>
       <FaqItem id="what-happens-after-dec-31" question="What happens after Dec 31?">
@@ -261,10 +286,28 @@ export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
         helps you get registered, and it plans winter break with you. No app to download.
       </FaqItem>
       <FaqItem id="why-this-currency" question="Why do I see this currency?">
-        Prices follow where you are: CAD in Canada, USD in the US. Checkout charges the same
-        currency you see here.
+        Prices follow where you are: Canadian dollars in Canada, US dollars in the US. Checkout
+        charges the same currency.
       </FaqItem>
     </>
+  );
+}
+
+/** Card price for a paid tier on the pricing page: regular struck, sale beside it. */
+export function TierSalePrice({ price }: { price: PromoTierPrice }) {
+  return (
+    <h3 className="promo-tier-price">
+      <span className="promo-sr">
+        {price.saleLabel.replace('/yr', ' a year')}, regular price{' '}
+        {price.regularLabel.replace('/yr', ' a year')}.
+      </span>
+      <s className="promo-tier-regular" aria-hidden="true">
+        {price.regularLabel}
+      </s>
+      <span className="promo-tier-sale" aria-hidden="true">
+        {price.saleLabel}
+      </span>
+    </h3>
   );
 }
 
@@ -275,7 +318,7 @@ export function PromoStickyCta({ promo, ...door }: { promo: HolidayPromo } & Doo
       <div className="promo-sticky-copy">
         <strong>{promo.saleName}</strong>
         <span>
-          {promo.price}, locked in. Join by Dec&nbsp;31
+          Max {promo.max.saleLabel}, Plus {promo.plus.saleLabel}. Join by Dec&nbsp;31
         </span>
       </div>
       <TextDoor className="promo-sticky-btn" placement="promo_sticky" {...door}>

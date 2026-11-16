@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { ATTRIBUTION_STORAGE_KEY } from '~/lib/analytics/attribution';
 import { APP_URL } from '~/lib/app-url';
-import type { PromoPhase } from '~/lib/promo/holiday';
+import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
 import { parseAttribution, serializeAttribution } from '@hale/types';
 
 /** The app page that starts founding checkout for a signed-in family. */
@@ -24,17 +24,23 @@ export function FoundingCheckoutLink({
   placement,
   phase,
   currency,
+  plan,
   className,
   children,
 }: {
   placement: string;
   phase: PromoPhase;
   currency: 'CAD' | 'USD';
+  /**
+   * Which paid tier the visitor picked. Sent as `?plan=` so the app can open
+   * the matching founding checkout. apps/web does not read it yet (Noah).
+   */
+  plan: PromoTier;
   className?: string;
   children: ReactNode;
 }) {
   const capture = useAnalytics();
-  const href = foundingCheckoutHref();
+  const href = `${foundingCheckoutHref()}?plan=${plan}`;
   return (
     <a
       href={href}
@@ -42,7 +48,7 @@ export function FoundingCheckoutLink({
       data-cta="promo_cta_click"
       data-cta-placement={placement}
       onClick={(event) => {
-        capture('promo_cta_click', { cta_placement: placement, promo_phase: phase, currency });
+        capture('promo_cta_click', { cta_placement: placement, promo_phase: phase, currency, plan });
         let stored: string | null = null;
         try {
           stored = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
@@ -52,7 +58,7 @@ export function FoundingCheckoutLink({
         const query = serializeAttribution(parseAttribution(stored ?? undefined));
         if (query) {
           event.preventDefault();
-          window.location.assign(`${href}?${query}`);
+          window.location.assign(`${href}&${query}`);
         }
       }}
     >

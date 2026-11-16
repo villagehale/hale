@@ -1,6 +1,5 @@
 import {
   type BillingCurrency,
-  FOUNDING_PRICE_DISPLAY,
   FOUNDING_PROMO_STARTS_AT,
   HOLIDAY_SALE_STARTS_AT,
   type PromoPhase,
@@ -17,52 +16,92 @@ import {
  *  - "Black Friday Sale" until Nov 27, then "Holiday Sale" from Nov 28 00:00
  *    America/Toronto to Dec 31. The phase is picked per request, so the switch
  *    needs no deploy.
- *  - Founding price $79/yr CAD (Canada) or $59/yr USD (US), locked for as long as the
- *    family stays a member. Currency follows the visitor's country (US → USD,
- *    everything else → CAD), the same rule checkout uses.
- *  - No regular or after-Dec-31 price beside the sale name, in either country
- *    (Barton, Nov 16). The FAQ states what happens after Dec 31 as a neutral fact.
- *  - Never was / save / % off / strikethrough beside "Sale".
+ *  - Both paid tiers are on sale, billed yearly, locked for as long as the
+ *    family stays a member (Barton, Nov 16 1:07 PM ET):
+ *      Canada: Plus $59/yr, Max $99/yr. US: Plus $39/yr, Max $79/yr.
+ *    The headline leads with the Max price. Each sale price sits next to its
+ *    regular annual price, struck through.
+ *  - Plain "$" with no CAD / USD beside any price. The number itself follows
+ *    the visitor's country (US → USD amounts, everything else → CAD amounts),
+ *    the same rule checkout uses.
+ *  - No monthly option and no "try it for a month" during the promo.
+ *  - Never was / save / % off wording.
  *
- * Display amounts come from @hale/types (FOUNDING_PRICE_DISPLAY), shared with the
- * app's founding checkout page. Checkout still charges whatever Stripe price id
- * the env names (apps/web/lib/billing/prices.ts).
+ * DISPLAY ONLY. Checkout charges whatever Stripe price id the env names
+ * (apps/web/lib/billing/prices.ts). Until apps/web has founding Plus and Max
+ * prices at these amounts, the promo flag must stay off.
  */
 
 export type { PromoPhase };
 export const PROMO_STARTS_AT = FOUNDING_PROMO_STARTS_AT;
 export const HOLIDAY_PHASE_STARTS_AT = HOLIDAY_SALE_STARTS_AT;
 
+export type PromoTier = 'plus' | 'max';
+
+/** One paid tier on sale: whole-unit amounts and the "$99/yr" labels. */
+export interface PromoTierPrice {
+  tier: PromoTier;
+  name: 'Plus' | 'Max';
+  /** Regular annual price, shown struck through. */
+  regular: number;
+  /** Sale annual price, locked in for founding families. */
+  sale: number;
+  /** "$329/yr" */
+  regularLabel: string;
+  /** "$99/yr" */
+  saleLabel: string;
+}
+
+/**
+ * Regular annual prices come from the site's existing public price copy:
+ * Plus $159 CAD / $119 USD (PLUS_LIST_PRICE_DISPLAY in @hale/types), Max
+ * $329 CAD / $259 USD (apps/site/lib/faq/index.ts, apps/site/app/llms.txt).
+ * There is no Stripe Max price in the repo.
+ */
+export const PROMO_TIER_PRICES: Record<
+  BillingCurrency,
+  Record<PromoTier, { regular: number; sale: number }>
+> = {
+  CAD: { plus: { regular: 159, sale: 59 }, max: { regular: 329, sale: 99 } },
+  USD: { plus: { regular: 119, sale: 39 }, max: { regular: 259, sale: 79 } },
+};
+
+function tierPrice(currency: BillingCurrency, tier: PromoTier): PromoTierPrice {
+  const { regular, sale } = PROMO_TIER_PRICES[currency][tier];
+  return {
+    tier,
+    name: tier === 'plus' ? 'Plus' : 'Max',
+    regular,
+    sale,
+    regularLabel: `$${regular}/yr`,
+    saleLabel: `$${sale}/yr`,
+  };
+}
+
 export interface HolidayPromo {
   phase: PromoPhase;
   /** The sale name, which leads every promo surface. */
   saleName: 'Black Friday Sale' | 'Holiday Sale';
+  /** Which amounts this visitor sees. Never printed next to a price. */
   currency: BillingCurrency;
-  /** Plain "$" in both countries; `code` says which dollars. */
   symbol: '$';
-  /** "CAD" or "USD", shown quietly beside every price. */
-  code: BillingCurrency;
-  /** Whole-unit founding price per year. */
-  amount: 79 | 59;
-  /** "$79/yr CAD" / "$59/yr USD": the price as it reads in a sentence or button. */
-  price: string;
+  plus: PromoTierPrice;
+  max: PromoTierPrice;
 }
 
-/** Sits next to the founding price. No trial or "try it for a month" wording. */
+/** Sits next to the sale prices. No trial or "try it for a month" wording. */
 export const FOUNDING_REFUND_LINE = 'Full refund anytime if it’s not for you.';
 
 export const promoPhase = promoPhaseAt;
 
 export function buildHolidayPromo(phase: PromoPhase, currency: BillingCurrency): HolidayPromo {
-  const display = FOUNDING_PRICE_DISPLAY[currency];
   return {
     phase,
     saleName: phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale',
     currency,
-    symbol: display.symbol,
-    code: display.code,
-    amount: display.amount as 79 | 59,
-    price: display.perYearCode,
+    symbol: '$',
+    plus: tierPrice(currency, 'plus'),
+    max: tierPrice(currency, 'max'),
   };
 }
 
