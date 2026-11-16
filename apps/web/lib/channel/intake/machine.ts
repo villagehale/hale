@@ -3253,7 +3253,7 @@ async function provision(
 
   deps.keepTyping?.();
   // No place, no find: nothing is searched and nothing nearby is said.
-  const radar = location
+  const radar = location?.timezone
     ? await deps.radar.compose({
         familyId,
         children: gathered.collected.children,
@@ -3264,7 +3264,12 @@ async function provision(
         ...(discoveryOn ? { activityMap: true } : {}),
       })
     : null;
-  if (!radar) console.info({ outcome: 'no_place' }, 'intake: provisioned without a place');
+  if (!radar) {
+    console.info(
+      { outcome: location ? 'zone_unknown' : 'no_place' },
+      location ? 'intake: provisioned without a zone' : 'intake: provisioned without a place',
+    );
+  }
   const placeLabel =
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
@@ -3311,8 +3316,8 @@ async function provision(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       checklist,
-      // Dated facts need the family's own clock; with no place there is none to read.
-      ...(location ? { now, timeZone: location.timezone } : {}),
+      // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
+      ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
