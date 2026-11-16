@@ -9,11 +9,7 @@ import { ACTIVITY_WATCH_DUE_HOURS } from '~/lib/channel/activity/commitment';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
-import {
-  type ActivityFamilyReader,
-  bindActivityReader,
-  productionActivityFamilyReader,
-} from '~/lib/channel/activity/reader';
+import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
   type ActivityFollowUpDeps,
   defaultActivityFollowUpDeps,
@@ -105,7 +101,7 @@ const SWEEP_AT = new Date('2026-08-21T19:00:00.000Z');
 /** 18 months at the incident — a toddler, the beachhead stage. */
 const CHILD_DOB = '2025-02-20';
 
-const GYM_NAME = 'Halton Hills Gymnastics Centre';
+const GYM_NAME = 'Riverside Gymnastics Centre';
 const GYM_RESULT = {
   name: `Parent & Tot Gymnastics, ${GYM_NAME}`,
   age_fit: '18 months - 3 years',
@@ -114,11 +110,11 @@ const GYM_RESULT = {
   source_name: GYM_NAME,
 };
 const EARLYON_RESULT = {
-  name: 'EarlyON drop-in, Georgetown (Links2Care)',
+  name: 'Family drop-in, Riverside Community Centre',
   age_fit: 'ages 0-6',
   when: 'Weekday mornings, fall schedule from Sept 8',
   price: 'free',
-  source_name: 'Links2Care',
+  source_name: 'Riverside Community Centre',
 };
 
 // A recording waits on live model calls, which outlast the 5s default; replay keeps it.
@@ -881,9 +877,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     const sweepTransport = new FakeTransport();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(sweepTransport, webPort([[]]).client, {
-        reader: recordedEmptyHandedPlace(),
-      }),
+      sweepDeps(sweepTransport, webPort([[]]).client),
       SWEEP_AT,
     );
 
@@ -907,9 +901,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     await turnTwoPromises();
     await runActivityFollowUpSweep(
       database,
-      sweepDeps(new FakeTransport(), webPort([[]]).client, {
-        reader: recordedEmptyHandedPlace(),
-      }),
+      sweepDeps(new FakeTransport(), webPort([[]]).client),
       SWEEP_AT,
     );
     const isOpen = (row: { fulfilledAt: Date | null; cancelledAt: Date | null }) =>
@@ -922,9 +914,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     const transport = new FakeTransport();
     const result = await runActivityFollowUpSweep(
       database,
-      sweepDeps(transport, webPort([[]]).client, {
-        reader: recordedEmptyHandedPlace(),
-      }),
+      sweepDeps(transport, webPort([[]]).client),
       weekLater,
     );
 
@@ -1066,20 +1056,6 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
    * so every sweep in this file took the shallow fallback by accident, and would have
    * started making live web requests the moment a developer had a key exported (rule #11).
    */
-  /**
-   * VIL-640 moved the family's FSA to K7L, so production place is Kingston. The
-   * empty-handed composer recordings still hash `town: "Halton Hills"` (the
-   * venue names this journey still uses). Override only those sweeps so the
-   * cache hits; do not re-record.
-   */
-  function recordedEmptyHandedPlace(): ActivityFamilyReader {
-    const inner = productionActivityFamilyReader();
-    return {
-      ...inner,
-      place: async () => ({ status: 'known', town: 'Halton Hills' }),
-    };
-  }
-
   function sweepDeps(
     transport: FakeTransport,
     client: () => AgentClient,
