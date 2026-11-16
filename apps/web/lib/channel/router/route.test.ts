@@ -18,6 +18,7 @@ vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/effect')>()),
   sharedLinqEffectDecider: () => ({ decide: effectDecide }),
 }));
+import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
@@ -121,7 +122,6 @@ import {
   TurnDeferred,
   routeChannelMessage,
 } from './route';
-import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
 import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
@@ -5485,6 +5485,10 @@ describe('the disambiguation a clarifier owns', () => {
 describe('the weekday-care answer', () => {
   const CHILD = 'cccc1111-1111-4111-8111-111111111111';
   const ASK_ID = 'dddd1111-1111-4111-8111-111111111111';
+
+  beforeEach(() => {
+    vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+  });
 
   /**
    * The REAL open-question reader over stub sources, rather than a hand-written array.

@@ -329,6 +329,7 @@ describe('runProactiveReview', () => {
 
   it('VIL-685 · records the winter-break question as sent, so the reply is read against it; other rows keep no body', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
     await enqueue(schoolBreakAskDedupeKey(familyId, '2026-27', parentUserId), {
       kind: 'school_break_ask',
       category: 'nudge',

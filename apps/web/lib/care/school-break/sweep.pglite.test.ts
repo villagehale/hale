@@ -63,7 +63,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, '');
+  vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
 });
 
 afterEach(async () => {
@@ -1149,7 +1149,7 @@ describe('the winter-break sweep: a filed break stands only on what named it', (
   });
 
   it.each([
-    ['on', ''],
+    ['on', 'true'],
     ['off', 'false'],
   ])(
     'never shows the coach a board break whose mail was withdrawn or whose child left school age (lane %s)',

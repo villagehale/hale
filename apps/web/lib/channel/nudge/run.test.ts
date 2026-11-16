@@ -1268,6 +1268,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
     it('reaches the break rung on its own kill switch, and the after-school prompts stay dark', async () => {
       vi.stubEnv('F14_ENABLED', 'true');
+      vi.stubEnv('SCHOOL_BREAK_ENABLED', 'true');
       const h = harness({
         families: NO_REGION,
         children: [TODDLER],
