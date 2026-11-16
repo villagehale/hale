@@ -12,6 +12,7 @@ import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/c
 import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
+import { inviteLinkHash } from '~/lib/loop/calendar-invite-link-hash';
 import { composeEventCancel, composeEventLink } from '~/lib/loop/ics-invite';
 import {
   CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
@@ -168,7 +169,7 @@ async function alreadyTextedThisLink(
   familyId: string,
   parentUserId: string,
   dedupeKey: string,
-  url: string,
+  familyEventId: string,
 ): Promise<boolean> {
   const m = schema.channelMessages;
   const rows = await database
@@ -184,12 +185,25 @@ async function alreadyTextedThisLink(
           sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
           sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:r%:sms%`} ESCAPE '\\'`,
         ),
-        sql`${m.body} LIKE ${likeContains(url)} ESCAPE '\\'`,
+        bodyCarriesInviteLink(m.body, familyEventId),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * The part that carries this event's link: a hash of the event id, or, on a row
+ * written before the hash, the signed URL in the stored text. The LIKE is the
+ * event's path, not the current signature, so such a row still matches after a
+ * remint. A null body is not a hit here — that is only a cancel-side legacy read.
+ */
+function bodyCarriesInviteLink(body: typeof schema.channelMessages.body, familyEventId: string) {
+  return or(
+    eq(body, inviteLinkHash(familyEventId)),
+    sql`${body} LIKE ${likeContains(`/api/ics/event/${familyEventId}`)} ESCAPE '\\'`,
+  );
 }
 
 /**
@@ -276,7 +290,9 @@ async function textOneParent(
   }
 
   const baseKey = linkDedupeKey(job.familyEventId, composed.sequence, parent.userId);
-  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, baseKey, composed.url)) {
+  if (
+    await alreadyTextedThisLink(database, job.familyId, parent.userId, baseKey, job.familyEventId)
+  ) {
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
   }
   // A previous attempt left a part that is not the link. A fresh key so dispatch
@@ -305,6 +321,7 @@ async function textOneParent(
   }
 
   const payload: CalendarInviteSmsPayload = {
+    familyEventId: job.familyEventId,
     summary: composed.summary,
     when,
     url: composed.url,
@@ -367,12 +384,9 @@ async function wasTextedTheLink(
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
         like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
         // A null body is a send from before the text was stored, or one whose body
-        // retention already cleared. A stored body counts only when it holds the link,
-        // so a linkless first part is not "they have the invite".
-        or(
-          isNull(m.body),
-          sql`${m.body} LIKE ${likeContains(`/api/ics/event/${job.familyEventId}`)} ESCAPE '\\'`,
-        ),
+        // retention already cleared. A stored body counts when it holds the link or
+        // the event-id hash (VIL-588), so a linkless first part is not the invite.
+        or(isNull(m.body), bodyCarriesInviteLink(m.body, job.familyEventId)),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )

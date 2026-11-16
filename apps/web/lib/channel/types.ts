@@ -116,6 +116,14 @@ export type RenderedContent = {
    * whose whole text is model-written from the parent's own facts (the reminder). */
   recordBody?: boolean;
   /**
+   * A hash to store on the ledger instead of the sent text, only on the part whose
+   * text contains {@link RenderedContent.linkHashFor}. The calendar invite uses this
+   * so the signed ICS URL is not kept for a year.
+   */
+  linkHash?: string;
+  /** The token {@link RenderedContent.linkHash} is stored for. Absent unless `linkHash` is. */
+  linkHashFor?: string;
+  /**
    * VIL-467 · Several texts, sent in order as one message. Present only on a template
    * whose model decides how many texts to send (the reminder). `text` then holds the
    * same texts joined by a blank line, for the dispatch's claim gate only; what goes

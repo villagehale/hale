@@ -76,7 +76,8 @@ export interface LedgerWrite {
   relatedActionId?: string | null;
   relatedConversationId?: string | null;
   sentAt?: Date | null;
-  /** The sent text, only for a rendered message that asks for it (`recordBody`). */
+  /** The sent text, only for a rendered message that asks for it (`recordBody`),
+   * or the calendar invite's link hash (`linkHash`). */
   body?: string | null;
 }
 
@@ -378,7 +379,7 @@ async function dispatchLeg(
         providerMessageId: result.providerMessageId,
         providerChatId: result.providerChatId ?? null,
         sentAt: now,
-        ...(rendered.recordBody ? { body: rendered.text } : {}),
+        ...ledgerBodyWrite(rendered, rendered.text),
       },
     );
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
@@ -505,7 +506,7 @@ async function dispatchTexts(
           providerMessageId: result.providerMessageId,
           providerChatId: result.providerChatId ?? null,
           sentAt: now,
-          ...(rendered.recordBody ? { body: text } : {}),
+          ...ledgerBodyWrite(rendered, text),
         },
       );
       await ports.audit({
@@ -552,6 +553,23 @@ async function dispatchTexts(
 /** The words a parent will actually read. */
 function claimText(rendered: RenderedContent): string {
   return rendered.text;
+}
+
+/**
+ * What `channel_messages.body` holds for this send. The reminder keeps the sent
+ * words (`recordBody`). A calendar invite stores its link hash, and only on
+ * the part that actually carries the link — a first bubble with no url is not the
+ * invite.
+ */
+function ledgerBodyWrite(
+  rendered: RenderedContent,
+  text: string,
+): { body: string } | Record<string, never> {
+  if (rendered.linkHash && rendered.linkHashFor && text.includes(rendered.linkHashFor)) {
+    return { body: rendered.linkHash };
+  }
+  if (rendered.recordBody) return { body: text };
+  return {};
 }
 
 /** The single point every terminal channel_messages write goes through: it writes
