@@ -284,6 +284,54 @@ describe('resolveCheckoutPrice', () => {
         period: 'annual',
       },
     });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          ...WITH_LIST,
+          STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+        },
+      }),
+    ).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_max_list_cad',
+        sku: 'max_annual',
+        currency: 'CAD',
+        period: 'annual',
+      },
+    });
+  });
+
+  it('does not charge CAD Max list or leftover Family annual when the matching Max list id is unset', () => {
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
+          STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+          STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
+        },
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
+          STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
+        },
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
   it('does not charge list during the window when the promo id is missing', () => {

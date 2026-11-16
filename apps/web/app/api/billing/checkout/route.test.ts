@@ -225,6 +225,14 @@ describe('POST /api/billing/checkout', () => {
       sku: 'max_annual',
       tier: 'family',
     });
+
+    createMock.mockClear();
+    const usdMaxMissing = await post(
+      { period: 'annual', tier: 'max' },
+      { 'x-vercel-ip-country': 'US' },
+    );
+    expect(usdMaxMissing.status).toBe(501);
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it('404s when the flag is off and the family is not listed', async () => {

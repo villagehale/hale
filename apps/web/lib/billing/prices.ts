@@ -205,7 +205,7 @@ export function maxListAnnualPriceId(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
   if (currency === 'USD') return trimId(env[STRIPE_PRICE_MAX_ANNUAL_USD_ENV]);
-  return trimId(env[STRIPE_PRICE_MAX_ANNUAL_CAD_ENV]) ?? trimId(env.STRIPE_PRICE_FAMILY_ANNUAL);
+  return trimId(env[STRIPE_PRICE_MAX_ANNUAL_CAD_ENV]);
 }
 
 /** Family/Max list ids. Allowed after the cutoff; refused during the window. */
@@ -312,10 +312,11 @@ function maxListSelection(
  * 2. Window open → that tier's promo yearly for the visitor's currency.
  *    Client period / list / monthly env ids are ignored. Missing promo id
  *    is unavailable.
- * 3. After the window, the list price for that currency, then CAD as
- *    fallback. Plus uses monthly/annual list. Max uses Max list annual
- *    (`STRIPE_PRICE_MAX_ANNUAL_*`) — never Plus list with family metadata.
- *    Preview callers do not get list prices after the cutoff.
+ * 3. After the window, Plus uses monthly/annual list for that currency,
+ *    then CAD as fallback. Max uses only that currency's dedicated
+ *    `STRIPE_PRICE_MAX_ANNUAL_*` id — never CAD-for-USD, never
+ *    `STRIPE_PRICE_FAMILY_ANNUAL`, never Plus list. Missing is
+ *    unavailable. Preview callers do not get list prices after the cutoff.
  */
 export function resolveCheckoutPrice(input: {
   currency: BillingCurrency;
@@ -346,10 +347,6 @@ export function resolveCheckoutPrice(input: {
   if (tier === 'family') {
     const maxNative = maxListSelection(input.currency, env);
     if (maxNative) return { status: 'selected', price: maxNative };
-    if (input.currency !== 'CAD') {
-      const cad = maxListSelection('CAD', env);
-      if (cad) return { status: 'selected', price: cad };
-    }
     return { status: 'unavailable', reason: 'no_price' };
   }
 
