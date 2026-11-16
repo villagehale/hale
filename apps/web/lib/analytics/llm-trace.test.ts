@@ -249,13 +249,18 @@ describe('content capture behind POSTHOG_LLM_CONTENT_ENABLED', () => {
     expect(sent.properties.privacy_mode).toBe(false);
     expect(sent.properties).toHaveProperty('$ai_input');
     expect(sent.properties).toHaveProperty('$ai_output_choices');
-    const wire = JSON.stringify(sent);
-    expect(wire).toContain('[email]');
-    expect(wire).toContain('[phone]');
-    expect(wire).toContain('[address]');
-    expect(wire).not.toContain(EMAIL_MARKER);
-    expect(wire).not.toContain('416');
-    expect(wire).not.toContain('Maple');
+    // Span ids are hex UUIDs: asserting against the whole capture would fail when
+    // `$ai_span_id` happens to contain "416". The PII lives only in the content.
+    const content = JSON.stringify({
+      input: sent.properties.$ai_input,
+      output: sent.properties.$ai_output_choices,
+    });
+    expect(content).toContain('[email]');
+    expect(content).toContain('[phone]');
+    expect(content).toContain('[address]');
+    expect(content).not.toContain(EMAIL_MARKER);
+    expect(content).not.toContain('416');
+    expect(content).not.toContain('Maple');
   });
 
   it('omitContent keeps $ai_input off even when content capture is on', async () => {
