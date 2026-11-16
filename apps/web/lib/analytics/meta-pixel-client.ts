@@ -27,14 +27,14 @@ export function installMetaPixel(pixelId: string): void {
   const w = pixelWindow();
   if (!w || !pixelId || w.__haleMetaPixel) return;
   w.__haleMetaPixel = true;
-  const fbq = function (...args: unknown[]) {
+  const fbq = ((...args: unknown[]) => {
     if (fbq.callMethod) {
       fbq.callMethod(...args);
       return;
     }
     if (!fbq.queue) fbq.queue = [];
     fbq.queue.push(args);
-  } as Fbq;
+  }) as Fbq;
   fbq.push = fbq;
   fbq.loaded = true;
   fbq.version = '2.0';

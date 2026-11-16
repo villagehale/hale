@@ -1,11 +1,15 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  eventsReceivedFromMetaJson,
   hashEmailForAds,
   hashPhoneForAds,
+  metaCapiPurchaseBody,
+  metaTestEventCodeFromEnv,
   purchaseFromStripeEvent,
   reportBillingPurchase,
   sendMetaPurchase,
+  sendMetaTestPurchase,
 } from './conversions.js';
 
 function checkoutPaid(overrides: Record<string, unknown> = {}) {
@@ -152,6 +156,83 @@ describe('senders no-op without flags or env', () => {
     expect(serialized).not.toContain('Sam@Example.com');
     expect(serialized).not.toContain('416');
     expect(serialized).not.toContain('child');
+    expect(body).not.toHaveProperty('test_event_code');
+  });
+
+  it('adds test_event_code when META_CAPI_TEST_EVENT_CODE is set', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    await sendMetaPurchase(
+      purchase,
+      {
+        META_CAPI_ENABLED: 'true',
+        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+        META_CAPI_TEST_EVENT_CODE: ' TEST12345 ',
+      },
+      fetchImpl,
+    );
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as { test_event_code?: string };
+    expect(body.test_event_code).toBe('TEST12345');
+  });
+});
+
+describe('Meta Test Events ops probe', () => {
+  it('reads a trimmed test event code and omits it when unset', () => {
+    expect(metaTestEventCodeFromEnv({})).toBeNull();
+    expect(metaTestEventCodeFromEnv({ META_CAPI_TEST_EVENT_CODE: '  ' })).toBeNull();
+    expect(metaTestEventCodeFromEnv({ META_CAPI_TEST_EVENT_CODE: 'TEST12345' })).toBe('TEST12345');
+    expect(eventsReceivedFromMetaJson({ events_received: 1 })).toBe(1);
+    expect(eventsReceivedFromMetaJson({})).toBeNull();
+  });
+
+  it('skips without pixel, token, or test code, and never fetches', async () => {
+    const fetchImpl = vi.fn();
+    expect(await sendMetaTestPurchase({}, fetchImpl)).toEqual({
+      status: 'skipped',
+      reason: 'not_configured',
+    });
+    expect(
+      await sendMetaTestPurchase(
+        {
+          NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+          META_CAPI_ACCESS_TOKEN: 'token-1',
+        },
+        fetchImpl,
+      ),
+    ).toEqual({ status: 'skipped', reason: 'not_configured' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('sends a hashed fake Purchase with test_event_code and returns status plus events_received', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ events_received: 1 }), { status: 200 }),
+    );
+    const result = await sendMetaTestPurchase(
+      {
+        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+        META_CAPI_TEST_EVENT_CODE: 'TEST12345',
+      },
+      fetchImpl,
+    );
+    expect(result).toEqual({ status: 200, events_received: 1 });
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      test_event_code?: string;
+      data: Array<{ event_id: string; user_data: { em: string[]; ph: string[] } }>;
+    };
+    expect(body.test_event_code).toBe('TEST12345');
+    expect(body.data[0]?.event_id).toBe('cs_test_ops');
+    expect(body.data[0]?.user_data.em).toEqual([hashEmailForAds('capi.test@example.com')]);
+    expect(JSON.stringify(body)).not.toContain('capi.test@example.com');
+    expect(JSON.stringify(body)).not.toContain('+1 555 010 0100');
+  });
+
+  it('does not put test_event_code on a live payload when the env is empty', () => {
+    const purchase = purchaseFromStripeEvent(checkoutPaid());
+    if (!purchase) throw new Error('expected a purchase');
+    expect(metaCapiPurchaseBody(purchase, {})).not.toHaveProperty('test_event_code');
   });
 });
 

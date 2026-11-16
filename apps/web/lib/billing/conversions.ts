@@ -48,6 +48,61 @@ export interface PurchaseConversion {
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
 
+export const META_CAPI_TEST_EVENT_CODE_ENV = 'META_CAPI_TEST_EVENT_CODE';
+
+/** Events Manager Test Events code. Unset outside a test window. */
+export function metaTestEventCodeFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const code = env[META_CAPI_TEST_EVENT_CODE_ENV]?.trim();
+  return code ? code : null;
+}
+
+export interface MetaCapiPurchaseBody {
+  readonly data: readonly Record<string, unknown>[];
+  readonly test_event_code?: string;
+}
+
+export function metaCapiPurchaseBody(
+  purchase: PurchaseConversion,
+  env: Record<string, string | undefined> = process.env,
+): MetaCapiPurchaseBody {
+  const userData: Record<string, unknown> = {};
+  if (purchase.email) userData.em = [hashEmailForAds(purchase.email)];
+  if (purchase.phone) {
+    const hashed = hashPhoneForAds(purchase.phone);
+    if (hashed) userData.ph = [hashed];
+  }
+  if (purchase.ads.fbp) userData.fbp = purchase.ads.fbp;
+  if (purchase.ads.fbc) userData.fbc = purchase.ads.fbc;
+  if (purchase.ads.clientIp) userData.client_ip_address = purchase.ads.clientIp;
+  if (purchase.ads.clientUserAgent) userData.client_user_agent = purchase.ads.clientUserAgent;
+  const body: MetaCapiPurchaseBody = {
+    data: [
+      {
+        event_name: 'Purchase',
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: purchase.eventId,
+        action_source: 'website',
+        user_data: userData,
+        custom_data: {
+          currency: purchase.currency,
+          value: purchase.value,
+          content_type: 'product',
+          contents: purchase.sku ? [{ id: purchase.sku, quantity: 1 }] : undefined,
+        },
+      },
+    ],
+  };
+  const testEventCode = metaTestEventCodeFromEnv(env);
+  return testEventCode ? { ...body, test_event_code: testEventCode } : body;
+}
+
+export function eventsReceivedFromMetaJson(payload: unknown): number | null {
+  if (!isRecord(payload)) return null;
+  return readNumber(payload.events_received);
+}
+
 export function hashEmailForAds(email: string): string {
   return createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
 }
@@ -125,48 +180,84 @@ export async function sendMetaPurchase(
     console.info('billing conversions: meta skipped', { reason: 'not_configured' });
     return { status: 'skipped', reason: 'not_configured' };
   }
-  const userData: Record<string, unknown> = {};
-  if (purchase.email) userData.em = [hashEmailForAds(purchase.email)];
-  if (purchase.phone) {
-    const hashed = hashPhoneForAds(purchase.phone);
-    if (hashed) userData.ph = [hashed];
+  const posted = await postMetaCapiPurchase(purchase, pixelId, token, env, fetchImpl);
+  if (posted.status === 'error') {
+    return { status: 'skipped', reason: 'provider_error' };
   }
-  if (purchase.ads.fbp) userData.fbp = purchase.ads.fbp;
-  if (purchase.ads.fbc) userData.fbc = purchase.ads.fbc;
-  if (purchase.ads.clientIp) userData.client_ip_address = purchase.ads.clientIp;
-  if (purchase.ads.clientUserAgent) userData.client_user_agent = purchase.ads.clientUserAgent;
-  const body = {
-    data: [
-      {
-        event_name: 'Purchase',
-        event_time: Math.floor(Date.now() / 1000),
-        event_id: purchase.eventId,
-        action_source: 'website',
-        user_data: userData,
-        custom_data: {
-          currency: purchase.currency,
-          value: purchase.value,
-          content_type: 'product',
-          contents: purchase.sku ? [{ id: purchase.sku, quantity: 1 }] : undefined,
-        },
-      },
-    ],
-  };
+  return { status: 'sent' };
+}
+
+async function postMetaCapiPurchase(
+  purchase: PurchaseConversion,
+  pixelId: string,
+  token: string,
+  env: Record<string, string | undefined>,
+  fetchImpl: typeof fetch,
+): Promise<
+  | { status: 'ok'; httpStatus: number; eventsReceived: number | null }
+  | { status: 'error'; httpStatus: number | null }
+> {
   try {
     const res = await fetchImpl(`${META_GRAPH}/${pixelId}/events?access_token=${token}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(metaCapiPurchaseBody(purchase, env)),
     });
     if (!res.ok) {
       console.warn('billing conversions: meta provider_error', { status: res.status });
-      return { status: 'skipped', reason: 'provider_error' };
+      return { status: 'error', httpStatus: res.status };
     }
-    return { status: 'sent' };
+    let eventsReceived: number | null = null;
+    try {
+      eventsReceived = eventsReceivedFromMetaJson(await res.json());
+    } catch {
+      eventsReceived = null;
+    }
+    return { status: 'ok', httpStatus: res.status, eventsReceived };
   } catch {
     console.warn('billing conversions: meta provider_error');
+    return { status: 'error', httpStatus: null };
+  }
+}
+
+/** Fake values hashed at send time. Never a real parent. */
+export const META_TEST_PURCHASE: PurchaseConversion = {
+  eventId: 'cs_test_ops',
+  orderId: 'cs_test_ops',
+  value: 79,
+  currency: 'CAD',
+  email: 'capi.test@example.com',
+  phone: '+1 555 010 0100',
+  familyId: null,
+  attribution: {},
+  ads: {},
+  sku: 'founding_annual',
+};
+
+export type MetaTestPurchaseResult =
+  | { status: number; events_received: number | null }
+  | { status: 'skipped'; reason: 'not_configured' | 'provider_error' };
+
+/**
+ * Ops probe: one Test Events Purchase. Needs pixel id, token, and
+ * META_CAPI_TEST_EVENT_CODE. Does not consult META_CAPI_ENABLED — lighting the
+ * live webhook is a separate step. Prints nothing; the script prints status.
+ */
+export async function sendMetaTestPurchase(
+  env: Record<string, string | undefined> = process.env,
+  fetchImpl: typeof fetch = fetch,
+): Promise<MetaTestPurchaseResult> {
+  const pixelId = metaPixelIdFromEnv(env);
+  const token = env.META_CAPI_ACCESS_TOKEN?.trim();
+  const testEventCode = metaTestEventCodeFromEnv(env);
+  if (!pixelId || !token || !testEventCode) {
+    return { status: 'skipped', reason: 'not_configured' };
+  }
+  const posted = await postMetaCapiPurchase(META_TEST_PURCHASE, pixelId, token, env, fetchImpl);
+  if (posted.status === 'error') {
     return { status: 'skipped', reason: 'provider_error' };
   }
+  return { status: posted.httpStatus, events_received: posted.eventsReceived };
 }
 
 export async function sendPosthogPurchase(
