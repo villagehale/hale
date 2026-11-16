@@ -8,6 +8,7 @@ import { pushWebhookDeps } from '~/lib/integrations/google-push-runtime';
 import { getQueue } from '~/lib/queue';
 import { getAdapter } from '~/lib/webhooks/registry';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';
+import { reportBillingPurchase } from '~/lib/billing/conversions';
 import { verifyStripeBillingSignature } from '~/lib/webhooks/stripe-billing';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
     }
     const applied = await applyStripeBillingEvent(billingEvent);
+    if (applied.status === 'applied') {
+      try {
+        await reportBillingPurchase(billingEvent);
+      } catch (err) {
+        console.warn('billing conversions: report failed', {
+          err: err instanceof Error ? err.name : 'unknown',
+        });
+      }
+    }
     return NextResponse.json({ status: applied.status }, { status: 200 });
   }
 

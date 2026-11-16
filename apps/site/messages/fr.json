@@ -102,6 +102,11 @@
     "onThisPage": "Sur cette page",
     "seeAlsoPre": "Voir aussi notre"
   },
+  "CheckoutSuccess": {
+    "metaTitle": "C’est fait · Hale",
+    "heading": "C’est fait.",
+    "continue": "Ouvrir Hale"
+  },
   "Text": {
     "metaTitle": "Texter Hale",
     "metaDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."

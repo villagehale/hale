@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import type { BillingPeriod } from '@hale/types';
+import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import type { AdsCheckoutContext } from './ads-context.js';
+import { adsContextToStripeMetadata } from './ads-context.js';
+import { attributionToStripeMetadata } from './attribution.js';
+import type { CheckoutSku } from './prices.js';
 
 /**
  * Minimal Stripe Checkout client, behind an interface so the route is testable
@@ -19,10 +23,15 @@ export interface CheckoutSessionParams {
   readonly cancelUrl: string;
   /** Prefills the Stripe-hosted form; safe to omit. */
   readonly customerEmail?: string | null;
+  readonly sku?: CheckoutSku;
+  readonly currency?: BillingCurrency;
+  readonly attribution?: Attribution;
+  readonly adsContext?: AdsCheckoutContext;
 }
 
 export interface StripeCheckoutClient {
   createCheckoutSession(params: CheckoutSessionParams): Promise<{ url: string }>;
+  retrieveCheckoutSession?(sessionId: string): Promise<unknown | null>;
 }
 
 const STRIPE_CHECKOUT_ENDPOINT = 'https://api.stripe.com/v1/checkout/sessions';
@@ -57,6 +66,17 @@ export function stripeCheckoutClientFromEnv(
       }
       return { url: json.url };
     },
+    async retrieveCheckoutSession(sessionId) {
+      const res = await fetchImpl(`${STRIPE_CHECKOUT_ENDPOINT}/${sessionId}`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`stripe checkout session retrieve failed: ${res.status}`);
+      }
+      return res.json();
+    },
   };
 }
 
@@ -85,6 +105,23 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     'subscription_data[metadata][tier]': params.tier,
     integration_identifier: integrationIdentifier(),
   });
+  if (params.sku) {
+    form.set('metadata[sku]', params.sku);
+    form.set('subscription_data[metadata][sku]', params.sku);
+  }
+  if (params.currency) {
+    form.set('metadata[currency]', params.currency);
+    form.set('subscription_data[metadata][currency]', params.currency);
+  }
+  const attribution = params.attribution ? attributionToStripeMetadata(params.attribution) : {};
+  for (const [key, value] of Object.entries(attribution)) {
+    form.set(`metadata[${key}]`, value);
+    form.set(`subscription_data[metadata][${key}]`, value);
+  }
+  const ads = params.adsContext ? adsContextToStripeMetadata(params.adsContext) : {};
+  for (const [key, value] of Object.entries(ads)) {
+    form.set(`metadata[${key}]`, value);
+  }
   if (params.customerEmail) {
     form.set('customer_email', params.customerEmail);
   }

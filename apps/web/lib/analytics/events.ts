@@ -145,7 +145,9 @@ export type AnalyticsEvent =
   | 'portal_export_requested'
   | 'portal_delete_requested'
   | 'portal_family_edited'
-  | 'portal_passport_viewed';
+  | 'portal_passport_viewed'
+  // Stripe checkout.session.completed, hashed family id, UTMs/gclid/fbclid only.
+  | 'purchase';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
@@ -157,6 +159,16 @@ export type EventProperties = Record<string, EventProperty>;
  * in depth behind the typed call sites, so a future careless caller still can't
  * leak PII.
  */
+const ATTRIBUTION_PROPERTY_KEYS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid',
+  'fbclid',
+]);
+
 const FORBIDDEN_KEY_FRAGMENTS = [
   'name',
   'email',
@@ -206,7 +218,7 @@ export function buildEvent(
 ): BuiltEvent {
   const safe: EventProperties = {};
   for (const [key, value] of Object.entries(properties)) {
-    if (isForbiddenKey(key)) continue;
+    if (!ATTRIBUTION_PROPERTY_KEYS.has(key) && isForbiddenKey(key)) continue;
     if (!isCoarseValue(value)) continue;
     safe[key] = value;
   }

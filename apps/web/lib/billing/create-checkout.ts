@@ -1,7 +1,10 @@
 import { type Database, schema } from '@hale/db';
-import type { BillingPeriod } from '@hale/types';
+import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import type { AdsCheckoutContext } from './ads-context.js';
+import { checkoutSuccessUrl } from './checkout-session.js';
+import type { CheckoutSku } from './prices.js';
 import type { StripeCheckoutClient } from './stripe-client.js';
 
 /**
@@ -34,8 +37,28 @@ export async function createBillingCheckout(input: {
   database: Database;
   client: StripeCheckoutClient;
   origin: string;
+  /** Marketing origin — Google Ads gtag lives on villagehale.com, not the app. */
+  marketingOrigin: string;
+  sku?: CheckoutSku;
+  currency?: BillingCurrency;
+  attribution?: Attribution;
+  adsContext?: AdsCheckoutContext;
 }): Promise<CreateBillingCheckoutResult> {
-  const { tier, period, priceId, externalAuthId, customerEmail, database, client, origin } = input;
+  const {
+    tier,
+    period,
+    priceId,
+    externalAuthId,
+    customerEmail,
+    database,
+    client,
+    origin,
+    marketingOrigin,
+    sku,
+    currency,
+    attribution,
+    adsContext,
+  } = input;
 
   const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
@@ -48,9 +71,13 @@ export async function createBillingCheckout(input: {
     familyId,
     tier,
     period,
-    successUrl: `${origin}/settings?checkout=success#billing`,
+    successUrl: checkoutSuccessUrl(marketingOrigin),
     cancelUrl: `${origin}/settings?checkout=cancelled#billing`,
     customerEmail,
+    sku,
+    currency,
+    attribution,
+    adsContext,
   });
 
   await database.insert(schema.auditLog).values({
@@ -59,7 +86,7 @@ export async function createBillingCheckout(input: {
     actionTaken: 'billing_checkout_started',
     targetTable: 'families',
     targetId: familyId,
-    after: { tier, period },
+    after: { tier, period, sku: sku ?? null, currency: currency ?? null },
   });
 
   return { status: 'created', url };

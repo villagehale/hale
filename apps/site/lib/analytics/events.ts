@@ -86,6 +86,16 @@ export type CapturedEvent = AnalyticsEvent | typeof PAGEVIEW;
 export type EventProperty = string | number | boolean;
 export type EventProperties = Record<string, EventProperty>;
 
+const ATTRIBUTION_PROPERTY_KEYS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid',
+  'fbclid',
+]);
+
 const FORBIDDEN_KEY_FRAGMENTS = [
   'name',
   'email',
@@ -127,7 +137,7 @@ export function buildEvent(
 ): BuiltEvent {
   const safe: EventProperties = {};
   for (const [key, value] of Object.entries(properties)) {
-    if (isForbiddenKey(key)) continue;
+    if (!ATTRIBUTION_PROPERTY_KEYS.has(key) && isForbiddenKey(key)) continue;
     if (!isCoarseValue(value)) continue;
     safe[key] = value;
   }

@@ -28,6 +28,16 @@ const webLayout = readFileSync(
   'utf8',
 );
 
+const successPage = readFileSync(
+  fileURLToPath(new URL('../../app/[locale]/checkout/success/page.tsx', import.meta.url)),
+  'utf8',
+);
+
+const purchaseClient = readFileSync(
+  fileURLToPath(new URL('../../components/google-purchase-conversion.tsx', import.meta.url)),
+  'utf8',
+);
+
 describe('Google Ads tag — marketing site, after consent', () => {
   it('does not put gtag in the server HTML', () => {
     expect(layout).not.toContain('GoogleAdsTag');
@@ -40,6 +50,14 @@ describe('Google Ads tag — marketing site, after consent', () => {
     expect(webLayout).not.toContain(ADS_ID);
     expect(webLayout).not.toContain('GoogleAdsTag');
     expect(webLayout).not.toContain('googletagmanager.com/gtag/js');
+  });
+
+  it('loads the existing Google tag on the checkout success page', () => {
+    expect(layout).toContain('ConsentBanner');
+    expect(successPage).toContain('GooglePurchaseConversion');
+    expect(successPage).toContain('MetaPurchaseConversion');
+    expect(purchaseClient).toContain('installGoogleAds');
+    expect(purchaseClient).toContain('fireGooglePurchaseConversion');
   });
 });
 

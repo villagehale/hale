@@ -19,6 +19,9 @@
     "probe:linq-capacity": "tsx scripts/probe-linq-capacity.ts",
     "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",
     "seed:e2e-smoke": "tsx scripts/seed-e2e-smoke.ts",
+    "stripe:create-founding-prices": "tsx scripts/stripe-create-founding-prices.ts",
+    "stripe:refund-family": "tsx scripts/stripe-refund-family.ts",
+    "meta:test-purchase": "tsx scripts/meta-test-purchase.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
