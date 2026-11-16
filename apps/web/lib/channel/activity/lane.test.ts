@@ -663,6 +663,11 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
   });
 
   it('stamps a registration platform URL from 27 search hits when compose omitted source_url', () => {
+    const gym = {
+      name: 'Winter Gymnastics',
+      age_fit: 'ages 3-5',
+      source_name: 'Halton Hills Recreation',
+    };
     const hits = Array.from({ length: 26 }, (_, i) => ({
       url: `https://directory.example/listing-${i}`,
       title: 'Winter gymnastics Halton Hills',
@@ -671,8 +676,22 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
       url: 'https://haltonhills.perfectmind.com/signup/winter-gymnastics',
       title: 'Winter gymnastics registration',
     });
-    const [pick] = toPicks([studio], [], hits);
+    const [pick] = toPicks([gym], [], hits);
     expect(pick?.url).toBe('https://haltonhills.perfectmind.com/signup/winter-gymnastics');
+  });
+
+  it('does not stamp a registration platform URL onto a pick the hit does not name', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        {
+          url: 'https://haltonhills.perfectmind.com/signup/winter-gymnastics',
+          title: 'Winter gymnastics registration',
+        },
+      ],
+    );
+    expect(pick?.url).toBeUndefined();
   });
 
   it('no page read, no https, or no page naming the pick: still no url', () => {

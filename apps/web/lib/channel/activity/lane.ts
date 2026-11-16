@@ -475,17 +475,23 @@ export function registrationPlatformUrl(url: string): boolean {
 
 /**
  * The registration page from this turn's search hits, when compose left source_url
- * empty. Several platform URLs still stamp the first: a card with no URL is the
- * worse failure.
+ * empty. Only a hit that names THIS pick (venue or program, same rule as
+ * {@link stampReadPageUrl}) is attached — a first-hit stamp would give every
+ * URL-less card the same PerfectMind page.
  */
 export function stampRegistrationPlatformUrl(
+  pick: { name: string; sourceName: string },
   searchHits: ReadonlyArray<{ url: string; title: string }>,
 ): string | null {
-  for (const hit of searchHits) {
-    const url = parentFacingActivityUrl(hit.url);
-    if (url !== null && registrationPlatformUrl(url)) return url;
-  }
-  return null;
+  const needles = [pick.sourceName, pick.name].map(squash).filter((value) => value.length >= 6);
+  if (needles.length === 0) return null;
+  return uniqueMatch(
+    squash(pick.sourceName),
+    needles,
+    searchHits
+      .filter((hit) => registrationPlatformUrl(hit.url))
+      .map((hit) => ({ url: hit.url, text: hit.title })),
+  );
 }
 
 export function stampReadPageUrl(
@@ -545,7 +551,7 @@ export function toPicks(
     const url = preferVenuePage(
       parentFacingActivityUrl(field(item.source_url)),
       stampReadPageUrl({ name, sourceName }, pages, searchHits) ??
-        stampRegistrationPlatformUrl(searchHits),
+        stampRegistrationPlatformUrl({ name, sourceName }, searchHits),
       sourceName,
     );
     const pick: ActivityPick = {

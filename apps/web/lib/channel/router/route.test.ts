@@ -1466,6 +1466,7 @@ describe('the off-domain lane', () => {
         text: 'Toronto',
         now: NOW,
         thread: { channel: 'sms', providerChatId: null, inGroup: false },
+        onScreened: expect.any(Function),
       },
     ]);
   });
@@ -7160,28 +7161,24 @@ describe('a slow answer gets one holding line first', () => {
   };
 
   it('never goes out in front of a crisis or medical answer, however slow that answer is', async () => {
-    const turnThrough = async (verdict: OffDomainVerdict) => {
-      const holding = fakeHoldingLine("I'm on it.");
-      const h = harness({
-        holdingLine: holding,
-        holdingLineAfterMs: 10,
-        context: { reply: IMESSAGE_ROUTE },
-        offDomain: slowLane(verdict, 120),
-      });
-      const result = await routeChannelMessage(h.deps, job({ in_group: false }));
-      return { result, holding, h };
-    };
-
-    const medical = await turnThrough(MEDICAL);
-    expect(medical.result.status).toBe('deflected');
-    expect(medical.h.transport.bodies()).toEqual(['the medical answer']);
-    expect(medical.holding.calls).toBe(0);
-    expect(medical.h.logs).toContainEqual([{ outcome: 'no_tapback' }, expect.any(String)]);
-
-    // Positive control: the same slow lane on a tapback-lit route still gets a tapback.
     const tapback = fakeHoldingTapback();
-    const search = harness({
+    const medical = harness({
       holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE },
+      offDomain: slowLane(MEDICAL, 120),
+    });
+    const result = await routeChannelMessage(medical.deps, job({ in_group: false }));
+    expect(result.status).toBe('deflected');
+    expect(medical.transport.bodies()).toEqual(['the medical answer']);
+    expect(medical.reactions).toEqual([]);
+    expect(tapback.calls).toBe(0);
+    expect(medical.logs).toContainEqual([{ outcome: 'safety_lane' }, expect.any(String)]);
+
+    // Positive control: the same slow lane on a search answer still gets a tapback.
+    const searchTapback = fakeHoldingTapback();
+    const search = harness({
+      holdingTapback: searchTapback,
       holdingLineAfterMs: 10,
       context: { reply: IMESSAGE_REACT_ROUTE },
       offDomain: slowLane(
@@ -7200,15 +7197,15 @@ describe('a slow answer gets one holding line first', () => {
     await routeChannelMessage(search.deps, job({ in_group: false }));
     expect(search.transport.bodies()).toEqual(['Rain later.']);
     expect(search.reactions).toEqual([{ type: 'like' }]);
-    expect(tapback.calls).toBe(1);
+    expect(searchTapback.calls).toBe(1);
   });
 
   it('withholds the line while the screen has not read the text, and names it', async () => {
-    const holding = fakeHoldingLine("I'm on it.");
+    const tapback = fakeHoldingTapback();
     const h = harness({
-      holdingLine: holding,
+      holdingTapback: tapback,
       holdingLineAfterMs: 10,
-      context: { reply: IMESSAGE_ROUTE },
+      context: { reply: IMESSAGE_REACT_ROUTE },
       // The screen itself is the slow call: nothing has read the text when the line is due.
       offDomain: slowLane({ status: 'in_domain', fallback: null }, 120, false),
       coach: slowCoach(120, 'the real answer'),
@@ -7217,8 +7214,34 @@ describe('a slow answer gets one holding line first', () => {
     await routeChannelMessage(h.deps, job({ in_group: false }));
 
     expect(h.transport.bodies()).toEqual(['the real answer']);
-    expect(holding.calls).toBe(0);
-    expect(h.logs).toContainEqual([{ outcome: 'no_tapback' }, expect.any(String)]);
+    expect(h.reactions).toEqual([]);
+    expect(tapback.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'unscreened' }, expect.any(String)]);
+  });
+
+  it('records the holding tapback on the ledger after it lands', async () => {
+    const tapback = fakeHoldingTapback();
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.reactions).toEqual([{ type: 'like' }]);
+    expect(ledgerRows(h.fake).some((row) => row.templateKey === 'holding_line')).toBe(true);
+    expect(auditRows(h.fake).some((row) => row.actionTaken === 'linq_tapback')).toBe(true);
+  });
+
+  it('names coachMs on the routed log after the coach finishes', async () => {
+    const h = harness();
+    await routeChannelMessage(h.deps, job());
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ coachMs: expect.any(Number) }),
+      'channel router: routed',
+    ]);
   });
 });
 

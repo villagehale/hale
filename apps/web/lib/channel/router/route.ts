@@ -113,6 +113,7 @@ import {
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -192,6 +193,8 @@ import {
   type HoldingLineComposer,
   armHoldingTapback,
   holdingLineNotArmed,
+  holdingLineRead,
+  recordHoldingTapback,
 } from './holding-line';
 import type { HoldingTapbackComposer } from './holding-tapback';
 import {
@@ -1025,6 +1028,8 @@ export async function routeChannelMessage(
     // A side turn still in flight ends before this job frees the parent's key, so its text
     // cannot start its own turn meanwhile.
     await wait.side?.stop();
+    // A timeout or throw never reaches `done()`, which is the only other delete.
+    routeStageMs.delete(job.channel_message_id);
   }
 }
 
@@ -1847,6 +1852,10 @@ async function routeChannelMessageInner(
   // the door's own, not `context.inGroup`, which stays false while group onboarding v2 is
   // dark however many people are in the chat. 1:1 iMessage only, and only when a tapback
   // can land. A composer that cannot pick one, or a send that does not land, sends nothing.
+  // The screen has usually read the text by then; `screened` is filled at GATE 4 and
+  // read when the tapback is due, so a crisis never gets a like while Hale is still
+  // composing 911.
+  let screened: LaneReading | null = null;
   const holdingSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
@@ -1866,10 +1875,29 @@ async function routeChannelMessageInner(
       familyId: job.family_id,
       composer: deps.holdingTapback,
       log: deps.log,
+      read: () =>
+        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
       send: async (reaction) => {
         const sent = await deps.sendParentReaction({ route, reaction });
         if (sent.status !== 'sent') {
           throw new Error(sent.reason);
+        }
+        // The reaction already landed. A ledger miss is named, never retried (rule #6
+        // and #11): asking Linq again would double-tap the parent's bubble.
+        try {
+          await recordHoldingTapback(deps.database, {
+            familyId: job.family_id,
+            parentUserId: job.parent_user_id,
+            chatId: route.chatId,
+            providerMessageId: route.replyToMessageId,
+            now: deps.now(),
+            reaction,
+          });
+        } catch (err) {
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'holding line: tapback sent, the ledger row did not land',
+          );
         }
       },
     });
@@ -1928,6 +1956,9 @@ async function routeChannelMessageInner(
             channel: route.channel,
             providerChatId: route.channel === 'imessage' ? route.chatId : null,
             inGroup: job.in_group,
+          },
+          onScreened: (reading) => {
+            screened = reading;
           },
         }),
         OFF_DOMAIN_BUDGET_MS,
@@ -2051,8 +2082,8 @@ async function routeChannelMessageInner(
       groupChatId: inGroup && route.channel === 'imessage' ? route.chatId : null,
       askLanguage:
         acceptReplyLanguage(verdict.languageRequest) ?? acceptReplyLanguage(verdict.language),
+      markCoach: () => mark('coachMs'),
     });
-    mark('coachMs');
     return coachResult;
   } finally {
     await stopTyping();
@@ -2640,8 +2671,14 @@ async function runAgentTurn(
     /** The language the parent explicitly asked for in this text, else the tag the screen
      * read off it, else null. An activity promise this turn makes is recorded with it. */
     askLanguage: string | null;
+    /** Stamp coachMs on this turn's latency log before `done` writes it. */
+    markCoach: () => void;
   },
 ): Promise<RouterResult> {
+  const finish = (result: RouterResult) => {
+    args.markCoach();
+    return done(deps, args.job, result);
+  };
   try {
     // THE LEDGER, READ BESIDE THE MODEL AND NOT AFTER IT. The reconciliation view depends
     // only on WHICH family is talking, never on what the coach ends up saying, so the
@@ -2684,7 +2721,7 @@ async function runAgentTurn(
       // Claim the turn so a redelivery reads `answered` and never reruns the coach
       // (its tool writes already landed). No text goes out.
       await args.claimSilent?.();
-      return done(deps, args.job, {
+      return finish({
         status: 'agent_silent',
         handler: null,
         conversationId: args.conversationId,
@@ -2979,7 +3016,7 @@ async function runAgentTurn(
         );
       }
     }
-    return done(deps, args.job, {
+    return finish({
       status: sent.carried === 'reaction' ? REACTED_ALONE : 'agent_replied',
       handler: null,
       conversationId: args.conversationId,
@@ -2998,7 +3035,7 @@ async function runAgentTurn(
         'channel router: the reaction was the answer and landed; its ledger row did not - nothing more sent',
       );
       await args.claimSilent?.();
-      return done(deps, args.job, {
+      return finish({
         status: REACTED_ALONE,
         handler: null,
         conversationId: args.conversationId,
@@ -3013,7 +3050,7 @@ async function runAgentTurn(
         'channel router: the reaction was the answer and did not land - nothing sent',
       );
       await args.claimSilent?.();
-      return done(deps, args.job, {
+      return finish({
         status: 'agent_reaction_unsent',
         handler: null,
         conversationId: args.conversationId,
@@ -3155,7 +3192,7 @@ async function runAgentTurn(
         reason: sendFailure.code,
       });
     }
-    return done(deps, args.job, {
+    return finish({
       status: disposition.outcome,
       handler: null,
       conversationId: args.conversationId,

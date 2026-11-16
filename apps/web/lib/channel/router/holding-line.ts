@@ -1,8 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ParentReaction } from '~/lib/channel/linq/tapback';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -341,10 +343,61 @@ export function armHoldingLine(input: {
   };
 }
 
+/**
+ * The ledger row for a holding tapback that already landed (rule #6). Same shape as
+ * the coach's own tapback in moments.ts: a channel_messages row plus an audit_log
+ * verb the trail can say. The provider already accepted the reaction, so a throw
+ * here is the caller's to name — it must not ask Linq to send again.
+ */
+export async function recordHoldingTapback(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string | null;
+    providerMessageId: string | null;
+    now: Date;
+    reaction: ParentReaction;
+  },
+): Promise<void> {
+  const [row] = await database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: HOLDING_LINE_TEMPLATE_KEY,
+      providerMessageId: input.providerMessageId,
+      providerChatId: input.chatId,
+      status: acceptedStatus('imessage'),
+      sentAt: input.now,
+    })
+    .returning({ id: schema.channelMessages.id });
+  const id = row?.id;
+  if (!id) throw new Error('holding tapback: channel_messages insert returned no row');
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    actionTaken: 'linq_tapback',
+    targetTable: 'channel_messages',
+    targetId: id,
+    after: {
+      reaction: input.reaction.type,
+      holding: true,
+      ...(input.reaction.type === 'custom' ? { emoji: input.reaction.emoji } : {}),
+    },
+  });
+}
+
 /** Arm the one holding tapback for one 1:1 iMessage turn. It fires at most once. */
 export function armHoldingTapback(input: {
   afterMs: number;
   familyId: string;
+  /** Read when the tapback is DUE, not when it is armed: by then the screen has
+   * usually read the text, and what it read decides whether to react at all. */
+  read: () => Promise<HoldingLineRead>;
   composer: HoldingTapbackComposer;
   send: (reaction: ParentReaction) => Promise<void>;
   log: Pick<Console, 'info' | 'warn'>;
@@ -359,7 +412,24 @@ export function armHoldingTapback(input: {
   let sending: Promise<void> | null = null;
 
   const fire = async () => {
+    let read: HoldingLineRead;
+    try {
+      read = await input.read();
+    } catch (err) {
+      if (settled) return;
+      outcome = 'read_failed';
+      input.log.warn(
+        { outcome, err: err instanceof Error ? err.name : 'unknown' },
+        'holding line: the read failed, none sent, the answer is still coming',
+      );
+      return;
+    }
     if (settled) return;
+    if (read.status === 'withheld') {
+      outcome = read.reason;
+      input.log.info({ outcome }, 'holding line: withheld, the answer is still coming');
+      return;
+    }
     const composed = await input.composer.compose();
     if (settled) return;
     if (composed.status !== 'composed') {

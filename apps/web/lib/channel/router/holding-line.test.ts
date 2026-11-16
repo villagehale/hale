@@ -668,6 +668,8 @@ describe('armHoldingTapback — one reaction, only on a slow 1:1 iMessage turn',
     vi.unstubAllEnvs();
   });
 
+  const write: HoldingLineRead = { status: 'write', language: null };
+
   it('a slow turn: sends ONE tapback once the wait passes', async () => {
     vi.useFakeTimers();
     const sent: string[] = [];
@@ -681,6 +683,7 @@ describe('armHoldingTapback — one reaction, only on a slow 1:1 iMessage turn',
     const holding = armHoldingTapback({
       afterMs: 7_000,
       familyId: FAMILY,
+      read: async () => write,
       composer,
       send: async (reaction) => {
         sent.push(reaction.type);
@@ -698,6 +701,7 @@ describe('armHoldingTapback — one reaction, only on a slow 1:1 iMessage turn',
     const holding = armHoldingTapback({
       afterMs: 7_000,
       familyId: FAMILY,
+      read: async () => write,
       composer: {
         compose: async () => ({ status: 'composed', reaction: { type: 'like' } }),
       },
@@ -708,5 +712,45 @@ describe('armHoldingTapback — one reaction, only on a slow 1:1 iMessage turn',
     });
     await vi.advanceTimersByTimeAsync(7_000);
     expect(await holding.settle()).toBe('send_failed');
+  });
+
+  it('withholds a crisis or a text the screen has not read, and does not compose', async () => {
+    vi.useFakeTimers();
+    const composer = {
+      compose: vi.fn(async () => ({
+        status: 'composed' as const,
+        reaction: { type: 'like' as const },
+      })),
+    };
+    const withheld = async (
+      reason: 'safety_lane' | 'unscreened',
+    ): Promise<HoldingLineRead> => ({ status: 'withheld', reason });
+
+    const crisis = armHoldingTapback({
+      afterMs: 7_000,
+      familyId: FAMILY,
+      read: () => withheld('safety_lane'),
+      composer,
+      send: async () => {
+        throw new Error('must not send');
+      },
+      log: log(),
+    });
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(await crisis.settle()).toBe('safety_lane');
+
+    const unscreened = armHoldingTapback({
+      afterMs: 7_000,
+      familyId: FAMILY,
+      read: () => withheld('unscreened'),
+      composer,
+      send: async () => {
+        throw new Error('must not send');
+      },
+      log: log(),
+    });
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(await unscreened.settle()).toBe('unscreened');
+    expect(composer.compose).not.toHaveBeenCalled();
   });
 });

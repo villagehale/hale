@@ -594,6 +594,27 @@ describe('the village intro lane and the lanes behind it', () => {
         .claimed,
     ).toBe(false);
   });
+
+  it('still honours a revocation after the resolver declined to place it', async () => {
+    const recorded: Array<{ granted: boolean }> = [];
+    const deps: VillageIntroReplyDeps = {
+      ...introDeps,
+      consent: {
+        read: async ({ text }) =>
+          text === 'no intros'
+            ? { verdict: 'no', target: 'discoverability' }
+            : { verdict: 'neither', target: 'none' },
+      },
+      discoverabilityStanding: async () => 'granted' as const,
+      recordDiscoverability: async (_database, input) => {
+        recorded.push({ granted: input.granted });
+      },
+    };
+    expect(
+      (await villageIntroHandler(deps).handle(DB, turn('no intros', { open: [introOptIn] }))).claimed,
+    ).toBe(true);
+    expect(recorded).toEqual([{ granted: false }]);
+  });
 });
 
 describe('recMorningHandler', () => {

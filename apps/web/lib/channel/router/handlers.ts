@@ -183,10 +183,13 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = introKeywordFrom(ctx);
       // After the resolver already ran and did not place this reply (not_answerable /
-      // no_target), intros must not re-read the words as consent. The keyword path
-      // stays for a turn with no intro ask standing (a revocation with nothing open).
+      // no_target), intros must not re-read the words as a GRANT — that is the
+      // go-find-it misroute. A REVOCATION still has to land while an intro ask is
+      // open, or a family that said "no intros" stays discoverable until the ask ages out.
       if (!resolved && introAskOutstanding(await ctx.openQuestions())) {
-        return { claimed: false };
+        const lastHale = await lastHaleOutboundBody(database, ctx);
+        const keyword = await readIntroKeyword(deps.consent, ctx.body, lastHale);
+        if (!keyword || keyword.granted) return { claimed: false };
       }
       const outcome = await handleVillageIntroReply(
         database,
