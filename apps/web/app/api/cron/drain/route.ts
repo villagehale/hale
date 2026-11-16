@@ -115,6 +115,12 @@ export const GET = cronRoute('drain', async (req: Request) => {
         socialSignup = { skipped: 'tick_failed' };
       }
     }
+    // Prepaid Anthropic credit remaining. Cheap SUMs after the drain so this
+    // tick's calls are on the ledger. Preview shares prod's database, so it is
+    // a named skip there. Flag off is named. Slack #ops only.
+    const anthropicCredit = preview
+      ? { skipped: 'preview' as const }
+      : await runAnthropicCreditLeg();
     return NextResponse.json(
       {
         ok: true,
@@ -124,6 +130,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         groupReminders,
         heldReminders,
         optOutRecovery,
+        anthropicCredit,
       },
       { status: 200 },
     );
@@ -191,6 +198,37 @@ async function runGroupReminderLeg(): Promise<
     return await runGroupReminderTick(db(), groupReminderTickPorts(new Date()));
   } catch (err) {
     console.error({ err, skipped: 'tick_failed' }, 'cron/drain group reminder leg failed');
+    return { skipped: 'tick_failed' };
+  }
+}
+
+async function runAnthropicCreditLeg(): Promise<
+  | { skipped: 'flag_off' | 'tick_failed' | 'start_not_configured' }
+  | {
+      alert: string;
+      remainingUsd: number | null;
+      spendUsd: number | null;
+      spendLast24hUsd: number | null;
+      daysLeft: number | null;
+      paged: number[];
+      expiryPaged: number[];
+    }
+> {
+  try {
+    const { anthropicCreditAlertEnabled, checkAnthropicCredit } = await import(
+      '~/lib/monitoring/anthropic-credit'
+    );
+    if (!anthropicCreditAlertEnabled()) return { skipped: 'flag_off' };
+    const { db } = await import('~/lib/db');
+    const result = await checkAnthropicCredit(db());
+    if (result.alert === 'flag_off') return { skipped: 'flag_off' };
+    if (result.alert === 'start_not_configured') return { skipped: 'start_not_configured' };
+    return result;
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain anthropic credit leg failed',
+    );
     return { skipped: 'tick_failed' };
   }
 }

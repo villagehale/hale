@@ -9,6 +9,11 @@ import {
 } from './llm-trace';
 import { resetPosthogClientsForTests } from './posthog-node';
 
+const observeAnthropicCall = vi.hoisted(() => vi.fn());
+vi.mock('../monitoring/anthropic-credit', () => ({
+  observeAnthropicCall: (...args: unknown[]) => observeAnthropicCall(...args),
+}));
+
 /**
  * LLM tracing. Default is privacy mode (no prompt/completion on the wire). Content
  * capture is a separate flag and redacts PII before send.
@@ -54,6 +59,7 @@ const params = {
 afterEach(() => {
   vi.unstubAllEnvs();
   resetPosthogClientsForTests();
+  observeAnthropicCall.mockClear();
 });
 
 describe('inert without POSTHOG_PROJECT_API_KEY', () => {
@@ -67,7 +73,56 @@ describe('inert without POSTHOG_PROJECT_API_KEY', () => {
     expect(traced).toBe(client);
     await traced.messages.create(params as never);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(observeAnthropicCall).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe('prepaid credit observer', () => {
+  async function loadTrace() {
+    vi.resetModules();
+    return import('./llm-trace');
+  }
+
+  it('records usage on a successful call when PostHog is tracing', async () => {
+    const { traceAnthropic: trace } = await loadTrace();
+    const ph = fakePosthog();
+    const traced = trace(fakeAnthropic(), {}, ph.client);
+    await traced.messages.create(params as never);
+    await vi.waitFor(() => expect(observeAnthropicCall).toHaveBeenCalledTimes(1));
+    expect(observeAnthropicCall).toHaveBeenCalledWith({
+      model: 'claude-x',
+      usage: { input_tokens: 12, output_tokens: 34 },
+    });
+  });
+
+  it('pages a billing error through the observer and still throws', async () => {
+    const { traceAnthropic: trace } = await loadTrace();
+    const client = fakeAnthropic();
+    const failure = Object.assign(new Error('upstream'), {
+      status: 400,
+      error: {
+        error: { type: 'invalid_request_error', message: 'Your credit balance is too low.' },
+      },
+    });
+    client.messages.create.mockRejectedValueOnce(failure);
+    const ph = fakePosthog();
+    const traced = trace(client, {}, ph.client);
+    await expect(traced.messages.create(params as never)).rejects.toBe(failure);
+    await vi.waitFor(() => expect(observeAnthropicCall).toHaveBeenCalledTimes(1));
+    expect(observeAnthropicCall).toHaveBeenCalledWith({ model: 'claude-x', error: failure });
+  });
+
+  it('wraps without PostHog when the credit flag is exactly true', async () => {
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
+    vi.stubEnv('ANTHROPIC_CREDIT_ALERT_ENABLED', 'true');
+    resetPosthogClientsForTests();
+    const { traceAnthropic: trace } = await loadTrace();
+    const client = fakeAnthropic();
+    const traced = trace(client);
+    expect(traced).not.toBe(client);
+    await traced.messages.create(params as never);
+    await vi.waitFor(() => expect(observeAnthropicCall).toHaveBeenCalledTimes(1));
   });
 });
 

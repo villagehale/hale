@@ -9,6 +9,11 @@ import {
 } from './llm-trace.js';
 import { projectClient, resetPosthogClientForTests } from './posthog.js';
 
+const observeAnthropicCall = vi.hoisted(() => vi.fn());
+vi.mock('./anthropic-credit.js', () => ({
+  observeAnthropicCall: (...args: unknown[]) => observeAnthropicCall(...args),
+}));
+
 const MARKER = 'worker-marker-44e1';
 const EMAIL = 'parent@example.com';
 
@@ -28,6 +33,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   resetPosthogClientForTests();
+  observeAnthropicCall.mockClear();
 });
 
 describe('worker PostHog: inert without POSTHOG_PROJECT_API_KEY', () => {
@@ -135,5 +141,17 @@ describe('worker PostHog: privacy mode with a key', () => {
   it('does not hash a family id without a salt', () => {
     vi.stubEnv('POSTHOG_ID_SALT', '');
     expect(llmFamilyContext('raw-family')).toEqual({});
+  });
+
+  it('records usage on a successful call for the prepaid-credit ledger', async () => {
+    const capture = vi.fn();
+    const ph = { capture, flush: vi.fn(async () => {}) } as unknown as PostHog;
+    const traced = traceAnthropic(fakeAnthropic(), { stage: 'reviewer' }, ph);
+    await traced.messages.create({ model: 'claude-x' } as never);
+    await vi.waitFor(() => expect(observeAnthropicCall).toHaveBeenCalledTimes(1));
+    expect(observeAnthropicCall).toHaveBeenCalledWith({
+      model: 'claude-x',
+      usage: { input_tokens: 3, output_tokens: 4 },
+    });
   });
 });
