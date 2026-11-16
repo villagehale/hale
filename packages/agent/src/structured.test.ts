@@ -325,6 +325,96 @@ describe('strictToolSchema — the wire subset', () => {
   });
 });
 
+describe('forceToolJson — a garbled answer is asked for once more', () => {
+  const TEXT_SCHEMA = z.object({ texts: z.array(z.string()) });
+  const TEXT_JSON_SCHEMA = {
+    type: 'object',
+    properties: { texts: { type: 'array', items: { type: 'string' } } },
+    required: ['texts'],
+  } as const;
+  const texts = (...lines: string[]) =>
+    message([{ type: 'text', text: JSON.stringify({ texts: lines }) }], 'end_turn');
+  const GARBLED = texts('Swim is Saturday.', 'Natation prรฉscolaire sam. 9h00');
+  const CLEAN = texts('Swim is Saturday.', 'Natation préscolaire sam. 9h00');
+
+  function callTexts(client: AgentClient) {
+    return forceToolJson({
+      client,
+      lane: pickLane('draft'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: TEXT_JSON_SCHEMA,
+      schema: TEXT_SCHEMA,
+      maxTokens: 20,
+    });
+  }
+
+  it('re-asks the identical request once and returns the clean draw, usage summed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { client, create } = fakeClient(GARBLED, CLEAN);
+    const result = await callTexts(client);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]?.[0]).toEqual(create.mock.calls[0]?.[0]);
+    expect(result.value.texts[1]).toBe('Natation préscolaire sam. 9h00');
+    expect(result.usage.input_tokens).toBe(20);
+    expect(warn.mock.calls.map(([line]) => JSON.parse(String(line)).event)).toEqual([
+      'structured_reask_garbled',
+    ]);
+    // Stage and model only: the garbled words never reach a log line.
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Natation');
+    warn.mockRestore();
+  });
+
+  it('asks only once: a second garbled draw is returned as drawn and logged by name', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { client, create } = fakeClient(GARBLED, GARBLED);
+    const result = await callTexts(client);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(result.value.texts[1]).toBe('Natation prรฉscolaire sam. 9h00');
+    expect(warn.mock.calls.map(([line]) => JSON.parse(String(line)).event)).toEqual([
+      'structured_reask_garbled',
+      'structured_garbled_again',
+    ]);
+    warn.mockRestore();
+  });
+
+  it('after a thinking-off re-ask, the garbled re-ask repeats the thinking-off request', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const thoughtOut = message(
+      [{ type: 'thinking', thinking: '', signature: 'sig' }],
+      'max_tokens',
+    );
+    const { client, create } = fakeClient(thoughtOut, GARBLED, CLEAN);
+    const result = await forceToolJson({
+      client,
+      lane: pickLane('classify'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: TEXT_JSON_SCHEMA,
+      schema: TEXT_SCHEMA,
+      maxTokens: 20,
+    });
+    expect(create).toHaveBeenCalledTimes(3);
+    const [first, second, third] = create.mock.calls.map(([req]) => req);
+    expect(second).not.toEqual(first);
+    expect(third).toEqual(second);
+    expect(result.value.texts[1]).toBe('Natation préscolaire sam. 9h00');
+    warn.mockRestore();
+  });
+
+  it('does not re-ask honest multilingual text (positive control)', async () => {
+    const { client, create } = fakeClient(
+      texts('周六上午九点。', 'درس السباحة يوم السبت', 'À samedi 🏊‍♀️ « ok »'),
+    );
+    await callTexts(client);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('forceToolJson — every failure is reported as itself', () => {
   it('parses a complete answer (positive control)', async () => {
     const { client } = fakeClient(ANSWER);

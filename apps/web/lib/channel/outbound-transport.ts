@@ -184,6 +184,8 @@ export type SendTextsOutcome<R> =
  *   is never split across the quiet-hours line.
  * - One ledger row per text, keyed `<setKey>:<i>`. A retry asks `alreadySent` for
  *   each key and sends only the texts that did not go, starting at the first unsent.
+ * - A garbled text anywhere in the set (linq/transport.ts refuseGarbledText) fails the set
+ *   at text 0, before anything is sent, so the parent never gets the clean texts before it.
  * - A failure stops the set where it is. Nothing is sent in its place: no sorry, no
  *   fallback, no summary text. A transient failure is rethrown (after the rows for
  *   the texts that did go are written) so the caller's queue retries the rest.
@@ -216,6 +218,11 @@ export async function sendTexts<R = ResolvedOutbound>(input: {
   const texts = input.texts.map((t) => t.trim());
   if (texts.length === 0 || texts.some((t) => t === '')) {
     throw new Error('sendTexts: every text must be non-empty');
+  }
+  try {
+    for (const text of texts) linq.refuseGarbledText(text);
+  } catch (error) {
+    return { status: 'failed', failedAt: 0, error, sent: [], alreadySent: [] };
   }
   if (input.deliverableNow && !(await input.deliverableNow())) {
     return { status: 'held', reason: 'quiet_hours' };

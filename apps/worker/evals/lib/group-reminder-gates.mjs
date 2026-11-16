@@ -13,11 +13,12 @@ export const JUDGE_REASON_MAX_CHARS = 300;
 export const READ_ATTEMPTS = 2;
 
 /**
- * Sends one forceToolJson call can make: the first, one re-ask when it came back empty, and
- * on an adaptive lane one more with thinking off (packages/agent structured.ts).
+ * Sends one forceToolJson call can make: the first, one re-ask when it came back empty, on
+ * an adaptive lane one more with thinking off, and one more when the answer is garbled
+ * (packages/agent structured.ts).
  */
 export function maxSends(lane) {
-  return lane.thinking === 'adaptive' ? 3 : 2;
+  return lane.thinking === 'adaptive' ? 4 : 3;
 }
 
 /**
