@@ -12,7 +12,8 @@ import { PromoStickyReveal } from './promo-sticky';
  * Copy rules this file is held to (holiday-promo.test.ts):
  *  - the sale name leads, with the founding price as the big numeral under it (ad 05);
  *  - never was / save / % off / strikethrough anywhere near "Sale";
- *  - every Canadian surface carries "Plus is $159/yr CAD after Dec 31.";
+ *  - no regular or after-Dec-31 price beside the sale (Barton, Nov 16): the FAQ
+ *    answers "what happens after Dec 31" as a neutral fact, away from the headline;
  *  - plain "$" in both countries, with CAD / USD quietly beside every price;
  *  - registration stays "helps you get registered"; no camp-finding, no child
  *    names, no referral or gift offer.
@@ -87,7 +88,6 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
           <span className="promo-bar-long">Founding families: </span>
           <b>{promo.price}</b>, locked in<span className="promo-bar-long">. Join by Dec 31</span>.
         </span>
-        {promo.afterLine ? <span className="promo-bar-after">{promo.afterLine}</span> : null}
         <a className="promo-bar-link" href="#founding">
           See<span className="promo-bar-long"> the</span> offer
           <Arrow />
@@ -171,7 +171,6 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               Founding families: locked in for as long as you’re a member. Join by Dec 31. Refund
               anytime.
             </p>
-            {promo.afterLine ? <p className="promo-after">{promo.afterLine}</p> : null}
             <ul className="promo-chips">
               {CHIPS.map((chip) => (
                 <li key={chip}>{chip}</li>
@@ -246,10 +245,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
 
 /** The three promo questions, in the site's FAQ rows. */
 export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
-  const after =
-    promo.currency === 'USD'
-      ? `New members pay the regular Plus price after Dec 31. If you joined as a founding family, you keep ${promo.price} for as long as you’re a member.`
-      : `New members pay the regular price: Plus is $159/yr CAD after Dec 31. If you joined as a founding family, you keep ${promo.price} for as long as you’re a member.`;
+  const after = `Founding families who join by Dec 31 keep ${promo.price} for as long as they’re members. Families who join after that pay the regular Plus price.`;
   return (
     <>
       <FaqItem id="what-happens-after-dec-31" question="What happens after Dec 31?">
@@ -278,9 +274,8 @@ export function PromoStickyCta({ promo, ...door }: { promo: HolidayPromo } & Doo
       <div className="promo-sticky-copy">
         <strong>{promo.saleName}</strong>
         <span>
-          {promo.price}, locked in{promo.afterLine ? '' : '. Join by Dec 31'}
+          {promo.price}, locked in. Join by Dec 31
         </span>
-        {promo.afterLine ? <small>{promo.afterLine}</small> : null}
       </div>
       <TextDoor className="promo-sticky-btn" placement="promo_sticky" {...door}>
         Text Hale

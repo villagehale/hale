@@ -26,7 +26,8 @@ describe('FoundingCheckout', () => {
     expect(body).toContain('Billed $79/yr CAD, starting today.');
     expect(body).toContain('Renews once a year at the same price while you stay subscribed.');
     expect(body).toContain('Refund anytime.');
-    expect(body).toContain('Plus is $159/yr CAD after Dec 31.');
+    // No regular / after-Dec-31 price beside the sale (Barton, Nov 16).
+    expect(body).not.toMatch(/\$159|after Dec 31/);
     expect(body).toContain('Continue to checkout · $79/yr CAD');
     expect(body).not.toMatch(/\bsave\b|% ?off|\bwas\b/i);
     // Plain "$" on both countries; the currency code rides along instead of a C$/US$ prefix.

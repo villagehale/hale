@@ -5,7 +5,6 @@ import { ArrowLeft, ArrowRight, Check, LockKeyhole } from 'lucide-react';
 import {
   type Attribution,
   type BillingCurrency,
-  CANADA_PLUS_AFTER_LINE,
   FOUNDING_PRICE_DISPLAY,
   type PromoPhase,
 } from '@hale/types';
@@ -127,7 +126,7 @@ export function FoundingCheckout({
             Your founding price, locked in for as long as you’re a member.
           </p>
           <p className={styles.after}>
-            Join by Dec 31. Refund anytime.{currency === 'CAD' ? ` ${CANADA_PLUS_AFTER_LINE}` : ''}
+            Join by Dec 31. Refund anytime.
           </p>
         </div>
         <div className={styles.summary}>

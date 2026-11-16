@@ -49,14 +49,13 @@ describe('resolveHolidayPromo', () => {
     ).toBeNull();
   });
 
-  it('prices a US visitor in USD with no Canadian line, and everyone else in CAD with it', () => {
+  it('prices a US visitor in USD and everyone else in CAD', () => {
     const us = resolveHolidayPromo({ now, country: 'US', env: ON });
     expect(us).toMatchObject({
       currency: 'USD',
       price: '$59/yr USD',
       code: 'USD',
       symbol: '$',
-      afterLine: null,
     });
     for (const country of ['CA', 'GB', null]) {
       const ca = resolveHolidayPromo({ now, country, env: ON });
@@ -65,7 +64,6 @@ describe('resolveHolidayPromo', () => {
         price: '$79/yr CAD',
         code: 'CAD',
         symbol: '$',
-        afterLine: 'Plus is $159/yr CAD after Dec 31.',
       });
     }
   });

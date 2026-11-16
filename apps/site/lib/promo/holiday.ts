@@ -1,6 +1,5 @@
 import {
   type BillingCurrency,
-  CANADA_PLUS_AFTER_LINE,
   FOUNDING_PRICE_DISPLAY,
   FOUNDING_PROMO_STARTS_AT,
   HOLIDAY_SALE_STARTS_AT,
@@ -21,8 +20,8 @@ import {
  *  - Founding price $79/yr CAD (Canada) or $59/yr USD (US), locked for as long as the
  *    family stays a member. Currency follows the visitor's country (US → USD,
  *    everything else → CAD), the same rule checkout uses.
- *  - Canadian surfaces always carry the Plus price after Dec 31. US surfaces never
- *    show a regular price beside the sale name.
+ *  - No regular or after-Dec-31 price beside the sale name, in either country
+ *    (Barton, Nov 16). The FAQ states what happens after Dec 31 as a neutral fact.
  *  - Never was / save / % off / strikethrough beside "Sale".
  *
  * Display amounts come from @hale/types (FOUNDING_PRICE_DISPLAY), shared with the
@@ -47,8 +46,6 @@ export interface HolidayPromo {
   amount: 79 | 59;
   /** "$79/yr CAD" / "$59/yr USD": the price as it reads in a sentence or button. */
   price: string;
-  /** The required Canadian line. Null on US surfaces. */
-  afterLine: string | null;
 }
 
 export const promoPhase = promoPhaseAt;
@@ -63,7 +60,6 @@ export function buildHolidayPromo(phase: PromoPhase, currency: BillingCurrency):
     code: display.code,
     amount: display.amount as 79 | 59,
     price: display.perYearCode,
-    afterLine: currency === 'USD' ? null : CANADA_PLUS_AFTER_LINE,
   };
 }
 

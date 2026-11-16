@@ -9,8 +9,8 @@ import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from './holi
 /**
  * Barton's promo copy rules, checked on the rendered pages (both phases, both
  * currencies, home and pricing): the sale name leads; nothing that reads as a
- * markdown sits beside "Sale"; Canada carries the Plus line and the US never
- * does; registration stays soft; no camp-finding, referral or gift offer.
+ * markdown sits beside "Sale"; no after-Dec-31 or regular price beside the
+ * sale (the FAQ answers it neutrally); registration stays soft; no camp-finding, referral or gift offer.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -59,9 +59,26 @@ for (const { phase, currency } of CASES) {
         expect(body).not.toMatch(new RegExp(`\\$\\d[\\d.]*(/(yr|mo))? ${other}`));
       });
 
-      it('carries the Canadian Plus line only in Canada', () => {
-        if (currency === 'CAD') expect(body).toContain('Plus is $159/yr CAD after Dec 31.');
-        else expect(body).not.toMatch(/\$159/);
+      it('keeps any after-Dec-31 or regular price off the sale surfaces', () => {
+        // Barton, Nov 16: no "Plus is $159/yr CAD after Dec 31" line on any surface.
+        expect(body).not.toMatch(/Plus is \$?C?\$?159/);
+        const promoOnly = text(
+          renderToStaticMarkup(
+            createElement('div', null, [
+              createElement(PromoBanner, { key: 'b', promo }),
+              createElement(PromoSection, { key: 's', promo, ...door, mode: 'chooser' }),
+              createElement(PromoStickyCta, { key: 'k', promo, ...door, mode: 'chooser' }),
+            ]),
+          ),
+        );
+        expect(promoOnly).not.toMatch(/\$159|\$14\/mo|\$119/);
+        expect(promoOnly).not.toMatch(/after Dec 31/i);
+        // The FAQ answers it as a neutral fact, with no number.
+        const faq = text(renderToStaticMarkup(createElement(PromoFaqItems, { promo })));
+        expect(faq).toContain(
+          `Founding families who join by Dec 31 keep ${promo.price} for as long as they’re members. Families who join after that pay the regular Plus price.`,
+        );
+        expect(faq).not.toMatch(/\$159|\$119|\$14\b/);
       });
 
       it('never pairs the sale with was / save / % off / strikethrough', () => {

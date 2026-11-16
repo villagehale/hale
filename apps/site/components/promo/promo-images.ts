@@ -1,23 +1,23 @@
-import bfFridge480 from '~/assets/promo/bf-fridge-flyers-480.webp';
-import bfFridge960 from '~/assets/promo/bf-fridge-flyers-960.webp';
-import bfGift480 from '~/assets/promo/bf-gift-gold-480.webp';
-import bfGift960 from '~/assets/promo/bf-gift-gold-960.webp';
-import bfPhone480 from '~/assets/promo/bf-phone-night-480.webp';
-import bfPhone960 from '~/assets/promo/bf-phone-night-960.webp';
-import holFridge480 from '~/assets/promo/hol-fridge-calendar-480.webp';
-import holFridge960 from '~/assets/promo/hol-fridge-calendar-960.webp';
-import holKitchen480 from '~/assets/promo/hol-kitchen-texting-480.webp';
-import holKitchen960 from '~/assets/promo/hol-kitchen-texting-960.webp';
-import holWalk480 from '~/assets/promo/hol-winter-walk-480.webp';
-import holWalk960 from '~/assets/promo/hol-winter-walk-960.webp';
+import bfCar480 from '~/assets/promo/bf-car-pickup-480.webp';
+import bfCar960 from '~/assets/promo/bf-car-pickup-960.webp';
+import bfCounter480 from '~/assets/promo/bf-counter-flyers-480.webp';
+import bfCounter960 from '~/assets/promo/bf-counter-flyers-960.webp';
+import bfHall480 from '~/assets/promo/bf-hallway-boots-480.webp';
+import bfHall960 from '~/assets/promo/bf-hallway-boots-960.webp';
+import holFort480 from '~/assets/promo/hol-blanket-fort-480.webp';
+import holFort960 from '~/assets/promo/hol-blanket-fort-960.webp';
+import holFridge480 from '~/assets/promo/hol-fridge-december-480.webp';
+import holFridge960 from '~/assets/promo/hol-fridge-december-960.webp';
+import holWalk480 from '~/assets/promo/hol-snow-walk-480.webp';
+import holWalk960 from '~/assets/promo/hol-snow-walk-960.webp';
 import type { PromoPhase } from '~/lib/promo/holiday';
 
 /**
- * Promo photography (AI-generated, Nov 2026). No real people, no faces, no
- * readable text, no app screens: Hale lives in texts, so a phone is only ever
- * seen from the back or with its screen softened. Each image ships as 480w and
- * 960w webp; the section is below the hero, so every one loads lazily and none
- * can be the page's LCP.
+ * Promo photography (AI-generated, Nov 2026), shot to read as candid phone
+ * photos of everyday parent life. No faces, no readable text, no app screens:
+ * Hale lives in texts, so a phone is only ever seen dark or from behind. Each
+ * image ships as 480w and 960w webp; the section sits below the hero, so every
+ * one loads lazily and none can be the page's LCP.
  */
 export interface PromoImage {
   src: string;
@@ -43,28 +43,20 @@ function pair(small: Asset, large: Asset, alt: string): PromoImage {
 export const PROMO_IMAGES: Record<PromoPhase, [PromoImage, PromoImage, PromoImage]> = {
   black_friday: [
     pair(
-      bfPhone480,
-      bfPhone960,
-      'A parent’s hand holding a phone beside a mug of tea on a dark kitchen counter at night.',
+      bfCounter480,
+      bfCounter960,
+      'A kitchen counter after school: an open lunchbox, activity flyers, a signed form and a parent’s hand on a phone.',
     ),
-    pair(bfFridge480, bfFridge960, 'Flyers and a blank calendar held by magnets on a fridge door.'),
-    pair(bfGift480, bfGift960, 'A black gift box tied with a gold ribbon.'),
+    pair(bfHall480, bfHall960, 'Kids’ snowy boots, backpacks and mittens piled in a front hallway.'),
+    pair(bfCar480, bfCar960, 'A parent waiting in the car at school pickup, seen from the back seat.'),
   ],
   holiday: [
     pair(
-      holKitchen480,
-      holKitchen960,
-      'A parent in a cozy sweater texting at the kitchen counter while snow falls outside.',
-    ),
-    pair(
       holFridge480,
       holFridge960,
-      'A blank calendar and flyers held by ornament magnets on a fridge, with pine and berries.',
+      'A family fridge in December covered in kids’ drawings, a paper calendar and a paper snowflake.',
     ),
-    pair(
-      holWalk480,
-      holWalk960,
-      'A family walking down a snowy, lit-up street on winter break, seen from behind.',
-    ),
+    pair(holFort480, holFort960, 'Kids in pyjamas inside a blanket fort with fairy lights on winter break.'),
+    pair(holWalk480, holWalk960, 'A parent and a small child pulling a sled down a snowy street, seen from behind.'),
   ],
 };

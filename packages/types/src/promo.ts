@@ -104,5 +104,3 @@ export const FOUNDING_PRICE_DISPLAY: Record<
   USD: { symbol: '$', amount: 59, perYear: '$59/yr', perYearCode: '$59/yr USD', code: 'USD' },
 };
 
-/** The line every Canadian promo surface carries. US surfaces show none. */
-export const CANADA_PLUS_AFTER_LINE = 'Plus is $159/yr CAD after Dec 31.';

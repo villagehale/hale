@@ -52,9 +52,6 @@
 .rd .promo-bar-offer b {
   font-weight: 800;
 }
-.rd .promo-bar-after {
-  color: var(--promo-on-night-3);
-}
 .rd .promo-bar-link {
   display: inline-flex;
   align-items: center;
@@ -74,11 +71,6 @@
   .rd.promo-bar .promo-bar-in {
     font-size: 13px;
     padding: 8px var(--s4);
-  }
-  .rd .promo-bar-after {
-    order: 3;
-    flex-basis: 100%;
-    font-size: 12px;
   }
   .rd .promo-bar-long {
     display: none;
@@ -179,13 +171,6 @@
   font-weight: 500;
   line-height: 1.45;
   color: var(--promo-on-night-2);
-}
-.rd .promo-after {
-  margin-top: var(--s2);
-  font-family: var(--font-ui);
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--promo-on-night-3);
 }
 .rd .promo-chips {
   margin-top: var(--s5);
@@ -611,9 +596,6 @@
 .rd.promo-bar[data-promo-phase="holiday"] .promo-bar-sale {
   background: #fff8e9;
   color: #7a1b2d;
-}
-.rd.promo-bar[data-promo-phase="holiday"] .promo-bar-after {
-  color: #f3d9d4;
 }
 .rd.promo-bar[data-promo-phase="holiday"] .promo-bar-link {
   color: #fff8e9;
