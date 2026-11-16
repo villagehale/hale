@@ -18,6 +18,7 @@ import '../globals.css';
 import '../redesign.css';
 import '../redesign-dark.css';
 import '../consent.css';
+import '../promo.css';
 
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
 // fetched these from fonts.gstatic.com AT BUILD TIME, and a Google CDN outage failed

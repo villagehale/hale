@@ -81,6 +81,30 @@ describe('createBillingCheckout', () => {
     expect(calls[0]?.cancelUrl).toBe('https://app.example.com/settings?checkout=cancelled#billing');
   });
 
+  it('sends a cancelled founding checkout back to the founding confirmation page', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb();
+
+    await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding_cad',
+      sku: 'founding_annual',
+      currency: 'CAD',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+    });
+
+    expect(calls[0]?.cancelUrl).toBe(
+      'https://app.example.com/settings/founding?checkout=cancelled',
+    );
+  });
+
   it('writes a billing_checkout_started audit row for the family (rule #6)', async () => {
     resolveFamilyMock.mockResolvedValue('fam-9');
     ensureUserMock.mockResolvedValue('user-9');

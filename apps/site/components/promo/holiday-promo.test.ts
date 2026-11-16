@@ -1,0 +1,104 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { RedesignHome } from '~/components/redesign/home';
+import { RedesignPricing } from '~/components/redesign/pricing';
+import { buildHolidayPromo, type PromoPhase } from '~/lib/promo/holiday';
+import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from './holiday-promo';
+
+/**
+ * Barton's promo copy rules, checked on the rendered pages (both phases, both
+ * currencies, home and pricing): the sale name leads; nothing that reads as a
+ * markdown sits beside "Sale"; Canada carries the Plus line and the US never
+ * does; registration stays soft; no camp-finding, referral or gift offer.
+ */
+
+vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+
+function text(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const CASES: { phase: PromoPhase; currency: 'CAD' | 'USD' }[] = [
+  { phase: 'black_friday', currency: 'CAD' },
+  { phase: 'black_friday', currency: 'USD' },
+  { phase: 'holiday', currency: 'CAD' },
+  { phase: 'holiday', currency: 'USD' },
+];
+
+const door = { locale: 'en' as const, smsNumber: '+16475551234', prefill: 'Hi Hale' };
+
+for (const { phase, currency } of CASES) {
+  const promo = buildHolidayPromo(phase, currency);
+  const pages = {
+    home: renderToStaticMarkup(createElement(RedesignHome, { ...door, promo })),
+    pricing: renderToStaticMarkup(createElement(RedesignPricing, { ...door, promo })),
+  };
+  for (const [name, html] of Object.entries(pages)) {
+    describe(`${name} · ${phase} · ${currency}`, () => {
+      const body = text(html);
+
+      it('leads with the sale name and the geo price', () => {
+        expect(body).toContain(phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale');
+        expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
+        expect(html).toContain('id="founding"');
+        expect(body).toContain(currency === 'USD' ? 'US$59/yr' : 'C$79/yr');
+        expect(body).not.toContain(currency === 'USD' ? 'C$79' : 'US$59');
+      });
+
+      it('carries the Canadian Plus line only in Canada', () => {
+        if (currency === 'CAD') expect(body).toContain('Plus is C$159/yr after Dec 31.');
+        else expect(body).not.toMatch(/C\$159/);
+      });
+
+      it('never pairs the sale with was / save / % off / strikethrough', () => {
+        expect(html).not.toMatch(/<(s|del|strike)[\s>]/i);
+        expect(html).not.toMatch(/line-through/i);
+        expect(body).not.toMatch(/\bwas\s+(C\$|US\$|\$)/i);
+        expect(body).not.toMatch(/\bsave\b|\bsaving|% ?off|percent off|months free|half price/i);
+      });
+
+      it('keeps registration soft and makes no camp, referral or gift claim in the promo', () => {
+        const promoOnly = text(
+          renderToStaticMarkup(
+            createElement('div', null, [
+              createElement(PromoBanner, { key: 'b', promo }),
+              createElement(PromoSection, { key: 's', promo, ...door, mode: 'chooser' }),
+              createElement(PromoFaqItems, { key: 'f', promo }),
+              createElement(PromoStickyCta, { key: 'k', promo, ...door, mode: 'chooser' }),
+            ]),
+          ),
+        );
+        expect(promoOnly).toContain('helps you get registered');
+        expect(promoOnly).not.toMatch(/\bcamps?\b/i);
+        expect(body).not.toMatch(/signs your kid up|sign-ups done for you/i);
+        expect(body).not.toMatch(/referr|refer a|gift a year|gift-a-year/i);
+        expect(body).not.toMatch(/join(s)? free|nothing to pay/i);
+      });
+
+      it('promises refunds anytime and the lifetime lock', () => {
+        expect(body).toMatch(/Refund anytime/);
+        expect(body).toMatch(/locked in for as long as you’re a member/);
+      });
+
+      it('offers the founding checkout door and a mobile sticky CTA', () => {
+        expect(html).toContain('data-cta="promo_cta_click"');
+        expect(html).toContain('https://app.villagehale.com/settings/founding');
+        expect(html).toContain('promo-sticky');
+      });
+    });
+  }
+}
+
+describe('promo off', () => {
+  it('leaves the regular page untouched', () => {
+    const html = renderToStaticMarkup(createElement(RedesignHome, { ...door }));
+    expect(html).not.toContain('id="founding"');
+    expect(html).not.toContain('promo-bar');
+    expect(text(html)).toContain('Founding families join free.');
+  });
+});

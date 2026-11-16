@@ -72,7 +72,10 @@ export async function createBillingCheckout(input: {
     tier,
     period,
     successUrl: checkoutSuccessUrl(marketingOrigin),
-    cancelUrl: `${origin}/settings?checkout=cancelled#billing`,
+    cancelUrl:
+      sku === 'founding_annual'
+        ? `${origin}/settings/founding?checkout=cancelled`
+        : `${origin}/settings?checkout=cancelled#billing`,
     customerEmail,
     sku,
     currency,

@@ -4,6 +4,7 @@ import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { readSmsNumber } from '~/lib/text-entry';
+import { requestHolidayPromo } from '~/lib/promo/server';
 
 /**
  * villagehale.com. One landing, in every language — the redesigned shore.
@@ -16,11 +17,12 @@ export default async function LandingPage({
   searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
-  searchParams?: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const source = await pageSource(searchParams);
+  const promo = await requestHolidayPromo(locale, searchParams);
   return (
     <>
       <script
@@ -33,6 +35,7 @@ export default async function LandingPage({
         smsNumber={smsNumber}
         prefill={intakePrefill(locale)}
         source={source}
+        promo={promo}
       />
     </>
   );

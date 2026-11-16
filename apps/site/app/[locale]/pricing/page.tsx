@@ -7,10 +7,11 @@ import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
+import { requestHolidayPromo } from '~/lib/promo/server';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
-  searchParams?: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -42,6 +43,7 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
       smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
       prefill={intakePrefill(locale)}
       source={await pageSource(searchParams)}
+      promo={await requestHolidayPromo(locale, searchParams)}
     />
   );
 }

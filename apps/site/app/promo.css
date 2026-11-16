@@ -1,0 +1,140 @@
+/* Holiday founding promo (Design, Nov 2026). Same hook, price and type as the
+   v2 ad creatives: Figtree 800 for the sale name and price, navy night ground,
+   the ads' amber as a FILL only (navy text on it, 6.8:1). Scoped under .rd. */
+
+.rd {
+  --promo-amber: #e9a23b;          /* ad creative amber, fill only */
+  --promo-night: #0f1c35;          /* ad creative navy-deep */
+  --promo-night-hi: #22396a;       /* ad creative gradient highlight */
+  --promo-on-night: #ffffff;
+  --promo-on-night-2: rgb(255 255 255 / 0.78);
+  --promo-on-night-3: rgb(255 255 255 / 0.64);
+  --promo-night-line: rgb(255 255 255 / 0.12);
+  --promo-sticky-h: 72px;
+}
+
+/* ── Banner strip above the header ── */
+.rd.promo-bar { position: relative; z-index: 11; background: var(--promo-night); color: var(--promo-on-night); }
+.rd.promo-bar .promo-bar-in {
+  max-width: var(--container); margin: 0 auto; padding: 10px var(--s5);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: var(--s3); row-gap: 2px;
+  font-family: var(--font-ui); font-size: 14px; line-height: 1.4; text-align: center;
+}
+.rd .promo-bar-sale {
+  font-weight: 800; letter-spacing: -0.01em; background: var(--promo-amber); color: var(--promo-night);
+  padding: 2px 10px; border-radius: var(--r-full);
+}
+.rd .promo-bar-offer b { font-weight: 800; }
+.rd .promo-bar-after { color: var(--promo-on-night-3); }
+.rd .promo-bar-link {
+  display: inline-flex; align-items: center; gap: var(--s1); font-weight: 700; color: var(--promo-on-night);
+  text-decoration: underline; text-underline-offset: 3px; min-height: 32px; touch-action: manipulation;
+}
+.rd .promo-bar-link svg { width: 14px; height: 14px; }
+@media (max-width: 640px) {
+  .rd.promo-bar .promo-bar-in { font-size: 13px; padding: 8px var(--s4); }
+  .rd .promo-bar-after { order: 3; flex-basis: 100%; font-size: 12px; }
+  .rd .promo-bar-long { display: none; }
+  .rd .promo-bar-link { min-height: 28px; }
+}
+
+/* ── The offer ── */
+.rd .promo-sec { padding-top: 96px; padding-bottom: 96px; scroll-margin-top: calc(var(--nav-h) + 24px); }
+.rd .promo-card {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--s7);
+  padding: 64px; border-radius: 28px; color: var(--promo-on-night);
+  background: radial-gradient(120% 80% at 85% 0%, var(--promo-night-hi) 0%, #17294a 45%, var(--promo-night) 100%);
+  box-shadow: 0 40px 80px -40px rgb(12 26 54 / 0.55);
+}
+.rd .promo-kicker {
+  display: inline-flex; align-items: center; gap: var(--s2); font-family: var(--font-ui); font-size: 14px; font-weight: 600;
+  padding: 6px 14px 6px 12px; border-radius: var(--r-full); background: rgb(255 255 255 / 0.09);
+}
+.rd .promo-kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--promo-amber); }
+.rd .promo-sale > span { display: block; }
+.rd .promo-sale {
+  margin-top: var(--s5); font-family: var(--font-ui); font-weight: 800; font-size: clamp(48px, 7vw, 88px);
+  line-height: 0.98; letter-spacing: -0.035em; color: var(--promo-on-night); text-wrap: balance;
+}
+.rd .promo-price { margin-top: var(--s4); display: flex; align-items: flex-start; font-family: var(--font-ui); font-weight: 800; line-height: 0.85; letter-spacing: -0.04em; }
+.rd .promo-price-sym { font-size: clamp(32px, 4vw, 48px); margin-top: 0.35em; color: var(--promo-on-night-2); }
+.rd .promo-price-num { font-size: clamp(112px, 15vw, 184px); }
+.rd .promo-price-per { align-self: flex-end; font-size: clamp(28px, 3.4vw, 44px); color: var(--promo-on-night-2); margin-left: 4px; margin-bottom: 0.2em; }
+.rd .promo-lede { margin-top: var(--s5); max-width: 40ch; font-family: var(--font-ui); font-size: 20px; font-weight: 500; line-height: 1.45; color: var(--promo-on-night-2); }
+.rd .promo-after { margin-top: var(--s2); font-family: var(--font-ui); font-size: 16px; font-weight: 500; color: var(--promo-on-night-3); }
+.rd .promo-chips { margin-top: var(--s5); display: flex; flex-wrap: wrap; gap: var(--s2); list-style: none; }
+.rd .promo-chips li {
+  display: inline-flex; align-items: center; gap: var(--s2); padding: 8px 14px; border-radius: var(--r-full);
+  font-family: var(--font-ui); font-size: 15px; font-weight: 600; background: rgb(255 255 255 / 0.07); border: 1px solid var(--promo-night-line);
+}
+.rd .promo-chips li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--promo-amber); }
+.rd .promo-ctas { margin-top: var(--s6); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5); }
+.rd .promo-btn { background: var(--promo-amber); color: var(--promo-night); font-weight: 800; min-height: 52px; padding-inline: 28px; }
+.rd .promo-btn:hover { background: var(--promo-on-night); }
+.rd .promo-btn svg { width: 18px; height: 18px; }
+.rd .promo-lockin {
+  display: inline-flex; align-items: center; gap: var(--s2); min-height: 44px; font-family: var(--font-ui); font-size: 16px; font-weight: 700;
+  color: var(--promo-on-night); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgb(255 255 255 / 0.4);
+  touch-action: manipulation;
+}
+.rd .promo-lockin:hover { text-decoration-color: var(--promo-amber); }
+.rd .promo-lockin svg { width: 14px; height: 14px; }
+.rd .promo-fine { margin-top: var(--s4); font-family: var(--font-ui); font-size: 13.6px; color: var(--promo-on-night-3); }
+.rd .promo-card :focus-visible { outline: none; box-shadow: 0 0 0 3px var(--promo-night), 0 0 0 5px var(--promo-amber); border-radius: var(--r-sm); }
+
+.rd .promo-points { list-style: none; display: grid; gap: var(--s4); align-content: center; }
+.rd .promo-points li {
+  display: grid; grid-template-columns: 32px 1fr; gap: var(--s3); padding: var(--s5);
+  border-radius: var(--r-lg); background: rgb(255 255 255 / 0.06); border: 1px solid var(--promo-night-line);
+}
+.rd .promo-pt-ic { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--promo-amber); color: var(--promo-night); }
+.rd .promo-pt-ic svg { width: 16px; height: 16px; }
+.rd .promo-points h3 { color: var(--promo-on-night); font-family: var(--font-ui); font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+.rd .promo-points p { margin-top: var(--s1); font-family: var(--font-ui); font-size: 15.5px; line-height: 1.5; color: var(--promo-on-night-2); }
+.rd .promo-points a { color: var(--promo-on-night); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+
+@media (max-width: 1023.98px) {
+  .rd .promo-card { grid-template-columns: 1fr; padding: 48px 40px; gap: var(--s6); }
+}
+@media (max-width: 640px) {
+  .rd .promo-sec { padding: 48px var(--s3); }
+  .rd .promo-card { padding: 32px 22px; border-radius: 22px; gap: var(--s5); }
+  .rd .promo-lede { font-size: 17px; }
+  .rd .promo-chips li { font-size: 14px; padding: 6px 12px; }
+  .rd .promo-ctas { flex-direction: column; align-items: stretch; }
+  .rd .promo-btn { justify-content: center; }
+  .rd .promo-lockin { justify-content: center; font-size: 15px; }
+  .rd .promo-points li { padding: var(--s4); }
+}
+
+/* ── Mobile sticky bar ── */
+.rd.promo-sticky { display: none; }
+@media (max-width: 640px) {
+  .rd.promo-sticky {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: transparent;
+    padding: 0 var(--s3) calc(var(--s3) + env(safe-area-inset-bottom));
+    transform: translateY(120%); transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .rd.promo-sticky[data-show="true"] { transform: none; }
+  .rd .promo-sticky-in {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: var(--promo-sticky-h);
+    padding: 10px 10px 10px 18px; border-radius: 20px; color: var(--promo-on-night);
+    background: var(--promo-night); box-shadow: 0 18px 40px -16px rgb(12 26 54 / 0.6); border: 1px solid var(--promo-night-line);
+  }
+  .rd .promo-sticky-copy { display: grid; font-family: var(--font-ui); line-height: 1.25; min-width: 0; }
+  .rd .promo-sticky-copy strong { font-size: 15px; font-weight: 800; }
+  .rd .promo-sticky-copy span { font-size: 13.5px; color: var(--promo-on-night-2); }
+  .rd .promo-sticky-copy small { font-size: 11.5px; color: var(--promo-on-night-3); }
+  .rd .promo-sticky-btn {
+    flex: none; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: var(--r-full);
+    background: var(--promo-amber); color: var(--promo-night); font-family: var(--font-ui); font-size: 16px; font-weight: 800; touch-action: manipulation;
+  }
+}
+@media (prefers-reduced-motion: reduce) { .rd.promo-sticky { transition: none; } }
+
+/* Plus card while the promo runs (pricing page) */
+.rd .hs-tier .promo-tier-tag {
+  display: inline-block; margin-top: var(--s2); padding: 6px 10px; border-radius: var(--r-sm); line-height: 1.4;
+  font-family: var(--font-ui); font-size: 13px; font-weight: 700; background: var(--amber-tint); color: var(--navy);
+}
