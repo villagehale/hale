@@ -51,11 +51,12 @@ function handleMemberKey(handle: string): string {
  * The key one sender's answers are written under. A non-phone handle was once
  * keyed `name:<handle>`, so that legacy key is read too: when only it is on a
  * live plan or poll, the sender keeps answering on that row instead of starting a
- * second one. `knownKeys` is read only for such a sender. A sender's name is not
- * an input: it never keys them.
+ * second one. `knownKeys` is read only for such a sender. Callers may still pass
+ * a display name (group RSVP and experience turns already do); it is ignored and
+ * never keys them.
  */
 export async function senderMemberKey(
-  sender: { handle: string },
+  sender: { handle: string; name?: string | null },
   knownKeys: () => Promise<readonly string[]>,
 ): Promise<string> {
   const phone = memberKeyFromHandle(sender.handle);

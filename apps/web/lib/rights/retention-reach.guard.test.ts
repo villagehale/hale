@@ -39,15 +39,35 @@ const CANDIDATE_WRITE =
   /handOffProactive\(|queueCheckInForDecider\b|insert\(\s*(?:schema\.)?proactiveCandidates\s*\)/;
 
 const CANDIDATE_PRODUCERS: Record<string, string> = {
-  'apps/web/lib/channel/proactive/queue.ts': 'the two inserts every producer below goes through',
+  'apps/web/lib/channel/activity/deliver.ts':
+    'callers pass a key that names one commitment or pick (activity_followup:<id>)',
+  'apps/web/lib/channel/calendar-write/send.ts':
+    'the key names family, parent and the send instant',
   'apps/web/lib/channel/checkin/sweep.ts': 'the key names the local day',
-  'apps/web/lib/channel/mid-activity/sweep.ts':
-    'the key names the session day, and the ask is queued only inside its window that evening',
-  'apps/web/lib/channel/nudge/run.ts':
-    'keys name a week, a Saturday or a registration window. The weekday-care asks are keyed per prompt with no date: a year after a dropped ask, Hale may weigh it once more, and a sent one stays claimed in channel_messages (never deleted), which the decider reads before any send (review.ts dropAlreadySent)',
-  'apps/web/lib/travel/sweep.ts': 'the key names one trip, queued only before it starts',
   'apps/web/lib/channel/coparent/departure-notice.ts':
     'the key names one departure, queued only at the departure or by its redrive inside the staleness bound',
+  'apps/web/lib/channel/coparent/duty/asks.ts':
+    'the key names the duty event, role and local day',
+  'apps/web/lib/channel/followup/run.ts': 'keys name one intro, one activity, or one child',
+  'apps/web/lib/channel/group-plan/send.ts': 'the key names the family event and revision',
+  'apps/web/lib/channel/linq/carpool.ts': 'the key names family and the driver',
+  'apps/web/lib/channel/linq/household-calendar.ts':
+    'keys name one event, its start, or the kids in the chat',
+  'apps/web/lib/channel/mid-activity/sweep.ts':
+    'the key names the session day, and the ask is queued only inside its window that evening',
+  'apps/web/lib/channel/next-day-checkback/sweep.ts': 'the key names one workstream',
+  'apps/web/lib/channel/nudge/run.ts':
+    'keys name a week, a Saturday or a registration window. The weekday-care asks are keyed per prompt with no date: a year after a dropped ask, Hale may weigh it once more, and a sent one stays claimed in channel_messages (never deleted), which the decider reads before any send (review.ts dropAlreadySent)',
+  'apps/web/lib/channel/plan/check-in.ts': 'the key names one commitment',
+  'apps/web/lib/channel/proactive/queue.ts': 'the two inserts every producer below goes through',
+  'apps/web/lib/channel/spots/sweep.ts': 'the key names one spot opening and attempt',
+  'apps/web/lib/integrations/calendar-alert.ts':
+    'keys name one event change or series stamp',
+  'apps/web/lib/integrations/email-alert.ts': 'the key names one message',
+  'apps/web/lib/memory/workstream-followup.ts':
+    'the key names one workstream and its check-back',
+  'apps/web/lib/travel/sweep.ts': 'the key names one trip, queued only before it starts',
+  'apps/web/lib/village/intros/run.ts': 'keys name one proposal and side',
 };
 
 const SCAN_ROOTS = ['apps/web/app', 'apps/web/lib', 'apps/worker/src', 'packages'];

@@ -46,4 +46,11 @@ describe('senderMemberKey', () => {
     };
     expect(await senderMemberKey({ handle: PHONE }, neverRead)).toBe(memberKeyFromHandle(PHONE));
   });
+
+  it('ignores a display name: two people who share a first name stay two handle keys', async () => {
+    const named = await senderMemberKey({ handle: APPLE_ID, name: 'Sam' }, nothingKnown);
+    const unnamed = await senderMemberKey({ handle: APPLE_ID, name: null }, nothingKnown);
+    expect(named).toBe(unnamed);
+    expect(named).not.toBe(nameKey('Sam'));
+  });
 });
