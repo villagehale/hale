@@ -103,7 +103,10 @@ describe('PlanOffer', () => {
     );
     expect(html).toContain('Continue · $19/mo');
     expect(html).toContain('Continue · $159/yr');
+    expect(html).toContain('Max');
+    expect(html).toContain('Continue · $329/yr');
     expect(html).not.toContain('$59/yr');
     expect(html).not.toContain('$99/yr');
+    expect(html).not.toContain('Family');
   });
 });

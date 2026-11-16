@@ -45,6 +45,7 @@ describe('paidTierFromUnknown', () => {
 describe('paidTierFromSku', () => {
   it('grants Max only from the Max promo sku', () => {
     expect(paidTierFromSku('promo_max_annual')).toBe('family');
+    expect(paidTierFromSku('max_annual')).toBe('family');
     expect(paidTierFromSku('promo_plus_annual')).toBe('plus');
     expect(paidTierFromSku('plus_annual')).toBe('plus');
     expect(paidTierFromSku('plus_monthly')).toBe('plus');
@@ -260,8 +261,73 @@ describe('resolveCheckoutPrice', () => {
         period: 'annual',
         now: AFTER,
         tier: 'family',
+        env: WITH_LIST,
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'monthly',
+        now: AFTER,
+        tier: 'family',
         env: {
           ...WITH_LIST,
+          STRIPE_PRICE_MAX_ANNUAL_USD: 'price_max_list_usd',
+        },
+      }),
+    ).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_max_list_usd',
+        sku: 'max_annual',
+        currency: 'USD',
+        period: 'annual',
+      },
+    });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          ...WITH_LIST,
+          STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+        },
+      }),
+    ).toEqual({
+      status: 'selected',
+      price: {
+        priceId: 'price_max_list_cad',
+        sku: 'max_annual',
+        currency: 'CAD',
+        period: 'annual',
+      },
+    });
+  });
+
+  it('does not charge CAD Max list or leftover Family annual when the matching Max list id is unset', () => {
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
+          STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+          STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
+        },
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: AFTER,
+        tier: 'family',
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
           STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
         },
       }),
@@ -331,7 +397,7 @@ describe('promo renewal after the cutoff', () => {
       ...env,
       STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
     };
-    expect(plusPriceIdsFromEnv(leftover)).toContain('price_founding_cad');
+    expect(plusPriceIdsFromEnv(leftover)).not.toContain('price_founding_cad');
     expect(promoPriceIdsFromEnv(leftover)).not.toContain('price_founding_cad');
   });
 });

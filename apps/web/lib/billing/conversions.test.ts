@@ -6,6 +6,7 @@ import {
   hashPhoneForAds,
   metaCapiPurchaseBody,
   metaTestEventCodeFromEnv,
+  metaTestPurchaseFor,
   purchaseFromStripeEvent,
   reportBillingPurchase,
   sendMetaPurchase,
@@ -243,6 +244,29 @@ describe('Meta Test Events ops probe', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('picks the promo yearly amount for each tier and currency', () => {
+    expect(metaTestPurchaseFor('plus', 'CAD')).toMatchObject({
+      value: 59,
+      currency: 'CAD',
+      sku: 'promo_plus_annual',
+    });
+    expect(metaTestPurchaseFor('plus', 'USD')).toMatchObject({
+      value: 39,
+      currency: 'USD',
+      sku: 'promo_plus_annual',
+    });
+    expect(metaTestPurchaseFor('family', 'CAD')).toMatchObject({
+      value: 99,
+      currency: 'CAD',
+      sku: 'promo_max_annual',
+    });
+    expect(metaTestPurchaseFor('family', 'USD')).toMatchObject({
+      value: 79,
+      currency: 'USD',
+      sku: 'promo_max_annual',
+    });
+  });
+
   it('sends a hashed fake Purchase with test_event_code and returns status plus events_received', async () => {
     const fetchImpl = vi
       .fn()
@@ -259,13 +283,38 @@ describe('Meta Test Events ops probe', () => {
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as {
       test_event_code?: string;
-      data: Array<{ event_id: string; user_data: { em: string[]; ph: string[] } }>;
+      data: Array<{
+        event_id: string;
+        user_data: { em: string[]; ph: string[] };
+        custom_data: { value: number; currency: string };
+      }>;
     };
     expect(body.test_event_code).toBe('TEST12345');
     expect(body.data[0]?.event_id).toBe('cs_test_ops');
+    expect(body.data[0]?.custom_data).toMatchObject({ value: 59, currency: 'CAD' });
     expect(body.data[0]?.user_data.em).toEqual([hashEmailForAds('capi.test@example.com')]);
     expect(JSON.stringify(body)).not.toContain('capi.test@example.com');
     expect(JSON.stringify(body)).not.toContain('+1 555 010 0100');
+  });
+
+  it('sends Max USD when the ops probe asks for that tier and currency', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    await sendMetaTestPurchase(
+      {
+        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+        META_CAPI_TEST_EVENT_CODE: 'TEST12345',
+      },
+      fetchImpl,
+      { tier: 'max', currency: 'USD' },
+    );
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      data: Array<{ custom_data: { value: number; currency: string } }>;
+    };
+    expect(body.data[0]?.custom_data).toMatchObject({ value: 79, currency: 'USD' });
   });
 
   it('does not put test_event_code on a live payload when the env is empty', () => {

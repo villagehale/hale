@@ -202,7 +202,7 @@ describe('POST /api/billing/checkout', () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
     vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
-    vi.stubEnv('STRIPE_PRICE_FAMILY_ANNUAL', 'price_family_yr');
+    vi.stubEnv('STRIPE_PRICE_MAX_ANNUAL_CAD', 'price_max_list_cad');
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     createMock.mockResolvedValue({
@@ -219,7 +219,19 @@ describe('POST /api/billing/checkout', () => {
 
     createMock.mockClear();
     const maxAfter = await post({ period: 'annual', tier: 'max' });
-    expect(maxAfter.status).toBe(501);
+    expect(maxAfter.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      priceId: 'price_max_list_cad',
+      sku: 'max_annual',
+      tier: 'family',
+    });
+
+    createMock.mockClear();
+    const usdMaxMissing = await post(
+      { period: 'annual', tier: 'max' },
+      { 'x-vercel-ip-country': 'US' },
+    );
+    expect(usdMaxMissing.status).toBe(501);
     expect(createMock).not.toHaveBeenCalled();
   });
 

@@ -306,15 +306,24 @@ describe('priceTierMapFromEnv', () => {
     });
   });
 
-  it('still maps leftover founding env names to plus', () => {
+  it('does not map leftover founding env names onto a paid tier', () => {
     expect(
       priceTierMapFromEnv({
         STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
         STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
       }),
+    ).toEqual({});
+  });
+
+  it('maps Max list annual ids to family', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+        STRIPE_PRICE_MAX_ANNUAL_USD: 'price_max_list_usd',
+      }),
     ).toEqual({
-      price_founding_cad: 'plus',
-      price_founding_usd: 'plus',
+      price_max_list_cad: 'family',
+      price_max_list_usd: 'family',
     });
   });
 });

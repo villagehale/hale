@@ -9,6 +9,11 @@
  * Plus USD list (after the cutoff): monthly 1400 / yearly 11900,
  * metadata list=plus-usd.
  *
+ * Max list annual (after the cutoff, not purchasable during the window):
+ *   CAD 32900 / USD 25900 on product Hale Max,
+ *   lookup_key hale_list_max_annual_{cad|usd},
+ *   metadata list=max-cad / max-usd.
+ *
  * Amounts live here and in tests/docs only. Runtime checkout never reads them —
  * it uses the price ids this script prints. Do not run against live Stripe from
  * an agent; the operator runs `pnpm stripe:create-founding-prices` (dry-run
@@ -21,6 +26,8 @@ export const PROMO_MAX_CAD_CENTS = 9900;
 export const PROMO_MAX_USD_CENTS = 7900;
 export const PLUS_USD_MONTHLY_CENTS = 1400;
 export const PLUS_USD_ANNUAL_CENTS = 11900;
+export const MAX_LIST_CAD_CENTS = 32900;
+export const MAX_LIST_USD_CENTS = 25900;
 
 /** @deprecated Plus promo CAD cents. Prefer PROMO_PLUS_CAD_CENTS. */
 export const FOUNDING_CAD_CENTS = PROMO_PLUS_CAD_CENTS;
@@ -29,6 +36,15 @@ export const FOUNDING_USD_CENTS = PROMO_PLUS_USD_CENTS;
 
 export const HOLIDAY_PROMO = 'holiday-2026' as const;
 export const PLUS_USD_LIST_METADATA = { list: 'plus-usd' } as const;
+export const MAX_LIST_CAD_METADATA = { list: 'max-cad' } as const;
+export const MAX_LIST_USD_METADATA = { list: 'max-usd' } as const;
+
+/** Old Plus-only founding yearly prices (CAD 7900 / USD 5900). Lockdown archives these. */
+export const LEGACY_FOUNDING_PROMO = 'founding-2026';
+export const LEGACY_FOUNDING_LOOKUP_KEYS = [
+  'hale_founding_annual_cad',
+  'hale_founding_annual_usd',
+] as const;
 
 export const PLUS_PRODUCT_NAME = 'Hale Plus';
 export const MAX_PRODUCT_NAME = 'Hale Max';
@@ -40,6 +56,25 @@ export const PROMO_LOOKUP = {
   maxCad: 'hale_promo_max_annual_cad',
   maxUsd: 'hale_promo_max_annual_usd',
 } as const;
+
+export const MAX_LIST_LOOKUP = {
+  cad: 'hale_list_max_annual_cad',
+  usd: 'hale_list_max_annual_usd',
+} as const;
+
+export function isLegacyFoundingPrice(price: {
+  lookupKey?: string | null;
+  metadata: Record<string, string>;
+}): boolean {
+  if (price.metadata.promo === LEGACY_FOUNDING_PROMO) return true;
+  if (
+    price.lookupKey &&
+    (LEGACY_FOUNDING_LOOKUP_KEYS as readonly string[]).includes(price.lookupKey)
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export function promoPriceMetadata(
   tier: 'plus' | 'max',
@@ -88,6 +123,8 @@ export interface PromoPriceSet {
   maxUsd: string;
   plusMonthlyUsd: string;
   plusAnnualUsd: string;
+  maxAnnualCad: string;
+  maxAnnualUsd: string;
   created: string[];
   wouldCreate: string[];
 }
@@ -301,6 +338,38 @@ export async function ensurePromoPrices(
       metadata: { ...PLUS_USD_LIST_METADATA },
     },
   );
+  const maxAnnualCad = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_MAX_ANNUAL_CAD',
+    {
+      productId: maxProductId,
+      currency: 'cad',
+      unitAmount: MAX_LIST_CAD_CENTS,
+      interval: 'year',
+      metadata: { ...MAX_LIST_CAD_METADATA },
+      lookupKey: MAX_LIST_LOOKUP.cad,
+    },
+  );
+  const maxAnnualUsd = await ensurePrice(
+    api,
+    prices,
+    created,
+    wouldCreate,
+    apply,
+    'STRIPE_PRICE_MAX_ANNUAL_USD',
+    {
+      productId: maxProductId,
+      currency: 'usd',
+      unitAmount: MAX_LIST_USD_CENTS,
+      interval: 'year',
+      metadata: { ...MAX_LIST_USD_METADATA },
+      lookupKey: MAX_LIST_LOOKUP.usd,
+    },
+  );
 
   return {
     plusCad,
@@ -309,6 +378,8 @@ export async function ensurePromoPrices(
     maxUsd,
     plusMonthlyUsd,
     plusAnnualUsd,
+    maxAnnualCad,
+    maxAnnualUsd,
     created,
     wouldCreate,
   };
@@ -323,6 +394,8 @@ export function formatCreatedPriceIds(result: PromoPriceSet): string {
     [result.maxUsd]: 'STRIPE_PRICE_PROMO_MAX_ANNUAL_USD',
     [result.plusMonthlyUsd]: 'STRIPE_PRICE_PLUS_MONTHLY_USD',
     [result.plusAnnualUsd]: 'STRIPE_PRICE_PLUS_ANNUAL_USD',
+    [result.maxAnnualCad]: 'STRIPE_PRICE_MAX_ANNUAL_CAD',
+    [result.maxAnnualUsd]: 'STRIPE_PRICE_MAX_ANNUAL_USD',
   };
   for (const id of result.created) {
     if (!id) continue;

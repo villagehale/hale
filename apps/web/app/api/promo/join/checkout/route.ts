@@ -50,7 +50,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const tier = paidTierFromUnknown(body?.tier);
+  const tier = paidTierFromUnknown(body?.tier ?? body?.plan);
   const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
   const selected = resolveCheckoutPrice({
     currency,

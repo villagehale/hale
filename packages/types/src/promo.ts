@@ -45,6 +45,19 @@ export const PLUS_LIST_PRICE_DISPLAY: Record<
 };
 
 /**
+ * Max list annual display for after the promo cutoff. CAD 32900 / USD 25900
+ * match `STRIPE_PRICE_MAX_ANNUAL_{CAD,USD}` from create-founding-prices.
+ * Not purchasable during the window.
+ */
+export const MAX_LIST_PRICE_DISPLAY: Record<
+  BillingCurrency,
+  { annualLabel: string; annualCents: number }
+> = {
+  CAD: { annualLabel: '$329/yr CAD', annualCents: 32900 },
+  USD: { annualLabel: '$259/yr USD', annualCents: 25900 },
+};
+
+/**
  * US → USD; every other country code, and a missing header, → CAD.
  * Reads Vercel's `x-vercel-ip-country` value (ISO 3166-1 alpha-2).
  */

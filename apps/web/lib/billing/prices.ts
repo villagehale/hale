@@ -10,8 +10,10 @@ type PaidTier = 'plus' | 'family';
  *
  * Amounts are never read here. Promo yearly ids arrive as
  * STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD}. Leftover
- * STRIPE_PRICE_FOUNDING_ANNUAL_* names still map existing subscriptions to
- * plus on the webhook; they are never selected for a new checkout.
+ * STRIPE_PRICE_FOUNDING_ANNUAL_* names are not selected for checkout, not
+ * on the grant map, and not in the lockdown keep-alive set. After the
+ * cutoff, Max list annual ids (`STRIPE_PRICE_MAX_ANNUAL_{CAD,USD}`) are
+ * purchasable.
  *
  * During the window every new checkout is that tier's promo yearly price for
  * the visitor's currency — never a list or monthly id, even if the client asked.
@@ -28,9 +30,16 @@ export const STRIPE_PRICE_FOUNDING_ANNUAL_CAD_ENV = 'STRIPE_PRICE_FOUNDING_ANNUA
 export const STRIPE_PRICE_FOUNDING_ANNUAL_USD_ENV = 'STRIPE_PRICE_FOUNDING_ANNUAL_USD';
 export const STRIPE_PRICE_PLUS_MONTHLY_USD_ENV = 'STRIPE_PRICE_PLUS_MONTHLY_USD';
 export const STRIPE_PRICE_PLUS_ANNUAL_USD_ENV = 'STRIPE_PRICE_PLUS_ANNUAL_USD';
+export const STRIPE_PRICE_MAX_ANNUAL_CAD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_CAD';
+export const STRIPE_PRICE_MAX_ANNUAL_USD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_USD';
 export const PROMO_FOUNDING_ENDS_AT_ENV = 'PROMO_FOUNDING_ENDS_AT';
 
-export type CheckoutSku = 'promo_plus_annual' | 'promo_max_annual' | 'plus_monthly' | 'plus_annual';
+export type CheckoutSku =
+  | 'promo_plus_annual'
+  | 'promo_max_annual'
+  | 'plus_monthly'
+  | 'plus_annual'
+  | 'max_annual';
 
 export interface CheckoutPrice {
   readonly priceId: string;
@@ -91,7 +100,7 @@ export function isPromoAnnualSku(sku: CheckoutSku): boolean {
 }
 
 export function paidTierFromSku(sku: CheckoutSku): PaidTier {
-  return sku === 'promo_max_annual' ? 'family' : 'plus';
+  return sku === 'promo_max_annual' || sku === 'max_annual' ? 'family' : 'plus';
 }
 
 export function promoPlusAnnualPriceId(
@@ -137,6 +146,7 @@ export function plusListPriceId(
     : trimId(env.STRIPE_PRICE_PLUS_MONTHLY);
 }
 
+/** Legacy $79/$59 ids. Lockdown archives them; checkout and grants ignore them. */
 export function leftoverFoundingPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
@@ -190,28 +200,36 @@ export function listPriceIdsFromEnv(
   ].filter((id): id is string => id !== null);
 }
 
-/** Family list monthly/annual ids. Allowed after the cutoff; refused during the window. */
+export function maxListAnnualPriceId(
+  currency: BillingCurrency,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (currency === 'USD') return trimId(env[STRIPE_PRICE_MAX_ANNUAL_USD_ENV]);
+  return trimId(env[STRIPE_PRICE_MAX_ANNUAL_CAD_ENV]);
+}
+
+/** Family/Max list ids. Allowed after the cutoff; refused during the window. */
 export function familyPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
-  return [trimId(env.STRIPE_PRICE_FAMILY_MONTHLY), trimId(env.STRIPE_PRICE_FAMILY_ANNUAL)].filter(
-    (id): id is string => id !== null,
-  );
+  return [
+    trimId(env.STRIPE_PRICE_FAMILY_MONTHLY),
+    trimId(env.STRIPE_PRICE_FAMILY_ANNUAL),
+    trimId(env[STRIPE_PRICE_MAX_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_MAX_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
 }
 
 /**
  * Price ids that grant Plus, including promo Plus yearly and USD list.
  * Fed to the webhook's price→tier map so invoice.paid on a promo Plus price
- * still applies plus after the cutoff. Max promo ids are not in this list.
+ * still applies plus after the cutoff. Max promo ids and leftover founding
+ * $79/$59 ids are not in this list.
  */
 export function plusPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
-  return [
-    ...listPriceIdsFromEnv(env),
-    ...promoPlusPriceIdsFromEnv(env),
-    ...leftoverFoundingPriceIdsFromEnv(env),
-  ];
+  return [...listPriceIdsFromEnv(env), ...promoPlusPriceIdsFromEnv(env)];
 }
 
 export function isPromoPriceId(
@@ -273,6 +291,20 @@ function promoSelection(
   };
 }
 
+function maxListSelection(
+  currency: BillingCurrency,
+  env: Record<string, string | undefined>,
+): CheckoutPrice | null {
+  const priceId = maxListAnnualPriceId(currency, env);
+  if (!priceId) return null;
+  return {
+    priceId,
+    sku: 'max_annual',
+    currency,
+    period: 'annual',
+  };
+}
+
 /**
  * Pick the Stripe price for a new checkout.
  *
@@ -280,10 +312,11 @@ function promoSelection(
  * 2. Window open → that tier's promo yearly for the visitor's currency.
  *    Client period / list / monthly env ids are ignored. Missing promo id
  *    is unavailable.
- * 3. After the window, the Plus list price for that currency, then CAD as
- *    fallback. Max has no list offer — a Max request is unavailable so we
- *    never charge Plus while writing family metadata. Preview callers do
- *    not get list prices after the cutoff.
+ * 3. After the window, Plus uses monthly/annual list for that currency,
+ *    then CAD as fallback. Max uses only that currency's dedicated
+ *    `STRIPE_PRICE_MAX_ANNUAL_*` id — never CAD-for-USD, never
+ *    `STRIPE_PRICE_FAMILY_ANNUAL`, never Plus list. Missing is
+ *    unavailable. Preview callers do not get list prices after the cutoff.
  */
 export function resolveCheckoutPrice(input: {
   currency: BillingCurrency;
@@ -312,6 +345,8 @@ export function resolveCheckoutPrice(input: {
   }
 
   if (tier === 'family') {
+    const maxNative = maxListSelection(input.currency, env);
+    if (maxNative) return { status: 'selected', price: maxNative };
     return { status: 'unavailable', reason: 'no_price' };
   }
 
