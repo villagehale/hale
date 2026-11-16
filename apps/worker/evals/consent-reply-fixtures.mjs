@@ -51,4 +51,18 @@ export const CONSENT_REPLY_FIXTURES = [
     text: 'لا أريد تعارف',
     expect: { verdict: 'no', target: 'discoverability' },
   },
+  {
+    id: 'go-find-it-after-link-ask-zh',
+    question: 'intro',
+    text: '你找一下啊',
+    lastHaleMessage: 'Want me to register Sebby? Send the registration page.',
+    expect: { verdict: 'neither', target: 'none' },
+  },
+  {
+    id: 'go-find-it-after-link-ask-en',
+    question: 'intro',
+    text: 'go find it',
+    lastHaleMessage: 'I can sign him up once I have the registration link.',
+    expect: { verdict: 'neither', target: 'none' },
+  },
 ];

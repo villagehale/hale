@@ -12,6 +12,7 @@ import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { parentFacingActivityUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { REGISTRATION_PLATFORM_HOST_MARKERS } from '~/lib/signup/plan/towns';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
 
@@ -460,6 +461,33 @@ function uniqueMatch(
   return ownHosts.size === 1 ? own[0]! : null;
 }
 
+/** True when this URL's hostname is a known registration platform. */
+export function registrationPlatformUrl(url: string): boolean {
+  const safe = parentFacingActivityUrl(url);
+  if (!safe) return false;
+  try {
+    const host = new URL(safe).hostname.toLowerCase();
+    return REGISTRATION_PLATFORM_HOST_MARKERS.some((marker) => host.includes(marker));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The registration page from this turn's search hits, when compose left source_url
+ * empty. Several platform URLs still stamp the first: a card with no URL is the
+ * worse failure.
+ */
+export function stampRegistrationPlatformUrl(
+  searchHits: ReadonlyArray<{ url: string; title: string }>,
+): string | null {
+  for (const hit of searchHits) {
+    const url = parentFacingActivityUrl(hit.url);
+    if (url !== null && registrationPlatformUrl(url)) return url;
+  }
+  return null;
+}
+
 export function stampReadPageUrl(
   pick: { name: string; sourceName: string },
   pages: ReadonlyArray<{ url: string; text: string }>,
@@ -516,7 +544,8 @@ export function toPicks(
     const price = field(item.price);
     const url = preferVenuePage(
       parentFacingActivityUrl(field(item.source_url)),
-      stampReadPageUrl({ name, sourceName }, pages, searchHits),
+      stampReadPageUrl({ name, sourceName }, pages, searchHits) ??
+        stampRegistrationPlatformUrl(searchHits),
       sourceName,
     );
     const pick: ActivityPick = {
@@ -650,16 +679,24 @@ async function runActivityOnce(
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
     const picks = toPicks(composed.picks, evidence.pages, evidence.searchHits ?? []);
+    const withUrl = picks.filter((pick) => pick.url).length;
+    const searchHits = evidence.searchHits ?? [];
     // VIL-499 · counts only (no URL, no text), so a pick with no link is diagnosable.
     console.info(
       {
         picks: picks.length,
-        withUrl: picks.filter((pick) => pick.url).length,
+        withUrl,
         pagesWithText: evidence.pages.length,
-        searchHits: evidence.searchHits?.length ?? 0,
+        searchHits: searchHits.length,
       },
       'activity lane: pick urls',
     );
+    if (searchHits.some((hit) => registrationPlatformUrl(hit.url)) && withUrl === 0) {
+      console.error(
+        { picks: picks.length, withUrl, searchHits: searchHits.length },
+        'activity lane: registration page without url',
+      );
+    }
     return {
       picks,
       searchResults: evidence.searchResults,

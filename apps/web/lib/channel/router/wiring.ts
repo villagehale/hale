@@ -41,6 +41,7 @@ import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { deliveredAsk, sendRecordedAt } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
+import { reactToParentMessage } from '~/lib/channel/linq/tapback';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
@@ -111,6 +112,7 @@ import {
   weekdayCareHandler,
 } from './handlers';
 import { createHoldingLine } from './holding-line';
+import { createHoldingTapback } from './holding-tapback';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -867,6 +869,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     apology: createTurnApology(screenClient),
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
+    holdingTapback: createHoldingTapback(screenClient),
+    sendParentReaction: reactToParentMessage,
     floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.

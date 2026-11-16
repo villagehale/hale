@@ -46,6 +46,23 @@ export const SHARED_SIGNUP_PLATFORMS: readonly string[] = [
   'uplifterinc',
 ];
 
+/**
+ * Host-name markers for a registration page, as data about the URL, never as a
+ * word-list over the parent's text. `reconline` and the shorter `uplifter` sit
+ * beside the shared platforms so a hit on rec.reconline.com or an Uplifter
+ * subdomain still counts as a signup page.
+ */
+export const REGISTRATION_PLATFORM_HOST_MARKERS: readonly string[] = [
+  ...SHARED_SIGNUP_PLATFORMS,
+  'reconline',
+  'uplifter',
+];
+
+/** One live-search subject that looks for the venue's registration page. */
+export function registrationTopUpSubject(venue: string): string {
+  return `${venue} registration ${REGISTRATION_PLATFORM_HOST_MARKERS.join(' ')}`;
+}
+
 /** Optional hint only — never a gate. The generic agent may read this. */
 export function providerHint(hostname: string): string | null {
   const host = signupProviderHost(hostname);

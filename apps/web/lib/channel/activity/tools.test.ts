@@ -410,9 +410,21 @@ describe('find_activities auto-registers the rest', () => {
   it('registers NOTHING when every find is whole - a complete answer needs no follow-up', async () => {
     const promises: ActivityPromise[] = [];
 
-    await call(toolWith([whole], promises), { subject: 'toddler gymnastics' });
+    await call(toolWith([{ ...whole, url: 'https://gym.example/winter' }], promises), {
+      subject: 'toddler gymnastics',
+    });
 
     expect(promises).toEqual([]);
+  });
+
+  it('registers a follow-up when a find ships with no registration page', async () => {
+    const promises: ActivityPromise[] = [];
+
+    await call(toolWith([{ ...whole, url: undefined }], promises), {
+      subject: 'toddler gymnastics',
+    });
+
+    expect(promises).toHaveLength(1);
   });
 
   it('registers nothing when the search found nothing - there is no gap to close', async () => {

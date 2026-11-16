@@ -3,11 +3,13 @@ import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import type { ParentReaction } from '~/lib/channel/linq/tapback';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { judgeHoldingLine } from './holding-line-judge';
+import type { HoldingTapbackComposer } from './holding-tapback';
 
 /**
  * THE HOLDING LINE — what a parent reads while a slow answer is still being composed.
@@ -31,8 +33,8 @@ import { judgeHoldingLine } from './holding-line-judge';
 /** The ledger's name for this line, so a read-back can tell it from the turn's answer. */
 export const HOLDING_LINE_TEMPLATE_KEY = 'holding_line';
 
-/** Past this, a parent is waiting on an answer that has not come, and gets one line. */
-export const HOLDING_LINE_AFTER_MS = 8_000;
+/** Past this, a parent is waiting on an answer that has not come, and gets a tapback. */
+export const HOLDING_LINE_AFTER_MS = 7_000;
 
 export const HOLDING_LINE_ENABLED_ENV = 'HOLDING_LINE_ENABLED';
 
@@ -180,7 +182,14 @@ export function createHoldingLine(client: () => AgentClient): HoldingLineCompose
  * job that does not say whether its text came from a group, so it is treated as if it
  * might have. `sms` is a text on a channel with no thread to put the line in.
  */
-export type HoldingLineSkip = 're_driven' | 'email' | 'group_thread' | 'group_unknown' | 'sms';
+export type HoldingLineSkip =
+  | 're_driven'
+  | 'email'
+  | 'group_thread'
+  | 'group_unknown'
+  | 'sms'
+  /** 1:1 iMessage, but a tapback cannot land (reactions dark, not iMessage, no parent id). */
+  | 'no_tapback';
 
 /**
  * Why a line that is due is not written. `safety_lane`: the screen filed the text as a
@@ -301,6 +310,70 @@ export function armHoldingLine(input: {
       () => {
         outcome = 'sent';
         input.log.info({ outcome }, 'holding line: sent while the answer is composed');
+      },
+      (err: unknown) => {
+        outcome = 'send_failed';
+        input.log.warn(
+          { outcome, err: err instanceof Error ? err.name : 'unknown' },
+          'holding line: the send failed, the answer is still coming',
+        );
+      },
+    );
+  };
+
+  const timer = setTimeout(() => {
+    void fire();
+  }, input.afterMs);
+  if (typeof timer.unref === 'function') timer.unref();
+
+  return {
+    async settle() {
+      settled = true;
+      clearTimeout(timer);
+      if (sending) await sending;
+      if (outcome) return outcome;
+      if (!reported) {
+        reported = true;
+        input.log.info({ outcome: 'answered_first' }, 'holding line: the answer came first');
+      }
+      return 'answered_first';
+    },
+  };
+}
+
+/** Arm the one holding tapback for one 1:1 iMessage turn. It fires at most once. */
+export function armHoldingTapback(input: {
+  afterMs: number;
+  familyId: string;
+  composer: HoldingTapbackComposer;
+  send: (reaction: ParentReaction) => Promise<void>;
+  log: Pick<Console, 'info' | 'warn'>;
+}): HoldingLine {
+  if (!holdingLineEnabled(input.familyId)) {
+    input.log.info({ outcome: 'lane_off' }, 'holding line: dark, none armed');
+    return { settle: async () => 'lane_off' };
+  }
+  let settled = false;
+  let reported = false;
+  let outcome: HoldingLineOutcome | null = null;
+  let sending: Promise<void> | null = null;
+
+  const fire = async () => {
+    if (settled) return;
+    const composed = await input.composer.compose();
+    if (settled) return;
+    if (composed.status !== 'composed') {
+      outcome = 'compose_failed';
+      input.log.warn(
+        { outcome, reason: composed.reason },
+        'holding line: none sent, the answer is still coming',
+      );
+      return;
+    }
+    sending = input.send(composed.reaction).then(
+      () => {
+        outcome = 'sent';
+        input.log.info({ outcome }, 'holding line: tapback sent while the answer is composed');
       },
       (err: unknown) => {
         outcome = 'send_failed';

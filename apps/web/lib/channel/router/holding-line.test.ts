@@ -25,6 +25,7 @@ import {
   MAX_COMPOSE_ATTEMPTS,
   type HoldingLineRead,
   armHoldingLine,
+  armHoldingTapback,
   createHoldingLine,
   holdingLineRead,
   holdingLineUserMessage,
@@ -656,5 +657,56 @@ describe('holdingLineRead — what the screen said about this text, when the lin
         family('en'),
       ),
     ).resolves.toEqual({ status: 'withheld', reason: 'unscreened' });
+  });
+});
+
+describe('armHoldingTapback — one reaction, only on a slow 1:1 iMessage turn', () => {
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('a slow turn: sends ONE tapback once the wait passes', async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+    const composer = {
+      calls: 0,
+      async compose() {
+        composer.calls += 1;
+        return { status: 'composed' as const, reaction: { type: 'like' as const } };
+      },
+    };
+    const holding = armHoldingTapback({
+      afterMs: 7_000,
+      familyId: FAMILY,
+      composer,
+      send: async (reaction) => {
+        sent.push(reaction.type);
+      },
+      log: log(),
+    });
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(await holding.settle()).toBe('sent');
+    expect(composer.calls).toBe(1);
+    expect(sent).toEqual(['like']);
+  });
+
+  it('a failed send is named and sends nothing else', async () => {
+    vi.useFakeTimers();
+    const holding = armHoldingTapback({
+      afterMs: 7_000,
+      familyId: FAMILY,
+      composer: {
+        compose: async () => ({ status: 'composed', reaction: { type: 'like' } }),
+      },
+      send: async () => {
+        throw new Error('not_configured');
+      },
+      log: log(),
+    });
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(await holding.settle()).toBe('send_failed');
   });
 });

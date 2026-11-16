@@ -10,6 +10,7 @@ import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { DISCOVERABILITY_SCOPE, proposalScope } from '~/lib/village/intros/consent';
+import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { createInboundBurst } from './burst';
@@ -50,6 +51,7 @@ let db: TestDb;
 
 beforeAll(async () => {
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
   db = await createTestDb();
 }, 120_000);
 
@@ -135,8 +137,8 @@ async function cardDeliveredTo(
   return { proposalId, side };
 }
 
-/** A bare "yes" the parent texted, as the door hands it to C1. */
-async function bareYes(from: Parent) {
+/** A parent text, as the door hands it to C1. */
+async function inbound(from: Parent, body = 'yes') {
   const providerId = `prov-${randomUUID()}`;
   const [row] = await db.database
     .insert(schema.channelMessages)
@@ -150,7 +152,7 @@ async function bareYes(from: Parent) {
       providerChatId: `chat-${from.parentUserId}`,
       providerService: 'iMessage',
       status: 'delivered',
-      body: 'yes',
+      body,
       inGroup: false,
       createdAt: new Date(Date.now() - 5_000),
     })
@@ -163,6 +165,25 @@ async function bareYes(from: Parent) {
     received_at: new Date().toISOString(),
     in_group: false,
   };
+}
+
+/** A bare "yes" the parent texted, as the door hands it to C1. */
+async function bareYes(from: Parent) {
+  return inbound(from, 'yes');
+}
+
+/** Hale's last outbound in this 1:1 — a link ask, not an intro. */
+async function haleAskedForTheLink(to: Parent): Promise<void> {
+  await db.database.insert(schema.channelMessages).values({
+    familyId: to.familyId,
+    parentUserId: to.parentUserId,
+    channel: 'imessage',
+    direction: 'out',
+    category: 'reply',
+    status: 'delivered',
+    body: 'Want me to register him? Send the registration page.',
+    sentAt: new Date(Date.now() - 60_000),
+  });
 }
 
 /** Places a reply on the one question it is shown, and records every list it saw. */
@@ -187,9 +208,30 @@ function soleQuestionResolver(): ReplyResolver & { shown: OpenQuestion[][] } {
 
 const saidLine: SaidLineWriter = { write: async () => 'Lovely, noted.' };
 
+function grantingGoFindIt(): ConsentReader {
+  return {
+    read: async ({ text, lastHaleMessage }) => {
+      if (text === '你找一下啊' && lastHaleMessage) {
+        return { verdict: 'neither', target: 'none' };
+      }
+      if (text === '你找一下啊') return { verdict: 'yes', target: 'discoverability' };
+      return { verdict: 'neither', target: 'none' };
+    },
+  };
+}
+
+function unresolvedResolver(): ReplyResolver {
+  return {
+    async read() {
+      return { status: 'unresolved', reason: 'not_answerable' };
+    },
+  };
+}
+
 function routerDeps(
   transport: FakeReplyTransport,
   replyResolver: ReplyResolver,
+  consent?: ConsentReader,
 ): ChannelRouterDeps {
   const database = db.database;
   const log = { info: () => {}, warn: () => {}, error: () => {} };
@@ -197,7 +239,13 @@ function routerDeps(
     database,
     loadContext: loadInboundContext,
     transport,
-    handlers: [villageIntroHandler({ ...defaultVillageIntroReplyDeps(), saidLine })],
+    handlers: [
+      villageIntroHandler({
+        ...defaultVillageIntroReplyDeps(),
+        ...(consent ? { consent } : {}),
+        saidLine,
+      }),
+    ],
     offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
     coach: {
       async respond() {
@@ -221,6 +269,8 @@ function routerDeps(
     sideTurn: darkSideTurn(),
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+    holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
     recordPlanOffer: async () => ({ status: 'recorded' }),
     recordCapabilityNotes: async () => ({ status: 'recorded', declined: 0, corrected: 0 }),
@@ -351,5 +401,29 @@ describe('the discoverability ask is answered only by the parent it was texted t
     expect(kindsShown(resolver)).not.toContain('intro_optin');
     expect(result.handler).not.toBe('village_intro');
     expect(await consentScopes(coParent)).toEqual([]);
+  });
+});
+
+/**
+ * Nov 12 2026 live registration test. Resolver said not_answerable, then village intros
+ * claimed "你找一下啊" after Hale asked for a registration link. #1279 did not fix this:
+ * the keyword path still ran in GATE 2b.
+ */
+describe('a go-find-it after a link ask is the coach, not an intro grant', () => {
+  it('does not grant discoverability from 你找一下啊 when the resolver could not place it', async () => {
+    const { primary } = await household('go-find');
+    await deliveredTo(primary, introAskDedupeKey(primary.familyId));
+    await haleAskedForTheLink(primary);
+    const transport = new FakeReplyTransport();
+
+    const result = await routeChannelMessage(
+      routerDeps(transport, unresolvedResolver(), grantingGoFindIt()),
+      await inbound(primary, '你找一下啊'),
+    );
+
+    expect(result.handler).not.toBe('village_intro');
+    expect(result.status).toBe('agent_replied');
+    expect(await consentScopes(primary)).toEqual([]);
+    expect(transport.bodies()).toEqual(['Two Saturday art classes for her.']);
   });
 });

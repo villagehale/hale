@@ -204,7 +204,9 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       //
       // `recordActivityPromise` supersedes, so a turn that ALSO says the sentence and
       // calls the verb writes one row rather than two — the newest promise is the promise.
-      if (result.picks.some((pick) => pick.when === null || pick.price === null)) {
+      if (
+        result.picks.some((pick) => pick.when === null || pick.price === null || !pick.url)
+      ) {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
       const linked = result.picks.flatMap((pick) =>

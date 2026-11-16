@@ -81,6 +81,7 @@ import {
   type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
+  lastHaleOutboundBody,
   readIntroKeyword,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
@@ -157,6 +158,12 @@ function introKeywordFrom(ctx: HandlerContext): ResolvedIntroAnswer | null {
  * discoverability must not depend on which other handlers declined the turn, and
  * first is the only position where that is true by construction.
  */
+function introAskOutstanding(questions: readonly { kind: OpenQuestionKind }[]): boolean {
+  return questions.some(
+    (question) => question.kind === 'intro_optin' || question.kind === 'intro_proposal',
+  );
+}
+
 export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
   return {
     name: 'village_intro',
@@ -165,10 +172,22 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
     // grade above it is what makes the proposal (a disclosure) need `high` while the
     // opt-in does not.
     resolves: new Set<OpenQuestionKind>(['intro_optin', 'intro_proposal']),
-    async detects(_database, ctx) {
-      return (await readIntroKeyword(deps.consent, ctx.body)) !== null;
+    async detects(database, ctx) {
+      // Side-turn only. Read consent when THIS parent has an intro_optin standing or an
+      // open card, same recipient rule as the open-question reader. Otherwise this text
+      // is the coach's — a "go find it" after a link ask is not an intro answer.
+      if (!introAskOutstanding(await ctx.openQuestions())) return false;
+      const lastHale = await lastHaleOutboundBody(database, ctx);
+      return (await readIntroKeyword(deps.consent, ctx.body, lastHale)) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = introKeywordFrom(ctx);
+      // After the resolver already ran and did not place this reply (not_answerable /
+      // no_target), intros must not re-read the words as consent. The keyword path
+      // stays for a turn with no intro ask standing (a revocation with nothing open).
+      if (!resolved && introAskOutstanding(await ctx.openQuestions())) {
+        return { claimed: false };
+      }
       const outcome = await handleVillageIntroReply(
         database,
         {
@@ -176,7 +195,8 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
-          resolved: introKeywordFrom(ctx),
+          resolved,
+          lastHaleMessage: await lastHaleOutboundBody(database, ctx),
         },
         deps,
       );

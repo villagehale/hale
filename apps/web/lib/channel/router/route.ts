@@ -90,6 +90,7 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -112,7 +113,6 @@ import {
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
-import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -188,13 +188,12 @@ import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { FLOOD_LINE_TEMPLATE_KEY, type FloodLineComposer } from './flood-line';
 import {
   HOLDING_LINE_AFTER_MS,
-  HOLDING_LINE_TEMPLATE_KEY,
   type HoldingLine,
   type HoldingLineComposer,
-  armHoldingLine,
+  armHoldingTapback,
   holdingLineNotArmed,
-  holdingLineRead,
 } from './holding-line';
+import type { HoldingTapbackComposer } from './holding-tapback';
 import {
   type Asked,
   type OpenQuestion,
@@ -583,8 +582,18 @@ export interface ChannelRouterDeps {
   apology: TurnApology;
   /** The one line a parent gets while a slow answer is still being composed
    * (holding-line.ts). Non-nullable (rule #11): a composer that cannot write one says so
-   * by name, and there is no preset line underneath it. */
+   * by name, and there is no preset line underneath it. Unused on 1:1 iMessage, which
+   * sends a tapback or nothing. */
   holdingLine: HoldingLineComposer;
+  /** The tapback a slow 1:1 iMessage turn gets first (holding-tapback.ts). Non-nullable
+   * (rule #11): a composer that cannot pick one says so by name, and nothing is sent. */
+  holdingTapback: HoldingTapbackComposer;
+  /** The one sender of a parent-message tapback. Non-nullable (rule #11): every way it
+   * did not land is named, never a silent skip. */
+  sendParentReaction(input: {
+    route: Extract<ReplyRoute, { channel: 'imessage' }>;
+    reaction: ParentReaction;
+  }): Promise<ParentReactionSend>;
   /** The private line a group sender gets when their own turn budget is spent
    * (flood-line.ts, VIL-463). Non-nullable (rule #11): no preset line underneath it;
    * a line that cannot be written means nothing is sent. */
@@ -1025,12 +1034,27 @@ interface TurnWait {
   side: SideTurnWatch | null;
 }
 
+type RouteStageMs = {
+  t0: number;
+  burstMs?: number;
+  resolverMs?: number;
+  handlerMs?: number;
+  screenMs?: number;
+  coachMs?: number;
+};
+const routeStageMs = new Map<string, RouteStageMs>();
+
 async function routeChannelMessageInner(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
   wait: TurnWait,
 ): Promise<RouterResult> {
   const now = deps.now();
+  const stages: RouteStageMs = { t0: now.getTime() };
+  routeStageMs.set(job.channel_message_id, stages);
+  const mark = (key: Exclude<keyof RouteStageMs, 't0'>) => {
+    stages[key] = deps.now().getTime() - stages.t0;
+  };
 
   // GATE 0 — have we been here before? The drain is at-least-once and the defer arc
   // makes re-drives routine, so this is the first question, before a row is written or a
@@ -1071,6 +1095,7 @@ async function routeChannelMessageInner(
   // BACK-TO-BACK TEXTS (burst.ts). Before any gate reads a word, so every gate below reads
   // the whole burst: a STOP or a crisis in the second text cannot slip past one.
   const burst = await deps.burst.plan(job, redriven ? 'deferred' : 'fresh');
+  mark('burstMs');
   deps.log.info(
     {
       channelMessageId: job.channel_message_id,
@@ -1620,6 +1645,7 @@ async function routeChannelMessageInner(
   // the question. An unresolved turn falls through to the handlers that are not a
   // yes or a no.
   const natural = await resolveNaturalReply(deps, turn, deliverVerdict);
+  mark('resolverMs');
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
@@ -1646,6 +1672,7 @@ async function routeChannelMessageInner(
       });
     }
   }
+  mark('handlerMs');
 
   // GATE 2c — WHAT DID THE PARENT JUST SETTLE? The inbound half of the reconciliation
   // primitive (VIL-294). A message stating that something Hale raised is already handled
@@ -1813,17 +1840,13 @@ async function routeChannelMessageInner(
     }
   }
 
-  // Past the wait a text normally takes, ONE composed line goes out first, the bubble back
-  // up behind it. Armed only HERE, past every gate above: a deterministic reply, an
-  // opt-out or a flood-held turn never has one, however slow its database. Once per text:
-  // a re-driven turn already had its chance. Not in a group thread, which other families read. The group
-  // bit is the door's own, not `context.inGroup`, which stays false while group onboarding
-  // v2 is dark however many people are in the chat. 1:1 iMessage only.
-  //
-  // What the screen read is kept for the line, which reads it when it is DUE: it is
-  // written in this text's language, and withheld when the screen filed the text as a
-  // crisis or a medical symptom, or has not read it yet (holding-line.ts holdingLineRead).
-  let screened: LaneReading | null = null;
+  // Past the wait a text normally takes, ONE tapback lands on the parent's message. Armed
+  // only HERE, past every gate above: a deterministic reply, an opt-out or a flood-held
+  // turn never has one, however slow its database. Once per text: a re-driven turn already
+  // had its chance. Not in a group thread, which other families read. The group bit is
+  // the door's own, not `context.inGroup`, which stays false while group onboarding v2 is
+  // dark however many people are in the chat. 1:1 iMessage only, and only when a tapback
+  // can land. A composer that cannot pick one, or a send that does not land, sends nothing.
   const holdingSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
@@ -1832,41 +1855,26 @@ async function routeChannelMessageInner(
         ? 'group_thread'
         : route.channel !== 'imessage'
           ? 'sms'
-          : null;
+          : !reactionsLitFor(route, job)
+            ? 'no_tapback'
+            : null;
   if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
-  } else {
-    holding = armHoldingLine({
-      // The settle already spent part of the parent's wait, so the line comes no later
-      // from their side than it would have without one.
+  } else if (route.channel === 'imessage') {
+    holding = armHoldingTapback({
       afterMs: Math.max(0, (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs),
       familyId: job.family_id,
-      read: () =>
-        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
-      composer: deps.holdingLine,
+      composer: deps.holdingTapback,
       log: deps.log,
-      send: async (line) => {
-        if (typingLive) {
-          if (typingStarting) await typingStarting;
-          await signalImessageTyping(route, 'stop', deps.log);
-          typingLive = false;
+      send: async (reaction) => {
+        const sent = await deps.sendParentReaction({ route, reaction });
+        if (sent.status !== 'sent') {
+          throw new Error(sent.reason);
         }
-        await sendReply(deps, {
-          route,
-          body: line,
-          job,
-          conversationId: null,
-          templateKey: HOLDING_LINE_TEMPLATE_KEY,
-          openAsks: 'untouched',
-        });
-        if (typingTimer) {
-          clearInterval(typingTimer);
-          typingTimer = null;
-        }
-        // The send cleared the bubble; the answer is still being written.
-        await startTyping();
       },
     });
+  } else {
+    holding = holdingLineNotArmed('sms', deps.log);
   }
 
   // Search, the off-domain screen, and the coach are the waits a person would show: the
@@ -1921,13 +1929,11 @@ async function routeChannelMessageInner(
             providerChatId: route.channel === 'imessage' ? route.chatId : null,
             inGroup: job.in_group,
           },
-          onScreened: (reading) => {
-            screened = reading;
-          },
         }),
         OFF_DOMAIN_BUDGET_MS,
         OFF_DOMAIN_TIMEOUT,
       );
+      mark('screenMs');
     } catch (err) {
       if (!isCallTimeout(err)) throw err;
       deps.log.warn(
@@ -2010,7 +2016,7 @@ async function routeChannelMessageInner(
 
     // await, not a bare return: a returned promise would run this finally before
     // the coach finished, and the bubble would drop at the start of the think.
-    return await runAgentTurn(deps, {
+    const coachResult = await runAgentTurn(deps, {
       job,
       turn,
       answer: (bubbles, threadSource, how) =>
@@ -2046,6 +2052,8 @@ async function routeChannelMessageInner(
       askLanguage:
         acceptReplyLanguage(verdict.languageRequest) ?? acceptReplyLanguage(verdict.language),
     });
+    mark('coachMs');
+    return coachResult;
   } finally {
     await stopTyping();
   }
@@ -2493,9 +2501,9 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
  * stop sending the thing, which deterministic code then went on sending. An agent must
  * not be wired to break its own promises, so the wiring is what was removed. The real fix
  * for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts) and the
- * unbounded model call, not a message about waiting. The one line that may come first is
- * the composed holding line (holding-line.ts), dark unless lit, and only on a 1:1 iMessage
- * turn still unanswered past HOLDING_LINE_AFTER_MS.
+ * unbounded model call, not a message about waiting. The one thing that may come first is
+ * a tapback on the parent's message (holding-line.ts armHoldingTapback), dark unless lit,
+ * and only on a 1:1 iMessage turn still unanswered past HOLDING_LINE_AFTER_MS.
  */
 /**
  * After the coach's sentence has gone out, ask the model whether it offered to add
@@ -4595,12 +4603,20 @@ async function done(
       'channel router: could not claim the routed text, so a later burst may read it again',
     );
   }
+  const stages = routeStageMs.get(job.channel_message_id);
+  routeStageMs.delete(job.channel_message_id);
   deps.log.info(
     {
       channelMessageId: job.channel_message_id,
       status: result.status,
       handler: result.handler,
       lane: result.lane,
+      elapsedMs: stages ? deps.now().getTime() - stages.t0 : undefined,
+      burstMs: stages?.burstMs,
+      resolverMs: stages?.resolverMs,
+      handlerMs: stages?.handlerMs,
+      screenMs: stages?.screenMs,
+      coachMs: stages?.coachMs,
     },
     'channel router: routed',
   );

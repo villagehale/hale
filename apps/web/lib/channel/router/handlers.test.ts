@@ -511,11 +511,18 @@ describe('handler order — registration last', () => {
  * pinned in both directions — the same treatment "yes" gets above.
  */
 describe('the village intro lane and the lanes behind it', () => {
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const introDeps: VillageIntroReplyDeps = {
     consent: {
       read: async ({ text }) =>
-        text === 'YES INTRO'
-          ? { verdict: 'yes', target: 'proposal' }
+        text === 'YES INTRO' || text === '你找一下啊'
+          ? { verdict: 'yes', target: text === 'YES INTRO' ? 'proposal' : 'discoverability' }
           : { verdict: 'neither', target: 'none' },
     },
     recordDiscoverability: async () => {},
@@ -523,6 +530,16 @@ describe('the village intro lane and the lanes behind it', () => {
     answerableProposal: async () => null,
     recordDecision: async () => {},
     cancelOpenProposals: async () => {},
+  };
+
+  const introOptIn: OpenQuestion = {
+    id: 'opt-in',
+    kind: 'intro_optin',
+    description: 'Whether Hale may look for a match',
+    subject: 'being introduced to nearby families',
+    answerable: { yes: true, no: true },
+    askedAt: new Date('2026-11-12T03:40:00.000Z'),
+    solicited: false,
   };
 
   it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
@@ -548,6 +565,34 @@ describe('the village intro lane and the lanes behind it', () => {
     expect((await approvalHandler(pending).handle(DB, turn('YES INTRO'))).claimed).toBe(false);
     expect(pending.approved).toEqual([]);
     expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
+  });
+
+  it('does not read intro consent when Hale is not waiting on an intro from this parent', async () => {
+    const reads: string[] = [];
+    const silent: VillageIntroReplyDeps = {
+      ...introDeps,
+      consent: {
+        read: async ({ text }) => {
+          reads.push(text);
+          return { verdict: 'yes', target: 'discoverability' };
+        },
+      },
+    };
+    expect(await villageIntroHandler(silent).detects(DB, turn('你找一下啊'))).toBe(false);
+    expect(reads).toEqual([]);
+  });
+
+  it('reads intro consent only when an intro ask is outstanding for this parent', async () => {
+    expect(
+      await villageIntroHandler(introDeps).detects(DB, turn('YES INTRO', { open: [introOptIn] })),
+    ).toBe(true);
+  });
+
+  it('does not claim after the resolver declined to place the reply on an open intro', async () => {
+    expect(
+      (await villageIntroHandler(introDeps).handle(DB, turn('你找一下啊', { open: [introOptIn] })))
+        .claimed,
+    ).toBe(false);
   });
 });
 

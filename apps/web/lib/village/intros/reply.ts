@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
@@ -12,7 +12,7 @@ import {
   recordProposalConsent,
 } from './consent';
 import { villageIntroGroupsEnabled } from './group';
-import { introScope, villageIntrosAllowlist } from './run';
+import { introScope, villageIntrosAllowlist, villageIntrosEnabled } from './run';
 
 /**
  * Village intros v1 — the inbound half.
@@ -133,6 +133,8 @@ export interface IntroReplyInput {
    * sent, not a token Hale reverse-engineered.
    */
   resolved?: ResolvedIntroAnswer | null;
+  /** Hale's last outbound to this parent, when the ledger still has the words. */
+  lastHaleMessage?: string | null;
 }
 
 /** A keyword the router's natural-reply stage inferred rather than read, and how sure it
@@ -201,13 +203,45 @@ export interface VillageIntroReplyDeps {
   saidLine?: SaidLineWriter;
 }
 
+/** Hale's last outbound text to this parent, or null when the ledger has none. A throw
+ * is named and treated as none: a consent read without that context is still a read. */
+export async function lastHaleOutboundBody(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<string | null> {
+  try {
+    const [row] = await database
+      .select({ body: schema.channelMessages.body })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, input.familyId),
+          eq(schema.channelMessages.parentUserId, input.parentUserId),
+          eq(schema.channelMessages.direction, 'out'),
+          isNotNull(schema.channelMessages.body),
+        ),
+      )
+      .orderBy(desc(schema.channelMessages.createdAt))
+      .limit(1);
+    const body = row?.body?.trim();
+    return body ? body : null;
+  } catch (err) {
+    console.info(
+      { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+      'village intro: last hale line unreadable',
+    );
+    return null;
+  }
+}
+
 /** The intro answer the consent model reads in a text, or null for none (and for a read
  * that failed: a failed read grants nothing and revokes nothing). */
 export async function readIntroKeyword(
   consent: ConsentReader | undefined,
   text: string,
+  lastHaleMessage?: string | null,
 ): Promise<IntroKeyword | null> {
-  const read = await readConsent(consent, { question: 'intro', text });
+  const read = await readConsent(consent, { question: 'intro', text, lastHaleMessage });
   if (!read || read.verdict === 'neither' || read.target === 'none') return null;
   return { target: read.target, granted: read.verdict === 'yes' };
 }
@@ -231,9 +265,17 @@ export async function handleVillageIntroReply(
     keyword = { target: input.resolved.target, granted: input.resolved.granted };
     reading = { readBy: 'reply-resolver', confidence: input.resolved.confidence };
   } else {
-    keyword = await readIntroKeyword(deps.consent, input.body);
+    keyword = await readIntroKeyword(deps.consent, input.body, input.lastHaleMessage);
     if (!keyword) return { status: 'declined_to_claim' };
-    reading = { readBy: 'consent-reply', confidence: 'high' };
+    // The consent screen does not emit a grade. Null is the absence, never a default
+    // (rule #11): folding it into `high` is what made a guessed grant look certain.
+    reading = { readBy: 'consent-reply', confidence: null };
+  }
+
+  // Grants ride the intros flag. A revocation must still land when the flag is dark:
+  // a family that already said yes can always take it back.
+  if (keyword.granted && !villageIntrosEnabled()) {
+    return { status: 'declined_to_claim' };
   }
 
   if (keyword.target === 'discoverability') {

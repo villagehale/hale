@@ -38,6 +38,7 @@ import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
@@ -100,6 +101,7 @@ import {
   sequenceReplyHandler,
 } from './handlers';
 import { HOLDING_LINE_ENABLED_ENV, type HoldingLineComposer } from './holding-line';
+import type { HoldingTapbackComposer } from './holding-tapback';
 import {
   type OpenQuestion,
   type OpenQuestionReader,
@@ -243,6 +245,19 @@ function fakeHoldingLine(
     },
   };
   return holding;
+}
+
+function fakeHoldingTapback(
+  reaction: ParentReaction = { type: 'like' },
+): HoldingTapbackComposer & { calls: number } {
+  const tapback = {
+    calls: 0,
+    async compose() {
+      tapback.calls += 1;
+      return { status: 'composed' as const, reaction };
+    },
+  };
+  return tapback;
 }
 
 /** VIL-463: an over-limit composer that writes from facts, or fails like a dead model. */
@@ -572,6 +587,7 @@ interface Harness {
   transport: FakeReplyTransport;
   logs: unknown[];
   turns: ReturnType<typeof fakeTurnLedger>;
+  reactions: ParentReaction[];
 }
 
 function harness(
@@ -605,6 +621,8 @@ function harness(
     turnDeadlineMs?: number;
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
+    holdingTapback?: HoldingTapbackComposer;
+    sendParentReaction?: ChannelRouterDeps['sendParentReaction'];
     holdingLineAfterMs?: number;
     bubbleGapMs?: number;
     floodLine?: FloodLineComposer;
@@ -630,12 +648,14 @@ function harness(
         };
 
   const turns = options.turns ?? fakeTurnLedger();
+  const reactions: ParentReaction[] = [];
 
   return {
     fake,
     transport,
     logs,
     turns,
+    reactions,
     deps: {
       database: fake.db,
       leftChatSince: async () => false,
@@ -693,6 +713,13 @@ function harness(
       sideTurn: options.sideTurn ?? darkSideTurn(),
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      holdingTapback: options.holdingTapback ?? fakeHoldingTapback(),
+      sendParentReaction:
+        options.sendParentReaction ??
+        (async ({ reaction }) => {
+          reactions.push(reaction);
+          return { status: 'sent' as const } satisfies ParentReactionSend;
+        }),
       floodLine: options.floodLine ?? fakeFloodLine(),
       crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
@@ -1439,8 +1466,6 @@ describe('the off-domain lane', () => {
         text: 'Toronto',
         now: NOW,
         thread: { channel: 'sms', providerChatId: null, inGroup: false },
-        // Told what the screen read, for the holding line.
-        onScreened: expect.any(Function),
       },
     ]);
   });
@@ -2666,24 +2691,27 @@ describe('back-to-back texts read as one turn', () => {
     });
 
     it.each([
-      // base 300ms: a turn that settled 260ms owes the line 40ms in, before a 150ms coach.
-      ['a settled turn arms it for what is left of the wait', 260, ["I'm on it.", 'the answer']],
+      // base 300ms: a turn that settled 260ms owes the tapback 40ms in, before a 150ms coach.
+      ['a settled turn arms it for what is left of the wait', 260, 1],
       // nothing settled: 300ms is past the 150ms coach, so the answer comes first.
-      ['a turn that settled nothing keeps the whole wait', 0, ['the answer']],
+      ['a turn that settled nothing keeps the whole wait', 0, 0],
       // past the base: floored at 0, never negative.
-      ['a settle longer than the wait floors it at 0', 5_000, ["I'm on it.", 'the answer']],
-    ])('%s', async (_name, waitedMs, bodies) => {
+      ['a settle longer than the wait floors it at 0', 5_000, 1],
+    ])('%s', async (_name, waitedMs, tapbacks) => {
+      const tapback = fakeHoldingTapback();
       const h = harness({
         burst: fakeBurst({ kind: 'lone', waitedMs, why: 'alone' }),
         coach: slowCoach(150),
-        holdingLine: fakeHoldingLine("I'm on it."),
+        holdingTapback: tapback,
         holdingLineAfterMs: 300,
-        context: { reply: IMESSAGE },
+        context: { reply: { ...IMESSAGE, service: 'iMessage' } },
       });
 
       await routeChannelMessage(h.deps, job());
 
-      expect(h.transport.bodies()).toEqual(bodies);
+      expect(h.transport.bodies()).toEqual(['the answer']);
+      expect(h.reactions).toHaveLength(tapbacks);
+      expect(tapback.calls).toBe(tapbacks);
     });
   });
 });
@@ -4247,6 +4275,13 @@ describe('natural reply resolution', () => {
  * must be UNDERSTOOD, and the second must NOT be treated as a new decision.
  */
 describe('the 09:47 sequence', () => {
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const OPT_IN: OpenQuestion = {
     id: `intro_optin:${FAMILY}`,
     kind: 'intro_optin',
@@ -6709,6 +6744,13 @@ describe('a slow answer gets one holding line first', () => {
     chatId: 'chat-1',
     replyToMessageId: null,
   };
+  const IMESSAGE_REACT_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'parent-msg-1',
+    service: 'iMessage',
+  };
 
   function slowCoach(ms: number, reply: string): ChannelCoachRuntime {
     const inner = fakeCoach(reply);
@@ -6740,25 +6782,22 @@ describe('a slow answer gets one holding line first', () => {
     vi.unstubAllEnvs();
   });
 
-  it('a slow turn: the bubble is re-armed after ONE holding line, and the answer follows it', async () => {
-    const holding = fakeHoldingLine("I'm on it.");
+  it('a slow turn: one tapback lands, and the answer follows it', async () => {
+    const tapback = fakeHoldingTapback();
     const h = harness({
       coach: slowCoach(120, 'the real answer'),
-      holdingLine: holding,
+      holdingTapback: tapback,
       holdingLineAfterMs: 10,
-      context: { reply: IMESSAGE_ROUTE },
+      context: { reply: IMESSAGE_REACT_ROUTE },
     });
 
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_replied');
-    expect(h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
-    expect(holding.calls).toBe(1);
-    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(2);
-    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
-      expect.objectContaining({ templateKey: 'holding_line', body: null }),
-      expect.objectContaining({ templateKey: null }),
-    ]);
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(h.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
+    expect(typingStarts(h.logs)).toBeGreaterThanOrEqual(1);
   });
 
   it('a slow deterministic reply (the plan a "yes" composes) never arms it', async () => {
@@ -6849,19 +6888,20 @@ describe('a slow answer gets one holding line first', () => {
     'dark when HOLDING_LINE_ENABLED is %s: no line, and lane_off is named',
     async (_label, value) => {
       vi.stubEnv(HOLDING_LINE_ENABLED_ENV, value);
-      const holding = fakeHoldingLine("I'm on it.");
+      const tapback = fakeHoldingTapback();
       const h = harness({
         coach: slowCoach(120, 'the real answer'),
-        holdingLine: holding,
+        holdingTapback: tapback,
         holdingLineAfterMs: 10,
-        context: { reply: IMESSAGE_ROUTE },
+        context: { reply: IMESSAGE_REACT_ROUTE },
       });
 
       const result = await routeChannelMessage(h.deps, job());
 
       expect(result.status).toBe('agent_replied');
       expect(h.transport.bodies()).toEqual(['the real answer']);
-      expect(holding.calls).toBe(0);
+      expect(h.reactions).toEqual([]);
+      expect(tapback.calls).toBe(0);
       expect(h.logs).toContainEqual([{ outcome: 'lane_off' }, expect.any(String)]);
     },
   );
@@ -6918,11 +6958,19 @@ describe('a slow answer gets one holding line first', () => {
     expect(group.holding.calls).toBe(0);
     expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
 
-    // Positive control: the same slow turn in the parent's own chat still gets its line.
-    const direct = await turnIn(false);
-    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
-    expect(direct.holding.calls).toBe(1);
-    expect(direct.h.logs).toContainEqual([{ outcome: 'sent' }, expect.any(String)]);
+    // Positive control: the same slow turn in the parent's own chat still gets its tapback.
+    const tapback = fakeHoldingTapback();
+    const direct = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE, inGroup: false },
+    });
+    await routeChannelMessage(direct.deps, job({ in_group: false }));
+    expect(direct.transport.bodies()).toEqual(['the real answer']);
+    expect(direct.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
+    expect(direct.logs).toContainEqual([{ outcome: 'sent' }, expect.any(String)]);
   });
 
   it("keys the group skip on the inbound's own group bit, so a dark group onboarding v2 cannot arm it", async () => {
@@ -6946,10 +6994,18 @@ describe('a slow answer gets one holding line first', () => {
     expect(group.holding.calls).toBe(0);
     expect(group.h.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
 
-    // Positive control: the door said 1:1, and the same slow turn still gets its line.
-    const direct = await turnIn(false);
-    expect(direct.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
-    expect(direct.holding.calls).toBe(1);
+    // Positive control: the door said 1:1, and the same slow turn still gets its tapback.
+    const tapback = fakeHoldingTapback();
+    const direct = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE, inGroup: false },
+    });
+    await routeChannelMessage(direct.deps, job({ in_group: false }));
+    expect(direct.transport.bodies()).toEqual(['the real answer']);
+    expect(direct.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
   });
 
   it('VIL-439: every group flag off, a group message still runs as a scoped group turn on the group thread', async () => {
@@ -7015,16 +7071,16 @@ describe('a slow answer gets one holding line first', () => {
   });
 
   it('an answer that beats the wait is recorded as answered_first', async () => {
-    const holding = fakeHoldingLine();
+    const tapback = fakeHoldingTapback();
     const h = harness({
-      holdingLine: holding,
+      holdingTapback: tapback,
       holdingLineAfterMs: 200,
-      context: { reply: IMESSAGE_ROUTE },
+      context: { reply: IMESSAGE_REACT_ROUTE },
     });
 
     await routeChannelMessage(h.deps, job());
 
-    expect(holding.calls).toBe(0);
+    expect(tapback.calls).toBe(0);
     expect(h.logs).toContainEqual([{ outcome: 'answered_first' }, expect.any(String)]);
   });
 
@@ -7047,36 +7103,37 @@ describe('a slow answer gets one holding line first', () => {
     expect(sms.holding.calls).toBe(0);
     expect(sms.h.logs).toContainEqual([{ outcome: 'sms' }, expect.any(String)]);
 
-    // Positive control: the same slow turn on iMessage gets its line.
-    const imessage = await turnOn(IMESSAGE_ROUTE);
-    expect(imessage.h.transport.bodies()).toEqual(["I'm on it.", 'the real answer']);
-    expect(imessage.holding.calls).toBe(1);
+    // Positive control: the same slow turn on iMessage with reactions lit gets a tapback.
+    const tapback = fakeHoldingTapback();
+    const imessage = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE },
+    });
+    await routeChannelMessage(imessage.deps, job({ in_group: false }));
+    expect(imessage.transport.bodies()).toEqual(['the real answer']);
+    expect(imessage.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
   });
 
-  it("is written in the language the screen read off THIS text, not the family's", async () => {
-    const turnTagged = async (language: string | undefined) => {
-      const holding = fakeHoldingLine('在看了，有结果告诉你');
-      const h = harness({
-        coach: slowCoach(120, 'the real answer'),
-        holdingLine: holding,
-        holdingLineAfterMs: 10,
-        context: { reply: IMESSAGE_ROUTE },
-        offDomain: fakeLane({
-          status: 'in_domain',
-          fallback: null,
-          ...(language ? { language } : {}),
-        }),
-      });
-      await h.fake.db
-        .insert(schema.families)
-        .values({ id: FAMILY, displayName: 'The family', primaryLanguage: 'en' });
-      await routeChannelMessage(h.deps, job({ in_group: false }));
-      return holding;
-    };
+  it('1:1 iMessage without a tapback target sends no canned holding line', async () => {
+    const holding = fakeHoldingLine("I'm on it.");
+    const tapback = fakeHoldingTapback();
+    const h = harness({
+      coach: slowCoach(120, 'the real answer'),
+      holdingLine: holding,
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_ROUTE },
+    });
 
-    expect((await turnTagged('zh')).languages).toEqual(['zh']);
-    // Positive control: no tag on this text, so the family's stored language is the fallback.
-    expect((await turnTagged(undefined)).languages).toEqual(['en']);
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(holding.calls).toBe(0);
+    expect(tapback.calls).toBe(0);
+    expect(h.logs).toContainEqual([{ outcome: 'no_tapback' }, expect.any(String)]);
   });
 
   /** The lane's answer arrives `ms` after the screen has read the text: a slow lane. */
@@ -7119,21 +7176,31 @@ describe('a slow answer gets one holding line first', () => {
     expect(medical.result.status).toBe('deflected');
     expect(medical.h.transport.bodies()).toEqual(['the medical answer']);
     expect(medical.holding.calls).toBe(0);
-    expect(medical.h.logs).toContainEqual([{ outcome: 'safety_lane' }, expect.any(String)]);
+    expect(medical.h.logs).toContainEqual([{ outcome: 'no_tapback' }, expect.any(String)]);
 
-    // Positive control: the same slow lane answering a question about the world (the
-    // search lane) gets its line first.
-    const search = await turnThrough({
-      ...MEDICAL,
-      lane: 'off_domain_general',
-      category: 'weather',
-      reply: 'Rain later.',
-      replySource: 'web_grounded',
-      medicalSource: null,
-      signal: 'recorded',
+    // Positive control: the same slow lane on a tapback-lit route still gets a tapback.
+    const tapback = fakeHoldingTapback();
+    const search = harness({
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT_ROUTE },
+      offDomain: slowLane(
+        {
+          ...MEDICAL,
+          lane: 'off_domain_general',
+          category: 'weather',
+          reply: 'Rain later.',
+          replySource: 'web_grounded',
+          medicalSource: null,
+          signal: 'recorded',
+        },
+        120,
+      ),
     });
-    expect(search.h.transport.bodies()).toEqual(["I'm on it.", 'Rain later.']);
-    expect(search.holding.calls).toBe(1);
+    await routeChannelMessage(search.deps, job({ in_group: false }));
+    expect(search.transport.bodies()).toEqual(['Rain later.']);
+    expect(search.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
   });
 
   it('withholds the line while the screen has not read the text, and names it', async () => {
@@ -7151,7 +7218,7 @@ describe('a slow answer gets one holding line first', () => {
 
     expect(h.transport.bodies()).toEqual(['the real answer']);
     expect(holding.calls).toBe(0);
-    expect(h.logs).toContainEqual([{ outcome: 'unscreened' }, expect.any(String)]);
+    expect(h.logs).toContainEqual([{ outcome: 'no_tapback' }, expect.any(String)]);
   });
 });
 
@@ -7500,9 +7567,9 @@ describe('the reply row, written to a real database', () => {
       it.each([
         // Withheld: nothing has read the text yet, so nobody knows it is not a crisis.
         ['is due while the screen is still reading', 'screen', ['Sunny, high of 14.']],
-        // Controls. The question is read before the compose, and with no slow call the
-        // line never goes out at all.
-        ['goes out while the answer is composed', 'compose', ["I'm on it.", 'Sunny, high of 14.']],
+        // Controls. The wait-ack is a tapback (or nothing), never a line that could
+        // settle the open question. The compose-slow case used to send a holding line.
+        ['goes out while the answer is composed', 'compose', ['Sunny, high of 14.']],
         ['never goes out', null, ['Sunny, high of 14.']],
       ] as const)(
         'still reads the reply beside its question when the holding line %s',

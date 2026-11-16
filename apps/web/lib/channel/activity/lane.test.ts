@@ -662,6 +662,19 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
     expect(pick?.url).toBe('https://other.test/x');
   });
 
+  it('stamps a registration platform URL from 27 search hits when compose omitted source_url', () => {
+    const hits = Array.from({ length: 26 }, (_, i) => ({
+      url: `https://directory.example/listing-${i}`,
+      title: 'Winter gymnastics Halton Hills',
+    }));
+    hits.push({
+      url: 'https://haltonhills.perfectmind.com/signup/winter-gymnastics',
+      title: 'Winter gymnastics registration',
+    });
+    const [pick] = toPicks([studio], [], hits);
+    expect(pick?.url).toBe('https://haltonhills.perfectmind.com/signup/winter-gymnastics');
+  });
+
   it('no page read, no https, or no page naming the pick: still no url', () => {
     expect(toPicks([studio], [])[0]?.url).toBeUndefined();
     expect(

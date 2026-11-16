@@ -110,7 +110,11 @@ async function main() {
         skill: replySkill,
         fixtures: CONSENT_REPLY_FIXTURES,
         userOf: (fixture) =>
-          reply.consentReplyUserMessage({ question: fixture.question, text: fixture.text }),
+          reply.consentReplyUserMessage({
+            question: fixture.question,
+            text: fixture.text,
+            lastHaleMessage: fixture.lastHaleMessage,
+          }),
         tool: {
           name: reply.CONSENT_REPLY_TOOL,
           description: 'Decide whether this message agrees, refuses, or does neither.',

@@ -22,14 +22,17 @@ export interface RadarTopUp {
 }
 
 /** A find the coach can hand over. A Wikipedia (or sister) page is not one.
- * A find with no page yet still is: the program can be real when its URL was
- * not on the snippet. */
-export function isSuitableFind(pick: ActivityPick): boolean {
+ * A find with no page yet still is — unless this turn needs the registration
+ * page (`needPage`), in which case a URL-less card is not suitable. */
+export function isSuitableFind(
+  pick: ActivityPick,
+  opts?: { needPage?: boolean },
+): boolean {
   if (pick.name.trim() === "" || pick.sourceName.trim() === "") return false;
   const raws = [pick.sourceUrl, pick.url].filter(
     (value): value is string => !!value?.trim(),
   );
-  if (raws.length === 0) return true;
+  if (raws.length === 0) return opts?.needPage !== true;
   return raws.some((raw) => parentFacingActivityUrl(raw) !== null);
 }
 
@@ -210,10 +213,11 @@ function better(current: ActivityPick, incoming: ActivityPick): ActivityPick {
 export function mergeTopUp(
   radar: readonly ActivityPick[],
   live: readonly ActivityPick[],
+  opts?: { needPage?: boolean },
 ): ActivityPick[] {
   const kept: ActivityPick[] = [];
   const consider = (pick: ActivityPick) => {
-    if (!isSuitableFind(pick)) return;
+    if (!isSuitableFind(pick, opts)) return;
     const at = kept.findIndex((prior) => sameFind(prior, pick));
     if (at === -1) {
       if (kept.length >= RADAR_FIND_CAP) return;
@@ -255,10 +259,13 @@ function logRadarTopUp(counts: {
 export async function topUpShortRadar(input: {
   radar: readonly ActivityPick[];
   liveSearch: () => Promise<readonly ActivityPick[]>;
+  needPage?: boolean;
 }): Promise<RadarTopUp> {
-  const suitableBefore = input.radar.filter(isSuitableFind).length;
+  const suitable = (pick: ActivityPick) =>
+    isSuitableFind(pick, { needPage: input.needPage });
+  const suitableBefore = input.radar.filter(suitable).length;
   if (suitableBefore >= MIN_SUITABLE_FINDS) {
-    const picks = mergeTopUp(input.radar, []);
+    const picks = mergeTopUp(input.radar, [], { needPage: input.needPage });
     logRadarTopUp({
       suitableBefore,
       liveSearchFired: false,
@@ -268,7 +275,7 @@ export async function topUpShortRadar(input: {
   }
   try {
     const live = await input.liveSearch();
-    const picks = mergeTopUp(input.radar, live);
+    const picks = mergeTopUp(input.radar, live, { needPage: input.needPage });
     logRadarTopUp({
       suitableBefore,
       liveSearchFired: true,
@@ -280,6 +287,9 @@ export async function topUpShortRadar(input: {
       { err: err instanceof Error ? err.name : "unknown" },
       "coach find: live top-up failed",
     );
-    return { picks: mergeTopUp(input.radar, []), outcome: "failed" };
+    return {
+      picks: mergeTopUp(input.radar, [], { needPage: input.needPage }),
+      outcome: "failed",
+    };
   }
 }
