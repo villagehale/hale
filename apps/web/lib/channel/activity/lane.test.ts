@@ -335,6 +335,22 @@ describe('an ungrounded find never ships', () => {
       max_uses: MAX_SEARCHES,
     });
   });
+
+  it('honours a higher per-call search budget when the caller passes one', async () => {
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    await finder.find(QUERY, { maxSearches: 8 });
+
+    expect(seen[0]?.tools?.[0]).toMatchObject({
+      type: 'web_search_20250305',
+      max_uses: 8,
+    });
+  });
 });
 
 describe('a pick is whole or it is not a pick', () => {

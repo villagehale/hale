@@ -223,8 +223,13 @@ export type ActivityFindResult =
   | { found: true; picks: ActivityPick[] }
   | { found: false; reason: ActivityFailure; searched?: EmptySearch };
 
+export interface ActivityFindOptions {
+  /** Override {@link MAX_SEARCHES} for this call (Max entitlements). */
+  maxSearches?: number;
+}
+
 export interface ActivityFinder {
-  find(query: ActivityQuery): Promise<ActivityFindResult>;
+  find(query: ActivityQuery, options?: ActivityFindOptions): Promise<ActivityFindResult>;
 }
 
 class ActivityUnresolvable extends Error {
@@ -382,9 +387,13 @@ export function needsReadPass(
   return picks.length === 0 && evidence.searchResults > 0 && !namesAVenue(query.subject);
 }
 
-function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUnion[] {
+function groundTools(
+  query: ActivityQuery,
+  readPages = false,
+  maxSearches = MAX_SEARCHES,
+): Anthropic.ToolUnion[] {
   const tools: Anthropic.ToolUnion[] = [
-    { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES },
+    { name: 'web_search', type: 'web_search_20250305', max_uses: maxSearches },
   ];
   if (readPages || namesAVenue(query.subject)) {
     tools.push({
@@ -583,6 +592,7 @@ export function toPicks(
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
+  maxSearches: number,
 ): Promise<ActivityPick[]> {
   let resolved: AgentClient;
   try {
@@ -635,7 +645,7 @@ async function runActivityOnce(
           model: pickModel(skill.meta.task),
           max_tokens: GROUND_MAX_TOKENS,
           system: cachedSystemBlocks(bodies, '5m', undefined, extras),
-          tools: groundTools(query, readPages),
+          tools: groundTools(query, readPages, maxSearches),
           messages: [{ role: 'user', content: groundUserMessage(query) }],
         })
         .finalMessage();
@@ -756,10 +766,11 @@ function logActivityFailure(err: unknown, attempt: number): void {
  */
 export function createActivityFinder(client: () => AgentClient): ActivityFinder {
   return {
-    async find(query) {
+    async find(query, options) {
+      const maxSearches = options?.maxSearches ?? MAX_SEARCHES;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          return { found: true, picks: await runActivityOnce(client, query) };
+          return { found: true, picks: await runActivityOnce(client, query, maxSearches) };
         } catch (err) {
           logActivityFailure(err, attempt);
           if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {

@@ -8,7 +8,7 @@ Parsers cited at origin/main `1017409437f8`. `apps/worker` reads one product fla
 
 Kill switch, every time: set the value on the Vercel production project for `apps/web`, then redeploy that project.
 
-Launch flags are also catalogued in `@hale/flags` and evaluated through `isEnabled` / `flagValue`. `POSTHOG_FLAGS_ENABLED` is off unless exactly `true`; while off, every reader is today's env parser. Once on, an explicit env `false`/`off` (or `VOICE_DISABLED=true`) kills the flag regardless of PostHog; otherwise the family-hashed local PostHog flag is used, and a miss falls back to the env value. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED`, `LINQ_APP_CLIP_PAY_ENABLED`, `ANTHROPIC_CREDIT_ALERT_ENABLED`, `HOLIDAY_PROMO_ENABLED`, `CONVERSIONS_API_ENABLED`, and `META_CAPI_ENABLED` stay env-only. Sync PostHog with `pnpm posthog:sync-flags -- --dry`.
+Launch flags are also catalogued in `@hale/flags` and evaluated through `isEnabled` / `flagValue`. `POSTHOG_FLAGS_ENABLED` is off unless exactly `true`; while off, every reader is today's env parser. Once on, an explicit env `false`/`off` (or `VOICE_DISABLED=true`) kills the flag regardless of PostHog; otherwise the family-hashed local PostHog flag is used, and a miss falls back to the env value. `BROWSER_USE_SIGNUP_PAYMENT_ENABLED`, `LINQ_APP_CLIP_PAY_ENABLED`, `ANTHROPIC_CREDIT_ALERT_ENABLED`, `HOLIDAY_PROMO_ENABLED`, `CONVERSIONS_API_ENABLED`, `META_CAPI_ENABLED`, and `MAX_ENTITLEMENTS_ENABLED` stay env-only. Sync PostHog with `pnpm posthog:sync-flags -- --dry`.
 
 `true` means the value is exactly `true`, with no extra characters. `trimmed true` (written `true` (trimmed)) means trim, then exactly `true`. `on` means trim, then exactly `on`. `on` (no trim) means exactly `on`, with no trim (`SOCIAL_WATCHLIST`). `true`, `ON`, and `1` do not turn an `on` flag on.
 
@@ -118,6 +118,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_POLLS` | `apps/web/lib/channel/linq/config.ts:63` | `on` | OFF | empty, or `off` | Sloane |
 | `LINQ_REACTIONS_ENABLED` | `apps/web/lib/channel/linq/tapback.ts:124` (trimmed, `!== 'false'`) | unset (anything except `false`) | ON | `false` | Sloane |
 | `LOOP_SEND_ENABLED` | `apps/web/lib/loop/send.ts:4` | `true` | OFF | `false` | Noah |
+| `MAX_ENTITLEMENTS_ENABLED` | `apps/web/lib/billing/max-entitlements.ts:16` | `true` (exact, env-only; nothing in PostHog may turn this on) | OFF | empty, or `false` | Barton |
 | `MEMORY_DIGEST_APPLY` | `apps/web/lib/memory/digest.ts:40` | `true` | OFF | `false` | Noah |
 | `MEMORY_SYNTHESIS_APPLY` | `apps/web/lib/memory/synthesis.ts:44` | `true` | OFF | `false` | Noah |
 | `MID_ACTIVITY_ASK_ENABLED` | `apps/web/lib/channel/mid-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
@@ -309,6 +310,7 @@ Code is merged for every row.
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | One Linq group can hold more than one family. | A message in the shared thread that names another family's child. | `false` | Noah |
 | `LINQ_POLLS` | After a find with two or more hits, Hale can ask which to look at first, and a who-takes ask in the group carries a poll. | A poll on an empty find or a receipt, or a who-takes poll after a conflict that names someone who is not in the chat. | empty, or `off` | Sloane |
 | `LOOP_SEND_ENABLED` | Calendar reminders are allowed to send. | `channel_messages` for reminders with status `failed`, and new `email_opt_outs`. | `false` | Noah |
+| `MAX_ENTITLEMENTS_ENABLED` | Max (`family`) gets higher activity-search and live-watch caps, Browser Use signup help, and a Priority support line on the daily #ops post. Off, Max unlocks exactly what Plus does. Plus has no Browser Use help while this is on (connector/Playwright stay). Limit-hit replies are model-composed from the numbers; no parent-visible plan copy. | A Plus family that gets a Browser Use registration, a Max family capped at Plus search/watch numbers, or a parent text that names Plus/Max/upgrade. | `false` | Barton |
 | `MID_ACTIVITY_ASK_ENABLED` | The nudge cron runs the sweep. A due ask is queued for the proactive decider (log `mid-activity ask: queued for the decider`, `apps/web/lib/channel/mid-activity/sweep.ts:348`). The hourly proactive review decides it live even while `PROACTIVE_CADENCE` is unset (`apps/web/lib/channel/proactive/review.ts:250-252`, `:466-469`), so it can be texted. | Any `channel_messages` row with template key `mid-activity:ask`. | `false` | Noah |
 | `PARENT_CALENDAR_MIRROR_ENABLED` | Mirrored `family_events` rows get reminders (lane notes under [Every flag](#every-flag)). | The common checks above. | unset | Barton |
 | `PROACTIVE_CADENCE` | Unset is the `off` mode: "`off` — the current send path" (`apps/web/lib/channel/proactive/flag.ts:7`). The evening check-in and the mid-activity ask are still reviewed live under `off` (`apps/web/lib/channel/proactive/review.ts:466-469`). | The common checks above. | unset | unassigned |

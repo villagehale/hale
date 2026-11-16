@@ -126,6 +126,62 @@ describe('watch_for_opening — the dark gate', () => {
     expect(armed).toEqual([]);
   });
 
+  it('refuses a ninth live watch for Plus when MAX_ENTITLEMENTS_ENABLED is on, before it reads the page', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 8,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/already watching 8 classes, which is their cap of 8/);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('still arms a class this Plus household already watches when the cap is full', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 8,
+      hasLiveSpotWatch: async () => true,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
+  it('still arms a Max household under its higher cap when MAX_ENTITLEMENTS_ENABLED is on', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'family',
+      countLiveWatches: async () => 8,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
+  it('does not cap watches while MAX_ENTITLEMENTS_ENABLED is off', async () => {
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 100,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
   it('arms for a family named on the allowlist while the F14 flag is off', async () => {
     // THE POSITIVE CONTROL for the case above: without it the gate could refuse every
     // family and both refusals would still pass.

@@ -1,12 +1,14 @@
 import { type Database, schema } from '@hale/db';
+import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
-import type { Asked } from '~/lib/channel/router/open-questions';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import type { Asked } from '~/lib/channel/router/open-questions';
 import {
   type AskPlace,
   SIGNUP_ASK_BACK_QUESTION,
@@ -468,17 +470,29 @@ async function runOneShotAsk(
   });
 
   if (browserUseSignupEnabled()) {
-    return runBrowserUseBranch(database, input, deps, {
-      door,
-      offerId: offer.id,
-      href: allowed.href,
-      providerHost,
-      host,
-      identity,
-      session,
-      fieldsAllowed: consent.fieldsAllowed,
-      approvedPriceCents: offer.approvedPriceCents,
-    });
+    const [family] = await database
+      .select({ planTier: schema.families.planTier })
+      .from(schema.families)
+      .where(eq(schema.families.id, input.familyId))
+      .limit(1);
+    const planTier: PlanTier = family?.planTier ?? 'free';
+    if (entitlementsForFamily(planTier).signupHelp) {
+      return runBrowserUseBranch(database, input, deps, {
+        door,
+        offerId: offer.id,
+        href: allowed.href,
+        providerHost,
+        host,
+        identity,
+        session,
+        fieldsAllowed: consent.fieldsAllowed,
+        approvedPriceCents: offer.approvedPriceCents,
+      });
+    }
+    console.info(
+      { outcome: 'signup_help_not_on_plan', planTier },
+      'authorized signup: Browser Use skipped for this plan, falling through',
+    );
   }
 
   if (route.kind === 'connector') {

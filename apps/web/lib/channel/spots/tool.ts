@@ -1,9 +1,12 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import type { PlanTier } from '@hale/types';
 import { z } from 'zod';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
+import { liveWatchCapRefusal } from '~/lib/channel/watches/cap';
 import type {
   ClassAvailabilityReader,
   ClassAvailabilityReading,
@@ -66,6 +69,12 @@ export interface SpotWatchPorts {
   /** Pages a tool put in front of the parent this turn. Never a URL read off a photo or a
    * PDF that the parent did not type (photoFactWatchLinks). */
   linksThisTurn: () => readonly { title: string; url: string }[];
+  /** The family row's plan. Absent treats the household as Plus. */
+  planTier?: PlanTier;
+  /** Live watches already on this household (spots + provider subscriptions). */
+  countLiveWatches?: (familyId: string) => Promise<number>;
+  /** True when this family already has a live watched-spot row for this page. */
+  hasLiveSpotWatch?: (familyId: string, sourceUrl: string) => Promise<boolean>;
 }
 
 export interface SpotWatchToolArgs extends SpotWatchPorts {
@@ -136,6 +145,29 @@ function readingRefusal(reading: SpotReading, portalLabel: string): string | nul
 
 const PAGE_URL_REFUSAL =
   'That link is not one I will read - it has to be the plain public web address of the class page. Ask the parent to copy it from their browser bar on the page itself.';
+
+/** Cap applies to net-new watches only. An existing live row for this page is
+ * not another slot, so a parent who asks again is not refused for capacity. */
+async function refuseNewWatchIfCapped(
+  args: SpotWatchToolArgs,
+  familyId: string,
+  sourceUrl: string,
+): Promise<void> {
+  const watchCap = entitlementsForFamily(args.planTier ?? 'plus').liveWatches;
+  if (watchCap === null) return;
+  const alreadyWatching = args.hasLiveSpotWatch
+    ? await args.hasLiveSpotWatch(familyId, sourceUrl)
+    : false;
+  if (alreadyWatching) return;
+  if (!args.countLiveWatches) {
+    throw new Error(
+      'I cannot tell how many classes this household is already watching, so I have not started another. Tell the parent that and ask them to send it again in a bit.',
+    );
+  }
+  const live = await args.countLiveWatches(familyId);
+  const capRefusal = liveWatchCapRefusal(live, watchCap);
+  if (capRefusal) throw new Error(capRefusal);
+}
 
 /** WHY A LINK THE PARENT DID NOT SEND IS NOT WATCHED, even one a photo or a file showed. */
 const NOT_SENT_REFUSAL =
@@ -240,6 +272,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
           : null;
       if (!link.ok && page === null) throw new Error(urlRefusal(link.reason));
       if (page?.outcome === 'refused') throw new Error(PAGE_URL_REFUSAL);
+      const sourceUrl = page?.outcome === 'allowed' ? page.url : link.ok ? link.url : null;
 
       // THE LINK IS THE PARENT'S, the guard offer_signup uses: the whole URL as they typed
       // it, or one a tool put in front of them this turn. A URL the model typed, or one
@@ -272,6 +305,8 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // types a curly apostrophe by default, so a label that arms here and can never be
       // sent is the ordinary case rather than the exotic one.
       if (!isGsm7(collapsed)) throw new Error(LABEL_REFUSAL.not_gsm7);
+
+      if (sourceUrl) await refuseNewWatchIfCapped(args, ctx.familyId, sourceUrl);
 
       if (page?.outcome === 'allowed') {
         const reading = await args.readClassAvailability({

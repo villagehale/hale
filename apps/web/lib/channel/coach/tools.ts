@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
+import type { CalendarPlacementPayload, FamilyCountry, PlanTier } from '@hale/types';
 import { and, asc, count, eq, gt, gte, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
@@ -198,6 +198,8 @@ export interface ChannelCoachToolArgs {
    * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
+  /** The family row's plan. Absent treats the household as Plus (today's budgets). */
+  planTier?: PlanTier;
   /** The family row's country (familyCountryOf). Only a Canadian family's guidance carries
    * a routine health schedule (D6); null is a family Hale cannot place. */
   familyCountry: FamilyCountry | null;
@@ -803,6 +805,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         finder: args.activity.finder,
         onPromise,
         onLinks: args.recordActivityLinks,
+        planTier: args.planTier,
       }),
     );
   }
@@ -831,7 +834,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // throws on a name nobody registered — so the feature's darkness is a REFUSAL the
   // handler throws and the sweep's own gate, never a verb that quietly went missing.
   if (args.spots && args.onWatch) {
-    tools.push(watchForOpeningTool({ ...args.spots, onWatch: args.onWatch }));
+    tools.push(
+      watchForOpeningTool({ ...args.spots, planTier: args.planTier, onWatch: args.onWatch }),
+    );
   }
   // Off for everyone who is not armed, so the skill file the evals cache stays
   // byte-identical. An armed parent (global flag, or their user id) gets the verb.
@@ -842,7 +847,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
   // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
   if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
-  if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
+  if (args.providerWatch) {
+    tools.push(...providerWatchTools({ ...args.providerWatch, planTier: args.planTier }));
+  }
   if (args.groupLists) tools.push(...groupListTools(args.groupLists));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
