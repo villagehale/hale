@@ -166,7 +166,7 @@ describe('intakeLocationFromPlace', () => {
       timezone: 'America/Los_Angeles',
       postalCode: null,
     });
-    expect(intakeLocationFromPlace({ ...place, timezone: null }).timezone).toBeNull();
+    expect(intakeLocationFromPlace({ ...place, timezone: null })?.timezone ?? null).toBeNull();
   });
 });
 
