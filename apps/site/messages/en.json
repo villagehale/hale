@@ -109,6 +109,11 @@
   "CheckoutSuccess": {
     "metaTitle": "You're in · Hale",
     "heading": "You're in.",
+    "lede": "Text Hale to start. Hale will not text first.",
+    "textHale": "Text Hale",
+    "unpaidTitle": "Checkout · Hale",
+    "unpaidHeading": "Checkout",
+    "unpaidLede": "This page confirms a payment after Stripe has taken it.",
     "continue": "Open Hale"
   },
   "Jsonld": {

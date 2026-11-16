@@ -109,6 +109,11 @@
   "CheckoutSuccess": {
     "metaTitle": "已经完成 · Hale",
     "heading": "已经完成。",
+    "lede": "先给 Hale 发短信。Hale 不会先发消息。",
+    "textHale": "给 Hale 发短信",
+    "unpaidTitle": "结账 · Hale",
+    "unpaidHeading": "结账",
+    "unpaidLede": "只有 Stripe 确认收款后，这里才会显示成功。",
     "continue": "打开 Hale"
   },
   "Jsonld": {
@@ -281,6 +286,15 @@
     "On your own, or in a group.": "你自己，或者在群里。",
     "One quick question after the first class. Your answer shapes what Hale sends you next.": "上完第一节，问你一句。你怎么答，Hale 下次就怎么发。",
     "Only Free is available today.": "目前只有免费档可用。",
+    "or C$159/yr": "或每年 159 加元",
+    "or US$119/yr": "或每年 119 美元",
+    "Plus, by the year or the month.": "Plus，按年或按月。",
+    "Plus is available today.": "现在就能用 Plus。",
+    "Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.": "Plus 在加拿大是每月 19 加元或每年 159 加元，在美国是每月 14 美元或每年 119 美元。",
+    "Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US. Text Hale to start.": "Plus 在加拿大是每月 19 加元或每年 159 加元，在美国是每月 14 美元或每年 119 美元。先给 Hale 发短信。",
+    "Start with a text.": "先发一条短信。",
+    "What does Plus cost?": "Plus 多少钱？",
+    "You text first; standard message rates apply, reply STOP any time.": "你先发短信；按普通短信资费，随时回复 STOP。",
     "Only what’s said in that chat. Nothing from your own calendar, inbox or 1:1 texts with Hale shows up in a group.": "只有这个群里说过的。你自己的日历、收件箱，还有你和 Hale 的私聊，都不会出现在群里。",
     "Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class.": "只有有事才发：报名前提醒、前一晚的链接、上完第一节问一句。",
     "Or just text Hale.": "或者直接给 Hale 发短信。",

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
@@ -23,6 +23,15 @@ export interface CheckoutSessionParams {
   readonly cancelUrl: string;
   /** Prefills the Stripe-hosted form; safe to omit. */
   readonly customerEmail?: string | null;
+  /** Reuses an existing Stripe Customer so a family cannot mint a second one. */
+  readonly customerId?: string | null;
+  /**
+   * Optional Stripe Idempotency-Key for retrying the same request. Not a
+   * lifetime lock: Checkout bodies include ads IP/UA, so a family-wide key
+   * rejects a later legitimate session. Duplicate live subscriptions are
+   * blocked by plan_tier + reused Stripe Customer.
+   */
+  readonly idempotencyKey?: string;
   readonly sku?: CheckoutSku;
   readonly currency?: BillingCurrency;
   readonly attribution?: Attribution;
@@ -49,12 +58,16 @@ export function stripeCheckoutClientFromEnv(
   return {
     async createCheckoutSession(params) {
       const form = checkoutForm(params);
+      const headers: Record<string, string> = {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      };
+      if (params.idempotencyKey) {
+        headers['Idempotency-Key'] = params.idempotencyKey;
+      }
       const res = await fetchImpl(STRIPE_CHECKOUT_ENDPOINT, {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${secret}`,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
+        headers,
         body: form.toString(),
       });
       if (!res.ok) {
@@ -103,7 +116,7 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     'metadata[priceId]': params.priceId,
     'subscription_data[metadata][familyId]': params.familyId,
     'subscription_data[metadata][tier]': params.tier,
-    integration_identifier: integrationIdentifier(),
+    integration_identifier: integrationIdentifier(params.familyId),
   });
   if (params.sku) {
     form.set('metadata[sku]', params.sku);
@@ -122,17 +135,22 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
   for (const [key, value] of Object.entries(ads)) {
     form.set(`metadata[${key}]`, value);
   }
-  if (params.customerEmail) {
+  if (params.customerId) {
+    form.set('customer', params.customerId);
+  } else if (params.customerEmail) {
     form.set('customer_email', params.customerEmail);
   }
   return form;
 }
 
-/** Dashboard label. The 8-letter suffix is what Stripe asks for on this field. */
-function integrationIdentifier(): string {
+/**
+ * Dashboard label. The 8-letter suffix is what Stripe asks for on this field.
+ * Derived from the family so two calls with the same params stay identical.
+ */
+export function integrationIdentifier(familyId: string): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  const bytes = randomBytes(8);
+  const digest = createHash('sha256').update(familyId).digest();
   let suffix = '';
-  for (const byte of bytes) suffix += alphabet[byte % 26];
+  for (let i = 0; i < 8; i++) suffix += alphabet[(digest[i] ?? 0) % 26];
   return `hale-checkout-${suffix}`;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FOUNDING_PROMO_ENDS_AT,
+  PLUS_LIST_PRICE_DISPLAY,
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
@@ -27,8 +28,8 @@ describe('currencyFromIpCountry', () => {
 });
 
 describe('founding promo window', () => {
-  it('defaults to 2026-12-31 23:59 America/Toronto', () => {
-    expect(DEFAULT_FOUNDING_PROMO_ENDS_AT).toBe('2026-12-31T23:59:00-05:00');
+  it('defaults to 2027-01-01 00:00 America/Toronto (exclusive)', () => {
+    expect(DEFAULT_FOUNDING_PROMO_ENDS_AT).toBe('2027-01-01T00:00:00-05:00');
     expect(parseFoundingPromoEndsAt(undefined).toISOString()).toBe(
       new Date(DEFAULT_FOUNDING_PROMO_ENDS_AT).toISOString(),
     );
@@ -40,14 +41,31 @@ describe('founding promo window', () => {
     );
   });
 
-  it('is open at the cutoff minute and closed one second later', () => {
+  it('is open in the last second of 31 Dec and closed at the cutoff instant', () => {
     const ends = parseFoundingPromoEndsAt(undefined);
-    expect(isFoundingPromoWindowOpen(ends, ends)).toBe(true);
-    expect(isFoundingPromoWindowOpen(new Date(ends.getTime() + 1000), ends)).toBe(false);
+    expect(isFoundingPromoWindowOpen(new Date(ends.getTime() - 1000), ends)).toBe(true);
+    expect(isFoundingPromoWindowOpen(ends, ends)).toBe(false);
   });
 
   it('is open before the cutoff', () => {
     const ends = parseFoundingPromoEndsAt(undefined);
     expect(isFoundingPromoWindowOpen(new Date('2026-11-16T00:00:00-05:00'), ends)).toBe(true);
+  });
+});
+
+describe('Plus list display', () => {
+  it('pins CAD to the existing public Plus copy and USD to create-prices cents', () => {
+    expect(PLUS_LIST_PRICE_DISPLAY.CAD).toEqual({
+      monthlyLabel: 'C$19/mo',
+      annualLabel: 'C$159/yr',
+      monthlyCents: 1900,
+      annualCents: 15900,
+    });
+    expect(PLUS_LIST_PRICE_DISPLAY.USD).toEqual({
+      monthlyLabel: 'US$14/mo',
+      annualLabel: 'US$119/yr',
+      monthlyCents: 1400,
+      annualCents: 11900,
+    });
   });
 });

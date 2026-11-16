@@ -92,6 +92,7 @@ describe('resolveCheckoutPrice', () => {
 
   it('stops offering founding after the cutoff and uses list prices instead', () => {
     expect(foundingPromoOpen(CUTOFF, FOUNDING)).toBe(true);
+    expect(foundingPromoOpen(new Date('2026-12-31T23:59:59-05:00'), FOUNDING)).toBe(true);
     expect(foundingPromoOpen(AFTER, FOUNDING)).toBe(false);
     expect(
       resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: AFTER, env: WITH_LIST }),
@@ -109,6 +110,21 @@ describe('resolveCheckoutPrice', () => {
     ).toMatchObject({ price: { priceId: 'price_cad_yr', sku: 'plus_annual' } });
     expect(
       resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: AFTER, env: FOUNDING }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+  });
+
+  it('does not charge list during the window when the founding id is missing', () => {
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: BEFORE,
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
+          STRIPE_PRICE_PLUS_ANNUAL_USD: 'price_usd_yr',
+          STRIPE_PRICE_PLUS_ANNUAL: 'price_cad_yr',
+        },
+      }),
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 

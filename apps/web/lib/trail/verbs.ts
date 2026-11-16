@@ -489,6 +489,8 @@ export const AUDIT_VERBS = [
   'integration.gmail_draft_failed',
   'user_preferences_updated',
   'billing_checkout_started',
+  'promo_join_family_created',
+  'promo_join_verified',
   'billing_refunded',
   'upgrade_ask_sent',
   'upgrade_link_sent',
@@ -1866,6 +1868,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
+  promo_join_family_created: {
+    sentence: 'you started a founding family from a text code',
+    family: 'note',
+  },
+  promo_join_verified: {
+    sentence: 'you confirmed the founding text code',
+    family: 'note',
+  },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },

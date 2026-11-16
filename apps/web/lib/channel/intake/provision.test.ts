@@ -296,6 +296,33 @@ describe('provisionFromIntake — named birth date and a retried SMS channel (VI
     expect(child?.dobPrecision).toBe('exact');
   });
 
+  it('reuses a pending family the ads join already created, and still enrols the channel', async () => {
+    const fake = makeFakeDb();
+    const [user] = await fake.db
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:blind-index-hash', email: null, name: null })
+      .returning({ id: schema.users.id });
+    const [family] = await fake.db
+      .insert(schema.families)
+      .values({ displayName: 'Family', onboardingStage: 'pending_invite', planTier: 'plus' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const userId = user?.id as string;
+    await fake.db.insert(schema.familyMembers).values({
+      familyId,
+      userId,
+      role: 'primary_parent',
+    });
+
+    const result = await provisionFromIntake(fake.db, input());
+
+    expect(result.familyId).toBe(familyId);
+    expect(result.userId).toBe(userId);
+    expect(fake.rows(schema.families)).toHaveLength(1);
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    expect(fake.rows(schema.families)[0]?.planTier).toBe('plus');
+  });
+
   it('reuses the active SMS channel on a second provision instead of inserting another (VIL-532)', async () => {
     const fake = makeFakeDb();
     const first = await provisionFromIntake(fake.db, input());

@@ -4,6 +4,7 @@
  */
 
 export const HOLIDAY_PROMO_ENABLED_ENV = 'HOLIDAY_PROMO_ENABLED';
+export const PROMO_NEW_VISITOR_CHECKOUT_ENABLED_ENV = 'PROMO_NEW_VISITOR_CHECKOUT_ENABLED';
 export const CONVERSIONS_API_ENABLED_ENV = 'CONVERSIONS_API_ENABLED';
 export const META_CAPI_ENABLED_ENV = 'META_CAPI_ENABLED';
 
@@ -11,6 +12,12 @@ export function holidayPromoEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[HOLIDAY_PROMO_ENABLED_ENV] === 'true';
+}
+
+export function promoNewVisitorCheckoutEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[PROMO_NEW_VISITOR_CHECKOUT_ENABLED_ENV] === 'true';
 }
 
 export function conversionsApiEnabled(

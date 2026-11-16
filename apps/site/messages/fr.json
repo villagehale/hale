@@ -105,6 +105,11 @@
   "CheckoutSuccess": {
     "metaTitle": "C’est fait · Hale",
     "heading": "C’est fait.",
+    "lede": "Texte Hale pour commencer. Hale n’écrit pas en premier.",
+    "textHale": "Texter Hale",
+    "unpaidTitle": "Paiement · Hale",
+    "unpaidHeading": "Paiement",
+    "unpaidLede": "Cette page confirme un paiement une fois que Stripe l’a reçu.",
     "continue": "Ouvrir Hale"
   },
   "Text": {
@@ -281,6 +286,15 @@
     "On your own, or in a group.": "Tout seul, ou dans un groupe.",
     "One quick question after the first class. Your answer shapes what Hale sends you next.": "Une petite question après le premier cours. Ta réponse change ce que Hale t’envoie ensuite.",
     "Only Free is available today.": "Pour l’instant, seul le forfait Gratuit est offert.",
+    "or C$159/yr": "ou 159 $ CA/an",
+    "or US$119/yr": "ou 119 $ US/an",
+    "Plus, by the year or the month.": "Plus, à l’année ou au mois.",
+    "Plus is available today.": "Plus est disponible aujourd’hui.",
+    "Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US.": "Plus coûte 19 $ CA/mois ou 159 $ CA/an au Canada, 14 $ US/mois ou 119 $ US/an aux États-Unis.",
+    "Plus is C$19/mo or C$159/yr in Canada, US$14/mo or US$119/yr in the US. Text Hale to start.": "Plus coûte 19 $ CA/mois ou 159 $ CA/an au Canada, 14 $ US/mois ou 119 $ US/an aux États-Unis. Texte Hale pour commencer.",
+    "Start with a text.": "Commence par un texto.",
+    "What does Plus cost?": "Combien coûte Plus?",
+    "You text first; standard message rates apply, reply STOP any time.": "C’est toi qui textes en premier; les tarifs habituels s’appliquent, réponds STOP quand tu veux.",
     "Only what’s said in that chat. Nothing from your own calendar, inbox or 1:1 texts with Hale shows up in a group.": "Seulement ce qui se dit dans ce groupe. Rien de ton calendrier, de ta boîte ou de tes textos seul à seul avec Hale n’apparaît dans un groupe.",
     "Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class.": "Seulement quand il y a une raison : un rappel avant les inscriptions, le lien la veille, une question après le premier cours.",
     "Or just text Hale.": "Ou texte simplement Hale.",
