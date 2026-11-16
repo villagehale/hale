@@ -11,6 +11,9 @@ import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from './holi
  * currencies, home and pricing): the sale name leads; nothing that reads as a
  * markdown sits beside "Sale"; no after-Dec-31 or regular price beside the
  * sale (the FAQ answers it neutrally); registration stays soft; no camp-finding, referral or gift offer.
+ * Exception (Barton, Nov 16): the pricing-page Plus card shows the regular
+ * annual price struck through next to the founding price. Banner, offer,
+ * sticky bar and ads stay without strikethrough or a regular price.
  */
 
 vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
@@ -61,6 +64,8 @@ for (const { phase, currency } of CASES) {
 
       it('keeps any after-Dec-31 or regular price off the sale surfaces', () => {
         // Barton, Nov 16: no "Plus is $159/yr CAD after Dec 31" line on any surface.
+        // The pricing Plus card may show $159 / $119 struck through; that is
+        // asserted separately. Sale surfaces (banner, offer, sticky, FAQ) do not.
         expect(body).not.toMatch(/Plus is \$?C?\$?159/);
         const promoOnly = text(
           renderToStaticMarkup(
@@ -82,10 +87,32 @@ for (const { phase, currency } of CASES) {
       });
 
       it('never pairs the sale with was / save / % off / strikethrough', () => {
-        expect(html).not.toMatch(/<(s|del|strike)[\s>]/i);
-        expect(html).not.toMatch(/line-through/i);
+        // The pricing Plus card is the one allowed strikethrough; everything
+        // else, including the rest of the pricing page, stays clean.
+        const saleHtml =
+          name === 'pricing' ? html.replace(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/, '') : html;
+        expect(saleHtml).not.toMatch(/<(s|del|strike)[\s>]/i);
+        expect(saleHtml).not.toMatch(/line-through/i);
         expect(body).not.toMatch(/\bwas\s+(C\$|US\$|\$)/i);
         expect(body).not.toMatch(/\bsave\b|\bsaving|% ?off|percent off|months free|half price/i);
+      });
+
+      it('strikes the regular annual price next to founding on the pricing Plus card only', () => {
+        if (name !== 'pricing') {
+          expect(html).not.toMatch(/promo-plus-list|promo-plus-founding/);
+          return;
+        }
+        const card = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
+        const list = currency === 'USD' ? '$119/yr USD' : '$159/yr CAD';
+        const founding = currency === 'USD' ? '$59/yr USD' : '$79/yr CAD';
+        expect(card).toContain(`<s class="promo-plus-list">${list}</s>`);
+        expect(card).toContain(`<span class="promo-plus-founding">${founding}</span>`);
+        expect(text(card)).toContain(list);
+        expect(text(card)).toContain(founding);
+        // Monthly list prices are no longer the Plus headline during the promo.
+        expect(card).not.toMatch(/\$14\/mo|\$19\/mo/);
+        const rest = text(html.replace(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/, ''));
+        expect(rest).not.toMatch(/\$159|\$119/);
       });
 
       it('keeps registration soft and makes no camp, referral or gift claim in the promo', () => {
@@ -126,5 +153,14 @@ describe('promo off', () => {
     expect(html).not.toContain('id="founding"');
     expect(html).not.toContain('promo-bar');
     expect(text(html)).toContain('Founding families join free.');
+  });
+
+  it('leaves the pricing Plus card unchanged, with no strikethrough', () => {
+    const html = renderToStaticMarkup(createElement(RedesignPricing, { ...door }));
+    const card = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
+    expect(card).toContain('$19 CAD/mo');
+    expect(card).toContain('$15 USD/mo');
+    expect(card).toContain('or $159 CAD / $129 USD a year, about three months free');
+    expect(card).not.toMatch(/<(s|del|strike)[\s>]|promo-plus-list|line-through/i);
   });
 });

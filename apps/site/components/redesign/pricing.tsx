@@ -75,13 +75,13 @@ export function RedesignPricing({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
-    {promo ? (promo.currency === "USD" ? (<>
-    <h3>$14/mo USD</h3>
-    <p className="hs-tier-meta">or $119/yr USD</p>
-    </>) : (<>
-    <h3>$159/yr CAD</h3>
+    {promo ? (<>
+    <h3 className="promo-plus-price">
+     <s className="promo-plus-list">{promo.currency === "USD" ? "$119/yr USD" : "$159/yr CAD"}</s>
+     <span className="promo-plus-founding">{promo.price}</span>
+    </h3>
     <p className="hs-tier-meta">Billed yearly</p>
-    </>)) : list ? (<>
+    </>) : list ? (<>
     <h3>{plusList.monthlyLabel}</h3>
     <p className="hs-tier-meta">{t(currency === 'USD' ? 'or US$119/yr' : 'or C$159/yr')}</p>
     </>) : (<>
