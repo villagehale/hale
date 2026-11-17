@@ -32,6 +32,7 @@ import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
 import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
 import { runGroupReminderTick } from './fire';
 import { GROUP_REMINDER_INFLIGHT_CANCEL_ENV } from './flag';
+import { postGroupReminderLine } from './line';
 import { LATE_LIMIT_MS, type ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
 import {
@@ -1351,6 +1352,54 @@ describe('when a group reminder is due', () => {
       status: 'cancelled',
       statusReason: 'member_stop',
     });
+  });
+
+  it('retries a reminder whose opt-out check threw before Linq was called', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    const sends: Array<{ chatId: string; text: string }> = [];
+    const input = {
+      familyId: home.familyId,
+      ledgerUserId: home.priya,
+      chatId: CHAT,
+      text: 'reminder for Ruth',
+      templateKey: 'linq:group_reminder',
+      dedupeKey: 'linq:group_reminder:retry-check',
+      now: THURSDAY_FOUR,
+      listChatHandles: liveList,
+      send: async (message: { chatId: string; text: string }) => {
+        sends.push(message);
+        return { providerMessageId: 'out-retry' };
+      },
+    };
+
+    expect(
+      await postGroupReminderLine(db.database, {
+        ...input,
+        beforeSend: async () => {
+          throw new Error('db down');
+        },
+      }),
+    ).toEqual({ outcome: 'not_sent', code: 'opt_out_check_failed', retryable: true });
+    expect(sends).toEqual([]);
+    const [failed] = await db.database
+      .select({
+        dedupeKey: schema.channelMessages.dedupeKey,
+        status: schema.channelMessages.status,
+        errorCode: schema.channelMessages.errorCode,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.errorCode, 'opt_out_check_failed'));
+    expect(failed).toMatchObject({
+      dedupeKey: null,
+      status: 'failed',
+      errorCode: 'opt_out_check_failed',
+    });
+
+    expect(
+      await postGroupReminderLine(db.database, { ...input, beforeSend: async () => true }),
+    ).toMatchObject({ outcome: 'sent' });
+    expect(sends).toEqual([{ chatId: CHAT, text: 'reminder for Ruth' }]);
   });
 
   it('audits only a close that happened: a stale tick can neither commit nor close the newer claim', async () => {

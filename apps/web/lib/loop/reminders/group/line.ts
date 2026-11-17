@@ -77,16 +77,38 @@ async function sendOnce(
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { outcome: 'already_sent' };
 
-  if (beforeSend && !(await beforeSend())) {
-    await database
-      .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: 'member_opted_out', dedupeKey: null })
-      .where(eq(schema.channelMessages.id, claimed.id));
-    console.info(
-      { familyId: entry.familyId, outcome: 'member_opted_out' },
-      'group reminder: opted out before the send, nothing sent',
-    );
-    return { outcome: 'not_sent', code: 'member_opted_out', retryable: false };
+  if (beforeSend) {
+    let allowed = false;
+    try {
+      allowed = await beforeSend();
+    } catch (err) {
+      // The provider has not been called, so this key must not look like a send that
+      // may have landed. Clearing it lets a later tick try again.
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'opt_out_check_failed', dedupeKey: null })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn(
+        {
+          familyId: entry.familyId,
+          templateKey: entry.templateKey,
+          err: err instanceof Error ? err.name : 'unknown',
+        },
+        'group reminder: opt-out check failed before the send, left to retry',
+      );
+      return { outcome: 'not_sent', code: 'opt_out_check_failed', retryable: true };
+    }
+    if (!allowed) {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'member_opted_out', dedupeKey: null })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.info(
+        { familyId: entry.familyId, outcome: 'member_opted_out' },
+        'group reminder: opted out before the send, nothing sent',
+      );
+      return { outcome: 'not_sent', code: 'member_opted_out', retryable: false };
+    }
   }
 
   let sent: { providerMessageId: string; chatId?: string | null };
