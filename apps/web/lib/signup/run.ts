@@ -69,8 +69,10 @@ import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
   claimSignupHelpAttempt,
+  releaseSignupHelpAttempt,
   signupHelpAttempted,
   signupHelpSeasonFacts,
+  signupHelpSlotReleaseEnabled,
 } from './signup-help-season';
 import {
   type PendingSignupOffer,
@@ -766,6 +768,44 @@ export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
  */
 export const BROWSER_USE_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
+/**
+ * A season slot counts a run that reached the provider. A throw before any
+ * provider session exists, or a page that is not open yet (`rush`), does not.
+ * An unknown throw may have started a session, so it keeps the slot.
+ */
+function seasonSlotUnused(handoff: BrowserUseHandoff, sessionMayExist: boolean): boolean {
+  if (handoff.outcome === 'rush') return true;
+  const noProviderSession =
+    handoff.runId === null && handoff.sessionId === null && !sessionMayExist;
+  return handoff.detail === 'engine_threw' && noProviderSession;
+}
+
+async function releaseUnusedSeasonSlot(
+  database: Database,
+  input: SignupRunInput,
+  ctx: { offerId: string; seasonKey: string },
+  handoff: BrowserUseHandoff,
+  state: { claimed: boolean; sessionMayExist: boolean },
+): Promise<'returned' | null> {
+  if (!state.claimed || !signupHelpSlotReleaseEnabled()) return null;
+  if (!seasonSlotUnused(handoff, state.sessionMayExist)) return null;
+  const released = await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey: ctx.seasonKey,
+    now: input.now,
+  });
+  console.info(
+    {
+      offerId: ctx.offerId,
+      attempted: released.attempted,
+      outcome: handoff.outcome,
+      detail: handoff.detail,
+    },
+    'authorized signup: season slot returned',
+  );
+  return 'returned';
+}
+
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
   detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached',
@@ -830,6 +870,7 @@ async function runBrowserUseBranch(
   // A throw that does not say which session it had created may have started one:
   // its hold stays until a real cost replaces it.
   let sessionMayExist = false;
+  let seasonClaimed = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -866,6 +907,10 @@ async function runBrowserUseBranch(
         now: input.now,
       });
     }
+    const seasonSlot = await releaseUnusedSeasonSlot(database, input, ctx, handoff, {
+      claimed: seasonClaimed,
+      sessionMayExist,
+    });
     const thread = await yesThread(database, input);
     const withheld = thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {};
     await writeAudit(database, input, ctx.offerId, {
@@ -882,6 +927,7 @@ async function runBrowserUseBranch(
       costUsd: handoff.costUsd,
       sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
+      ...(seasonSlot ? { seasonSlot } : {}),
       ...withheld,
     });
     const rush: RushHandoff | null =
@@ -982,6 +1028,7 @@ async function runBrowserUseBranch(
         }),
       };
     }
+    seasonClaimed = true;
   }
 
   let result: BrowserUseSignupResult;

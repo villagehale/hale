@@ -92,6 +92,8 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 
 A cron that returns stamps `cron_heartbeats`. A throw does not. `/api/health/crons` reads that table.
 
+`/api/cron/prod-text-gate` is not in that schedule. GitHub calls it on a candidate production deployment before Vercel aliases the parent domain. One synthetic canary turn; a failure holds the alias, pages #ops once, and opens a GitHub issue. See [the deploy runbook](deploy/README.md#production-text-gate-vil-696).
+
 ## Rollback
 
 Two different moves.

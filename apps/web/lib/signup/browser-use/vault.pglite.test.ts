@@ -63,6 +63,7 @@ describe('provider session vault', () => {
       now: new Date(CAPTURED.getTime() + 60_000),
     });
     expect(loaded?.storageState.cookies[0]?.value).toBe('cookie-secret-fixture');
+    expect(loaded?.parentUserId).toBe(family.parentUserId);
     expect(loaded?.browserUseProfileId).toBeNull();
   });
 

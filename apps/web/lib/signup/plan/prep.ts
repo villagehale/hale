@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { signupProviderHost } from '../consent';
-import { providerCredentialsEnabled } from '../credentials/flag';
+import { planCityLoginOwnerEnabled, providerCredentialsEnabled } from '../credentials/flag';
 import { type LoginCardText, hasOpenLoginLink, loginLinkForNotice } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
 import type { SignupSession } from '../types';
@@ -151,11 +151,13 @@ export function firstChoiceLabel(
 /**
  * Whether the run at the open can already sign in: a saved login that is not stale, or a
  * provider session that lasts past the open. The run reads the same two (run.ts).
+ * While PLAN_CITY_LOGIN_OWNER_ENABLED is exactly `true`, only this plan's parent counts.
  */
 async function loginReadyForOpen(
   database: Database,
-  input: { familyId: string; providerHost: string; opensAt: Date },
+  input: { familyId: string; parentUserId: string; providerHost: string; opensAt: Date },
 ): Promise<boolean> {
+  const owner = planCityLoginOwnerEnabled() ? input.parentUserId : null;
   if (providerCredentialsEnabled()) {
     const creds = schema.providerSignupCredentials;
     const [saved] = await database
@@ -166,6 +168,7 @@ async function loginReadyForOpen(
           eq(creds.familyId, input.familyId),
           eq(creds.providerHost, input.providerHost),
           isNull(creds.staleAt),
+          owner ? eq(creds.parentUserId, owner) : undefined,
         ),
       )
       .limit(1);
@@ -180,6 +183,7 @@ async function loginReadyForOpen(
         eq(sessions.familyId, input.familyId),
         eq(sessions.providerHost, input.providerHost),
         gt(sessions.expiresAt, input.opensAt),
+        owner ? eq(sessions.parentUserId, owner) : undefined,
       ),
     )
     .limit(1);
@@ -235,6 +239,7 @@ export async function runDueSignupPlanPrep(
       asksLeft &&
       (await loginReadyForOpen(database, {
         familyId: offer.familyId,
+        parentUserId: offer.parentUserId,
         providerHost: host,
         opensAt: offer.planOpensAt,
       }));
