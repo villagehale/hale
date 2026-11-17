@@ -1,19 +1,18 @@
 import { type Database, schema } from '@hale/db';
-import { isEnabled } from '@hale/flags';
 import { and, eq, sql } from 'drizzle-orm';
 import type { SignupHelpSeasonFacts } from './outcome-reply';
 
 /**
  * VIL-704 · give a Plus/Free season slot back when the run never reached a
- * provider session, or the page was not open yet. Off unless exactly `true`.
- * A provider-side failure still counts.
+ * provider session, or the page was not open yet. Env-only, off unless exactly
+ * `true`. Nothing in PostHog may turn this on. A provider-side failure still counts.
  */
 export const SIGNUP_HELP_SLOT_RELEASE_ENABLED_ENV = 'SIGNUP_HELP_SLOT_RELEASE_ENABLED';
 
 export function signupHelpSlotReleaseEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return isEnabled('signup-help-slot-release', undefined, env);
+  return env[SIGNUP_HELP_SLOT_RELEASE_ENABLED_ENV] === 'true';
 }
 
 /**

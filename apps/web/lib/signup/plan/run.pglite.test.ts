@@ -50,6 +50,7 @@ import {
   cancelSignupPlan,
   claimDuePlan,
   parkSignupPlan,
+  releaseUnstartedPlansBeforeOpen,
   savePlanResume,
 } from './store';
 
@@ -1956,7 +1957,7 @@ describe('a plan is claimed only once registration is open (VIL-704)', () => {
       .set({
         status: 'submitting',
         planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
-        planLeaseUntil: new Date(NOW.getTime() + PLAN_LEASE_MS),
+        planLeaseUntil: new Date(NOW.getTime() - 1_000),
       })
       .where(eq(schema.authorizedSignupOffers.id, family.offerId));
     const { runner } = engineLike(PAID);
@@ -1972,6 +1973,48 @@ describe('a plan is claimed only once registration is open (VIL-704)', () => {
     );
     expect(notices.some((notice) => notice.offerId === family.offerId)).toBe(false);
     expect((await steps(family.offerId)).map((step) => step.step)).toContain('plan_before_open');
+  });
+
+  it('does not clear a newer sweep that already holds the claim', async () => {
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
+    const opens = new Date(NOW.getTime() + 60_000);
+    const family = await plannedFamily({ opensAt: opens });
+    const leaseUntil = new Date(opens.getTime() + PLAN_LEASE_MS);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+        planLeaseUntil: leaseUntil,
+      })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    const { runner } = engineLike(PAID);
+    await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('submitting');
+    expect(row?.planLeaseUntil?.toISOString()).toBe(leaseUntil.toISOString());
+    expect(row?.planResume).toMatchObject({ phase: 'signup', runId: null });
+    expect(runner.run.mock.calls.some(([input]) => input.correlationId === family.offerId)).toBe(
+      false,
+    );
+  });
+
+  it('lets the sweep that holds a claim put that claim back before the open', async () => {
+    const family = await plannedFamily();
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+        planLeaseUntil: new Date(NOW.getTime() + PLAN_LEASE_MS),
+      })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    const released = await releaseUnstartedPlansBeforeOpen(db.database, {
+      now: NOW,
+      offerId: family.offerId,
+    });
+    expect(released.map((row) => row.id)).toEqual([family.offerId]);
+    expect((await offerRow(family.offerId))?.status).toBe('planned');
   });
 });
 
