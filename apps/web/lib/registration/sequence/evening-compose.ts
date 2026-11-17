@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond, noteLinkGate } from '~/lib/format/link-shape';
+import { hasLinkBeyond, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { EveningFacts } from './copy';
 
@@ -28,10 +28,7 @@ export function eveningRefusals(body: string, facts: EveningComposeInput): strin
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
-  if (hasLinkBeyond(text, facts.link === null ? [] : [facts.link])) {
-    noteLinkGate('evening-compose', 'redraft');
-    found.push('other_link');
-  }
+  if (hasLinkBeyond(text, facts.link === null ? [] : [facts.link])) found.push('other_link');
   return found;
 }
 
@@ -78,6 +75,9 @@ export async function composeRegistrationEvening(
       const text = value.text.trim();
       const refusals = eveningRefusals(text, facts);
       if (refusals.length === 0) return text;
+      if (refusals.includes('other_link')) {
+        noteLinkGate('evening-compose', linkAttemptKind(attempt, EVENING_MAX_ATTEMPTS));
+      }
       console.warn({ familyId, attempt, refusals }, 'registration evening: draft refused');
     } catch (err) {
       console.warn(

@@ -40,6 +40,11 @@ export function sharedLinkCheckEnabled(
 
 export type LinkGateKind = 'refused' | 'redraft';
 
+/** Whether this attempt is asked again, or is the last one and nothing is sent. */
+export function linkAttemptKind(attempt: number, maxAttempts: number): LinkGateKind {
+  return attempt < maxAttempts ? 'redraft' : 'refused';
+}
+
 /** A count of one gate decision. The draft's words never go on this line. */
 export function noteLinkGate(gate: string, kind: LinkGateKind): void {
   console.info({ kind, gate }, 'link gate');
@@ -122,9 +127,10 @@ function leetFold(ending: string, one: 'l' | 'i'): string {
     .replace(/[013457]/g, (digit) => (digit === '1' ? one : (LEET_TO_LETTER[digit] ?? digit)));
 }
 
-/** An ending a digit has disguised ("c0m" for "com"), and only a real ending. */
+/** An ending a digit has disguised ("c0m" for "com"), and only a real ending.
+ * A run of only digits is a price or a time ("$12.50", "9.45"), not a host. */
 function leetDelegated(ending: string): boolean {
-  if (!LEET_DIGIT.test(ending)) return false;
+  if (!/[\p{L}\p{M}]/u.test(ending) || !LEET_DIGIT.test(ending)) return false;
   return (['l', 'i'] as const).some((one) => {
     const folded = leetFold(ending, one);
     return /^[\p{L}\p{M}]{2,}$/u.test(folded) && isDelegatedEnding(folded);
@@ -148,6 +154,9 @@ function closeOneSided(
   // A one-letter name is an abbreviation ("a.m. sharp", and .sharp is a real ending).
   const before = offset > 0 ? text.charAt(offset - 1) : '';
   if (!/^[\p{L}\p{N}]$/u.test(before)) return whole;
+  // "988. You" is a sentence. The root zone delegates you, it, now, call.
+  // A capital after the stop is that sentence, not a host. "evil. app" stays a host.
+  if (/\.\s+\p{Lu}/u.test(whole)) return whole;
   const label = ending.match(/^[\p{L}\p{M}\p{N}]+/u)?.[0] ?? ending;
   return `${prev}.${label}${ending.slice(label.length)}`;
 }

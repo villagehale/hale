@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
+import { hasLinkShape, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -36,10 +36,7 @@ export type DateUnconfirmedInput = DateUnconfirmedFacts & { language: ReplyLangu
 export function dateUnconfirmedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  if (hasLinkShape(text)) {
-    noteLinkGate('date-unconfirmed', 'redraft');
-    return ['link'];
-  }
+  if (hasLinkShape(text)) return ['link'];
   return [];
 }
 
@@ -94,6 +91,9 @@ export async function composeDateUnconfirmed(
       const text = value.text.trim();
       const refusals = dateUnconfirmedRefusals(text);
       if (refusals.length === 0) return text;
+      if (refusals.includes('link')) {
+        noteLinkGate('date-unconfirmed', linkAttemptKind(attempt, DATE_UNCONFIRMED_MAX_ATTEMPTS));
+      }
       console.warn({ familyId, attempt, refusals }, 'registration date unconfirmed: draft refused');
     } catch (err) {
       console.warn(

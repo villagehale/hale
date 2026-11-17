@@ -5,6 +5,7 @@ import {
   foreignLinks,
   hasLinkBeyond,
   hasLinkShape,
+  linkAttemptKind,
   linkHostname,
   linksOutside,
   noteLinkGate,
@@ -151,6 +152,10 @@ describe('SHARED_LINK_CHECK_ENABLED: the stricter shapes', () => {
     ['e.g.', 'Bring a snack, e.g. fruit.'],
     ['an honorific, spaced', 'Ask Mr. Smith at the desk.'],
     ['a middle dot before digits', 'Sat 10am \u00B7 123 King St'],
+    ['a price', 'It costs $12.50 a week.'],
+    ['a dotted clock', 'Starts at 9.45.'],
+    ['a crisis line, then a sentence', 'Call 988. You are not alone.'],
+    ['a sentence starting with a delegated word', 'Done. It is open. Now we wait.'],
   ])('still passes %s when the flag is on', (_label, text) => {
     vi.stubEnv('SHARED_LINK_CHECK_ENABLED', 'true');
     expect(hasLinkShape(text)).toBe(false);
@@ -169,6 +174,11 @@ describe('link gate log', () => {
     expect(info).toHaveBeenCalledWith({ kind: 'redraft', gate: 'holding-line' }, 'link gate');
     const payload = JSON.stringify(info.mock.calls);
     expect(payload).not.toMatch(/http|evil|bit\.ly/i);
+  });
+
+  it('calls the last attempt a refusal and an earlier one a redraft', () => {
+    expect(linkAttemptKind(1, 2)).toBe('redraft');
+    expect(linkAttemptKind(2, 2)).toBe('refused');
   });
 
   it('logs a hit and stays quiet when the draft has no link', () => {
