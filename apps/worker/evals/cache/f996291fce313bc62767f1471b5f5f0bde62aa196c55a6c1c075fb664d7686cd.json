@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Calendar's off for now, no problem. I can't save the carpool during setup, so that one's on you to add. Would a group chat with Mia and Leo's other parent help? It'd let you both see the same kid plans and reminders, and nothing private.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "calendarLater": true
+  },
+  "latencyMs": 1918,
+  "usage": {
+    "input_tokens": 722,
+    "output_tokens": 441,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

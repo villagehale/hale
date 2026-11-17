@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly and asks once for just the first three characters of the postal code. It offers ZIP as an alternative, which watchFor allows. It makes no promise about finding things nearby, doesn't ask for a street or town, and doesn't press. It is plain and short, though slightly wordy ('that still places you by area').",
+    "score": 5
+  }
+}

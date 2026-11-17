@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Totally understood, and I won't ask again. Without a place I can't point you to things nearby, but I can still help with what's on for your kids. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "placeDeclined": true
+  },
+  "latencyMs": 1816,
+  "usage": {
+    "input_tokens": 688,
+    "output_tokens": 441,
+    "cache_read_input_tokens": 7119,
+    "cache_creation_input_tokens": 0
+  }
+}
