@@ -630,10 +630,16 @@ function readParentQuestion(value: {
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
+  messageIsYes?: boolean;
 }): boolean {
   if (value.parentQuestion === undefined) {
     return (
-      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
+      value.connectGmail === true ||
+      value.connectCalendar === true ||
+      value.coparentGroup === true ||
+      // A yes the model did not classify is a question. Checked only on the lit
+      // path, so a dark turn's parse is unchanged.
+      (friendVoiceModelFieldsEnabled() && value.messageIsYes === true)
     );
   }
   return value.parentQuestion !== false;
@@ -1183,7 +1189,9 @@ function withModelReading(
   }
   const yesItem =
     YES_ITEMS.has(item) || (item === 'schedule' && (input.scheduled ?? []).length > 0);
-  if (!yesItem || composed.messageIsYes !== true) return capture;
+  // Consent needs an explicit "not a question". A missing parentQuestion is not that.
+  if (!yesItem || composed.messageIsYes !== true || composed.parentQuestion !== false)
+    return capture;
   if (item === 'gmail') return { ...capture, connectGmail: true, gmailLater: false };
   if (item === 'calendar') return { ...capture, connectCalendar: true, calendarLater: false };
   if (item === 'schedule') return { ...capture, scheduleDone: true };
@@ -1810,11 +1818,14 @@ export function judgeFriendReply(
   if (fields && (typeof asked !== 'number' || !Number.isInteger(asked) || asked < 0)) {
     return { ok: false, reason: 'question', detail: 'asks_count_missing' };
   }
-  const flex =
-    FLEX_QUESTION_STEPS.has(input.step) ||
-    (options.yesToLink === true && LINK_STEPS.has(input.step)) ||
-    options.scheduleRecorded === true;
-  if (flex) {
+  const receipt =
+    (options.yesToLink === true && LINK_STEPS.has(input.step)) || options.scheduleRecorded === true;
+  const flex = FLEX_QUESTION_STEPS.has(input.step) || receipt;
+  // Lit, a receipt asks nothing. Code no longer deletes the question, so a
+  // count of one is a refusal, not a trim. name_reply may still ask one or none.
+  if (fields && receipt) {
+    if (asked !== 0) return { ok: false, reason: 'question', detail: 'asks_nothing' };
+  } else if (flex) {
     if ((asked ?? 0) > 1) return { ok: false, reason: 'question' };
   } else if (asked !== needed) {
     return { ok: false, reason: 'question' };
@@ -2718,6 +2729,7 @@ export function retryProblem(
     case 'unbacked_claim':
       return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
+      if (detail === 'asks_nothing') return 'This message asks nothing. Set asksCount to 0.';
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? friendVoiceModelFieldsEnabled()
           ? 'This message asks nothing. Set asksCount to 0.'

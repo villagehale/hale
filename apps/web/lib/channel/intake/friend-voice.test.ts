@@ -23,6 +23,7 @@ import {
   onboardingReplyMaxTokens,
   onboardingReplyToolSchema,
   parentReading,
+  parseReplyTool,
   readGroupLeads,
   speakFriend,
   tidyProse,
@@ -2883,6 +2884,82 @@ describe('VIL-541 model fields', () => {
       error.mockRestore();
       warn.mockRestore();
     }
+  });
+
+  it('a receipt asks nothing when lit: one question is refused, not trimmed', () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const email = blank({ step: 'email', parentWords: 'yes' });
+    const asking = fields({
+      asksCount: 1,
+      connectorsOffered: ['gmail'],
+      reply: 'Great, tap the link above. Want to connect your calendar too?',
+    });
+    expect(
+      judgeFriendReply(asking.reply, email, { ...judgeOpts(asking), yesToLink: true }),
+    ).toEqual({
+      ok: false,
+      reason: 'question',
+      detail: 'asks_nothing',
+    });
+    const quiet = fields({
+      asks: false,
+      asksCount: 0,
+      connectorsOffered: ['gmail'],
+      reply: "I'll text you when something is there.",
+    });
+    expect(judgeFriendReply(quiet.reply, email, { ...judgeOpts(quiet), yesToLink: true }).ok).toBe(
+      true,
+    );
+  });
+
+  it('does not treat a yes as consent when parentQuestion was left out', () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const parsed = parseReplyTool({
+      reply: 'Tap it when you want.',
+      asks: false,
+      connectorsOffered: [],
+      joinPointer: null,
+      claimsSaved: false,
+      messageIsYes: true,
+      asksCount: 0,
+      asksName: false,
+      speaksAsParent: false,
+      joinInProse: false,
+      messageOnlyName: null,
+      questionBeforeList: false,
+    });
+    expect(parsed.parentQuestion).toBe(true);
+    const input = blank({
+      step: 'email',
+      parentWords: '好的',
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: false,
+        calendar: false,
+        schedule: false,
+        coparent: false,
+      },
+      recentTurns: [{ role: 'hale', body: '要连邮箱吗', asked: true }],
+    });
+    return speakFriend(
+      composerOf(
+        fields({
+          reply: '要不要连上',
+          asksCount: 1,
+          messageIsYes: true,
+          parentQuestion: undefined,
+          connectorsOffered: ['gmail'],
+        }),
+      ),
+      input,
+      { page: async () => undefined },
+    ).then((spoken) => {
+      expect(spoken.source).toBe('composed');
+      expect(spoken.capture.connectGmail).toBeNull();
+    });
   });
 
   it('refuses a join written into the prose from joinInProse, not from the digits', async () => {
