@@ -236,7 +236,7 @@ describe('the PDF reader worker is isolated from the parent process', () => {
     const crashing = join(scratch, 'crashing-reader.mjs');
     writeFileSync(
       crashing,
-      `import { parentPort } from 'node:worker_threads';\nparentPort.postMessage({ kind: 'reader_loaded' });\nthrow new TypeError('${PLANTED} crash');\n`,
+      `import { parentPort } from 'node:worker_threads';\nparentPort.postMessage({ kind: 'reader_loaded' });\nsetImmediate(() => { throw new TypeError('${PLANTED} crash'); });\n`,
     );
     const missing = join(scratch, 'missing-reader.mjs');
     writeFileSync(
