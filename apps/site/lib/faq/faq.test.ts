@@ -87,6 +87,19 @@ describe('the FAQ this build serves', () => {
     expect(blob).toContain('Is Hale official?');
   });
 
+  it('names Free, Plus, and Max without a currency label or a free-until-paid claim', () => {
+    const free = FAQ.find((item) => item.id === 'is-it-free');
+    const cost = FAQ.find((item) => item.id === 'what-do-paid-plans-cost');
+    expect(free?.answer).toContain('There is a Free tier');
+    expect(free?.answer).toContain('Paid plans are Plus and Max.');
+    expect(free?.answer).toContain('Full refund anytime if it’s not for you.');
+    expect(cost?.answer).toContain('Plus is $19/mo or $159/yr.');
+    expect(cost?.answer).toContain('Max is $329/yr.');
+    const blob = `${free?.answer} ${cost?.answer}`;
+    expect(blob).not.toMatch(/\b(CAD|USD)\b/);
+    expect(blob).not.toMatch(/until paid plans/i);
+  });
+
   it('says Hale signs up only with a yes, and you always pay', () => {
     const book = FAQ.find((item) => item.question === 'Does Hale book or register for me?');
     expect(book?.answer.startsWith('Yes, when you say yes.')).toBe(true);

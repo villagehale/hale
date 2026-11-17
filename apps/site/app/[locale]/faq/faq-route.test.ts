@@ -47,13 +47,13 @@ describe('/faq — canonical product FAQ', () => {
 
   it('locks the share description in English, French, and Chinese', () => {
     expect(messages('en').Faq.metaDescription).toBe(
-      "Straight answers about Hale for parents: it's free with unlimited chat, works for kids 0–18, and never acts without you.",
+      'Straight answers about Hale for parents: Free, Plus, and Max, works for kids 0–18, and never acts without you.',
     );
     expect(messages('fr').Faq.metaDescription).toBe(
-      "Des réponses claires sur Hale pour les parents : gratuit, textos illimités, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
+      "Des réponses claires sur Hale pour les parents : Gratuit, Plus et Max, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
     );
     expect(messages('zh').Faq.metaDescription).toBe(
-      '给家长的 Hale 常见问题：免费、聊天不限量，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。',
+      '给家长的 Hale 常见问题：有免费版、Plus 和 Max，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。',
     );
   });
 

@@ -1,11 +1,10 @@
 import { isFoundingPromoWindowOpen, parseFoundingPromoEndsAt } from '@hale/types';
 
 /**
- * Marketing-site price copy. Flag off keeps today's free claims. During the
- * founding window, #1285 owns the sale UI — this PR leaves that copy alone.
- * After the exclusive 2027-01-01 00:00 America/Toronto cutoff, with
- * HOLIDAY_PROMO_ENABLED still on, show Plus list prices instead of "all free /
- * Plus coming soon".
+ * Marketing-site price copy. Flag off is the legacy surface (Plus and Max
+ * stay "coming soon"). During the founding window, the holiday promo owns the
+ * sale UI. After the exclusive 2027-01-01 00:00 America/Toronto cutoff, with
+ * HOLIDAY_PROMO_ENABLED still on, Plus is offered at the list price.
  */
 export type SitePriceSurface = 'legacy' | 'list';
 

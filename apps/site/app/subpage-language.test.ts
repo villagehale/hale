@@ -244,8 +244,9 @@ describe('/pricing — the tier cards have anatomy', () => {
     }
     expect(html).toContain('$0');
     expect(html).toContain('$19');
-    expect(html).toContain('$39');
-    expect(html).toContain('CAD/mo');
+    expect(html).toContain('$329');
+    expect(html).not.toContain('CAD/mo');
+    expect(html).not.toMatch(/\b(CAD|USD)\b/);
   });
 
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
@@ -259,11 +260,13 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(html).toContain('>Text Hale<');
   });
 
-  it('keeps the free-first footnote', () => {
+  it('names Free, Plus, and Max, and the refund', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
-    expect(text).toContain('Only Free is available today.');
-    expect(text).toContain('Founding families join free.');
-    expect(text).toContain('about three months free');
+    expect(text).toContain('Paid plans are Plus and Max.');
+    expect(text).toContain('Start with a text.');
+    expect(text).toContain('Full refund anytime if it’s not for you.');
+    expect(text).not.toContain('about three months free');
+    expect(text).not.toContain('Founding families join free.');
   });
 
   it('drops the pre-pivot village headline', () => {
