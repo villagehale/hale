@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
-import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { alertBillingTierMismatch } from '~/lib/monitoring/billing-tier-alert';
+import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import { stripeBillingRevokeEnabled } from './flags.js';
 
 /**
@@ -133,7 +134,7 @@ export async function reconcileBillingTiers(
   if (total === 0) return { status: 'checked', mismatches, opsAlert: 'not_needed' };
 
   const text = `billing: plan_tier disagrees with Stripe. free_despite_paid=${mismatches.freeDespitePaid} paid_despite_revoke=${mismatches.paidDespiteRevoke} paid_without_customer=${mismatches.paidWithoutCustomer} revoke_unresolved=${mismatches.revokeUnresolved}.`;
-  const opsAlert = await postOpsSlack(text, fetchImpl);
+  const opsAlert = await alertBillingTierMismatch(text, fetchImpl);
   console.warn('billing reconcile: tier mismatch', { ...mismatches, opsAlert });
   return { status: 'checked', mismatches, opsAlert };
 }

@@ -9,7 +9,8 @@ import {
 } from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
-import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { alertUnresolvedBillingRevoke } from '~/lib/monitoring/billing-tier-alert';
+import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import {
   type ChargeRevokeDecision,
   type PriceTierMap,
@@ -369,20 +370,11 @@ async function unresolvedRevoke(
       after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
     });
   }
-  const alert = deps.onUnresolvedRevoke ?? pageUnresolvedRevoke;
+  const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
   const posted = await alert({ eventId, reason });
   const opsAlert = posted ?? 'sent';
   console.warn('stripe billing: revoke unresolved', { eventId, reason, opsAlert });
   return { status: 'unresolved', reason, opsAlert };
-}
-
-async function pageUnresolvedRevoke(info: {
-  eventId: string;
-  reason: string;
-}): Promise<OpsPageOutcome> {
-  return postOpsSlack(
-    `billing: refund or dispute not applied. event=${info.eventId} reason=${info.reason}.`,
-  );
 }
 
 async function claimEvent(

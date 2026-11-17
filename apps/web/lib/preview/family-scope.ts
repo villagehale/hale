@@ -93,6 +93,9 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     // VIL-686 draws text givers 1:1 from a shared-chat sweep, not yet scoped.
     'secret-santa': 'skip',
     'spend-alert': 'skip',
+    // Reads every family's plan against Stripe and pages #ops. Preview shares
+    // production's database, so this never runs there.
+    'billing-reconcile': 'skip',
     'delete-sweep': 'skip',
     'attachment-sweep': 'skip',
     inference: 'skip',
