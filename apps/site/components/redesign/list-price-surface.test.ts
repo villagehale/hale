@@ -54,9 +54,9 @@ describe('post-promo list prices on the marketing site', () => {
     expect(fr).toContain('19 $/mois');
     expect(fr).toContain('ou 159 $/an');
     expect(fr).not.toMatch(/\b(CAD|USD)\b|加元|美元/);
-    expect(zh).toContain('每月 14 元');
-    expect(zh).toContain('每年 259 元');
-    expect(zh).not.toMatch(/加元|美元|\b(CAD|USD)\b/);
+    expect(zh).toContain('每月 $14');
+    expect(zh).toContain('每年 $259');
+    expect(zh).not.toMatch(/加元|美元|元|\b(CAD|USD)\b/);
   });
 
   it('shows one location price and the paid tiers on the legacy surface', () => {

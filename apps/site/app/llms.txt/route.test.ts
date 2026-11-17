@@ -45,9 +45,11 @@ describe('llms.txt', () => {
     expect(text.toLowerCase()).toContain('0–18');
     expect(text.toLowerCase()).toContain('not medical advice');
     expect(text).not.toContain('/for-centres');
-    expect(text).toContain('Paid plans are Plus and Max.');
-    expect(text).toContain('In Canada, Plus is $19/mo or $159/yr and Max is $329/yr.');
-    expect(text).toContain('In the US, Plus is $14/mo or $119/yr and Max is $259/yr.');
+    expect(text).toContain(
+      'In Canada, Plus is $19/mo or $159/yr, and Max is $329/yr.',
+    );
+    expect(text).toContain('In the US, Plus is $14/mo or $119/yr, and Max is $259/yr.');
+    expect(text).not.toContain('Paid plans are Plus and Max.');
     expect(text).toContain('Full refund anytime if it’s not for you.');
     expect(text).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
     expect(text).not.toMatch(/until paid plans/i);

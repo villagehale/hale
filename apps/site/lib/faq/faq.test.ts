@@ -93,8 +93,8 @@ describe('the FAQ this build serves', () => {
     expect(free?.answer).toContain('There is a Free tier');
     expect(free?.answer).toContain('Paid plans are Plus and Max.');
     expect(free?.answer).toContain('Full refund anytime if it’s not for you.');
-    expect(cost?.answer).toContain('Plus is $19/mo or $159/yr.');
-    expect(cost?.answer).toContain('Max is $329/yr.');
+    expect(cost?.answer).toContain('Plus is $19/mo or $159/yr, and Max is $329/yr.');
+    expect(cost?.answer).not.toContain('Paid plans are Plus and Max.');
     const blob = `${free?.answer} ${cost?.answer}`;
     expect(blob).not.toMatch(/\b(CAD|USD)\b/);
     expect(blob).not.toMatch(/until paid plans/i);

@@ -46,5 +46,5 @@ export function plusCloseSentence(currency: BillingCurrency): string {
 
 /** Location-specific cost answer. Default geo (no header) is CAD, same as checkout. */
 export function paidPlansCostAnswer(currency: BillingCurrency): string {
-  return `Free is $0 with unlimited chat. Plus is ${plusMonthlyLabel(currency)} or ${plusAnnualLabel(currency)}. Max is ${maxAnnualLabel(currency)}. Paid plans are Plus and Max. ${REFUND_LINE}`;
+  return `Free is $0 with unlimited chat. Plus is ${plusMonthlyLabel(currency)} or ${plusAnnualLabel(currency)}, and Max is ${maxAnnualLabel(currency)}. ${REFUND_LINE}`;
 }

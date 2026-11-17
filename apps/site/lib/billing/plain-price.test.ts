@@ -33,9 +33,12 @@ describe('plain list price copy', () => {
       'Plus is $14/mo or $119/yr. Full refund anytime if it’s not for you.',
     );
     expect(paidPlansCostAnswer('CAD')).toBe(
-      'Free is $0 with unlimited chat. Plus is $19/mo or $159/yr. Max is $329/yr. Paid plans are Plus and Max. Full refund anytime if it’s not for you.',
+      'Free is $0 with unlimited chat. Plus is $19/mo or $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.',
     );
-    expect(paidPlansCostAnswer('USD')).toContain('Max is $259/yr.');
+    expect(paidPlansCostAnswer('USD')).toBe(
+      'Free is $0 with unlimited chat. Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.',
+    );
+    expect(paidPlansCostAnswer('CAD')).not.toContain('Paid plans are Plus and Max.');
     for (const line of [
       FREE_TIER_LINE,
       IS_IT_FREE_ANSWER,
