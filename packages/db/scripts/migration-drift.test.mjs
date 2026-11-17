@@ -82,6 +82,7 @@ describe('catalog history cutover', () => {
       '0243_shared_list_hidden_cleared',
       '0252_city_registration_readings',
       '0254_school_break_readings',
+      '0255_email_alert_holds',
     ]);
   });
 });
