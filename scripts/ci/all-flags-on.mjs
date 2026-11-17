@@ -2,9 +2,11 @@
 //
 // Reads packages/flags/src/catalog.ts. Default-on flags are left unset.
 // Payment flags are env-only and default off; they are set to exact `true`
-// with the rest. A `both` allowlist needs a non-empty list before the flag is
-// on for a process-wide read, so that list is set to `forced-on`. A narrow
-// allowlist is left empty: an empty list means every family.
+// with the rest. A `both` allowlist (memory digest) is on for a named family
+// only when that family's id is listed. The suite creates those ids while it
+// runs, so the list is the sentinel `forced-on`: the process-wide read turns
+// on, and a family-scoped read stays off unless the id is that sentinel. A
+// narrow allowlist is left empty, which means every family.
 //
 //   node scripts/ci/all-flags-on.mjs
 //   node scripts/ci/all-flags-on.mjs -- pnpm exec turbo run test --env-mode=loose --force

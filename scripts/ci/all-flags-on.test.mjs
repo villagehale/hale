@@ -75,6 +75,14 @@ describe('forcedOnEnv', () => {
         continue;
       }
       expect(envEnabled(spec, undefined, env)).toBe(true);
+      if (spec.allowlistMode === 'both') {
+        // A named family is on only when its id is on the list. The sentinel
+        // opens the process-wide read; it does not open every fixture family.
+        expect(envEnabled(spec, 'fam-1', env)).toBe(false);
+        expect(envEnabled(spec, 'forced-on', env)).toBe(true);
+      } else {
+        expect(envEnabled(spec, 'fam-1', env)).toBe(true);
+      }
     }
     for (const row of PAYMENT_ENV_ONLY) expect(env[row.env]).toBe('true');
     expect(env.F14_ENABLED).toBe('true');
