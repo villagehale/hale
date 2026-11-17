@@ -520,7 +520,7 @@ describe('duty settle language', () => {
       .where(eq(schema.families.id, family.familyId));
     await db.database
       .update(schema.users)
-      .set({ locale: 'zh', proactiveLanguage: 'fr', name: 'Barton' })
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
       .where(eq(schema.users.id, family.parentUserId));
     await db.database.insert(schema.channelMessages).values({
       familyId: family.familyId,
@@ -533,32 +533,15 @@ describe('duty settle language', () => {
     });
 
     expect(await dutySettleLanguage(db.database, family.familyId, family.parentUserId)).toBe('fr');
+    // The rules read this sentence. No model stands in for the judgement.
     const settled = await settleDutyMemory(db.database, {
       familyId: family.familyId,
       actorUserId: family.parentUserId,
-      text: '今天中文',
+      text: "I'll take Maya's swim, Saturday at 3:00pm",
       now: new Date(DAY.getTime() + 60 * 60 * 1000),
       inboundChatId: PERSONAL,
-      inboundMessageId: 'msg-zh',
+      inboundMessageId: 'msg-en',
       surface: 'reply',
-      subjectKey: 'who-takes/language',
-      extract: async () => ({
-        method: 'llm',
-        llm: 'used',
-        slots: [
-          {
-            role: 'pickup',
-            claim: 'self',
-            name: null,
-            userId: family.parentUserId,
-            confidence: 1,
-          },
-        ],
-        question: false,
-        askWhichKid: false,
-        write: true,
-        confidence: 1,
-      }),
     });
     expect(settled.status).toBe('recorded');
   });

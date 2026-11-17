@@ -443,7 +443,7 @@ describe('a 1:1 decision syncs the group', () => {
       .where(eq(schema.families.id, seeded.familyId));
     await db.database
       .update(schema.users)
-      .set({ locale: 'zh', proactiveLanguage: 'en', name: 'Barton' })
+      .set({ locale: 'zh', proactiveLanguage: 'en' })
       .where(eq(schema.users.id, seeded.parentUserId));
     await db.database.insert(schema.channelMessages).values({
       familyId: seeded.familyId,
