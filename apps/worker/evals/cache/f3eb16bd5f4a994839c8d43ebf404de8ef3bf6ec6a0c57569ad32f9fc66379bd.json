@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Here's the link to forward to your co-parent: https://www.villagehale.com/text?s=join-0123456789abcdef0123456789abcdef Whoever opens it joins your family, and it lasts 7 days."
+  },
+  "latencyMs": 2879,
+  "usage": {
+    "input_tokens": 112,
+    "output_tokens": 77,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2433
+  }
+}

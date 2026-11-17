@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I can't add that number, since it already has its own Hale setup. If you'd like to add someone else, send me their number and whether they're a grandparent, a nanny, or a babysitter."
+  },
+  "latencyMs": 1791,
+  "usage": {
+    "input_tokens": 43,
+    "output_tokens": 64,
+    "cache_read_input_tokens": 2433,
+    "cache_creation_input_tokens": 0
+  }
+}

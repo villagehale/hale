@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Good news: your partner just joined from their own number. They see everything you see and can text me anytime."
+  },
+  "latencyMs": 1939,
+  "usage": {
+    "input_tokens": 41,
+    "output_tokens": 36,
+    "cache_read_input_tokens": 2433,
+    "cache_creation_input_tokens": 0
+  }
+}

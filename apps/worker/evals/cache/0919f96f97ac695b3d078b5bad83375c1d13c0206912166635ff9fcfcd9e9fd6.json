@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "No problem at all, thanks for letting me know. I won't text you again, and take care."
+  },
+  "latencyMs": 1891,
+  "usage": {
+    "input_tokens": 43,
+    "output_tokens": 33,
+    "cache_read_input_tokens": 2433,
+    "cache_creation_input_tokens": 0
+  }
+}

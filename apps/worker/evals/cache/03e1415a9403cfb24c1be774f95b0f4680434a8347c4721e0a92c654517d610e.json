@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Welcome! You're in as a grandparent now. I'll send you the week's schedule and pickup reminders, and that's all you'll get from me."
+  },
+  "latencyMs": 1791,
+  "usage": {
+    "input_tokens": 50,
+    "output_tokens": 53,
+    "cache_read_input_tokens": 2433,
+    "cache_creation_input_tokens": 0
+  }
+}
