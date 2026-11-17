@@ -1,5 +1,5 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { loadExtractChildEventSkill } from './skill';
@@ -92,8 +92,13 @@ export async function extractChildEvent(
   client: AgentClient,
 ): Promise<ExtractResult> {
   const skill = await loadExtractChildEventSkill();
+  const marked = isEnabled('untrusted-field-marking');
   const userMessage = JSON.stringify({
-    email: { subject: input.subject, from: input.from, body: input.body },
+    email: {
+      subject: presentUntrusted(marked, 'email', 'subject', input.subject),
+      from: presentUntrusted(marked, 'email', 'from', input.from),
+      body: presentUntrusted(marked, 'email', 'body', input.body),
+    },
     received_at: input.receivedAt,
     family_timezone: input.familyTimezone,
     children: input.children.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),

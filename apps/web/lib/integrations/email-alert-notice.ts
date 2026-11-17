@@ -1,5 +1,5 @@
-import type { AgentClient } from '@hale/agent';
-import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, pickLane, presentUntrusted } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
 import { withLlmContext } from '~/lib/analytics/llm-trace';
@@ -187,12 +187,38 @@ export function emailAlertNoticeFacts(input: {
 }
 
 /** The user turn. Shared with the eval, which replays this request shape. No body
- * keeps the bytes identical to today's facts JSON so the notice eval is not re-keyed. */
+ * keeps the bytes identical to today's facts JSON so the notice eval is not re-keyed.
+ * The flag wraps the email's own fact strings; a handed body keeps the fence the
+ * email-alert-notice-body skill names. */
 export function emailAlertNoticeUserMessage(
   facts: EmailAlertNoticeFacts,
   body?: string | null,
 ): string {
-  const factsJson = JSON.stringify(facts);
+  const marked = isEnabled('untrusted-field-marking');
+  const email = facts.email;
+  const factsJson = JSON.stringify(
+    marked
+      ? {
+          ...facts,
+          email: {
+            ...email,
+            sender:
+              email.sender === null
+                ? null
+                : presentUntrusted(true, 'email', 'sender', email.sender),
+            subject:
+              email.subject === null
+                ? null
+                : presentUntrusted(true, 'email', 'subject', email.subject),
+            title: presentUntrusted(true, 'email', 'title', email.title),
+            location:
+              email.location === null
+                ? null
+                : presentUntrusted(true, 'email', 'location', email.location),
+          },
+        }
+      : facts,
+  );
   if (body == null || body === '') return factsJson;
   const handed = body.slice(0, EMAIL_ALERT_NOTICE_BODY_MAX_CHARS);
   return `${factsJson}\n\n${EMAIL_ALERT_BODY_PREAMBLE}\n${EMAIL_ALERT_BODY_OPEN}\n${handed}\n${EMAIL_ALERT_BODY_CLOSE}`;

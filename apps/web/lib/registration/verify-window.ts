@@ -1,6 +1,6 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
 import type { Municipality, ProgramDomain } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { zonedLocalInstant } from '~/lib/plan/spine';
@@ -994,7 +994,7 @@ export function extractionInput(window: CycleIdentity, pageText: string): string
     municipality: window.municipality,
     program_domain: window.programDomain,
     cycle_label: window.cycleLabel,
-    page_text: pageText,
+    page_text: presentUntrusted(isEnabled('untrusted-field-marking'), 'web', 'page_text', pageText),
   });
 }
 

@@ -1,5 +1,6 @@
-import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
+import { type RegisteredTool, type Skill, defineTool, presentUntrusted } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { gmailSourceIsPrivate } from '~/lib/coach/conversation';
@@ -104,7 +105,12 @@ export function coachEmailReader(deps: CoachEmailReaderDeps): CoachEmailReader {
       console.info({ outcome: 'read' }, 'coach: read_email');
       return {
         read: true,
-        body: body.slice(0, READ_EMAIL_MAX_CHARS),
+        body: presentUntrusted(
+          isEnabled('untrusted-field-marking'),
+          'email',
+          'body',
+          body.slice(0, READ_EMAIL_MAX_CHARS),
+        ),
         truncated: body.length > READ_EMAIL_MAX_CHARS,
       };
     },

@@ -479,5 +479,11 @@ from model reasoning): `lib/injection-score.mjs`, whose positive controls are
 `lib/injection-score.test.mjs`. Each lane must also have called its model on every fixture
 and reached its outcome stage at least once, so an empty run cannot pass. The memory arm
 gets one honest parent turn, so a run that saves nothing cannot pass as one that refused the
-planted fact. Not covered yet: the Browser Use signup lane (its model runs on Browser Use's
-cloud against a live page), and one shared marking for untrusted fields.
+planted fact.
+
+The signup lane sends the real `browser-use-signup` skill and the output schema the
+engine parses, with the hostile page inside the facts JSON. Browser Use's hosted model
+is not in this replay. Untrusted email, calendar and web fields are wrapped by
+`presentUntrusted` when `UNTRUSTED_FIELD_MARKING_ENABLED` is exactly `true`. The flag
+is off by default, so this suite's cached lanes other than signup keep the bytes
+production sends today. Lighting the flag re-keys those prompts.

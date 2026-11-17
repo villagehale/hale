@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
 import { checkedSchedule } from '~/lib/channel/spots/schedule';
@@ -122,10 +123,14 @@ export interface ClassAvailabilityQuery {
 }
 
 export function classAvailabilityInput(query: ClassAvailabilityQuery, pageText: string): string {
+  const marked = isEnabled('untrusted-field-marking');
   return JSON.stringify({
     class_label: query.label,
-    session_anchor: query.anchor,
-    page_text: pageText,
+    session_anchor:
+      query.anchor === null
+        ? null
+        : presentUntrusted(marked, 'web', 'session_anchor', query.anchor),
+    page_text: presentUntrusted(marked, 'web', 'page_text', pageText),
   });
 }
 
