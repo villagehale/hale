@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Great, so you got in for Springfield Fall 2026 swim lessons. Glad it worked out!"
+  },
+  "latencyMs": 1210,
+  "usage": {
+    "input_tokens": 77,
+    "output_tokens": 41,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

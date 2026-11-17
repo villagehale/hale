@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fits a readiness_answer yes: it opens with \"Thanks for letting me know\", attributes the setup to the parent, asks nothing, uses the correct portal, account and child, and is in English. But it then states the account, Max being added and the saved card as plain fact, and \"you're set\" reads close to Hale confirming it. It also leaves out the birthday and the address, and the comma splice makes it slightly clunky.",
+    "score": 4
+  }
+}

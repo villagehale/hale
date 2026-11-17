@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I couldn't open that link because it isn't a secure one, so nothing from it was saved. Could you send the course page from Springfield's portal instead? I'll pick it up from there."
+  },
+  "latencyMs": 1419,
+  "usage": {
+    "input_tokens": 102,
+    "output_tokens": 63,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

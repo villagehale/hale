@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "You're about halfway through Springfield's 36-hour window to accept a waitlist spot. It started counting from when you told me you were waitlisted, Tuesday at 11:00 a.m., so it runs out Wednesday at 11:00 p.m. Keep an eye on your email and the portal for the offer."
+  },
+  "latencyMs": 1547,
+  "usage": {
+    "input_tokens": 151,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

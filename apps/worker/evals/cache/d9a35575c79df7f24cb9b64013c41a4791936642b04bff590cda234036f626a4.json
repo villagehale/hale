@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I can't open this link right now. I only read one course page at a time, and I've just used that read on an earlier one. Send it again in about 7 minutes and I'll read it then."
+  },
+  "latencyMs": 1296,
+  "usage": {
+    "input_tokens": 78,
+    "output_tokens": 60,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

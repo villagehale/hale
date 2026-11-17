@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Springfield Fall 2026 swim lessons for Max and Mia open Tuesday, September 15 at 7:00 a.m. on Springfield's portal. Before then, make sure you have a Springfield recreation account, both kids added with their birthdays, your address complete, and a card saved. Once that's all set, let me know and I'll mark you ready."
+  },
+  "latencyMs": 1889,
+  "usage": {
+    "input_tokens": 149,
+    "output_tokens": 121,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 5107
+  }
+}

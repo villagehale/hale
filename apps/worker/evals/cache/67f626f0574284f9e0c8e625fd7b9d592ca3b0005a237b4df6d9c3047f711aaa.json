@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what check_in_ask asks. It asks how registration went for the handed window, and it covers all three outcomes: got in, waitlisted with the number, or missed. It is in French, as handed, and vous is allowed. It invents nothing and names no child. It stays slightly formal and a little long for a friend's text, but it is still natural.",
+    "score": 5
+  }
+}

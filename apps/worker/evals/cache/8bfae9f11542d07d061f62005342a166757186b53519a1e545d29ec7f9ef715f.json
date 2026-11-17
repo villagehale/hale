@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Comment ça s'est passé pour les inscriptions aux programmes de loisirs de Riverton pour l'automne 2026 ? Est-ce que vous avez réussi à vous inscrire, êtes-vous sur une liste d'attente (et si oui, quel est votre numéro), ou avez-vous raté la fenêtre ?"
+  },
+  "latencyMs": 1561,
+  "usage": {
+    "input_tokens": 80,
+    "output_tokens": 121,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

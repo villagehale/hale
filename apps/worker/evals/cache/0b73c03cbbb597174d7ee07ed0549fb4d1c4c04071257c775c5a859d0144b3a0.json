@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Les inscriptions pour les programmes de loisirs de Riverton à l'automne 2026 s'ouvrent samedi 12 septembre à 9 h 00. Léa est inscrite pour le suivi. Comme la ville ne publie pas de tranche d'âge pour ces programmes, vérifiez vous-même qu'ils conviennent à Léa. Je ne m'inscris jamais à votre place. Je vous enverrai un rappel une semaine avant, la veille au soir, puis quinze minutes avant l'ouverture, avec le lien : https://rec.example.org/riverton/fall. Approuvez ci-dessous si ça vous va."
+  },
+  "latencyMs": 1993,
+  "usage": {
+    "input_tokens": 229,
+    "output_tokens": 229,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

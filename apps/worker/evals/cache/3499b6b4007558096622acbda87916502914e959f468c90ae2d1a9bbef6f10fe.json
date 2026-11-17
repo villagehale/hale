@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the alreadyBound=true case. It says Hale already has the class, names no time, asks for no resend and invents nothing. 'I'll keep going with that one' only implies that Hale did not open this link again rather than saying so plainly. It also frames the link loosely as 'the class you sent earlier' instead of confirming that this is the same class Hale already has.",
+    "score": 4
+  }
+}

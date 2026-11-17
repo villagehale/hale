@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_link_refused asks for not_https. It says plainly that the link wasn't secure, carries no link, says nothing was saved, and asks once for the course page from Springfield's portal. The tone is natural and friendly, in English. One small wording issue: \"couldn't open\" frames it as an inability rather than Hale declining the link. \"I'll pick it up from there\" is a mild but reasonable follow-on to the handed request.",
+    "score": 4
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Got it. I'm already working from the class you sent earlier, so there's nothing new to send. I only open one course page at a time, so I'll keep going with that one."
+  },
+  "latencyMs": 1335,
+  "usage": {
+    "input_tokens": 78,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

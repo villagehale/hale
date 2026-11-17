@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Heads up, Springfield's waitlist offer window closes at 11:00 p.m. tonight, about 2 hours from now. Check your email and the portal for an offer. If there isn't one yet, it's worth watching the inbox until the deadline."
+  },
+  "latencyMs": 1512,
+  "usage": {
+    "input_tokens": 159,
+    "output_tokens": 87,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}
