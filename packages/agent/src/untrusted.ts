@@ -11,8 +11,22 @@ export type UntrustedSource = 'email' | 'calendar' | 'web';
 
 export const UNTRUSTED_CLOSE = '</untrusted>';
 
+/**
+ * A payload key is attacker-controlled when the tree walker uses it as `field`.
+ * Quotes, brackets and newlines in that key must not end the attribute or the tag.
+ */
+function escapeField(field: string): string {
+  return field
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('\r', ' ')
+    .replaceAll('\n', ' ');
+}
+
 export function untrustedOpen(source: UntrustedSource, field: string): string {
-  return `<untrusted source="${source}" field="${field}">`;
+  return `<untrusted source="${source}" field="${escapeField(field)}">`;
 }
 
 /**
