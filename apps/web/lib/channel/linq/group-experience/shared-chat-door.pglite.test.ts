@@ -166,6 +166,7 @@ async function say(
       text,
       mediaCount: 0,
       receivedAt: NOW,
+      sentAt: NOW,
       otherHandles: [PARENT_B],
       mentions: [],
       isGroup: true,

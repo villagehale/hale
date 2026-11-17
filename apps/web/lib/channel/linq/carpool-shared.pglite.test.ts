@@ -162,6 +162,7 @@ async function say(
       text,
       mediaCount: 0,
       receivedAt: NOW,
+      sentAt: NOW,
       otherHandles: [PARENT_A, PARENT_B].filter((handle) => handle !== from),
       mentions: [],
       isGroup: true,

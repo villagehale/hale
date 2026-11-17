@@ -223,6 +223,7 @@ async function send(
     text,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [from === PARENT_A ? PARENT_B : PARENT_A],
     mentions: [],
     isGroup: true,

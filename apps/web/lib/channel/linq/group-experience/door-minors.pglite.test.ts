@@ -316,6 +316,7 @@ async function door(opts: {
       text: opts.text,
       mediaCount: 0,
       receivedAt: NOW,
+      sentAt: NOW,
       otherHandles: opts.others,
       mentions: [],
       isGroup: true,
