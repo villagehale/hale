@@ -200,6 +200,134 @@ describe('stripe billing revoke', () => {
     expect(await planTier(familyId)).toBe('plus');
   });
 
+  it('does not drop a newer subscription when the refunded invoice is only an id', async () => {
+    const { familyId } = await seedFamily(db.database, 'Newer sub');
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'family', stripeCustomerId: 'cus_newer', stripeSubscriptionId: 'sub_new' })
+      .where(eq(schema.families.id, familyId));
+
+    const bare = await applyStripeBillingEvent(
+      {
+        id: 'evt_bare_invoice',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_old',
+            amount: 7900,
+            amount_refunded: 7900,
+            refunded: true,
+            customer: 'cus_newer',
+            invoice: 'in_old',
+            metadata: { familyId },
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      { env: REVOKE, chargeLookup: null },
+    );
+    expect(bare).toMatchObject({ status: 'unresolved', reason: 'subscription_unresolved' });
+    expect(await planTier(familyId)).toBe('family');
+
+    const lookedUp = await applyStripeBillingEvent(
+      {
+        id: 'evt_looked_up',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_old',
+            amount: 7900,
+            amount_refunded: 7900,
+            refunded: true,
+            customer: 'cus_newer',
+            invoice: 'in_old',
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        chargeLookup: {
+          async lookupCharge() {
+            return {
+              customerId: 'cus_newer',
+              subscriptionId: 'sub_old',
+              subscriptionStatus: 'canceled',
+              familyId: null,
+            };
+          },
+        },
+      },
+    );
+    expect(lookedUp).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(await planTier(familyId)).toBe('family');
+    const counted = await reconcileBillingTiers(db.database, REVOKE);
+    expect(counted).toMatchObject({
+      status: 'checked',
+      mismatches: { revokeUnresolved: 1 },
+    });
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+  });
+
+  it('revokes a dispute after the charge is resolved to the cancelled subscription', async () => {
+    const { familyId } = await seedFamily(db.database, 'Dispute lookup');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'family',
+        stripeCustomerId: 'cus_dlookup',
+        stripeSubscriptionId: 'sub_dlookup',
+      })
+      .where(eq(schema.families.id, familyId));
+
+    const unresolved = await applyStripeBillingEvent(
+      {
+        id: 'evt_dispute_bare',
+        type: 'charge.dispute.created',
+        data: { object: { id: 'dp_bare', charge: 'ch_bare' } },
+      },
+      db.database,
+      {},
+      {},
+      { env: REVOKE, chargeLookup: null },
+    );
+    expect(unresolved).toMatchObject({ status: 'unresolved', reason: 'no_family' });
+    expect(await planTier(familyId)).toBe('family');
+
+    const resolved = await applyStripeBillingEvent(
+      {
+        id: 'evt_dispute_resolved',
+        type: 'charge.dispute.created',
+        data: { object: { id: 'dp_1', charge: 'ch_1' } },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        chargeLookup: {
+          async lookupCharge() {
+            return {
+              customerId: 'cus_dlookup',
+              subscriptionId: 'sub_dlookup',
+              subscriptionStatus: 'canceled',
+              familyId,
+            };
+          },
+        },
+      },
+    );
+    expect(resolved).toEqual({ status: 'applied', tier: 'free' });
+    expect(await planTier(familyId)).toBe('free');
+  });
+
   it('does not revoke while STRIPE_BILLING_REVOKE_ENABLED is off', async () => {
     const { familyId } = await seedFamily(db.database, 'Flag off');
     await db.database
@@ -241,6 +369,28 @@ describe('billing webhook gate and reconcile', () => {
           STRIPE_WEBHOOK_SECRET: 'whsec_test',
         }),
       ).toEqual({ ready: false, reason: 'no_applied_event' });
+      await empty.database.insert(schema.stripeBillingEvents).values({ eventId: 'evt_claim_only' });
+      expect(
+        await billingWebhookReady(empty.database, {
+          STRIPE_BILLING_REVOKE_ENABLED: 'true',
+          STRIPE_WEBHOOK_SECRET: 'whsec_test',
+        }),
+      ).toEqual({ ready: false, reason: 'no_applied_event' });
+      const { familyId } = await seedFamily(empty.database, 'Applied grant');
+      await empty.database.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'family_plan_updated',
+        targetTable: 'families',
+        targetId: familyId,
+        after: { planTier: 'plus', source: 'stripe', stripeEventId: 'evt_applied' },
+      });
+      expect(
+        await billingWebhookReady(empty.database, {
+          STRIPE_BILLING_REVOKE_ENABLED: 'true',
+          STRIPE_WEBHOOK_SECRET: 'whsec_test',
+        }),
+      ).toEqual({ ready: true });
       expect(
         await billingWebhookReady(empty.database, { STRIPE_BILLING_REVOKE_ENABLED: 'true' }),
       ).toEqual({ ready: false, reason: 'secret_unset' });

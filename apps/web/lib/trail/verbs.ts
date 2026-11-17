@@ -102,6 +102,7 @@ export const AUDIT_VERBS = [
   'family_plan_comped',
   'billing_refund_ready',
   'billing_grant_blocked',
+  'billing_revoke_unresolved',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -1917,6 +1918,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
+  billing_revoke_unresolved: {
+    sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
+    family: 'problem',
+  },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
   upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },

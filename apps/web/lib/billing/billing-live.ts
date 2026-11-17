@@ -1,12 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { stripeBillingRevokeEnabled } from './flags.js';
 
 /**
  * Checkout stays 501 until Stripe can verify webhooks and at least one signed
- * event has been claimed in stripe_billing_events. Dark unless
- * STRIPE_BILLING_REVOKE_ENABLED is exactly `true`.
+ * event has written a plan tier (`family_plan_updated` from Stripe). A claimed
+ * event that did not grant — refund-ready, blocked, unknown family — does not
+ * open checkout. Dark unless STRIPE_BILLING_REVOKE_ENABLED is exactly `true`.
  */
 export async function billingWebhookReady(
   database: Database,
@@ -16,8 +17,14 @@ export async function billingWebhookReady(
   const secret = env.STRIPE_WEBHOOK_SECRET?.trim();
   if (!secret) return { ready: false, reason: 'secret_unset' };
   const rows = await database
-    .select({ id: schema.stripeBillingEvents.id })
-    .from(schema.stripeBillingEvents)
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'family_plan_updated'),
+        sql`${schema.auditLog.after}->>'source' = 'stripe'`,
+      ),
+    )
     .limit(1);
   if (rows.length === 0) return { ready: false, reason: 'no_applied_event' };
   return { ready: true };
@@ -30,6 +37,8 @@ export interface BillingTierMismatchCounts {
   paidDespiteRevoke: number;
   /** plan_tier is paid and there is no Stripe customer. */
   paidWithoutCustomer: number;
+  /** A refund or dispute could not be tied to the live subscription, and the tier is still paid. */
+  revokeUnresolved: number;
 }
 
 export type ReconcileBillingTiersResult =
@@ -86,6 +95,7 @@ export async function reconcileBillingTiers(
     freeDespitePaid: 0,
     paidDespiteRevoke: 0,
     paidWithoutCustomer: 0,
+    revokeUnresolved: 0,
   };
   for (const row of rowsOf(result)) {
     const paidTier = row.plan_tier === 'plus' || row.plan_tier === 'family';
@@ -94,12 +104,35 @@ export async function reconcileBillingTiers(
     if (paidTier && row.last_stripe_tier === 'free') mismatches.paidDespiteRevoke += 1;
     if (paidTier && !row.stripe_customer_id) mismatches.paidWithoutCustomer += 1;
   }
+  const unresolved = await database.execute(sql`
+    select count(*)::int as n
+    from families f
+    where f.plan_tier in ('plus', 'family')
+      and exists (
+        select 1 from audit_log a
+        where a.family_id = f.id
+          and a.action_taken = 'billing_revoke_unresolved'
+          and not exists (
+            select 1 from audit_log later
+            where later.family_id = f.id
+              and later.action_taken = 'family_plan_updated'
+              and later.after->>'source' = 'stripe'
+              and later.after->>'planTier' = 'free'
+              and later.occurred_at >= a.occurred_at
+          )
+      )
+  `);
+  const unresolvedRow = rowsOf(unresolved)[0] as { n?: number } | undefined;
+  mismatches.revokeUnresolved = Number(unresolvedRow?.n ?? 0);
 
   const total =
-    mismatches.freeDespitePaid + mismatches.paidDespiteRevoke + mismatches.paidWithoutCustomer;
+    mismatches.freeDespitePaid +
+    mismatches.paidDespiteRevoke +
+    mismatches.paidWithoutCustomer +
+    mismatches.revokeUnresolved;
   if (total === 0) return { status: 'checked', mismatches, opsAlert: 'not_needed' };
 
-  const text = `billing: plan_tier disagrees with Stripe. free_despite_paid=${mismatches.freeDespitePaid} paid_despite_revoke=${mismatches.paidDespiteRevoke} paid_without_customer=${mismatches.paidWithoutCustomer}.`;
+  const text = `billing: plan_tier disagrees with Stripe. free_despite_paid=${mismatches.freeDespitePaid} paid_despite_revoke=${mismatches.paidDespiteRevoke} paid_without_customer=${mismatches.paidWithoutCustomer} revoke_unresolved=${mismatches.revokeUnresolved}.`;
   const opsAlert = await postOpsSlack(text, fetchImpl);
   console.warn('billing reconcile: tier mismatch', { ...mismatches, opsAlert });
   return { status: 'checked', mismatches, opsAlert };

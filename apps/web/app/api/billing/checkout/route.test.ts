@@ -13,6 +13,9 @@ vi.mock('~/lib/db', () => ({
     select: () => ({
       from: () => ({
         limit: async () => dbState.events,
+        where: () => ({
+          limit: async () => dbState.events,
+        }),
       }),
     }),
   }),

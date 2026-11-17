@@ -429,10 +429,11 @@ export type ChargeRevokeDecision =
     };
 
 /**
- * Full refunds and disputes drop the tier. A partial refund does not. A
- * subscription that is still active, trialing, or past_due keeps the tier.
- * When the payload does not show a live subscription, a full refund or a
- * dispute revokes — a cancelled subscription must not leave Max in place.
+ * Candidate only. A partial refund keeps the tier. A subscription that is
+ * still active, trialing, or past_due keeps the tier. A full refund or a
+ * dispute is a revoke candidate. applyChargeRevoke does not drop a family
+ * that still has a subscription unless this charge is tied to that
+ * subscription and it is not live. An unexpanded invoice id is not enough.
  */
 export function chargeRevokeDecision(payload: unknown): ChargeRevokeDecision {
   if (!isRecord(payload)) return { action: 'ignore' };
@@ -464,10 +465,32 @@ export function chargeRevokeDecision(payload: unknown): ChargeRevokeDecision {
 
 /** Subscription id on a charge or dispute, when Stripe expanded it. */
 export function chargeSubscriptionId(payload: unknown): string | null {
-  if (!isRecord(payload)) return null;
+  return chargeLinkFromStripeEvent(payload).subscriptionId;
+}
+
+/**
+ * What a charge or dispute payload itself proves. `chargeId` is present on
+ * both shapes (the charge's id, or the dispute's `charge`). Subscription id
+ * and status are set only when Stripe expanded them — an invoice id string
+ * does not identify a subscription.
+ */
+export function chargeLinkFromStripeEvent(payload: unknown): {
+  chargeId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+} {
+  if (!isRecord(payload)) return { chargeId: null, subscriptionId: null, subscriptionStatus: null };
+  const type = readString(payload.type);
   const object = isRecord(payload.data) ? payload.data.object : undefined;
-  if (!isRecord(object)) return null;
-  return nestedSubscription(object).id;
+  if (!isRecord(object)) return { chargeId: null, subscriptionId: null, subscriptionStatus: null };
+  const nested = nestedSubscription(object);
+  const chargeId =
+    type?.startsWith('charge.dispute.') === true ? readId(object.charge) : readString(object.id);
+  return {
+    chargeId,
+    subscriptionId: nested.id,
+    subscriptionStatus: nested.status,
+  };
 }
 
 function isFullRefund(object: Record<string, unknown>): boolean {
