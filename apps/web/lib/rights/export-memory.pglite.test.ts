@@ -93,6 +93,8 @@ function unreviewedAfterFreeze(entries: Record<string, string>): string[] {
  */
 const NOT_IN_EXPORT: Record<string, string> = {
   family_sweep_marks: 'scheduling metadata, no family content',
+  family_signup_help_seasons:
+    'seasonal Browser Use attempt counts (season key and a number); no child, URL, or registration content',
   capability_denials:
     'a capability key and two message ids; each no and correction is an exported audit row',
   family_memory_aliases: 'derived search tokens of facts already exported',

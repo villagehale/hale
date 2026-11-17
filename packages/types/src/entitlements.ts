@@ -15,12 +15,14 @@
  * | activity web searches per `find_activities` call | 3 | 8 | 3 |
  * | `find_activities` calls per inbound turn | 2 | 4 | 2 |
  * | concurrent live watches (`watched_spots` + `family_watch_subscriptions`) | 8 | 20 | uncapped (`null`) |
- * | `signup_help` (Browser Use registration) | none | yes | not gated by plan |
+ * | `signup_help` (Browser Use registration) | 2 per registration season | unlimited | not gated by plan |
  * | `priority_support` | no | yes | no |
  *
- * Decision: Plus has no Browser Use signup help when the flag is on (none, not a
- * lower allowance). Connector / Playwright authorized signup stays on every
- * tier. Medical, off-domain, and intake search budgets are not in this table.
+ * A registration season is winter (Oct 1–Jan 31), spring (Feb–Mar), summer
+ * (Apr–Jun) or fall (Jul–Sep) in the family's timezone — the windows city rec
+ * typically opens, not calendar quarters. Connector / Playwright authorized
+ * signup stays on every tier. Medical, off-domain, and intake search budgets
+ * are not in this table.
  *
  * Limit-hit replies are model-composed from these numbers. No parent-visible
  * plan name, upgrade prompt, or template copy.
@@ -42,10 +44,11 @@ export interface FamilyEntitlements {
   /** Concurrent live watches; `null` means no family cap. */
   liveWatches: number | null;
   /**
-   * Browser Use registration assist. When the flag is off this is `true` for
-   * every tier so `BROWSER_USE_SIGNUP_ENABLED` remains the only gate.
+   * Browser Use registration attempts allowed per registration season.
+   * `null` means unlimited (Max, and every tier while the flag is off).
+   * Plus and Free: 2. `BROWSER_USE_SIGNUP_ENABLED` remains the engine gate.
    */
-  signupHelp: boolean;
+  signupHelpPerSeason: number | null;
   /** Max families sort first in ops and are marked on the daily #ops post. */
   prioritySupport: boolean;
 }
@@ -55,7 +58,7 @@ export const TODAY_ENTITLEMENTS: FamilyEntitlements = {
   activitySearchesPerCall: 3,
   activityCallsPerTurn: 2,
   liveWatches: null,
-  signupHelp: true,
+  signupHelpPerSeason: null,
   prioritySupport: false,
 };
 
@@ -64,7 +67,7 @@ export const PLUS_ENTITLEMENTS: FamilyEntitlements = {
   activitySearchesPerCall: 3,
   activityCallsPerTurn: 2,
   liveWatches: 8,
-  signupHelp: false,
+  signupHelpPerSeason: 2,
   prioritySupport: false,
 };
 
@@ -73,7 +76,7 @@ export const MAX_ENTITLEMENTS: FamilyEntitlements = {
   activitySearchesPerCall: 8,
   activityCallsPerTurn: 4,
   liveWatches: 20,
-  signupHelp: true,
+  signupHelpPerSeason: null,
   prioritySupport: true,
 };
 

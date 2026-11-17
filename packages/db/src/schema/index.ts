@@ -97,6 +97,7 @@ export * from './group-reminders.js';
 export * from './preview-captured-sends.js';
 export * from './preview-captured-linq-calls.js';
 export * from './family-sweep-marks.js';
+export * from './family-signup-help-seasons.js';
 export * from './group-lists.js';
 export * from './shared-group-lists.js';
 export * from './secret-santa.js';

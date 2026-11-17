@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import type { PlanTier } from '@hale/types';
+import { type PlanTier, registrationSeasonOf } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
@@ -54,10 +54,16 @@ import { inspectRegistrationPage } from './inspect';
 import { LINK_SPEND_CEILING_CENTS } from './link/client';
 import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
 import {
+  type SignupHelpSeasonFacts,
   type SignupOutcomeFacts,
   type SignupOutcomeWriter,
   createSignupOutcomeWriter,
 } from './outcome-reply';
+import {
+  claimSignupHelpAttempt,
+  signupHelpAttempted,
+  signupHelpSeasonFacts,
+} from './signup-help-season';
 import { type InfoPackSlot, signupInfoPack } from './pack';
 import { namesFacts } from './parent-quote';
 import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
@@ -129,6 +135,11 @@ export interface SignupRunDeps {
     familyId: string,
     cost: { amountUsd: number; category: string },
   ) => Promise<{ ok: boolean; reason: string }>;
+  /**
+   * When Browser Use was skipped because the seasonal allowance is spent, the
+   * numbers the reply model restates. Production sets this internally.
+   */
+  signupHelpSeason?: SignupHelpSeasonFacts | null;
 }
 
 export interface SignupRunResult {
@@ -285,6 +296,7 @@ async function runOneShotAsk(
   place: AskPlace,
   namesAnother: boolean,
 ): Promise<SignupRunResult | 'unrelated'> {
+  let reportDeps = deps;
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
@@ -337,7 +349,7 @@ async function runOneShotAsk(
   }
 
   if (reading.verdict === 'unclear' || !binds) {
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'clarify',
       reason: null,
@@ -349,7 +361,7 @@ async function runOneShotAsk(
   }
   if (reading.verdict === 'decline') {
     await markFromPending(database, input, offer.id, null);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'declined',
       reason: null,
@@ -366,7 +378,7 @@ async function runOneShotAsk(
   });
   if (!decision.ok) {
     await markFromPending(database, input, offer.id, null);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: decision.reason,
       reason: decision.reason,
@@ -384,7 +396,7 @@ async function runOneShotAsk(
   });
   if (!identity) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'missing_detail',
       reason: 'missing_detail',
@@ -395,7 +407,7 @@ async function runOneShotAsk(
   }
   if (!allowed.ok) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'url_refused',
       reason: 'url_refused',
@@ -409,7 +421,7 @@ async function runOneShotAsk(
   const session = offer.sessions.find((item) => item.id === decision.sessionId);
   if (!session) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'session_not_offered',
       reason: 'session_not_offered',
@@ -431,7 +443,7 @@ async function runOneShotAsk(
   });
   if (!consent.ok) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: consent.reason,
       reason: consent.reason,
@@ -450,7 +462,7 @@ async function runOneShotAsk(
     now: input.now,
   });
   if (!claimed) {
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'already_in_progress',
       reason: 'already_in_progress',
@@ -476,8 +488,29 @@ async function runOneShotAsk(
       .where(eq(schema.families.id, input.familyId))
       .limit(1);
     const planTier: PlanTier = family?.planTier ?? 'free';
-    if (entitlementsForFamily(planTier).signupHelp) {
-      return runBrowserUseBranch(database, input, deps, {
+    const cap = entitlementsForFamily(planTier).signupHelpPerSeason;
+    const timeZone = await parentTimezone(database, input.parentUserId);
+    const season = registrationSeasonOf(input.now, timeZone);
+    let atSeasonCap = false;
+    if (cap !== null) {
+      const used = await signupHelpAttempted(database, {
+        familyId: input.familyId,
+        seasonKey: season.key,
+      });
+      if (used >= cap) {
+        atSeasonCap = true;
+        reportDeps = {
+          ...deps,
+          signupHelpSeason: signupHelpSeasonFacts({ used, cap, resetsOn: season.resetsOn }),
+        };
+        console.info(
+          { outcome: 'signup_help_season_spent', used, cap, resetsOn: season.resetsOn },
+          'authorized signup: Browser Use seasonal allowance spent, falling through',
+        );
+      }
+    }
+    if (!atSeasonCap) {
+      const result = await runBrowserUseBranch(database, input, deps, {
         door,
         offerId: offer.id,
         href: allowed.href,
@@ -487,12 +520,25 @@ async function runOneShotAsk(
         session,
         fieldsAllowed: consent.fieldsAllowed,
         approvedPriceCents: offer.approvedPriceCents,
+        seasonCap: cap,
+        seasonKey: season.key,
+        resetsOn: season.resetsOn,
       });
+      if (result.skipped === 'season_cap') {
+        reportDeps = { ...deps, signupHelpSeason: result.signupHelpSeason };
+        console.info(
+          {
+            outcome: 'signup_help_season_spent',
+            used: result.signupHelpSeason.used,
+            cap: result.signupHelpSeason.cap,
+            resetsOn: result.signupHelpSeason.resetsOn,
+          },
+          'authorized signup: Browser Use seasonal allowance spent, falling through',
+        );
+      } else {
+        return result;
+      }
     }
-    console.info(
-      { outcome: 'signup_help_not_on_plan', planTier },
-      'authorized signup: Browser Use skipped for this plan, falling through',
-    );
   }
 
   if (route.kind === 'connector') {
@@ -503,7 +549,7 @@ async function runOneShotAsk(
     });
     if (!slots.ok) {
       await finish(database, input, offer.id, 'handed_back');
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: slots.reason,
         reason: slots.reason,
@@ -522,7 +568,7 @@ async function runOneShotAsk(
       });
       if (!booked.ok) {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: booked.reason,
           reason: booked.reason,
@@ -540,7 +586,7 @@ async function runOneShotAsk(
         connector: route.connector.id,
         host,
       });
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: 'completed',
         reason: null,
@@ -556,7 +602,7 @@ async function runOneShotAsk(
         { familyId: input.familyId, offerId: offer.id, connector: route.connector.id },
         'authorized signup: connector stopped',
       );
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: 'connector_failed',
         reason: 'connector_failed',
@@ -570,7 +616,7 @@ async function runOneShotAsk(
   const acquired = await resolveBrowser(deps);
   if (!acquired.browser) {
     await finish(database, input, offer.id, 'handed_back');
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'browser_unavailable',
       reason: 'browser_unavailable',
@@ -608,7 +654,7 @@ async function runOneShotAsk(
       });
       if (inspection.action === 'stop') {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: inspection.reason,
           reason: inspection.reason,
@@ -625,7 +671,7 @@ async function runOneShotAsk(
         )
       ) {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: 'consent_short',
           reason: 'consent_short',
@@ -645,7 +691,7 @@ async function runOneShotAsk(
         const after = await page.snapshot();
         if (!after.confirmed) {
           await finish(database, input, offer.id, 'handed_back');
-          return replyFor(database, input, deps, door, {
+          return replyFor(database, input, reportDeps, door, {
             offerId: offer.id,
             outcome: 'unconfirmed',
             reason: 'unconfirmed',
@@ -662,7 +708,7 @@ async function runOneShotAsk(
           fieldsFilled: filled,
           host,
         });
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: 'completed',
           reason: null,
@@ -676,7 +722,7 @@ async function runOneShotAsk(
       await page.continue();
     }
     await finish(database, input, offer.id, 'handed_back');
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'unconfirmed',
       reason: 'unconfirmed',
@@ -692,7 +738,7 @@ async function runOneShotAsk(
       { familyId: input.familyId, offerId: offer.id, reason },
       'authorized signup: browser stopped',
     );
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: reason,
       reason,
@@ -745,6 +791,10 @@ function browserUseAbsent(
  * page comes back as a handoff. Every outcome ends through `replyFor`, so the
  * parent hears it in the reply model's words, or the non-send is named.
  */
+type BrowserUseBranchResult =
+  | (SignupRunResult & { skipped?: undefined })
+  | { skipped: 'season_cap'; signupHelpSeason: SignupHelpSeasonFacts };
+
 async function runBrowserUseBranch(
   database: Database,
   input: SignupRunInput,
@@ -765,8 +815,11 @@ async function runBrowserUseBranch(
     };
     fieldsAllowed: readonly ShareableSignupField[];
     approvedPriceCents: number | null;
+    seasonCap: number | null;
+    seasonKey: string;
+    resetsOn: string;
   },
-): Promise<SignupRunResult> {
+): Promise<BrowserUseBranchResult> {
   let allowanceHeld = false;
   // A throw that does not say which session it had created may have started one:
   // its hold stays until a real cost replaces it.
@@ -899,6 +952,31 @@ async function runBrowserUseBranch(
     return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
   }
   allowanceHeld = true;
+
+  if (ctx.seasonCap !== null) {
+    const claimed = await claimSignupHelpAttempt(database, {
+      familyId: input.familyId,
+      seasonKey: ctx.seasonKey,
+      cap: ctx.seasonCap,
+      now: input.now,
+    });
+    if (!claimed.ok) {
+      await recordBrowserUseCost(database, {
+        offerId: ctx.offerId,
+        familyId: input.familyId,
+        sessionCostUsd: '0',
+        now: input.now,
+      });
+      return {
+        skipped: 'season_cap',
+        signupHelpSeason: signupHelpSeasonFacts({
+          used: claimed.attempted,
+          cap: ctx.seasonCap,
+          resetsOn: ctx.resetsOn,
+        }),
+      };
+    }
+  }
 
   let result: BrowserUseSignupResult;
   try {
@@ -1059,11 +1137,21 @@ function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionI
   return offer.sessions.find((item) => item.id === sessionId)?.label ?? '';
 }
 
+async function parentTimezone(database: Database, parentUserId: string): Promise<string> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, parentUserId))
+    .limit(1);
+  return row?.timezone ?? 'UTC';
+}
+
 interface ReplyFacts {
   offerId: string;
   outcome: string;
   reason: SignupStopReason | BrowserUseHandoff['detail'] | null;
   link: string;
+  signupHelpSeason?: SignupHelpSeasonFacts;
   /** Browser Use only. Elsewhere a set link is the registration page. */
   linkIs?: SignupOutcomeFacts['linkIs'];
   /** Browser Use live view only. */
@@ -1255,6 +1343,7 @@ async function replyFor(
         : rawFacts.reason,
   };
   const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
+  const signupHelpSeason = facts.signupHelpSeason ?? deps.signupHelpSeason;
   // A held turn sends nothing, so the pack and the live view never go to the model.
   const line: string | null =
     door.kind === 'held'
@@ -1289,6 +1378,7 @@ async function replyFor(
             familyId: input.familyId,
             parentUserId: input.parentUserId,
           }),
+          ...(signupHelpSeason ? { signupHelpSeason } : {}),
         });
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
