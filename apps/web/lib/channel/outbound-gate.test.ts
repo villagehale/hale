@@ -13,6 +13,7 @@ import {
   proactiveFloorOpensAt,
   proactiveQuietNow,
 } from './outbound-gate.js';
+import { PROACTIVE_ROUTING } from './proactive/flag.js';
 
 /**
  * VIL-239 · M4 — the F14 outbound chokepoint.
@@ -695,6 +696,8 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
     expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
     expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
+    expect(holdStatus('opt_out_unread')).toBe('suppressed_consent');
+    expect(holdStatus('sends_paused')).toBe('suppressed_pref');
   });
 
   /**
@@ -732,6 +735,55 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
       const source = readFileSync(join(web, file), 'utf8');
       expect(source, `${file} must import holdStatus`).toContain('holdStatus');
     }
+  });
+});
+
+describe('PROACTIVE_SENDS_PAUSED', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const request = (kind: ProactiveSendKind) => ({
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    kind,
+    now: MIDDAY,
+    urgent: true,
+  });
+
+  it('refuses every proactive kind, including immediate, and reads no parent', async () => {
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    const fake = ports();
+    for (const kind of Object.keys(PROACTIVE_ROUTING) as ProactiveSendKind[]) {
+      await expect(assertProactiveSendAllowed(request(kind), fake.ports)).resolves.toEqual({
+        allowed: false,
+        reason: 'sends_paused',
+      });
+    }
+    expect(fake.calls).toEqual([]);
+    expect(Object.keys(PROACTIVE_ROUTING)).toEqual(
+      expect.arrayContaining([
+        'registration_sequence',
+        'spot_open_instant',
+        'autonomy_armed',
+        'autonomy_acted',
+      ]),
+    );
+  });
+
+  it('stays open unless the value is exactly true', async () => {
+    const nudge = request('nudge');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true\n');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'TRUE');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
   });
 });
 

@@ -240,6 +240,9 @@ export const FLAGS = [
     onVariant: 'enforce',
     offVariant: 'off',
   },
+  exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
+  exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
+  exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   {
     key: 'proactive-cadence',
     env: 'PROACTIVE_CADENCE',

@@ -2,9 +2,9 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { dutyOverviewForWeeklyBubble } from '~/lib/channel/coparent/duty/asks';
 import { absorbDutyLine } from '~/lib/channel/coparent/duty/copy';
@@ -398,7 +398,13 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     queued: 0,
     shadowUnqueued: 0,
     failed: 0,
-    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      opt_out_unread: 0,
+      no_watch_consent: 0,
+      quiet_hours: 0,
+      sends_paused: 0,
+    },
     skips: {},
     dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
       DateCheckOutcome,

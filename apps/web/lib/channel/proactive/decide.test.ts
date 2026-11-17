@@ -187,4 +187,18 @@ describe('decideForFamily', () => {
     expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-PARENT-TEXT');
     errors.mockRestore();
   });
+
+  it('names a billing failure so the review can stop the rest of the run', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fail = () => {
+      const err = new Error('Your credit balance is too low to access the Anthropic API.');
+      (err as { status?: number }).status = 400;
+      throw err;
+    };
+    const result = await decideForFamily({
+      snapshot: { ...SNAPSHOT, candidates: [CANDIDATE] },
+      client: { messages: { create: fail, stream: fail } } as never,
+    });
+    expect(result).toEqual({ decision: null, skipped: 'model_failed', failure: 'billing' });
+  });
 });

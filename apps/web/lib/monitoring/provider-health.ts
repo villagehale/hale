@@ -69,7 +69,8 @@ export type SendWindow =
   | 'memory_inference'
   | 'registration_verify'
   | 'first_reply_recovery'
-  | 'opt_out_recovery';
+  | 'opt_out_recovery'
+  | 'proactive_review';
 
 /** Substrings that make a 4xx a BILLING problem rather than a bad request. Matched
  * against the provider's own message — Anthropic reports an exhausted balance as a
@@ -331,6 +332,7 @@ const WINDOW_HEADLINE: Record<SendWindow, string> = {
   registration_verify: "this week's registration re-verify sweep did not run.",
   first_reply_recovery: 'new parents whose first text got no reply are still waiting for one.',
   opt_out_recovery: 'held opt-out reads are waiting to be read again.',
+  proactive_review: "this hour's proactive review did not run.",
 };
 
 const WINDOW_LABEL: Record<SendWindow, string> = {
@@ -339,6 +341,7 @@ const WINDOW_LABEL: Record<SendWindow, string> = {
   registration_verify: 'registration re-verify',
   first_reply_recovery: 'first-reply recovery',
   opt_out_recovery: 'opt-out recovery',
+  proactive_review: 'proactive review',
 };
 
 const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {

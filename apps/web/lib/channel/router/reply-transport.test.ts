@@ -107,4 +107,31 @@ describe('router reply transport — a send key', () => {
     const expected = createHash('sha256').update('turn-reply:in-1:1').digest('hex');
     expect(bodies.map((body) => body.message.idempotency_key)).toEqual([expected, expected]);
   });
+
+  it('still sends a reply while cadence is off and proactive sends are paused', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    const bodies: Array<{ message: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ message: { id: 'msg-out-paused' } }, { status: 201 });
+    });
+    const transport = createReplyTransport({ phone: { send: vi.fn() } });
+
+    const sent = await transport.send({
+      route: {
+        channel: 'imessage',
+        to: '+12025559876',
+        chatId: 'chat-1',
+        replyToMessageId: 'msg-in-paused',
+      },
+      body: 'Bring a towel.',
+      sendKey: 'turn-reply:in-paused:1',
+    });
+
+    expect(sent).toEqual({ providerMessageId: 'msg-out-paused', channel: 'imessage' });
+    const expected = createHash('sha256').update('turn-reply:in-paused:1').digest('hex');
+    expect(bodies.map((body) => body.message.idempotency_key)).toEqual([expected]);
+  });
 });
