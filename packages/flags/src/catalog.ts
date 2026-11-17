@@ -401,3 +401,102 @@ export function envEnabled(
   if (!on || list.size === 0) return false;
   return familyId === undefined || list.has(familyId);
 }
+
+export type FlagValueFault = 'wrong-case' | 'whitespace';
+
+/** A catalog env value that looks like the expected word and is not that word. */
+export interface InexactFlagValue {
+  key: string;
+  env: string;
+  raw: string;
+  /** The catalog word the value resembles once case and surrounding whitespace are ignored. */
+  expected: string;
+  faults: readonly FlagValueFault[];
+}
+
+/** Words a parser compares as text. Trimmed parsers still require the case. */
+function exactWords(spec: FlagSpec): readonly string[] {
+  switch (spec.parser) {
+    case 'exact-true':
+    case 'trimmed-true':
+    case 'inverted-disabled':
+      return ['true'];
+    case 'exact-on':
+    case 'trimmed-on':
+      return ['on'];
+    case 'not-exact-false':
+    case 'trimmed-not-false':
+      return ['false'];
+    case 'trimmed-not-off':
+      return ['off'];
+    case 'multivariate': {
+      const words = [...(spec.variants ?? [])];
+      // `=false` is the kill switch on a multivariate that has an off variant.
+      if (spec.offVariant !== undefined && !words.includes('false')) words.push('false');
+      return words;
+    }
+    default: {
+      const exhaustive: never = spec.parser;
+      return exhaustive;
+    }
+  }
+}
+
+/**
+ * Whether the parser treats `raw` as `word`. This mirrors {@link parseEnvBoolean}
+ * and {@link envVariant}: exact parsers demand the bytes, trimmed parsers accept
+ * surrounding whitespace, and a multivariate off variant (plus `false`) is read
+ * trimmed. A fall-through to the default is not acceptance.
+ */
+function parserAcceptsWord(spec: FlagSpec, raw: string, word: string): boolean {
+  const trimmed = raw.trim();
+  switch (spec.parser) {
+    case 'exact-true':
+    case 'inverted-disabled':
+      return word === 'true' && raw === 'true';
+    case 'trimmed-true':
+      return word === 'true' && trimmed === 'true';
+    case 'exact-on':
+      return word === 'on' && raw === 'on';
+    case 'trimmed-on':
+      return word === 'on' && trimmed === 'on';
+    case 'not-exact-false':
+      return word === 'false' && raw === 'false';
+    case 'trimmed-not-false':
+      return word === 'false' && trimmed === 'false';
+    case 'trimmed-not-off':
+      return word === 'off' && trimmed === 'off';
+    case 'multivariate':
+      if (raw === word) return true;
+      if (spec.offVariant !== undefined && word === spec.offVariant && trimmed === word) {
+        return true;
+      }
+      if (spec.offVariant !== undefined && word === 'false' && trimmed === 'false') return true;
+      return false;
+    default: {
+      const exhaustive: never = spec.parser;
+      return exhaustive;
+    }
+  }
+}
+
+/**
+ * Reports a flag value that is the word the catalog expects, but in the wrong
+ * case or with whitespace, including a trailing newline (`'True'`, `'true\n'`).
+ * Trimmed parsers already accept surrounding whitespace, so only case is
+ * reported for those. Nothing here changes what a flag evaluates to.
+ */
+export function reportInexactFlagValue(
+  spec: FlagSpec,
+  raw: string | undefined,
+): InexactFlagValue | null {
+  if (raw === undefined) return null;
+  const folded = raw.trim().toLowerCase();
+  const expected = exactWords(spec).find((word) => word.toLowerCase() === folded);
+  if (!expected || parserAcceptsWord(spec, raw, expected)) return null;
+  const faults: FlagValueFault[] = [];
+  if (raw.trim() !== raw) faults.push('whitespace');
+  if (raw.trim() !== expected) faults.push('wrong-case');
+  if (faults.length === 0) return null;
+  return { key: spec.key, env: spec.env, raw, expected, faults };
+}
