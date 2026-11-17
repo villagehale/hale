@@ -26,7 +26,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
-import { householdTimezone } from '~/lib/channel/household-timezone';
+import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -38,6 +38,7 @@ import {
   safeGivenName,
 } from '~/lib/channel/identity/parent-call-name';
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
@@ -96,6 +97,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import { type IntakeAnswerComposer, OWED_LINES } from './answer';
+import { acceptCalendarDate } from './calendar-date';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
@@ -111,7 +113,6 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { acceptCalendarDate } from './calendar-date';
 import {
   type PostalContext,
   crisisRegionForPlace,
@@ -138,6 +139,7 @@ import {
 } from './friend-voice';
 import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
+import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
@@ -162,7 +164,7 @@ import {
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
-import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
+import { type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import { writeScheduleAdds } from './schedule-adds';
@@ -183,6 +185,13 @@ import {
   transcriptHasOutbound,
 } from './session';
 import type { SignupStepReader } from './signup-step';
+import {
+  type IntakeLocation,
+  currencyOfPlace,
+  intakeLocationFromPlace,
+  intakeStatedPlaceEnabled,
+  resolveStatedPlace,
+} from './stated-place';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -243,6 +252,17 @@ export interface IntakeDeps {
    * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * Reads a photo sent during intake, including HEIC. Absent is named
+   * `not_configured` when the flag is on and the turn has an image: the
+   * friend voice is told the image was unread, and nothing is invented.
+   */
+  readIntakePhoto?: (input: {
+    media: readonly InboundMediaPart[];
+    parentWords: string;
+    now: Date;
+    timeZone: string | null;
+  }) => Promise<NonNullable<FriendVoiceInput['photo']>>;
   /**
    * #868 · the model reads an opt-out from any wording. Read after the carrier STOP
    * keyword (which still revokes first) and before any onboarding or group turn.
@@ -449,6 +469,8 @@ export interface Inbound {
    * there: a caller written before the provider could answer a keyword means "it
    * answered nothing", which is exactly what absent resolves to. */
   providerAnsweredKeyword?: ProviderKeyword | null;
+  /** Linq parts that were not text. Absent on a text-only turn. */
+  media?: readonly InboundMediaPart[];
 }
 
 /** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
@@ -621,11 +643,7 @@ async function runIntakeTurn(
   // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
   // unread text) from a number that has not stopped intake: their draw is this turn's reply,
   // and the kid-oriented greeting does not run on it. Intake can start on a later turn.
-  if (
-    inbound.isGroup !== true &&
-    turnIntent === 'none' &&
-    session?.state !== 'stopped'
-  ) {
+  if (inbound.isGroup !== true && turnIntent === 'none' && session?.state !== 'stopped') {
     const owed = await owedGuestDraws(database, phoneHash);
     if (owed.length > 0) {
       return claimedTurn(database, inbound, now, async () => {
@@ -1582,6 +1600,34 @@ function friendAddress(ctx: SendContext): 'tu' | 'vous' {
   return ctx.pipe.isGroup ? 'vous' : 'tu';
 }
 
+async function intakePhotoExtra(
+  deps: IntakeDeps,
+  inbound: Inbound,
+  timeZone: string | null,
+): Promise<{ photo: NonNullable<FriendVoiceInput['photo']> } | Record<string, never>> {
+  if (!intakePhotoReadEnabled() || inbound.isGroup) return {};
+  if (!inbound.media?.some((part) => part.kind === 'image')) return {};
+  if (!deps.readIntakePhoto) {
+    console.info({ skipped: 'not_configured' }, 'intake photo: reader absent');
+    return { photo: { read: 'unread' } };
+  }
+  return {
+    photo: await deps.readIntakePhoto({
+      media: inbound.media,
+      parentWords: inbound.body,
+      now: inbound.receivedAt,
+      timeZone,
+    }),
+  };
+}
+
+function placeCurrency(
+  place: Parameters<typeof currencyOfPlace>[0],
+): { currency: 'CAD' | 'USD' } | Record<string, never> {
+  const currency = currencyOfPlace(place);
+  return currency ? { currency } : {};
+}
+
 function friendFields(
   step: FriendStep,
   language: ReplyLanguage | null,
@@ -2021,6 +2067,7 @@ async function friendOnboardingTurn(
     card = located.accepted;
   }
   const priorGiven = session.firstTouch?.given ?? null;
+  const photo = await intakePhotoExtra(deps, inbound, place?.timezone ?? null);
   // Pre-family: the map, the schedule and the co-parent ask come after provisioning.
   const checklist: OnboardingChecklist = {
     postal: placeSettled({ place, given: priorGiven }),
@@ -2060,6 +2107,8 @@ async function friendOnboardingTurn(
         introduce: opening && !transcriptHasOutbound(transcript),
         parentWords: inbound.body,
         placeLabel: place?.city || place?.areaCoarse || null,
+        ...placeCurrency(place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2077,8 +2126,9 @@ async function friendOnboardingTurn(
       ...(opening ? { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS } : {}),
       // Place and an age provision this turn: the map and the name ask are the
       // reply, written next. This draft is read for its facts only.
-      replyDiscardedWhen: (capture) => {
+      replyDiscardedWhen: async (capture) => {
         const next = storedFromCapture(prior, capture);
+        next.place = await withStatedPlace(capture, next.place);
         next.collectedChildren = fillAgesFromDates(next.collectedChildren, now);
         const kids = withKnownAges(next.collectedChildren, now);
         const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
@@ -2090,6 +2140,7 @@ async function friendOnboardingTurn(
   );
   language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
+  stored.place = await withStatedPlace(spoken.capture, stored.place);
   stored.collectedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
@@ -2481,6 +2532,7 @@ async function friendColdTurn(
   }
   // Their Saturday, on their clock: the zone signup wrote from their postal code.
   const timeZone = await householdTimezone(database, familyId);
+  const photo = await intakePhotoExtra(deps, inbound, knownTimezone(timeZone));
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
   let alreadyRecorded: {
@@ -2495,6 +2547,8 @@ async function friendColdTurn(
         parentWords: inbound.body,
         placeLabel:
           session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        ...placeCurrency(session.firstTouch?.place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2557,6 +2611,8 @@ async function friendColdTurn(
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session.firstTouch?.place),
+      ...photo,
       agesLabel: summarizeChildren(session.collected.children),
       ageMonths: session.collected.children.flatMap((child) =>
         child.ageMonths == null ? [] : [child.ageMonths],
@@ -2882,14 +2938,32 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
+    ...(place.countryCode ? { countryCode: place.countryCode } : {}),
+    ...(place.province ? { province: place.province } : {}),
+    ...(place.timezone ? { timezone: place.timezone } : {}),
+    ...(place.currency ? { currency: place.currency } : {}),
   };
+}
+
+async function withStatedPlace(
+  capture: OnboardingCapture,
+  place: FirstTouchPlace | null,
+): Promise<FirstTouchPlace | null> {
+  if (!intakeStatedPlaceEnabled()) return place;
+  const stated = await resolveStatedPlace({
+    postalCode: capture.postalCode,
+    city: capture.city,
+    country: capture.country ?? null,
+    region: capture.region ?? null,
+  });
+  return stated ?? place;
 }
 
 function intakeLocationFor(
   place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
 ): IntakeLocation | null {
-  if (place.kind !== 'postal') return null;
-  return parseIntakePostal(place.postalCode ?? place.areaCoarse);
+  return intakeLocationFromPlace(place);
 }
 
 /**
@@ -3220,7 +3294,7 @@ async function provision(
 
   deps.keepTyping?.();
   // No place, no find: nothing is searched and nothing nearby is said.
-  const radar = location
+  const radar = location?.timezone
     ? await deps.radar.compose({
         familyId,
         children: gathered.collected.children,
@@ -3231,7 +3305,12 @@ async function provision(
         ...(discoveryOn ? { activityMap: true } : {}),
       })
     : null;
-  if (!radar) console.info({ outcome: 'no_place' }, 'intake: provisioned without a place');
+  if (!radar) {
+    console.info(
+      { outcome: location ? 'zone_unknown' : 'no_place' },
+      location ? 'intake: provisioned without a zone' : 'intake: provisioned without a place',
+    );
+  }
   const placeLabel =
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
@@ -3278,8 +3357,8 @@ async function provision(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       checklist,
-      // Dated facts need the family's own clock; with no place there is none to read.
-      ...(location ? { now, timeZone: location.timezone } : {}),
+      // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
+      ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3941,6 +4020,7 @@ async function helpBody(
       parentWords,
       placeLabel:
         session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session?.firstTouch?.place),
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,

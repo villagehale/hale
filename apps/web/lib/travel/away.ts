@@ -1,10 +1,16 @@
 import { type Database, type Municipality, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { postalCountryOf } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
 import { matchPostalToken, placeOf } from '~/lib/channel/off-domain/place';
 import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+
+/** Exact `true`. A trailing newline stays off. Dark: {@link HOME_METRO} is unchanged. */
+export function familyHomeMetroEnabled(): boolean {
+  return isEnabled('family-home-metro');
+}
 
 /**
  * IS THIS DESTINATION SOMEWHERE THE FAMILY HAD TO TRAVEL TO?
@@ -33,6 +39,10 @@ import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
  * home IS the GTA — see {@link travelHomeOf}. Every other family is compared with its own
  * home city, so a Seattle family's Seattle hotel is not a trip and its flight to Toronto
  * is. A family whose home cannot be named has no "away" at all.
+ *
+ * {@link familyHomeMetroEnabled} (VIL-413, default off) does not use this list. Home is
+ * the one city on the family's row. A district a booking writes is away unless that
+ * city is the one they named.
  */
 
 /** The 21 whose registration calendars are verified — the same spellings the product
@@ -157,6 +167,9 @@ export async function travelHomeOf(family: {
   postalCode: string | null;
   areaCoarse: string | null;
 }): Promise<TravelHome> {
+  // The home is the city on this family's own row: the place they named, or the
+  // one city their code belongs to. Not the GTA list, and not a district of it.
+  if (familyHomeMetroEnabled()) return homeCityOf(family);
   const code = family.postalCode ?? family.areaCoarse;
   const postal = code === null ? null : matchPostalToken(code);
   const country = family.country?.trim() || null;
@@ -175,6 +188,25 @@ export async function travelHomeOf(family: {
   if (place.country === 'Canada' && inOntario && HOME_METRO_NORMALISED.has(normalise(place.city))) {
     return { status: 'gta' };
   }
+  return { status: 'city', city: place.city };
+}
+
+/**
+ * Home when {@link familyHomeMetroEnabled} is on. The city's spelling comes from the
+ * postal table, which accepts a stored city only when the parent (or the row) named
+ * one of its places. A code that covers more than one town, or a city the table does
+ * not have, is {@link placeOf}'s reason: no trip is judged, and nothing is guessed.
+ */
+async function homeCityOf(family: {
+  country: string | null;
+  province: string | null;
+  city: string | null;
+  postalCode: string | null;
+  areaCoarse: string | null;
+}): Promise<TravelHome> {
+  const place = await placeOf(family);
+  if (place.status === 'unknown') return place;
+  if (place.city === undefined) return { status: 'unknown', reason: 'unmapped' };
   return { status: 'city', city: place.city };
 }
 

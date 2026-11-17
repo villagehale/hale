@@ -10,7 +10,7 @@ import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { acceptCalendarDate } from './calendar-date';
-import { type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
+import { deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
@@ -18,6 +18,7 @@ import {
   type TranscriptEntry,
   linqContactCardClaimHeld,
 } from './session';
+import type { IntakeLocation } from './stated-place';
 
 /**
  * VIL-237 · M2 — provisioning a family from a text conversation. Mirrors
@@ -50,11 +51,11 @@ export const INTAKE_CONSENT_SCOPE = 'sms_intake_origination';
 /**
  * Where the family is, as established during intake — the same shape whichever of the
  * three routes established it: a full Canadian postal code, a bare FSA (D2), or a QR
- * venue whose OWN coarse area we know. Only the first carries a `postalCode`; all
- * three are Canadian by construction (the region gate runs in the caller), so
- * provisioning never guesses a country.
+ * venue whose OWN coarse area we know, or a city the parent named in the US or
+ * Canada. A city whose areas do not share one zone has a null timezone: the
+ * user keeps the column default, which means the clock was never set.
  */
-export type IntakeLocation = PostalContext;
+export type { IntakeLocation };
 
 /**
  * A child provisioning is allowed to write. The age is NON-NULL, and that is the
@@ -258,6 +259,8 @@ export async function provisionFromIntake(
             countryCode: location.countryCode,
             postalCode: location.postalCode,
             areaCoarse: location.areaCoarse,
+            ...(location.city ? { city: location.city } : {}),
+            ...(location.province ? { province: location.province } : {}),
           }
         : {}),
     };

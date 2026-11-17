@@ -240,6 +240,50 @@ export async function placeOf(family: {
   return { status: 'known', city: town, provinceOrState, country };
 }
 
+/** A city the postal table has in one country, spelled as the table spells it. */
+export interface NamedCity {
+  city: string;
+  provinceOrState: string | null;
+  /** Areas (FSA or ZIP5) the table assigns to this city, in this region when one was named. */
+  areaKeys: string[];
+}
+
+/**
+ * The table's city for a name the parent already gave as its own field, in the
+ * country they named. A name more than one province or state has is returned only
+ * when `region` picks one of them. Null when the table has no such place: nothing
+ * is guessed, and the other country's table is not consulted.
+ */
+export async function cityInCountry(
+  country: PostalCountry,
+  city: string,
+  region: string | null,
+): Promise<NamedCity | null> {
+  const name = stored(city);
+  if (name === null) return null;
+  const table = await TABLES[country]();
+  const cityAt = table.cities.findIndex((entry) => folded(entry) === folded(name));
+  const named = table.cities[cityAt];
+  if (named === undefined) return null;
+  const among = sharedAmong(table, cityAt);
+  const regionAt = among === undefined ? -1 : regionNamed(table, stored(region));
+  if (among !== undefined && !among.includes(regionAt)) return null;
+  const areaKeys: string[] = [];
+  const regions = new Set<number>();
+  for (let index = 0; index < table.codes.length; index++) {
+    if (table.cityOf[index] !== cityAt) continue;
+    const areaRegion = table.regionOf[index] ?? -1;
+    if (regionAt !== -1 && areaRegion !== regionAt) continue;
+    const code = table.codes[index];
+    if (code !== undefined) areaKeys.push(code);
+    if (areaRegion >= 0) regions.add(areaRegion);
+  }
+  const onlyRegion = regions.size === 1 ? [...regions][0] : undefined;
+  const provinceOrState =
+    regionAt >= 0 ? (table.regions[regionAt] ?? null) : (table.regions[onlyRegion ?? -1] ?? null);
+  return { city: named, provinceOrState, areaKeys };
+}
+
 /**
  * {@link placeOf}, with the province or state ALWAYS named where the postal area gives
  * one — the activity find's grain (VIL-590), where "Seattle, Washington" is a better
