@@ -8,7 +8,7 @@ import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import { type ParentClock, familyTzResolveEnabled, readParentClock } from './family-tz';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
-import { proactiveCadence } from './proactive/flag';
+import { proactiveCadence, proactiveSendsPaused } from './proactive/flag';
 import { quietStartForPhone } from './proactive/quiet';
 
 /**
@@ -167,6 +167,7 @@ export type ProactiveSendKind =
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
 export type ProactiveHoldReason =
+  | 'sends_paused'
   | 'not_enrolled'
   | 'opt_out_unread'
   | 'no_watch_consent'
@@ -194,13 +195,17 @@ export type DeliveryHoldReason = ProactiveHoldReason | 'coparent_ask';
 export type ProactiveHoldStatus =
   | 'suppressed_quiet_hours'
   | 'suppressed_cap'
-  | 'suppressed_consent';
+  | 'suppressed_consent'
+  | 'suppressed_pref';
 
 export function holdStatus(reason: ProactiveHoldReason): ProactiveHoldStatus {
   return HOLD_STATUS[reason];
 }
 
 const HOLD_STATUS: Record<ProactiveHoldReason, ProactiveHoldStatus> = {
+  // Already on the ledger enum. The verdict reason stays `sends_paused`; this is
+  // the receipt column, and a new enum value would need a migration.
+  sends_paused: 'suppressed_pref',
   quiet_hours: 'suppressed_quiet_hours',
   not_enrolled: 'suppressed_consent',
   opt_out_unread: 'suppressed_consent',
@@ -490,6 +495,12 @@ export async function assertProactiveSendAllowed(
   request: ProactiveSendRequest,
   ports: OutboundGatePorts,
 ): Promise<ProactiveSendVerdict> {
+  // VIL-705 · operator kill switch. Before enrolment, so a paused hour reads no
+  // parent. Immediate kinds included. An inbound reply never calls this function.
+  if (proactiveSendsPaused()) {
+    return { allowed: false, reason: 'sends_paused' };
+  }
+
   if (!(await ports.channelEnrolled(request.parentUserId))) {
     return { allowed: false, reason: 'not_enrolled' };
   }

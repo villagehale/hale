@@ -676,6 +676,22 @@ describe('alertParentForCalendarChanges', () => {
     expect(later.transport.sent).toHaveLength(1);
   });
 
+  it('a send pause keeps the text owed, and the next sweep after the pause sends it', async () => {
+    const paused = harness({ verdict: { allowed: false, reason: 'sends_paused' } });
+    await expect(sweep(paused)).resolves.toEqual(['gate_refused:sends_paused']);
+    expect(paused.transport.sent).toEqual([]);
+    const owed = await snapshotOf(TIMED.eventId);
+    expect(owed?.pendingSince).toBeInstanceOf(Date);
+
+    const still = harness({ verdict: { allowed: false, reason: 'sends_paused' } });
+    await expect(sweep(still)).resolves.toEqual(['gate_refused:sends_paused']);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({ pendingSince: owed?.pendingSince });
+
+    const later = harness();
+    await expect(sweep(later)).resolves.toEqual(['sent']);
+    expect(later.transport.sent).toHaveLength(1);
+  });
+
   it('names each gate hold separately and records it under its own suppression status', async () => {
     for (const reason of ['not_enrolled', 'no_watch_consent'] as const) {
       await expect(sweep(harness({ verdict: { allowed: false, reason } }))).resolves.toEqual([

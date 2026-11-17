@@ -150,6 +150,7 @@ export type DutyDelivery =
         | 'not_enrolled'
         | 'opt_out_unread'
         | 'no_watch_consent'
+        | 'sends_paused'
         | 'ask_budget'
         | 'model_unsent';
     }
