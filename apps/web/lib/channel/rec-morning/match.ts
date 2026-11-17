@@ -86,6 +86,52 @@ export type RecMorningTopic =
   | 'two_parents'
   | 'jack_of_sports';
 
+/**
+ * The town whose registration dates a topic answers with (its `cityRecLine`), or null for
+ * a topic that is a portal fact rather than a date: the waitlist, the wishlist, two
+ * phones, eFun, the Y, Jack of Sports.
+ */
+const TOPIC_CITY: Readonly<Record<RecMorningTopic, RecHelloCity | null>> = {
+  toronto_swim: 'toronto',
+  toronto_rec: 'toronto',
+  toronto_waitlist: null,
+  toronto_wishlist: null,
+  toronto_efun: null,
+  ymca_gta_swim: null,
+  ymca_follow: null,
+  brampton_swim: 'brampton',
+  brampton_rec: 'brampton',
+  markham: 'markham',
+  mississauga: 'mississauga',
+  caledon: 'caledon',
+  oakville: 'oakville',
+  burlington: 'burlington',
+  milton: 'milton',
+  ajax: 'ajax',
+  whitby: 'whitby',
+  oshawa: 'oshawa',
+  halton_hills: 'halton_hills',
+  pickering: 'pickering',
+  richmond_hill: 'richmond_hill',
+  vaughan: 'vaughan',
+  whitchurch_stouffville: 'whitchurch_stouffville',
+  newmarket: 'newmarket',
+  king: 'king',
+  east_gwillimbury: 'east_gwillimbury',
+  georgina: 'georgina',
+  uxbridge: 'uxbridge',
+  two_parents: null,
+  jack_of_sports: null,
+};
+
+/** This text asks this lane for the dates of the family's own town (VIL-684): the one
+ * question an own-city reading of that town answers instead. */
+export function recMorningAsksOwnTown(body: string, where: RecMorningWhere | null): boolean {
+  if (where === null) return false;
+  const topic = matchRecMorning(body, where);
+  return topic !== null && TOPIC_CITY[topic] === where.municipality;
+}
+
 function fold(body: string): string {
   return body.toLowerCase().replace(/\s+/g, ' ').trim();
 }

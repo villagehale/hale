@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Winter Recreation",
+    "evidence": "Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.",
+    "year_evidence": null,
+    "time_zone_evidence": "City of Toronto",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The page attaches no resident or non-resident label to the Toronto, East York and Etobicoke row: \"Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.\". The browse date is stated as \"Winter activities will be added to the registration and booking system to view and plan on November 17.\"",
+    "preview": {
+      "quote": "November 17",
+      "date_text": "November 17",
+      "time_text": null,
+      "date": null,
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "Tuesday, December 8, 7 a.m.",
+      "date_text": "Tuesday, December 8",
+      "time_text": "7 a.m.",
+      "date": null,
+      "time": "07:00"
+    },
+    "note": "The page prints the registration date (Tuesday, December 8, 7 a.m.) and the preview date (November 17) with no year. It states 2027 only for the program run dates (January 4 to April 2, 2027), so the year of these dates is left open.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 8446
+}

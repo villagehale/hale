@@ -1639,6 +1639,13 @@
       "when": 1794365510000,
       "tag": "0243_shared_list_hidden_cleared",
       "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1794365540000,
+      "tag": "0252_city_registration_readings",
+      "breakpoints": true
     }
   ]
 }

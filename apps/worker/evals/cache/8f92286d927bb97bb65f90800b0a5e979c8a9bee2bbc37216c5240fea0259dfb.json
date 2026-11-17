@@ -1,0 +1,28 @@
+{
+  "head": {
+    "vars": [
+      "item",
+      "site",
+      "referenced"
+    ]
+  },
+  "results": {
+    "bindings": [
+      {
+        "item": {
+          "type": "uri",
+          "value": "http://www.wikidata.org/entity/Q24639"
+        },
+        "site": {
+          "type": "uri",
+          "value": "https://vancouver.ca/"
+        },
+        "referenced": {
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "type": "literal",
+          "value": "false"
+        }
+      }
+    ]
+  }
+}

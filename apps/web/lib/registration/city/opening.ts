@@ -1,0 +1,118 @@
+import { namesAny } from '@hale/types';
+import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
+import type { TorontoDistrict } from '../fsa-municipalities';
+import {
+  type LiveRegistrationDate,
+  type VerifiedRegistrationReading,
+  registrationAnchor,
+} from '../live-reading';
+import { datesPrintedIn, normalizeQuote } from '../verify-window';
+import type { OwnCity } from './place';
+
+/**
+ * VIL-684 · which of a city page's openings is THIS family's, and how it is said.
+ *
+ * The page is the family's own city's (its host is the municipality's official site), so
+ * an opening the page labels for residents is theirs, then the opening for everyone, and
+ * only then one the page attaches no eligibility label to: a resident may register on any
+ * of them. Where residency is in doubt (an FSA on a town line), no morning is claimed as
+ * theirs: telling a family they can register a day early when they cannot is the
+ * expensive mistake. Such a family hears one date only when it is the same for residents
+ * and everyone else; where the page gives residents an earlier one, it hears both, each
+ * with who it is for. With no date the page labels for everyone, it hears none.
+ *
+ * A family whose district registers on its own morning (Toronto) takes only a date the
+ * page ties to that district (namesDistrict): an opening for everyone or an unlabelled
+ * one inside a passage that names the district and no other date. Never a residents' morning (Toronto's "eligible residents"
+ * early-local morning is not the district's), and never an unlabelled date that names no
+ * district (a free-centres morning is not North York's).
+ */
+export interface FamilyOpening {
+  /** The earliest morning this family may register on. */
+  own: LiveRegistrationDate;
+  /** The later opening for everyone else, when it differs from `own`. */
+  general: LiveRegistrationDate | null;
+  /** Residency is in doubt and residents open first: `own` is the residents' morning and
+   * `general` everyone else's, and the family is told both, never that `own` is theirs. */
+  residencyInDoubt: boolean;
+}
+
+function sameOpening(a: LiveRegistrationDate, b: LiveRegistrationDate): boolean {
+  return a.date === b.date && a.time === b.time;
+}
+
+/**
+ * The page ties this date to the district: one of its quoted passages names every word of
+ * the district's name (each a whole word), holds the date's own quote, and prints no other
+ * date. The reader gives every date the same section quote, so naming the district is not
+ * enough: a Free Centres date is not inside North York's row, and a passage that spans two
+ * district rows ties neither date to either district.
+ */
+export function namesDistrict(date: LiveRegistrationDate, district: TorontoDistrict): boolean {
+  const [own] = date.evidence;
+  if (own === undefined) return false;
+  const name = district.split('_');
+  return date.evidence.some(
+    (passage) =>
+      name.every((word) => namesAny(passage, [word])) &&
+      normalizeQuote(passage).includes(normalizeQuote(own)) &&
+      datesPrintedIn(passage) === 1,
+  );
+}
+
+export function familyOpening(
+  reading: VerifiedRegistrationReading,
+  place: Pick<OwnCity, 'residencyKnown' | 'district'>,
+): FamilyOpening | null {
+  const of = (kind: LiveRegistrationDate['kind']) => reading.dates.find((d) => d.kind === kind);
+  const { district } = place;
+  if (district !== null) {
+    const own = (['general_open', 'unclassified_open'] as const)
+      .flatMap((kind) => reading.dates.filter((date) => date.kind === kind))
+      .find((date) => namesDistrict(date, district));
+    return own ? { own, general: null, residencyInDoubt: false } : null;
+  }
+  const general = of('general_open') ?? null;
+  const residents = of('resident_open') ?? null;
+  if (place.residencyKnown) {
+    const own = residents ?? general ?? of('unclassified_open');
+    if (!own) return null;
+    const later = general !== null && !sameOpening(general, own) ? general : null;
+    return { own, general: later, residencyInDoubt: false };
+  }
+  if (general === null) return null;
+  if (residents === null || sameOpening(residents, general)) {
+    return { own: general, general: null, residencyInDoubt: false };
+  }
+  return { own: residents, general, residencyInDoubt: true };
+}
+
+/** Some family in this city or district has an opening on the page: what makes a page
+ * worth keeping as the city's reading. Residency is a family's, never the city's, so the
+ * page is judged for a resident (the widest claim) and each family's own opening is taken
+ * from it afterwards. */
+export function opensForSomeone(
+  reading: VerifiedRegistrationReading,
+  city: Pick<OwnCity, 'district'>,
+): boolean {
+  return familyOpening(reading, { district: city.district, residencyKnown: true }) !== null;
+}
+
+/** The instant a date opens at, in the page's own zone (the family's city). */
+export function openingInstant(reading: VerifiedRegistrationReading, date: LiveRegistrationDate) {
+  return registrationAnchor(reading, date);
+}
+
+/**
+ * The date as a parent reads it: `Dec 8, 7:00 a.m.` where the page printed a time, and
+ * `Dec 8` alone where it did not. A date-only opening is anchored at the start of its
+ * day; rendering that anchor's clock would state a time the page never printed.
+ */
+export function openingPhrase(
+  reading: VerifiedRegistrationReading,
+  date: LiveRegistrationDate,
+  now: Date,
+): string {
+  if (date.time === null) return formatCalendarDate(`${date.date}T00:00:00Z`, now);
+  return formatWhenPhrase(openingInstant(reading, date), reading.timeZone, now);
+}

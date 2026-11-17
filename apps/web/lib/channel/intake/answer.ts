@@ -4,11 +4,14 @@ import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { recMorningIntakeAsksOwnTown, writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { sharedRecMorningReader } from '~/lib/channel/rec-morning/read';
+import { speak } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import type { CityOpeningFacts } from '~/lib/registration/city/context';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import { groundUserMessage } from './ground-message';
@@ -359,7 +362,12 @@ async function groundOfficialPages(
 async function answerFromOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
+  ownTown: CityOpeningFacts | null,
 ): Promise<IntakeAnswerOutcome> {
+  if (ownTown !== null) {
+    const own = await answerFromOwnTownOpening(ownTown, input);
+    if (own !== null) return own;
+  }
   const ground = await groundOfficialPages(client, input);
   if (ground.status === 'ungrounded') {
     console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
@@ -368,6 +376,40 @@ async function answerFromOfficialPages(
   const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
   return body === null
     ? { status: 'unavailable', reason: 'not_posted' }
+    : { status: 'answered', body };
+}
+
+/**
+ * VIL-684: the parent's own town has an opening off its own official page. When the
+ * model reads that opening as the answer to what they asked, the reply is written from
+ * the line the family is later told (each date with who it is for), never from a second
+ * search that could name another date. Anything else they asked about (another town,
+ * another season, a club, a closing date), and a read that failed, is null: the search
+ * answers it. The dates must reach the parent unchanged; a reply that cannot be written
+ * sends nothing.
+ */
+async function answerFromOwnTownOpening(
+  opening: CityOpeningFacts,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome | null> {
+  const language = input.language ?? null;
+  const reading = await sharedRecMorningReader()({
+    text: input.parentWords,
+    facts: opening.line,
+    language,
+  });
+  if (reading !== 'answers') {
+    console.info({ reading: reading ?? 'read_failed' }, 'intake answer: own town not asked');
+    return null;
+  }
+  const body = await speak({
+    purpose: 'rec_morning',
+    language,
+    facts: { answer: opening.line, parentWords: input.parentWords },
+    verbatim: opening.phrases,
+  });
+  return body === null
+    ? unavailable('unusable', 'own_town_unwritten')
     : { status: 'answered', body };
 }
 
@@ -391,7 +433,26 @@ async function answerFromCurrentSource(
     : { status: 'answered', body };
 }
 
-export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
+/** The opening of the town a postal code is in, as the family would be told it, or null
+ * with none on file (VIL-684). */
+export type IntakeOwnTownOpening = (postal: string, now: Date) => Promise<CityOpeningFacts | null>;
+
+type OwnTownRead = () => Promise<CityOpeningFacts | null>;
+
+export function createIntakeAnswerComposer(
+  client: AgentClient,
+  ownTownOpening: IntakeOwnTownOpening,
+): IntakeAnswerComposer {
+  /** VIL-684: the opening of the parent's own town (the line the family is later told),
+   * read at most once a turn; null with none on file. */
+  const ownTownOf = (input: IntakeAnswerInput): OwnTownRead => {
+    let read: Promise<CityOpeningFacts | null> | undefined;
+    const postal = input.postalCode ?? null;
+    return () => {
+      read ??= postal === null ? Promise.resolve(null) : ownTownOpening(postal, new Date());
+      return read;
+    };
+  };
   return {
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
@@ -418,12 +479,20 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
       // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
-      const recMorning = await writeRecMorningIntakeReply({
-        parentWords: input.parentWords,
-        pendingAsk: input.pendingAsk,
-        postal: input.postalCode,
-        language: input.language ?? null,
-      });
+      // VIL-684: once the parent's own town has a date off its own page, a question for that
+      // town's dates is not the hand dataset's to answer ("not posted yet", an older season).
+      const ownTown = ownTownOf(input);
+      const ownTownFirst =
+        recMorningIntakeAsksOwnTown({ parentWords: input.parentWords, postal: input.postalCode }) &&
+        (await ownTown()) !== null;
+      const recMorning = ownTownFirst
+        ? null
+        : await writeRecMorningIntakeReply({
+            parentWords: input.parentWords,
+            pendingAsk: input.pendingAsk,
+            postal: input.postalCode,
+            language: input.language ?? null,
+          });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
@@ -454,7 +523,7 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
         return unavailable('model_failed', message(err));
       }
 
-      return screenedForTheHealthLine(value, await answerTheRead(client, value, input));
+      return screenedForTheHealthLine(value, await answerTheRead(client, value, input, ownTown));
     },
   };
 }
@@ -468,10 +537,14 @@ async function answerTheRead(
   client: AgentClient,
   value: z.infer<typeof answerSchema>,
   input: IntakeAnswerInput,
+  ownTown: OwnTownRead,
 ): Promise<IntakeAnswerOutcome> {
   switch (value.askKind) {
+    // A program-dates question the own town's opening answers (the reader's call, in any
+    // wording) is answered from it, so the answer mid-signup is the date the family is
+    // later told; any other is searched.
     case 'program_dates':
-      return answerFromOfficialPages(client, input);
+      return answerFromOfficialPages(client, input, await ownTown());
     case 'current_source':
       return answerFromCurrentSource(client, input);
     case 'cheer_up':

@@ -1,0 +1,118 @@
+{
+  "stopReason": "end_turn",
+  "content": [
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/registration-for-the-city-of-torontos-winter-programs-opens-tomorrow/",
+          "title": "Registration for the City of Toronto’s winter programs opens tomorrow"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/registration-for-the-city-of-torontos-winter-recreation-activities-opens-next-week/",
+          "title": "Registration for the City of Toronto’s winter recreation activities opens next week"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/",
+          "title": "Register for Recreation Activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/let-the-search-begin-toronto-residents-encouraged-to-create-a-new-account-and-a-wish-list-for-winter-program-registration/",
+          "title": "Let the search begin: Toronto residents encouraged to create a new account and a wish list for winter program registration"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/city-of-toronto-releases-exciting-lineup-of-winter-recreation-activities/",
+          "title": "City of Toronto releases exciting lineup of winter recreation activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://nowtoronto.com/news/torontonians-can-now-register-for-winter-recreation-and-march-break-programs-including-swimming-skating-and-camps/",
+          "title": "Torontonians can now register for winter recreation and March Break programs including swimming, skating and camps"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://sporting.ca/toronto/registration-dates",
+          "title": "Toronto Recreation Registration Dates: Winter 2027"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.councillorpaulafletcher.ca/fall-and-winter-recreation-programs",
+          "title": "Fall and Winter Recreation Programs - Councillor Paula Fletcher"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.mayoroliviachow.ca/city_of_toronto_announces_early_registration_for_older_adult_winter_programs_opens_tomorrow",
+          "title": "City of Toronto announces early registration for Older Adult winter programs opens tomorrow - Mayor Olivia Chow"
+        }
+      ]
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/",
+          "title": "Register for Recreation Activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/winter-recreation-programs/",
+          "title": "Winter Recreation Activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/registration-for-the-city-of-torontos-winter-recreation-activities-opens-next-week/",
+          "title": "Registration for the City of Toronto’s winter recreation activities opens next week"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/early-local-recreation-registration/",
+          "title": "Early Local Recreation Registration"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.toronto.ca/news/city-of-toronto-releases-exciting-lineup-of-winter-recreation-activities/",
+          "title": "City of Toronto releases exciting lineup of winter recreation activities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://sporting.ca/toronto/registration-dates",
+          "title": "Toronto Recreation Registration Dates: Winter 2027"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.councillorpaulafletcher.ca/fall-and-winter-recreation-programs",
+          "title": "Fall and Winter Recreation Programs - Councillor Paula Fletcher"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.trsl.ca/news-show-8",
+          "title": "Winter 2027 Registration Is NOW OPEN!"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.mayoroliviachow.ca/city_of_toronto_announces_early_registration_for_older_adult_winter_programs_opens_tomorrow",
+          "title": "City of Toronto announces early registration for Older Adult winter programs opens tomorrow - Mayor Olivia Chow"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "text": "{\n  \"municipality\": \"City of Toronto\",\n  \"pages\": [\n    \"https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/\",\n    \"https://www.toronto.ca/explore-enjoy/parks-recreation/how-to-use-our-services/how-to-register-for-recreation-programs/early-local-recreation-registration/\",\n    \"https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/winter-recreation-programs/\"\n  ],\n  \"note\": null\n}"
+    }
+  ],
+  "searches": 2,
+  "latencyMs": 3382,
+  "recordedAt": "2026-11-12T20:00:00.000Z"
+}

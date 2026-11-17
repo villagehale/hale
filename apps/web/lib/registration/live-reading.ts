@@ -8,9 +8,11 @@ import {
   type ExtractedWindow,
   MIN_VERIFY_CONFIDENCE,
   type PartialRegistrationDate,
+  type SeasonRegistrationWindow,
   type UnfoundReason,
   corroborationFailure,
   normalizeQuote,
+  pinYearByWeekday,
 } from './verify-window';
 
 /**
@@ -39,6 +41,9 @@ export interface LiveRegistrationDate {
   time: string | null;
   /** The page words this date stands on. */
   evidence: readonly string[];
+  /** Set only where the page prints no year and the year was pinned by the printed
+   * weekday (VIL-684): exactly one of this year and next fits that weekday. */
+  yearFrom?: 'printed_weekday';
 }
 
 export type UnverifiedReadingReason =
@@ -57,6 +62,10 @@ type PageFetchFailure = Extract<RegistrationPageFetch, { outcome: 'refused' | 'f
 export type UnreadableReadingReason =
   | PageFetchFailure
   | 'redirected'
+  /** The page's server answered 5xx: its trouble, not the page's answer. */
+  | 'http_server_error'
+  /** The page came back with no words on it (a bot challenge served as a 200). */
+  | 'empty_page'
   | 'extract_failed'
   | RegistrationPdfRefusal
   | 'pdf_reader_fault'
@@ -76,6 +85,10 @@ export type VerifiedRegistrationReading = RegistrationReadSource & {
   timeZone: string;
   dates: LiveRegistrationDate[];
   partialDates: readonly PartialRegistrationDate[];
+  /** The page's own name for the programs these dates are for (`Winter Session 2027 –
+   * ten-week session`), only where those words are on the page. Absent otherwise, and
+   * on a portal course read. */
+  programOnPage?: string;
 };
 
 export type LiveRegistrationReading =
@@ -167,6 +180,26 @@ function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | 
   return timeZone;
 }
 
+/** Text as a run of lower-case words, an HTML entity the strip left behind read as a
+ * gap: what a label is compared on, so `&ndash;` on the page meets `–` in the label. */
+function wordRun(text: string): string {
+  const words =
+    text
+      .replace(/&[a-z]+;/gi, ' ')
+      .normalize('NFKC')
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return words.length === 0 ? '' : ` ${words.join(' ')} `;
+}
+
+/** The model's name for the cycle, only where its words are on the page. */
+function programOnPage(extracted: ExtractedWindow, pageText: string): { programOnPage?: string } {
+  const label = extracted.cycleOnPage?.trim();
+  if (!label) return {};
+  const said = wordRun(label);
+  return said !== '' && wordRun(pageText).includes(said) ? { programOnPage: label } : {};
+}
+
 /**
  * The AI reader's gate. The model's slot IS the eligibility verdict: code reads no
  * label, so an opening the model left unlabelled stays `unclassified_open`.
@@ -175,6 +208,10 @@ export function normalizeExtractedRegistration(
   extracted: ExtractedWindow,
   pageText: string,
   source: RegistrationReadSource,
+  /** Set only by the own-city lane (VIL-684): pin a yearless date's year by its printed
+   * weekday, inside the days this season registers in (`pinYearByWeekday`). Every other
+   * reader reads no year a page does not print. */
+  yearFromWeekday?: SeasonRegistrationWindow,
 ): LiveRegistrationReading {
   const base = { ...source, reader: 'ai' as const };
   const unverified = (
@@ -182,10 +219,12 @@ export function normalizeExtractedRegistration(
     partialDates: readonly PartialRegistrationDate[] = [],
   ): LiveRegistrationReading => ({ ...base, status: 'unverified', reason, partialDates });
 
+  // The floor first: a shaky "not out yet" is no more an answer than a shaky date, and the
+  // own-city lane takes a known date back on the page's "not out" (city/lookup.ts).
+  if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
   if (!extracted.found) {
     return unverified(extracted.reason === null ? 'no_reason_given' : extracted.reason);
   }
-  if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
 
   const slots = [
     ['preview', extracted.preview],
@@ -198,9 +237,18 @@ export function normalizeExtractedRegistration(
     return unverified('invalid_date');
   }
   if (corroborationFailure(pageText, extracted) !== null) return unverified('uncorroborated');
-  if (published.length === 0) {
-    return extracted.partialDates.length > 0
-      ? unverified('incomplete_date', extracted.partialDates)
+  const pinned = yearFromWeekday
+    ? extracted.partialDates.flatMap((partial) => {
+        const at = pinYearByWeekday(partial.quote, source.checkedAt, yearFromWeekday);
+        return at ? [{ ...partial, ...at }] : [];
+      })
+    : [];
+  const partialDates = extracted.partialDates.filter(
+    (partial) => !pinned.some((pin) => pin.kind === partial.kind && pin.quote === partial.quote),
+  );
+  if (published.length === 0 && pinned.length === 0) {
+    return partialDates.length > 0
+      ? unverified('incomplete_date', partialDates)
       : unverified('no_dates_for_cycle');
   }
 
@@ -210,19 +258,29 @@ export function normalizeExtractedRegistration(
   const sectionEvidence = [extracted.evidence, extracted.yearEvidence].filter(
     (quote): quote is string => quote !== null,
   );
-  const dates = published.map(({ kind, quote, date, time }) => ({
-    kind,
-    date,
-    time,
-    evidence: [quote, ...sectionEvidence],
-  }));
+  const dates: LiveRegistrationDate[] = [
+    ...published.map(({ kind, quote, date, time }) => ({
+      kind,
+      date,
+      time,
+      evidence: [quote, ...sectionEvidence],
+    })),
+    ...pinned.map(({ kind, quote, date, time }) => ({
+      kind,
+      date,
+      time,
+      evidence: [quote, ...sectionEvidence],
+      yearFrom: 'printed_weekday' as const,
+    })),
+  ];
   if (!everyClockExists(dates, timeZone)) return unverified('invalid_date');
   return {
     ...base,
     status: 'verified',
     timeZone,
     dates,
-    partialDates: extracted.partialDates,
+    partialDates,
+    ...programOnPage(extracted, pageText),
   };
 }
 

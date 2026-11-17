@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Winter Recreation: North York and Scarborough",
+    "evidence": "Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.",
+    "year_evidence": null,
+    "time_zone_evidence": "City of Toronto",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The Scarborough row, \"Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.\", carries only a location district and no resident or non-resident label, so it is unclassified. The preview sentence, \"Winter activities will be added to the registration and booking system to view and plan on November 17\", is a browse date with no eligibility label.",
+    "preview": {
+      "quote": "November 17",
+      "date_text": "November 17",
+      "time_text": null,
+      "date": null,
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "Wednesday, December 9, 7 a.m.",
+      "date_text": "Wednesday, December 9",
+      "time_text": "7 a.m.",
+      "date": null,
+      "time": null
+    },
+    "note": "The page prints no year for the November 17 preview or the December 9 registration opening. It states 2027 only for the winter program dates (\"between January 4 and April 2, 2027\"), so the year of these two dates is left open. The registration time is 7 a.m.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.9
+  },
+  "latencyMs": 10587
+}

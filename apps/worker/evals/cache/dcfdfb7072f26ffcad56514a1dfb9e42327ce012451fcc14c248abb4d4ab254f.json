@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks whether they should keep refreshing a wishlist page that looks frozen, which is about how the wishlist works.",
+    "reading": "answers"
+  },
+  "latencyMs": 2110,
+  "usage": {
+    "input_tokens": 103,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

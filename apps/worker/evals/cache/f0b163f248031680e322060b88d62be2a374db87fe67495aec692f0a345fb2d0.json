@@ -1,0 +1,520 @@
+{
+  "searchinfo": {
+    "search": "Greater Sudbury"
+  },
+  "search": [
+    {
+      "id": "Q383434",
+      "title": "Q383434",
+      "pageid": 364809,
+      "concepturi": "http://www.wikidata.org/entity/Q383434",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q383434",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury",
+          "language": "en"
+        },
+        "description": {
+          "value": "city and unitary authority in Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury",
+      "description": "city and unitary authority in Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury"
+      }
+    },
+    {
+      "id": "Q16982602",
+      "title": "Q16982602",
+      "pageid": 18586632,
+      "concepturi": "http://www.wikidata.org/entity/Q16982602",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q16982602",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Public Library",
+          "language": "en"
+        },
+        "description": {
+          "value": "public library system for Greater Sudbury",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Public Library",
+      "description": "public library system for Greater Sudbury",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Public Library"
+      }
+    },
+    {
+      "id": "Q5600768",
+      "title": "Q5600768",
+      "pageid": 5361585,
+      "concepturi": "http://www.wikidata.org/entity/Q5600768",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600768",
+      "display": {
+        "label": {
+          "value": "GOVA",
+          "language": "en"
+        },
+        "description": {
+          "value": "public transit agency in Greater Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "GOVA",
+      "description": "public transit agency in Greater Sudbury, Ontario, Canada",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury Transit (former name)"
+      },
+      "aliases": [
+        "Greater Sudbury Transit (former name)"
+      ]
+    },
+    {
+      "id": "Q105977761",
+      "title": "Q105977761",
+      "pageid": 101319837,
+      "concepturi": "http://www.wikidata.org/entity/Q105977761",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q105977761",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Seed Library",
+          "language": "en"
+        },
+        "description": {
+          "value": "organization that lends or shares seeds",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Seed Library",
+      "description": "organization that lends or shares seeds",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Seed Library"
+      }
+    },
+    {
+      "id": "Q5600774",
+      "title": "Q5600774",
+      "pageid": 5361591,
+      "concepturi": "http://www.wikidata.org/entity/Q5600774",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600774",
+      "display": {
+        "label": {
+          "value": "2006 Greater Sudbury municipal election",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian municipal election",
+          "language": "en"
+        }
+      },
+      "label": "2006 Greater Sudbury municipal election",
+      "description": "Canadian municipal election",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2006"
+      },
+      "aliases": [
+        "Greater Sudbury municipal election, 2006"
+      ]
+    },
+    {
+      "id": "Q16957750",
+      "title": "Q16957750",
+      "pageid": 18561352,
+      "concepturi": "http://www.wikidata.org/entity/Q16957750",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q16957750",
+      "display": {
+        "label": {
+          "value": "2014 Greater Sudbury municipal election",
+          "language": "en"
+        },
+        "description": {
+          "value": "local election in Canada in 2014",
+          "language": "en"
+        }
+      },
+      "label": "2014 Greater Sudbury municipal election",
+      "description": "local election in Canada in 2014",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2014"
+      },
+      "aliases": [
+        "Greater Sudbury municipal election, 2014"
+      ]
+    },
+    {
+      "id": "Q5600771",
+      "title": "Q5600771",
+      "pageid": 5361588,
+      "concepturi": "http://www.wikidata.org/entity/Q5600771",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600771",
+      "display": {
+        "label": {
+          "value": "2000 Greater Sudbury municipal election",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian municipal election",
+          "language": "en"
+        }
+      },
+      "label": "2000 Greater Sudbury municipal election",
+      "description": "Canadian municipal election",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2000"
+      },
+      "aliases": [
+        "Greater Sudbury municipal election, 2000"
+      ]
+    },
+    {
+      "id": "Q5600773",
+      "title": "Q5600773",
+      "pageid": 5361590,
+      "concepturi": "http://www.wikidata.org/entity/Q5600773",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600773",
+      "display": {
+        "label": {
+          "value": "2003 Greater Sudbury municipal election",
+          "language": "en"
+        },
+        "description": {
+          "value": "2003 Ontario municipal election",
+          "language": "en"
+        }
+      },
+      "label": "2003 Greater Sudbury municipal election",
+      "description": "2003 Ontario municipal election",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2003"
+      },
+      "aliases": [
+        "Greater Sudbury municipal election, 2003"
+      ]
+    },
+    {
+      "id": "Q5600775",
+      "title": "Q5600775",
+      "pageid": 5361592,
+      "concepturi": "http://www.wikidata.org/entity/Q5600775",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600775",
+      "display": {
+        "label": {
+          "value": "2010 Greater Sudbury municipal election",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian municipal election",
+          "language": "en"
+        }
+      },
+      "label": "2010 Greater Sudbury municipal election",
+      "description": "Canadian municipal election",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2010"
+      },
+      "aliases": [
+        "Greater Sudbury municipal election, 2010"
+      ]
+    },
+    {
+      "id": "Q2502345",
+      "title": "Q2502345",
+      "pageid": 2415615,
+      "concepturi": "http://www.wikidata.org/entity/Q2502345",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q2502345",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Police Service",
+          "language": "en"
+        },
+        "description": {
+          "value": "law enforcement agency",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Police Service",
+      "description": "law enforcement agency",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Police Service"
+      }
+    },
+    {
+      "id": "Q5600769",
+      "title": "Q5600769",
+      "pageid": 5361586,
+      "concepturi": "http://www.wikidata.org/entity/Q5600769",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600769",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Utilities",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian power utility",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Utilities",
+      "description": "Canadian power utility",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Utilities"
+      }
+    },
+    {
+      "id": "Q7633515",
+      "title": "Q7633515",
+      "pageid": 7554493,
+      "concepturi": "http://www.wikidata.org/entity/Q7633515",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7633515",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Municipal Road 55",
+          "language": "en"
+        },
+        "description": {
+          "value": "municipal road in Greater Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Municipal Road 55",
+      "description": "municipal road in Greater Sudbury, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Municipal Road 55"
+      }
+    },
+    {
+      "id": "Q5600765",
+      "title": "Q5600765",
+      "pageid": 5361581,
+      "concepturi": "http://www.wikidata.org/entity/Q5600765",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600765",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury City Council",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury City Council",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury City Council"
+      }
+    },
+    {
+      "id": "Q55138446",
+      "title": "Q55138446",
+      "pageid": 55201362,
+      "concepturi": "http://www.wikidata.org/entity/Q55138446",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q55138446",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury municipal election, 2018",
+          "language": "en"
+        },
+        "description": {
+          "value": "Canadian municipal election",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury municipal election, 2018",
+      "description": "Canadian municipal election",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury municipal election, 2018"
+      }
+    },
+    {
+      "id": "Q7921593",
+      "title": "Q7921593",
+      "pageid": 7860467,
+      "concepturi": "http://www.wikidata.org/entity/Q7921593",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7921593",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Municipal Road 13",
+          "language": "en"
+        },
+        "description": {
+          "value": "municipal road in Greater Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Municipal Road 13",
+      "description": "municipal road in Greater Sudbury, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Municipal Road 13"
+      }
+    },
+    {
+      "id": "Q5600766",
+      "title": "Q5600766",
+      "pageid": 5361582,
+      "concepturi": "http://www.wikidata.org/entity/Q5600766",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q5600766",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Heritage Museums",
+          "language": "en"
+        },
+        "description": {
+          "value": "community history museums in Greater Sudbury, Ontario Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Heritage Museums",
+      "description": "community history museums in Greater Sudbury, Ontario Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Heritage Museums"
+      }
+    },
+    {
+      "id": "Q126678532",
+      "title": "Q126678532",
+      "pageid": 120696033,
+      "concepturi": "http://www.wikidata.org/entity/Q126678532",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q126678532",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Municipal Road 35",
+          "language": "en"
+        },
+        "description": {
+          "value": "municipal road in Greater Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Municipal Road 35",
+      "description": "municipal road in Greater Sudbury, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Municipal Road 35"
+      }
+    },
+    {
+      "id": "Q111594678",
+      "title": "Q111594678",
+      "pageid": 106537192,
+      "concepturi": "http://www.wikidata.org/entity/Q111594678",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q111594678",
+      "display": {
+        "label": {
+          "value": "flag of Greater Sudbury",
+          "language": "en"
+        }
+      },
+      "label": "flag of Greater Sudbury",
+      "match": {
+        "type": "alias",
+        "language": "en",
+        "text": "Greater Sudbury flag"
+      },
+      "aliases": [
+        "Greater Sudbury flag"
+      ]
+    },
+    {
+      "id": "Q111805520",
+      "title": "Q111805520",
+      "pageid": 106727589,
+      "concepturi": "http://www.wikidata.org/entity/Q111805520",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q111805520",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Public Library",
+          "language": "en"
+        },
+        "description": {
+          "value": "public library in Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Public Library",
+      "description": "public library in Sudbury, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Public Library"
+      }
+    },
+    {
+      "id": "Q111820941",
+      "title": "Q111820941",
+      "pageid": 106741637,
+      "concepturi": "http://www.wikidata.org/entity/Q111820941",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q111820941",
+      "display": {
+        "label": {
+          "value": "Greater Sudbury Chamber of Commerce",
+          "language": "en"
+        },
+        "description": {
+          "value": "organization in Sudbury, Ontario, Canada",
+          "language": "en"
+        }
+      },
+      "label": "Greater Sudbury Chamber of Commerce",
+      "description": "organization in Sudbury, Ontario, Canada",
+      "match": {
+        "type": "label",
+        "language": "en",
+        "text": "Greater Sudbury Chamber of Commerce"
+      }
+    }
+  ],
+  "search-continue": 20,
+  "success": 1
+}

@@ -80,6 +80,7 @@ describe('catalog history cutover', () => {
       '0249_asks_one_send_clock',
       '0250_anthropic_spend',
       '0243_shared_list_hidden_cleared',
+      '0252_city_registration_readings',
     ]);
   });
 });

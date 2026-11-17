@@ -1,0 +1,37 @@
+{
+  "value": {
+    "cycle_on_page": "2027 Registration Dates Winter Programs and Swim Lessons",
+    "evidence": "2027 Registration Dates Winter Programs and Swim Lessons Preview starting Nov. 16 2026 Register starting Dec. 1, 2026 at 6:30 AM",
+    "year_evidence": "2027 Winter Registration for residents: December 1, 2026, at 6:30 AM 2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM",
+    "time_zone_evidence": "The Official Site of The City of Markham",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The page labels the openings in the verification section: \"2027 Winter Registration for residents: December 1, 2026, at 6:30 AM\" and \"2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM\". The Winter table row prints \"Register starting Dec. 1, 2026 at 6:30 AM\" with no label. It is the same Dec. 1 opening the residents sentence already labels, so it is not reported again as unclassified. The preview date carries no eligibility label.",
+    "preview": {
+      "quote": "Nov. 16 2026",
+      "date_text": "Nov. 16 2026",
+      "time_text": null,
+      "date": "2026-11-16",
+      "time": null
+    },
+    "resident_open": {
+      "quote": "December 1, 2026, at 6:30 AM",
+      "date_text": "December 1, 2026",
+      "time_text": "6:30 AM",
+      "date": "2026-12-01",
+      "time": "06:30"
+    },
+    "general_open": {
+      "quote": "December 2, 2026, at 6:30 AM",
+      "date_text": "December 2, 2026",
+      "time_text": "6:30 AM",
+      "date": "2026-12-02",
+      "time": "06:30"
+    },
+    "unclassified_open": null,
+    "note": "The page names the cycle \"2027 Winter\" with registration dates in 2026.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.93
+  },
+  "latencyMs": 14701
+}

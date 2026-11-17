@@ -1,0 +1,65 @@
+{
+  "stopReason": "end_turn",
+  "content": [
+    {
+      "type": "server_tool_use"
+    },
+    {
+      "type": "web_search_tool_result",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://www.cityofvancouver.us/government/department/parks-recreation-and-cultural-services/recreation-activities/",
+          "title": "Recreation Activities -The City of Vancouver, WA"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/parks-recreation-culture/daycamps-and-childcare-community-centres.aspx",
+          "title": "Day camps and childcare at community centres"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/parks-recreation-culture/recreation-registration-dates.aspx",
+          "title": "Registration dates for parks and recreation programs"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/parks-recreation-culture/recreational-lessons-and-classes.aspx",
+          "title": "Lessons, programs, and classes at Vancouver recreation facilities"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/parks-recreation-culture/parks-and-recreation.aspx",
+          "title": "Parks and recreation"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/parks-recreation-culture/facility-and-recreation-registration-tips.aspx",
+          "title": "Registration tips"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://vancouver.ca/your-government/vancouver-board-of-parks-and-recreation.aspx",
+          "title": "Vancouver Board of Parks and Recreation"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://en.wikipedia.org/wiki/Vancouver_Park_Board",
+          "title": "Vancouver Park Board"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://www.dgparks.org/registration-dates",
+          "title": "Registration Dates"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "text": "{\"municipality\":\"City of Vancouver\",\"pages\":[\"https://vancouver.ca/parks-recreation-culture/recreation-registration-dates.aspx\",\"https://vancouver.ca/parks-recreation-culture/recreational-lessons-and-classes.aspx\"],\"note\":null}"
+    }
+  ],
+  "searches": 1,
+  "latencyMs": 3704,
+  "recordedAt": "2026-11-12T20:00:00.000Z"
+}

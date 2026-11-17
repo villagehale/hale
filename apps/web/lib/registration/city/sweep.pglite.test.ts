@@ -1,0 +1,1664 @@
+import { schema } from '@hale/db';
+import { and, eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { queueCheckInForDecider } from '~/lib/channel/proactive/queue';
+import { writeFact } from '~/lib/memory/facts';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
+import type { RegistrationReader, RegistrationTarget } from '../read';
+import { ownCityRegistrationContext, postalOwnCityOpening } from './context';
+import { OWN_CITY_REGISTRATION_ENABLED_ENV } from './flag';
+import type { CityLookupDeps } from './lookup';
+import { RECHECK_CHANGED_MS, RECHECK_FOUND_MS, cachedOfficialSite } from './official-site';
+import type { CityPlace } from './place';
+import type { PageSearch } from './search';
+import { REVERIFY_NOT_FOUND_MS, REVERIFY_VERIFIED_MS } from './store';
+import {
+  type CityRegistrationSweepDeps,
+  MAX_CITY_LOOKUPS_PER_RUN,
+  defaultCityRegistrationSweepDeps,
+  registrationOpeningDedupeKey,
+  runCityRegistrationSweep,
+} from './sweep';
+
+/**
+ * The own-city sweep against real Postgres: the per-city cache, the decider queue, the
+ * audit rows and the hand radar's own reader are the real ones. The search and the page
+ * reader are scripted ports (their model work is the city-registration eval's, hard rule
+ * #8), and the gate's consent reads are a port (outbound-gate.test.ts owns them).
+ */
+
+/** Thursday Nov 12, 10:00 in Ontario. */
+const NOW = new Date('2026-11-12T15:00:00Z');
+const SUDBURY_PAGE =
+  'https://www.greatersudbury.ca/play/pools/swimming-lessons/program-registration-dates/';
+const TORONTO_PAGE =
+  'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/register-for-recreation-activities/';
+
+const OFFICIAL_HOSTS: Record<string, string> = {
+  'Greater Sudbury': 'greatersudbury.ca',
+  Toronto: 'toronto.ca',
+};
+
+let db: TestDb;
+
+beforeAll(async () => {
+  db = await createTestDb();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+beforeEach(() => {
+  vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'true');
+});
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await db.exec(
+    'truncate table families, users, city_registration_readings, city_official_sites, registration_windows cascade',
+  );
+});
+
+const openGate = (): OutboundGatePorts => ({
+  channelEnrolled: async () => true,
+  watchConsentGranted: async () => true,
+  countProactiveSends: async () => 0,
+  proactiveSentSince: async () => true,
+  parentTimeZone: async () => 'America/Toronto',
+});
+
+function verified(
+  url: string,
+  day: string,
+  time: string | null,
+  evidence = [`${day} ${time}`],
+): LiveRegistrationReading {
+  return {
+    sourceUrl: url,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone: 'America/Toronto',
+    dates: [{ kind: 'unclassified_open', date: day, time, evidence }],
+    partialDates: [],
+  };
+}
+
+interface Script {
+  searches: Array<{ city: string; cycleLabel: string }>;
+  reads: RegistrationTarget[];
+  search: (place: CityPlace) => PageSearch;
+  read: (target: RegistrationTarget) => LiveRegistrationReading;
+}
+
+function scripted(
+  over: Partial<Pick<Script, 'search' | 'read'>> = {},
+): Pick<Script, 'searches' | 'reads'> & CityLookupDeps {
+  const script: Script = {
+    searches: [],
+    reads: [],
+    search: (place) =>
+      place.city === 'Greater Sudbury'
+        ? { outcome: 'pages', municipality: 'City of Greater Sudbury', urls: [SUDBURY_PAGE] }
+        : place.city === 'Toronto'
+          ? { outcome: 'pages', municipality: 'City of Toronto', urls: [TORONTO_PAGE] }
+          : { outcome: 'none', reason: 'no_official_page' },
+    read: (target) =>
+      target.sourceUrl === SUDBURY_PAGE
+        ? verified(SUDBURY_PAGE, '2026-12-16', '08:00')
+        : verified(TORONTO_PAGE, '2026-12-09', '07:00', [
+            'Wednesday, December 9, 7 a.m.',
+            'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.',
+          ]),
+    ...over,
+  };
+  const read: RegistrationReader = async (target) => {
+    script.reads.push(target);
+    return script.read(target);
+  };
+  return {
+    searches: script.searches,
+    reads: script.reads,
+    officialSite: async (place) => ({
+      status: 'found',
+      host: OFFICIAL_HOSTS[place.city] ?? 'example.ca',
+      website: `https://www.${OFFICIAL_HOSTS[place.city] ?? 'example.ca'}/`,
+      source: 'wikidata:Q1',
+      referenced: true,
+    }),
+    search: async (place, cycleLabel) => {
+      script.searches.push({ city: place.city, cycleLabel });
+      return script.search(place);
+    },
+    read,
+  };
+}
+
+function deps(
+  lookup: CityLookupDeps | null,
+  over: Partial<CityRegistrationSweepDeps> = {},
+): CityRegistrationSweepDeps {
+  return {
+    ...defaultCityRegistrationSweepDeps(null, db.database),
+    lookup,
+    buildGate: openGate,
+    queueCandidate: queueCheckInForDecider,
+    f14For: () => true,
+    // Every parent seat: the channel join is loadFamilyTextRecipients' own test.
+    recipients: async (database, familyId) =>
+      (
+        await database
+          .select({ parentUserId: schema.familyMembers.userId, role: schema.familyMembers.role })
+          .from(schema.familyMembers)
+          .where(eq(schema.familyMembers.familyId, familyId))
+      ).map((row) => ({
+        parentUserId: row.parentUserId,
+        timeZone: 'America/Toronto',
+        role: row.role as 'primary_parent' | 'co_parent',
+      })),
+    ...over,
+  };
+}
+
+async function seedFamily(
+  postalCode: string,
+  parents = 1,
+  id?: string,
+): Promise<{ familyId: string; parentIds: string[] }> {
+  const [family] = await db.database
+    .insert(schema.families)
+    // Intake writes both: the full code and its FSA as the coarse area.
+    .values({
+      ...(id === undefined ? {} : { id }),
+      displayName: 'Test household',
+      country: 'Canada',
+      postalCode,
+      areaCoarse: postalCode.slice(0, 3),
+    })
+    .returning({ id: schema.families.id });
+  const familyId = family?.id as string;
+  const parentIds: string[] = [];
+  for (let i = 0; i < parents; i++) {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ name: `Parent ${i}`, timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    parentIds.push(user?.id as string);
+    await db.database.insert(schema.familyMembers).values({
+      familyId,
+      userId: user?.id as string,
+      role: i === 0 ? 'primary_parent' : 'co_parent',
+    });
+  }
+  await db.database
+    .insert(schema.children)
+    .values({ familyId, name: 'Robin', dateOfBirth: '2021-03-01' });
+  return { familyId, parentIds };
+}
+
+async function tells(familyId: string) {
+  return db.database
+    .select()
+    .from(schema.proactiveCandidates)
+    .where(eq(schema.proactiveCandidates.familyId, familyId));
+}
+
+/** The stored readings' statuses, without the rows that only say when to look again. */
+async function readingStatuses(): Promise<string[]> {
+  return (await db.database.select().from(schema.cityRegistrationReadings))
+    .filter((row) => row.status !== 'retry')
+    .map((row) => row.status);
+}
+
+describe('the own-city registration sweep', () => {
+  it('reads nothing while the switch is off', async () => {
+    vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'false');
+    await seedFamily('P3A 1A1');
+    const lookup = scripted();
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result.skipped).toBe('flag_off');
+    expect(lookup.searches).toEqual([]);
+    expect(await db.database.select().from(schema.cityRegistrationReadings)).toEqual([]);
+  });
+
+  it('looks a city up once for every family there, and queues one tell per parent', async () => {
+    const one = await seedFamily('P3A 1A1', 2);
+    const two = await seedFamily('P3B 2B2');
+    const lookup = scripted();
+
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+    expect(lookup.searches).toEqual([{ city: 'Greater Sudbury', cycleLabel: 'Winter 2027' }]);
+    expect(result).toMatchObject({ lookedUp: 1, verified: 1, queued: 3, held: 0 });
+
+    const [stored] = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(stored).toMatchObject({
+      city: 'Greater Sudbury',
+      provinceOrState: 'Ontario',
+      country: 'Canada',
+      district: null,
+      cycleLabel: 'Winter 2027',
+      status: 'verified',
+      municipality: 'City of Greater Sudbury',
+      sourceUrl: SUDBURY_PAGE,
+    });
+    expect(stored?.reverifyAt.getTime()).toBe(NOW.getTime() + REVERIFY_VERIFIED_MS);
+
+    const opensAt = new Date('2026-12-16T13:00:00Z');
+    const [tell] = await tells(two.familyId);
+    expect(tell).toMatchObject({
+      parentUserId: two.parentIds[0],
+      kind: 'registration_opening',
+      category: 'nudge',
+      status: 'queued',
+      what: 'Greater Sudbury Winter 2027 registration opens Dec 16, 8:00 a.m.',
+      sourceUrl: SUDBURY_PAGE,
+      worthlessAfter: opensAt,
+      parentRequested: false,
+      dedupeKey: registrationOpeningDedupeKey({
+        familyId: two.familyId,
+        parentUserId: two.parentIds[0] as string,
+        place: {
+          city: 'Greater Sudbury',
+          provinceOrState: 'Ontario',
+          country: 'Canada',
+          district: null,
+        },
+        cycleLabel: 'Winter 2027',
+        statedDates: ['2026-12-16'],
+      }),
+    });
+    expect((await tells(one.familyId)).map((row) => row.parentUserId).sort()).toEqual(
+      [...one.parentIds].sort(),
+    );
+    const audit = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, two.familyId));
+    expect(audit.map((row) => row.actionTaken)).toEqual(['proactive_cadence_queued']);
+
+    // The coach now has the date, and knows a text is coming.
+    expect(
+      await ownCityRegistrationContext(db.database, two.familyId, two.parentIds[0] as string, NOW),
+    ).toEqual([
+      {
+        town: 'Greater Sudbury',
+        programs: 'Winter 2027',
+        opensFor: 'Dec 16, 8:00 a.m.',
+        residentsFirst: false,
+        generalOpens: null,
+        ageApproximate: false,
+        watching: true,
+      },
+    ]);
+  });
+
+  it("asks for a Toronto family's own district morning", async () => {
+    const north = await seedFamily('M2N 0A1');
+    const lookup = scripted();
+    await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(lookup.reads.map((target) => target.cycleLabel)).toEqual(['Winter 2027 (north york)']);
+    const [tell] = await tells(north.familyId);
+    expect(tell?.what).toBe('Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.');
+  });
+
+  it('does not look up or tell again inside the cache window', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const later = scripted();
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(later),
+      new Date(NOW.getTime() + 3_600_000),
+    );
+    expect(later.searches).toEqual([]);
+    expect(later.reads).toEqual([]);
+    expect(result).toMatchObject({ lookedUp: 0, queued: 0, duplicate: 1 });
+    expect(await tells(family.familyId)).toHaveLength(1);
+  });
+
+  it('re-reads the known page when stale, and a moved date replaces the waiting tell', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+
+    const moved = scripted({ read: () => verified(SUDBURY_PAGE, '2026-12-17', '08:00') });
+    const stale = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const result = await runCityRegistrationSweep(db.database, deps(moved), stale);
+
+    // The page Hale had is read again; no new search.
+    expect(moved.searches).toEqual([]);
+    expect(moved.reads.map((target) => target.sourceUrl)).toEqual([SUDBURY_PAGE]);
+    expect(result).toMatchObject({ lookedUp: 1, verified: 1, superseded: 1, queued: 1 });
+
+    const rows = await tells(family.familyId);
+    const old = rows.find((row) => row.status === 'dropped');
+    expect(old).toMatchObject({ reason: 'date_changed', what: '' });
+    const fresh = rows.find((row) => row.status === 'queued');
+    expect(fresh?.what).toContain('Dec 17, 8:00 a.m.');
+  });
+
+  it('takes back a waiting tell when the page no longer confirms the date', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const gone = scripted({
+      read: () => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: NOW,
+        reader: 'ai',
+        status: 'unverified',
+        reason: 'announced_later',
+        partialDates: [],
+      }),
+    });
+    const stale = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const result = await runCityRegistrationSweep(db.database, deps(gone), stale);
+    expect(result).toMatchObject({ notFound: 1, notKnown: 1, superseded: 1, queued: 0 });
+    const [dropped] = await tells(family.familyId);
+    expect(dropped).toMatchObject({ status: 'dropped', reason: 'date_unconfirmed', what: '' });
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        family.familyId,
+        family.parentIds[0] as string,
+        stale,
+      ),
+    ).toEqual([]);
+  });
+
+  it("a known page no longer on the city's official site is never re-read or told again", async () => {
+    const family = await seedFamily('P3A 1A1');
+    const ATTACKER_PAGE = 'https://www.attacker.example/sudbury-winter';
+    // A vandalised official-site value: the page it names verifies and is told.
+    const vandalised = scripted({
+      search: () => ({
+        outcome: 'pages',
+        municipality: 'City of Greater Sudbury',
+        urls: [ATTACKER_PAGE],
+      }),
+      read: () => verified(ATTACKER_PAGE, '2026-12-05', '08:00'),
+    });
+    vandalised.officialSite = async () => ({
+      status: 'found',
+      host: 'attacker.example',
+      website: 'https://www.attacker.example/',
+      source: 'wikidata:Q1',
+      referenced: true,
+    });
+    await runCityRegistrationSweep(db.database, deps(vandalised), NOW);
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['queued']);
+
+    // The value is reverted; the city's search finds nothing new this hour.
+    const reverted = scripted({ search: () => ({ outcome: 'none', reason: 'no_official_page' }) });
+    const stale = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const result = await runCityRegistrationSweep(db.database, deps(reverted), stale);
+
+    expect(reverted.reads).toEqual([]);
+    expect(result).toMatchObject({ notFound: 1, superseded: 1, queued: 0 });
+    const [dropped] = await tells(family.familyId);
+    expect(dropped).toMatchObject({ status: 'dropped', reason: 'date_unconfirmed' });
+    const latest = (await db.database.select().from(schema.cityRegistrationReadings))
+      .filter((row) => row.status !== 'retry')
+      .sort((a, b) => b.readAt.getTime() - a.readAt.getTime())[0];
+    expect(latest).toMatchObject({ status: 'not_found', reason: 'known_page_off_official_site' });
+  });
+
+  it('stores "not found" for a city with no official page, and tells nobody', async () => {
+    const family = await seedFamily('R3C 1A1');
+    const result = await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    expect(result).toMatchObject({ lookedUp: 1, notFound: 1, notKnown: 1, queued: 0 });
+    const [stored] = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(stored).toMatchObject({
+      city: 'Winnipeg',
+      status: 'not_found',
+      reason: 'no_official_page',
+      sourceUrl: null,
+      reading: null,
+    });
+    expect(await tells(family.familyId)).toEqual([]);
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        family.familyId,
+        family.parentIds[0] as string,
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('stores no reading when the lookup did not finish, so a busy hour is not "not found"', async () => {
+    await seedFamily('P3A 1A1');
+    const failed = scripted({
+      search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }),
+    });
+    const result = await runCityRegistrationSweep(db.database, deps(failed), NOW);
+    expect(result).toMatchObject({ lookedUp: 1, retry: 1, notKnown: 1 });
+    // Only when to look again: the next sweep.
+    expect(
+      (await db.database.select().from(schema.cityRegistrationReadings)).map((row) => ({
+        status: row.status,
+        reason: row.reason,
+        reverifyAt: row.reverifyAt,
+      })),
+    ).toEqual([
+      {
+        status: 'retry',
+        reason: 'stopped:pause_turn',
+        reverifyAt: new Date(NOW.getTime() + 3_600_000),
+      },
+    ]);
+  });
+
+  it('leaves a family the hand-verified radar covers to the radar', async () => {
+    const king = await seedFamily('L7B 1A1');
+    await db.database.insert(schema.registrationWindows).values({
+      municipality: 'king',
+      programDomain: 'rec_program',
+      cycleLabel: 'Winter 2027',
+      openAt: new Date('2026-12-07T05:00:00Z'),
+      sourceUrl: 'https://www.king.ca/recreation',
+      verifiedAt: NOW,
+    });
+    const lookup = scripted();
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result).toMatchObject({ handRadar: 1, lookedUp: 0 });
+    expect(lookup.searches).toEqual([]);
+    expect(await tells(king.familyId)).toEqual([]);
+  });
+
+  it('holds a parent the gate refuses now, so the next hour can ask again', async () => {
+    const family = await seedFamily('P3A 1A1');
+    const quiet = (): OutboundGatePorts => ({ ...openGate(), channelEnrolled: async () => false });
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(scripted(), { buildGate: quiet }),
+      NOW,
+    );
+    expect(result).toMatchObject({ held: 1, queued: 0 });
+    expect(await tells(family.familyId)).toEqual([]);
+  });
+
+  it('looks up at most the bound per run, and counts the rest as deferred', async () => {
+    for (const postal of ['P3A 1A1', 'M2N 0A1', 'M1B 1A1', 'K2P 1A1']) await seedFamily(postal);
+    const lookup = scripted();
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result.lookedUp).toBe(MAX_CITY_LOOKUPS_PER_RUN);
+    expect(result.deferred).toBe(4 - MAX_CITY_LOOKUPS_PER_RUN);
+  });
+
+  it('counts a city whose lookup threw, and still reaches the next city', async () => {
+    const sudbury = await seedFamily('P3A 1A1');
+    const toronto = await seedFamily('M2N 0A1');
+    const lookup = scripted();
+    const broken = {
+      ...lookup,
+      search: async (place: CityPlace, cycleLabel: string, today: string) => {
+        if (place.city === 'Greater Sudbury') throw new TypeError('reader bug');
+        return lookup.search(place, cycleLabel, today);
+      },
+    };
+    const result = await runCityRegistrationSweep(db.database, deps(broken), NOW);
+    expect(result).toMatchObject({ failed: 1, verified: 1, queued: 1 });
+    expect(await tells(sudbury.familyId)).toEqual([]);
+    expect(await tells(toronto.familyId)).toHaveLength(1);
+  });
+
+  it('a city whose lookup threw waits its turn like any unfinished lookup, never every hour', async () => {
+    await seedFamily('P3A 1A1');
+    const lookup = scripted();
+    const broken = {
+      ...lookup,
+      search: async (place: CityPlace, cycleLabel: string, today: string) => {
+        await lookup.search(place, cycleLabel, today);
+        throw new TypeError('reader bug');
+      },
+    };
+    const HOUR = 3_600_000;
+    const looked: number[] = [];
+    for (let hour = 0; hour < 8; hour++) {
+      const before = lookup.searches.length;
+      const result = await runCityRegistrationSweep(
+        db.database,
+        deps(broken),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
+      if (lookup.searches.length > before) {
+        looked.push(hour);
+        expect(result).toMatchObject({ failed: 1 });
+      }
+    }
+    // Next hour, then after two, then four: the same backoff as a lookup that timed out.
+    expect(looked).toEqual([0, 1, 3, 7]);
+    const rows = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(rows.map((row) => [row.status, row.reason])).toEqual(
+      looked.map(() => ['retry', 'lookup_threw:TypeError']),
+    );
+  });
+
+  it('names a deploy with no model client, and looks nothing up', async () => {
+    await seedFamily('P3A 1A1');
+    const result = await runCityRegistrationSweep(db.database, deps(null), NOW);
+    expect(result).toMatchObject({ noClient: 1, lookedUp: 0, queued: 0 });
+  });
+
+  it('says nothing once the doors have opened', async () => {
+    const family = await seedFamily('P3A 1A1');
+    const after = new Date('2026-12-16T14:00:00Z');
+    const result = await runCityRegistrationSweep(db.database, deps(scripted()), after);
+    expect(result).toMatchObject({ verified: 1, past: 1, queued: 0 });
+    expect(await tells(family.familyId)).toEqual([]);
+    const [stored] = await db.database
+      .select()
+      .from(schema.cityRegistrationReadings)
+      .where(and(eq(schema.cityRegistrationReadings.city, 'Greater Sudbury')));
+    expect(stored?.status).toBe('verified');
+  });
+
+  it("names the programs the way the page does, never as all of the city's recreation", async () => {
+    const family = await seedFamily('P3A 1A1');
+    const swim = scripted({
+      read: () => ({
+        ...(verified(SUDBURY_PAGE, '2026-12-16', '08:00') as VerifiedRegistrationReading),
+        programOnPage: 'Winter Session 2027 – ten-week session',
+      }),
+    });
+    await runCityRegistrationSweep(db.database, deps(swim), NOW);
+    const [tell] = await tells(family.familyId);
+    expect(tell?.what).toBe(
+      'Greater Sudbury Winter Session 2027 – ten-week session registration opens Dec 16, 8:00 a.m.',
+    );
+  });
+});
+
+describe('each family is told the date for its own residency and district', () => {
+  const MARKHAM_PAGE = 'https://www.markham.ca/recreation/registration';
+  const VAUGHAN_PAGE = 'https://www.vaughan.ca/recreation/registration';
+  /** Sorts first and last by id: the sweep loads families in id order. */
+  const FIRST = '00000000-0000-4000-8000-000000000001';
+  const LAST = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+  const HOSTS: Record<string, string> = { Markham: 'markham.ca', Vaughan: 'vaughan.ca' };
+
+  type PageDate = LiveRegistrationReading extends infer R
+    ? R extends { status: 'verified'; dates: Array<infer D> }
+      ? D
+      : never
+    : never;
+  const page = (url: string, dates: PageDate[]): LiveRegistrationReading => ({
+    sourceUrl: url,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone: 'America/Toronto',
+    dates,
+    partialDates: [],
+  });
+  /** Markham's Winter 2027 page as read 2026-11-12: residents Dec 1, non-residents Dec 2. */
+  const residents: PageDate = {
+    kind: 'resident_open',
+    date: '2026-12-01',
+    time: '06:30',
+    evidence: ['2027 Winter Registration for residents: December 1, 2026, at 6:30 AM'],
+  };
+  const nonResidents: PageDate = {
+    kind: 'general_open',
+    date: '2026-12-02',
+    time: '06:30',
+    evidence: ['2027 Winter Registration for non-residents: December 2, 2026, at 6:30 AM'],
+  };
+  const vaughan: PageDate = {
+    kind: 'unclassified_open',
+    date: '2026-12-03',
+    time: '09:00',
+    evidence: ['Winter 2027 registration opens December 3, 2026 at 9 a.m.'],
+  };
+
+  function york(markham: PageDate[]): CityLookupDeps & { reads: RegistrationTarget[] } {
+    const reads: RegistrationTarget[] = [];
+    return {
+      reads,
+      officialSite: async (place) => ({
+        status: 'found',
+        host: HOSTS[place.city] ?? 'example.ca',
+        website: `https://www.${HOSTS[place.city] ?? 'example.ca'}/`,
+        source: 'wikidata:Q1',
+        referenced: true,
+      }),
+      search: async (place) =>
+        place.city === 'Markham'
+          ? { outcome: 'pages', municipality: 'City of Markham', urls: [MARKHAM_PAGE] }
+          : { outcome: 'pages', municipality: 'City of Vaughan', urls: [VAUGHAN_PAGE] },
+      read: async (target) => {
+        reads.push(target);
+        return target.sourceUrl === MARKHAM_PAGE
+          ? page(MARKHAM_PAGE, markham)
+          : page(VAUGHAN_PAGE, [vaughan]);
+      },
+    };
+  }
+
+  const whatOf = async (familyId: string) => (await tells(familyId)).map((row) => row.what);
+  const coachOf = async (family: { familyId: string; parentIds: string[] }) =>
+    ownCityRegistrationContext(db.database, family.familyId, family.parentIds[0] as string, NOW);
+
+  for (const order of ['resident first', 'residency in doubt first'] as const) {
+    it(`Markham: a resident, a family whose residency is in doubt and a Vaughan family each hear their own date (${order})`, async () => {
+      const resident = await seedFamily('L3P 1A1', 1, order === 'resident first' ? FIRST : LAST);
+      // L3T (Thornhill) straddles Markham and Vaughan: residency is in doubt.
+      const inDoubt = await seedFamily('L3T 1A1', 1, order === 'resident first' ? LAST : FIRST);
+      // Lives in Vaughan: a Markham non-resident, whose own city is Vaughan.
+      const vaughanFamily = await seedFamily('L6A 1A1');
+      const lookup = york([residents, nonResidents]);
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+      expect(result).toMatchObject({ lookedUp: 2, verified: 2, queued: 3, notKnown: 0 });
+      expect(lookup.reads.map((target) => target.sourceUrl).sort()).toEqual([
+        MARKHAM_PAGE,
+        VAUGHAN_PAGE,
+      ]);
+      expect(await whatOf(resident.familyId)).toEqual([
+        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. for Markham residents; everyone else Dec 2, 6:30 a.m.',
+      ]);
+      // Never told Dec 1 is theirs: both mornings, each with who it is for.
+      expect(await whatOf(inDoubt.familyId)).toEqual([
+        'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 2, 6:30 a.m.',
+      ]);
+      expect(await whatOf(vaughanFamily.familyId)).toEqual([
+        'Vaughan Winter 2027 registration opens Dec 3, 9:00 a.m.',
+      ]);
+      // The tell waits until the earliest morning it may be for.
+      expect((await tells(inDoubt.familyId))[0]?.worthlessAfter).toEqual(
+        new Date('2026-12-01T11:30:00Z'),
+      );
+
+      // The coach reads the same date for each family as its tell.
+      expect(await coachOf(resident)).toMatchObject([
+        {
+          town: 'Markham',
+          opensFor: 'Dec 1, 6:30 a.m.',
+          residentsFirst: true,
+          generalOpens: 'Dec 2, 6:30 a.m.',
+        },
+      ]);
+      expect(await coachOf(inDoubt)).toMatchObject([
+        {
+          town: 'Markham',
+          opensFor: 'Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 2, 6:30 a.m.',
+          residentsFirst: false,
+          generalOpens: null,
+        },
+      ]);
+      expect(await coachOf(vaughanFamily)).toMatchObject([
+        { town: 'Vaughan', opensFor: 'Dec 3, 9:00 a.m.', generalOpens: null },
+      ]);
+    });
+  }
+
+  it('a family whose residency is in doubt hears one date when it is the same for both', async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    const same = { ...residents, date: '2026-12-02' };
+    await runCityRegistrationSweep(db.database, deps(york([same, nonResidents])), NOW);
+    expect(await whatOf(inDoubt.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.',
+    ]);
+  });
+
+  it("a page with no date for everyone keeps the residents' date for residents, and names nothing for a family in doubt", async () => {
+    // The family whose residency is in doubt loads first: it must not decide the city.
+    const inDoubt = await seedFamily('L3T 1A1', 1, FIRST);
+    const resident = await seedFamily('L3P 1A1', 1, LAST);
+    const unlabelled: PageDate = {
+      kind: 'unclassified_open',
+      date: '2026-12-03',
+      time: '06:30',
+      evidence: ['Winter Registration: December 3, 2026, at 6:30 AM'],
+    };
+
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(york([residents, unlabelled])),
+      NOW,
+    );
+
+    expect(await readingStatuses()).toEqual(['verified']);
+    expect(result).toMatchObject({ verified: 1, notFound: 0, queued: 1, notKnown: 1, past: 0 });
+    expect(await whatOf(resident.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m.',
+    ]);
+    expect(await coachOf(resident)).toMatchObject([{ opensFor: 'Dec 1, 6:30 a.m.' }]);
+    expect(await whatOf(inDoubt.familyId)).toEqual([]);
+    expect(await coachOf(inDoubt)).toEqual([]);
+  });
+
+  it("a family in doubt still hears everyone's morning once the residents' one has passed", async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    // 7:00 on Dec 1 in Ontario: the residents' morning is gone, everyone's is tomorrow.
+    const between = new Date('2026-12-01T12:00:00Z');
+    const lookup = york([residents, nonResidents]);
+
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), between);
+
+    // Still due: one family here has a morning ahead. Its waiting tell no longer offers the
+    // residents' morning that has gone, and is not a second tell.
+    expect(result).toMatchObject({ lookedUp: 1, past: 0, queued: 0, refreshed: 1 });
+    expect((await tells(inDoubt.familyId)).map((row) => [row.status, row.what])).toEqual([
+      ['queued', 'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.'],
+    ]);
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        inDoubt.familyId,
+        inDoubt.parentIds[0] as string,
+        between,
+      ),
+    ).toMatchObject([{ town: 'Markham', opensFor: 'Dec 2, 6:30 a.m.', generalOpens: null }]);
+
+    // A family in doubt that joins in between is told everyone's morning, and only that
+    // (at 9:00, inside the parent's daytime).
+    const late = await seedFamily('L3T 2B2');
+    await runCityRegistrationSweep(db.database, deps(lookup), new Date('2026-12-01T14:00:00Z'));
+    const [tell] = await tells(late.familyId);
+    expect(tell).toMatchObject({
+      what: 'Markham Winter 2027 registration opens Dec 2, 6:30 a.m.',
+      worthlessAfter: new Date('2026-12-02T11:30:00Z'),
+    });
+  });
+
+  it('a waiting tell never keeps a date the page has since moved, whichever of its dates moved', async () => {
+    const resident = await seedFamily('L3P 1A1');
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    // Nov 16: the page now opens everyone else on Dec 3; the residents' morning is unchanged.
+    const later = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+    const dec3 = { ...nonResidents, date: '2026-12-03' };
+
+    await runCityRegistrationSweep(db.database, deps(york([residents, dec3])), later);
+
+    const waiting = async (familyId: string) =>
+      (await tells(familyId))
+        .filter((row) => row.status === 'queued' || row.status === 'held')
+        .map((row) => row.what);
+    // For a family in doubt that lives outside Markham, the "otherwise" date is its own.
+    expect(await waiting(inDoubt.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.',
+    ]);
+    expect(await waiting(resident.familyId)).toEqual([
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. for Markham residents; everyone else Dec 3, 6:30 a.m.',
+    ]);
+    expect(await coachOf(inDoubt)).toMatchObject([
+      { opensFor: 'Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.' },
+    ]);
+  });
+
+  it('a tell already sent is told again when a date it stated moves', async () => {
+    const inDoubt = await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents, nonResidents])), NOW);
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'sent' })
+      .where(eq(schema.proactiveCandidates.familyId, inDoubt.familyId));
+    const later = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+
+    const result = await runCityRegistrationSweep(
+      db.database,
+      deps(york([residents, { ...nonResidents, date: '2026-12-03' }])),
+      later,
+    );
+
+    expect(result).toMatchObject({ queued: 1, duplicate: 0 });
+    expect((await tells(inDoubt.familyId)).find((row) => row.status === 'queued')?.what).toBe(
+      'Markham Winter 2027 registration opens Dec 1, 6:30 a.m. if they live in Markham, otherwise Dec 3, 6:30 a.m.',
+    );
+  });
+
+  it("a city stays due while any family there has no opening on the page, even once another family's has passed", async () => {
+    await seedFamily('L3P 1A1');
+    // No date for everyone: the family in doubt has no opening on this page.
+    await seedFamily('L3T 1A1');
+    await runCityRegistrationSweep(db.database, deps(york([residents])), NOW);
+    const after = new Date('2026-12-01T12:00:00Z');
+    const lookup = york([residents]);
+
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), after);
+
+    expect(result).toMatchObject({ lookedUp: 1 });
+    expect(lookup.reads.map((target) => target.sourceUrl)).toEqual([MARKHAM_PAGE]);
+  });
+
+  it('Toronto: each district hears its own morning, and none hears the Free Centres one', async () => {
+    const districts = {
+      toronto_east_york: await seedFamily('M4C 1A1'),
+      etobicoke_york: await seedFamily('M9A 1A1'),
+      north_york: await seedFamily('M2N 0A1'),
+      scarborough: await seedFamily('M1B 1A1'),
+    };
+    // Toronto's Winter 2027 table as read 2026-11-12, one passage per row.
+    const toronto = scripted({
+      read: () =>
+        page(TORONTO_PAGE, [
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-01',
+            time: '07:00',
+            evidence: ['Tuesday, December 1, 7 a.m.', 'Free Centres Tuesday, December 1, 7 a.m.'],
+          },
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-08',
+            time: '07:00',
+            evidence: [
+              'Tuesday, December 8, 7 a.m.',
+              'Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.',
+            ],
+          },
+          {
+            kind: 'unclassified_open',
+            date: '2026-12-09',
+            time: '07:00',
+            evidence: [
+              'Wednesday, December 9, 7 a.m.',
+              'North York and Scarborough Wednesday, December 9, 7 a.m.',
+            ],
+          },
+        ]),
+    });
+
+    // Four districts, three lookups a run: the fourth is reached the next hour.
+    await runCityRegistrationSweep(db.database, deps(toronto), NOW);
+    await runCityRegistrationSweep(db.database, deps(toronto), new Date(NOW.getTime() + 3_600_000));
+
+    expect(toronto.reads.map((target) => target.cycleLabel).sort()).toEqual([
+      'Winter 2027 (etobicoke york)',
+      'Winter 2027 (north york)',
+      'Winter 2027 (scarborough)',
+      'Winter 2027 (toronto east york)',
+    ]);
+    const heard = Object.fromEntries(
+      await Promise.all(
+        Object.entries(districts).map(async ([district, family]) => [
+          district,
+          await whatOf(family.familyId),
+        ]),
+      ),
+    );
+    expect(heard).toEqual({
+      toronto_east_york: ['Toronto Winter 2027 registration opens Dec 8, 7:00 a.m.'],
+      etobicoke_york: ['Toronto Winter 2027 registration opens Dec 8, 7:00 a.m.'],
+      north_york: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
+      scarborough: ['Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.'],
+    });
+  });
+});
+
+describe("a family Hale cannot place in its own district or residency is never told another one's date", () => {
+  /** Toronto's Winter 2027 table as read 2026-11-12, under each kind labelling a reader may give it. */
+  const torontoTable = (kinds: readonly [string, string, string]): LiveRegistrationReading => ({
+    sourceUrl: TORONTO_PAGE,
+    checkedAt: NOW,
+    reader: 'ai',
+    status: 'verified',
+    timeZone: 'America/Toronto',
+    partialDates: [],
+    dates: [
+      {
+        kind: kinds[0] as 'unclassified_open',
+        date: '2026-12-01',
+        time: '07:00',
+        evidence: [
+          'Tuesday, December 1, 7 a.m.',
+          'Winter Recreation: Free Centres (for eligible residents) Tuesday, December 1, 7 a.m.',
+        ],
+      },
+      {
+        kind: kinds[1] as 'unclassified_open',
+        date: '2026-12-08',
+        time: '07:00',
+        evidence: [
+          'Tuesday, December 8, 7 a.m.',
+          'Winter Recreation: Toronto, East York and Etobicoke Tuesday, December 8, 7 a.m.',
+        ],
+      },
+      {
+        kind: kinds[2] as 'unclassified_open',
+        date: '2026-12-09',
+        time: '07:00',
+        evidence: [
+          'Wednesday, December 9, 7 a.m.',
+          'Winter Recreation: North York and Scarborough Wednesday, December 9, 7 a.m.',
+        ],
+      },
+    ],
+  });
+
+  async function seedRow(values: {
+    country: string;
+    city?: string;
+    postalCode?: string;
+  }): Promise<{ familyId: string; parentIds: string[] }> {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({
+        displayName: 'Test household',
+        country: values.country,
+        city: values.city ?? null,
+        postalCode: values.postalCode ?? null,
+        areaCoarse: values.postalCode?.slice(0, 3) ?? null,
+      })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ name: 'Parent 0', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user?.id as string, role: 'primary_parent' });
+    await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Robin', dateOfBirth: '2021-03-01' });
+    return { familyId, parentIds: [user?.id as string] };
+  }
+
+  const coachOf = async (family: { familyId: string; parentIds: string[] }) =>
+    ownCityRegistrationContext(db.database, family.familyId, family.parentIds[0] as string, NOW);
+
+  for (const kinds of [
+    ['unclassified_open', 'unclassified_open', 'unclassified_open'],
+    ['resident_open', 'general_open', 'general_open'],
+    ['unclassified_open', 'general_open', 'general_open'],
+  ] as const) {
+    it(`a Toronto family with no district is told no morning, and Toronto is not looked up for it (${kinds.join(', ')})`, async () => {
+      const family = await seedRow({ country: 'Canada', city: 'Toronto' });
+      const lookup = scripted({ read: () => torontoTable(kinds) });
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+      expect(result).toMatchObject({ placeUnknown: 1, lookedUp: 0, queued: 0 });
+      expect(lookup.reads).toEqual([]);
+      expect(await tells(family.familyId)).toEqual([]);
+      expect(await coachOf(family)).toEqual([]);
+    });
+  }
+
+  it('a North York family whose parent texted "Toronto" is never told another district\'s morning', async () => {
+    const family = await seedFamily('M2N 0A1');
+    await db.database
+      .update(schema.families)
+      .set({ createdAt: new Date(NOW.getTime() - 10 * 86_400_000) })
+      .where(eq(schema.families.id, family.familyId));
+    const said = new Date(NOW.getTime() - 86_400_000);
+    await writeFact(db.database, {
+      familyId: family.familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'lives_in',
+      factValue: { record: 'place', text: 'Toronto' },
+      confidence: 0.9,
+      inferredBy: 'test',
+      heard: 'unrecorded',
+      validFrom: said,
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: said,
+    } as never);
+    const lookup = scripted({
+      read: () => torontoTable(['unclassified_open', 'unclassified_open', 'unclassified_open']),
+    });
+
+    await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+
+    expect(await tells(family.familyId)).toEqual([]);
+    expect(await coachOf(family)).toEqual([]);
+  });
+
+  describe('a US family: a ZIP names its postal city, not the town it lives in', () => {
+    const FAIRFAX_PAGE = 'https://www.fairfaxva.gov/recreation/registration';
+    const fairfax = (
+      dates: LiveRegistrationReading extends infer R
+        ? R extends { status: 'verified'; dates: infer D }
+          ? D
+          : never
+        : never,
+    ) => ({
+      ...scripted({
+        search: () => ({
+          outcome: 'pages' as const,
+          municipality: 'City of Fairfax',
+          urls: [FAIRFAX_PAGE],
+        }),
+        read: (): LiveRegistrationReading => ({
+          sourceUrl: FAIRFAX_PAGE,
+          checkedAt: NOW,
+          reader: 'ai',
+          status: 'verified',
+          timeZone: 'America/New_York',
+          partialDates: [],
+          dates,
+        }),
+      }),
+      officialSite: async () =>
+        ({
+          status: 'found',
+          host: 'fairfaxva.gov',
+          website: 'https://www.fairfaxva.gov/',
+          source: 'wikidata:Q1',
+          referenced: true,
+        }) as const,
+    });
+    const residents = {
+      kind: 'resident_open' as const,
+      date: '2026-12-01',
+      time: '09:00',
+      evidence: ['Winter registration for City residents: December 1, 2026 at 9 a.m.'],
+    };
+    const everyone = {
+      kind: 'general_open' as const,
+      date: '2026-12-08',
+      time: '09:00',
+      evidence: ['Non-residents: December 8, 2026 at 9 a.m.'],
+    };
+
+    it("is told both mornings, each with who it is for, never the residents' as its own", async () => {
+      const family = await seedRow({ country: 'United States', postalCode: '22030' });
+
+      await runCityRegistrationSweep(db.database, deps(fairfax([residents, everyone])), NOW);
+
+      expect((await tells(family.familyId)).map((row) => row.what)).toEqual([
+        'Fairfax Winter 2027 registration opens Dec 1, 9:00 a.m. if they live in Fairfax, otherwise Dec 8, 9:00 a.m.',
+      ]);
+    });
+
+    it('is told the one date when the page has one for everyone (positive control)', async () => {
+      const family = await seedRow({ country: 'United States', postalCode: '22030' });
+
+      await runCityRegistrationSweep(db.database, deps(fairfax([everyone])), NOW);
+
+      expect((await tells(family.familyId)).map((row) => row.what)).toEqual([
+        'Fairfax Winter 2027 registration opens Dec 8, 9:00 a.m.',
+      ]);
+    });
+  });
+});
+
+describe('a city site one unreferenced source value names must be corroborated', () => {
+  const NEWS = 'https://www.nowtoronto.com/winter-registration-2027';
+  const unreferenced = (search: (place: CityPlace) => PageSearch) => {
+    const lookup = scripted({ search });
+    return {
+      ...lookup,
+      officialSite: async () =>
+        ({
+          status: 'found',
+          host: 'toronto.ca',
+          website: 'https://www.toronto.ca/',
+          source: 'wikidata:Q172',
+          referenced: false,
+        }) as const,
+    };
+  };
+
+  it("is trusted when the live search's top result is on the same domain", async () => {
+    const north = await seedFamily('M2N 0A1');
+    const lookup = unreferenced(() => ({
+      outcome: 'pages',
+      municipality: 'City of Toronto',
+      urls: [TORONTO_PAGE, NEWS],
+    }));
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result).toMatchObject({ verified: 1, queued: 1 });
+    expect(await tells(north.familyId)).toHaveLength(1);
+  });
+
+  it('is "doesn\'t know yet" when the search does not agree, and no page is read', async () => {
+    const north = await seedFamily('M2N 0A1');
+    const lookup = unreferenced(() => ({
+      outcome: 'pages',
+      municipality: 'City of Toronto',
+      urls: [NEWS, TORONTO_PAGE],
+    }));
+    const result = await runCityRegistrationSweep(db.database, deps(lookup), NOW);
+    expect(result).toMatchObject({ verified: 0, notFound: 1, queued: 0 });
+    expect(lookup.reads).toEqual([]);
+    const rows = await db.database.select().from(schema.cityRegistrationReadings);
+    expect(rows.map((row) => [row.status, row.reason])).toEqual([
+      ['not_found', 'official_site_unconfirmed'],
+    ]);
+    expect(await tells(north.familyId)).toEqual([]);
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        north.familyId,
+        north.parentIds[0] as string,
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('one transient failure never cancels a known date or a waiting tell', () => {
+  const stale = new Date(NOW.getTime() + REVERIFY_VERIFIED_MS + 60_000);
+  const unread = (reason: 'timeout' | 'network_error' | 'http_server_error' | 'extract_failed') =>
+    scripted({
+      read: (): LiveRegistrationReading => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: stale,
+        reader: 'ai',
+        status: 'unreadable',
+        reason,
+      }),
+    });
+
+  it('a held tell survives a re-read that timed out, and the coach keeps the date', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'held', holdUntil: new Date('2026-12-09T14:00:00Z') })
+      .where(eq(schema.proactiveCandidates.familyId, family.familyId));
+
+    // Each failure a turn later: a lookup that did not finish waits before the next.
+    let at = stale;
+    for (const reason of [
+      'timeout',
+      'network_error',
+      'http_server_error',
+      'extract_failed',
+    ] as const) {
+      const failing = unread(reason);
+      at = new Date(at.getTime() + REVERIFY_NOT_FOUND_MS);
+      const result = await runCityRegistrationSweep(db.database, deps(failing), at);
+      expect({ reason, result }).toMatchObject({
+        reason,
+        result: { retry: 1, notFound: 0, superseded: 0 },
+      });
+      // The known page did not answer: no fresh search on the strength of that.
+      expect(failing.searches).toEqual([]);
+    }
+    expect(await readingStatuses()).toEqual(['verified']);
+    const [held] = await tells(family.familyId);
+    expect(held).toMatchObject({ status: 'held' });
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        family.familyId,
+        family.parentIds[0] as string,
+        at,
+      ),
+    ).toMatchObject([{ town: 'Greater Sudbury', opensFor: 'Dec 16, 8:00 a.m.' }]);
+
+    // The page reads fine again: the same tell stands, nothing new is queued.
+    const again = await runCityRegistrationSweep(
+      db.database,
+      deps(scripted()),
+      new Date(at.getTime() + REVERIFY_NOT_FOUND_MS),
+    );
+    expect(again).toMatchObject({ verified: 1, queued: 0, duplicate: 1, superseded: 0 });
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['held']);
+  });
+
+  it('a page that could not be verified (not "says later") keeps the known date', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const shaky = scripted({
+      read: () => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: stale,
+        reader: 'ai',
+        status: 'unverified',
+        reason: 'low_confidence',
+        partialDates: [],
+      }),
+    });
+    const result = await runCityRegistrationSweep(db.database, deps(shaky), stale);
+    expect(result).toMatchObject({ superseded: 0, notFound: 0, retry: 1 });
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['queued']);
+    expect(
+      await ownCityRegistrationContext(
+        db.database,
+        family.familyId,
+        family.parentIds[0] as string,
+        stale,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('only the known page saying "later" takes a date back: no sibling page, no page that said nothing, no reading with no date for this family', async () => {
+    const EARLY_LOCAL = 'https://www.toronto.ca/explore-enjoy/early-local-registration/';
+    const SUDBURY_FALL = 'https://www.greatersudbury.ca/play/recreation/fall-programs/';
+    const unverified = (url: string, reason: string): LiveRegistrationReading =>
+      ({
+        sourceUrl: url,
+        checkedAt: stale,
+        reader: 'ai',
+        status: 'unverified',
+        reason,
+        partialDates: [],
+      }) as LiveRegistrationReading;
+    const cases: Array<{
+      name: string;
+      postal: string;
+      town: string;
+      lookup: () => ReturnType<typeof scripted>;
+    }> = [
+      {
+        name: 'known page unconfirmed + a residents-only page for a district family',
+        postal: 'M2N 0A1',
+        town: 'Toronto',
+        lookup: () =>
+          scripted({
+            search: () => ({
+              outcome: 'pages',
+              municipality: 'City of Toronto',
+              urls: [TORONTO_PAGE, EARLY_LOCAL],
+            }),
+            read: (target) =>
+              target.sourceUrl === TORONTO_PAGE
+                ? unverified(TORONTO_PAGE, 'uncorroborated')
+                : {
+                    ...(verified(
+                      EARLY_LOCAL,
+                      '2026-12-01',
+                      '07:00',
+                    ) as VerifiedRegistrationReading),
+                    dates: [
+                      {
+                        kind: 'resident_open',
+                        date: '2026-12-01',
+                        time: '07:00',
+                        evidence: ['Tuesday, December 1, at 7 a.m. for eligible residents'],
+                      },
+                    ],
+                  },
+          }),
+      },
+      {
+        name: 'known page low confidence + a sibling page about another season',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            search: () => ({
+              outcome: 'pages',
+              municipality: 'City of Greater Sudbury',
+              urls: [SUDBURY_PAGE, SUDBURY_FALL],
+            }),
+            read: (target) =>
+              target.sourceUrl === SUDBURY_PAGE
+                ? unverified(SUDBURY_PAGE, 'low_confidence')
+                : unverified(SUDBURY_FALL, 'different_cycle_only'),
+          }),
+      },
+      {
+        name: 'known page said nothing + a search that did not finish',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }),
+            read: () => unverified(SUDBURY_PAGE, 'no_dates_for_cycle'),
+          }),
+      },
+      {
+        name: 'known page read the same date as a preview this time',
+        postal: 'P3A 1A1',
+        town: 'Greater Sudbury',
+        lookup: () =>
+          scripted({
+            read: () => ({
+              ...(verified(SUDBURY_PAGE, '2026-12-16', '08:00') as VerifiedRegistrationReading),
+              dates: [{ kind: 'preview', date: '2026-12-16', time: '08:00', evidence: ['x'] }],
+            }),
+          }),
+      },
+    ];
+    for (const { name, postal, town, lookup } of cases) {
+      const family = await seedFamily(postal);
+      await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+      await db.database
+        .update(schema.proactiveCandidates)
+        .set({ status: 'held', holdUntil: new Date('2026-12-01T14:00:00Z') })
+        .where(eq(schema.proactiveCandidates.familyId, family.familyId));
+
+      const result = await runCityRegistrationSweep(db.database, deps(lookup()), stale);
+
+      expect({ name, result }).toMatchObject({ name, result: { superseded: 0, notFound: 0 } });
+      expect({ name, statuses: (await tells(family.familyId)).map((row) => row.status) }).toEqual({
+        name,
+        statuses: ['held'],
+      });
+      expect({ name, readings: await readingStatuses() }).toEqual({
+        name,
+        readings: ['verified'],
+      });
+      expect(
+        await ownCityRegistrationContext(
+          db.database,
+          family.familyId,
+          family.parentIds[0] as string,
+          stale,
+        ),
+      ).toMatchObject([{ town }]);
+      await db.exec('truncate table families, users, city_registration_readings cascade');
+    }
+  });
+
+  it('a date the page confirms again after it said "later" is queued again', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const later = scripted({
+      read: () => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: stale,
+        reader: 'ai',
+        status: 'unverified',
+        reason: 'announced_later',
+        partialDates: [],
+      }),
+    });
+    await runCityRegistrationSweep(db.database, deps(later), stale);
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['dropped']);
+
+    const back = new Date(stale.getTime() + 3 * 86_400_000);
+    const result = await runCityRegistrationSweep(db.database, deps(scripted()), back);
+    expect(result).toMatchObject({ verified: 1, queued: 1, duplicate: 0 });
+    const [tell] = await tells(family.familyId);
+    expect(tell).toMatchObject({
+      status: 'queued',
+      reason: null,
+      what: 'Greater Sudbury Winter 2027 registration opens Dec 16, 8:00 a.m.',
+    });
+  });
+
+  it('a re-read that drops the printed time is the same opening: no second tell', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'sent' })
+      .where(eq(schema.proactiveCandidates.familyId, family.familyId));
+    const noTime = scripted({ read: () => verified(SUDBURY_PAGE, '2026-12-16', null) });
+    const result = await runCityRegistrationSweep(db.database, deps(noTime), stale);
+    expect(result).toMatchObject({ verified: 1, queued: 0, duplicate: 1 });
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['sent']);
+  });
+
+  it('a waiting tell takes a time the page moved on the same day, and opens at it', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    const earlier = scripted({ read: () => verified(SUDBURY_PAGE, '2026-12-16', '06:30') });
+
+    const result = await runCityRegistrationSweep(db.database, deps(earlier), stale);
+
+    expect(result).toMatchObject({ verified: 1, queued: 0, refreshed: 1, superseded: 0 });
+    const rows = await tells(family.familyId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: 'queued',
+      what: 'Greater Sudbury Winter 2027 registration opens Dec 16, 6:30 a.m.',
+      worthlessAfter: new Date('2026-12-16T11:30:00Z'),
+    });
+  });
+
+  it('tells the coach a text is coming only for the parent whose own tell is waiting', async () => {
+    const family = await seedFamily('P3A 1A1', 2);
+    const [first, second] = family.parentIds as [string, string];
+    const onlyFirst = (): OutboundGatePorts => ({
+      ...openGate(),
+      channelEnrolled: async (parentUserId) => parentUserId === first,
+    });
+    await runCityRegistrationSweep(db.database, deps(scripted(), { buildGate: onlyFirst }), NOW);
+    expect((await tells(family.familyId)).map((row) => row.parentUserId)).toEqual([first]);
+    expect(
+      await ownCityRegistrationContext(db.database, family.familyId, first, NOW),
+    ).toMatchObject([{ watching: true }]);
+    expect(
+      await ownCityRegistrationContext(db.database, family.familyId, second, NOW),
+    ).toMatchObject([{ watching: false }]);
+  });
+});
+
+describe("a lookup that writes no reading still moves the city's next turn", () => {
+  const HOUR = 3_600_000;
+  const failingSearch = () =>
+    scripted({ search: () => ({ outcome: 'failed', reason: 'stopped:pause_turn' }) });
+
+  it('a city whose opening has passed is not looked up again, so it never holds a turn', async () => {
+    const family = await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    // After the doors opened, the page's yearless row no longer pins a year: every re-read
+    // would come back unconfirmed, for the rest of the season.
+    const yearless = scripted({
+      read: (): LiveRegistrationReading => ({
+        sourceUrl: SUDBURY_PAGE,
+        checkedAt: NOW,
+        reader: 'ai',
+        status: 'unverified',
+        reason: 'incomplete_date',
+        partialDates: [{ kind: 'unclassified_open', quote: 'Wednesday, December 16, 8 a.m.' }],
+      }),
+    });
+    for (const at of ['2026-12-20T15:00:00Z', '2026-12-20T16:00:00Z', '2027-01-10T15:00:00Z']) {
+      const result = await runCityRegistrationSweep(db.database, deps(yearless), new Date(at));
+      expect({ at, result }).toMatchObject({ at, result: { lookedUp: 0, retry: 0, past: 1 } });
+    }
+    expect(yearless.reads).toEqual([]);
+    expect(yearless.searches).toEqual([]);
+    expect((await tells(family.familyId)).map((row) => row.status)).toEqual(['queued']);
+  });
+
+  it('a lookup that did not finish is asked again next hour, then less often, never every hour', async () => {
+    await seedFamily('P3A 1A1');
+    const failing = failingSearch();
+    const looked: number[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const result = await runCityRegistrationSweep(
+        db.database,
+        deps(failing),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
+      if (result.lookedUp > 0) looked.push(hour);
+    }
+    // The next sweep first, then each wait twice the last.
+    expect(looked).toEqual([0, 1, 3, 7, 15]);
+    // Still not a reading: the coach has nothing, and nothing says "not found".
+    expect(
+      (await db.database.select().from(schema.cityRegistrationReadings)).filter(
+        (row) => row.status !== 'retry',
+      ),
+    ).toEqual([]);
+  });
+
+  it('the wait between unfinished lookups stops growing at the "not found" interval', async () => {
+    await seedFamily('P3A 1A1');
+    const failing = failingSearch();
+    let at = NOW.getTime();
+    const gaps: number[] = [];
+    let last = at;
+    for (let step = 0; step < 400; step++) {
+      const result = await runCityRegistrationSweep(db.database, deps(failing), new Date(at));
+      if (result.lookedUp > 0) {
+        if (at !== NOW.getTime()) gaps.push(at - last);
+        last = at;
+      }
+      at += HOUR;
+      if (gaps.length >= 8) break;
+    }
+    expect(Math.max(...gaps)).toBe(REVERIFY_NOT_FOUND_MS);
+  });
+
+  it('cities whose lookups keep failing never starve a city that is due', async () => {
+    // The three busiest cities fail every time; the quiet one must still be read.
+    for (let i = 0; i < 3; i++) await seedFamily('M2N 0A1');
+    for (let i = 0; i < 3; i++) await seedFamily('M1B 1A1');
+    for (let i = 0; i < 3; i++) await seedFamily('M4C 1A1');
+    const quiet = await seedFamily('P3A 1A1');
+    const lookup = scripted({
+      search: (place) =>
+        place.city === 'Toronto'
+          ? { outcome: 'failed', reason: 'stopped:pause_turn' }
+          : { outcome: 'pages', municipality: 'City of Greater Sudbury', urls: [SUDBURY_PAGE] },
+    });
+    for (let hour = 0; hour < 6; hour++) {
+      await runCityRegistrationSweep(
+        db.database,
+        deps(lookup),
+        new Date(NOW.getTime() + hour * HOUR),
+      );
+    }
+    expect(lookup.searches.map((s) => s.city)).toContain('Greater Sudbury');
+    expect(await tells(quiet.familyId)).toHaveLength(1);
+  });
+});
+
+describe("a parent mid-signup: does their postal code's town have its own opening", () => {
+  it('reads the town off the code, and answers only from a verified opening still ahead', async () => {
+    // No reading for the town yet.
+    expect(await postalOwnCityOpening(db.database, 'P3A', NOW)).toBeNull();
+    await seedFamily('P3A 1A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    expect((await postalOwnCityOpening(db.database, 'P3A', NOW))?.line).toBe(
+      'Greater Sudbury Winter 2027 registration opens Dec 16, 8:00 a.m.',
+    );
+    expect(await postalOwnCityOpening(db.database, 'P3A 1A1', NOW)).not.toBeNull();
+    // Another town, and the same town once its doors have opened.
+    expect(await postalOwnCityOpening(db.database, 'K2P', NOW)).toBeNull();
+    expect(
+      await postalOwnCityOpening(db.database, 'P3A', new Date('2026-12-17T15:00:00Z')),
+    ).toBeNull();
+    // The kill switch.
+    vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'false');
+    expect(await postalOwnCityOpening(db.database, 'P3A', NOW)).toBeNull();
+  });
+
+  it("reads a Toronto code's own district", async () => {
+    await seedFamily('M2N 0A1');
+    await runCityRegistrationSweep(db.database, deps(scripted()), NOW);
+    // The district's own morning.
+    expect((await postalOwnCityOpening(db.database, 'M2N', NOW))?.line).toBe(
+      'Toronto Winter 2027 registration opens Dec 9, 7:00 a.m.',
+    );
+    // Toronto, East York: a district with no reading of its own.
+    expect(await postalOwnCityOpening(db.database, 'M4C', NOW)).toBeNull();
+  });
+});
+
+describe("the cache of each city's official site", () => {
+  const TORONTO = { city: 'Toronto', provinceOrState: 'Ontario', country: 'Canada' };
+  /** Wikidata for Toronto, as it answered 2026-11-12. */
+  const wikidata = (asked: string[] = []) => ({
+    search: async () => {
+      asked.push('search');
+      return { search: [{ id: 'Q172', label: 'Toronto' }] };
+    },
+    sparql: async () => {
+      asked.push('sparql');
+      return {
+        results: {
+          bindings: [
+            {
+              item: { value: 'http://www.wikidata.org/entity/Q172' },
+              site: { value: 'https://www.toronto.ca/' },
+            },
+          ],
+        },
+      };
+    },
+  });
+
+  it('asks the source once per municipality while fresh, and keeps its source', async () => {
+    const asked: string[] = [];
+    const source = wikidata(asked);
+    const first = await cachedOfficialSite(db.database, source, TORONTO, NOW);
+    const again = await cachedOfficialSite(
+      db.database,
+      source,
+      TORONTO,
+      new Date(NOW.getTime() + 86_400_000),
+    );
+    expect(first).toEqual({
+      status: 'found',
+      host: 'toronto.ca',
+      website: 'https://www.toronto.ca/',
+      source: 'wikidata:Q172',
+      referenced: false,
+    });
+    expect(again).toEqual(first);
+    expect(asked).toEqual(['search', 'sparql']);
+    const [row] = await db.database.select().from(schema.cityOfficialSites);
+    expect(row).toMatchObject({
+      municipalityKey: 'toronto|ontario|canada|',
+      source: 'wikidata:Q172',
+    });
+  });
+
+  it('logs a changed host and checks it again soon instead of trusting it for a month', async () => {
+    const info = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await cachedOfficialSite(db.database, wikidata(), TORONTO, NOW);
+    const moved = {
+      search: async () => ({ search: [{ id: 'Q172', label: 'Toronto' }] }),
+      sparql: async () => ({
+        results: {
+          bindings: [
+            {
+              item: { value: 'http://www.wikidata.org/entity/Q172' },
+              site: { value: 'https://www.toronto-city.ca/' },
+            },
+          ],
+        },
+      }),
+    };
+    const stale = new Date(NOW.getTime() + RECHECK_FOUND_MS + 60_000);
+    expect(await cachedOfficialSite(db.database, moved, TORONTO, stale)).toMatchObject({
+      status: 'found',
+      host: 'toronto-city.ca',
+    });
+    expect(info).toHaveBeenCalledWith(
+      { municipality: 'toronto|ontario|canada|', from: 'toronto.ca', to: 'toronto-city.ca' },
+      'own-city registration: official host changed',
+    );
+    const rows = await db.database
+      .select()
+      .from(schema.cityOfficialSites)
+      .orderBy(schema.cityOfficialSites.checkedAt);
+    expect(rows.map((row) => row.recheckAt.getTime() - row.checkedAt.getTime())).toEqual([
+      RECHECK_FOUND_MS,
+      RECHECK_CHANGED_MS,
+    ]);
+    // Positive control: the same host again is trusted for the usual month, and not logged.
+    info.mockClear();
+    const later = new Date(stale.getTime() + RECHECK_CHANGED_MS + 60_000);
+    await cachedOfficialSite(db.database, moved, TORONTO, later);
+    expect(info).not.toHaveBeenCalled();
+    const [newest] = await db.database
+      .select()
+      .from(schema.cityOfficialSites)
+      .where(eq(schema.cityOfficialSites.checkedAt, later));
+    expect(newest && newest.recheckAt.getTime() - newest.checkedAt.getTime()).toBe(
+      RECHECK_FOUND_MS,
+    );
+  });
+
+  it('a source that does not answer leaves the last answer standing, and is a retry with none', async () => {
+    const down = {
+      search: async () => {
+        throw new TypeError('fetch failed');
+      },
+      sparql: async () => ({}),
+    };
+    expect(await cachedOfficialSite(db.database, down, TORONTO, NOW)).toEqual({
+      status: 'retry',
+      reason: 'source_failed:TypeError',
+    });
+    expect(await db.database.select().from(schema.cityOfficialSites)).toEqual([]);
+
+    await cachedOfficialSite(db.database, wikidata(), TORONTO, NOW);
+    const stale = new Date(NOW.getTime() + RECHECK_FOUND_MS + 60_000);
+    expect(await cachedOfficialSite(db.database, down, TORONTO, stale)).toMatchObject({
+      status: 'found',
+      host: 'toronto.ca',
+    });
+  });
+});
