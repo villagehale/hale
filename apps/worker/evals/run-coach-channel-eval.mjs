@@ -201,6 +201,14 @@ const DEIDENTIFY_SRC = join(
 );
 /** The REAL place gate a `search_village` `area` crosses before the search (village/live.ts). */
 const NAMED_AREA_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'named-area.ts');
+/**
+ * The blank-area preprocess `search_village` and `find_activities` share
+ * (apps/web/lib/coach/optional-area.ts). An inline copy here would drift, and a blank
+ * `area` would again cost the turn a step (VIL-692).
+ */
+const OPTIONAL_AREA_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'optional-area.ts');
+/** Set in main from OPTIONAL_AREA_SRC before any tool is built. */
+let optionalArea;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 
 // ONE loader for every web module, as the other web-importing evals do. A `tsImport` per
@@ -814,7 +822,7 @@ function windowedSearchVillageTool(agent, search, record, village, yearVillage, 
     inputSchema: z.object({
       query: z.string().optional(),
       window: z.string().optional(),
-      area: z.string().min(1).optional(),
+      area: optionalArea,
       date: z.string().optional(),
     }),
     inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
@@ -1008,10 +1016,7 @@ function buildFixtureTools(
       subject: z.string().min(1),
       window: z.string().optional(),
       childId: z.string().min(1).optional(),
-      area: z.preprocess(
-        (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-        z.string().min(1).optional(),
-      ),
+      area: optionalArea,
     }),
     inputExamples: [
       { subject: 'toddler gymnastics', window: 'this fall' },
@@ -2085,6 +2090,7 @@ async function main() {
   }
 
   const agent = await loadAgent();
+  ({ optionalArea } = await importTs(OPTIONAL_AREA_SRC));
   const deidentify = await importTs(DEIDENTIFY_SRC);
   const namedArea = await importTs(NAMED_AREA_SRC);
   ({ spokenFind } = await importTs(

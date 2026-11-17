@@ -9,6 +9,7 @@ import {
   resolveNamedArea,
   sharedNamedAreaReader,
 } from '~/lib/channel/named-area';
+import { optionalArea } from '~/lib/coach/optional-area';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
@@ -67,14 +68,6 @@ export interface ActivityToolArgs {
   /** The family row's plan. Absent treats the household as Plus (today's budgets). */
   planTier?: PlanTier;
 }
-
-/** The model sometimes fills an optional `area` with "" to mean "none named". That is the
- * omitted case, so it is read as omitted before validation rather than refused, which
- * cost the turn a step. The wire schema is unchanged (compileToolSchema). */
-const optionalArea = z.preprocess(
-  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-  z.string().min(1).optional(),
-);
 
 /** The sentence the model reads when a named place cannot be searched. Never echoes the
  * place back, for the reason {@link refusalSentence} never echoes a subject. */
