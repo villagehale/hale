@@ -10,10 +10,13 @@ export {
   getFlag,
   parseAllowlist,
   parseEnvBoolean,
+  reportInexactFlagValue,
   type AllowlistMode,
   type FlagKey,
   type FlagParser,
   type FlagSpec,
+  type FlagValueFault,
+  type InexactFlagValue,
 } from './catalog.js';
 export {
   DEFAULT_POSTHOG_HOST,
