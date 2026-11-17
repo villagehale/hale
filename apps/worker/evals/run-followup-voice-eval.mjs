@@ -47,6 +47,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { FOLLOWUP_VOICE_FIXTURES } from './followup-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -125,7 +126,9 @@ const MAX_TOKENS = 128;
 // ── the composer's refusals(), replicated from voice.ts ─────────────────────
 
 const MAX_ASK_CHARS = 160;
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -135,7 +138,7 @@ function refusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
   let withoutSubject = body;
@@ -193,6 +196,7 @@ const BROKEN_ASK =
   'See www.example.com for options.';
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');

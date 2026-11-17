@@ -10,7 +10,7 @@ import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSessionByFamily } from '~/lib/channel/intake/session';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
 import { defaultCallNameComposer, readModelParentName } from './call-name-voice';
 
@@ -131,7 +131,11 @@ const NOT_A_NAME: ReadonlySet<string> = new Set([
 export function soleGivenName(body: string): string | null {
   const trimmed = body.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_NAME_CHARS) return null;
-  if (hasLinkShape(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
+  if (hasLinkShape(trimmed)) {
+    noteLinkGate('name-reply', 'refused');
+    return null;
+  }
+  if (trimmed.includes('@') || /\d/.test(trimmed)) return null;
 
   const stripped = stripLeadIn(trimmed);
   const words = stripped.split(/\s+/).filter(Boolean);

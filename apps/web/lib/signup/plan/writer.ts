@@ -1,7 +1,7 @@
 import { type AgentClient, hasGarbledText, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
 
@@ -166,7 +166,10 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasLinkShape(tidy)) {
+    noteLinkGate('signup-plan', 'redraft');
+    out.push('contains a link: Hale adds any link after the text');
+  }
   if (hasGarbledText(tidy)) {
     out.push('garbled characters: an accented letter came out as two or three other characters');
   }

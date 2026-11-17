@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { untrustedActivityLabel } from './plan/reader';
 import type { SignupOffer } from './types';
@@ -108,6 +108,7 @@ export function toSignupConsentReading(
 
 function cleanQuestion(value: string | null): string | null {
   const text = value?.replace(/\s+/g, ' ').trim() ?? '';
+  if (text && hasLinkShape(text)) noteLinkGate('consent-reader', 'refused');
   if (!text || text.length > MAX_QUESTION_CHARS || hasLinkShape(text)) return null;
   return text;
 }

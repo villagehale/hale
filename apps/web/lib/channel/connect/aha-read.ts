@@ -8,7 +8,7 @@
  */
 
 import { localeFor } from '~/lib/channel/language';
-import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { zonedMidnight } from '~/lib/memory/period';
 
 export const AHA_ITEM_LIMIT = 8;
@@ -149,7 +149,11 @@ function cleanTitle(value: string): string | null {
 
 function cleanLocation(value: string): string | null {
   const text = value.replace(/\s+/g, ' ').trim();
-  if (text.length === 0 || text.includes('@') || hasLinkShape(text)) return null;
+  if (hasLinkShape(text)) {
+    noteLinkGate('aha-read', 'refused');
+    return null;
+  }
+  if (text.length === 0 || text.includes('@')) return null;
   return cutWithoutLinks(text, 80);
 }
 

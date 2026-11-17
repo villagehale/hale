@@ -99,6 +99,14 @@ describe('createFloodLine', () => {
     expect(outcome).toEqual({ status: 'unavailable', reason: 'model_failed' });
   });
 
+  it('link: a web address is not sent, and nothing is substituted', async () => {
+    const outcome = await createFloodLine(clientSaying('Busy. See evil.app/x')).compose({
+      language: 'en',
+      inGroup: false,
+    });
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'link' });
+  });
+
   it('empty: the model writes only whitespace', async () => {
     const outcome = await createFloodLine(clientSaying('   ')).compose({
       language: null,
