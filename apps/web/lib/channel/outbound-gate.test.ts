@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ParentClock } from './family-tz.js';
 import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 import {
   type OutboundGatePorts,
@@ -12,6 +13,7 @@ import {
   holdStatus,
   proactiveFloorOpensAt,
   proactiveQuietNow,
+  quietAcrossZones,
 } from './outbound-gate.js';
 
 /**
@@ -736,6 +738,82 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
 });
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo']);
+
+describe('quiet hours when the zone was never resolved (VIL-709)', () => {
+  const zones = [
+    'America/St_Johns',
+    'America/Halifax',
+    'America/Toronto',
+    'America/Winnipeg',
+    'America/Regina',
+    'America/Edmonton',
+    'America/Vancouver',
+    'America/Whitehorse',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+  ];
+
+  function gate(now: Date, clock: ParentClock) {
+    const fake = ports({ timeZone: 'UTC' });
+    return assertProactiveSendAllowed(
+      { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now },
+      { ...fake.ports, parentClock: async () => clock },
+    );
+  }
+
+  it('keeps 21:00–08:00 in a stored America/New_York zone', async () => {
+    const zone = {
+      kind: 'zone' as const,
+      timeZone: 'America/New_York',
+      source: 'stored' as const,
+    };
+    // 07:59 EST, then 08:00 EST, then noon, then 21:00 EST.
+    await expect(gate(new Date('2026-01-15T12:59:00.000Z'), zone)).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+    await expect(gate(new Date('2026-01-15T13:00:00.000Z'), zone)).resolves.toMatchObject({
+      allowed: true,
+    });
+    await expect(gate(new Date('2026-01-15T17:00:00.000Z'), zone)).resolves.toMatchObject({
+      allowed: true,
+    });
+    await expect(gate(new Date('2026-01-16T02:00:00.000Z'), zone)).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+  });
+
+  it('holds a send that is noon in UTC and still night on the east coast', async () => {
+    await expect(
+      quietAcrossZones({ now: new Date('2026-01-15T12:00:00.000Z'), zones }),
+    ).resolves.toBe(true);
+    await expect(
+      gate(new Date('2026-01-15T12:00:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('allows a send only while it is daytime from Honolulu through Newfoundland', async () => {
+    await expect(
+      quietAcrossZones({ now: new Date('2026-01-15T18:00:00.000Z'), zones }),
+    ).resolves.toBe(false);
+    await expect(
+      gate(new Date('2026-01-15T18:00:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toMatchObject({ allowed: true });
+    // 07:59 in Honolulu, and 21:00 in St. John's.
+    await expect(
+      gate(new Date('2026-01-15T17:59:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+    await expect(
+      gate(new Date('2026-01-16T00:30:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+});
 
 /** Every non-test source file under `dir`, the `one-door.test.ts` walk. */
 function sourceFiles(dir: string): string[] {

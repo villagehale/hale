@@ -84,6 +84,7 @@ describe('catalog history cutover', () => {
       '0254_school_break_readings',
       '0255_email_alert_holds',
       '0257_family_signup_help_seasons',
+      '0258_family_timezone_resolved',
     ]);
   });
 });

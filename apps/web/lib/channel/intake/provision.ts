@@ -9,6 +9,7 @@ import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { type TimezoneSource, zoneForNewFamily } from '../family-tz';
 import { acceptCalendarDate } from './calendar-date';
 import { deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
@@ -114,17 +115,30 @@ async function ensureIntakeUser(
   tx: Database,
   externalAuthId: string,
   timezone: string | null,
+  resolved: { zone: string; source: TimezoneSource } | null,
 ): Promise<string> {
+  const zone = timezone ?? resolved?.zone ?? null;
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null, ...(timezone ? { timezone } : {}) })
+    .values({
+      externalAuthId,
+      email: null,
+      name: null,
+      ...(zone ? { timezone: zone } : {}),
+      ...(resolved ? { resolvedTimezone: resolved.zone, timezoneSource: resolved.source } : {}),
+    })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
   // A row created before this place was known still has the column default.
   // The postal code is the source of the zone, so the signup write wins.
-  if (timezone) {
+  // A flag-on resolution that is not the column default is written beside it.
+  if (zone || resolved) {
     await tx
       .update(schema.users)
-      .set({ timezone, updatedAt: new Date() })
+      .set({
+        ...(zone ? { timezone: zone } : {}),
+        ...(resolved ? { resolvedTimezone: resolved.zone, timezoneSource: resolved.source } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.users.externalAuthId, externalAuthId));
   }
 
@@ -227,9 +241,28 @@ export async function provisionFromIntake(
   const lifetimeFamilyComp =
     input.sourceCode !== null && LIFETIME_FAMILY_SOURCE_CODES.has(input.sourceCode);
 
+  const resolved = await zoneForNewFamily({
+    place: location
+      ? {
+          timezone: location.timezone,
+          countryCode: location.countryCode,
+          postalCode: location.postalCode,
+          areaCoarse: location.areaCoarse,
+          city: location.city ?? null,
+          province: location.province ?? null,
+        }
+      : null,
+    phone: phoneE164,
+  });
+
   const result = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null);
+    const userId = await ensureIntakeUser(
+      tx,
+      externalAuthId,
+      location?.timezone ?? resolved?.zone ?? null,
+      resolved,
+    );
 
     // VIL-532: a prior turn already wrote the channel and committed, then threw
     // before the session was linked. Retrying must not insert a second SMS row.
