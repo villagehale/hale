@@ -8,7 +8,6 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { formatDay, formatTime } from '~/lib/channel/linq/household-calendar';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
@@ -20,6 +19,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -972,6 +972,9 @@ async function sendOffer(
   const lead = offer.group[0];
   if (lead === undefined) throw new Error('sendOffer: an offer with no instances');
   if (await dedupeActive(offer.dedupeKey, database)) return 'already_sent';
+  // Before the gate and the writer: a tick that already queued this change must not
+  // compose it again.
+  if (await isQueuedForDecider(database, familyId, offer.dedupeKey)) return 'queued';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
@@ -1012,7 +1015,6 @@ async function sendOffer(
     return 'notice_unwritten';
   }
 
-  if (await isQueuedForDecider(database, familyId, offer.dedupeKey)) return 'queued';
   const handedOff = await handOffProactive(
     database,
     [

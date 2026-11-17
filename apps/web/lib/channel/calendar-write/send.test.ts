@@ -62,7 +62,13 @@ describe('VIL-454 noticeAfterSync', () => {
     expect(p.compose).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'added', connectLink: null }),
     );
-    expect(p.send).toHaveBeenCalledWith('f1', 'u1', 'Swim is on your calendar.', 'short');
+    expect(p.send).toHaveBeenCalledWith(
+      'f1',
+      'u1',
+      'Swim is on your calendar.',
+      'short',
+      'calendar_write_notice:f1:u1:e1:create',
+    );
   });
 
   it('mints and hands the connect link when no calendar is connected', async () => {
@@ -79,6 +85,13 @@ describe('VIL-454 noticeAfterSync', () => {
       'no_link',
     );
     expect(p.send).not.toHaveBeenCalled();
+  });
+
+  it('does not compose a notice already queued for the decider', async () => {
+    const p = ports({ alreadyQueued: async () => true });
+    expect(await noticeAfterSync(REQUEST, WRITTEN, p)).toBe('queued');
+    expect(p.compose).not.toHaveBeenCalled();
+    expect(p.loadEvent).not.toHaveBeenCalled();
   });
 
   it('sends nothing canned when the compose fails', async () => {

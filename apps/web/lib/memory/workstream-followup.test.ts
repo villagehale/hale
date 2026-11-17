@@ -255,6 +255,28 @@ describe('workstream follow-up sweep', () => {
     ]);
   });
 
+  it('does not compose a check-back already queued for the decider', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const compose = vi.fn(async () => ({
+      ok: true as const,
+      body: 'The camp has not written back.',
+    }));
+    const result = await runWorkstreamFollowupSweep({} as Database, {
+      now: () => NOW,
+      listDue: async () => [due],
+      f14: () => true,
+      linkedTeen: async () => false,
+      parentFor: async () => 'user-1',
+      dedupeActive: async () => false,
+      buildGate: () => gate('America/Toronto'),
+      pendingDeferral: async () => null,
+      queuedForDecider: async () => true,
+      compose,
+    });
+    expect(result.queued).toBe(1);
+    expect(compose).not.toHaveBeenCalled();
+  });
+
   it('does not compose again while a hold or a backoff is still in force', async () => {
     vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
     const compose = vi.fn();

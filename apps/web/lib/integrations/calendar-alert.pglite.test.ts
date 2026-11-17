@@ -261,6 +261,34 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 });
 
 describe('alertParentForCalendarChanges', () => {
+  it('does not compose a calendar alert already queued for the decider', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const dedupeKey = calendarAlertDedupeKey(INTEGRATION, TIMED.eventId, TIMED.updated);
+    await db.database.insert(schema.proactiveCandidates).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      kind: 'calendar_alert',
+      category: 'calendar_alert',
+      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+      what: 'Cartwheels moved.',
+      why: 'calendar_alert',
+      sourceUrl: null,
+      worthlessAfter: null,
+      parentRequested: false,
+      dedupeKey,
+    });
+    let gates = 0;
+    const h = harness();
+    h.ports.gate = async () => {
+      gates += 1;
+      return { allowed: true, optOut: 'full' };
+    };
+
+    await expect(sweep(h)).resolves.toEqual(['queued']);
+    expect(gates).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('sends exactly one text, ledgers it under the dedupe key, threads it and audits it', async () => {
     const h = harness();
 

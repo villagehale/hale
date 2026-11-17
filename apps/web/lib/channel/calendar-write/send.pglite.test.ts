@@ -109,6 +109,31 @@ async function snapshot(familyEventId: string) {
   return { counts, event };
 }
 
+describe('VIL-691 calendar write notice dedupe', () => {
+  it('queues one notice per write, and a later pass matches that key', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('F14_ENABLED', 'true');
+    const s = await seed();
+    const ports = productionCalendarWriteNoticePorts(db.database);
+    const key = `calendar_write_notice:${s.familyId}:${s.parentUserId}:${s.familyEventId}:create`;
+    const text = 'Swim is on your calendar.';
+
+    await expect(ports.send(s.familyId, s.parentUserId, text, 'short', key)).resolves.toBe(
+      'queued',
+    );
+    await expect(ports.send(s.familyId, s.parentUserId, text, 'short', key)).resolves.toBe(
+      'queued',
+    );
+
+    const rows = await db.database
+      .select({ dedupeKey: schema.proactiveCandidates.dedupeKey })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, s.familyId));
+    expect(rows.map((row) => row.dedupeKey)).toEqual([key]);
+    expect(key).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
 describe('VIL-454 production notice ports, real database', () => {
   it('lets a send through for an enrolled parent in the daytime', async () => {
     const s = await seed();

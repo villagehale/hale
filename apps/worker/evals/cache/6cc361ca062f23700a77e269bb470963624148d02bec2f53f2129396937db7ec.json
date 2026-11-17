@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Activity follow-up is Hale checking back on something it set up; it is Thursday 6 PM local (outside quiet hours), the parent replied to the last send, no unanswered streak, no pace preference, and the item is not declined or expired, so it goes on time.",
+    "action": "send_now",
+    "item_ids": [
+      "activity"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
