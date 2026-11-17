@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Good, that helps a lot when both of you see the same plans and reminders. I'll leave the number and phrase for the group below so you can start it whenever you're ready.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1702,
+  "usage": {
+    "input_tokens": 574,
+    "output_tokens": 415,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

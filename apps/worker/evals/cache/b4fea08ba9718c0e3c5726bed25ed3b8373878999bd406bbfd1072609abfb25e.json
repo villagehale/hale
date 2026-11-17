@@ -1,0 +1,25 @@
+{
+  "value": {
+    "reply": "Got it, just you then. I'll leave the other parent out of it and keep the kid plans with you. Thanks for setting this up, Dana, and I'll text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "coparentGroup": false
+  },
+  "latencyMs": 1698,
+  "usage": {
+    "input_tokens": 576,
+    "output_tokens": 424,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}
