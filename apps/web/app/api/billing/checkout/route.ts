@@ -1,9 +1,10 @@
 import type { BillingPeriod } from '@hale/types';
-import { currencyFromIpCountry } from '@hale/types';
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
+import { billingWebhookReady } from '~/lib/billing/billing-live';
+import { decideCheckoutCurrency, decideCheckoutTier } from '~/lib/billing/checkout-request';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
 import { holidayPromoEnabled } from '~/lib/billing/flags';
@@ -11,7 +12,6 @@ import {
   foundingWindowOpen,
   isPromoAnnualSku,
   paidTierFromSku,
-  paidTierFromUnknown,
   resolveCheckoutPrice,
 } from '~/lib/billing/prices';
 import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
@@ -28,9 +28,13 @@ const PERIODS: ReadonlySet<string> = new Set<BillingPeriod>(['monthly', 'annual'
  * POST /api/billing/checkout — founding / Plus Stripe Checkout for a signed-in family.
  *
  * Dark unless HOLIDAY_PROMO_ENABLED is exactly `true` (404, same as the deleted
- * route). Currency comes from `x-vercel-ip-country` (US → USD, else CAD). The
- * promo window is enforced here, not in Stripe. Attribution from the hale_attr
- * cookie, query, and body is copied into Stripe metadata.
+ * route). Currency comes from `x-vercel-ip-country`. With
+ * CHECKOUT_SERVER_CURRENCY_ENABLED exactly `true`, only US → USD and CA → CAD
+ * are charged, and a client currency never picks the price. The promo window
+ * is enforced here, not in Stripe. Attribution from the hale_attr cookie,
+ * query, and body is copied into Stripe metadata. When
+ * STRIPE_BILLING_REVOKE_ENABLED is exactly `true`, this also stays 501 until
+ * STRIPE_WEBHOOK_SECRET is set and a signed event has been applied.
  */
 export async function POST(req: Request): Promise<Response> {
   const session = await auth();
@@ -51,7 +55,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const body = (await req.json().catch(() => null)) as {
     period?: unknown;
-    /** plus | family | max. Unrecognised values are Plus. */
+    /** plus | family | max. With the server-currency flag, unknown values are 400. */
     tier?: unknown;
     /** Promo confirmation refuses a silent fallback to a list price. */
     offer?: unknown;
@@ -70,14 +74,19 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'invalid_period' }, { status: 400 });
   }
   const period = periodRaw as BillingPeriod;
-  const tier = paidTierFromUnknown(body?.tier);
-  const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
-  // The confirmation page names the currency it showed. If a family crossed a
-  // border (or the two hosts disagree on geo), make them review it again before
-  // creating a Stripe session. Never take a client-supplied currency as the price.
-  if (body?.expectedCurrency !== undefined && body.expectedCurrency !== currency) {
-    return NextResponse.json({ error: 'currency_changed' }, { status: 409 });
+  const tierDecision = decideCheckoutTier(body?.tier);
+  if (tierDecision.status === 'invalid_tier') {
+    return NextResponse.json({ error: 'invalid_tier' }, { status: 400 });
   }
+  const tier = tierDecision.tier;
+  const currencyDecision = decideCheckoutCurrency({
+    countryHeader: req.headers.get('x-vercel-ip-country'),
+    expectedCurrency: body?.expectedCurrency,
+  });
+  if (currencyDecision.status !== 'ok') {
+    return NextResponse.json({ error: currencyDecision.status }, { status: 409 });
+  }
+  const currency = currencyDecision.currency;
   const selected = resolveCheckoutPrice({
     currency,
     period,
@@ -107,6 +116,13 @@ export async function POST(req: Request): Promise<Response> {
   const origin = process.env.APP_URL;
   if (!client || !origin) {
     return NextResponse.json({ error: 'stripe_billing_not_live' }, { status: 501 });
+  }
+  const webhook = await billingWebhookReady(defaultDb());
+  if (!webhook.ready) {
+    return NextResponse.json(
+      { error: 'stripe_billing_not_live', reason: webhook.reason },
+      { status: 501 },
+    );
   }
 
   const url = new URL(req.url);

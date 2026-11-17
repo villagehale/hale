@@ -1,13 +1,17 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { stripeBillingRevokeEnabled } from '~/lib/billing/flags';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import {
+  type ChargeRevokeDecision,
   type PriceTierMap,
   type StripeTierOptions,
+  chargeRevokeDecision,
+  chargeSubscriptionId,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   paidEventOccurredAt,
@@ -48,7 +52,8 @@ export type ApplyStripeBillingResult =
   | { status: 'unknown_family' }
   | { status: 'ignored' }
   | { status: 'refund_ready'; opsAlert: OpsPageOutcome }
-  | { status: 'blocked' };
+  | { status: 'blocked' }
+  | { status: 'kept'; reason: 'partial_refund' | 'active_subscription' };
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -79,6 +84,12 @@ export async function applyStripeBillingEvent(
   const priceDecision = decidePaidSessionGrant(event, now, env);
   if (priceDecision.status === 'disallowed') {
     return markRefundReady(event, eventId, priceDecision, database, deps);
+  }
+  if (stripeBillingRevokeEnabled(env)) {
+    const revoke = chargeRevokeDecision(event);
+    if (revoke.action !== 'ignore') {
+      return applyChargeRevoke(event, eventId, revoke, database);
+    }
   }
   const tier = planTierFromStripeEvent(event, priceTierMap, tierOptions);
   if (tier === null) {
@@ -149,6 +160,101 @@ export async function applyStripeBillingEvent(
 
     return { status: 'applied', tier };
   });
+}
+
+async function applyChargeRevoke(
+  event: unknown,
+  eventId: string,
+  decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
+  database: Database,
+): Promise<ApplyStripeBillingResult> {
+  const familyId = await familyIdForCharge(event, database);
+  if (!familyId) return { status: 'unbound' };
+
+  const refundedSubscriptionId = chargeSubscriptionId(event);
+  return database.transaction(async (tx) => {
+    const claim = await tx
+      .insert(schema.stripeBillingEvents)
+      .values({ eventId })
+      .onConflictDoNothing()
+      .returning({ id: schema.stripeBillingEvents.id });
+    if (claim.length === 0) return { status: 'duplicate' };
+
+    const existing = await tx
+      .select({
+        planTier: schema.families.planTier,
+        stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+    if (existing.length === 0) {
+      console.warn(
+        `stripe billing: event ${eventId} references unknown family ${familyId} — acknowledged, not applied`,
+      );
+      return { status: 'unknown_family' };
+    }
+
+    const current = existing[0];
+    if (!current) return { status: 'unknown_family' };
+    const anotherSubscription =
+      decision.action === 'revoke' &&
+      current.stripeSubscriptionId &&
+      refundedSubscriptionId &&
+      current.stripeSubscriptionId !== refundedSubscriptionId;
+    const keep = decision.action === 'keep' || Boolean(anotherSubscription);
+    if (keep) {
+      const reason = decision.action === 'keep' ? decision.reason : 'active_subscription';
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'billing_refunded',
+        targetTable: 'families',
+        targetId: familyId,
+        after: {
+          planTier: current.planTier,
+          source: 'stripe',
+          stripeEventId: eventId,
+          reason,
+          tierChanged: false,
+        },
+      });
+      return { status: 'kept', reason };
+    }
+
+    await tx
+      .update(schema.families)
+      .set({ planTier: 'free', updatedAt: new Date() })
+      .where(eq(schema.families.id, familyId));
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'family_plan_updated',
+      targetTable: 'families',
+      targetId: familyId,
+      before: { planTier: current.planTier },
+      after: {
+        planTier: 'free',
+        source: 'stripe',
+        stripeEventId: eventId,
+        reason: decision.kind,
+      },
+    });
+    return { status: 'applied', tier: 'free' };
+  });
+}
+
+async function familyIdForCharge(event: unknown, database: Database): Promise<string | null> {
+  const fromEvent = familyIdFromStripeEvent(event);
+  if (fromEvent) return fromEvent;
+  const customerId = stripeRefsFromStripeEvent(event).customerId;
+  if (!customerId) return null;
+  const rows = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.stripeCustomerId, customerId))
+    .limit(1);
+  return rows[0]?.id ?? null;
 }
 
 async function isSubscriptionBlocked(

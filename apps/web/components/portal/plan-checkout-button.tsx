@@ -29,7 +29,12 @@ export function PlanCheckoutButton({
         body: JSON.stringify({ period, tier }),
       });
       if (res.status === 409) {
-        setError('This family already has a paid plan.');
+        const denied = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        setError(
+          denied?.error === 'already_paid'
+            ? 'This family already has a paid plan.'
+            : 'Checkout is not available right now.',
+        );
         return;
       }
       if (!res.ok) {

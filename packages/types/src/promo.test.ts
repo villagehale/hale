@@ -8,6 +8,7 @@ import {
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
+  serverCheckoutCurrency,
 } from './promo.js';
 
 describe('currencyFromIpCountry', () => {
@@ -27,6 +28,21 @@ describe('currencyFromIpCountry', () => {
     expect(currencyFromIpCountry(undefined)).toBe('CAD');
     expect(currencyFromIpCountry('')).toBe('CAD');
     expect(currencyFromIpCountry('   ')).toBe('CAD');
+  });
+});
+
+describe('serverCheckoutCurrency', () => {
+  it('maps only US and CA, and refuses a missing or other country', () => {
+    expect(serverCheckoutCurrency('US')).toBe('USD');
+    expect(serverCheckoutCurrency(' us ')).toBe('USD');
+    expect(serverCheckoutCurrency('CA')).toBe('CAD');
+    expect(serverCheckoutCurrency('ca')).toBe('CAD');
+    expect(serverCheckoutCurrency('MX')).toBeNull();
+    expect(serverCheckoutCurrency('GB')).toBeNull();
+    expect(serverCheckoutCurrency(null)).toBeNull();
+    expect(serverCheckoutCurrency(undefined)).toBeNull();
+    expect(serverCheckoutCurrency('')).toBeNull();
+    expect(serverCheckoutCurrency('   ')).toBeNull();
   });
 });
 

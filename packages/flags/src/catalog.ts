@@ -314,6 +314,18 @@ export const PAYMENT_ENV_ONLY = [
     type: 'boolean' as const,
     note: 'env-only; exact `true`; Meta Conversions API Purchase; nothing in PostHog may turn this on',
   },
+  {
+    env: 'CHECKOUT_SERVER_CURRENCY_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; checkout currency is US/CA geo only, no client currency, no USD-to-CAD list fallback; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'STRIPE_BILLING_REVOKE_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; refund and dispute webhooks revoke the tier, checkout waits for an applied billing event, reconcile pages #ops; nothing in PostHog may turn this on',
+  },
 ] as const;
 
 export function getFlag(key: string): FlagSpec {
