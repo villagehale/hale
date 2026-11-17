@@ -23,6 +23,7 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
+import { optionalArea } from './optional-area';
 
 /**
  * The Village read shared by every surface that offers it (VIL-221 · C2).
@@ -192,7 +193,7 @@ export function searchVillageTool(
     inputSchema: z.object({
       query: z.string().optional(),
       window: z.string().optional(),
-      area: z.string().min(1).optional(),
+      area: optionalArea,
       // Last on purpose. A strict tool's arguments come out in schema order, so with
       // `area` after it, a coach that wrote the day first could add only `area`, and put
       // the day's words ("today") there.
