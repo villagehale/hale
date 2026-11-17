@@ -6,6 +6,7 @@ import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
+import { type ParentClock, familyTzResolveEnabled, readParentClock } from './family-tz';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
 import { proactiveCadence } from './proactive/flag';
 import { quietStartForPhone } from './proactive/quiet';
@@ -341,6 +342,25 @@ export async function proactiveQuietNow(args: {
   return inProactiveQuietHours(args.now, args.timeZone);
 }
 
+/**
+ * VIL-709. No single zone. A text is quiet when it is night in ANY zone the
+ * family might live in, so UTC is never the clock that lets it out.
+ */
+export async function quietAcrossZones(args: {
+  now: Date;
+  zones: readonly string[];
+  phone?: () => Promise<string | null>;
+}): Promise<boolean> {
+  if (args.zones.length === 0) return true;
+  let start: string = PROACTIVE_QUIET_HOURS.start;
+  if (proactiveCadence() !== 'off' && args.phone) {
+    start = quietStartForPhone(await args.phone());
+  }
+  return args.zones.some((zone) =>
+    isWithinQuietHours(args.now, zone, start, PROACTIVE_QUIET_HOURS.end),
+  );
+}
+
 /** The next instant at or after `now` when the local clock reads the floor's end. */
 export function proactiveFloorOpensAt(now: Date, timeZone: string): Date {
   const today = dayKeyIn(now, timeZone);
@@ -430,6 +450,12 @@ export interface OutboundGatePorts {
   proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
   /**
+   * VIL-709. Set only while FAMILY_TZ_RESOLVE_ENABLED is on. A resolved zone,
+   * or the zones an unresolved family must not be texted through the night in.
+   * Absent: {@link parentTimeZone} is the whole clock, as before.
+   */
+  parentClock?(parentUserId: string): Promise<ParentClock>;
+  /**
    * VIL-226 · the parent's sendable number, read only while PROACTIVE_CADENCE is armed,
    * to start quiet hours at 20:00 for a Florida or Oklahoma line. Absent means the
    * 21:00 floor.
@@ -484,13 +510,20 @@ export async function assertProactiveSendAllowed(
     return { allowed: true, optOut: await optOutForm(ports, request) };
   }
 
-  const timeZone = await ports.parentTimeZone(request.parentUserId);
+  const clock = ports.parentClock ? await ports.parentClock(request.parentUserId) : null;
   const parentPhone = ports.parentPhone?.bind(ports);
-  const quiet = await proactiveQuietNow({
-    now: request.now,
-    timeZone,
-    phone: parentPhone && (() => parentPhone(request.parentUserId)),
-  });
+  const phone = parentPhone && (() => parentPhone(request.parentUserId));
+  const quiet =
+    clock?.kind === 'unresolved'
+      ? await quietAcrossZones({ now: request.now, zones: clock.zones, phone })
+      : await proactiveQuietNow({
+          now: request.now,
+          timeZone:
+            clock?.kind === 'zone'
+              ? clock.timeZone
+              : await ports.parentTimeZone(request.parentUserId),
+          phone,
+        });
   if (quiet) {
     return { allowed: false, reason: 'quiet_hours' };
   }
@@ -740,6 +773,9 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       if (!row) throw new Error(`buildOutboundGatePorts: no users row for ${parentUserId}`);
       return row.timezone;
     },
+    ...(familyTzResolveEnabled()
+      ? { parentClock: (parentUserId: string) => readParentClock(database, parentUserId) }
+      : {}),
     parentPhone: (parentUserId) => resolveSendablePhone(database, parentUserId),
     optOutUnread: (parentUserId) => isParentHeld(database, parentUserId),
   };

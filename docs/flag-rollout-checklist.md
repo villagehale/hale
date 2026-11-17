@@ -75,6 +75,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `F14_ENABLED` | `apps/web/lib/channel/f14.ts:26` | `true` | OFF | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | `apps/web/lib/memory/kinds.ts:96` | `true` | OFF | `false` | Noah |
 | `FAMILY_HOME_METRO_ENABLED` | `apps/web/lib/travel/away.ts` (`familyHomeMetroEnabled`; parsed `exact` at `packages/flags/src/catalog.ts`) | `true` | OFF | `false` | Noah |
+| `FAMILY_TZ_RESOLVE_ENABLED` | `apps/web/lib/channel/family-tz.ts` (`familyTzResolveEnabled`; parsed `exact` at `packages/flags/src/catalog.ts`) | `true` | OFF | `false` | Barton |
 | `FIRST_REPLY_ACTION_LINE` | `apps/web/lib/channel/intake/action-line.ts:106` | `true` | OFF | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:20` | `on` | OFF | empty, or `off` | Sloane |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:26` | `true` | OFF | `false` | Noah |
@@ -293,6 +294,7 @@ Code is merged for every row.
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. The model writes the parent reply. A miss holds it. | A "what do you know" reply that leaves while the model did not write it. | `false` | Noah |
 | `FAMILY_HOME_METRO_ENABLED` | A trip is judged from the one city on the family's row (the place they named, or the one city their code belongs to). Dark, a GTA code still treats the whole GTA, districts included, as home. No parent copy. | A Toronto family briefed that they are in Scarborough, or an Ottawa family briefed that they are away at home. | `false` | Noah |
+| `FAMILY_TZ_RESOLVE_ENABLED` | Quiet hours and the registration season use a zone resolved from the place, the phone's area, the home metro, or a stated city or region. Families still on UTC are backfilled into `resolved_timezone` (migration `0258`). With no zone, a proactive text waits while it is night in any North American zone the family might be in. No parent copy. | A text at night in the family's zone, or a season cap counted on UTC. | `false` | Barton |
 | `FIRST_REPLY_ACTION_LINE` | The first radar reply may include the action URL. | Replies that contain a URL the parent did not ask for. | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | A new parent is asked for a place, then shown a week find, before the older hello. | First-session `channel_messages` with status `failed`. | empty, or `off` | Sloane |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |

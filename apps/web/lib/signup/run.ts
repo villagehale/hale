@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { type PlanTier, registrationSeasonOf } from '@hale/types';
+import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
+import { parentSeasonClock } from '~/lib/channel/family-tz';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
@@ -491,10 +492,10 @@ async function runOneShotAsk(
       .limit(1);
     const planTier: PlanTier = family?.planTier ?? 'free';
     const cap = entitlementsForFamily(planTier).signupHelpPerSeason;
-    const timeZone = await parentTimezone(database, input.parentUserId);
-    const season = registrationSeasonOf(input.now, timeZone);
+    const seasonClock = await parentSeasonClock(database, input.parentUserId, input.now);
+    const season = seasonClock.outcome === 'season' ? seasonClock : null;
     let atSeasonCap = false;
-    if (cap !== null) {
+    if (cap !== null && season) {
       const used = await signupHelpAttempted(database, {
         familyId: input.familyId,
         seasonKey: season.key,
@@ -510,6 +511,11 @@ async function runOneShotAsk(
           'authorized signup: Browser Use seasonal allowance spent, falling through',
         );
       }
+    } else if (cap !== null) {
+      console.info(
+        { outcome: 'timezone_unset' },
+        'authorized signup: season cap not claimed, zone unset',
+      );
     }
     if (!atSeasonCap) {
       const result = await runBrowserUseBranch(database, input, deps, {
@@ -522,9 +528,9 @@ async function runOneShotAsk(
         session,
         fieldsAllowed: consent.fieldsAllowed,
         approvedPriceCents: offer.approvedPriceCents,
-        seasonCap: cap,
-        seasonKey: season.key,
-        resetsOn: season.resetsOn,
+        seasonCap: season ? cap : null,
+        seasonKey: season?.key ?? '',
+        resetsOn: season?.resetsOn ?? '',
       });
       if (result.skipped === 'season_cap') {
         reportDeps = { ...deps, signupHelpSeason: result.signupHelpSeason };
@@ -1182,15 +1188,6 @@ async function finish(
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
   return offer.sessions.find((item) => item.id === sessionId)?.label ?? '';
-}
-
-async function parentTimezone(database: Database, parentUserId: string): Promise<string> {
-  const [row] = await database
-    .select({ timezone: schema.users.timezone })
-    .from(schema.users)
-    .where(eq(schema.users.id, parentUserId))
-    .limit(1);
-  return row?.timezone ?? 'UTC';
 }
 
 interface ReplyFacts {
