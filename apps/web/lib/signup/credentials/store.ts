@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { signupProviderHost } from '../consent';
 import { decryptWithDek, encryptWithDek } from './envelope';
-import { providerCredentialsEnabled } from './flag';
+import { planCityLoginOwnerEnabled, providerCredentialsEnabled } from './flag';
 import { type CredentialKms, envCredentialKms, newFamilyDek } from './kms';
 import { parseTotpSeed, totpCode } from './totp';
 
@@ -98,16 +98,25 @@ export async function saveProviderCredentials(
   return { ok: true };
 }
 
+export type CredentialRead =
+  | { status: 'ready'; credentials: SavedProviderCredentials }
+  /** A live row belongs to the other parent. Nothing was decrypted. */
+  | { status: 'other_parent' }
+  | { status: 'absent' };
+
 /**
- * Decrypt only for a Browser Use run. Stale rows and a flag that is off return null.
- * The TOTP seed is turned into a current code here, never passed as a seed.
+ * Decrypt only for a Browser Use run. Stale rows and a credentials flag that is off
+ * are `absent`. The TOTP seed is turned into a current code here, never passed as a seed.
+ *
+ * While PLAN_CITY_LOGIN_OWNER_ENABLED is exactly `true`, a row saved by a different
+ * parent is `other_parent` and is not decrypted. There is no share grant.
  */
-export async function loadCredentialsForRun(
+export async function readCredentialsForRun(
   database: Database,
-  input: { familyId: string; providerHost: string; now: Date },
+  input: { familyId: string; providerHost: string; now: Date; parentUserId?: string },
   kms: CredentialKms = envCredentialKms(),
-): Promise<SavedProviderCredentials | null> {
-  if (!providerCredentialsEnabled()) return null;
+): Promise<CredentialRead> {
+  if (!providerCredentialsEnabled()) return { status: 'absent' };
   const host = signupProviderHost(input.providerHost);
   const creds = schema.providerSignupCredentials;
   const [row] = await database
@@ -117,21 +126,37 @@ export async function loadCredentialsForRun(
       and(eq(creds.familyId, input.familyId), eq(creds.providerHost, host), isNull(creds.staleAt)),
     )
     .limit(1);
-  if (!row) return null;
+  if (!row) return { status: 'absent' };
+  if (planCityLoginOwnerEnabled() && row.parentUserId !== input.parentUserId) {
+    return { status: 'other_parent' };
+  }
   const keys = schema.familyProviderDataKeys;
   const [key] = await database
     .select()
     .from(keys)
     .where(and(eq(keys.familyId, input.familyId), eq(keys.keyVersion, row.dekVersion)))
     .limit(1);
-  if (!key) return null;
+  if (!key) return { status: 'absent' };
   const dek = kms.unwrap(key.wrappedDek, key.masterKeyVersion);
   const totpSeed = row.totpSeedCiphertext ? decryptWithDek(dek, row.totpSeedCiphertext) : null;
   return {
-    username: decryptWithDek(dek, row.usernameCiphertext),
-    password: decryptWithDek(dek, row.passwordCiphertext),
-    totp: totpSeed ? totpCode(totpSeed, input.now) : null,
+    status: 'ready',
+    credentials: {
+      username: decryptWithDek(dek, row.usernameCiphertext),
+      password: decryptWithDek(dek, row.passwordCiphertext),
+      totp: totpSeed ? totpCode(totpSeed, input.now) : null,
+    },
   };
+}
+
+/** The ready credentials, or null when there is nothing this run may use. */
+export async function loadCredentialsForRun(
+  database: Database,
+  input: { familyId: string; providerHost: string; now: Date; parentUserId?: string },
+  kms: CredentialKms = envCredentialKms(),
+): Promise<SavedProviderCredentials | null> {
+  const read = await readCredentialsForRun(database, input, kms);
+  return read.status === 'ready' ? read.credentials : null;
 }
 
 export async function markCredentialsStale(

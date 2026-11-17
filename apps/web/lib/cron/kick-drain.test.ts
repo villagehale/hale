@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
+import { inboundDrainOrigin } from './kick-drain';
 
 /**
  * The kick is the whole reason a parent's text is answered in seconds rather than on the
@@ -217,5 +218,46 @@ describe('kickDrain', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(errors[0]?.[0]).toMatchObject({ reason: 'no_cron_secret' });
+  });
+
+  it('sends the automation bypass only when kicking this deployment URL', async () => {
+    process.env.VERCEL_ENV = 'production';
+    process.env.VERCEL_URL = 'hale-web-candidate.vercel.app';
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = 'bypass-secret';
+    try {
+      await kickDrain('https://hale-web-candidate.vercel.app');
+      const own = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(own.headers).toEqual({
+        authorization: 'Bearer test-secret',
+        'x-vercel-protection-bypass': 'bypass-secret',
+      });
+
+      fetchMock.mockClear();
+      await kickDrain('https://app.villagehale.com');
+      const live = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      expect(live.headers).toEqual({ authorization: 'Bearer test-secret' });
+    } finally {
+      Reflect.deleteProperty(process.env, 'VERCEL_ENV');
+      Reflect.deleteProperty(process.env, 'VERCEL_URL');
+      Reflect.deleteProperty(process.env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
+    }
+  });
+});
+
+describe('inboundDrainOrigin', () => {
+  const env = {
+    VERCEL_ENV: 'production',
+    VERCEL_URL: 'hale-web-candidate.vercel.app',
+    APP_URL: 'https://app.villagehale.com',
+  };
+
+  it('kicks a candidate deployment at itself', () => {
+    const req = new Request('https://hale-web-candidate.vercel.app/api/channels/linq/inbound');
+    expect(inboundDrainOrigin(req, env)).toBe('https://hale-web-candidate.vercel.app');
+  });
+
+  it('keeps a request on the parent domain pointed at APP_URL', () => {
+    const req = new Request('https://app.villagehale.com/api/channels/linq/inbound');
+    expect(inboundDrainOrigin(req, env)).toBe('https://app.villagehale.com');
   });
 });

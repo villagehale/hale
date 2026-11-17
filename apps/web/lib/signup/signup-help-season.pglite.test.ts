@@ -2,7 +2,11 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { claimSignupHelpAttempt, signupHelpAttempted } from './signup-help-season';
+import {
+  claimSignupHelpAttempt,
+  releaseSignupHelpAttempt,
+  signupHelpAttempted,
+} from './signup-help-season';
 
 const NOW = new Date('2026-09-29T15:00:00.000Z');
 const SEASON = '2026-fall';
@@ -93,5 +97,52 @@ describe('claimSignupHelpAttempt', () => {
       .from(schema.familySignupHelpSeasons)
       .where(eq(schema.familySignupHelpSeasons.familyId, familyId));
     expect(row?.attempted).toBe(2);
+  });
+
+  it('gives one attempt back and does not go below zero', async () => {
+    const { familyId } = await seedFamily(db.database);
+    await claimSignupHelpAttempt(db.database, {
+      familyId,
+      seasonKey: SEASON,
+      cap: 2,
+      now: NOW,
+    });
+    expect(
+      await releaseSignupHelpAttempt(db.database, { familyId, seasonKey: SEASON, now: NOW }),
+    ).toEqual({ attempted: 0 });
+    expect(
+      await releaseSignupHelpAttempt(db.database, { familyId, seasonKey: SEASON, now: NOW }),
+    ).toEqual({ attempted: 0 });
+    expect(await signupHelpAttempted(db.database, { familyId, seasonKey: SEASON })).toBe(0);
+  });
+
+  it('a release then two concurrent claims still stop at the cap', async () => {
+    const { familyId } = await seedFamily(db.database);
+    await claimSignupHelpAttempt(db.database, {
+      familyId,
+      seasonKey: SEASON,
+      cap: 2,
+      now: NOW,
+    });
+    await claimSignupHelpAttempt(db.database, {
+      familyId,
+      seasonKey: SEASON,
+      cap: 2,
+      now: NOW,
+    });
+    expect(
+      await releaseSignupHelpAttempt(db.database, { familyId, seasonKey: SEASON, now: NOW }),
+    ).toEqual({ attempted: 1 });
+    const [a, b] = await Promise.all([
+      claimSignupHelpAttempt(db.database, { familyId, seasonKey: SEASON, cap: 2, now: NOW }),
+      claimSignupHelpAttempt(db.database, { familyId, seasonKey: SEASON, cap: 2, now: NOW }),
+    ]);
+    const ok = [a, b].filter((row) => row.ok);
+    const refused = [a, b].filter((row) => !row.ok);
+    expect(ok).toHaveLength(1);
+    expect(ok[0]?.attempted).toBe(2);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]?.attempted).toBe(2);
+    expect(await signupHelpAttempted(db.database, { familyId, seasonKey: SEASON })).toBe(2);
   });
 });

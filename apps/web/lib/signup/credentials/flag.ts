@@ -21,3 +21,16 @@ export function providerAccountCreateEnabled(
 ): boolean {
   return env[PROVIDER_ACCOUNT_CREATE_ENABLED_ENV] === 'true';
 }
+
+/**
+ * VIL-704 · a plan run may use a saved city login only when the parent who
+ * saved it is the parent whose plan is running. Env-only, off unless exactly
+ * `true`. Nothing in PostHog may turn this on. There is no share grant.
+ */
+export const PLAN_CITY_LOGIN_OWNER_ENABLED_ENV = 'PLAN_CITY_LOGIN_OWNER_ENABLED';
+
+export function planCityLoginOwnerEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[PLAN_CITY_LOGIN_OWNER_ENABLED_ENV] === 'true';
+}
