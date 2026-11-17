@@ -124,7 +124,7 @@ async function estimate() {
     const draws = fixture.throughCode ? 2 : 1;
     usd +=
       draws *
-      ((input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output);
+      ((input / 1e6) * price.input + (voice.onboardingReplyMaxTokens() / 1e6) * price.output);
     if (fixture.watchFor) {
       const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
       if (!judgePrice) throw new Error('no list price for the judge model');
@@ -178,7 +178,7 @@ async function record() {
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(turn),
-      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens: voice.onboardingReplyMaxTokens(),
       cachedOnly,
       getClient,
       cost,

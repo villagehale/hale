@@ -20,12 +20,15 @@ import {
   judgeFriendReply,
   lastInboundFact,
   nameAskVoiceInput,
+  onboardingReplyMaxTokens,
   onboardingReplyToolSchema,
   parentReading,
   readGroupLeads,
   speakFriend,
+  tidyProse,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
+import { FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV } from './friend-voice-model-fields';
 
 const EASTERN = 'America/Toronto';
 
@@ -2568,5 +2571,350 @@ describe('a declined place, closed in code', () => {
     expect(
       (await composerReplying({ ...fields, placeAsk: 'town' }).compose(secondNo)).placeAsk,
     ).toBeNull();
+  });
+});
+
+describe('VIL-541 model fields', () => {
+  const FIELD_ENV = FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV;
+  const NAMES = [
+    'asksCount',
+    'asksName',
+    'speaksAsParent',
+    'joinInProse',
+    'messageIsYes',
+    'messageOnlyName',
+    'questionBeforeList',
+  ] as const;
+
+  function fields(over: Partial<FriendComposed> = {}): FriendComposed {
+    return {
+      reply: 'What is your postal code?',
+      asks: true,
+      parentQuestion: false,
+      asksCount: 1,
+      asksName: false,
+      speaksAsParent: false,
+      joinInProse: false,
+      messageIsYes: false,
+      messageOnlyName: null,
+      questionBeforeList: false,
+      connectorsOffered: [],
+      ...over,
+    };
+  }
+
+  function judgeOpts(composed: FriendComposed) {
+    return {
+      asksCount: composed.asksCount,
+      asksName: composed.asksName,
+      speaksAsParent: composed.speaksAsParent,
+      questionBeforeList: composed.questionBeforeList,
+      connectorsOffered: composed.connectorsOffered,
+    };
+  }
+
+  function composerOf(composed: FriendComposed): FriendVoiceComposer {
+    return {
+      async compose() {
+        return composed;
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('stays off unless the env is exactly true', () => {
+    expect(onboardingReplyMaxTokens()).toBe(1000);
+    for (const value of [undefined, '', 'TRUE', '1', 'true\n', ' true']) {
+      vi.stubEnv(FIELD_ENV, value);
+      expect(onboardingReplyMaxTokens(), JSON.stringify(value)).toBe(1000);
+    }
+    vi.stubEnv(FIELD_ENV, 'true');
+    expect(onboardingReplyMaxTokens()).toBe(2000);
+  });
+
+  it('adds the decision fields to the tool only when lit, and none of them start with par', () => {
+    const email = blank({ step: 'email' });
+    expect(onboardingReplyToolSchema(email).properties).not.toHaveProperty('asksCount');
+    expect(onboardingReplyToolSchema(email).required).not.toContain('asksCount');
+    vi.stubEnv(FIELD_ENV, 'true');
+    const lit = onboardingReplyToolSchema(email);
+    for (const name of NAMES) {
+      expect(lit.properties).toHaveProperty(name);
+      expect(lit.required).toContain(name);
+      expect(name.startsWith('par')).toBe(false);
+    }
+  });
+
+  it('appends the decision skill only when lit, so a dark turn keeps its bytes', async () => {
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
+    vi.stubEnv(FIELD_ENV, 'true');
+    const addendum = (await loadCronSkill('onboarding-friend-model-fields')).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(`${base}\n\n${addendum}`);
+  });
+
+  it('does not drop a sentence when lit, and still drops a question when dark', () => {
+    const input = blank({ step: 'ack' });
+    expect(tidyProse('Hello. Want this?', input, 'ack')).toBe('Hello.');
+    vi.stubEnv(FIELD_ENV, 'true');
+    expect(tidyProse('Hello. Want this?', input, 'ack')).toBe('Hello. Want this?');
+  });
+
+  it('counts questions from asksCount, in a language with no question mark', () => {
+    const place = blank({ step: 'place', parentWords: 'hi' });
+    const prose = '你的邮编是多少';
+    expect(judgeFriendReply(prose, place).ok).toBe(false);
+    vi.stubEnv(FIELD_ENV, 'true');
+    expect(judgeFriendReply(prose, place, judgeOpts(fields({ asksCount: 1 }))).ok).toBe(true);
+    expect(
+      judgeFriendReply('What is your postal code??', place, judgeOpts(fields({ asksCount: 1 }))).ok,
+    ).toBe(true);
+  });
+
+  it('treats a name ask as the asksName field, not an English or French pattern', () => {
+    const email = blank({ step: 'email', parentWords: 'hi' });
+    const named = "What's your name?";
+    expect(judgeFriendReply(named, email, { connectorsOffered: ['gmail'] })).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+    vi.stubEnv(FIELD_ENV, 'true');
+    const composed = fields({
+      reply: named,
+      asksName: false,
+      connectorsOffered: ['gmail'],
+    });
+    expect(judgeFriendReply(named, email, judgeOpts(composed)).ok).toBe(true);
+    expect(
+      judgeFriendReply('想怎么称呼你', email, judgeOpts({ ...composed, asksName: true })),
+    ).toEqual({ ok: false, reason: 'question' });
+  });
+
+  it('refuses a question above a list from the field', () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const place = blank({ step: 'place', parentWords: 'hi' });
+    expect(
+      judgeFriendReply('Which one?', place, judgeOpts(fields({ questionBeforeList: true }))),
+    ).toEqual({
+      ok: false,
+      reason: 'question',
+    });
+  });
+
+  it('decides the connector from connectorsOffered, including a wow line that never says the word', () => {
+    const email = blank({ step: 'email', parentWords: '你好' });
+    const prose = '要不要连上';
+    const wow = blank({ step: 'connected', connector: 'gcal', parentWords: '' });
+    const landed = 'It landed.';
+    expect(judgeFriendReply(prose, email).ok).toBe(false);
+    expect(judgeFriendReply(landed, wow)).toEqual({ ok: true });
+    vi.stubEnv(FIELD_ENV, 'true');
+    expect(
+      judgeFriendReply(prose, email, judgeOpts(fields({ connectorsOffered: ['gmail'] }))).ok,
+    ).toBe(true);
+    expect(judgeFriendReply(prose, email, judgeOpts(fields({ connectorsOffered: [] }))).ok).toBe(
+      false,
+    );
+    expect(
+      judgeFriendReply(
+        landed,
+        wow,
+        judgeOpts(fields({ asks: false, asksCount: 0, connectorsOffered: ['gmail'] })),
+      ),
+    ).toEqual({
+      ok: false,
+      reason: 'invented',
+      detail: 'gmail on calendar wow',
+      kinds: ['other_connector'],
+    });
+  });
+
+  it('reads speaksAsParent from the field, so a French sentence is not matched', () => {
+    const place = blank({ step: 'place', parentWords: 'hi', parentName: 'Barton' });
+    const prose = 'Je suis Barton. What is your postal code?';
+    expect(judgeFriendReply(prose, place)).toEqual({ ok: false, reason: 'identity' });
+    vi.stubEnv(FIELD_ENV, 'true');
+    expect(judgeFriendReply(prose, place, judgeOpts(fields({ speaksAsParent: false }))).ok).toBe(
+      true,
+    );
+    expect(judgeFriendReply('Hello.', place, judgeOpts(fields({ speaksAsParent: true })))).toEqual({
+      ok: false,
+      reason: 'identity',
+    });
+  });
+
+  it('sends nothing when a decision field is left out, and writes no sentence of its own', async () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const spoken = await speakFriend(
+        composerOf({ reply: 'Hello from the model.', asks: false, parentQuestion: false }),
+        blank({ step: 'place', parentWords: 'hi' }),
+        { page: async () => undefined },
+      );
+      expect(spoken.source).toBe('unsent');
+      expect(spoken.body).toBe('');
+      expect(spoken.prose).toBe('');
+    } finally {
+      error.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('takes a yes and a lone name from the model, in a language the word list does not know', async () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const checklist = {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: true,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    } as const;
+    try {
+      const yes = await speakFriend(
+        composerOf(
+          fields({
+            reply: 'I will watch for the kids from here.',
+            asks: false,
+            asksCount: 0,
+            messageIsYes: true,
+            connectorsOffered: ['gmail'],
+          }),
+        ),
+        blank({
+          step: 'email',
+          parentWords: '好的',
+          checklist,
+          recentTurns: [{ role: 'hale', body: '要连邮箱吗', asked: true }],
+        }),
+        { page: async () => undefined },
+      );
+      expect(yes.source).toBe('composed');
+      expect(yes.capture.connectGmail).toBe(true);
+      expect(yes.body).toBe('I will watch for the kids from here.');
+
+      const notYes = await speakFriend(
+        composerOf(
+          fields({
+            reply: '要不要连上',
+            messageIsYes: false,
+            connectorsOffered: ['gmail'],
+          }),
+        ),
+        blank({
+          step: 'email',
+          parentWords: 'oui',
+          checklist,
+          recentTurns: [{ role: 'hale', body: '要连邮箱吗', asked: true }],
+        }),
+        { page: async () => undefined },
+      );
+      expect(notYes.source).toBe('composed');
+      expect(notYes.capture.connectGmail).toBeNull();
+
+      const named = await speakFriend(
+        composerOf(
+          fields({
+            reply: '接下来呢',
+            messageOnlyName: 'Mina',
+            connectorsOffered: ['gmail'],
+          }),
+        ),
+        blank({
+          step: 'names',
+          parentWords: 'Mina',
+          checklist: { ...checklist, name: false },
+          recentTurns: [{ role: 'hale', body: '怎么称呼', asked: true }],
+        }),
+        { page: async () => undefined },
+      );
+      expect(named.source).toBe('composed');
+      expect(named.capture.parentName).toBe('Mina');
+    } finally {
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  });
+
+  it('refuses a stop that still asks from asksCount, even with no question mark', async () => {
+    const quiet = fields({
+      reply: 'Okay, I will leave it.',
+      asks: false,
+      asksCount: 1,
+    });
+    const input = blank({ step: 'ack', parentWords: 'stop' });
+    const dark = await speakFriend(
+      {
+        async compose() {
+          return { ...quiet, capture: { stopAsking: true } };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(dark.source).toBe('composed');
+    expect(dark.body).toContain('leave it');
+
+    vi.stubEnv(FIELD_ENV, 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const lit = await speakFriend(
+        {
+          async compose() {
+            return { ...quiet, capture: { stopAsking: true } };
+          },
+        },
+        input,
+        { page: async () => undefined },
+      );
+      expect(lit.source).toBe('unsent');
+      expect(lit.body).toBe('');
+    } finally {
+      error.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('refuses a join written into the prose from joinInProse, not from the digits', async () => {
+    vi.stubEnv(FIELD_ENV, 'true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const seen: FriendComposed[] = [];
+    try {
+      const spoken = await speakFriend(
+        {
+          async compose() {
+            const composed =
+              seen.length === 0
+                ? fields({ joinInProse: true, reply: 'What is your postal code?' })
+                : fields({ joinInProse: false, reply: 'What is your postal code?' });
+            seen.push(composed);
+            return composed;
+          },
+        },
+        blank({
+          step: 'place',
+          parentWords: 'hi',
+          coparentJoin: { line: '+1 416 555 0199', phrase: 'hale-join-phrase' },
+        }),
+        { page: async () => undefined },
+      );
+      expect(seen).toHaveLength(2);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.body).toBe('What is your postal code?');
+    } finally {
+      warn.mockRestore();
+      info.mockRestore();
+    }
   });
 });
