@@ -979,7 +979,7 @@ export async function alertParentForEmail(
         status: holdStatus(verdict.reason),
       })
       .returning({ id: schema.channelMessages.id });
-    if (verdict.reason === 'quiet_hours' && receipt) {
+    if ((verdict.reason === 'quiet_hours' || verdict.reason === 'sends_paused') && receipt) {
       // A re-offer that quiet hours caught again keeps the open debt it came from.
       await database.transaction(async (tx) => {
         const [hold] = await tx
@@ -2000,7 +2000,7 @@ async function reofferHold(
     now,
   });
   if (!verdict.allowed) {
-    if (verdict.reason === 'quiet_hours') return waiting;
+    if (verdict.reason === 'quiet_hours' || verdict.reason === 'sends_paused') return waiting;
     return close(`gate_refused:${verdict.reason}`);
   }
   const prefs = await loadLoopPrefsView(parentUserId, database);

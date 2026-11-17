@@ -28,6 +28,7 @@ import {
 } from '~/lib/channel/weekday-care/key';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { dayKeyOf } from '~/lib/format/datetime';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { listDueWorkstreams } from '~/lib/memory/workstreams';
 import {
@@ -35,6 +36,7 @@ import {
   claimProviderIncident,
   probeProviderHealth,
 } from '~/lib/monitoring/provider-health';
+import { zonedLocalInstant } from '~/lib/plan/spine';
 import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { travelBriefDedupeKey } from '~/lib/travel/sweep';
@@ -44,6 +46,7 @@ import { type CandidateDraft, handOffProactive } from './queue';
 import {
   FAMILY_ROWS,
   PROACTIVE_DAILY_DECISION_CAP,
+  PROACTIVE_DECISION_CAP_ROUTE,
   type ProactiveReviewDeps,
   WAITING_ROWS,
   mark,
@@ -3448,6 +3451,66 @@ describe('VIL-701 credit abort, family cap, and one page per run', () => {
     expect(await candidate(newerId)).toMatchObject({ status: 'sent' });
   });
 
+  it('does not spend a cap slot on a family whose only row is still held', async () => {
+    armGuards('live');
+    const heldId = await enqueue('nudge:held');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({
+        status: 'held',
+        holdUntil: new Date('2026-10-16T22:00:00.000Z'),
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      })
+      .where(eq(schema.proactiveCandidates.id, heldId));
+    const later = await anotherFamily('Due Family');
+    const dueId = await enqueue('nudge:due', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(heldId)).toMatchObject({ status: 'held' });
+  });
+
+  it('does not spend a cap slot on a row whose lane is switched off', async () => {
+    armGuards('live');
+    vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+    const parkedId = await enqueue('registration-opening:parked', {
+      kind: 'registration_opening',
+      category: 'nudge',
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    });
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, parkedId));
+    const later = await anotherFamily('Nudge Family');
+    const dueId = await enqueue('nudge:lane', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(parkedId)).toMatchObject({ status: 'queued' });
+  });
+
   it('pages #ops once per run when several live decisions fail', async () => {
     armGuards('live');
     const firstId = await enqueue('nudge:one');
@@ -3497,17 +3560,13 @@ describe('VIL-701 credit abort, family cap, and one page per run', () => {
 
 describe('VIL-701 per-family daily decision cap', () => {
   async function priorDecisions(n: number, at: Date): Promise<void> {
-    await db.database.insert(schema.auditLog).values(
-      Array.from({ length: n }, () => ({
-        familyId,
-        actor: 'system',
-        actionTaken: 'proactive_cadence_decision',
-        targetTable: 'families',
-        targetId: familyId,
-        after: { action: 'hold', mode: 'live' },
-        occurredAt: at,
-      })),
-    );
+    const start = zonedLocalInstant(dayKeyOf(at, TZ), '00:00', TZ);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: familyId,
+      route: PROACTIVE_DECISION_CAP_ROUTE,
+      windowStart: start,
+      count: n,
+    });
   }
 
   it('skips the model once the family has spent its local day, and not before', async () => {

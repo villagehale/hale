@@ -1,3 +1,4 @@
+import { setFlagEvaluatorForTests } from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PROACTIVE_ROUTING,
@@ -11,6 +12,7 @@ import {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  setFlagEvaluatorForTests(null);
 });
 
 describe('proactive cadence flag', () => {
@@ -80,5 +82,15 @@ describe('proactive cadence flag', () => {
     expect(proactiveReviewGuardsEnabled()).toBe(true);
     expect(familyDecisionCapEnabled()).toBe(true);
     expect(proactiveSendsPaused()).toBe(true);
+  });
+
+  it('keeps an exact env pause when PostHog has the flag loaded as false', () => {
+    setFlagEvaluatorForTests(() => false);
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    vi.stubEnv('POSTHOG_ID_SALT', 'test-salt');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    expect(proactiveSendsPaused()).toBe(true);
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true\n');
+    expect(proactiveSendsPaused()).toBe(false);
   });
 });

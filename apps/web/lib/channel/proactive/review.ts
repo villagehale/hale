@@ -3,14 +3,15 @@ import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   gt,
   gte,
   inArray,
   isNull,
+  lt,
   lte,
+  not,
   notInArray,
   or,
   sql,
@@ -294,6 +295,8 @@ export const WAITING_ROWS = 40;
  * Compose after a send is the writer's own call and is not a second decision.
  */
 export const PROACTIVE_DAILY_DECISION_CAP = 8;
+/** The rate_limits route that claims one decision slot per family per local day. */
+export const PROACTIVE_DECISION_CAP_ROUTE = 'proactive:decision';
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
 
 interface ReviewBudget {
@@ -302,12 +305,43 @@ interface ReviewBudget {
   abort: IncidentFailure | null;
 }
 
-/** Families with a queued or held row, oldest row first. Ids only. */
-async function dueFamilyIds(database: Database): Promise<string[]> {
+/**
+ * Families with a row the review can act on now, oldest such row first. Ids only.
+ *
+ * A hold still in the future, and a row whose own lane is switched off, are not
+ * due. Counting them would fill the cap with families the model never sees, and
+ * a family behind them would wait until those rows expired.
+ */
+async function dueFamilyIds(database: Database, now: Date, onlyDue: boolean): Promise<string[]> {
+  const open = inArray(schema.proactiveCandidates.status, ['queued', 'held']);
+  const actionable = or(
+    eq(schema.proactiveCandidates.status, 'queued'),
+    and(
+      eq(schema.proactiveCandidates.status, 'held'),
+      or(
+        isNull(schema.proactiveCandidates.holdUntil),
+        lte(schema.proactiveCandidates.holdUntil, now),
+      ),
+    ),
+  );
   const rows = await database
     .select({ familyId: schema.proactiveCandidates.familyId })
     .from(schema.proactiveCandidates)
-    .where(inArray(schema.proactiveCandidates.status, ['queued', 'held']))
+    .where(
+      onlyDue
+        ? and(
+            actionable,
+            ownCityRegistrationEnabled()
+              ? undefined
+              : not(eq(schema.proactiveCandidates.kind, REGISTRATION_OPENING_KIND)),
+            schoolBreakEnabled()
+              ? undefined
+              : not(
+                  inArray(schema.proactiveCandidates.templateKey, [...SCHOOL_BREAK_TEMPLATE_KEYS]),
+                ),
+          )
+        : open,
+    )
     .groupBy(schema.proactiveCandidates.familyId)
     .orderBy(
       sql`min(${schema.proactiveCandidates.createdAt}) asc`,
@@ -316,31 +350,39 @@ async function dueFamilyIds(database: Database): Promise<string[]> {
   return rows.map((row) => row.familyId);
 }
 
-/** Decisions and failed model calls for this family since local midnight. */
-async function modelCallsToday(
+/**
+ * Claims one of this family's local-day decision slots before the model is called.
+ *
+ * The upsert is the cap: two overlapping reviews cannot both pass a count they
+ * both read as seven. A crash after the claim and before the call spends the
+ * slot, which is the safe side of the bound. Old windows are deleted here so
+ * the table does not keep a row per family per day.
+ */
+async function claimDecisionSlot(
   database: Database,
   familyId: string,
   timeZone: string,
   now: Date,
-): Promise<number> {
+): Promise<boolean> {
   const start = zonedLocalInstant(dayKeyOf(now, timeZone), '00:00', timeZone);
-  const [row] = await database
-    .select({ n: count() })
-    .from(schema.auditLog)
+  await database
+    .delete(schema.rateLimits)
     .where(
       and(
-        eq(schema.auditLog.familyId, familyId),
-        gte(schema.auditLog.occurredAt, start),
-        or(
-          eq(schema.auditLog.actionTaken, 'proactive_cadence_decision'),
-          and(
-            eq(schema.auditLog.actionTaken, 'proactive_cadence_skipped'),
-            sql`${schema.auditLog.after}->>'reason' in ('model_failed', 'unparsed')`,
-          ),
-        ),
+        eq(schema.rateLimits.route, PROACTIVE_DECISION_CAP_ROUTE),
+        lt(schema.rateLimits.windowStart, new Date(start.getTime() - 2 * DAY_MS)),
       ),
     );
-  return Number(row?.n ?? 0);
+  const claimed = (await database.execute(sql`
+    insert into rate_limits (identifier, route, window_start, count)
+    values (${familyId}, ${PROACTIVE_DECISION_CAP_ROUTE}, ${start}, 1)
+    on conflict (identifier, route, window_start)
+    do update set count = rate_limits.count + 1
+    where rate_limits.count < ${PROACTIVE_DAILY_DECISION_CAP}
+    returning count
+  `)) as { rows?: unknown[] } | unknown[];
+  const rows = Array.isArray(claimed) ? claimed : (claimed.rows ?? []);
+  return rows.length > 0;
 }
 
 async function pageDeciderFailures(
@@ -414,7 +456,7 @@ export async function runProactiveReview(
   // The probe above, when the guards flag is on, is the only call an off hour makes.
   if (mode === 'off') return summary;
 
-  const due = await dueFamilyIds(database);
+  const due = await dueFamilyIds(database, now, guards);
   const cap = guards ? (deps.familyCap ?? MAX_FAMILIES_PER_RUN.proactiveReview) : due.length;
   const chosen = due.slice(0, Math.max(0, cap));
   summary.familiesDeferred = due.length - chosen.length;
@@ -1102,8 +1144,7 @@ async function reviewFamily(
   }
   if (
     familyDecisionCapEnabled() &&
-    (await modelCallsToday(database, familyId, context.timeZone, now)) >=
-      PROACTIVE_DAILY_DECISION_CAP
+    !(await claimDecisionSlot(database, familyId, context.timeZone, now))
   ) {
     summary.decisionsCapped += 1;
     await audit(database, familyId, 'proactive_cadence_skipped', {

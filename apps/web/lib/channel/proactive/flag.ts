@@ -98,7 +98,13 @@ export function familyDecisionCapEnabled(): boolean {
 /**
  * VIL-705 · refuses every proactive kind, immediate ones included. Replies to an
  * inbound text do not read this. Off unless the env is exactly `true`.
+ *
+ * An exact env `true` pauses even when PostHog has the flag loaded as false.
+ * A remote value may also pause. It cannot unpause an env that is exactly `true`.
  */
-export function proactiveSendsPaused(): boolean {
-  return isEnabled('proactive-sends-paused');
+export function proactiveSendsPaused(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (env.PROACTIVE_SENDS_PAUSED === 'true') return true;
+  return isEnabled('proactive-sends-paused', undefined, env);
 }

@@ -240,7 +240,10 @@ export const CALENDAR_KID_NOTICE_TEMPLATE_KEY = 'connector:calendar_kid_notice';
  * so unless the sweep writes down that it still owes one, the news is gone for good. A
  * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
  */
-const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours']);
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
+  'gate_refused:quiet_hours',
+  'gate_refused:sends_paused',
+]);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.
