@@ -480,11 +480,19 @@ function parserAcceptsWord(spec: FlagSpec, raw: string, word: string): boolean {
   }
 }
 
+/** The expected word, with the raw value's surrounding whitespace left in place. */
+function withExpectedCase(raw: string, expected: string): string {
+  const start = raw.length - raw.trimStart().length;
+  const end = raw.trimEnd().length;
+  return raw.slice(0, start) + expected + raw.slice(end);
+}
+
 /**
  * Reports a flag value that is the word the catalog expects, but in the wrong
  * case or with whitespace, including a trailing newline (`'True'`, `'true\n'`).
- * Trimmed parsers already accept surrounding whitespace, so only case is
- * reported for those. Nothing here changes what a flag evaluates to.
+ * Whitespace is a fault only when the parser still rejects the value after the
+ * letters are corrected, so a trimmed parser reports case alone for `' True\n'`.
+ * Nothing here changes what a flag evaluates to.
  */
 export function reportInexactFlagValue(
   spec: FlagSpec,
@@ -495,7 +503,9 @@ export function reportInexactFlagValue(
   const expected = exactWords(spec).find((word) => word.toLowerCase() === folded);
   if (!expected || parserAcceptsWord(spec, raw, expected)) return null;
   const faults: FlagValueFault[] = [];
-  if (raw.trim() !== raw) faults.push('whitespace');
+  if (!parserAcceptsWord(spec, withExpectedCase(raw, expected), expected)) {
+    faults.push('whitespace');
+  }
   if (raw.trim() !== expected) faults.push('wrong-case');
   if (faults.length === 0) return null;
   return { key: spec.key, env: spec.env, raw, expected, faults };

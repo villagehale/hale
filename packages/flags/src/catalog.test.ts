@@ -45,12 +45,22 @@ describe('reportInexactFlagValue', () => {
   it('lets a trimmed parser keep a trailing newline and still reports wrong case', () => {
     const stickers = getFlag('linq-stickers');
     expect(reportInexactFlagValue(stickers, 'true\n')).toBeNull();
+    expect(reportInexactFlagValue(stickers, ' true\n')).toBeNull();
     expect(parseEnvBoolean(stickers, { LINQ_STICKERS_ENABLED: 'true\n' })).toBe(true);
     expect(reportInexactFlagValue(stickers, 'True')).toMatchObject({
       expected: 'true',
       faults: ['wrong-case'],
     });
+    // The newline is already accepted. Only the case keeps this off.
+    expect(reportInexactFlagValue(stickers, ' True\n')).toEqual({
+      key: 'linq-stickers',
+      env: 'LINQ_STICKERS_ENABLED',
+      raw: ' True\n',
+      expected: 'true',
+      faults: ['wrong-case'],
+    });
     expect(parseEnvBoolean(stickers, { LINQ_STICKERS_ENABLED: 'True' })).toBe(false);
+    expect(parseEnvBoolean(stickers, { LINQ_STICKERS_ENABLED: ' true\n' })).toBe(true);
   });
 
   it('reports an exact-on miss and a not-exact-false newline that stays on', () => {
@@ -90,6 +100,13 @@ describe('reportInexactFlagValue', () => {
     // The off variant is read trimmed, so a trailing newline still kills.
     expect(reportInexactFlagValue(claim, 'off\n')).toBeNull();
     expect(envVariant(claim, { CLAIM_READER_MODE: 'off\n' })).toBe('off');
+    expect(reportInexactFlagValue(claim, ' Off\n')?.faults).toEqual(['wrong-case']);
+    expect(reportInexactFlagValue(claim, ' False\n')?.faults).toEqual(['wrong-case']);
+    // A non-kill variant is exact, so case and a newline are both misses.
+    expect(reportInexactFlagValue(claim, ' Shadow\n')?.faults).toEqual([
+      'whitespace',
+      'wrong-case',
+    ]);
     expect(reportInexactFlagValue(claim, 'Shadow')).toMatchObject({
       expected: 'shadow',
       faults: ['wrong-case'],
