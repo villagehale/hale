@@ -23,14 +23,15 @@ import {
   refuseGarbledText,
 } from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { buildDistillTools } from '~/lib/cron/inference-tools';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
 import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
 import { runGroupReminderTick } from './fire';
+import { GROUP_REMINDER_INFLIGHT_CANCEL_ENV } from './flag';
 import { LATE_LIMIT_MS, type ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
 import {
@@ -1247,6 +1248,109 @@ describe('when a group reminder is due', () => {
     const actions = await verbs(home.familyId);
     expect(actions).toContain('group_reminder_sent');
     expect(actions).not.toContain('group_reminder_cancelled');
+  });
+
+  it('cancels an in-flight reminder with no provider id, and a queued one, when the flag is exactly true', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    await setFor(DAN);
+    const ruth = (await reminders()).find((row) => row.askedByUserId === home.ruth);
+    if (!ruth) throw new Error('expected Ruth’s reminder');
+    const claimed = await claimReminder(db.database, ruth.id, THURSDAY_FOUR);
+    if (!claimed || !(await commitSend(db.database, claimed)))
+      throw new Error('expected in flight');
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(1);
+    const rows = await reminders();
+    expect(rows.find((row) => row.id === ruth.id)).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+    });
+    expect(rows.find((row) => row.askedByUserId === home.dan)?.status).toBe('scheduled');
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(DAN),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(1);
+    expect((await reminders()).find((row) => row.askedByUserId === home.dan)?.status).toBe(
+      'cancelled',
+    );
+  });
+
+  it('audits landed_after_stop when Linq already accepted an in-flight reminder', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const { id } = await onlyReminder();
+    const claimed = await claimReminder(db.database, id, THURSDAY_FOUR);
+    if (!claimed || !(await commitSend(db.database, claimed)))
+      throw new Error('expected in flight');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: home.familyId,
+      parentUserId: home.priya,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_reminder',
+      dedupeKey: `linq:group_reminder:${id}`,
+      providerMessageId: 'out-accepted',
+      providerChatId: CHAT,
+      status: 'sent',
+      sentAt: THURSDAY_FOUR,
+    });
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(0);
+    expect(await onlyReminder()).toMatchObject({ status: 'in_flight' });
+    const [audit] = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_reminder_landed_after_stop'));
+    expect(audit?.actionTaken).toBe('group_reminder_landed_after_stop');
+    expect(audit?.after).toMatchObject({ reason: 'landed_after_stop' });
+  });
+
+  it('does not send an in-flight reminder once the member has left the chat', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const leftWhileWriting: GroupReminderVoice = {
+      async write(facts) {
+        await db.database
+          .update(schema.linqGroupMembers)
+          .set({ removedAt: THURSDAY_FOUR })
+          .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(RUTH)));
+        return tick.voice.write(facts);
+      },
+    };
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, voice: leftWhileWriting }),
+    ).toMatchObject({ due: 1, sent: 0, lost: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+    });
   });
 
   it('audits only a close that happened: a stale tick can neither commit nor close the newer claim', async () => {

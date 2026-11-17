@@ -146,6 +146,8 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-707. A text whose opt-out read failed was held and not answered.
+  'opt_out_unread_held',
   // VIL-553. An operator cleared a hold no read could release (a shared provider id).
   'opt_out_hold_cleared',
   // VIL-572. One parent's texting language became the one Hale writes to them in.
@@ -220,6 +222,7 @@ export const AUDIT_VERBS = [
   // VIL-448. A reminder anyone in the family group asked for.
   'group_reminder_set',
   'group_reminder_cancelled',
+  'group_reminder_landed_after_stop',
   'group_reminder_sent',
   'group_reminder_dropped',
   'group_reminder_failed',
@@ -790,6 +793,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
     family: 'note',
   },
+  opt_out_unread_held: {
+    sentence: 'Hale held a text it could not read, and sent nothing',
+    family: 'note',
+  },
   opt_out_hold_cleared: {
     sentence: 'Hale stopped holding back its messages to your phone after a check',
     family: 'note',
@@ -994,6 +1001,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   group_reminder_cancelled: {
     sentence: 'A reminder asked for in your family group was cancelled',
+    family: 'note',
+  },
+  group_reminder_landed_after_stop: {
+    sentence: 'A reminder reached the chat after this person had asked not to be texted',
     family: 'note',
   },
   group_reminder_sent: {
@@ -2354,6 +2365,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-707. The held text is that parent's. Another adult does not see it.
+  'opt_out_unread_held',
   // VIL-553. About the one adult who holds the number.
   'opt_out_hold_cleared',
   // VIL-572. About the one parent whose language changed.

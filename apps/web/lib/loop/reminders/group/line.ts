@@ -56,6 +56,8 @@ async function sendOnce(
     now: Date;
   },
   send: () => Promise<{ providerMessageId: string; chatId?: string | null }>,
+  /** Right before the provider call. False: the member opted out, so nothing is sent. */
+  beforeSend?: () => Promise<boolean>,
 ): Promise<GroupReminderSendOutcome> {
   const [claimed] = await database
     .insert(schema.channelMessages)
@@ -74,6 +76,18 @@ async function sendOnce(
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { outcome: 'already_sent' };
+
+  if (beforeSend && !(await beforeSend())) {
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: 'member_opted_out', dedupeKey: null })
+      .where(eq(schema.channelMessages.id, claimed.id));
+    console.info(
+      { familyId: entry.familyId, outcome: 'member_opted_out' },
+      'group reminder: opted out before the send, nothing sent',
+    );
+    return { outcome: 'not_sent', code: 'member_opted_out', retryable: false };
+  }
 
   let sent: { providerMessageId: string; chatId?: string | null };
   try {
@@ -127,6 +141,8 @@ export async function postGroupReminderLine(
     now: Date;
     send?: GroupLineSend;
     listChatHandles?: ListChatHandles;
+    /** Immediately before Linq is called. False sends nothing. */
+    beforeSend?: () => Promise<boolean>;
   },
 ): Promise<GroupReminderLineOutcome> {
   const audience = await groupAudienceAllows(
@@ -155,6 +171,7 @@ export async function postGroupReminderLine(
             text: input.text,
             replyTo: input.replyTo ? { messageId: input.replyTo } : undefined,
           }),
+    input.beforeSend,
   );
 }
 
@@ -173,6 +190,8 @@ export async function textGroupReminderDirect(
     dedupeKey: string;
     now: Date;
     transport: ChannelTransport;
+    /** Immediately before Linq is called. False sends nothing. */
+    beforeSend?: () => Promise<boolean>;
   },
 ): Promise<GroupReminderSendOutcome> {
   return sendOnce(
@@ -186,5 +205,6 @@ export async function textGroupReminderDirect(
       now: input.now,
     },
     () => sendResolvingNewChat(input.transport, { to: input.to, body: input.text }),
+    input.beforeSend,
   );
 }
