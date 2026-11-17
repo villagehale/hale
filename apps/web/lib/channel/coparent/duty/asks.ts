@@ -26,6 +26,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentCopyLanguage } from '~/lib/channel/parent-language';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
@@ -308,7 +309,6 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
     null;
   const [family] = await database
     .select({
-      primaryLanguage: schema.families.primaryLanguage,
       linqGroupChatId: schema.families.linqGroupChatId,
     })
     .from(schema.families)
@@ -360,7 +360,9 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
       .filter((name): name is string => name !== null),
     teenNames,
     timeZone,
-    language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
+    language: primary
+      ? await readParentCopyLanguage(database, { familyId, parentUserId: primary })
+      : 'en',
     chatId: family?.linqGroupChatId ?? null,
   };
 }

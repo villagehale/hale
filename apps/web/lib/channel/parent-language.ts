@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 
 /**
  * VIL-572 · THE ONE LANGUAGE HALE WRITES TO A PARENT IN UNPROMPTED.
@@ -122,6 +122,17 @@ export async function readParentLanguage(
       .limit(1),
   ]);
   return parentLanguage(user[0]?.proactiveLanguage, family[0]?.primaryLanguage);
+}
+
+/**
+ * English or French for a 1:1 line that only has those two. The parent's stored
+ * proactive language, else the family's, else English. `fr-CA` is French.
+ */
+export async function readParentCopyLanguage(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<'en' | 'fr'> {
+  return copyLanguage(await readParentLanguage(database, input)) === 'fr' ? 'fr' : 'en';
 }
 
 export type LanguageObservation =

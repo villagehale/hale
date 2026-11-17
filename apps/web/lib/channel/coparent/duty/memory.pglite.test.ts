@@ -14,7 +14,7 @@ import { projectDutyOnFamilyEvent } from './calendar';
 import { COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import { loadDutyMetrics, recordDutyAnswered, recordDutyUndone } from './metrics';
 import { type DutyState, commitDutyUpdate } from './model';
-import { settleDutyMemory } from './settle';
+import { dutySettleLanguage, settleDutyMemory } from './settle';
 
 const GROUP = 'chat-home';
 const PERSONAL = 'chat-one-to-one';
@@ -506,5 +506,43 @@ describe('duty burden and metrics', () => {
     expect(metrics.eventsWithOwner24hAhead).toEqual({ considered: 2, owned: 1, share: 0.5 });
     expect(metrics.timeToFirstAnswerMs).toBe(30 * 60 * 1000);
     expect(metrics.undoneWithin10Minutes).toEqual({ recorded: 1, undone: 1, share: 1 });
+  });
+});
+
+describe('duty settle language', () => {
+  it('writes in the stored language after one off-language turn', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Settle language');
+    await secondParent(family.familyId, 'Sam');
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, family.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, family.parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+
+    expect(await dutySettleLanguage(db.database, family.familyId, family.parentUserId)).toBe('fr');
+    // The rules read this sentence. No model stands in for the judgement.
+    const settled = await settleDutyMemory(db.database, {
+      familyId: family.familyId,
+      actorUserId: family.parentUserId,
+      text: "I'll take Maya's swim, Saturday at 3:00pm",
+      now: new Date(DAY.getTime() + 60 * 60 * 1000),
+      inboundChatId: PERSONAL,
+      inboundMessageId: 'msg-en',
+      surface: 'reply',
+    });
+    expect(settled.status).toBe('recorded');
   });
 });
