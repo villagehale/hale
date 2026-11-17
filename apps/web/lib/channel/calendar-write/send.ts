@@ -24,6 +24,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -185,14 +186,6 @@ export function withCalendarWriteNotice(
   };
 }
 
-async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
-  const [row] = await database
-    .select({ primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  return row?.primaryLanguage ?? 'en';
-}
-
 async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
   const [row] = await database
     .select({ linqGroupChatId: schema.families.linqGroupChatId })
@@ -250,7 +243,12 @@ export function productionCalendarWriteNoticePorts(
       return {
         // Rendered at this parent's own privacy level; the place is left out on purpose.
         event: { title: composed.summary, when, where: null },
-        language: await familyLanguage(database, request.familyId),
+        // The approving parent's stored language (VIL-690). A null store falls back
+        // to the family language, which is what this notice used before.
+        language: await readParentLanguage(database, {
+          familyId: request.familyId,
+          parentUserId: request.actorUserId,
+        }),
       };
     },
     async connectLink(familyId, parentUserId) {

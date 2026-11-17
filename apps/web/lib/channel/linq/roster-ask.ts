@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { readParentCopyLanguage } from '~/lib/channel/parent-language';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
@@ -147,7 +148,10 @@ async function familyVoice(database: Database, roster: RosterRow): Promise<Famil
   return {
     familyId: roster.familyId,
     ledgerUserId,
-    language: await familyLanguage(database, roster.familyId),
+    language: await readParentCopyLanguage(database, {
+      familyId: roster.familyId,
+      parentUserId: ledgerUserId,
+    }),
   };
 }
 

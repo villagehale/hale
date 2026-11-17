@@ -33,6 +33,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -316,7 +317,7 @@ async function sendReceipt(
     console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
   }
   const body = await connectedReceiptBody(
-    await familyReceiptLanguage(database, familyId),
+    await familyReceiptLanguage(database, familyId, parentUserId),
     provider,
     ports.friendVoice,
     aha,
@@ -429,14 +430,15 @@ async function continueAfterReceipt(
   }
 }
 
-/** Intake stamps this when the kids-and-postal text was French. Anything else is English. */
-async function familyReceiptLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
-  const rows = await database
-    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  const row = rows.find((candidate) => candidate.id === familyId);
-  return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+/** The connecting parent's stored language, as English or French. A null store falls
+ * back to the family language. Only an exact `fr` is French, as before. */
+async function familyReceiptLanguage(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<ReplyLanguage> {
+  const stored = await readParentLanguage(database, { familyId, parentUserId });
+  return stored === 'fr' ? 'fr' : 'en';
 }
 
 /** The receipt's own door, as a transport the connector card can ride. */
@@ -496,7 +498,7 @@ async function sendCalendarCardAfterGmailReceipt(
       );
       return;
     }
-    const language = await familyReceiptLanguage(database, args.familyId);
+    const language = await familyReceiptLanguage(database, args.familyId, args.parentUserId);
     const spoken = await speakFriend(
       ports.friendVoice,
       {
@@ -608,7 +610,7 @@ async function askAfterCalendarReceipt(
       await rememberConnected(database, session, { provider: 'gcal', now: args.now });
       return;
     }
-    const language = await familyReceiptLanguage(database, args.familyId);
+    const language = await familyReceiptLanguage(database, args.familyId, args.parentUserId);
     // The ask carries no join number: that goes under their yes, in the turn that reads it.
     const spoken = await speakFriend(
       ports.friendVoice,
