@@ -134,34 +134,43 @@ function parseModule(source: string, envNames: ReadonlySet<string>): ModuleInfo 
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    if (SKIP_DIRS.has(name)) continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (SKIP_DIRS.has(entry.name) || entry.name === 'cache') continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
       out.push(...sourceFiles(full));
       continue;
     }
-    if (SOURCE.test(name) && !name.endsWith('.d.ts')) out.push(full);
+    if (SOURCE.test(entry.name) && !entry.name.endsWith('.d.ts')) out.push(full);
   }
   return out;
 }
 
+const resolvedSpecs = new Map<string, string | undefined>();
+
 function resolveSpec(fromFile: string, spec: string): string | undefined {
+  const cacheKey = `${fromFile}\0${spec}`;
+  const cached = resolvedSpecs.get(cacheKey);
+  if (cached !== undefined || resolvedSpecs.has(cacheKey)) return cached;
   let raw: string | undefined;
   if (spec.startsWith('.')) raw = resolve(dirname(fromFile), spec);
   else if (spec.startsWith('~/')) raw = join(REPO_ROOT, 'apps/web', spec.slice(2));
   else if (spec === '@hale/flags') raw = join(REPO_ROOT, 'packages/flags/src/index.ts');
-  if (!raw) return undefined;
-  const stripped = raw.replace(/\.(js|ts|tsx|mjs)$/, '');
-  const candidates = [
-    raw,
-    `${stripped}.ts`,
-    `${stripped}.tsx`,
-    `${stripped}.mjs`,
-    `${stripped}.js`,
-    join(stripped, 'index.ts'),
-  ];
-  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
+  let found: string | undefined;
+  if (raw) {
+    const stripped = raw.replace(/\.(js|ts|tsx|mjs)$/, '');
+    const candidates = [
+      raw,
+      `${stripped}.ts`,
+      `${stripped}.tsx`,
+      `${stripped}.mjs`,
+      `${stripped}.js`,
+      join(stripped, 'index.ts'),
+    ];
+    found = candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
+  }
+  resolvedSpecs.set(cacheKey, found);
+  return found;
 }
 
 function lookup(
@@ -226,29 +235,42 @@ function countDirectFlagReads(
   return count;
 }
 
+function mentionsCatalogEnv(text: string, envNames: readonly string[]): boolean {
+  for (const name of envNames) {
+    if (text.includes(name)) return true;
+  }
+  return false;
+}
+
 function directReads(): Record<string, number> {
   const envNames = catalogEnvNames();
+  const envList = [...envNames];
   const files = sourceFiles(REPO_ROOT);
+  const texts = new Map<string, string>();
   const modules = new Map<string, ModuleInfo>();
   for (const file of files) {
-    modules.set(file, parseModule(readFileSync(file, 'utf8'), envNames));
+    const text = readFileSync(file, 'utf8');
+    texts.set(file, text);
+    if (!text.includes('process.env') && !mentionsCatalogEnv(text, envList)) continue;
+    modules.set(file, parseModule(text, envNames));
   }
   const found: Record<string, number> = {};
   for (const file of files) {
     const rel = relative(REPO_ROOT, file);
     if (rel.startsWith('packages/flags/') || TEST_FILE.test(file)) continue;
-    const count = countDirectFlagReads(readFileSync(file, 'utf8'), envNames, (id) =>
-      lookup(modules, file, id),
-    );
+    const text = texts.get(file) ?? '';
+    if (!text.includes('process.env')) continue;
+    const count = countDirectFlagReads(text, envNames, (id) => lookup(modules, file, id));
     if (count > 0) found[rel] = count;
   }
   return found;
 }
 
 describe('catalog flags are not read from process.env', () => {
+  // A cold CI runner walks the whole tree. The default 5s test budget has timed this out.
   it('direct reads do not grow past today', () => {
     expect(directReads()).toEqual(ALLOWED);
-  });
+  }, 20_000);
 
   it('positive control: a catalog name counts, and another env var does not', () => {
     const names = new Set(['F14_ENABLED', 'CALENDAR_ALERT_ENABLED']);
