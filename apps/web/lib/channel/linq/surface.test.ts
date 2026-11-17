@@ -898,7 +898,10 @@ describe('Linq link previews', () => {
     });
     expect(sent).toEqual({ status: 'sent', providerMessageId: 'link-1' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'link', value: 'https://app.villagehale.com/connect/abc' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'link', value: 'https://app.villagehale.com/connect/abc' }],
+      },
     });
     const sms = await sendLinqLinkPreview({
       channel: 'sms',
