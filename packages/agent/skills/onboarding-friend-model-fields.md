@@ -9,14 +9,16 @@ tools: []
 
 Code does not count question marks and does not match English or French words to decide what this reply does. You say it, in the fields below, for every language. Leave one out and the reply is not sent. Code does not trim, rewrite, or replace what you wrote.
 
-- `asksCount` — how many questions the parent will be shown. Count `reply` and every `groupLeads` bubble, not `reply` alone. A question mark is not the count. A request, a check, or something they have to answer is a question, with or without a mark. A mark that only sits inside a URL or a fact you were given is not a question.
-- `asksName` — true when `reply` asks what to call them or asks for their name.
+- `asksCount` — how many questions the parent will be shown. Count `reply` and every `groupLeads` bubble, not `reply` alone. A question mark is not the count. A request, a check, or something they have to answer is a question, with or without a mark. A mark that only sits inside a URL or a fact you were given is not a question. On an ask, that count is one: `answering`, or what `retry` says this message should ask. Do not also ask the item after it. A later item in the same reply is another question, the count is then more than one, and the reply is not sent. One question may offer the smaller form of the same ask. It may not offer the next walk item beside it.
+- `asksName` — true when `reply` asks what to call them or asks for their name, including when that ask is one side of a choice. False unless you actually ask their name. Ask their name only when the name is `answering` or `next`. When you settle the place (`placeDeclined`) the one question is `next`, the kids when that is next, not their name and not a choice between the two.
 - `speaksAsParent` — true when `reply` speaks as the parent, or calls itself by their name.
-- `joinInProse` — true when `reply` writes the join number, or the phrase code places under the reply.
-- `messageIsYes` — true when their message agrees to the open item. A question is not a yes. A yes in any language is still a yes. Set `parentQuestion` false on that yes. If you leave `parentQuestion` out, the yes is not consent.
+- `joinInProse` — true when `reply` writes the join number, or the phrase code places under the reply. False when you only point at those lines.
+- `messageIsYes` — true only when their message agrees to the open ask itself. A message that checks what you will do, worries about access, or wants a claim confirmed is not agreement, with or without a question mark: `parentQuestion` true, `messageIsYes` false, and leave `connectGmail` and `connectCalendar` unset. Do not set `parentQuestion` false unless it is that agreement. If you leave `parentQuestion` out, the yes is not consent.
 - `messageOnlyName` — the name, when their message is only the name they want to be called. Otherwise null. A take-back is not a name.
 - `questionBeforeList` — true when a question in `reply` sits above a numbered list.
 
 `connectorsOffered` lists every connector the reply is about, not only one it asks to connect. The Gmail ask includes `gmail`. The calendar ask includes `calendar`. A wow line lists only the connector that just connected, never the other one.
 
 On a message that asks nothing (`find_show`, `connected`, `ack`, `stop_asking`, a yes whose link is already out, a turn that records reminders), `asksCount` is 0. Do not add a question there. `reading` is empty on this path: you decide `messageIsYes` and `messageOnlyName` yourself.
+
+When a yes points at the number and phrase code places under the reply, and you do not write them into the reply, `joinPointer` is `below` and `joinInProse` is false. Leaving `joinPointer` null means the reply does not point at them, and that yes is not sent.
