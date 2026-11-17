@@ -31,6 +31,7 @@ describe('0258 family timezone backfill', () => {
     const kept = await seedFamily(db.database, 'Kept');
     const empty = await seedFamily(db.database, 'Empty');
     const zip = await seedFamily(db.database, 'Zip');
+    const mile = await seedFamily(db.database, 'Mile');
 
     await db.exec(`
       update families set country = 'Canada', country_code = 'CA',
@@ -46,9 +47,12 @@ describe('0258 family timezone backfill', () => {
       update families set country = 'United States', country_code = 'US',
         postal_code = '90210', area_coarse = '90210', city = null, province = 'California'
         where id = '${zip.familyId}';
+      update families set country = 'Canada', country_code = 'CA',
+        postal_code = null, area_coarse = '100 Mile House', city = '100 Mile House',
+        province = 'British Columbia'
+        where id = '${mile.familyId}';
     `);
 
-    await db.applyMigration('0258_family_timezone_resolved.sql');
     await db.applyMigration('0258_family_timezone_resolved.sql');
 
     expect(await zoneOf(postal.parentUserId)).toMatchObject({
@@ -80,6 +84,23 @@ describe('0258 family timezone backfill', () => {
       timezone: 'UTC',
       resolved_timezone: null,
     });
+    expect(await zoneOf(mile.parentUserId)).toMatchObject({
+      timezone: 'UTC',
+      resolved_timezone: null,
+      timezone_source: null,
+    });
+
+    const postalAudits = async () =>
+      (
+        await db.client.query<{ n: string }>(
+          `select count(*)::text as n from audit_log
+           where family_id = $1 and action_taken = 'timezone_resolved'`,
+          [postal.familyId],
+        )
+      ).rows[0]?.n;
+    expect(await postalAudits()).toBe('1');
+    await db.applyMigration('0258_family_timezone_resolved.sql');
+    expect(await postalAudits()).toBe('1');
 
     const stored = await parentSeasonClock(db.database, kept.parentUserId, BOUNDARY, FLAG);
     expect(stored).toMatchObject({
@@ -120,5 +141,49 @@ describe('0258 family timezone backfill', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, empty.familyId));
     expect(audited.map((row) => row.action)).toContain('timezone_resolved');
+
+    const moved = await seedFamily(db.database, 'Moved');
+    await db.exec(`
+      update users set resolved_timezone = 'America/New_York', timezone_source = 'phone'
+        where id = '${moved.parentUserId}';
+      update families set country = 'United States', country_code = 'US',
+        postal_code = '90210', area_coarse = '902', city = null, province = 'California'
+        where id = '${moved.familyId}';
+    `);
+    const replaced = await readParentClock(db.database, moved.parentUserId, FLAG);
+    expect(replaced).toMatchObject({
+      kind: 'zone',
+      timeZone: 'America/Los_Angeles',
+      source: 'place',
+    });
+    expect(await zoneOf(moved.parentUserId)).toMatchObject({
+      timezone: 'UTC',
+      resolved_timezone: 'America/Los_Angeles',
+      timezone_source: 'place',
+    });
+
+    const cared = await seedFamily(db.database, 'Cared');
+    const grandparent = await db.client.query<{ id: string }>(
+      `insert into users (email, name, timezone)
+       values ('gp-tz@example.test', 'Grandparent', 'America/Los_Angeles') returning id`,
+    );
+    const grandparentId = grandparent.rows[0]?.id;
+    expect(grandparentId).toBeTruthy();
+    await db.database.insert(schema.familyMembers).values({
+      familyId: cared.familyId,
+      userId: grandparentId as string,
+      role: 'grandparent',
+    });
+    await db.exec(`
+      update families set country = null, postal_code = null, area_coarse = null,
+        city = null, province = null, province_or_state = null
+        where id = '${cared.familyId}';
+    `);
+    const caregiverClock = await readParentClock(db.database, cared.parentUserId, FLAG);
+    expect(caregiverClock.kind).toBe('unresolved');
+    expect(await zoneOf(cared.parentUserId)).toMatchObject({
+      timezone: 'UTC',
+      resolved_timezone: null,
+    });
   }, 30_000);
 });

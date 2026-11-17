@@ -117,25 +117,25 @@ async function ensureIntakeUser(
   timezone: string | null,
   resolved: { zone: string; source: TimezoneSource } | null,
 ): Promise<string> {
-  const zone = timezone ?? resolved?.zone ?? null;
   await tx
     .insert(schema.users)
     .values({
       externalAuthId,
       email: null,
       name: null,
-      ...(zone ? { timezone: zone } : {}),
+      ...(timezone ? { timezone } : {}),
       ...(resolved ? { resolvedTimezone: resolved.zone, timezoneSource: resolved.source } : {}),
     })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
   // A row created before this place was known still has the column default.
   // The postal code is the source of the zone, so the signup write wins.
-  // A flag-on resolution that is not the column default is written beside it.
-  if (zone || resolved) {
+  // An inferred zone stays on resolved_timezone. The legacy column is written
+  // only when the place itself named one zone, so a dark flag still reads UTC.
+  if (timezone || resolved) {
     await tx
       .update(schema.users)
       .set({
-        ...(zone ? { timezone: zone } : {}),
+        ...(timezone ? { timezone } : {}),
         ...(resolved ? { resolvedTimezone: resolved.zone, timezoneSource: resolved.source } : {}),
         updatedAt: new Date(),
       })
@@ -257,12 +257,7 @@ export async function provisionFromIntake(
 
   const result = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(
-      tx,
-      externalAuthId,
-      location?.timezone ?? resolved?.zone ?? null,
-      resolved,
-    );
+    const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null, resolved);
 
     // VIL-532: a prior turn already wrote the channel and committed, then threw
     // before the session was linked. Retrying must not insert a second SMS row.

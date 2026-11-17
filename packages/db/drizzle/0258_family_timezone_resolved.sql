@@ -25,18 +25,18 @@ LANGUAGE sql
 IMMUTABLE
 AS $fn$
   SELECT CASE
-    WHEN upper(regexp_replace(coalesce(postal, ''), '[^A-Za-z0-9]', '', 'g')) ~
-         '^[ABCEGHJ-NPRSTVXY][0-9][A-Z]'
+    WHEN upper(btrim(coalesce(postal, ''))) ~
+         '^[ABCEGHJ-NPRSTVXY][0-9][A-Z]( ?[0-9][A-Z][0-9])?$'
       THEN upper(substr(regexp_replace(postal, '[^A-Za-z0-9]', '', 'g'), 1, 3))
-    WHEN regexp_replace(coalesce(postal, ''), '[^0-9]', '', 'g') ~ '^[0-9]{5}'
-      THEN substr(regexp_replace(postal, '[^0-9]', '', 'g'), 1, 5)
-    WHEN upper(regexp_replace(coalesce(coarse, ''), '[^A-Za-z0-9]', '', 'g')) ~
-         '^[ABCEGHJ-NPRSTVXY][0-9][A-Z]'
+    WHEN btrim(coalesce(postal, '')) ~ '^[0-9]{5}(-[0-9]{4})?$'
+      THEN substr(btrim(postal), 1, 5)
+    WHEN upper(btrim(coalesce(coarse, ''))) ~
+         '^[ABCEGHJ-NPRSTVXY][0-9][A-Z]( ?[0-9][A-Z][0-9])?$'
       THEN upper(substr(regexp_replace(coarse, '[^A-Za-z0-9]', '', 'g'), 1, 3))
-    WHEN regexp_replace(coalesce(coarse, ''), '[^0-9]', '', 'g') ~ '^[0-9]{5}'
-      THEN substr(regexp_replace(coarse, '[^0-9]', '', 'g'), 1, 5)
-    WHEN regexp_replace(coalesce(coarse, ''), '[^0-9]', '', 'g') ~ '^[0-9]{3}$'
-      THEN regexp_replace(coarse, '[^0-9]', '', 'g')
+    WHEN btrim(coalesce(coarse, '')) ~ '^[0-9]{5}(-[0-9]{4})?$'
+      THEN substr(btrim(coarse), 1, 5)
+    WHEN btrim(coalesce(coarse, '')) ~ '^[0-9]{3}$'
+      THEN btrim(coarse)
     ELSE NULL
   END
 $fn$;--> statement-breakpoint
@@ -101,23 +101,25 @@ AS $fn$
     ELSE NULL
   END
 $fn$;--> statement-breakpoint
-UPDATE "users" AS u
-SET
-  "resolved_timezone" = picked.zone,
-  "timezone_source" = picked.source
-FROM (
+WITH picked AS (
   SELECT DISTINCT ON (scored.user_id)
     scored.user_id,
+    scored.family_id,
     chosen.zone,
     chosen.source
   FROM (
     SELECT
       fm.user_id,
+      fm.family_id,
       CASE
-        WHEN hale_area_zone(hale_place_token(f.postal_code, f.area_coarse)) IS NOT NULL
-          AND hale_area_zone(hale_place_token(f.postal_code, f.area_coarse)) <> 'UTC'
-          THEN hale_area_zone(hale_place_token(f.postal_code, f.area_coarse))
-        ELSE NULL
+        WHEN hale_place_token(f.postal_code, f.area_coarse) IS NULL THEN NULL
+        WHEN hale_place_token(f.postal_code, f.area_coarse) ~ '^[0-9]'
+          AND lower(btrim(coalesce(f.country, ''))) IN ('canada', 'ca') THEN NULL
+        WHEN upper(hale_place_token(f.postal_code, f.area_coarse)) ~ '^[A-Z]'
+          AND lower(btrim(coalesce(f.country, ''))) IN ('united states', 'us', 'usa') THEN NULL
+        WHEN hale_area_zone(hale_place_token(f.postal_code, f.area_coarse)) IS NULL
+          OR hale_area_zone(hale_place_token(f.postal_code, f.area_coarse)) = 'UTC' THEN NULL
+        ELSE hale_area_zone(hale_place_token(f.postal_code, f.area_coarse))
       END AS place_zone,
       CASE
         WHEN lower(btrim(coalesce(f.city, ''))) IN (
@@ -214,7 +216,9 @@ FROM (
     FROM "family_members" fm
     JOIN "families" f ON f.id = fm.family_id
     JOIN "users" parent ON parent.id = fm.user_id
-    WHERE parent.timezone = 'UTC' AND parent.resolved_timezone IS NULL
+    WHERE parent.timezone = 'UTC'
+      AND parent.resolved_timezone IS NULL
+      AND fm.role IN ('primary_parent', 'co_parent')
   ) scored
   CROSS JOIN LATERAL (
     SELECT
@@ -232,9 +236,29 @@ FROM (
   ) chosen
   WHERE chosen.zone IS NOT NULL AND chosen.source IS NOT NULL
   ORDER BY scored.user_id, (chosen.source = 'place') DESC, (chosen.source = 'metro') DESC
-) picked
-WHERE u.id = picked.user_id
-  AND u.timezone = 'UTC'
-  AND u.resolved_timezone IS NULL;--> statement-breakpoint
+),
+updated AS (
+  UPDATE "users" AS u
+  SET
+    "resolved_timezone" = picked.zone,
+    "timezone_source" = picked.source
+  FROM picked
+  WHERE u.id = picked.user_id
+    AND u.timezone = 'UTC'
+    AND u.resolved_timezone IS NULL
+  RETURNING u.id, picked.family_id, picked.zone, picked.source
+)
+INSERT INTO "audit_log" (
+  "family_id", "actor", "action_taken", "target_table", "target_id", "before", "after"
+)
+SELECT
+  updated.family_id,
+  'system',
+  'timezone_resolved',
+  'users',
+  updated.id::text,
+  jsonb_build_object('timezone', 'UTC', 'resolvedTimezone', null),
+  jsonb_build_object('resolvedTimezone', updated.zone, 'timezoneSource', updated.source)
+FROM updated;--> statement-breakpoint
 DROP FUNCTION IF EXISTS hale_place_token(text, text);--> statement-breakpoint
 DROP FUNCTION IF EXISTS hale_area_zone(text);

@@ -381,8 +381,16 @@ function countryOf(row: {
 
 async function persistResolvedZone(
   database: Database,
-  input: { userId: string; familyId: string; zone: string; source: TimezoneSource },
+  input: {
+    userId: string;
+    familyId: string;
+    zone: string | null;
+    source: TimezoneSource | null;
+    beforeZone: string | null;
+    beforeSource: TimezoneSource | null;
+  },
 ): Promise<void> {
+  if (input.beforeZone === input.zone && input.beforeSource === input.source) return;
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const updated = await tx
@@ -392,7 +400,14 @@ async function persistResolvedZone(
         timezoneSource: input.source,
         updatedAt: new Date(),
       })
-      .where(and(eq(schema.users.id, input.userId), isNull(schema.users.resolvedTimezone)))
+      .where(
+        and(
+          eq(schema.users.id, input.userId),
+          input.beforeZone === null
+            ? isNull(schema.users.resolvedTimezone)
+            : eq(schema.users.resolvedTimezone, input.beforeZone),
+        ),
+      )
       .returning({ id: schema.users.id });
     if (updated.length === 0) return;
     await tx.insert(schema.auditLog).values({
@@ -401,7 +416,11 @@ async function persistResolvedZone(
       actionTaken: 'timezone_resolved',
       targetTable: 'users',
       targetId: input.userId,
-      before: { timezone: 'UTC', resolvedTimezone: null },
+      before: {
+        timezone: 'UTC',
+        resolvedTimezone: input.beforeZone,
+        timezoneSource: input.beforeSource,
+      },
       after: { resolvedTimezone: input.zone, timezoneSource: input.source },
     });
   });
@@ -432,10 +451,6 @@ export async function readParentClock(
   }
   const stored = realZone(user.timezone);
   if (stored) return { kind: 'zone', timeZone: stored, source: 'stored' };
-  const already = realZone(user.resolvedTimezone);
-  if (already) {
-    return { kind: 'zone', timeZone: already, source: user.timezoneSource ?? 'place' };
-  }
 
   const memberships = await database
     .select({
@@ -489,6 +504,7 @@ export async function readParentClock(
       .where(
         and(
           inArray(schema.familyMembers.familyId, familyIds),
+          inArray(schema.familyMembers.role, ['primary_parent', 'co_parent']),
           ne(schema.familyMembers.userId, parentUserId),
         ),
       );
@@ -504,7 +520,7 @@ export async function readParentClock(
   const phone = await resolveSendablePhone(database, parentUserId);
   const result = resolveFamilyZone({
     storedTimezone: user.timezone,
-    resolvedTimezone: user.resolvedTimezone,
+    resolvedTimezone: null,
     knownPlaceZone: null,
     country,
     postalCode: home?.postalCode ?? null,
@@ -517,14 +533,26 @@ export async function readParentClock(
     householdZone,
   });
 
-  if (result.status === 'resolved' && result.source !== 'stored' && home) {
+  if (home && result.status === 'resolved' && result.source !== 'stored') {
     await persistResolvedZone(database, {
       userId: parentUserId,
       familyId: home.familyId,
       zone: result.zone,
       source: result.source,
+      beforeZone: user.resolvedTimezone,
+      beforeSource: user.timezoneSource,
     });
     return { kind: 'zone', timeZone: result.zone, source: result.source };
+  }
+  if (home && (user.resolvedTimezone !== null || user.timezoneSource !== null)) {
+    await persistResolvedZone(database, {
+      userId: parentUserId,
+      familyId: home.familyId,
+      zone: null,
+      source: null,
+      beforeZone: user.resolvedTimezone,
+      beforeSource: user.timezoneSource,
+    });
   }
   if (result.status === 'resolved') {
     return { kind: 'zone', timeZone: result.zone, source: result.source };
