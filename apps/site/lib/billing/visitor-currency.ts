@@ -9,5 +9,10 @@ export function visitorCurrencyFromHeaders(headerList: {
 }
 
 export async function visitorCurrency(): Promise<BillingCurrency> {
-  return visitorCurrencyFromHeaders(await headers());
+  try {
+    return visitorCurrencyFromHeaders(await headers());
+  } catch {
+    // Unit renders have no request. Same fallback as a missing geo header.
+    return 'CAD';
+  }
 }

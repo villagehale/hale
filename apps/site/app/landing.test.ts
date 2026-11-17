@@ -74,9 +74,11 @@ describe('landing — the redesign hero', () => {
     expect(html).not.toContain(LIVE_NUMBER);
   });
 
-  it('states the founding offer without a countdown', () => {
-    expect(text).toContain('Founding families join free.');
-    expect(text).toContain('Only Free is available today.');
+  it('states the three tiers without a countdown', () => {
+    expect(text).toContain('Start with a text.');
+    expect(text).toContain('Paid plans are Plus and Max.');
+    expect(text).toContain('Full refund anytime if it’s not for you.');
+    expect(text).not.toContain('Founding families join free.');
     expect(text).not.toMatch(/only \d+ (spots|left)|hurry|limited time/i);
   });
 
