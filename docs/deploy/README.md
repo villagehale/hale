@@ -232,11 +232,13 @@ drain, and reads the `sms_canary_answered` audit row stamped with this
 deployment id. No model call, no parent text.
 
 The workflow sets the commit status
-`Vercel - hale-web: prod-text-gate (production)`. It does not run
-`vercel promote` or `vercel rollback`. With the Deployment Check required,
-Vercel aliases the production domains only after that status succeeds. A
-failure leaves the previous deployment serving, posts one Slack message to
-#ops, and opens one GitHub issue for the commit.
+`Vercel - hale-web: prod-text-gate (production)`. It does not alias and it
+does not roll a deployment back. With the Deployment Check required, Vercel
+aliases the production domains only after that status succeeds. A failure
+leaves the previous deployment serving, posts one Slack message to #ops, and
+opens one GitHub issue for the commit. A failure before the probe runs still
+opens that issue. After a transient failure, re-run the failed jobs on that
+Actions run. That re-reports the status. A separate manual run cannot.
 
 The route is not in `apps/web/vercel.json`. A schedule would hit the build
 already serving parents.

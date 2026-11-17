@@ -135,6 +135,10 @@ describe('the workflow holds production instead of promoting', () => {
     expect(yml).toContain('OPS_SLACK_WEBHOOK_URL');
     expect(yml).toContain('C0C5XMCAQ56');
     expect(yml).toContain('gh issue create');
+    expect(yml).toContain('did_not_finish');
+    expect(yml).toContain('Re-run the failed jobs on this run');
+    expect(yml).not.toContain('steps.gate.outputs.title !=');
+    expect(yml).not.toContain('workflow_dispatch');
     expect(yml).toContain('CRON_SECRET');
     expect(yml).toContain('VERCEL_AUTOMATION_BYPASS_SECRET');
     expect(yml).not.toContain('vercel promote');
@@ -151,5 +155,7 @@ describe('the workflow holds production instead of promoting', () => {
     expect(route).toContain("cronRoute('prod-text-gate'");
     const inbound = readFileSync(`${WEB_ROOT}app/api/channels/linq/inbound/route.ts`, 'utf8');
     expect(inbound).toContain('inboundDrainOrigin');
+    const script = readFileSync(CHECKER, 'utf8');
+    expect(script).toContain('could not read the candidate response');
   });
 });

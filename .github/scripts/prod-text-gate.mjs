@@ -173,7 +173,14 @@ async function main() {
     return;
   }
 
-  const raw = await response.text();
+  let raw;
+  try {
+    raw = await response.text();
+  } catch {
+    const summary = 'prod text gate could not read the candidate response';
+    finish(hold(summary, 'unparseable'), taskFor(hold(summary, 'unparseable')));
+    return;
+  }
   const verdict = evaluate(response.status, raw);
   finish(verdict, taskFor(verdict));
 }
