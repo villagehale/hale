@@ -292,6 +292,47 @@ export async function claimDuePlan(
 }
 
 /**
+ * Puts unstarted plans back to `planned` while registration is still ahead.
+ * A plan that already has a provider run, or a payment that may exist, stays
+ * where it is. `offerId` limits the update to one plan.
+ */
+export async function releaseUnstartedPlansBeforeOpen(
+  database: Database,
+  input: { now: Date; offerId?: string },
+): Promise<Array<{ id: string; familyId: string; parentUserId: string; opensAt: Date | null }>> {
+  const offers = schema.authorizedSignupOffers;
+  return database
+    .update(offers)
+    .set({
+      status: 'planned',
+      planResume: null,
+      planLeaseUntil: null,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        input.offerId ? eq(offers.id, input.offerId) : undefined,
+        eq(offers.status, 'submitting'),
+        gt(offers.planOpensAt, input.now),
+        or(isNull(offers.planAlreadyOpen), eq(offers.planAlreadyOpen, false)),
+        sql`(
+          ${offers.planResume} is null
+          or (
+            coalesce(${offers.planResume}->>'phase', 'signup') <> 'paying'
+            and (${offers.planResume}->>'runId') is null
+          )
+        )`,
+      ),
+    )
+    .returning({
+      id: offers.id,
+      familyId: offers.familyId,
+      parentUserId: offers.parentUserId,
+      opensAt: offers.planOpensAt,
+    });
+}
+
+/**
  * Claims the earliest plan whose run outlived an earlier sweep: still `submitting`, with a
  * resume token, and no sweep holding it (it checkpointed, or its lease ran out because the
  * platform killed it). Holds it for `leaseMs`.

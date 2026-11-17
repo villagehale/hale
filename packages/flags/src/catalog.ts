@@ -154,10 +154,13 @@ export const FLAGS = [
   }),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
+  exact('plan-city-login-owner', 'PLAN_CITY_LOGIN_OWNER_ENABLED'),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
+  exact('registration-plan-at-open', 'REGISTRATION_PLAN_AT_OPEN_ENABLED'),
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),
   exact('same-activity-meet', 'SAME_ACTIVITY_MEET_ENABLED'),
+  exact('signup-help-slot-release', 'SIGNUP_HELP_SLOT_RELEASE_ENABLED'),
   exact('signup-sandbox-runtime', 'SIGNUP_SANDBOX_RUNTIME_ENABLED'),
   exact('travel-brief', 'TRAVEL_BRIEF_ENABLED', {
     allowlistEnv: 'TRAVEL_BRIEF_FAMILY_ALLOWLIST',

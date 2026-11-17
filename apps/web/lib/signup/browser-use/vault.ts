@@ -106,6 +106,8 @@ export async function storeProviderSession(
 
 export interface LoadedProviderSession {
   id: string;
+  /** The parent who captured this session. A plan run may refuse a different parent. */
+  parentUserId: string;
   storageState: ProviderStorageState;
   browserUseProfileId: string | null;
   expiresAt: Date;
@@ -132,6 +134,7 @@ export async function loadProviderSession(
   if (!state) return null;
   return {
     id: row.id,
+    parentUserId: row.parentUserId,
     storageState: state,
     browserUseProfileId: row.browserUseProfileId,
     expiresAt: row.expiresAt,

@@ -28,3 +28,16 @@ export function registrationAssistedRunEnabled(
 ): boolean {
   return isEnabled('registration-assisted-run', undefined, env);
 }
+
+/**
+ * VIL-704 · claim and start a plan only once registration is open.
+ * Off unless REGISTRATION_PLAN_AT_OPEN_ENABLED is exactly `true`. While off,
+ * the sweep still joins up to three minutes early.
+ */
+export const REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV = 'REGISTRATION_PLAN_AT_OPEN_ENABLED';
+
+export function registrationPlanAtOpenEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('registration-plan-at-open', undefined, env);
+}

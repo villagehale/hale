@@ -1,6 +1,20 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, sql } from 'drizzle-orm';
 import type { SignupHelpSeasonFacts } from './outcome-reply';
+
+/**
+ * VIL-704 · give a Plus/Free season slot back when the run never reached a
+ * provider session, or the page was not open yet. Off unless exactly `true`.
+ * A provider-side failure still counts.
+ */
+export const SIGNUP_HELP_SLOT_RELEASE_ENABLED_ENV = 'SIGNUP_HELP_SLOT_RELEASE_ENABLED';
+
+export function signupHelpSlotReleaseEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('signup-help-slot-release', undefined, env);
+}
 
 /**
  * Serializes Browser Use season-slot claims for one family. Concurrent yeses
@@ -65,6 +79,37 @@ export async function claimSignupHelpAttempt(
     if (row) return { ok: true, attempted: row.attempted };
     const used = await signupHelpAttempted(tx, input);
     return { ok: false, attempted: used };
+  });
+}
+
+/**
+ * Gives one claimed attempt back, under the same family advisory lock as
+ * {@link claimSignupHelpAttempt}. Does nothing when the counter is already 0.
+ * The caller decides which endings are not a provider attempt.
+ */
+export async function releaseSignupHelpAttempt(
+  database: Database,
+  input: { familyId: string; seasonKey: string; now: Date },
+): Promise<{ attempted: number }> {
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${familyLockKey(input.familyId)}))`);
+    const [row] = await tx
+      .update(schema.familySignupHelpSeasons)
+      .set({
+        attempted: sql`greatest(${schema.familySignupHelpSeasons.attempted} - 1, 0)`,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(schema.familySignupHelpSeasons.familyId, input.familyId),
+          eq(schema.familySignupHelpSeasons.seasonKey, input.seasonKey),
+          sql`${schema.familySignupHelpSeasons.attempted} > 0`,
+        ),
+      )
+      .returning({ attempted: schema.familySignupHelpSeasons.attempted });
+    if (row) return { attempted: row.attempted };
+    return { attempted: await signupHelpAttempted(tx, input) };
   });
 }
 
