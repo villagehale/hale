@@ -15,6 +15,14 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * A missing client, skill or a failed draft returns null and nothing is sent.
  */
 
+/** Present only when Hale skipped Browser Use because the seasonal allowance is spent. */
+export interface SignupHelpSeasonFacts {
+  used: number;
+  cap: number;
+  /** Next season's first local calendar day (YYYY-MM-DD). */
+  resetsOn: string;
+}
+
 export interface SignupOutcomeFacts {
   outcome: string;
   reason: string | null;
@@ -22,6 +30,11 @@ export interface SignupOutcomeFacts {
   confirmed: boolean;
   sessionLabel: string | null;
   link: string;
+  /**
+   * When set, Hale did not run the assisted sign-up: this household already used
+   * its seasonal allowance. The model restates these numbers; it never names a plan.
+   */
+  signupHelpSeason?: SignupHelpSeasonFacts;
   /**
    * What `link` opens: the provider's own registration page, or a browser Hale left
    * open on the provider's site holding the page or cart. Null when `link` is ''.

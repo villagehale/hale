@@ -20,7 +20,7 @@ describe('entitlementsFor — flag off (today)', () => {
   });
 
   it('does not gate Browser Use by plan', () => {
-    expect(TODAY_ENTITLEMENTS.signupHelp).toBe(true);
+    expect(TODAY_ENTITLEMENTS.signupHelpPerSeason).toBeNull();
   });
 
   it('does not mark anyone for priority support', () => {
@@ -62,9 +62,9 @@ describe('entitlementsFor — flag on', () => {
     expect(MAX_ENTITLEMENTS.liveWatches).toBe(20);
   });
 
-  it('gives Browser Use signup help only to Max', () => {
-    expect(PLUS_ENTITLEMENTS.signupHelp).toBe(false);
-    expect(MAX_ENTITLEMENTS.signupHelp).toBe(true);
+  it('gives Plus two Browser Use sign-ups per season and Max unlimited', () => {
+    expect(PLUS_ENTITLEMENTS.signupHelpPerSeason).toBe(2);
+    expect(MAX_ENTITLEMENTS.signupHelpPerSeason).toBeNull();
   });
 
   it('gives priority support only to Max', () => {

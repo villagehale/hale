@@ -1660,6 +1660,13 @@
       "when": 1794365700000,
       "tag": "0255_email_alert_holds",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1794365810000,
+      "tag": "0257_family_signup_help_seasons",
+      "breakpoints": true
     }
   ]
 }

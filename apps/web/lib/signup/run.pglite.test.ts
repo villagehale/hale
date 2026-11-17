@@ -196,7 +196,40 @@ describe('authorized signup runner', () => {
       offerIds: [stored.id],
     })();
     await keep(await sentSignupText(db.database, seeded));
-    return seeded;
+    return { ...seeded, childId };
+  }
+
+  async function addOffer(
+    seeded: { familyId: string; parentUserId: string; childId: string },
+    url: string,
+    activityKey = `swim-parent-tot-${randomUUID().slice(0, 8)}`,
+  ) {
+    const stored = await recordSignupOffer(db.database, {
+      familyId: seeded.familyId,
+      childId: seeded.childId,
+      parentUserId: seeded.parentUserId,
+      activityKey,
+      registrationUrl: url,
+      sessions: [
+        {
+          id: 'tue-1630',
+          label: 'Tue 4:30',
+          startsAt: '2026-10-06T20:30:00.000Z',
+          endsAt: '2026-10-06T21:15:00.000Z',
+          full: false,
+          priceCents: null,
+        },
+      ],
+      approvedPriceCents: null,
+      now: NOW,
+    });
+    if (!stored.ok) throw new Error(stored.reason);
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [stored.id],
+    })();
+    await keep(await sentSignupText(db.database, seeded));
   }
 
   async function audits(familyId: string): Promise<string> {
@@ -1245,19 +1278,133 @@ describe('authorized signup runner', () => {
       };
     }
 
-    it('skips Browser Use for Plus while MAX_ENTITLEMENTS_ENABLED is on and uses the existing path', async () => {
+    it('uses Browser Use for Plus while MAX_ENTITLEMENTS_ENABLED is on, twice this season', async () => {
       vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
-      const seeded = await familyWithOffer({ ageMonths: 36, url: `${ORIGIN}/register` });
-      const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      await withProviderSession(seeded);
+      const { browser, calls } = browserFor(SAFE);
       const run = vi.fn(async () => CHECKOUT);
-      const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus'), {
+      const first = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-1'), {
         browser,
         browserUseSignup: { run },
       });
-      expect(run).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(calls.opened).toBe(0);
+      expect(first).toMatchObject({ claimed: true, outcome: 'reached_checkout' });
+
+      await addOffer(seeded, ACTIVENET);
+      const second = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-2'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(second).toMatchObject({ claimed: true, outcome: 'reached_checkout' });
+    });
+
+    it('skips Browser Use for Plus on the third attempt this season and still gives the link', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schema.users.id, seeded.parentUserId));
+      await withProviderSession(seeded);
+      const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-cap-1'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      await addOffer(seeded, ACTIVENET);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-cap-2'), {
+        browser,
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(2);
+
+      await addOffer(seeded, `${ORIGIN}/register`);
+      const outcomeWriter = echoOutcomeWriter();
+      const third = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-cap-3'), {
+        browser,
+        browserUseSignup: { run },
+        outcomeWriter,
+      });
+      expect(run).toHaveBeenCalledTimes(2);
       expect(calls.opened).toBeGreaterThan(0);
-      expect(result.claimed).toBe(true);
-      expect(result.browserUse).toBeUndefined();
+      expect(third.claimed).toBe(true);
+      expect(third.browserUse).toBeUndefined();
+      expect(outcomeWriter.facts[0]).toMatchObject({
+        signupHelpSeason: { used: 2, cap: 2, resetsOn: '2026-10-01' },
+        link: `${ORIGIN}/register`,
+      });
+      const spoken = JSON.stringify(outcomeWriter.facts[0]);
+      expect(spoken).not.toMatch(/\bplus\b/i);
+      expect(spoken).not.toMatch(/\bmax\b/i);
+      expect(spoken).not.toMatch(/\bupgrade\b/i);
+    });
+
+    it('does not count a Browser Use dry-run (no engine, no session) against Plus', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      const run = vi.fn(async () => CHECKOUT);
+      const missingEngine = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-plus-dry'), {
+        browserUseSignup: null,
+      });
+      expect(missingEngine.browserUse?.detail).toBe('not_configured');
+      expect(run).not.toHaveBeenCalled();
+      const [row] = await db.database
+        .select({ attempted: schema.familySignupHelpSeasons.attempted })
+        .from(schema.familySignupHelpSeasons)
+        .where(eq(schema.familySignupHelpSeasons.familyId, seeded.familyId));
+      expect(row).toBeUndefined();
+    });
+
+    it('does not write a season counter while MAX_ENTITLEMENTS_ENABLED is off', async () => {
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      await withProviderSession(seeded);
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-flag-off'), {
+        browserUseSignup: { run },
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      const [row] = await db.database
+        .select({ attempted: schema.familySignupHelpSeasons.attempted })
+        .from(schema.familySignupHelpSeasons)
+        .where(eq(schema.familySignupHelpSeasons.familyId, seeded.familyId));
+      expect(row).toBeUndefined();
+    });
+
+    it('resets the Plus Browser Use allowance at the next registration season', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schema.users.id, seeded.parentUserId));
+      await withProviderSession(seeded);
+      const run = vi.fn(async () => CHECKOUT);
+      await runAuthorizedSignup(
+        db.database,
+        { ...yes(seeded, 'msg-bu-season-1'), now: NOW },
+        { browserUseSignup: { run } },
+      );
+      await addOffer(seeded, ACTIVENET);
+      await runAuthorizedSignup(
+        db.database,
+        { ...yes(seeded, 'msg-bu-season-2'), now: NOW },
+        { browserUseSignup: { run } },
+      );
+      expect(run).toHaveBeenCalledTimes(2);
+
+      const winter = new Date('2026-10-01T04:00:00.000Z');
+      await addOffer(seeded, ACTIVENET);
+      const next = await runAuthorizedSignup(
+        db.database,
+        { ...yes(seeded, 'msg-bu-season-3'), now: winter },
+        { browserUseSignup: { run } },
+      );
+      expect(run).toHaveBeenCalledTimes(3);
+      expect(next).toMatchObject({ claimed: true, outcome: 'reached_checkout' });
     });
 
     it('still uses Browser Use for Max while MAX_ENTITLEMENTS_ENABLED is on', async () => {

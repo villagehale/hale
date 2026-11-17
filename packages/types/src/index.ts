@@ -8,6 +8,7 @@ export * from './companion.js';
 export * from './memory.js';
 export * from './agent.js';
 export * from './entitlements.js';
+export * from './registration-season.js';
 export * from './promo.js';
 export * from './attribution.js';
 export * from './gcal-classify.js';
