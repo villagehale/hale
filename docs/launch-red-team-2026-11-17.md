@@ -14,16 +14,16 @@ The work still on the board (VIL-692, 690, 613, 541, 696, 560, 694, group scenes
 
 | # | Score | Finding | Owner |
 | --- | --- | --- | --- |
-| 1 | Critical × high | $200 test key expires 4 Dec; proactive review has no credit abort and no family cap | Barton |
-| 2 | Critical × high | Promo checkout can charge CAD as a plain `$`, and a missing USD list price falls back to a CAD price id | Barton |
-| 3 | Critical × high | Webhook 501 + no refund revocation, while Max caps are already on | Barton |
-| 4 | Critical × high | City passwords are sent inline to Browser Use; the plan run starts 3 minutes before open; a failed run burns a season slot | Barton |
-| 5 | High × high | `PROACTIVE_CADENCE=off` still texts first for five lanes, and nothing caps how many texts land | Barton |
-| 6 | High × high | Co-parent join and caregiver welcome still send fixed copy that teaches STOP | Barton |
-| 7 | High × medium | A failed opt-out read still gets a reply; an in-flight group reminder still lands after STOP | Barton |
-| 8 | High × medium | A multi-family aside puts every present household's kids and times in one model call, without join consent | Barton |
-| 9 | High × medium | A US family with no single timezone stays on UTC, so quiet hours and the season cap use the wrong clock | Barton |
-| 10 | High × medium | We would notice a total outage and miss a quiet one; the kill switch needs a redeploy and does not stop work already running | Barton |
+| 1 | Critical × high | $200 test key expires 4 Dec; proactive review has no credit abort and no family cap | launch owner |
+| 2 | Critical × high | Promo checkout can charge CAD as a plain `$`, and a missing USD list price falls back to a CAD price id | launch owner |
+| 3 | Critical × high | Webhook 501 + no refund revocation, while Max caps are already on | launch owner |
+| 4 | Critical × high | City passwords are sent inline to Browser Use; the plan run starts 3 minutes before open; a failed run burns a season slot | launch owner |
+| 5 | High × high | `PROACTIVE_CADENCE=off` still texts first for five lanes, and nothing caps how many texts land | launch owner |
+| 6 | High × high | Co-parent join and caregiver welcome still send fixed copy that teaches STOP | launch owner |
+| 7 | High × medium | A failed opt-out read still gets a reply; an in-flight group reminder still lands after STOP | launch owner |
+| 8 | High × medium | A multi-family aside puts every present household's kids and times in one model call, without join consent | launch owner |
+| 9 | High × medium | A US family with no single timezone stays on UTC, so quiet hours and the season cap use the wrong clock | launch owner |
+| 10 | High × medium | We would notice a total outage and miss a quiet one; the kill switch needs a redeploy and does not stop work already running | launch owner |
 
 ---
 
@@ -114,7 +114,7 @@ The homepage `currency = 'CAD'` default (`apps/site/app/[locale]/page.tsx` 34) a
 
 **Failure.** A US parent on a connection whose edge country is empty, or a Canadian who is travelling and thinks "$59" means USD, pays 59 CAD (about 42 USD) for Plus or 99 CAD for Max. The receipt is the first time the currency is unambiguous. On 2 Jan, a US Plus price id that was never created charges the CAD list price ($159) instead of refusing.
 
-**Fix.** Unknown country is not CAD: show an explicit CAD/USD choice and refuse checkout until one is confirmed. Print the currency code next to the amount on the sale card and the Stripe line. Delete the USD→CAD fallback; missing price id is `no_price`. Reject an unrecognised tier instead of selling Plus. Owner: Barton, before `HOLIDAY_PROMO_ENABLED` is set.
+**Fix.** Unknown country is not CAD: show an explicit CAD/USD choice and refuse checkout until one is confirmed. Print the currency code next to the amount on the sale card and the Stripe line. Delete the USD→CAD fallback; missing price id is `no_price`. Reject an unrecognised tier instead of selling Plus. Owner: launch owner, before `HOLIDAY_PROMO_ENABLED` is set.
 
 ---
 
@@ -149,7 +149,7 @@ The homepage `currency = 'CAD'` default (`apps/site/app/[locale]/page.tsx` 34) a
 
 **Failure.** Promo is switched on, a parent pays $79 for Max, the webhook secret is missing or pointed at the wrong endpoint, Stripe retries 501s, and the family stays `free`. Hale tells them, in the model's words, that they are on the free caps. Support refunds the charge from the Stripe dashboard and does not cancel. The row stays `family` if a later `invoice.paid` or a manual edit had set it, or stays `free` if the grant never landed. Either way the parent and the ledger disagree. "Refund anytime" is a sentence on the site and a script nobody has run against live.
 
-**Fix.** One gate: checkout returns 501 until a signed test event has been applied in Prod and a reconciliation query shows zero paid customers with `plan_tier = free`. Handle `charge.refunded` and `charge.dispute.created` by setting `free` unless a non-refunded subscription is still active. Put a refund button in the receipts app that calls `refundFamilyLatestPayment` with `apply: true`, or change the site line to "text us and we refund." Do not advertise Max priority support until it is more than a sort. Owner: Barton. This blocks the promo flags. It does not block a free launch.
+**Fix.** One gate: checkout returns 501 until a signed test event has been applied in Prod and a reconciliation query shows zero paid customers with `plan_tier = free`. Handle `charge.refunded` and `charge.dispute.created` by setting `free` unless a non-refunded subscription is still active. Put a refund button in the receipts app that calls `refundFamilyLatestPayment` with `apply: true`, or change the site line to "text us and we refund." Do not advertise Max priority support until it is more than a sort. Owner: launch owner. This blocks the promo flags. It does not block a free launch.
 
 ---
 
@@ -177,7 +177,7 @@ The claim query uses `plan_opens_at <= now + lead` (`plan/store.ts` ~255–268).
 
 **Failure.** A Toronto parent saves their EFun login. At 6:57am the plan runner starts. The site is not open; the agent retries, errors, or sits in a queue the city treats as a bot. The Plus family has used 1 of 2 winter attempts. The password was in the JSON to Browser Use. A second morning fails the same way and the third real registration is refused for the season (`season_cap`). The parent hears, if the writer is having the week VIL-694 describes, that Hale can move the morning or that everything else is set.
 
-**Fix.** `leadMs` 0, and refuse to claim until `now >= plan_opens_at` in the family zone. Claim the season slot only after a confirmed registration, or release it on `engine_threw`. Bind credentials to the parent who saved them. Get Browser Use's written no-retention terms for `secretBindings` (VIL-658 already asks for the CAPTCHA letter; add this) before any city password is stored for a family that is not Barton's. Pull VIL-694 and VIL-675 in front of any new registration copy. Owner: Barton (VIL-558).
+**Fix.** `leadMs` 0, and refuse to claim until `now >= plan_opens_at` in the family zone. Claim the season slot only after a confirmed registration, or release it on `engine_threw`. Bind credentials to the parent who saved them. Get Browser Use's written no-retention terms for `secretBindings` (VIL-658 already asks for the CAPTCHA letter; add this) before any city password is stored for a household beyond the two already on Prod. Pull VIL-694 and VIL-675 in front of any new registration copy. Owner: launch owner (VIL-558).
 
 ---
 
@@ -226,12 +226,14 @@ The cron comment says the opposite: "While PROACTIVE_CADENCE is unset this retur
  * unusual enough to page #ops. The send is not held.
 ```
 
+`REVIEW.md` records "no numeric send caps" as intended. That decision was made for a handful of households. It does not survive a public launch: the page fires after the texts have already gone out.
+
 - `live` is strict equality with no trim (`flag.ts` 16–17). `live\n` from `vercel env add` stays `off`. If `POSTHOG_FLAGS_ENABLED` is on, a PostHog `proactive-cadence` value wins over the env (#1298). Idempotency keys on Linq sends are attached only when cadence is not `off` (`linq/transport.ts` 88–94, 451–452). A rollback to `off` also turns duplicate protection off.
 - VIL-691 is Done. Its five live-only bugs (double email alert, stuck holds, paging, eval fixtures, dedupe) are fixed in #1298. The eight new decider fixtures were cache misses at merge; the PR says the paid record was not run.
 
 **Failure.** Launch week, a bug or a bad decider snapshot sends a registration ladder text, a winter-break ask, and an evening check-in to the same parent between 5pm and 8pm. Ops sets `PROACTIVE_CADENCE=off` and redeploys. The ladder keeps firing every five minutes. The five decider-only kinds keep being decided and sent. The parent who texts STOP is a different finding; this parent just wanted fewer texts and still gets them. If the value was `live\n`, Prod was never live and the old paths plus those five kinds have been sending the whole time.
 
-**Fix.** `off` means no unprompted send, including the five kinds and the immediate classes, except a reply to a text the parent just sent. A per-family daily cap (3 is enough for launch) inside `assertProactiveSendAllowed`, not a page at 12. Confirm in PostHog that `proactive-cadence` is absent or exactly `live`, then set the env with no trailing newline, then read one Prod decision row before calling it live. Record the eight #1298 decider fixtures before trusting the eval gate. Owner: Barton.
+**Fix.** `off` means no unprompted send, including the five kinds and the immediate classes, except a reply to a text the parent just sent. A per-family daily cap (3 is enough for launch) inside `assertProactiveSendAllowed`, not a page at 12. Confirm in PostHog that `proactive-cadence` is absent or exactly `live`, then set the env with no trailing newline, then read one Prod decision row before calling it live. Record the eight #1298 decider fixtures before trusting the eval gate. Owner: launch owner.
 
 ---
 
@@ -265,7 +267,7 @@ The friend-voice judge rejects this shape (`friend-voice.test.ts` 882–888, rea
 
 **Failure.** A parent forwards a co-parent link. The new number's first Hale message is a template that ends "Reply STOP anytime." That is the copy the product rule forbids, and it teaches the keyword the product refused to teach. A caregiver who says yes gets the same lesson.
 
-**Fix.** Run join welcome, the inviter ack, and the caregiver yes/no lines through the same writer as onboarding. If that writer returns nothing, send nothing and page #ops; the seat change has already been recorded. Delete the STOP sentence from those specs. Change the loop voice contract so a null voice holds the send, before anyone sets `LOOP_SEND_ENABLED`. Owner: Barton.
+**Fix.** Run join welcome, the inviter ack, and the caregiver yes/no lines through the same writer as onboarding. If that writer returns nothing, send nothing and page #ops; the seat change has already been recorded. Delete the STOP sentence from those specs. Change the loop voice contract so a null voice holds the send, before anyone sets `LOOP_SEND_ENABLED`. Owner: launch owner.
 
 ---
 
@@ -281,7 +283,7 @@ The friend-voice judge rejects this shape (`friend-voice.test.ts` 882–888, rea
 
 **Failure.** During a partial model failure the opt-out reader returns null and the coach still answers. The parent wrote "please stop texting me." Hale replies with a normal answer and, if the hold row failed, also sends tonight's check-in. Separately, a group reminder that the tick already marked `in_flight` posts into the thread after that parent stopped Hale there.
 
-**Fix.** `reading === null` ends the turn with no coach send. Retry the read; do not answer. A hold-write failure is the same: no outbound, page `opt_out_hold_unwritten`, and leave the message unclaimed so the retry can read it. Cancel `in_flight` group reminders that have not received a provider id yet; if the provider already accepted the send, record `landed_after_stop` on the audit row so it is visible. Owner: Barton. VIL-553 and #868 built the hold. The hold is not a stop.
+**Fix.** `reading === null` ends the turn with no coach send. Retry the read; do not answer. A hold-write failure is the same: no outbound, page `opt_out_hold_unwritten`, and leave the message unclaimed so the retry can read it. Cancel `in_flight` group reminders that have not received a provider id yet; if the provider already accepted the send, record `landed_after_stop` on the audit row so it is visible. Owner: launch owner. VIL-553 and #868 built the hold. The hold is not a stop.
 
 ---
 
@@ -312,7 +314,7 @@ The friend-voice judge rejects this shape (`friend-voice.test.ts` 882–888, rea
 
 **Failure.** Two families share a school chat. Family B has not consented to join. Someone mentions a Tuesday practice. The model call contains B's child's name and B's calendar times next to A's. The aside to A names B's child, or the provider log does. B never agreed to that use.
 
-**Fix.** Same `joinConsent(...).allowed` gate as `joinedFamiliesDirectory` before a slice is built. A household without it contributes nothing to the prompt and gets no aside. If the read fails, send nothing (`read_failed` already returns). Owner: Barton. Do not light more group scenes until this gate has a test with two families and one missing consent.
+**Fix.** Same `joinConsent(...).allowed` gate as `joinedFamiliesDirectory` before a slice is built. A household without it contributes nothing to the prompt and gets no aside. If the read fails, send nothing (`read_failed` already returns). Owner: launch owner. Do not light more group scenes until this gate has a test with two families and one missing consent.
 
 ---
 
@@ -348,7 +350,7 @@ async function ensureIntakeUser(
 
 **Failure.** A US parent names a city the area table will not reduce to one zone, or skips the place. Hale treats them as UTC. "Quiet" is 4pm–3am Eastern. The winter season cap rolls at 00:00 UTC, which is 7pm Eastern the night before. A 9pm text the parent thinks is allowed is held, or a 5pm text they think is evening goes out as if it were afternoon. Canada postal codes that resolve (Toronto, and a single-zone FSA) are fine. The US launch is the gap.
 
-**Fix.** If the zone is null, ask once, in the model's words, and do not send unprompted until a zone is stored. Do not guess from the phone number (the provision comment is right about that). Do not leave UTC in place and hope. Owner: Barton, with the VIL-413 place work (#1299).
+**Fix.** If the zone is null, ask once, in the model's words, and do not send unprompted until a zone is stored. Do not guess from the phone number (the provision comment is right about that). Do not leave UTC in place and hope. Owner: launch owner, with the VIL-413 place work (#1299).
 
 ---
 
@@ -363,11 +365,11 @@ async function ensureIntakeUser(
 - Kill switch: change the Vercel env and **redeploy** (`docs/flag-rollout-checklist.md` 9–10). `signup-plans` returns immediately when the flag is off (`plan/run.ts` ~180), but a plan already in `submitting` keeps its lease (`PLAN_LEASE_MS` is 15 minutes, `plan/run.ts` 74–75). pg-boss jobs already queued keep their payload.
 - `NEXT_DAY_CHECKBACK_ENABLED` and `SECRET_SANTA` use `trimmed-not-false` and default **on** (`packages/flags/src/catalog.ts` 151–154, 226). A new Prod env that forgets the variable turns them on.
 - VIL-696 (Todo, due 24 Nov, no owner): every `main` merge promotes to Production. On 11 Nov, #1226 took Prod down from 7:19am to 9:18am ET. The fix was #1242 and a manual rollback. Nothing in CI sends a Linq test text and requires a reply before promote.
-- VIL-658 (Todo, due 29 Nov, no owner): one Prod journey per landing promise, on Barton's or Eugene's family, or a waiver. It is still the only launch gate, and it has no evidence attached. VIL-560 (prompt injection from email, calendar, and web pages) is In Progress, due 26 Nov. That suite does not exist yet, and registration plus Gmail are already in the launch set.
+- VIL-658 (Todo, due 29 Nov, no owner): one Prod journey per landing promise, on one of the two households already on Prod, or a waiver. It is still the only launch gate, and it has no evidence attached. VIL-560 (prompt injection from email, calendar, and web pages) is In Progress, due 26 Nov. That suite does not exist yet, and registration plus Gmail are already in the launch set.
 
 **Failure.** A bad merge on 30 Nov ships at 8am ET. Parents get silence or garbage for two hours, which is what happened on 11 Nov, except now they are not the founders. Or the merge is fine, the credit dies on 4 Dec, sends stop, and the only page is a per-family decider failure that looks like noise. Or someone "turns registration off" during an incident and the run that started a minute earlier finishes the city's checkout.
 
-**Fix.** VIL-696 before any further launch merges: one Linq test-line round trip on the build, or the previous deployment stays. Set `POSTHOG_ERROR_TRACKING_ENABLED` and the credit alert. Add a counter of outbound sends and of `skipped` by reason, and page when sends drop to zero during 8am–9pm Toronto on a weekday. An env kill must also set a row the sweep reads every minute, so in-flight plans abort without a redeploy. Owner: Barton for the gate; VIL-696 needs a name today.
+**Fix.** VIL-696 before any further launch merges: one Linq test-line round trip on the build, or the previous deployment stays. Set `POSTHOG_ERROR_TRACKING_ENABLED` and the credit alert. Add a counter of outbound sends and of `skipped` by reason, and page when sends drop to zero during 8am–9pm Toronto on a weekday. An env kill must also set a row the sweep reads every minute, so in-flight plans abort without a redeploy. Owner: launch owner for the gate; VIL-696 needs a name today.
 
 ---
 
