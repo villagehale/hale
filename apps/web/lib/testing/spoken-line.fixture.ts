@@ -1,12 +1,3 @@
-import {
-  ALREADY_INVITED,
-  CANNOT_TEXT_THAT_NUMBER,
-  CAREGIVER_DECLINE_ACK,
-  OWN_NUMBER,
-  TOO_MANY_INVITES,
-} from '~/lib/channel/caregiver/copy';
-import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
-import { joinWelcome } from '~/lib/channel/join/copy';
 import { asksAboutEyeCare } from '~/lib/channel/off-domain/copy';
 import {
   type SpokenLineRequest,
@@ -156,25 +147,48 @@ function render(
       return fr(language)
         ? `D'accord - je n'ai pas écrit à ${facts.name}.`
         : `Okay - I haven't texted ${facts.name}.`;
+    case 'join_welcome':
     case 'coparent_welcome': {
-      if (!fr(language)) return joinWelcome(facts.inviterName?.trim() ? facts.inviterName : null);
-      const who = inviterNameIsAffordable(facts.inviterName ?? null)
-        ? facts.inviterName
-        : 'votre co-parent';
-      return `Vous y voilà - ${who} vous a ajouté comme co-parent, donc vous voyez ce qu'ils voient ici et vous pouvez m'écrire n'importe quand. Répondez ARRET à tout moment.`;
+      const who =
+        facts.inviterName?.trim() || (fr(language) ? 'votre co-parent' : 'your co-parent');
+      return fr(language)
+        ? `Vous y voilà - ${who} vous a ajouté comme co-parent, donc vous voyez ce qu'ils voient ici et vous pouvez m'écrire n'importe quand.`
+        : `You're in - ${who} added you as a co-parent, so you see what they see here and can text me anything, anytime.`;
     }
+    case 'join_accepted_ack':
+      return pick(
+        language,
+        'Your partner is in - they joined from their own number and they see what you see here.',
+        'Votre partenaire est là - ils ont rejoint depuis leur propre numéro et ils voient ce que vous voyez ici.',
+      );
+    case 'join_invite_forward':
+      return fr(language)
+        ? `Voilà - transfère ça et ils sont dans la famille: ${facts.link} Seulement à eux: qui l'ouvre rejoint ta famille. Valable 7 jours.`
+        : `Here you go - forward this to them and they're in: ${facts.link} Just to them, though: whoever opens it joins your family. Good for 7 days.`;
+    case 'caregiver_welcome':
+      return pick(
+        language,
+        "You're in - I'll text you the week's schedule and pickup reminders, and nothing else.",
+        'Vous y voilà - je vous écris l’horaire de la semaine et les rappels de cueillette, et rien d’autre.',
+      );
+    case 'caregiver_decline_ack':
     case 'coparent_decline_ack':
-      return pick(language, CAREGIVER_DECLINE_ACK, 'Pas de souci - je ne vous écrirai plus.');
+      return pick(
+        language,
+        "No problem - I won't text you again.",
+        'Pas de souci - je ne vous écrirai plus.',
+      );
     case 'coparent_referrer_unnamed':
       return pick(
         language,
         "I'd be texting them out of the blue, so I want to say who sent me - tell me your name first, or text add my partner for a link you forward.",
         "Je leur écrirais sans prévenir, alors je veux pouvoir dire qui m'envoie - dites-moi votre nom d'abord, ou écrivez add my partner pour un lien à transférer.",
       );
+    case 'caregiver_cannot_text':
     case 'coparent_unavailable':
       return pick(
         language,
-        CANNOT_TEXT_THAT_NUMBER,
+        "I can't text that number for you. If they'd like to be here, they can text me first.",
         "Je ne peux pas écrire à ce numéro pour vous. S'ils veulent se joindre à vous ici, ils peuvent m'écrire en premier.",
       );
     case 'coparent_seat_taken_late':
@@ -195,11 +209,17 @@ function render(
         "Thanks for answering - that invitation has expired, so there's nothing for me to add you to. Ask them to send it again and I'll be right here.",
         "Merci d'avoir répondu - cette invitation a expiré, donc je ne peux pas vous ajouter. Demandez-leur de la renvoyer et je serai là.",
       );
+    case 'caregiver_number_in_use':
+      return pick(
+        language,
+        "That number is already set up with Hale, so I can't add it as a caregiver.",
+        'Ce numéro est déjà configuré avec Hale, donc je ne peux pas l’ajouter comme proche aidant.',
+      );
     case 'coparent_number_in_use':
       return pick(
         language,
-        "That number is already set up with Hale, so I can't add it as your co-parent - they'd need to reply STOP there first.",
-        "Ce numéro est déjà configuré avec Hale, donc je ne peux pas l'ajouter comme co-parent - il faudrait d'abord répondre ARRET là-bas.",
+        "That number is already set up with Hale, so I can't add it as your co-parent.",
+        'Ce numéro est déjà configuré avec Hale, donc je ne peux pas l’ajouter comme co-parent.',
       );
     case 'coparent_seat_taken':
       return pick(
@@ -213,24 +233,57 @@ function render(
         "That number already said no to me once, so I won't text it again. If that's changed, they can text me first.",
         "Ce numéro m'a déjà dit non une fois, donc je ne lui écrirai plus. Si les choses ont changé, il peut m'écrire en premier.",
       );
+    case 'caregiver_own_number':
     case 'coparent_own_number':
       return pick(
         language,
-        OWN_NUMBER,
+        "That's your own number - you're already here.",
         "C'est votre propre numéro - vous avez déjà votre place ici.",
       );
+    case 'caregiver_already_invited':
     case 'coparent_already_invited':
       return pick(
         language,
-        ALREADY_INVITED,
+        "I've already texted them - I'll let you know as soon as they answer.",
         "Je leur ai déjà écrit - je vous dis dès qu'ils répondent.",
       );
+    case 'caregiver_too_many':
     case 'coparent_too_many':
       return pick(
         language,
-        TOO_MANY_INVITES,
+        "That's a lot of people in one day - I'll pick this up tomorrow. Nobody new has been texted.",
         "Ça fait beaucoup de monde en une journée - je reprends demain. Personne de nouveau n'a été contacté.",
       );
+    case 'caregiver_invite_sent':
+      return pick(
+        language,
+        `Sent - I've texted ${facts.name}. They're in as soon as they say yes.`,
+        `C'est parti - j'ai écrit à ${facts.name}. Ils sont dans la famille dès qu'ils disent oui.`,
+      );
+    case 'caregiver_invite_dropped':
+      return pick(
+        language,
+        `Okay - I haven't texted ${facts.name}.`,
+        `D'accord - je n'ai pas écrit à ${facts.name}.`,
+      );
+    case 'caregiver_add_example':
+      return pick(
+        language,
+        'Tell me who, their number, and what they are. I can do grandparent, nanny or babysitter.',
+        'Dites-moi qui, leur numero, et ce qu’ils sont. Je peux faire grand-parent, nounou ou gardien.',
+      );
+    case 'caregiver_co_parent_redirect':
+      return pick(
+        language,
+        "A co-parent sees everything I show you, so I won't add one from a number you typed. Text me add my partner and I'll send you a link to forward to them.",
+        'Un co-parent voit tout ce que je vous montre, donc je n’en ajoute pas à partir d’un numéro que vous avez tapé. Écrivez-moi add my partner et je vous envoie un lien à transférer.',
+      );
+    case 'caregiver_scoped_reply': {
+      const who = facts.parentName?.trim() || (fr(language) ? 'les parents' : 'the parents');
+      return fr(language)
+        ? `Ça, c'est pour ${who} - je ne partage que l'horaire ici.`
+        : `That's one for ${who} - I only share the schedule here.`;
+    }
     case 'linq_group_make':
       return fr(language)
         ? `Ouvre un groupe iMessage avec eux et ce numero: ${facts.line}. Dans ce groupe, envoie: ${facts.phrase}.`

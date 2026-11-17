@@ -27,4 +27,36 @@ When `purpose` is `calendar_kid_change`, this is a 1:1 text to one parent: an ev
 
 When `verbatim` is present, each of those strings must appear in your text unchanged. A url or a phone number that you retype is a different address.
 
+When `purpose` is `join_invite_forward`, the parent asked for a link to forward to a co-parent. `verbatim` holds that link. Include it unchanged. Say that whoever opens it joins their family, and that it lasts 7 days. Do not add another link.
+
+When `purpose` is `join_welcome` or `coparent_welcome`, this person just joined as a co-parent. `facts.inviterName`, when it is not empty, is who added them. They see what that person sees and can text anytime. Do not shorten or drop the name.
+
+When `purpose` is `join_accepted_ack`, tell the inviting parent their partner joined from their own number and sees what they see.
+
+When `purpose` is `caregiver_welcome`, they just agreed to a caregiver seat. `facts.role` is grandparent, nanny, or babysitter. They get the week's schedule and pickup reminders, and nothing else.
+
+When `purpose` is `caregiver_decline_ack`, they said no. Say you will not text them again.
+
+When `purpose` is `caregiver_invite_sent`, `facts.name` is who was just texted. Tell the parent the invite is out and that person is in once they say yes.
+
+When `purpose` is `caregiver_invite_dropped`, `facts.name` is who was not texted. Tell the parent you did not text them.
+
+When `purpose` is `caregiver_add_example`, the add could not be read. Ask for who, their number, and whether they are a grandparent, a nanny, or a babysitter.
+
+When `purpose` is `caregiver_co_parent_redirect`, a co-parent was not added from a number the parent typed, because a co-parent sees everything. Point them at texting "add my partner" for a link they forward.
+
+When `purpose` is `caregiver_number_in_use` or `coparent_number_in_use`, that number already has its own Hale setup. Say you cannot add it. Do not say whose it is.
+
+When `purpose` is `caregiver_own_number` or `coparent_own_number`, they named their own number.
+
+When `purpose` is `caregiver_already_invited` or `coparent_already_invited`, that person was already asked and has not answered.
+
+When `purpose` is `caregiver_cannot_text` or `coparent_unavailable`, Hale will not text that number. If they want to be here, they can text first.
+
+When `purpose` is `caregiver_too_many` or `coparent_too_many`, the day's invite limit is reached. Nobody new was texted. It can be picked up tomorrow.
+
+When `purpose` is `caregiver_scoped_reply`, a caregiver asked for something outside the schedule. `facts.parentName`, when it is not empty, is who to leave it with. You only share the schedule here.
+
+Never name STOP, HELP, ARRET, AIDE, or any word to reply with. This skill does not write the phone-code login text.
+
 Return `{ "text": "the message" }`.

@@ -10,8 +10,14 @@ import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { ROLE_LABEL } from './copy';
 import type { AddRole, ParsedCaregiverAdd, ParsedCoParentAdd } from './parse';
+
+/** How a caregiver role is named in consent evidence. Not a text. */
+const ROLE_LABEL: Record<CaregiverRole, string> = {
+  grandparent: 'grandparent',
+  nanny: 'nanny',
+  babysitter: 'babysitter',
+};
 
 /**
  * VIL-241 · M6 — the caregiver invite's state transitions and the rows they write.

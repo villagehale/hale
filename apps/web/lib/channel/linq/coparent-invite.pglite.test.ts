@@ -1,9 +1,9 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
+import { speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
@@ -41,6 +41,7 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
   vi.stubGlobal(
@@ -297,7 +298,10 @@ describe('a number on the SMS door', () => {
       inboundChannelMessageId: inboundId,
       sendSms,
     });
-    expect(outcome).toMatchObject({ status: 'refused', reply: CO_PARENT_REDIRECT });
+    expect(outcome).toMatchObject({
+      status: 'refused',
+      reply: await speak({ purpose: 'caregiver_co_parent_redirect', language: 'en' }),
+    });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual([]);
   });

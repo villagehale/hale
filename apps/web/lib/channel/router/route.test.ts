@@ -20,7 +20,6 @@ vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
 }));
 import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { createConsentAskWriter } from '~/lib/channel/consent-ask';
@@ -60,6 +59,7 @@ import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
 import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { speak } from '~/lib/channel/spoken-line';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -1683,6 +1683,7 @@ describe('the off-domain lane', () => {
 describe('a caregiver never reaches the agent', () => {
   for (const role of ['grandparent', 'nanny', 'babysitter'] as const) {
     it(`answers a ${role} with M6's scoped line and stops`, async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
       const handlers = [passingHandler('approval')];
       const coach = fakeCoach();
       const h = harness({ context: { role, body: 'what time is pickup?' }, handlers, coach });
@@ -1692,7 +1693,14 @@ describe('a caregiver never reaches the agent', () => {
       expect(result.status).toBe('not_a_parent');
       expect(coach.calls).toBe(0);
       expect(handlers[0]?.calls).toBe(0);
-      expect(h.transport.bodies()).toEqual([scopedReply('Sam')]);
+      expect(h.transport.bodies()).toEqual([
+        await speak({
+          purpose: 'caregiver_scoped_reply',
+          language: null,
+          facts: { parentName: 'Sam' },
+        }),
+      ]);
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
     });
   }
 
@@ -1709,6 +1717,7 @@ describe('a caregiver never reaches the agent', () => {
   /** Rule #6 is about the ACT of texting someone, not about which thread it landed in.
    * The one reply that belongs to no conversation still gets its ledger + audit rows. */
   it('still ledgers and audits the line it sent', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
     const h = harness({ context: { role: 'nanny' } });
     await routeChannelMessage(h.deps, job());
 
@@ -1716,6 +1725,7 @@ describe('a caregiver never reaches the agent', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.relatedConversationId).toBeNull();
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
   });
 
   /** The legacy buckets role-scope.ts gives an empty scope. Anyone we cannot vouch for
@@ -2857,6 +2867,7 @@ describe('a re-driven turn never answers twice', () => {
   });
 
   it('claims the caregiver line too — it is an answer like any other', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });
     expect((await routeChannelMessage(first.deps, job())).status).toBe('not_a_parent');
@@ -2865,6 +2876,7 @@ describe('a re-driven turn never answers twice', () => {
     const second = harness({ context: { role: 'nanny' }, turns });
     expect((await routeChannelMessage(second.deps, job())).status).toBe('already_answered');
     expect(second.transport.sent).toEqual([]);
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
   });
 
   /**
@@ -7780,9 +7792,10 @@ describe('the reply row, written to a real database', () => {
         [
           'the line someone who is not a parent gets',
           { context: { role: 'nanny' } },
-          [scopedReply('Sam')],
+          ["That's one for Sam - I only share the schedule here."],
         ],
       ] as const)('%s', async (_label, options, said) => {
+        process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
         lit();
         const parent = await seedFamily(db.database);
         await text(parent, 'hows the weather tomorrow', OWN_CHAT);
@@ -7796,6 +7809,7 @@ describe('the reply row, written to a real database', () => {
 
         expect(next.said).toEqual(said);
         expect(await keptAsks(parent.familyId)).toEqual([]);
+        process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
       });
 
       it('a tapback that stood in for the words', async () => {

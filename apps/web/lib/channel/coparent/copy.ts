@@ -30,16 +30,14 @@ import { speak } from '~/lib/channel/spoken-line';
  * stranger's first message into three. copy.test.ts holds the line.
  */
 
-/** The longest inviter name this path will spend budget on — the same ceiling the
- * forwardable link keeps (join/copy.ts), because the two bodies are the same size. */
+/** The longest inviter name this path will spend budget on. The join door does not
+ * use this ceiling: the model is handed the name whole. */
 const MAX_INVITER_NAME_CHARS = 24;
 
 /**
  * Whether the invite can afford to NAME the person who asked for it.
  *
- * DIVERGES DELIBERATELY from `affordableInviterName` (join/copy.ts), which drops an
- * unaffordable name and sends an anonymous body. A forwarded link is handed over by a
- * human who is standing right there; this is a cold text. "A parent added you as their
+ * A cold text is not a link a person forwards while they are standing there. "A parent added you as their
  * co-parent" from a number nobody recognises is the message this whole feature exists to
  * not send, so an unnameable inviter REFUSES the invite (`referrer_unnamed`) rather than
  * sending it anonymously.

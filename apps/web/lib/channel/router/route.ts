@@ -4,6 +4,9 @@ import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
+import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
   ActivityPromise,
@@ -21,7 +24,6 @@ import {
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import { REPLY_BUBBLE_BREAK, splitReplyBubbles } from '~/lib/channel/coach/reply';
@@ -40,6 +42,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import { composeDoorLine } from '~/lib/channel/door-line';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
@@ -90,13 +93,13 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
-import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
@@ -145,14 +148,11 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
-import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
-import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
-import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   expireEmailAlertOffer,
@@ -1198,14 +1198,23 @@ async function routeChannelMessageInner(
       // Ledgered and audited like every other outbound (rule #6) — but with NO
       // conversation, because a caregiver's exchange must never appear in the parents'
       // Ask history. That is the one difference between this send and a parent's.
-      await sendReply(deps, {
-        route: context.reply,
-        body: scopedReply(context.primaryParentName),
-        job,
-        conversationId: null,
-        claim: claimAnswer,
-        openAsks: { leaves: null },
+      const line = await composeDoorLine(deps.database, {
+        purpose: 'caregiver_scoped_reply',
+        language: null,
+        facts: { parentName: context.primaryParentName ?? '' },
       });
+      if (line) {
+        await sendReply(deps, {
+          route: context.reply,
+          body: line,
+          job,
+          conversationId: null,
+          claim: claimAnswer,
+          openAsks: { leaves: null },
+        });
+      } else {
+        await claimAnswer();
+      }
     }
     return done(deps, job, {
       status: 'not_a_parent',

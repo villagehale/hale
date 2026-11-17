@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import {
   familyHasCoParent,
   loadPendingAssent,
@@ -14,6 +13,7 @@ import {
   coParentReferrerUnnamed,
   coParentRefusal,
 } from '~/lib/channel/coparent/copy';
+import { composeDoorLine } from '~/lib/channel/door-line';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
@@ -192,7 +192,7 @@ export async function deliverCoParentNumberInvite(
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
-  const held = (reply: string): CoParentNumberOutcome => ({
+  const held = (reply: string | null): CoParentNumberOutcome => ({
     status: 'refused',
     reply,
     templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
@@ -202,7 +202,10 @@ export async function deliverCoParentNumberInvite(
   if (!parentPhone) {
     return {
       status: 'unreached',
-      reply: CO_PARENT_REDIRECT,
+      reply: await composeDoorLine(database, {
+        purpose: 'caregiver_co_parent_redirect',
+        language,
+      }),
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
     };
   }
@@ -210,7 +213,12 @@ export async function deliverCoParentNumberInvite(
   // Same gate as the YES that texts a stranger (D21). The ask can be on the
   // thread while the flag is dark; the SMS send is what the flag holds.
   if (!f14EnabledFor(input.familyId)) {
-    return held(CO_PARENT_REDIRECT);
+    return held(
+      await composeDoorLine(database, {
+        purpose: 'caregiver_co_parent_redirect',
+        language,
+      }),
+    );
   }
 
   const name = await parentName(database, input.parentUserId);

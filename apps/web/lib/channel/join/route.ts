@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
+import { composeDoorLine } from '~/lib/channel/door-line';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -8,7 +9,8 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from './copy';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { joinLink } from './code';
 import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
 
 /**
@@ -33,6 +35,8 @@ export interface JoinDeps {
    * an offer the parent may ask about ("did they get it?"), and the welcome is the
    * partner's FIRST sentence from Hale, which their reply will be read against. */
   threadMessage: typeof threadProactiveMessage;
+  /** Pages #ops when the model writes nothing. Tests pass their own. */
+  doorPager?: OpsPager;
 }
 
 /**
@@ -62,7 +66,7 @@ export interface JoinAcceptance {
    * happens either way, and the inviter finds out the way they always could: their
    * partner is in the same house.
    */
-  inviterHeld: 'no_channel' | 'quiet_hours' | null;
+  inviterHeld: 'no_channel' | 'quiet_hours' | 'unwritten' | null;
   supersededInviteId: string | null;
 }
 
@@ -129,9 +133,9 @@ async function record(
       category: input.category,
       providerMessageId: input.providerId,
       status: input.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
-      // Verbatim for INBOUND only, the rule the whole ledger keeps: an outbound is
-      // reconstructable from copy.ts, and an outbound here carries a live capability
-      // token (rule #1).
+      // Verbatim for INBOUND only, the rule the whole ledger keeps: an outbound
+      // is model-written and not stored, and an outbound here carries a live
+      // capability token (rule #1).
       body: input.direction === 'in' ? input.body : null,
       sentAt: input.now,
     })
@@ -234,14 +238,27 @@ export async function handleJoinRequest(
     now,
   });
 
-  await sendThreaded(database, deps, {
-    to: args.phoneE164,
-    body: joinInviteForward(code),
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    category: 'caregiver',
-    now,
-  });
+  const link = joinLink(code);
+  const body = await composeDoorLine(
+    database,
+    {
+      purpose: 'join_invite_forward',
+      language: await familySpeechLanguage(database, owner.familyId),
+      facts: { link },
+      verbatim: [link],
+    },
+    deps.doorPager,
+  );
+  if (body) {
+    await sendThreaded(database, deps, {
+      to: args.phoneE164,
+      body,
+      familyId: owner.familyId,
+      parentUserId: owner.userId,
+      category: 'caregiver',
+      now,
+    });
+  }
   return { status: 'join_link_minted' };
 }
 
@@ -357,14 +374,25 @@ export async function handleJoinArrival(
     now,
   });
 
-  await sendThreaded(database, deps, {
-    to: args.phoneE164,
-    body: joinWelcome(inviter.name),
-    familyId: invite.familyId,
-    parentUserId: coParentUserId,
-    category: 'intake',
-    now,
-  });
+  const welcome = await composeDoorLine(
+    database,
+    {
+      purpose: 'join_welcome',
+      language: await familySpeechLanguage(database, invite.familyId),
+      facts: { inviterName: inviter.name?.trim() ?? '' },
+    },
+    deps.doorPager,
+  );
+  if (welcome) {
+    await sendThreaded(database, deps, {
+      to: args.phoneE164,
+      body: welcome,
+      familyId: invite.familyId,
+      parentUserId: coParentUserId,
+      category: 'intake',
+      now,
+    });
+  }
 
   // The ack is the one send on this path to somebody who texted NOTHING this turn — a
   // proactive extra, not a reply — so it keeps the proactive quiet window (2026-08-28
@@ -379,14 +407,26 @@ export async function handleJoinArrival(
     );
   }
   if (inviterPhone && inviterHeld === null) {
-    await sendThreaded(database, deps, {
-      to: inviterPhone,
-      body: JOIN_ACCEPTED_ACK,
-      familyId: invite.familyId,
-      parentUserId: invite.invitedByUserId,
-      category: 'caregiver',
-      now,
-    });
+    const ack = await composeDoorLine(
+      database,
+      {
+        purpose: 'join_accepted_ack',
+        language: await familySpeechLanguage(database, invite.familyId),
+      },
+      deps.doorPager,
+    );
+    if (ack) {
+      await sendThreaded(database, deps, {
+        to: inviterPhone,
+        body: ack,
+        familyId: invite.familyId,
+        parentUserId: invite.invitedByUserId,
+        category: 'caregiver',
+        now,
+      });
+    } else {
+      inviterHeld = 'unwritten';
+    }
   }
 
   return {

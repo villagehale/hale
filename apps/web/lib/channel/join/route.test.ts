@@ -15,10 +15,12 @@ import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine'
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { FamilyRole } from '~/lib/channel/role-scope';
+import { setSharedSpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter } from '~/lib/testing/consent-double';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import { joinTokenHash } from './code';
 import { JOIN_LINK_TTL_MS } from './invites';
 
@@ -188,9 +190,12 @@ function insideOneTransaction(h: Harness, indices: number[]): boolean {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  setSharedSpokenLineWriter(scriptedSpokenLineWriter);
 });
 
 describe('minting the link · "add my partner", no number', () => {
@@ -368,7 +373,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
     expect(insideOneTransaction(h, indices)).toBe(true);
   });
 
-  it('tells the partner who added them, what they now share, and that STOP works', async () => {
+  it('tells the partner who added them and what they now share, without a keyword', async () => {
     const h = harness();
     const { familyId } = await seedFamily(h.fake);
     await text(h, PARENT_PHONE, 'add my partner');
@@ -377,9 +382,16 @@ describe('redeeming the link · the partner texts from their own phone', () => {
     await text(h, PARTNER_PHONE, arrival(code));
 
     const welcome = h.transport.sent.find((s) => s.to === PARTNER_PHONE);
+    expect(welcome?.body).toBe(
+      await speak({
+        purpose: 'join_welcome',
+        language: null,
+        facts: { inviterName: 'Ana' },
+      }),
+    );
     expect(welcome?.body).toContain('Ana');
     expect(welcome?.body).toMatch(/co-parent/i);
-    expect(welcome?.body).toContain('Reply STOP anytime');
+    expect(welcome?.body).not.toMatch(/\bSTOP\b|\bHELP\b/);
     // Their first Hale message has to be in THEIR OWN thread, or C1 answers their reply
     // with nothing above it.
     const member = inserts(h.fake, schema.familyMembers).find((r) => r.role === 'co_parent');
@@ -407,6 +419,44 @@ describe('redeeming the link · the partner texts from their own phone', () => {
       parentUserId,
       body: toParent[0]?.body as string,
     });
+  });
+
+  it('seats the partner and sends no welcome when the writer returns nothing', async () => {
+    const h = harness();
+    const { familyId } = await seedFamily(h.fake);
+    await text(h, PARENT_PHONE, 'add my partner');
+    const code = mintedCode(h.transport);
+    const calls: string[] = [];
+    setSharedSpokenLineWriter({
+      async write(request) {
+        calls.push(request.purpose);
+        return null;
+      },
+    });
+    const before = h.transport.sent.length;
+
+    const joined = await text(h, PARTNER_PHONE, arrival(code));
+
+    expect(joined).toMatchObject({
+      status: 'join_link_accepted',
+      familyId,
+      inviterNotified: false,
+      inviterHeld: 'unwritten',
+    });
+    expect(h.transport.sent.slice(before)).toHaveLength(0);
+    expect(calls).toEqual(['join_welcome', 'join_accepted_ack']);
+  });
+
+  it('records the join link and sends nothing while model copy is dark', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+    const h = harness();
+    await seedFamily(h.fake);
+
+    const minted = await text(h, PARENT_PHONE, 'add my partner');
+
+    expect(minted).toEqual({ status: 'join_link_minted' });
+    expect(inserts(h.fake, schema.joinInvites)).toHaveLength(1);
+    expect(h.transport.sent).toHaveLength(0);
   });
 });
 

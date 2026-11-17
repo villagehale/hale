@@ -140,6 +140,7 @@ export const FLAGS = [
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
   exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
+  exact('join-door-model-copy', 'JOIN_DOOR_MODEL_COPY_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',

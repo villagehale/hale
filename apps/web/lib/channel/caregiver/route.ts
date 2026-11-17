@@ -15,9 +15,9 @@ import {
   coParentWelcome,
   inviterNameIsAffordable,
 } from '~/lib/channel/coparent/copy';
+import { composeDoorLine } from '~/lib/channel/door-line';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
-import { JOIN_ACCEPTED_ACK } from '~/lib/channel/join/copy';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { type JoinOutcome, handleJoinRequest } from '~/lib/channel/join/route';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -30,20 +30,7 @@ import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-quest
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import {
-  ADD_EXAMPLE,
-  ALREADY_INVITED,
-  CANNOT_TEXT_THAT_NUMBER,
-  CAREGIVER_DECLINE_ACK,
-  CAREGIVER_WELCOME,
-  CO_PARENT_REDIRECT,
-  NUMBER_IN_USE,
-  OWN_NUMBER,
-  TOO_MANY_INVITES,
-  inviteDroppedAck,
-  inviteSentAck,
-  scopedReply,
-} from './copy';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import {
   type CaregiverInvite,
   type CaregiverLaneInvite,
@@ -108,6 +95,8 @@ export interface CaregiverDeps {
   consent?: ConsentReader;
   /** Writes the ask. Absence is named and sends no keyword sentence. */
   ask?: ConsentAskWriter;
+  /** Pages #ops when the model writes nothing. Tests pass their own. */
+  doorPager?: OpsPager;
 }
 
 /**
@@ -167,7 +156,7 @@ export type CoParentOutcome =
        * message to somebody who texted nothing tonight, so at 22:36 local it holds. The
        * seat happens either way, and they find out the way they always could. */
       inviterNotified: boolean;
-      inviterHeld: 'no_channel' | 'quiet_hours' | null;
+      inviterHeld: 'no_channel' | 'quiet_hours' | 'unwritten' | null;
       /** A caregiver invite in flight on the same number, closed by the seating
        * transaction. Null is the ordinary case. */
       supersededInviteId: string | null;
@@ -412,6 +401,24 @@ async function inviterContact(database: Database, userId: string): Promise<Invit
 }
 
 /** Why the inviter's confirmation is being withheld, or null when it may go. */
+async function doorLine(
+  database: Database,
+  deps: CaregiverDeps,
+  familyId: string,
+  purpose: string,
+  facts?: Record<string, string>,
+): Promise<string | null> {
+  return composeDoorLine(
+    database,
+    {
+      purpose,
+      language: await familySpeechLanguage(database, familyId),
+      facts,
+    },
+    deps.doorPager,
+  );
+}
+
 function heldReason(inviter: InviterContact, now: Date): 'no_channel' | 'quiet_hours' | null {
   if (inviter.phoneE164 === null) return 'no_channel';
   return inProactiveQuietHours(now, inviter.timeZone) ? 'quiet_hours' : null;
@@ -513,7 +520,9 @@ async function handleCaregiverInviteReply(
     });
     await reply(database, deps, {
       to: args.phoneE164,
-      body: CAREGIVER_WELCOME,
+      body: await doorLine(database, deps, invite.familyId, 'caregiver_welcome', {
+        role: invite.role,
+      }),
       familyId: invite.familyId,
       parentUserId: caregiverUserId,
       lane: 'caregiver',
@@ -526,7 +535,7 @@ async function handleCaregiverInviteReply(
     await declineInvite(database, { invite, by: 'caregiver', now });
     await reply(database, deps, {
       to: args.phoneE164,
-      body: CAREGIVER_DECLINE_ACK,
+      body: await doorLine(database, deps, invite.familyId, 'caregiver_decline_ack'),
       familyId: invite.familyId,
       parentUserId: invite.invitedByUserId,
       lane: 'caregiver',
@@ -629,7 +638,10 @@ async function handleCoParentInviteReply(
     // proactive extra, not a reply — so it keeps the proactive quiet window, exactly as
     // the join link's does. The seat is already done and the partner already answered;
     // only this sentence waits.
-    const inviterHeld = heldReason(inviter, now);
+    let inviterHeld: 'no_channel' | 'quiet_hours' | 'unwritten' | null = heldReason(
+      inviter,
+      now,
+    );
     if (inviterHeld === 'quiet_hours') {
       console.warn(
         { familyId: invite.familyId },
@@ -637,18 +649,19 @@ async function handleCoParentInviteReply(
       );
     }
     if (inviter.phoneE164 !== null && inviterHeld === null) {
-      await replyToParent(database, deps, {
-        to: inviter.phoneE164,
-        // The join link's own ack, verbatim: the same person arrived, and the inviting
-        // parent must not be told two different things about it. English, because the
-        // inviter wrote nothing this turn and language.ts is per MESSAGE — there is no
-        // message of theirs in front of us to read (the invitee's is not theirs).
-        body: JOIN_ACCEPTED_ACK,
-        familyId: invite.familyId,
-        parentUserId: invite.invitedByUserId,
-        lane: 'co_parent',
-        now,
-      });
+      const ack = await doorLine(database, deps, invite.familyId, 'join_accepted_ack');
+      if (ack) {
+        await replyToParent(database, deps, {
+          to: inviter.phoneE164,
+          body: ack,
+          familyId: invite.familyId,
+          parentUserId: invite.invitedByUserId,
+          lane: 'co_parent',
+          now,
+        });
+      } else {
+        inviterHeld = 'unwritten';
+      }
     }
 
     return {
@@ -726,7 +739,9 @@ export async function handleKnownNumberInbound(
     });
     await reply(database, deps, {
       to: args.phoneE164,
-      body: scopedReply(await primaryParentName(database, owner.familyId)),
+      body: await doorLine(database, deps, owner.familyId, 'caregiver_scoped_reply', {
+        parentName: (await primaryParentName(database, owner.familyId)) ?? '',
+      }),
       familyId: owner.familyId,
       parentUserId: owner.userId,
       lane: 'caregiver',
@@ -831,7 +846,15 @@ async function sendCoParentInvite(
   // texted them, and refusing to read their yes or their STOP would punish them for a
   // switch somebody else threw.
   if (!f14EnabledFor(owner.familyId)) {
-    return refuseAfterAssent(database, { ...args, reason: 'dark', body: CO_PARENT_REDIRECT }, deps);
+    return refuseAfterAssent(
+      database,
+      {
+        ...args,
+        reason: 'dark',
+        body: await doorLine(database, deps, owner.familyId, 'caregiver_co_parent_redirect'),
+      },
+      deps,
+    );
   }
 
   const inviterName = await userName(database, owner.userId);
@@ -1019,7 +1042,9 @@ async function sendInvite(
   });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,
-    body: inviteSentAck(pending.displayName),
+    body: await doorLine(database, deps, owner.familyId, 'caregiver_invite_sent', {
+      name: pending.displayName,
+    }),
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'caregiver',
@@ -1052,7 +1077,9 @@ async function dropInvite(
   await declineInvite(database, { invite: pending, by: 'parent', now });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,
-    body: inviteDroppedAck(pending.displayName),
+    body: await doorLine(database, deps, owner.familyId, 'caregiver_invite_dropped', {
+      name: pending.displayName,
+    }),
     familyId: owner.familyId,
     parentUserId: owner.userId,
     lane: 'caregiver',
@@ -1109,20 +1136,25 @@ async function startFromCommand(
 
   if (!parsed.ok) {
     return parsed.reason === 'unsupported_role'
-      ? answer(CO_PARENT_REDIRECT, {
+      ? answer(await doorLine(database, deps, owner.familyId, 'caregiver_co_parent_redirect'), {
           status: 'caregiver_add_refused',
           reason: 'unsupported_role',
         })
-      : answer(ADD_EXAMPLE, { status: 'caregiver_add_refused', reason: 'unparseable' });
+      : answer(await doorLine(database, deps, owner.familyId, 'caregiver_add_example'), {
+          status: 'caregiver_add_refused',
+          reason: 'unparseable',
+        });
   }
 
   if (parsed.role === 'co_parent') {
-    // DARK BY DEFAULT (D21). The refusal that VIL-355 reverses is kept as the flag-off
-    // answer rather than deleted: without it an un-armed family's "add Sam 647… as my
-    // partner" falls through to ADD_EXAMPLE, which offers them grandparent, nanny or
-    // babysitter — a worse answer than the boundary it replaced. It goes at the flip.
+    // DARK BY DEFAULT (D21). An un-armed family's "add Sam 647… as my partner" is
+    // refused here rather than read as a caregiver role. The words are model-written
+    // when the door-copy flag is on.
     if (!f14EnabledFor(owner.familyId)) {
-      return answer(CO_PARENT_REDIRECT, { status: 'co_parent_add_refused', reason: 'dark' });
+      return answer(
+        await doorLine(database, deps, owner.familyId, 'caregiver_co_parent_redirect'),
+        { status: 'co_parent_add_refused', reason: 'dark' },
+      );
     }
     const language = await familySpeechLanguage(database, owner.familyId);
     const opened = await startCoParentInvite(database, {
@@ -1155,22 +1187,31 @@ async function startFromCommand(
   });
 
   if (started.status === 'own_number') {
-    return answer(OWN_NUMBER, { status: 'caregiver_add_refused', reason: 'own_number' });
+    return answer(await doorLine(database, deps, owner.familyId, 'caregiver_own_number'), {
+      status: 'caregiver_add_refused',
+      reason: 'own_number',
+    });
   }
   if (started.status === 'number_in_use') {
-    return answer(NUMBER_IN_USE, { status: 'caregiver_add_refused', reason: 'number_in_use' });
+    return answer(await doorLine(database, deps, owner.familyId, 'caregiver_number_in_use'), {
+      status: 'caregiver_add_refused',
+      reason: 'number_in_use',
+    });
   }
   if (started.status === 'already_invited') {
-    return answer(ALREADY_INVITED, {
+    return answer(await doorLine(database, deps, owner.familyId, 'caregiver_already_invited'), {
       status: 'caregiver_add_refused',
       reason: 'already_invited',
     });
   }
   if (started.status === 'too_many') {
-    return answer(TOO_MANY_INVITES, { status: 'caregiver_add_refused', reason: 'too_many' });
+    return answer(await doorLine(database, deps, owner.familyId, 'caregiver_too_many'), {
+      status: 'caregiver_add_refused',
+      reason: 'too_many',
+    });
   }
   if (started.status === 'previously_declined') {
-    return answer(CANNOT_TEXT_THAT_NUMBER, {
+    return answer(await doorLine(database, deps, owner.familyId, 'caregiver_cannot_text'), {
       status: 'caregiver_add_refused',
       reason: 'previously_declined',
     });

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { CONTENT_CLASSES, type ContentClass, roleAllows } from '~/lib/channel/role-scope';
-import { CO_PARENT_REDIRECT } from './copy';
+import { speak } from '~/lib/channel/spoken-line';
 
 /**
  * The scope a caregiver agrees to lives in the consent-ask skill, which is what
@@ -51,9 +51,11 @@ describe('caregiver scope · the skill matches the matrix', () => {
     expect(SKILL).toMatch(/Do not tell them to reply YES/i);
   });
 
-  it('points the refused co-parent add at the command that does work', () => {
+  it('points the refused co-parent add at the command that does work', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+    const line = await speak({ purpose: 'caregiver_co_parent_redirect', language: 'en' });
     expect(looksLikeJoinRequest('add my partner')).toBe(true);
-    expect(CO_PARENT_REDIRECT).toContain('add my partner');
-    expect(CO_PARENT_REDIRECT).not.toMatch(/sign in|the app|https?:/i);
+    expect(line).toContain('add my partner');
+    expect(line).not.toMatch(/sign in|the app|https?:/i);
   });
 });
