@@ -44,12 +44,11 @@ const CANDIDATE_PRODUCERS: Record<string, string> = {
   'apps/web/lib/channel/activity/deliver.ts':
     'callers pass a key that names one commitment or pick (activity_followup:<id>)',
   'apps/web/lib/channel/calendar-write/send.ts':
-    'the key names family, parent and the send instant',
+    'the key names family, parent, event and the write, so a retry is the same candidate',
   'apps/web/lib/channel/checkin/sweep.ts': 'the key names the local day',
   'apps/web/lib/channel/coparent/departure-notice.ts':
     'the key names one departure, queued only at the departure or by its redrive inside the staleness bound',
-  'apps/web/lib/channel/coparent/duty/asks.ts':
-    'the key names the duty event, role and local day',
+  'apps/web/lib/channel/coparent/duty/asks.ts': 'the key names the duty event, role and local day',
   'apps/web/lib/channel/followup/run.ts': 'keys name one intro, one activity, or one child',
   'apps/web/lib/channel/group-plan/send.ts': 'the key names the family event and revision',
   'apps/web/lib/channel/linq/carpool.ts': 'the key names family and the driver',
@@ -63,8 +62,7 @@ const CANDIDATE_PRODUCERS: Record<string, string> = {
   'apps/web/lib/channel/plan/check-in.ts': 'the key names one commitment',
   'apps/web/lib/channel/proactive/queue.ts': 'the two inserts every producer below goes through',
   'apps/web/lib/channel/spots/sweep.ts': 'the key names one spot opening and attempt',
-  'apps/web/lib/integrations/calendar-alert.ts':
-    'keys name one event change or series stamp',
+  'apps/web/lib/integrations/calendar-alert.ts': 'keys name one event change or series stamp',
   'apps/web/lib/integrations/email-alert.ts': 'the key names one message',
   'apps/web/lib/memory/workstream-followup.ts':
     'the key names one workstream and its check-back',
