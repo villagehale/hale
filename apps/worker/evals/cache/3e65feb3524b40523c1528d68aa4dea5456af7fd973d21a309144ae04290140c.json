@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Winter-break weekday care nudge is still valid until Dec 22, it's mid-morning outside quiet hours, the parent has no unanswered streak, no pace preference and no declines, and lead time matters for care planning.",
+    "action": "send_now",
+    "item_ids": [
+      "winter-break"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -5,7 +5,18 @@ import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY } from '~/lib/channel/intake/rad
 import { CONSUMED_SEND_STATUSES, SENT_STATUSES } from '~/lib/channel/ledger';
 import { proactiveNudgeTemplateKey } from '~/lib/channel/nudge/shell';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { writeFact } from '~/lib/memory/facts';
+import { schoolYearOf, winterBreakEventKey } from './school-break/cycle';
+import {
+  SCHOOL_BREAK_BOARD_WRITER,
+  SCHOOL_BREAK_FACT_KEY,
+  type SchoolBreakFact,
+  loadSchoolBreak,
+  parseSchoolBreakValue,
+} from './school-break/facts';
+import { schoolBreakEnabled } from './school-break/flag';
+import { type BoardBreakStanding, boardBreakStanding } from './school-break/standing';
 
 /**
  * HOW THIS HOUSEHOLD'S WEEKDAYS ARE COVERED — the fact, its flag, and its one
@@ -60,31 +71,97 @@ export const WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY = proactiveNudgeTemplateKey('week
 export const WEEKDAY_BREAK_TEMPLATE_KEY = proactiveNudgeTemplateKey('weekday_break');
 
 /**
- * A school break or PA day Hale may name. Production has no school-calendar source,
- * so {@link loadVerifiedSchoolBreak} returns none of these. Tests inject one.
+ * A school break Hale may name. VIL-685: the family's winter break, read off their own
+ * school's calendar page, or given by the parent ({@link loadVerifiedSchoolBreak}).
+ * There is still no source for a PA day, and none is built: PA days stay out.
  */
 export interface VerifiedSchoolBreak {
-  /** Colon-free, and it ends with the verified ISO date (`pa-day-2026-10-09`). */
+  /** Colon-free, and it ends with the verified ISO date (`winter-break-2026-12-21`). */
   eventKey: string;
-  /** The event's own name: `PA day`, `March break`. Never invented here. */
-  label: string;
-  /** Family-local day key the source verified. */
+  /** The event's own name, as the page printed it or the parent said it; null when the
+   * parent gave none. Never invented here. */
+  label: string | null;
+  /** Family-local day key the source verified: the break's first day. */
   date: string;
-  source: 'school_calendar' | 'connected_calendar' | 'connected_email' | 'known_booking';
+  source:
+    | 'school_calendar'
+    | 'parent_said'
+    | 'connected_calendar'
+    | 'connected_email'
+    | 'known_booking';
 }
 
-/** Why production cannot name a PA day or a local break. */
-export const NO_VERIFIED_SCHOOL_CALENDAR = 'no_verified_school_calendar' as const;
+const BREAK_SOURCE = {
+  board_page: 'school_calendar',
+  parent: 'parent_said',
+} as const satisfies Record<SchoolBreakFact['source'], VerifiedSchoolBreak['source']>;
+
+/** Why there is no break to name: the lane is switched off, no source has the dates, or
+ * the school's break on file no longer applies to this family (school-break/standing.ts). */
+export type NoVerifiedBreakReason =
+  | 'school_break_off'
+  | 'no_verified_school_calendar'
+  | Exclude<BoardBreakStanding, 'stands'>;
 
 /**
- * There is no school-calendar, connected-calendar, or booking source for a PA day
- * or a break in this codebase. Absence is the result, named, not a guessed date.
+ * This winter's break for this family, from the one writer-pinned fact
+ * (school-break/facts.ts), or the named reason there is none. A school's break is
+ * checked against what is true now, not when it was filed, so a parent's "that's mine"
+ * or "she's at daycare" stops it being named before the sweep retires it. Absence is the
+ * result, never a guessed date.
  */
-export function loadVerifiedSchoolBreak(): {
-  break: null;
-  reason: typeof NO_VERIFIED_SCHOOL_CALENDAR;
-} {
-  return { break: null, reason: NO_VERIFIED_SCHOOL_CALENDAR };
+export async function loadVerifiedSchoolBreak(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<{ break: VerifiedSchoolBreak } | { break: null; reason: NoVerifiedBreakReason }> {
+  if (!schoolBreakEnabled()) return { break: null, reason: 'school_break_off' };
+  const fact = await loadSchoolBreak(
+    database,
+    familyId,
+    schoolYearOf(dayKeyOf(now, DEFAULT_TIMEZONE)),
+  );
+  if (fact === null) return { break: null, reason: 'no_verified_school_calendar' };
+  const standing = await boardBreakStanding(
+    database,
+    fact,
+    await loadWeekdayCare(database, familyId),
+  );
+  if (standing !== 'stands') return { break: null, reason: standing };
+  return {
+    break: {
+      eventKey: winterBreakEventKey(fact.firstDay),
+      label: fact.name,
+      date: fact.firstDay,
+      source: BREAK_SOURCE[fact.source],
+    },
+  };
+}
+
+/**
+ * The memory facts a prompt is given, without a school's break that no longer stands
+ * (school-break/standing.ts): the same check the break question runs, so a "that's mine"
+ * or "she's at daycare" takes a filed break out of what the coach is told the moment it
+ * is written, not at the next sweep. Run whether or not the lane is on: the switch stops
+ * new reads, and must not leave a break that fell standing in the coach's prompt.
+ */
+export async function withoutFallenSchoolBreak<
+  T extends { familyId: string; factKey: string; inferredBy: string | null; factValue: unknown },
+>(database: Database, rows: readonly T[]): Promise<T[]> {
+  const kept: T[] = [];
+  let care: WeekdayCareFact[] | null = null;
+  for (const row of rows) {
+    if (row.factKey !== SCHOOL_BREAK_FACT_KEY || row.inferredBy !== SCHOOL_BREAK_BOARD_WRITER) {
+      kept.push(row);
+      continue;
+    }
+    const value = parseSchoolBreakValue(row.factValue);
+    if (value === null) continue;
+    care ??= await loadWeekdayCare(database, row.familyId);
+    const standing = await boardBreakStanding(database, { familyId: row.familyId, ...value }, care);
+    if (standing === 'stands') kept.push(row);
+  }
+  return kept;
 }
 
 /** The weather swap's row — one of the two D23 anchors. */
@@ -190,10 +267,16 @@ export interface WeekdayCareContext {
   /** Verified-break event keys already attempted. Absent means none. */
   askedBreakKeys?: readonly string[];
   /**
-   * A verified upcoming break, or null/absent when none is on file. Production
-   * leaves this null: {@link loadVerifiedSchoolBreak} has no source to read.
+   * A verified upcoming break, or null/absent when none is on file
+   * ({@link loadVerifiedSchoolBreak}).
    */
   verifiedBreak?: VerifiedSchoolBreak | null;
+  /**
+   * VIL-685 · true when only the break question is armed: SCHOOL_BREAK_ENABLED is on and
+   * WEEKDAY_CARE_ENABLED is not. Set by the nudge sweep, which reads both switches; the
+   * weekday legs then read the break and nothing else.
+   */
+  breakOnly?: boolean;
   /** Has Hale ever sent this family a weekend find? */
   weekendFindSent: boolean;
 }
@@ -239,10 +322,11 @@ async function anySendWith(
 export async function loadWeekdayCareContext(
   database: Database,
   familyId: string,
+  now: Date = new Date(),
 ): Promise<WeekdayCareContext> {
-  const schoolCalendar = loadVerifiedSchoolBreak();
-  const [stated, askedBefore, askedAfterSchool, askedBreakKeys, weekendFindSent] =
+  const [schoolCalendar, stated, askedBefore, askedAfterSchool, askedBreakKeys, weekendFindSent] =
     await Promise.all([
+      loadVerifiedSchoolBreak(database, familyId, now),
       loadWeekdayCare(database, familyId),
       anySendWith(database, familyId, [WEEKDAY_CARE_ASK_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),
       anySendWith(database, familyId, [WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY], CONSUMED_SEND_STATUSES),

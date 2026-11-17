@@ -8,6 +8,7 @@ import {
   deriveStage,
   familyCountryOf,
 } from '@hale/types';
+import { labelDay, readerTimeZone } from '@hale/worker/fact-sources';
 import {
   type FactReader,
   type RecordCorrections,
@@ -17,11 +18,11 @@ import {
   recordCorrections,
 } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
+import { withoutFallenSchoolBreak } from '../care/weekday';
 import type { HouseholdGroupFact } from '../channel/intake/household-group';
 import { readPlaceRow } from '../channel/off-domain/place';
 import { townFromStoredArea } from '../channel/town-from-area';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
-import { labelDay, readerTimeZone } from '@hale/worker/fact-sources';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -379,7 +380,7 @@ export async function loadAgentContext(
       reader,
       limit: RELEVANT_FACT_LIMIT,
       scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
-    }),
+    }).then((rows) => withoutFallenSchoolBreak(database, rows)),
     readerTimeZone(database, input.readerUserId),
   ]);
 

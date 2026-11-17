@@ -39,6 +39,8 @@ const CANDIDATE_WRITE =
   /handOffProactive\(|queueCheckInForDecider\b|insert\(\s*(?:schema\.)?proactiveCandidates\s*\)/;
 
 const CANDIDATE_PRODUCERS: Record<string, string> = {
+  'apps/web/lib/care/school-break/sweep.ts':
+    'the key names family, school year and parent, queued only before lastAskDay of that year',
   'apps/web/lib/channel/activity/deliver.ts':
     'callers pass a key that names one commitment or pick (activity_followup:<id>)',
   'apps/web/lib/channel/calendar-write/send.ts':
@@ -66,6 +68,8 @@ const CANDIDATE_PRODUCERS: Record<string, string> = {
   'apps/web/lib/integrations/email-alert.ts': 'the key names one message',
   'apps/web/lib/memory/workstream-followup.ts':
     'the key names one workstream and its check-back',
+  'apps/web/lib/registration/city/sweep.ts':
+    'the key names family, parent, city, cycle and the stated dates, queued only before the opening',
   'apps/web/lib/travel/sweep.ts': 'the key names one trip, queued only before it starts',
   'apps/web/lib/village/intros/run.ts': 'keys name one proposal and side',
 };

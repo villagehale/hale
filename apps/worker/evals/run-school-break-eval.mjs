@@ -1,0 +1,453 @@
+// School winter-break eval (VIL-685; hard rule #8: no LLM mocking).
+//
+// SUBJECTS, called the way the runtime calls them:
+//   - packages/agent/skills/school-break-read.md through apps/web/lib/care/school-break/
+//     read.ts: the real page reader (official-host check, PDF/HTML text, the model's
+//     reading, then code's check of every quote, day and year against the page);
+//   - the board lookup (lookup.ts) over that reader, so a page with no winter break
+//     comes out `not_found: not_published`: the case where Hale asks the parent once;
+//   - the same skill through read.ts's text reader, on the text of an email a school
+//     sent: its days are put to the parent only when every day is quoted from the email;
+//   - packages/agent/skills/school-mail-sender.md through school-sender.ts: whether a
+//     school or board wrote an authenticated kid email, before its host counts as one;
+//   - packages/agent/skills/school-break-reply.md through reply.ts: the parent's answer
+//     to that one question, read against the question Hale sent, then code's check of it
+//     (a name is filed only when the parent wrote one; days the parent confirmed are read
+//     off the question).
+// The pages are fixtures on reserved .example hosts, fetched by a scripted port. Nothing here
+// is a real school's calendar and no family is in any payload.
+//
+// Objective metric only, no judge: each case has the exact outcome the spec requires.
+//
+//   node evals/run-school-break-eval.mjs --cached-only   # CI: replay only
+//   node evals/run-school-break-eval.mjs                 # live, through the spend cap
+
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register } from 'tsx/esm/api';
+import {
+  REPO_ROOT,
+  cachedToolCall,
+  evalRunTag,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
+
+const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
+const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
+const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
+const BREAK_DIR = join(REPO_ROOT, 'apps', 'web', 'lib', 'care', 'school-break');
+
+register({ tsconfig: WEB_TSCONFIG });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
+
+const SCHOOL_YEAR = '2026-27';
+const BOARD = 'board.example';
+const CALENDAR = `https://www.${BOARD}/calendar/2026-2027`;
+const NO_DATES = `https://www.${BOARD}/calendar/important-dates`;
+const LISTING = 'https://school-holidays.example/ontario-winter-break-2026';
+
+/** A board's own school-year calendar: PA days, the winter break and March break. */
+const CALENDAR_PAGE = `<html><head><title>2026-2027 School Year Calendar | Example District School Board</title></head>
+<body><h1>Example District School Board</h1>
+<h2>2026-2027 School Year Calendar (Elementary and Secondary)</h2>
+<table>
+<tr><td>First day of classes</td><td>Tuesday, September 1, 2026</td></tr>
+<tr><td>PA Day</td><td>Friday, September 25, 2026</td></tr>
+<tr><td>PA Day</td><td>Friday, November 13, 2026</td></tr>
+<tr><td>Winter Break</td><td>Monday, December 21, 2026 to Friday, January 1, 2027</td></tr>
+<tr><td>Classes resume</td><td>Monday, January 4, 2027</td></tr>
+<tr><td>PA Day</td><td>Friday, February 5, 2027</td></tr>
+<tr><td>Family Day</td><td>Monday, February 15, 2027</td></tr>
+<tr><td>March Break</td><td>Monday, March 15, 2027 to Friday, March 19, 2027</td></tr>
+<tr><td>Last day of classes</td><td>Friday, June 25, 2027</td></tr>
+</table></body></html>`;
+
+/** The same board's page before the year's calendar is posted: no winter break on it. */
+const NO_DATES_PAGE = `<html><body><h1>Example District School Board</h1>
+<h2>Important Dates</h2>
+<p>The 2026-2027 school year calendar is being finalized and will be posted here once it is approved by the Board.</p>
+<p>First day of classes: Tuesday, September 1, 2026</p>
+<p>PA Day: Friday, September 25, 2026</p>
+</body></html>`;
+
+const PAGES = new Map([
+  [CALENDAR, CALENDAR_PAGE],
+  [NO_DATES, NO_DATES_PAGE],
+  [LISTING, CALENDAR_PAGE],
+]);
+
+const PAGE_CASES = [
+  {
+    id: 'official-calendar',
+    url: CALENDAR,
+    expect: {
+      status: 'verified',
+      name: 'Winter Break',
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+    },
+  },
+  {
+    // The same words on a holiday-listing site: never fetched, never read.
+    id: 'non-official-page',
+    url: LISTING,
+    expect: { status: 'not_official', modelCalls: 0 },
+  },
+  {
+    // The board page names no winter break yet: not found, so Hale asks the parent once.
+    id: 'no-winter-date',
+    url: NO_DATES,
+    expect: { status: 'not_published', lookup: 'not_published' },
+  },
+];
+
+/** A school's own email: the break in its words, beside a PA day that is not it. */
+const EMAIL_TEXT = `Dear families,
+
+A reminder that Friday, November 13, 2026 is a PA Day and there is no school for students.
+
+Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027. Classes resume on Monday, January 4, 2027.
+
+Thank you,
+The office`;
+
+/** Who wrote an authenticated kid email: only a school or board names the kid's school. */
+const SENDER_CASES = [
+  {
+    id: 'sender-school-office',
+    host: 'school.example',
+    text: `${EMAIL_TEXT}\nExample Public School`,
+    expect: { status: 'school' },
+  },
+  {
+    // A coach's note that names the break: the dates are real, the sender is not a school.
+    id: 'sender-coach',
+    host: 'riverside-soccer.example',
+    text: 'Hi team parents! No practice over Winter Break, Monday, December 21, 2026 to Friday, January 1, 2027. We start again January 9. Coach Sam, Riverside Soccer Club U8',
+    expect: { status: 'not_school' },
+  },
+  {
+    id: 'sender-daycare',
+    host: 'little-sprouts.example',
+    text: 'Dear families, Little Sprouts Child Care Centre will be closed from Thursday, December 24, 2026 to Friday, January 1, 2027. We reopen Monday, January 4. Warmly, the Little Sprouts team',
+    expect: { status: 'not_school', reason: 'daycare' },
+  },
+  {
+    // A camp selling to school families names a school and its break; a camp wrote it.
+    id: 'sender-camp-promo',
+    host: 'maple-camps.example',
+    text: 'Winter camp while school is out! Example Public School families: our camp runs December 21, 2026 to January 1, 2027. Register today and save 10%. Maple Camps',
+    expect: { status: 'not_school' },
+  },
+  {
+    // A school, but not the kid's: an open house for families not there yet.
+    id: 'sender-open-house',
+    host: 'example-academy.example',
+    text: 'Discover Example Academy! Join our Open House on Saturday, November 21 and see why families choose us for JK to Grade 12. Applications for September 2027 are now open. Admissions Office, Example Academy',
+    expect: { status: 'not_school' },
+  },
+];
+
+const EMAIL_CASES = [
+  {
+    id: 'school-email-states-break',
+    text: EMAIL_TEXT,
+    expect: {
+      status: 'verified',
+      name: 'Winter Break',
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+    },
+  },
+  {
+    // Kid mail about something else: no break, so the parent is asked once.
+    id: 'school-email-no-break',
+    text: 'Hi families, curriculum night is Thursday, November 19 at 6:30 pm in the gym. See you there!',
+    expect: { status: 'not_published' },
+  },
+];
+
+/** What Hale sent: the writer asks when it starts and what day the kids are back. */
+const ASKED_DAY_BACK =
+  'When does winter break start for the kids, and what day are they back at school?';
+const ASKED_LAST_DAY = "What are the first and last days off for the kids' winter break?";
+/** What Hale sent when the school's email stated the break: its days, to confirm. */
+const ASKED_TO_CONFIRM =
+  'Hi! The school email says Winter Break runs Monday, December 21 to Friday, January 1. Is that right for the kids?';
+
+const REPLY_CASES = [
+  {
+    // No question on record: a range is the first and the last day off. No name given.
+    id: 'parent-gives-days',
+    question: null,
+    text: "I think it's dec 18 to jan 4 for us this year",
+    expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // Asked what day they are back, a bare range ends on the day back.
+    id: 'range-answers-day-back',
+    question: ASKED_DAY_BACK,
+    text: 'Dec 19 - Jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // Asked for the last day off, the same range ends on the last day off.
+    id: 'range-answers-last-day',
+    question: ASKED_LAST_DAY,
+    text: 'Dec 19 - Jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-05', name: null },
+  },
+  {
+    // The parent says the day back in so many words: the last day off is the day before.
+    id: 'parent-gives-day-back',
+    question: ASKED_DAY_BACK,
+    text: 'dec 19, and they go back jan 5',
+    expect: { status: 'read', firstDay: '2026-12-19', lastDay: '2027-01-04', name: null },
+  },
+  {
+    // The parent's own name for it is the one filed.
+    id: 'parent-names-the-break',
+    question: null,
+    text: 'our christmas break is dec 21 to jan 1',
+    expect: {
+      status: 'read',
+      firstDay: '2026-12-21',
+      lastDay: '2027-01-01',
+      name: 'christmas break',
+    },
+  },
+  {
+    // A rough time is not a day: nothing is filed, and Hale never names a guessed break.
+    id: 'parent-says-around-christmas',
+    question: ASKED_DAY_BACK,
+    text: 'not sure, around christmas i think',
+    expect: { status: 'nothing_stated' },
+  },
+  {
+    id: 'parent-names-school-only',
+    question: ASKED_DAY_BACK,
+    text: 'she goes to Maple Grove PS',
+    expect: { status: 'nothing_stated' },
+  },
+  {
+    // A yes to the days Hale put to them: the days are the question's, no name is theirs.
+    id: 'parent-confirms-proposed-days',
+    question: ASKED_TO_CONFIRM,
+    text: "yep that's right",
+    expect: { status: 'read', firstDay: '2026-12-21', lastDay: '2027-01-01', name: null },
+  },
+  {
+    // A correction: the parent's own days, not the question's.
+    id: 'parent-corrects-proposed-days',
+    question: ASKED_TO_CONFIRM,
+    text: 'no, ours is dec 18 to jan 4',
+    expect: { status: 'read', firstDay: '2026-12-18', lastDay: '2027-01-04', name: null },
+  },
+];
+
+async function main() {
+  const cachedOnly = process.argv.includes('--cached-only');
+  if (!cachedOnly) installEvalSpendCap();
+  const agent = await importTs(AGENT_SRC);
+  const read = await importTs(join(BREAK_DIR, 'read.ts'));
+  const lookupMod = await importTs(join(BREAK_DIR, 'lookup.ts'));
+  const reply = await importTs(join(BREAK_DIR, 'reply.ts'));
+  const sender = await importTs(join(BREAK_DIR, 'school-sender.ts'));
+  const readSkill = await agent.loadSkill(join(SKILLS, `${read.SCHOOL_BREAK_READ_SKILL}.md`));
+  const replySkill = await agent.loadSkill(join(SKILLS, `${reply.SCHOOL_BREAK_REPLY_SKILL}.md`));
+  const senderSkill = await agent.loadSkill(join(SKILLS, `${sender.SCHOOL_SENDER_SKILL}.md`));
+  const readLane = agent.pickLane(readSkill.meta.task);
+  const replyLane = agent.pickLane(replySkill.meta.task);
+  const senderLane = agent.pickLane(senderSkill.meta.task);
+  const getClient = lazyAnthropic('school-break');
+  const cost = makeCost();
+
+  console.info(
+    `school-break eval${cachedOnly ? ' (cached-only)' : ''} | read=${readLane.model} reply=${replyLane.model} sender=${senderLane.model}`,
+  );
+  let failed = 0;
+  const report = (id, failures, detail) => {
+    if (failures.length > 0) failed += 1;
+    console.info(`${failures.length === 0 ? 'PASS' : 'FAIL'}  ${id}  ${failures.join('; ')}`);
+    console.info(`      ${JSON.stringify(detail)}`);
+  };
+
+  for (const fixture of PAGE_CASES) {
+    let modelCalls = 0;
+    const reader = read.createBreakPageReader({
+      fetchBody: async (url) => {
+        const page = PAGES.get(url);
+        if (page === undefined) throw new Error(`no fixture page for ${url}`);
+        return { outcome: 'fetched', body: Buffer.from(page) };
+      },
+      extract: async (schoolYear, pageText) => {
+        modelCalls += 1;
+        const { value } = await cachedToolCall({
+          tag: evalRunTag(`school-break-read:${fixture.id}`),
+          lane: readLane,
+          model: readLane.model,
+          system: readSkill.instructions,
+          userMessage: read.schoolBreakReadInput(schoolYear, pageText),
+          toolName: read.SCHOOL_BREAK_READ_TOOL,
+          toolDescription: read.SCHOOL_BREAK_READ_DESCRIPTION,
+          toolSchema: read.SCHOOL_BREAK_READ_SCHEMA,
+          maxTokens: read.SCHOOL_BREAK_READ_MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        return read.schoolBreakReadParse.parse(value);
+      },
+    });
+    const reading = await reader({
+      url: fixture.url,
+      officialHost: BOARD,
+      schoolYear: SCHOOL_YEAR,
+    });
+    const failures = [];
+    const want = fixture.expect;
+    if (reading.status !== want.status) failures.push(`status ${reading.status} != ${want.status}`);
+    if (want.name !== undefined && reading.name !== want.name)
+      failures.push(`name ${reading.name}`);
+    if (want.firstDay !== undefined && reading.firstDay?.date !== want.firstDay) {
+      failures.push(`first day ${reading.firstDay?.date}`);
+    }
+    if (want.lastDay !== undefined && reading.lastDay?.date !== want.lastDay) {
+      failures.push(`last day ${reading.lastDay?.date}`);
+    }
+    if (want.modelCalls !== undefined && modelCalls !== want.modelCalls) {
+      failures.push(`model asked ${modelCalls} times`);
+    }
+    if (want.lookup !== undefined) {
+      // The lookup over the same reading: what the sweep stores, and why it then asks.
+      const lookup = await lookupMod.lookupBoardBreak(
+        {
+          search: async () => ({ outcome: 'pages', boardName: 'Example DSB', urls: [fixture.url] }),
+          read: async () => reading,
+        },
+        BOARD,
+        SCHOOL_YEAR,
+      );
+      if (lookup.status !== 'not_found' || lookup.reason !== want.lookup) {
+        failures.push(`lookup ${lookup.status}:${lookup.reason}`);
+      }
+    }
+    report(fixture.id, failures, reading);
+  }
+
+  for (const fixture of EMAIL_CASES) {
+    const reader = read.createTextBreakReader(async (schoolYear, text) => {
+      const { value } = await cachedToolCall({
+        tag: evalRunTag(`school-break-read:${fixture.id}`),
+        lane: readLane,
+        model: readLane.model,
+        system: readSkill.instructions,
+        userMessage: read.schoolBreakReadInput(schoolYear, text),
+        toolName: read.SCHOOL_BREAK_READ_TOOL,
+        toolDescription: read.SCHOOL_BREAK_READ_DESCRIPTION,
+        toolSchema: read.SCHOOL_BREAK_READ_SCHEMA,
+        maxTokens: read.SCHOOL_BREAK_READ_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      return read.schoolBreakReadParse.parse(value);
+    });
+    const reading = await reader({ text: fixture.text, schoolYear: SCHOOL_YEAR });
+    const failures = [];
+    const want = fixture.expect;
+    if (reading.status !== want.status) failures.push(`status ${reading.status} != ${want.status}`);
+    if (want.name !== undefined && reading.name !== want.name)
+      failures.push(`name ${reading.name}`);
+    if (want.firstDay !== undefined && reading.firstDay?.date !== want.firstDay) {
+      failures.push(`first day ${reading.firstDay?.date}`);
+    }
+    if (want.lastDay !== undefined && reading.lastDay?.date !== want.lastDay) {
+      failures.push(`last day ${reading.lastDay?.date}`);
+    }
+    report(fixture.id, failures, reading);
+  }
+
+  for (const fixture of SENDER_CASES) {
+    const reader = sender.createSchoolSenderReader(async (fromDomain, text) => {
+      const { value } = await cachedToolCall({
+        tag: evalRunTag(`school-mail-sender:${fixture.id}`),
+        lane: senderLane,
+        model: senderLane.model,
+        system: senderSkill.instructions,
+        userMessage: sender.schoolSenderInput(fromDomain, text),
+        toolName: sender.SCHOOL_SENDER_TOOL,
+        toolDescription: sender.SCHOOL_SENDER_DESCRIPTION,
+        toolSchema: sender.SCHOOL_SENDER_SCHEMA,
+        maxTokens: sender.SCHOOL_SENDER_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      });
+      return sender.schoolSenderParse.parse(value);
+    });
+    const verdict = await reader({ host: fixture.host, text: fixture.text });
+    const failures = [];
+    const want = fixture.expect;
+    if (verdict.status !== want.status) failures.push(`status ${verdict.status} != ${want.status}`);
+    if (want.reason !== undefined && verdict.reason !== want.reason) {
+      failures.push(`reason ${verdict.reason}`);
+    }
+    report(fixture.id, failures, verdict);
+  }
+
+  for (const fixture of REPLY_CASES) {
+    const { value } = await cachedToolCall({
+      tag: evalRunTag(`school-break-reply:${fixture.id}`),
+      lane: replyLane,
+      model: replyLane.model,
+      system: replySkill.instructions,
+      userMessage: reply.schoolBreakReplyUserMessage({
+        question: fixture.question,
+        text: fixture.text,
+        today: '2026-11-12',
+        schoolYear: SCHOOL_YEAR,
+      }),
+      toolName: reply.SCHOOL_BREAK_REPLY_TOOL,
+      toolDescription: reply.SCHOOL_BREAK_REPLY_DESCRIPTION,
+      toolSchema: reply.SCHOOL_BREAK_REPLY_SCHEMA,
+      maxTokens: reply.SCHOOL_BREAK_REPLY_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    const reading = reply.toSchoolBreakReplyReading(
+      reply.schoolBreakReplyParse.parse(value),
+      { text: fixture.text, question: fixture.question },
+      SCHOOL_YEAR,
+    );
+    const failures = [];
+    const want = fixture.expect;
+    if (reading.status !== want.status) failures.push(`status ${reading.status} != ${want.status}`);
+    if (want.firstDay !== undefined && reading.firstDay !== want.firstDay) {
+      failures.push(`first day ${reading.firstDay}`);
+    }
+    if (want.lastDay !== undefined && reading.lastDay !== want.lastDay) {
+      failures.push(`last day ${reading.lastDay}`);
+    }
+    if (want.name !== undefined && reading.name !== want.name) {
+      failures.push(`name ${reading.name}`);
+    }
+    report(fixture.id, failures, reading);
+  }
+
+  console.info(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  process.exit(failed === 0 ? 0 : 1);
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : 'school-break eval failed');
+    process.exit(1);
+  });
+}

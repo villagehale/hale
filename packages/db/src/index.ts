@@ -43,6 +43,11 @@ export type {
   NewCityOfficialSite,
 } from './schema/city-official-sites.js';
 export type {
+  SchoolBreakReading,
+  SchoolBreakReadingStatus,
+  NewSchoolBreakReading,
+} from './schema/school-break-readings.js';
+export type {
   GtaRegion,
   SocialCategory,
   SocialPlatform,

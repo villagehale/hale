@@ -14,6 +14,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -54,7 +55,11 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  eventKeyFromWeekdayBreakDedupe,
+} from '~/lib/channel/weekday-care/key';
+import { WEEKDAY_QUESTION_TEMPLATE_KEYS } from '~/lib/channel/weekday-care/question';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { dayKeyOf } from '~/lib/format/datetime';
@@ -421,7 +426,7 @@ async function loadOpenItems(
       summary.parentNotInFamily += 1;
       continue;
     }
-    if (laneSwitchedOff(row.kind)) {
+    if (laneSwitchedOff(row.kind, row.templateKey)) {
       // Its lane's kill switch is off: the row is left as it is, neither offered nor
       // settled, and the next review after the switch is back on takes it up.
       continue;
@@ -489,19 +494,28 @@ async function loadOpenItems(
 
 /**
  * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
- * mid-activity ask, the VIL-681 next-day check-back and the VIL-684 own-city
- * registration opening. They are reviewed live even while the cadence flag is off.
+ * mid-activity ask, the VIL-681 next-day check-back, the VIL-684 own-city registration
+ * opening and the VIL-685 winter-break ask. They are reviewed live even while the
+ * cadence flag is off.
  */
 const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
   'evening_check_in',
   'mid_activity_ask',
   'next_day_checkback',
   'registration_opening',
+  'school_break_ask',
 ];
 
-/** A kind whose own lane has a kill switch, and it is off. */
-function laneSwitchedOff(kind: string): boolean {
-  return kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled();
+/** VIL-685 · the winter-break ask and the break question both stop with SCHOOL_BREAK_ENABLED. */
+const SCHOOL_BREAK_TEMPLATE_KEYS: readonly string[] = [
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+];
+
+/** A row whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(kind: string, templateKey: string | null): boolean {
+  if (kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled()) return true;
+  return SCHOOL_BREAK_TEMPLATE_KEYS.includes(templateKey ?? '') && !schoolBreakEnabled();
 }
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
@@ -743,7 +757,7 @@ async function dropAlreadySent(
   summary: ProactiveReviewSummary,
 ): Promise<QueuedItem[]> {
   const care = items.some((item) => WEEKDAY_ASK_KEYS.includes(item.templateKey))
-    ? await loadWeekdayCareContext(database, familyId)
+    ? await loadWeekdayCareContext(database, familyId, now)
     : null;
   const dropped = new Map<'already_sent' | 'already_asked', QueuedItem[]>();
   const kept: QueuedItem[] = [];
@@ -825,6 +839,48 @@ async function dropClosedAsks(
     summary.dropped += 1;
   }
   return { kept, clocks };
+}
+
+/**
+ * A parent's reply answers the one weekday question their newest text asked
+ * (weekday-care/question.ts), and every row of one text shares its time. So a text
+ * carries at most one weekday question per parent: the first chosen goes, and any other
+ * waits as the decider's own unchosen items do, offered again the next day or on news.
+ */
+async function holdSecondQuestions(
+  database: Database,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<QueuedItem[]> {
+  const asking = new Set<string>();
+  const kept: QueuedItem[] = [];
+  const waiting: QueuedItem[] = [];
+  for (const item of items) {
+    if (!WEEKDAY_QUESTION_TEMPLATE_KEYS.includes(item.templateKey)) kept.push(item);
+    else if (asking.has(item.parentUserId)) waiting.push(item);
+    else {
+      asking.add(item.parentUserId);
+      kept.push(item);
+    }
+  }
+  if (waiting.length === 0) return kept;
+  const itemIds = waiting.map((item) => item.id);
+  await mark(database, familyId, itemIds, {
+    status: 'held',
+    reason: 'one_question_per_text',
+    decision: null,
+    holdUntil: null,
+    now,
+  });
+  await audit(database, familyId, 'proactive_cadence_held', {
+    reason: 'one_question_per_text',
+    itemIds,
+    mode: 'live',
+  });
+  summary.held += 1;
+  return kept;
 }
 
 /**
@@ -1221,7 +1277,7 @@ async function sendChosen(
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
   const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
-  const { kept: chosen, clocks } = await dropClosedAsks(
+  const { kept: ready, clocks } = await dropClosedAsks(
     database,
     deps,
     familyId,
@@ -1229,6 +1285,7 @@ async function sendChosen(
     now,
     summary,
   );
+  const chosen = await holdSecondQuestions(database, familyId, ready, now, summary);
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.

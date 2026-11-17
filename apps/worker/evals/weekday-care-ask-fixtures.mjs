@@ -39,6 +39,12 @@ export const WEEKDAY_CARE_ASK_FIXTURES = [
     ask: { prompt: 'verified_break', eventKey: 'winter-break-2026-12-21', label: 'winter break' },
   },
   {
+    // VIL-685 · a break the parent gave the days of and no name: the text names none.
+    id: 'verified-break-no-label',
+    language: 'en',
+    ask: { prompt: 'verified_break', eventKey: 'winter-break-2026-12-21', label: null },
+  },
+  {
     id: 'weekend-fallback',
     language: 'en',
     ask: { prompt: 'weekend_fallback' },

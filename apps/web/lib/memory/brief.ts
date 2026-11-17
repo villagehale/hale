@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { withoutFallenSchoolBreak } from '../care/weekday';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
@@ -334,7 +335,7 @@ export async function assembleMemoryBrief(
     return renderMemoryBrief({
       now,
       timeZone,
-      facts: factRows,
+      facts: await withoutFallenSchoolBreak(database, factRows),
       teenChildIds,
       workstreams: workstreamRows.map((row) => ({
         kind: row.kind,

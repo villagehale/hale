@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "The email is from Little Sprouts Child Care Centre, which announces its own holiday closure to its families.",
+    "sender": "daycare",
+    "school_words": null
+  },
+  "latencyMs": 2493,
+  "usage": {
+    "input_tokens": 104,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 718,
+    "cache_creation_input_tokens": 0
+  }
+}

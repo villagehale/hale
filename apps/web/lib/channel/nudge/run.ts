@@ -4,6 +4,7 @@ import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { dutyOverviewForWeeklyBubble } from '~/lib/channel/coparent/duty/asks';
 import { absorbDutyLine } from '~/lib/channel/coparent/duty/copy';
@@ -234,7 +235,11 @@ export interface NudgeRunDeps {
    * expressed by the flag and carried into the decide as `'disarmed'`, never by
    * withholding this.
    */
-  loadWeekdayCareContext(database: Database, familyId: string): Promise<WeekdayCareContext>;
+  loadWeekdayCareContext(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<WeekdayCareContext>;
   /**
    * Occupancy of the coming Saturday (VIL-365). REQUIRED (rule #11): withholding it
    * would look like an open Saturday. `'unread'` is only for a caller that is
@@ -480,8 +485,11 @@ function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
       if (!slot) throw new Error(`nudgeWorthlessAfter: no ${nudge.day} in the coming weekend`);
       return slot.date;
     }
-    case 'registration':
     case 'weekday_care':
+      // A verified break's key ends with its first day (nudge-decide checks it): asking
+      // who covers the break is worthless once it has begun. The other prompts have no day.
+      return nudge.ask.prompt === 'verified_break' ? nudge.ask.eventKey.slice(-10) : null;
+    case 'registration':
       return null;
     default:
       return assertNever(nudge);
@@ -583,6 +591,9 @@ async function decideForFamily(
   // reports nothing (see WeekdayCareInput: silent counters mean the flag, zeroed ones
   // would mean the legs ran).
   const weekdayArmed = weekdayCareEnabled();
+  // VIL-685 · the break question reads the same context, armed by its own kill switch;
+  // with weekday care itself off, only its break rung may speak (`breakOnly`).
+  const breakArmed = schoolBreakEnabled();
   const [
     candidates,
     windowRows,
@@ -601,8 +612,10 @@ async function decideForFamily(
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
       : Promise.resolve([]),
     deps.loadClaimedWindowIds(database, family.familyId),
-    weekdayArmed
-      ? deps.loadWeekdayCareContext(database, family.familyId)
+    weekdayArmed || breakArmed
+      ? deps
+          .loadWeekdayCareContext(database, family.familyId, now)
+          .then((context) => (weekdayArmed ? context : { ...context, breakOnly: true }))
       : Promise.resolve('disarmed' as const),
     deps.loadSaturdayPlans(database, family.familyId, now, family.timeZone),
     deps.loadHouseholdBias(database, family.familyId),

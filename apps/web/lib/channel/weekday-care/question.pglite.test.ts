@@ -2,14 +2,24 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WEEKDAY_CARE_ASK_TEMPLATE_KEY, WEEKDAY_CARE_FACT_KEY } from '~/lib/care/weekday';
+import {
+  finalizeProactiveSend,
+  recordProactiveSend,
+  writeProactiveAudit,
+} from '~/lib/channel/proactive/finalize';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import { channelRouterDeps, defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { weekdayCareDedupeKey } from './key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  schoolBreakAskDedupeKey,
+  weekdayCareDedupeKey,
+} from './key';
 import { WEEKDAY_CARE_QUESTION_TTL_MS, weekdayCareQuestion } from './question';
 
 /**
@@ -68,7 +78,13 @@ async function seedFamily(externalId = 'sms:weekday'): Promise<Seeded> {
 
 async function seedAsk(
   seeded: Seeded,
-  overrides: { createdAt?: Date; status?: 'queued' | 'failed'; dedupeKey?: string } = {},
+  overrides: {
+    createdAt?: Date;
+    status?: 'queued' | 'failed';
+    dedupeKey?: string;
+    templateKey?: string;
+    body?: string;
+  } = {},
 ): Promise<void> {
   await db.database.insert(schema.channelMessages).values({
     familyId: seeded.familyId,
@@ -76,12 +92,13 @@ async function seedAsk(
     channel: 'sms',
     direction: 'out',
     category: 'nudge',
-    templateKey: WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+    templateKey: overrides.templateKey ?? WEEKDAY_CARE_ASK_TEMPLATE_KEY,
     dedupeKey:
       overrides.dedupeKey ??
       weekdayCareDedupeKey(seeded.familyId, seeded.childId, seeded.parentUserId),
     status: overrides.status ?? 'queued',
     createdAt: overrides.createdAt ?? ASKED_AT,
+    body: overrides.body ?? null,
   });
 }
 
@@ -111,6 +128,54 @@ describe('weekdayCareQuestion', () => {
 
     expect(await weekdayCareQuestion(db.database, { ...seeded, now: SAME_DAY })).toBeNull();
   });
+
+  it.each([
+    ['first', ['break', 'other']],
+    ['last', ['other', 'break']],
+  ] as const)(
+    'VIL-685 · stays open when the break ask rode one text with another item, placed %s',
+    async (_place, order) => {
+      const seeded = await seedFamily(`sms:weekday-batch-${order[0]}`);
+      const question = 'When does winter break start for you, and what day are the kids back?';
+      const items = {
+        break: {
+          parentUserId: seeded.parentUserId,
+          category: 'nudge' as const,
+          templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+          dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+        },
+        other: {
+          parentUserId: seeded.parentUserId,
+          category: 'reminder' as const,
+          templateKey: 'reminder:day_before',
+          dedupeKey: `reminder:day_before:${seeded.familyId}:batch`,
+        },
+      };
+
+      await finalizeProactiveSend(
+        db.database,
+        {
+          recordSend: recordProactiveSend,
+          audit: writeProactiveAudit,
+          threadMessage: threadProactiveMessage,
+        },
+        {
+          familyId: seeded.familyId,
+          recipientUserId: seeded.parentUserId,
+          channel: 'sms',
+          providerMessageId: `provider-batch-${order[0]}`,
+          sentAt: new Date(),
+          items: order.map((name) => items[name]),
+          composed: question,
+          audit: { actionTaken: 'proactive_sent', after: {} },
+        },
+      );
+
+      const open = await weekdayCareQuestion(db.database, { ...seeded, now: new Date() });
+
+      expect(open).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question });
+    },
+  );
 
   it('closes past the 48h window, and stands inside it', async () => {
     const seeded = await seedFamily();
@@ -181,6 +246,24 @@ describe('weekdayCareQuestion', () => {
     expect(listed?.description).not.toContain('Mia');
     expect(listed?.subject).not.toContain('Mia');
   });
+
+  it('VIL-685 · lists the winter-break dates ask as that, through the reader the router builds', async () => {
+    const seeded = await seedFamily();
+    await seedAsk(seeded, {
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+    });
+
+    const questions = await defaultOpenQuestionReader().open(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      now: SAME_DAY,
+    });
+
+    expect(questions.find((question) => question.kind === 'weekday_care')?.description).toBe(
+      "When this household's winter break starts and ends",
+    );
+  });
 });
 
 /**
@@ -243,6 +326,31 @@ describe('weekdayCareAnswerTarget, as the router builds it', () => {
       scope: 'search',
       prompt: 'weekend_fallback',
       eventKey: null,
+    });
+  });
+
+  it('VIL-685 · opens the winter-break dates ask as break_dates, with its school year and the text sent', async () => {
+    const seeded = await seedFamily('sms:weekday-break-dates');
+    const question = 'When does winter break start for you, and what day are the kids back?';
+    await seedAsk(seeded, {
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      dedupeKey: schoolBreakAskDedupeKey(seeded.familyId, '2026-27', seeded.parentUserId),
+      body: question,
+    });
+    const inboundChannelMessageId = await inbound(seeded, 'sms');
+
+    const target = await channelRouterDeps(db.database).weekdayCareAnswerTarget(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      inboundChannelMessageId,
+      now: SAME_DAY,
+    });
+
+    expect(target).toEqual({
+      status: 'open',
+      scope: 'break_dates',
+      schoolYear: '2026-27',
+      question,
     });
   });
 

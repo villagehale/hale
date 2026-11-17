@@ -52,6 +52,7 @@ export * from './registration-windows.js';
 export * from './registration-discovery-readings.js';
 export * from './city-registration-readings.js';
 export * from './city-official-sites.js';
+export * from './school-break-readings.js';
 export * from './registration-sequences.js';
 export * from './registration-verify-runs.js';
 export * from './cron-heartbeats.js';
