@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   asHandsetReads,
+  draftCarriesLink,
   foreignLinks,
   hasLinkBeyond,
   hasLinkShape,
   linkHostname,
   linksOutside,
+  noteLinkGate,
+  sharedLinkCheckEnabled,
   withoutLinks,
   wordSpans,
 } from './link-shape';
@@ -70,6 +73,22 @@ const EVASIONS: readonly (readonly [string, string])[] = [
   ['a Katakana ending with no long-vowel mark', 'evil。ファッション'],
   ['a Han ending that starts a longer run', 'evil。在线报名'],
   ['a Han ending that starts a longer run inside a sentence', '请访问evil。在线报名吧'],
+  ['a one-dot leader', 'see evil\u2024app'],
+  ['a non-http scheme', 'see git://evil.test/x'],
+  ['a mailto address', 'write mailto:a@evil.app'],
+  ['a Han name and the China ending', '例子。中国'],
+  ['digits and the China ending', '123。中国'],
+];
+
+const STRICTER: readonly (readonly [string, string])[] = [
+  ['a middle dot', 'see evil\u00B7app'],
+  ['a hyphenation point', 'see evil\u2027app'],
+  ['a katakana middle dot', 'see evil\u30FBapp'],
+  ['localhost with a port and a path', 'open localhost:3000/x'],
+  ['a space before the dot', 'see evil .app'],
+  ['a space after the dot', 'see evil. app'],
+  ['a digit standing in for a letter', 'see evil.c0m'],
+  ['a scheme with no slashes', 'see javascript:alert(1)'],
 ];
 
 describe('hasLinkShape: the evasion table', () => {
@@ -100,6 +119,65 @@ describe('hasLinkShape: the evasion table', () => {
     ['an ellipsis', 'Maybe...we will see.'],
   ])('passes %s', (_label, text) => {
     expect(hasLinkShape(text)).toBe(false);
+  });
+});
+
+describe('SHARED_LINK_CHECK_ENABLED: the stricter shapes', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is on only for exactly true', () => {
+    expect(sharedLinkCheckEnabled({})).toBe(false);
+    expect(sharedLinkCheckEnabled({ SHARED_LINK_CHECK_ENABLED: 'true' })).toBe(true);
+    for (const value of ['TRUE', '1', 'true\n', ' true', 'on', '']) {
+      expect(sharedLinkCheckEnabled({ SHARED_LINK_CHECK_ENABLED: value })).toBe(false);
+    }
+  });
+
+  it.each(STRICTER)('passes %s while the flag is off', (_label, text) => {
+    expect(hasLinkShape(text)).toBe(false);
+  });
+
+  it.each(STRICTER)('refuses %s when the flag is on', (_label, text) => {
+    vi.stubEnv('SHARED_LINK_CHECK_ENABLED', 'true');
+    expect(hasLinkShape(text)).toBe(true);
+  });
+
+  it.each([
+    ['a saint, spaced', "Swim at St. Mary's on Saturday."],
+    ['a clock time', 'Doors open at 10.30am.'],
+    ['a.m.', 'It starts at 9 a.m. sharp.'],
+    ['e.g.', 'Bring a snack, e.g. fruit.'],
+    ['an honorific, spaced', 'Ask Mr. Smith at the desk.'],
+    ['a middle dot before digits', 'Sat 10am \u00B7 123 King St'],
+  ])('still passes %s when the flag is on', (_label, text) => {
+    vi.stubEnv('SHARED_LINK_CHECK_ENABLED', 'true');
+    expect(hasLinkShape(text)).toBe(false);
+  });
+});
+
+describe('link gate log', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('records the gate and the kind, and never the draft', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    noteLinkGate('holding-line', 'redraft');
+    expect(info).toHaveBeenCalledWith({ kind: 'redraft', gate: 'holding-line' }, 'link gate');
+    const payload = JSON.stringify(info.mock.calls);
+    expect(payload).not.toMatch(/http|evil|bit\.ly/i);
+  });
+
+  it('logs a hit and stays quiet when the draft has no link', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    expect(draftCarriesLink('see evil.app', 'spots', 'refused')).toBe(true);
+    expect(info).toHaveBeenCalledWith({ kind: 'refused', gate: 'spots' }, 'link gate');
+    info.mockClear();
+    expect(draftCarriesLink("Swim at St. Mary's.", 'spots', 'refused')).toBe(false);
+    expect(info).not.toHaveBeenCalled();
   });
 });
 

@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -36,7 +36,11 @@ export type DateUnconfirmedInput = DateUnconfirmedFacts & { language: ReplyLangu
 export function dateUnconfirmedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) {
+    noteLinkGate('date-unconfirmed', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 /** What goes on the wire: the writer's text, then the window's page on its own line. */

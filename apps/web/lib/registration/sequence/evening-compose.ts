@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond } from '~/lib/format/link-shape';
+import { hasLinkBeyond, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { EveningFacts } from './copy';
 
@@ -28,7 +28,10 @@ export function eveningRefusals(body: string, facts: EveningComposeInput): strin
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
-  if (hasLinkBeyond(text, facts.link === null ? [] : [facts.link])) found.push('other_link');
+  if (hasLinkBeyond(text, facts.link === null ? [] : [facts.link])) {
+    noteLinkGate('evening-compose', 'redraft');
+    found.push('other_link');
+  }
   return found;
 }
 

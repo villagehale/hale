@@ -18,14 +18,64 @@
  * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 before a CJK
  * run with no '/' after it ends a sentence ("你好。我们", "7:00 AM。到时候"), unless the run
  * starts with an ending the root zone delegates ("evil。在线", "evil。在线报名", "例子。中国").
+ *
+ * Shapes a phone also linkifies, and the first check did not, sit behind
+ * SHARED_LINK_CHECK_ENABLED (exactly `true`, otherwise off): a middle dot, a
+ * one-sided space around a real ending, a digit standing in for a letter in an
+ * ending ("evil.c0m"), localhost with a port or a path, and a scheme with no
+ * slashes. The check that already ships stays on either way. Turning that off
+ * would put bare hosts back into parent texts.
  */
 
 import { ROOT_ZONE_TLDS } from './root-zone-tlds';
+
+/** Off unless the value is exactly `true`. `true\n`, `TRUE` and `1` stay off. */
+export const SHARED_LINK_CHECK_ENABLED_ENV = 'SHARED_LINK_CHECK_ENABLED';
+
+export function sharedLinkCheckEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[SHARED_LINK_CHECK_ENABLED_ENV] === 'true';
+}
+
+export type LinkGateKind = 'refused' | 'redraft';
+
+/** A count of one gate decision. The draft's words never go on this line. */
+export function noteLinkGate(gate: string, kind: LinkGateKind): void {
+  console.info({ kind, gate }, 'link gate');
+}
+
+/** The same check as {@link hasLinkShape}, plus one counts-only log when it hits. */
+export function draftCarriesLink(text: string, gate: string, kind: LinkGateKind): boolean {
+  const hit = hasLinkShape(text);
+  if (hit) noteLinkGate(gate, kind);
+  return hit;
+}
+
+/** The same check as {@link hasLinkBeyond}, plus one counts-only log when it hits. */
+export function draftCarriesLinkBeyond(
+  text: string,
+  handed: readonly string[],
+  gate: string,
+  kind: LinkGateKind,
+): boolean {
+  const hit = hasLinkBeyond(text, handed);
+  if (hit) noteLinkGate(gate, kind);
+  return hit;
+}
 
 const SCHEME = /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\//i;
 const WWW = /(?<![\p{L}\p{N}])www\./iu;
 const PUNYCODE = /xn--/i;
 const DOTTED_QUAD = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?!\p{N}|\.\p{N})/u;
+// A scheme a phone opens that has no slashes. Only when the stricter flag is on.
+const OPAQUE_SCHEME = /(?<![\p{L}\p{N}])(?:javascript|data|mailto):/iu;
+const LOCALHOST_LINK = /(?<![\p{L}\p{N}_-])localhost(?::\d+|\/\S*)/iu;
+// U+FF65 folds to U+30FB under NFKC, and U+2024 folds to '.', both before this.
+const MIDDLE_DOT = /[\u00B7\u2027\u30FB]/g;
+const SPACE_BEFORE_DOT = /([\p{L}\p{N}])[ \t]+\.(?!\s)([\p{L}\p{M}][\p{L}\p{M}\p{N}]*)/gu;
+const SPACE_AFTER_DOT = /([\p{L}\p{N}])\.[ \t]+([\p{L}\p{M}][\p{L}\p{M}\p{N}]*)/gu;
+const LEET_DIGIT = /[013457]/;
 
 // Script_Extensions, so the shared marks a CJK word is written with stay in its run: the
 // Katakana long-vowel mark in 'セール', the iteration mark in '時々'.
@@ -47,14 +97,73 @@ const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 const NOTHING_TRUSTED: ReadonlySet<string> = new Set();
 
 function readAsHandset(text: string, trusted: ReadonlySet<string>): string {
-  return text
+  const read = text
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')
     .replace(IDEOGRAPHIC_DOT, (dot, at: number, whole: string) =>
       endsBeforeCjkProse(whole, at) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
+    );
+  const folded = sharedLinkCheckEnabled() ? foldStricterDots(read) : read;
+  return folded.replace(BRACKETED_OR_SPACED_DOT, '.').replace(DOUBLED_PAIR_ABBREVIATION, ' ');
+}
+
+const LEET_TO_LETTER: Record<string, string> = {
+  '0': 'o',
+  '1': 'l',
+  '3': 'e',
+  '4': 'a',
+  '5': 's',
+  '7': 't',
+};
+
+function leetFold(ending: string, one: 'l' | 'i'): string {
+  return ending
+    .toLowerCase()
+    .replace(/[013457]/g, (digit) => (digit === '1' ? one : (LEET_TO_LETTER[digit] ?? digit)));
+}
+
+/** An ending a digit has disguised ("c0m" for "com"), and only a real ending. */
+function leetDelegated(ending: string): boolean {
+  if (!LEET_DIGIT.test(ending)) return false;
+  return (['l', 'i'] as const).some((one) => {
+    const folded = leetFold(ending, one);
+    return /^[\p{L}\p{M}]{2,}$/u.test(folded) && isDelegatedEnding(folded);
+  });
+}
+
+function endingIsDelegated(ending: string): boolean {
+  const label = ending.match(/^[\p{L}\p{M}]+/u)?.[0] ?? '';
+  if (label.length >= 2 && label === ending && isDelegatedEnding(label)) return true;
+  return leetDelegated(ending);
+}
+
+function closeOneSided(
+  whole: string,
+  prev: string,
+  ending: string,
+  offset: number,
+  text: string,
+): string {
+  if (!endingIsDelegated(ending)) return whole;
+  // A one-letter name is an abbreviation ("a.m. sharp", and .sharp is a real ending).
+  const before = offset > 0 ? text.charAt(offset - 1) : '';
+  if (!/^[\p{L}\p{N}]$/u.test(before)) return whole;
+  const label = ending.match(/^[\p{L}\p{M}\p{N}]+/u)?.[0] ?? ending;
+  return `${prev}.${label}${ending.slice(label.length)}`;
+}
+
+/** Middle dots, and a space on one side of a dot whose ending the root zone delegates. */
+function foldStricterDots(text: string): string {
+  return text
+    .replace(MIDDLE_DOT, '.')
+    .replace(
+      SPACE_BEFORE_DOT,
+      (whole, prev: string, ending: string, offset: number, text: string) =>
+        closeOneSided(whole, prev, ending, offset, text),
     )
-    .replace(BRACKETED_OR_SPACED_DOT, '.')
-    .replace(DOUBLED_PAIR_ABBREVIATION, ' ');
+    .replace(SPACE_AFTER_DOT, (whole, prev: string, ending: string, offset: number, text: string) =>
+      closeOneSided(whole, prev, ending, offset, text),
+    );
 }
 
 /** A gate that splits or filters a draft splits this reading, never the raw text, so it
@@ -126,7 +235,9 @@ function dotEndsAHost(text: string, at: number): boolean {
   const name = nameBefore(text, at);
   RUN_AFTER_DOT.lastIndex = at + 1;
   const ending = RUN_AFTER_DOT.exec(text)?.[0];
-  return LETTER_OR_DIGIT.test(name) && ending !== undefined && LETTERS_ONLY.test(ending);
+  if (!LETTER_OR_DIGIT.test(name) || ending === undefined) return false;
+  if (LETTERS_ONLY.test(ending)) return true;
+  return sharedLinkCheckEnabled() && leetDelegated(ending);
 }
 
 export function hasLinkShape(text: string): boolean {
@@ -138,7 +249,13 @@ function readHasLinkShape(read: string): boolean {
 }
 
 function hasMarkedLink(read: string): boolean {
-  return SCHEME.test(read) || WWW.test(read) || PUNYCODE.test(read) || DOTTED_QUAD.test(read);
+  return (
+    SCHEME.test(read) ||
+    WWW.test(read) ||
+    PUNYCODE.test(read) ||
+    DOTTED_QUAD.test(read) ||
+    (sharedLinkCheckEnabled() && (OPAQUE_SCHEME.test(read) || LOCALHOST_LINK.test(read)))
+  );
 }
 
 /** Each 'name.ending' a handset would link, as read. */

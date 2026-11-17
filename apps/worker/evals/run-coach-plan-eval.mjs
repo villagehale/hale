@@ -41,6 +41,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { playbookFor } from '@hale/types';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { COACH_PLAN_FIXTURES } from './coach-plan-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -117,7 +118,9 @@ const MAX_PLAN_MESSAGES = 3;
 const MAX_NOTE_SEGMENTS = 2;
 /** Mirrors DOSING_SHAPE / LINK_SHAPE / NAMED_PERSON in compose.ts. */
 const DOSING_SHAPE = /\b\d+(?:\.\d+)?\s?(?:mg|ml|mcg|milligrams?|millilitres?|milliliters?)\b/i;
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 const NAMED_PERSON = /\b(?:Dr\.?|Doctor|Professor|Prof\.?)\s+[A-Z][a-z]+/g;
 /** Mirrors `reachesForTheHealthLine` in off-domain/copy.ts. */
 const HEALTH_LINE_SHAPE = /\b(?:811|911)\b/;
@@ -265,7 +268,7 @@ function sendFailures(messages, smsSegments, maxSegments, { allowMany, playbook 
     if (smsSegments(body) > maxSegments) {
       failures.push(`over_budget:${index} (${smsSegments(body)} segments)`);
     }
-    if (LINK_SHAPE.test(body)) failures.push(`carries_link:${index}`);
+    if (hasLinkShape(body)) failures.push(`carries_link:${index}`);
     if (DOSING_SHAPE.test(body)) failures.push(`carries_dosing:${index}`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {
       failures.push(`reaches_for_the_health_line:${index}`);
@@ -324,7 +327,7 @@ function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
           : `${label} is ${body.length} characters, ${body.length - limit} over the ${limit} limit. Shorten it.`,
       );
     }
-    if (LINK_SHAPE.test(body)) violations.push(`${label} contains a link or a web address.`);
+    if (hasLinkShape(body)) violations.push(`${label} contains a link or a web address.`);
     if (DOSING_SHAPE.test(body)) violations.push(`${label} names a dose.`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {
       violations.push(`${label} gives a phone number. Name the SITUATION instead, with no number.`);
@@ -366,6 +369,7 @@ const BROKEN_NOTE = {
 };
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const show = process.argv.includes('--show');

@@ -37,6 +37,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { healthRoutingFailures } from './health-line-gates.mjs';
 import { INTAKE_ANSWER_FIXTURES, WATCH_OFFER_ASK } from './intake-answer-fixtures.mjs';
 import {
@@ -106,7 +107,9 @@ const MAX_TOKENS = 300;
 
 // ── the composer's gates, replicated from answer.ts ─────────────────────────
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 const APP_POINTER =
   /\b((?:the|your|their|our) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
 const CLAIMED_WORK =
@@ -146,7 +149,7 @@ function flatten(text) {
 function gateFailures(answer, returnLine, fixture) {
   const failures = [];
   const joined = `${answer} ${returnLine}`;
-  if (LINK_SHAPE.test(joined)) failures.push('carries_link');
+  if (hasLinkShape(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
   if (returnLine === (fixture.pendingAsk ?? WATCH_OFFER_ASK))
@@ -197,6 +200,7 @@ const MIN_DISTINCT_RETURN_LINES = 5;
 const MIN_DISTINCT_RETURN_OPENERS = 3;
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();

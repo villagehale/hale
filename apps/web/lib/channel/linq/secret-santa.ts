@@ -9,7 +9,7 @@ import { resolveVerifiedChannelByHash } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { contactsOutside } from '~/lib/format/contact-shape';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqMultiFamilyGroupsEnabled } from './config';
@@ -77,7 +77,8 @@ export function foldName(name: string): string {
 }
 
 /** Scripts written without spaces between words. */
-const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+const UNSPACED =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -124,6 +125,7 @@ export function checkCalled(
   if (!called) return { fact: 'name_needed' };
   if ([...called].length > CALLED_MAX_CHARS) return { fact: 'name_needed' };
   if (called.split(/\s+/u).length > CALLED_MAX_WORDS) return { fact: 'name_needed' };
+  if (hasLinkShape(called)) noteLinkGate('secret-santa', 'refused');
   if (hasLinkShape(called) || contactsOutside(called, []).length > 0) {
     return { fact: 'name_needed' };
   }
@@ -143,9 +145,12 @@ export function santaGroupLineUsable(
   line: string,
   names: { participants: readonly string[]; allowed: readonly string[] },
 ): boolean {
+  if (hasLinkShape(line)) noteLinkGate('secret-santa', 'refused');
   if (!line.trim() || hasLinkShape(line) || contactsOutside(line, []).length > 0) return false;
   const allowed = new Set(names.allowed.map(foldName));
-  return !names.participants.some((name) => !allowed.has(foldName(name)) && nameAppears(line, name));
+  return !names.participants.some(
+    (name) => !allowed.has(foldName(name)) && nameAppears(line, name),
+  );
 }
 
 // ---------------------------------------------------------------------------------------
@@ -669,7 +674,9 @@ async function waitingCount(database: Database, drawId: string): Promise<number>
 
 /** Names of everyone in the draw, for the group-line check. */
 async function namesIn(database: Database, drawId: string): Promise<string[]> {
-  return (await participantsOf(database, drawId)).flatMap((row) => (row.called ? [row.called] : []));
+  return (await participantsOf(database, drawId)).flatMap((row) =>
+    row.called ? [row.called] : [],
+  );
 }
 
 /** The done line, written from counts only. Shared with the sweep's backstop. */
@@ -999,10 +1006,7 @@ export async function optOutSecretSantaOnStop(
 }
 
 /** A group STOP: out of any collecting draw; never texted a drawn one. */
-export async function stopSecretSantaPerson(
-  database: Database,
-  personId: string,
-): Promise<void> {
+export async function stopSecretSantaPerson(database: Database, personId: string): Promise<void> {
   const draws = schema.secretSantaDraws;
   const participants = schema.secretSantaParticipants;
   const collecting = database

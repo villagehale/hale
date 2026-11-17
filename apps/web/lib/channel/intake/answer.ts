@@ -8,7 +8,7 @@ import { recMorningIntakeAsksOwnTown, writeRecMorningIntakeReply } from '~/lib/c
 import { sharedRecMorningReader } from '~/lib/channel/rec-morning/read';
 import { speak } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { CityOpeningFacts } from '~/lib/registration/city/context';
@@ -263,7 +263,10 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (hasLinkShape(joined)) found.push('carries_link');
+  if (hasLinkShape(joined)) {
+    noteLinkGate('intake-answer', 'redraft');
+    found.push('carries_link');
+  }
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');

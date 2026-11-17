@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { HeadsUpFacts } from './copy';
 import { type CheckRegistrationText, checkRegistrationText } from './text-check';
@@ -25,7 +25,11 @@ export interface HeadsUpComposeInput extends HeadsUpFacts {
 export function headsUpRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) {
+    noteLinkGate('heads-up', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 const outputSchema = z.object({ text: z.string() });

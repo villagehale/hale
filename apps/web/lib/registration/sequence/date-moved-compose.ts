@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -42,7 +42,11 @@ export type DateMovedInput = DateMovedFacts & { language: ReplyLanguage };
 export function dateMovedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) {
+    noteLinkGate('date-moved', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 /** What goes on the wire: the writer's text, then the page on its own line. */

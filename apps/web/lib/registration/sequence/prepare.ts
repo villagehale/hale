@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
 /**
@@ -193,7 +193,11 @@ const PRICE_FIGURE_CAP = 16;
 function sendableAsItself(value: string, maxChars: number): boolean {
   if (value.length > maxChars) return false;
   if (!isPrintableGsm7Basic(value)) return false;
-  return !hasLinkShape(value);
+  if (hasLinkShape(value)) {
+    noteLinkGate('registration-prepare', 'refused');
+    return false;
+  }
+  return true;
 }
 
 /**

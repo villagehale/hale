@@ -18,7 +18,7 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
-import { asHandsetReads, linksOutside } from '~/lib/format/link-shape';
+import { asHandsetReads, linksOutside, noteLinkGate } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -1722,6 +1722,8 @@ export function judgeFriendReply(
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
+  const domainLinks = linksOutside(trimmed, linkAllowList(input, options));
+  if (domainLinks.length > 0) noteLinkGate('friend-voice', 'redraft');
   const found: [kind: string, matched: string[]][] = [
     ['fact', findInventedFacts(trimmed, slots)],
     ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
@@ -1730,7 +1732,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', linksOutside(trimmed, linkAllowList(input, options))],
+    ['domain', domainLinks],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);

@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond } from '~/lib/format/link-shape';
+import { hasLinkBeyond, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { MorningFacts } from './copy';
 import { type CheckRegistrationText, checkRegistrationText } from './text-check';
@@ -25,7 +25,10 @@ export function morningRefusals(body: string, facts: MorningComposeInput): strin
   const text = body.trim();
   if (text === '') return ['empty'];
   const found: string[] = [];
-  if (hasLinkBeyond(text, [facts.link])) found.push('other_link');
+  if (hasLinkBeyond(text, [facts.link])) {
+    noteLinkGate('morning-compose', 'redraft');
+    found.push('other_link');
+  }
   if (!text.includes(facts.link)) found.push('link_missing');
   return found;
 }

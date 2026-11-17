@@ -1,7 +1,11 @@
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { REGISTRATION_WINDOWS, type RegistrationWindowSeed } from './registration-windows-data.js';
-import { syncRegistrationWindows, toRegistrationWindowRow } from './registration-windows.js';
+import {
+  MUNICIPALITY_SOURCE_HOST,
+  syncRegistrationWindows,
+  toRegistrationWindowRow,
+} from './registration-windows.js';
 
 /**
  * The registration-window seed: a pure row build that refuses to produce a row the
@@ -162,32 +166,25 @@ describe('the shipped verified list', () => {
   it('cites the municipality it describes on every row', () => {
     // A Markham row must not be sourced from oakville.ca — the honesty anchor only
     // works if the URL belongs to the town whose dates it carries.
-    const HOSTS: Record<string, string> = {
-      toronto: 'toronto.ca',
-      markham: 'markham.ca',
-      vaughan: 'vaughan.ca',
-      richmond_hill: 'richmondhill.ca',
-      mississauga: 'mississauga.ca',
-      oakville: 'oakville.ca',
-      burlington: 'burlington.ca',
-      halton_hills: 'haltonhills.ca',
-      brampton: 'brampton.ca',
-      caledon: 'caledon.ca',
-      ajax: 'ajax.ca',
-      pickering: 'pickering.ca',
-      whitby: 'whitby.ca',
-      oshawa: 'oshawa.ca',
-      aurora: 'aurora.ca',
-      whitchurch_stouffville: 'townofws.ca',
-      newmarket: 'newmarket.ca',
-      king: 'king.ca',
-      east_gwillimbury: 'eastgwillimbury.ca',
-      georgina: 'georgina.ca',
-      uxbridge: 'uxbridge.ca',
-    };
     for (const seed of REGISTRATION_WINDOWS) {
-      expect(new URL(seed.sourceUrl).hostname).toContain(HOSTS[seed.municipality]);
+      const host = new URL(seed.sourceUrl).hostname.toLowerCase().replace(/^www\./, '');
+      const expected = MUNICIPALITY_SOURCE_HOST[seed.municipality];
+      expect(host === expected || host.endsWith(`.${expected}`)).toBe(true);
     }
+  });
+
+  it('refuses a source that is not https on that municipality host', () => {
+    const seed = REGISTRATION_WINDOWS[0];
+    if (!seed) throw new Error('the verified list is empty');
+    expect(() =>
+      toRegistrationWindowRow({ ...seed, sourceUrl: 'http://www.toronto.ca/register' }),
+    ).toThrow(/https/);
+    expect(() =>
+      toRegistrationWindowRow({ ...seed, sourceUrl: 'https://evil.example/register' }),
+    ).toThrow(/host/);
+    expect(() =>
+      toRegistrationWindowRow({ ...seed, sourceUrl: 'https://nottoronto.ca/register' }),
+    ).toThrow(/host/);
   });
 
   it('never persists a seed-only field to the database row', () => {

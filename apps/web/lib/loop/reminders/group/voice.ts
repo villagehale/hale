@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { localClockFact, localDateFact } from '~/lib/loop/reminders/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -92,7 +92,11 @@ export function groupReminderVoiceUserMessage(facts: GroupReminderFacts): string
 export function groupReminderRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) {
+    noteLinkGate('reminder-group', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 const outputSchema = z.object({ text: z.string() });
