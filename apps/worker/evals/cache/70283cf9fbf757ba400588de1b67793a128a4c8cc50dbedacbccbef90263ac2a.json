@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "A watched class seat just opened and the item expires at 23:30 UTC (7:30 PM local); spot_open is time-critical, free windows don't apply, it's evening outside quiet hours, and there is no unanswered streak or pace preference.",
+    "action": "send_now",
+    "item_ids": [
+      "seat"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

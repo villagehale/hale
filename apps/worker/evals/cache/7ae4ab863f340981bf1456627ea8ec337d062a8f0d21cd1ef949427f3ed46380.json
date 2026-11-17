@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Plan check-in is a follow-up on something Hale set up; it's Thursday evening outside quiet hours, the last send was answered, no streak or pace preference blocks it, and free windows don't apply to check-ins.",
+    "action": "send_now",
+    "item_ids": [
+      "plan"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
