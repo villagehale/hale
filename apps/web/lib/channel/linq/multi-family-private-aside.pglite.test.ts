@@ -15,7 +15,7 @@ import {
   type PrivateAsideReadInput,
 } from './group-private-aside';
 import { handleLinqInboundRequest } from './inbound';
-import { takeMultiFamilyTurn } from './multi-family';
+import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
 import type { SharedGroupReader } from './shared-group-reading';
 import { fakeSharedGroupComposer } from './shared-group-voice-fake';
 import { LinqSendError } from './transport';
@@ -141,6 +141,26 @@ async function twoPresent() {
   return { ada, bao, wire: sender() };
 }
 
+/** The same two households, each with its own granted join consent for this chat. */
+async function twoConsented() {
+  const present = await twoPresent();
+  for (const [phone, who] of [
+    [PARENT_A, present.ada],
+    [PARENT_B, present.bao],
+  ] as const) {
+    const joined = await joinFamilyToSharedGroup(db.database, {
+      chatId: CHAT,
+      familyId: who.familyId,
+      userId: who.userId,
+      phone,
+      verbatim: 'our family is in this group',
+      now: NOW,
+    });
+    if (joined.outcome !== 'joined') throw new Error(`join consent: ${joined.outcome}`);
+  }
+  return present;
+}
+
 /** 'clash' picks the family whose own facts name the kid (refs follow join order, which can tie). */
 function fakeModel(read: 'clash' | string[] | Error, draft: { send: boolean } = { send: true }) {
   const reads: PrivateAsideReadInput[] = [];
@@ -189,7 +209,7 @@ const turnInput = (wire: ReturnType<typeof sender>, providerMessageId = 'in-asid
 
 describe('VIL-457 shared-group turn wires the private aside', () => {
   it('texts the clashing family 1:1 with its own facts; the group line carries none', async () => {
-    const { bao, wire } = await twoPresent();
+    const { ada, bao, wire } = await twoConsented();
     const groupBefore = wire.texts.length;
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
@@ -234,12 +254,15 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
       .where(eq(schema.channelMessages.templateKey, 'linq:private_aside'));
     expect(ledger).toHaveLength(1);
     expect(ledger[0]?.familyId).toBe(bao.familyId);
-    // Presence alone: neither household joined, and no consent was written for them.
-    expect(await db.database.select().from(schema.linqMultiFamilyJoins)).toEqual([]);
+    const joins = await db.database
+      .select({ familyId: schema.linqMultiFamilyJoins.familyId })
+      .from(schema.linqMultiFamilyJoins)
+      .where(eq(schema.linqMultiFamilyJoins.chatId, CHAT));
+    expect(joins.map((row) => row.familyId).sort()).toEqual([ada.familyId, bao.familyId].sort());
   });
 
   it('sends nothing 1:1 when the read picks no family', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const m = fakeModel([]);
     const dm = fakeOneToOne();
     const out = await takeMultiFamilyTurn(
@@ -259,7 +282,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
   });
 
   it('a failing model never fails the turn and sends no fallback', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const groupBefore = wire.texts.length;
     const m = fakeModel(new Error('boom'));
     const dm = fakeOneToOne();
@@ -280,7 +303,7 @@ describe('VIL-457 shared-group turn wires the private aside', () => {
   });
 
   it('a redelivered group message does not run the aside twice', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
     const privateAside = {
@@ -312,7 +335,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
     ['refused (model failed)', () => fakeSharedGroupComposer({ fail: true })],
   ] as const) {
     it(`group ${label}: the clashing family still hears 1:1; the turn is owned, not held`, async () => {
-      const { bao, wire } = await twoPresent();
+      const { bao, wire } = await twoConsented();
       const groupBefore = wire.texts.length;
       const m = fakeModel('clash');
       const dm = fakeOneToOne();
@@ -341,7 +364,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   }
 
   it('group quiet and the aside declines: hands the message back so a text RSVP can still be read', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const m = fakeModel('clash', { send: false });
     const dm = fakeOneToOne();
     const out = await takeMultiFamilyTurn(
@@ -361,7 +384,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   });
 
   it('group quiet and the 1:1 fails to send: hands the message back', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const m = fakeModel('clash');
     const send: OneToOneSend = {
       text: async () => {
@@ -405,7 +428,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
 
   for (const intent of ['chatter', 'unclear'] as const) {
     it(`reader says ${intent}: the clashing family still hears 1:1; group stays silent`, async () => {
-      const { wire } = await twoPresent();
+      const { wire } = await twoConsented();
       const groupBefore = wire.texts.length;
       const m = fakeModel('clash');
       const dm = fakeOneToOne();
@@ -446,7 +469,7 @@ describe('VIL-496 aside sends even when the group line does not', () => {
   }
 
   it('a redelivered message after a quiet group does not aside twice', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     const m = fakeModel('clash');
     const dm = fakeOneToOne();
     const privateAside = {
@@ -712,7 +735,7 @@ describe('a STOP in a shared chat outlives leaving it', () => {
   });
 
   it('positive control: a parent who never stopped is forgotten when removed, and live again when re-added', async () => {
-    const { wire } = await twoPresent();
+    const { wire } = await twoConsented();
     await takeMultiFamilyTurn(db.database, turnInput(wire, 'in-first'), ports());
     await baoNamed();
     expect(await personRow(PARENT_B)).toHaveLength(1);
