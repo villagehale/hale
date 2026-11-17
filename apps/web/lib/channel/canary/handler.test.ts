@@ -74,6 +74,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.delete(schema.auditLog);
   await db.database.delete(schema.parentChannels);
+  Reflect.deleteProperty(process.env, 'VERCEL_DEPLOYMENT_ID');
 });
 
 afterEach(() => {
@@ -105,7 +106,21 @@ describe('inboundCanaryHandler', () => {
       actionTaken: 'sms_canary_answered',
       targetTable: 'channel_messages',
       targetId: INBOUND_MESSAGE_ID,
+      after: { deploymentId: null },
     });
+  });
+
+  it('stamps the deployment id the production text gate reads back', async () => {
+    await seedCanaryHousehold(db.database);
+    process.env.VERCEL_DEPLOYMENT_ID = 'dpl_candidate';
+
+    await inboundCanaryHandler().handle(
+      db.database,
+      turn('CANARY', canary, async () => []),
+    );
+
+    const [row] = await db.database.select().from(schema.auditLog);
+    expect(row?.after).toEqual({ deploymentId: 'dpl_candidate' });
   });
 
   it('reads the body the way a handset sends it — spacing and case are not the gate', async () => {
