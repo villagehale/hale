@@ -222,7 +222,7 @@ describe('caregiver invite · the double opt-in', () => {
 
     const sent = await text(fake, transport, deps, PARENT_PHONE, 'yes');
 
-    expect(sent).toEqual({ status: 'caregiver_invite_sent' });
+    expect(sent).toEqual({ status: 'caregiver_invite_sent', lineHeld: null });
     const grantRows = inserts(fake, schema.consentRecords).filter(
       (r) => r.consentType === 'caregiver_access_grant',
     );
@@ -245,7 +245,7 @@ describe('caregiver invite · the double opt-in', () => {
 
     const accepted = await text(fake, transport, deps, GRAN_PHONE, 'yes');
 
-    expect(accepted).toEqual({ status: 'caregiver_accepted' });
+    expect(accepted).toEqual({ status: 'caregiver_accepted', lineHeld: null });
 
     const caregiverConsent = inserts(fake, schema.consentRecords).filter(
       (r) => r.consentType === 'caregiver_scoped_messages',
@@ -320,7 +320,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add my mum 647-555-0199 as chauffeur',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unparseable' });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'unparseable',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_add_example'),
@@ -367,7 +371,7 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Sam 647-555-0199 as co-parent',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark', lineHeld: null });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_co_parent_redirect'),
@@ -390,7 +394,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Sam 647-555-0199 as parent',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unsupported_role' });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'unsupported_role',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_co_parent_redirect'),
@@ -414,7 +422,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add grandma 647-555-0199 as nanny',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'number_in_use' });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'number_in_use',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_number_in_use'),
@@ -452,7 +464,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add grandma 647-555-0199 as nanny',
     );
 
-    expect(again).toEqual({ status: 'caregiver_add_refused', reason: 'already_invited' });
+    expect(again).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'already_invited',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_already_invited'),
@@ -476,6 +492,7 @@ describe('caregiver invite · the ways it does not happen', () => {
       await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
       expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
         status: 'caregiver_invite_sent',
+        lineHeld: null,
       });
     }
     const strangersTexted = transport.sent.filter((s) => s.to !== PARENT_PHONE).length;
@@ -489,7 +506,7 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add helper 647-555-0106 as nanny',
     );
 
-    expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many' });
+    expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many', lineHeld: null });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_too_many'),
@@ -517,6 +534,7 @@ describe('caregiver invite · the ways it does not happen', () => {
     await text(fake, transport, deps, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
     expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
       status: 'caregiver_invite_sent',
+      lineHeld: null,
     });
     expect(transport.sent.filter((s) => s.to !== PARENT_PHONE)).toHaveLength(1);
   });
@@ -559,7 +577,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Ana 416-555-1234 as babysitter',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'own_number' });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'own_number',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)).toEqual({
       to: PARENT_PHONE,
       body: await door('caregiver_own_number'),
@@ -649,7 +671,7 @@ describe('caregiver invite · the ways it does not happen', () => {
 
       const sent = await text(fake, transport, deps, PARENT_PHONE, answer);
 
-      expect(sent).toEqual({ status: 'caregiver_invite_sent' });
+      expect(sent).toEqual({ status: 'caregiver_invite_sent', lineHeld: null });
       expect(transport.sent.some((s) => s.to === GRAN_PHONE)).toBe(true);
     },
   );
@@ -661,7 +683,7 @@ describe('caregiver invite · the ways it does not happen', () => {
 
     const dropped = await text(fake, transport, deps, PARENT_PHONE, 'no');
 
-    expect(dropped).toEqual({ status: 'caregiver_invite_dropped' });
+    expect(dropped).toEqual({ status: 'caregiver_invite_dropped', lineHeld: null });
     expect(transport.sent.every((s) => s.to === PARENT_PHONE)).toBe(true);
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
     expect(auditActions(fake)).toContain('caregiver_invite_withdrawn');
@@ -710,7 +732,7 @@ describe('caregiver · after they are in', () => {
 
     const outcome = await text(fake, transport, deps, GRAN_PHONE, 'is Maya feeling better?');
 
-    expect(outcome).toEqual({ status: 'caregiver_scoped_reply' });
+    expect(outcome).toEqual({ status: 'caregiver_scoped_reply', lineHeld: null });
     expect(transport.sent.at(-1)).toEqual({
       to: GRAN_PHONE,
       body: "That's one for Ana - I only share the schedule here.",

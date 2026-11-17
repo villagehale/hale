@@ -36,6 +36,15 @@ export const DOOR_LINE_PURPOSES = [
 
 export type DoorLinePurpose = (typeof DOOR_LINE_PURPOSES)[number];
 
+/** Why a parent-visible door line did not go out. Named, never inferred (rule #11). */
+export type DoorLineHold = 'flag_off' | 'unwritten';
+
+export type ComposedDoorLine = { sent: true; body: string } | { sent: false; held: DoorLineHold };
+
+export function lineHeld(line: ComposedDoorLine): DoorLineHold | null {
+  return line.sent ? null : line.held;
+}
+
 export function joinDoorModelCopyEnabled(env: EnvBag = process.env): boolean {
   return isEnabled('join-door-model-copy', undefined, env);
 }
@@ -44,18 +53,18 @@ export async function composeDoorLine(
   database: Database,
   request: SpokenLineRequest,
   pager?: OpsPager,
-): Promise<string | null> {
+): Promise<ComposedDoorLine> {
   if (!joinDoorModelCopyEnabled()) {
     console.info(
       { purpose: request.purpose, skipped: 'flag_off' },
       'door line: model copy is dark - nothing sent',
     );
-    return null;
+    return { sent: false, held: 'flag_off' };
   }
   const line = await speak(request);
-  if (line) return line;
+  if (line) return { sent: true, body: line };
   console.error({ purpose: request.purpose }, 'door line: model wrote nothing - nothing sent');
   const page: OpsPage = { site: 'spoken_line_unwritten', facts: { stage: 'after_retry' } };
   await (pager ?? { page: (opsPage: OpsPage) => pageOps(database, opsPage) }).page(page);
-  return null;
+  return { sent: false, held: 'unwritten' };
 }

@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
-import { composeDoorLine } from '~/lib/channel/door-line';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -66,7 +66,12 @@ export interface JoinAcceptance {
    * happens either way, and the inviter finds out the way they always could: their
    * partner is in the same house.
    */
-  inviterHeld: 'no_channel' | 'quiet_hours' | 'unwritten' | null;
+  inviterHeld: 'no_channel' | 'quiet_hours' | DoorLineHold | null;
+  /**
+   * The partner's welcome. Null when it went out. `flag_off` is the dark flag;
+   * `unwritten` is a model that wrote nothing. The seat exists either way.
+   */
+  welcomeHeld: DoorLineHold | null;
   supersededInviteId: string | null;
 }
 
@@ -86,7 +91,11 @@ export interface JoinSeatTaken {
 }
 
 export type JoinOutcome =
-  | { status: 'join_link_minted' }
+  | {
+      status: 'join_link_minted';
+      /** The forwardable line. Null when the parent was handed it. */
+      lineHeld: DoorLineHold | null;
+    }
   | JoinSeatTaken
   /**
    * `supersededSessionId` is the other absence this path has to name: a link can arrive
@@ -239,7 +248,7 @@ export async function handleJoinRequest(
   });
 
   const link = joinLink(code);
-  const body = await composeDoorLine(
+  const forward = await composeDoorLine(
     database,
     {
       purpose: 'join_invite_forward',
@@ -249,17 +258,17 @@ export async function handleJoinRequest(
     },
     deps.doorPager,
   );
-  if (body) {
+  if (forward.sent) {
     await sendThreaded(database, deps, {
       to: args.phoneE164,
-      body,
+      body: forward.body,
       familyId: owner.familyId,
       parentUserId: owner.userId,
       category: 'caregiver',
       now,
     });
   }
-  return { status: 'join_link_minted' };
+  return { status: 'join_link_minted', lineHeld: lineHeld(forward) };
 }
 
 /**
@@ -383,10 +392,10 @@ export async function handleJoinArrival(
     },
     deps.doorPager,
   );
-  if (welcome) {
+  if (welcome.sent) {
     await sendThreaded(database, deps, {
       to: args.phoneE164,
-      body: welcome,
+      body: welcome.body,
       familyId: invite.familyId,
       parentUserId: coParentUserId,
       category: 'intake',
@@ -415,17 +424,17 @@ export async function handleJoinArrival(
       },
       deps.doorPager,
     );
-    if (ack) {
+    if (ack.sent) {
       await sendThreaded(database, deps, {
         to: inviterPhone,
-        body: ack,
+        body: ack.body,
         familyId: invite.familyId,
         parentUserId: invite.invitedByUserId,
         category: 'caregiver',
         now,
       });
     } else {
-      inviterHeld = 'unwritten';
+      inviterHeld = ack.held;
     }
   }
 
@@ -434,6 +443,7 @@ export async function handleJoinArrival(
     familyId: invite.familyId,
     inviterNotified: inviterHeld === null,
     inviterHeld,
+    welcomeHeld: lineHeld(welcome),
     supersededInviteId,
   };
 }

@@ -199,13 +199,16 @@ export async function deliverCoParentNumberInvite(
   });
 
   const parentPhone = await resolveSendablePhone(database, input.parentUserId);
+  const redirect = async () =>
+    composeDoorLine(database, {
+      purpose: 'caregiver_co_parent_redirect',
+      language,
+    });
   if (!parentPhone) {
+    const line = await redirect();
     return {
       status: 'unreached',
-      reply: await composeDoorLine(database, {
-        purpose: 'caregiver_co_parent_redirect',
-        language,
-      }),
+      reply: line.sent ? line.body : null,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
     };
   }
@@ -213,12 +216,8 @@ export async function deliverCoParentNumberInvite(
   // Same gate as the YES that texts a stranger (D21). The ask can be on the
   // thread while the flag is dark; the SMS send is what the flag holds.
   if (!f14EnabledFor(input.familyId)) {
-    return held(
-      await composeDoorLine(database, {
-        purpose: 'caregiver_co_parent_redirect',
-        language,
-      }),
-    );
+    const line = await redirect();
+    return held(line.sent ? line.body : null);
   }
 
   const name = await parentName(database, input.parentUserId);

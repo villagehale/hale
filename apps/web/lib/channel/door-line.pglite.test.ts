@@ -39,7 +39,7 @@ describe('composeDoorLine', () => {
     });
 
     expect(calls).toEqual(['join_welcome']);
-    expect(line).toBe('Ana added you.');
+    expect(line).toEqual({ sent: true, body: 'Ana added you.' });
   });
 
   it('sends nothing and pages #ops once when the writer returns nothing', async () => {
@@ -63,8 +63,8 @@ describe('composeDoorLine', () => {
       facts: { inviterName: 'Ana' },
     });
 
-    expect(welcome).toBeNull();
-    expect(again).toBeNull();
+    expect(welcome).toEqual({ sent: false, held: 'unwritten' });
+    expect(again).toEqual({ sent: false, held: 'unwritten' });
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain('spoken_line_unwritten');
   });
@@ -83,7 +83,7 @@ describe('composeDoorLine', () => {
       language: 'en',
     });
 
-    expect(line).toBeNull();
+    expect(line).toEqual({ sent: false, held: 'flag_off' });
     expect(calls).toEqual([]);
   });
 });

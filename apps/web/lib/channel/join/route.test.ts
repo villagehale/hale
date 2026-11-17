@@ -205,7 +205,7 @@ describe('minting the link · "add my partner", no number', () => {
 
     const minted = await text(h, PARENT_PHONE, 'add my partner');
 
-    expect(minted).toEqual({ status: 'join_link_minted' });
+    expect(minted).toEqual({ status: 'join_link_minted', lineHeld: null });
     expect(h.transport.sent).toHaveLength(1);
     expect(h.transport.sent[0]?.to).toBe(PARENT_PHONE);
     const body = h.transport.sent[0]?.body as string;
@@ -296,6 +296,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
       familyId,
       inviterNotified: true,
       inviterHeld: null,
+      welcomeHeld: null,
       supersededSessionId: null,
       supersededInviteId: null,
     });
@@ -442,6 +443,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
       familyId,
       inviterNotified: false,
       inviterHeld: 'unwritten',
+      welcomeHeld: 'unwritten',
     });
     expect(h.transport.sent.slice(before)).toHaveLength(0);
     expect(calls).toEqual(['join_welcome', 'join_accepted_ack']);
@@ -454,7 +456,7 @@ describe('redeeming the link · the partner texts from their own phone', () => {
 
     const minted = await text(h, PARENT_PHONE, 'add my partner');
 
-    expect(minted).toEqual({ status: 'join_link_minted' });
+    expect(minted).toEqual({ status: 'join_link_minted', lineHeld: 'flag_off' });
     expect(inserts(h.fake, schema.joinInvites)).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(0);
   });
@@ -578,6 +580,7 @@ describe('a live link outranks whatever conversation is already open', () => {
       familyId,
       inviterNotified: true,
       inviterHeld: null,
+      welcomeHeld: null,
       supersededSessionId: session?.id,
       // No caregiver invite was in flight on this number, and the outcome SAYS so
       // rather than leaving it to be inferred.

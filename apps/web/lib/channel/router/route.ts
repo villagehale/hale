@@ -1203,10 +1203,10 @@ async function routeChannelMessageInner(
         language: null,
         facts: { parentName: context.primaryParentName ?? '' },
       });
-      if (line) {
+      if (line.sent) {
         await sendReply(deps, {
           route: context.reply,
-          body: line,
+          body: line.body,
           job,
           conversationId: null,
           claim: claimAnswer,
