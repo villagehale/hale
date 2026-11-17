@@ -243,8 +243,16 @@ async function record() {
         ).filter((bubble) => bubble.length > 0).length
       : 0;
     // A reply code would send: the same judge speakFriend runs, for this step.
+    // Lit, that judge reads the draw's own fields. Passing them does not change a
+    // dark turn: the flag-off judge never looks at them.
     const judged = fixture.sendable
-      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input, {
+          asksCount: result.value?.asksCount,
+          asksName: result.value?.asksName,
+          speaksAsParent: result.value?.speaksAsParent,
+          questionBeforeList: result.value?.questionBeforeList,
+          connectorsOffered: result.value?.connectorsOffered,
+        })
       : null;
     const context = voice.friendVoiceContext(input);
     const meaning = fixture.watchFor
