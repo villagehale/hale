@@ -179,6 +179,34 @@ describe('VIL-454 production notice ports, real database', () => {
     });
   }
 
+  it('writes in the stored language after one off-language turn', async () => {
+    const s = await seed();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, s.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, s.parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: s.familyId,
+      parentUserId: s.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    const loaded = await productionCalendarWriteNoticePorts(db.database).loadEvent({
+      familyId: s.familyId,
+      familyEventId: s.familyEventId,
+      op: 'create',
+      actorUserId: s.parentUserId,
+    });
+    expect(typeof loaded === 'string' ? loaded : loaded.language).toBe('fr');
+  });
+
   it("states the start in the parent's own zone, a US zone included", async () => {
     const s = await seed('America/Los_Angeles');
     const loaded = await productionCalendarWriteNoticePorts(db.database).loadEvent({

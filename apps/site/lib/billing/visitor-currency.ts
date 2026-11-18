@@ -22,5 +22,10 @@ export async function visitorCurrency(): Promise<BillingCurrency> {
 
 /** Null when the server-currency flag is on and geo is not US or CA. */
 export async function visitorCheckoutCurrency(): Promise<BillingCurrency | null> {
-  return visitorCurrencyFromHeaders(await headers());
+  try {
+    return visitorCurrencyFromHeaders(await headers());
+  } catch {
+    // Unit renders have no request. Same fallback as a missing geo header.
+    return 'CAD';
+  }
 }

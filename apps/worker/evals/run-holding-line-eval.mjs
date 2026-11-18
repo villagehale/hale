@@ -25,6 +25,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register, tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import {
   JUDGE_MIN,
   assertRunFlags,
@@ -145,12 +146,14 @@ function flatten(text) {
 
 // Mirrors the MECHANICAL `refusals` in holding-line.ts. A promised time or an app/website
 // is not a pattern here: it is the production meaning judge, below.
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
   return found;
 }
@@ -194,6 +197,7 @@ const BROKEN_LINE =
   'Hi! Good news, I checked the schedule and it looks fine 😊. Back in 2 minutes - see https://villagehale.com, ok?';
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');

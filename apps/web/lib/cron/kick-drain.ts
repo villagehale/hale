@@ -96,7 +96,7 @@ async function attemptKick(
 ): Promise<{ reason: KickFailure; detail?: unknown } | null> {
   try {
     const response = await fetch(url, {
-      headers: kickHeaders(secret),
+      headers: kickHeaders(secret, url),
       signal: AbortSignal.timeout(KICK_TIMEOUT_MS),
     });
     if (response.ok) return null;
@@ -130,12 +130,49 @@ export function drainOrigin(req: Request, env: NodeJS.ProcessEnv = process.env):
   return env.APP_URL ?? new URL(req.url).origin;
 }
 
-/** The kick's headers. A protected Preview deploy also needs Vercel's automation
- * bypass to let its own kick reach its own drain route. */
-function kickHeaders(secret: string): Record<string, string> {
+/**
+ * This deployment's unique URL (`VERCEL_URL`), or null when the process is not
+ * a Vercel deployment. No protocol in the env var; the origin always has one.
+ */
+type Env = Readonly<Record<string, string | undefined>>;
+
+export function deploymentOrigin(env: Env = process.env): string | null {
+  const host = env.VERCEL_URL?.trim();
+  if (!host) return null;
+  try {
+    return new URL(host.includes('://') ? host : `https://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where a Linq inbound kicks its drain.
+ *
+ * Preview always kicks itself. A production request that arrived on this
+ * deployment's own URL kicks itself too: that is the unaliased build the
+ * text gate is probing, and kicking APP_URL would hand the job to the build
+ * still serving parents. Every other production request still kicks APP_URL.
+ */
+export function inboundDrainOrigin(req: Request, env: Env = process.env): string {
+  if (isPreviewDeploy(env)) return new URL(req.url).origin;
+  const requestOrigin = new URL(req.url).origin;
+  const own = deploymentOrigin(env);
+  if (own && requestOrigin === own) return requestOrigin;
+  return env.APP_URL?.replace(/\/$/, '') || requestOrigin;
+}
+
+/** The kick's headers. A protected Preview deploy, and a production deploy
+ * calling its own unaliased URL, need Vercel's automation bypass. The
+ * production domain is not behind that wall, so a kick there stays a bearer. */
+function kickHeaders(secret: string, url: URL): Record<string, string> {
   const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
-  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (isPreviewDeploy() && bypass) headers['x-vercel-protection-bypass'] = bypass;
+  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+  if (!bypass) return headers;
+  const own = deploymentOrigin();
+  if (isPreviewDeploy() || (own && url.origin === own)) {
+    headers['x-vercel-protection-bypass'] = bypass;
+  }
   return headers;
 }
 

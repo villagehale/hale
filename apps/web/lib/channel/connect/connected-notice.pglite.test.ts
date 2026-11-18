@@ -92,6 +92,39 @@ describe('sendConnectorConnectedText', () => {
     );
   }
 
+  it('writes the receipt in the stored language after one off-language turn', async () => {
+    await seedChannel();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    const languages: Array<string | null> = [];
+    ports.friendVoice = {
+      async compose(input) {
+        languages.push(input.language);
+        return { reply: 'Receipt (test fixture).' };
+      },
+    };
+
+    await send('gcal');
+
+    expect(languages.length).toBeGreaterThan(0);
+    expect(languages).toEqual(languages.map(() => 'fr'));
+  });
+
   it('texts the verified number once, then the calendar card', async () => {
     await seedChannel();
 

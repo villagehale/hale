@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ParentClock } from './family-tz.js';
 import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 import {
   type OutboundGatePorts,
@@ -12,7 +13,9 @@ import {
   holdStatus,
   proactiveFloorOpensAt,
   proactiveQuietNow,
+  quietAcrossZones,
 } from './outbound-gate.js';
+import { PROACTIVE_ROUTING } from './proactive/flag.js';
 
 /**
  * VIL-239 · M4 — the F14 outbound chokepoint.
@@ -695,6 +698,8 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
     expect(holdStatus('quiet_hours')).toBe('suppressed_quiet_hours');
     expect(holdStatus('not_enrolled')).toBe('suppressed_consent');
     expect(holdStatus('no_watch_consent')).toBe('suppressed_consent');
+    expect(holdStatus('opt_out_unread')).toBe('suppressed_consent');
+    expect(holdStatus('sends_paused')).toBe('suppressed_pref');
   });
 
   /**
@@ -735,7 +740,132 @@ describe('holdStatus — one copy, beside the union it is keyed on', () => {
   });
 });
 
+describe('PROACTIVE_SENDS_PAUSED', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const request = (kind: ProactiveSendKind) => ({
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    kind,
+    now: MIDDAY,
+    urgent: true,
+  });
+
+  it('refuses every proactive kind, including immediate, and reads no parent', async () => {
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    const fake = ports();
+    for (const kind of Object.keys(PROACTIVE_ROUTING) as ProactiveSendKind[]) {
+      await expect(assertProactiveSendAllowed(request(kind), fake.ports)).resolves.toEqual({
+        allowed: false,
+        reason: 'sends_paused',
+      });
+    }
+    expect(fake.calls).toEqual([]);
+    expect(Object.keys(PROACTIVE_ROUTING)).toEqual(
+      expect.arrayContaining([
+        'registration_sequence',
+        'spot_open_instant',
+        'autonomy_armed',
+        'autonomy_acted',
+      ]),
+    );
+  });
+
+  it('stays open unless the value is exactly true', async () => {
+    const nudge = request('nudge');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true\n');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'TRUE');
+    await expect(assertProactiveSendAllowed(nudge, ports().ports)).resolves.toMatchObject({
+      allowed: true,
+    });
+  });
+});
+
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', '.turbo']);
+
+describe('quiet hours when the zone was never resolved (VIL-709)', () => {
+  const zones = [
+    'America/St_Johns',
+    'America/Halifax',
+    'America/Toronto',
+    'America/Winnipeg',
+    'America/Regina',
+    'America/Edmonton',
+    'America/Vancouver',
+    'America/Whitehorse',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+  ];
+
+  function gate(now: Date, clock: ParentClock) {
+    const fake = ports({ timeZone: 'UTC' });
+    return assertProactiveSendAllowed(
+      { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now },
+      { ...fake.ports, parentClock: async () => clock },
+    );
+  }
+
+  it('keeps 21:00–08:00 in a stored America/New_York zone', async () => {
+    const zone = {
+      kind: 'zone' as const,
+      timeZone: 'America/New_York',
+      source: 'stored' as const,
+    };
+    // 07:59 EST, then 08:00 EST, then noon, then 21:00 EST.
+    await expect(gate(new Date('2026-01-15T12:59:00.000Z'), zone)).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+    await expect(gate(new Date('2026-01-15T13:00:00.000Z'), zone)).resolves.toMatchObject({
+      allowed: true,
+    });
+    await expect(gate(new Date('2026-01-15T17:00:00.000Z'), zone)).resolves.toMatchObject({
+      allowed: true,
+    });
+    await expect(gate(new Date('2026-01-16T02:00:00.000Z'), zone)).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+  });
+
+  it('holds a send that is noon in UTC and still night on the east coast', async () => {
+    await expect(
+      quietAcrossZones({ now: new Date('2026-01-15T12:00:00.000Z'), zones }),
+    ).resolves.toBe(true);
+    await expect(
+      gate(new Date('2026-01-15T12:00:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('allows a send only while it is daytime from Honolulu through Newfoundland', async () => {
+    await expect(
+      quietAcrossZones({ now: new Date('2026-01-15T18:00:00.000Z'), zones }),
+    ).resolves.toBe(false);
+    await expect(
+      gate(new Date('2026-01-15T18:00:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toMatchObject({ allowed: true });
+    // 07:59 in Honolulu, and 21:00 in St. John's.
+    await expect(
+      gate(new Date('2026-01-15T17:59:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+    await expect(
+      gate(new Date('2026-01-16T00:30:00.000Z'), { kind: 'unresolved', zones }),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+});
 
 /** Every non-test source file under `dir`, the `one-door.test.ts` walk. */
 function sourceFiles(dir: string): string[] {

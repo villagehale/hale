@@ -3,7 +3,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -54,7 +54,10 @@ export function introGroupRefusals(body: string, request: IntroGroupRequest): In
   const found: IntroGroupRefusal[] = [];
   if (body.length > MAX_INTRO_GROUP_CHARS) found.push('over_char_cap');
   // Linq refuses a link in the first message of a new chat (1005).
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('intro-group-voice', 'redraft');
+    found.push('carries_link');
+  }
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   const lower = body.toLowerCase();
   if (

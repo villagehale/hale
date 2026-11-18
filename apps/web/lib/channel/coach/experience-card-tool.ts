@@ -1,5 +1,6 @@
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { z } from 'zod';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import type { RefLink } from './activity-links';
 
 /**
@@ -43,7 +44,10 @@ export function experienceCardViolations(
   const title = input.title.trim();
   if (title === '') out.push('The title was empty.');
   if (title.length > TITLE_MAX) out.push(`The title is over ${TITLE_MAX} characters.`);
-  if (/https?:\/\/|www\./i.test(title)) out.push('The title contains a link. Do not write one.');
+  if (hasLinkShape(title)) {
+    noteLinkGate('experience-card', 'redraft');
+    out.push('The title contains a link. Do not write one.');
+  }
   return out;
 }
 

@@ -121,6 +121,7 @@ describe('sendLinqAppCard', () => {
       link: { status: 'sent' },
     });
     expect(body(fetchImpl).message).toEqual({
+      idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
       parts: [{ type: 'link', value: CARD.url }],
     });
   });
@@ -154,6 +155,7 @@ describe('sendLinqAppCard', () => {
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(`/chats/${CHAT}/messages`);
     expect(body(fetchImpl)).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         experience: {
           name: 'link',
           action: 'open',

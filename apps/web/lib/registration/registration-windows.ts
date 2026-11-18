@@ -18,6 +18,50 @@ import {
  * and `syncRegistrationWindows` is the thin write on top of it.
  */
 
+/**
+ * The host a municipality's own registration page lives on. A window is written only
+ * when its source is https on this host (or a subdomain of it). `www.` is the same host.
+ */
+export const MUNICIPALITY_SOURCE_HOST: Readonly<Record<string, string>> = {
+  toronto: 'toronto.ca',
+  markham: 'markham.ca',
+  vaughan: 'vaughan.ca',
+  richmond_hill: 'richmondhill.ca',
+  mississauga: 'mississauga.ca',
+  oakville: 'oakville.ca',
+  burlington: 'burlington.ca',
+  halton_hills: 'haltonhills.ca',
+  brampton: 'brampton.ca',
+  caledon: 'caledon.ca',
+  ajax: 'ajax.ca',
+  pickering: 'pickering.ca',
+  whitby: 'whitby.ca',
+  oshawa: 'oshawa.ca',
+  aurora: 'aurora.ca',
+  whitchurch_stouffville: 'townofws.ca',
+  newmarket: 'newmarket.ca',
+  king: 'king.ca',
+  east_gwillimbury: 'eastgwillimbury.ca',
+  georgina: 'georgina.ca',
+  uxbridge: 'uxbridge.ca',
+};
+
+function municipalSourceHost(sourceUrl: string): string | null {
+  try {
+    const host = new URL(sourceUrl).hostname.toLowerCase();
+    return host.startsWith('www.') ? host.slice(4) : host;
+  } catch {
+    return null;
+  }
+}
+
+function sourceIsOnMunicipalHost(municipality: string, sourceUrl: string): boolean {
+  const expected = MUNICIPALITY_SOURCE_HOST[municipality];
+  const host = municipalSourceHost(sourceUrl);
+  if (!expected || host === null) return false;
+  return host === expected || host.endsWith(`.${expected}`);
+}
+
 /** Parse a seed's ISO instant, refusing anything ambiguous or unparseable. */
 function parseInstant(field: string, value: string): Date {
   // An offset (or Z) is REQUIRED: "2026-08-11T06:30:00" would be read in the server's
@@ -40,6 +84,13 @@ function parseInstant(field: string, value: string): Date {
 export function toRegistrationWindowRow(seed: RegistrationWindowSeed): NewRegistrationWindow {
   if (!seed.sourceUrl.startsWith('https://')) {
     throw new Error(`registration window source must be https: ${seed.sourceUrl}`);
+  }
+  if (!sourceIsOnMunicipalHost(seed.municipality, seed.sourceUrl)) {
+    const host = municipalSourceHost(seed.sourceUrl) ?? 'unparseable';
+    const expected = MUNICIPALITY_SOURCE_HOST[seed.municipality] ?? 'unknown';
+    throw new Error(
+      `registration window source must be on ${seed.municipality}'s host ${expected}, got ${host}`,
+    );
   }
   const openAt = parseInstant('openAt', seed.openAt);
   const residentOpenAt = seed.residentOpenAt

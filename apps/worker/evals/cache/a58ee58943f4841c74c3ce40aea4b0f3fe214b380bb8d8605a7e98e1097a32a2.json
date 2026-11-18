@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Pas de souci, on arrête là pour le code postal. Tu peux me dire comment tu t'appelles, ou on passe aux enfants?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1902,
+  "usage": {
+    "input_tokens": 718,
+    "output_tokens": 459,
+    "cache_read_input_tokens": 7119,
+    "cache_creation_input_tokens": 0
+  }
+}

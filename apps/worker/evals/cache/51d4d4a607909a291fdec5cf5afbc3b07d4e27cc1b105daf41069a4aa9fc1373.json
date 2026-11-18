@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Pour trouver ce qui est proche de toi, le code postal compte vraiment, mais les trois premiers caractères suffisent, ou le code ZIP à cinq chiffres si tu es aux États-Unis. Ça me place par quartier, pas par adresse. Tu peux me donner ça ?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "language": "fr"
+  },
+  "latencyMs": 2142,
+  "usage": {
+    "input_tokens": 617,
+    "output_tokens": 500,
+    "cache_read_input_tokens": 7119,
+    "cache_creation_input_tokens": 0
+  }
+}

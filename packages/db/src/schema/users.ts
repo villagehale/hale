@@ -44,6 +44,16 @@ export const users = pgTable(
     /** How many texts in a row were in {@link languageStreakTag}. */
     languageStreakCount: integer('language_streak_count').notNull().default(0),
     timezone: text('timezone').notNull().default('UTC'),
+    /**
+     * VIL-709. A zone resolved from a place, a phone area, the home metro, or a
+     * stated city or region. Null when nothing resolved. `timezone` stays the
+     * UTC default so a dark FAMILY_TZ_RESOLVE_ENABLED keeps the old clock.
+     */
+    resolvedTimezone: text('resolved_timezone'),
+    /** Which signal wrote {@link resolvedTimezone}. Null when it was never resolved. */
+    timezoneSource: text('timezone_source').$type<
+      'place' | 'phone' | 'metro' | 'stated' | 'household'
+    >(),
     units: text('units').notNull().default('metric'),
     /** 0=Sunday, 1=Monday — same as localParts / Date.getUTCDay(), never 7.
      * Product default Sunday (VIL-319 / F11). */

@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
 import type { SignupSession } from '../types';
@@ -165,6 +165,7 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
 
 function cleanQuestion(value: string | null): string | null {
   const text = value?.replace(/\s+/g, ' ').trim() ?? '';
+  if (text && hasLinkShape(text)) noteLinkGate('signup-plan-reader', 'refused');
   if (!text || text.length > MAX_QUESTION_CHARS || hasLinkShape(text)) return null;
   return text;
 }

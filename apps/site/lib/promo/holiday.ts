@@ -55,10 +55,9 @@ export interface PromoTierPrice {
 }
 
 /**
- * Regular annual prices (struck through), from the site's existing public
- * price copy: Plus $159 CAD / $119 USD (PLUS_LIST_PRICE_DISPLAY in
- * @hale/types), Max $329 CAD / $259 USD (apps/site/lib/faq/index.ts,
- * apps/site/app/llms.txt, copy.md). There is no Stripe regular Max price.
+ * Regular annual prices (struck through), from the list display in @hale/types:
+ * Plus $159 / $119 (PLUS_LIST_PRICE_DISPLAY), Max $329 / $259
+ * (MAX_LIST_PRICE_DISPLAY). The promo UI prints these as a plain "$".
  */
 export const REGULAR_ANNUAL_DISPLAY: Record<BillingCurrency, Record<PromoTier, number>> = {
   CAD: { plus: 159, max: 329 },

@@ -8,7 +8,7 @@ import type {
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkBeyond, hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -131,10 +131,16 @@ export function calendarWriteNoticeRefusals(
   const found: string[] = [];
   if (text.length > CALENDAR_WRITE_NOTICE_MAX_CHARS) found.push('over_char_cap');
   if (input.connectLink === null) {
-    if (hasLinkShape(text)) found.push('carries_link');
+    if (hasLinkShape(text)) {
+      noteLinkGate('calendar-write-notice', 'redraft');
+      found.push('carries_link');
+    }
   } else {
     if (!text.includes(input.connectLink)) found.push('link_missing');
-    if (hasLinkBeyond(text, [input.connectLink])) found.push('other_link');
+    if (hasLinkBeyond(text, [input.connectLink])) {
+      noteLinkGate('calendar-write-notice', 'redraft');
+      found.push('other_link');
+    }
   }
   return found;
 }

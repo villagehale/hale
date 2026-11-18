@@ -84,16 +84,16 @@ describe('promo annual display', () => {
 });
 
 describe('Plus list display', () => {
-  it('pins CAD to the existing public Plus copy and USD to create-prices cents', () => {
+  it('pins the public Plus amounts with a plain $ and no currency label', () => {
     expect(PLUS_LIST_PRICE_DISPLAY.CAD).toEqual({
-      monthlyLabel: '$19/mo CAD',
-      annualLabel: '$159/yr CAD',
+      monthlyLabel: '$19/mo',
+      annualLabel: '$159/yr',
       monthlyCents: 1900,
       annualCents: 15900,
     });
     expect(PLUS_LIST_PRICE_DISPLAY.USD).toEqual({
-      monthlyLabel: '$14/mo USD',
-      annualLabel: '$119/yr USD',
+      monthlyLabel: '$14/mo',
+      annualLabel: '$119/yr',
       monthlyCents: 1400,
       annualCents: 11900,
     });
@@ -101,13 +101,13 @@ describe('Plus list display', () => {
 });
 
 describe('Max list annual display', () => {
-  it('pins CAD 32900 and USD 25900 for after the cutoff', () => {
+  it('pins CAD 32900 and USD 25900 for after the cutoff, with a plain $', () => {
     expect(MAX_LIST_PRICE_DISPLAY.CAD).toEqual({
-      annualLabel: '$329/yr CAD',
+      annualLabel: '$329/yr',
       annualCents: 32900,
     });
     expect(MAX_LIST_PRICE_DISPLAY.USD).toEqual({
-      annualLabel: '$259/yr USD',
+      annualLabel: '$259/yr',
       annualCents: 25900,
     });
   });

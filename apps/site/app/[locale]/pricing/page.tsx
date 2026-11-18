@@ -43,7 +43,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PricingPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
   const priceSurface = sitePriceSurface();
-  const currency = priceSurface === 'list' ? await visitorCurrency() : 'CAD';
+  const currency = await visitorCurrency();
   return (
     <RedesignPricing
       locale={locale}

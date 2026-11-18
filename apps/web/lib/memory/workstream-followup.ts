@@ -864,6 +864,7 @@ function emptyHeld(): WorkstreamFollowupResult['held'] {
     opt_out_unread: 0,
     no_watch_consent: 0,
     quiet_hours: 0,
+    sends_paused: 0,
     coparent_ask: 0,
   };
 }

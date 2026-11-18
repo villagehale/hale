@@ -101,8 +101,9 @@ function countOutcome(result: AutonomyNoticeDispatchResult, outcome: AutonomyNot
   else if (outcome === 'no_send_target') result.noSendTarget += 1;
   else if (outcome === 'send_failed') result.sendFailed += 1;
   else if (outcome.startsWith('compose_skipped:')) result.composeSkipped += 1;
-  else if (outcome === 'gate_refused:quiet_hours') result.heldAgain += 1;
-  else result.refused += 1;
+  else if (outcome === 'gate_refused:quiet_hours' || outcome === 'gate_refused:sends_paused') {
+    result.heldAgain += 1;
+  } else result.refused += 1;
 }
 
 async function claimedKeys(database: Database, keys: string[]): Promise<Set<string>> {

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -49,7 +49,10 @@ function factSlots(facts: CarpoolVoiceFacts): string[] {
 export function carpoolLineUsable(line: string, kind: CarpoolVoiceKind): boolean {
   const body = line.trim();
   if (body.length === 0) return false;
-  if (hasLinkShape(body)) return false;
+  if (hasLinkShape(body)) {
+    noteLinkGate('carpool-voice', 'refused');
+    return false;
+  }
   const questions = (body.match(/\?/g) ?? []).length;
   if (kind === 'ask_driver') return questions === 1;
   return questions === 0;
@@ -81,8 +84,7 @@ export function createCarpoolComposer(options?: {
         await pageUnsent(input.kind, 'skill_unavailable');
         return null;
       }
-      const client =
-        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
+      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const parse = (answer: string | null) => {
         if (!answer) return null;
         const raw = firstJsonObject(answer);

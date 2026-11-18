@@ -30,8 +30,8 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { type SendRefusalReason, refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -392,6 +392,7 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
       opt_out_unread: 0,
       no_watch_consent: 0,
       quiet_hours: 0,
+      sends_paused: 0,
       coparent_ask: 0,
     },
     skipped: {

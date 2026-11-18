@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { AddRole } from './parse';
 
@@ -58,7 +58,10 @@ export function addThemYourselfRefusals(
   if (body.trim() === '') return ['empty'];
   const found: AddThemYourselfRefusal[] = [];
   if (body.length > MAX_ADD_THEM_YOURSELF_CHARS) found.push('over_char_cap');
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('add-them-yourself', 'redraft');
+    found.push('carries_link');
+  }
   if (NUMBER_SHAPE.test(body)) found.push('carries_number');
   if (CONTACT_CLAIM.test(body)) found.push('claims_contact');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');

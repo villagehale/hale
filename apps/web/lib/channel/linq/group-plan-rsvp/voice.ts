@@ -2,7 +2,7 @@ import { pickLane } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-destination';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -70,7 +70,10 @@ const NO_HANDED_DATE: EventDate = { year: 0, month: 0, day: 0 };
 
 function lineUsable(line: string, input: GroupLineInput): boolean {
   if (!line.trim()) return false;
-  if (hasLinkShape(line)) return false;
+  if (hasLinkShape(line)) {
+    noteLinkGate('group-plan-rsvp', 'refused');
+    return false;
+  }
   // A 1:1 line goes to one parent's own phone: no number to dial or address to mail,
   // whatever the plan title or their own words held.
   if (
@@ -89,8 +92,7 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
   return {
     async compose(input, options) {
       const skill = await loadCronSkill(input.skill);
-      const client =
-        voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
+      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),

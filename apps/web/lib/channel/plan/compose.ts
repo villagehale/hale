@@ -7,7 +7,7 @@ import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
 
@@ -249,6 +249,7 @@ export function planViolations(
       );
     }
     if (hasLinkShape(body)) {
+      noteLinkGate('coach-plan', 'redraft');
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }
     if (DOSING_SHAPE.test(body)) {

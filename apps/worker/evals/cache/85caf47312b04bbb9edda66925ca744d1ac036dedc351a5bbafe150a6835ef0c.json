@@ -1,0 +1,24 @@
+{
+  "value": {
+    "reply": "Good question. Once I know Mia and Leo's ages, I'll look for things that fit each of them near you, like classes, story times, and swims. How old is each of them?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false
+  },
+  "latencyMs": 1646,
+  "usage": {
+    "input_tokens": 587,
+    "output_tokens": 390,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

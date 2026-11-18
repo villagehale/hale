@@ -8,7 +8,7 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ParentReaction } from '~/lib/channel/linq/tapback';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { judgeHoldingLine } from './holding-line-judge';
 import type { HoldingTapbackComposer } from './holding-tapback';
@@ -70,7 +70,10 @@ export type HoldingLineRefusal =
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('holding-line', 'redraft');
+    found.push('carries_link');
+  }
   if (/\d/.test(body)) found.push('carries_number');
   return found;
 }

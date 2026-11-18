@@ -12,8 +12,8 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -84,7 +84,13 @@ function emptyResult(enabled: boolean): PlanCheckInResult {
     enabled,
     due: 0,
     sent: 0,
-    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      opt_out_unread: 0,
+      no_watch_consent: 0,
+      quiet_hours: 0,
+      sends_paused: 0,
+    },
     unsendable: 0,
     deferred: 0,
     queued: 0,

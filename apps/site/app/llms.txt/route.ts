@@ -1,6 +1,7 @@
+import { type FamilyStage, MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
-import type { FamilyStage } from '@hale/types';
+import { REFUND_LINE } from '~/lib/billing/plain-price';
 
 /**
  * /llms.txt — the emerging convention for telling AI assistants what a site is
@@ -33,7 +34,7 @@ function buildLlmsTxt(): string {
     '- What it does: finds activities near you by age (swim, camps, drop-ins, library programs, rec classes) with the source page for each; watches full classes for spots; reminds you before registration; asks how it went; works in group chats; reads photos of flyers and schedules; replies in the language you write in; with permission, reads Gmail and Google Calendar to keep dates straight, asking before it adds or changes anything.',
     '- Sign-ups and payment: Hale signs your kid up when you say yes, then hands you the payment step. You always pay yourself.',
     '- How it works: text Hale, tell it where you are and your kids\' ages, and it shows what\'s on this week. It texts only when there is a reason. Reply STOP any time.',
-    '- Price: free with unlimited chat. Paid plans: Plus $19 CAD / $14 USD a month or $159 CAD / $119 USD a year; Max $39 CAD / $29 USD a month or $329 CAD / $259 USD a year. Families who join now get every feature free until paid plans start.',
+    `- Price: Free is $0 with unlimited chat. In Canada, Plus is ${PLUS_LIST_PRICE_DISPLAY.CAD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.CAD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.CAD.annualLabel}. In the US, Plus is ${PLUS_LIST_PRICE_DISPLAY.USD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.USD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.USD.annualLabel}. The number on the site follows where you are. ${REFUND_LINE}`,
     '- Company: Village Hale Technologies Inc., Georgetown, Ontario. Founders Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
     `- Pages: [About](${SITE_URL}/about), [FAQ](${SITE_URL}/faq), [Pricing](${SITE_URL}/pricing)`,
     '',

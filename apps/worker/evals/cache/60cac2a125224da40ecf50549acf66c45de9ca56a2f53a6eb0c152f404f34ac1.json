@@ -1,0 +1,24 @@
+{
+  "value": {
+    "reply": "Great, that's everything I need for now. I'll text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 0,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "questionBeforeList": false
+  },
+  "latencyMs": 1475,
+  "usage": {
+    "input_tokens": 520,
+    "output_tokens": 364,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}
