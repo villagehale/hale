@@ -6,11 +6,14 @@ import { headers } from 'next/headers';
  * With CHECKOUT_SERVER_CURRENCY_ENABLED exactly `true`, only US and CA resolve.
  * Anything else is null so a client is not told to pay CAD.
  */
-export function visitorCurrencyFromHeaders(headerList: {
-  get(name: string): string | null;
-}): BillingCurrency | null {
+export function visitorCurrencyFromHeaders(
+  headerList: {
+    get(name: string): string | null;
+  },
+  env: Record<string, string | undefined> = process.env,
+): BillingCurrency | null {
   const country = headerList.get('x-vercel-ip-country');
-  if (process.env.CHECKOUT_SERVER_CURRENCY_ENABLED === 'true') {
+  if (env.CHECKOUT_SERVER_CURRENCY_ENABLED === 'true') {
     return serverCheckoutCurrency(country);
   }
   return currencyFromIpCountry(country);
