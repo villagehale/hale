@@ -64,10 +64,33 @@ export const MAX_LIST_PRICE_DISPLAY: Record<
 /**
  * US → USD; every other country code, and a missing header, → CAD.
  * Reads Vercel's `x-vercel-ip-country` value (ISO 3166-1 alpha-2).
+ *
+ * Display-only. The sale card keeps a bare `$`. Checkout does not use this
+ * once CHECKOUT_SERVER_CURRENCY_ENABLED is exactly `true` — it uses
+ * `serverCheckoutCurrency`, which refuses anything other than US or CA.
  */
 export function currencyFromIpCountry(countryHeader: string | null | undefined): BillingCurrency {
   const country = countryHeader?.trim().toUpperCase();
   return country === 'US' ? 'USD' : 'CAD';
+}
+
+/** Shown instead of a buy button when checkout is refused for the visitor's country. */
+export const CHECKOUT_REGION_UNSUPPORTED_MESSAGE =
+  "Hale is only in the US and Canada for now. We'll let you know when it reaches you.";
+
+/**
+ * The currency the server will charge. US → USD, CA → CAD. A missing or empty
+ * geo header keeps the CAD fallback. Any other explicit country is null — the
+ * caller refuses checkout, with no USD/CAD fallback and no client-sent currency.
+ */
+export function serverCheckoutCurrency(
+  countryHeader: string | null | undefined,
+): BillingCurrency | null {
+  const country = countryHeader?.trim().toUpperCase();
+  if (!country) return 'CAD';
+  if (country === 'US') return 'USD';
+  if (country === 'CA') return 'CAD';
+  return null;
 }
 
 /** Parse an override timestamp, or the Toronto default when unset/invalid. */

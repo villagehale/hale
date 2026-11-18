@@ -2,12 +2,13 @@ import {
   type BillingCurrency,
   FOUNDING_PROMO_STARTS_AT,
   HOLIDAY_SALE_STARTS_AT,
-  type PromoPhase,
   PROMO_PRICE_DISPLAY,
+  type PromoPhase,
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
   promoPhaseAt,
+  serverCheckoutCurrency,
 } from '@hale/types';
 
 /**
@@ -170,6 +171,20 @@ export function resolveHolidayPromo(input: {
   if (o.show === false) return null;
   const on = o.show === true || (promoSwitchOn(env) && promoWindowOpen(input.now, env));
   if (!on) return null;
-  const currency = currencyFromIpCountry(o.country ?? input.country);
+  const currency = promoDisplayCurrency(o.country ?? input.country, env);
+  if (!currency) return null;
   return buildHolidayPromo(o.phase ?? promoPhase(input.now), currency);
+}
+
+/**
+ * Sale-card amounts. Bare `$` either way. With CHECKOUT_SERVER_CURRENCY_ENABLED
+ * exactly `true`, only US and CA get a number, and a missing header keeps the
+ * CAD number — every other explicit country is hidden.
+ */
+function promoDisplayCurrency(
+  country: string | null | undefined,
+  env: Env,
+): BillingCurrency | null {
+  if (env.CHECKOUT_SERVER_CURRENCY_ENABLED === 'true') return serverCheckoutCurrency(country);
+  return currencyFromIpCountry(country);
 }

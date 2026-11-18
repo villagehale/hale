@@ -15,7 +15,7 @@ vi.mock('~/lib/billing/stripe-client', () => ({
 
 async function post(
   cookie?: string,
-  country = 'CA',
+  country: string | null = 'CA',
   url = 'https://app.example.com/api/promo/join/checkout',
   body: unknown = {},
 ) {
@@ -26,7 +26,7 @@ async function post(
       headers: {
         'content-type': 'application/json',
         ...(cookie ? { cookie } : {}),
-        'x-vercel-ip-country': country,
+        ...(country === null ? {} : { 'x-vercel-ip-country': country }),
       },
       body: JSON.stringify(body),
     }),
@@ -213,5 +213,63 @@ describe('POST /api/promo/join/checkout', () => {
     const res = await post(`${PROMO_JOIN_COOKIE}=${token}`);
     expect(res.status).toBe(501);
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  describe.each([true, false])('geo matrix with CHECKOUT_SERVER_CURRENCY_ENABLED=%s', (flagOn) => {
+    function setup() {
+      vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+      vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+      if (flagOn) vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+      vi.stubEnv('AUTH_SECRET', 'test-secret');
+      vi.stubEnv('APP_URL', 'https://app.example.com');
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD', 'price_plus_usd');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+      createMock.mockResolvedValue({
+        status: 'created',
+        url: 'https://checkout.stripe.com/c/pay/cs',
+      });
+      const token = signPromoJoinBinding({
+        familyId: 'fam-9',
+        userId: 'user-9',
+        externalAuthId: 'sms:abc',
+      });
+      return `${PROMO_JOIN_COOKIE}=${token}`;
+    }
+
+    it('allows US as USD', async () => {
+      const res = await post(setup(), 'US');
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'USD' });
+    });
+
+    it('allows CA as CAD', async () => {
+      const res = await post(setup(), 'CA');
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it('sends a missing geo header to CAD', async () => {
+      const res = await post(setup(), null);
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it(
+      flagOn
+        ? 'refuses another country with no Stripe session'
+        : 'still charges CAD for another country (flag off, unchanged)',
+      async () => {
+        const res = await post(setup(), 'GB');
+        if (flagOn) {
+          expect(res.status).toBe(403);
+          expect(await res.json()).toEqual({ error: 'region_unsupported' });
+          expect(createMock).not.toHaveBeenCalled();
+        } else {
+          expect(res.status).toBe(200);
+          expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+        }
+      },
+    );
   });
 });

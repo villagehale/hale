@@ -1,13 +1,22 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { stripeBillingRevokeEnabled } from '~/lib/billing/flags';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
+import {
+  type StripeChargeLookup,
+  stripeChargeLookupFromEnv,
+} from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
+import { alertUnresolvedBillingRevoke } from '~/lib/monitoring/billing-tier-alert';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import {
+  type ChargeRevokeDecision,
   type PriceTierMap,
   type StripeTierOptions,
+  chargeLinkFromStripeEvent,
+  chargeRevokeDecision,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   paidEventOccurredAt,
@@ -48,7 +57,13 @@ export type ApplyStripeBillingResult =
   | { status: 'unknown_family' }
   | { status: 'ignored' }
   | { status: 'refund_ready'; opsAlert: OpsPageOutcome }
-  | { status: 'blocked' };
+  | { status: 'blocked' }
+  | { status: 'kept'; reason: 'partial_refund' | 'active_subscription' }
+  | {
+      status: 'unresolved';
+      reason: 'no_family' | 'subscription_unresolved';
+      opsAlert: OpsPageOutcome;
+    };
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -61,6 +76,16 @@ export interface ApplyStripeBillingDeps {
   }) => Promise<OpsPageOutcome | undefined>;
   /** Test seam. Production queries billing_refund_ready audit rows. */
   subscriptionBlocked?: (familyId: string, subscriptionId: string) => Promise<boolean>;
+  /**
+   * Charge → subscription lookup. Omitted uses STRIPE_SECRET_KEY when set.
+   * Null skips the network (tests that already expanded the payload).
+   */
+  chargeLookup?: StripeChargeLookup | null;
+  /** Test seam for the unresolved #ops page. */
+  onUnresolvedRevoke?: (info: {
+    eventId: string;
+    reason: 'no_family' | 'subscription_unresolved';
+  }) => Promise<OpsPageOutcome | undefined>;
 }
 
 export async function applyStripeBillingEvent(
@@ -79,6 +104,12 @@ export async function applyStripeBillingEvent(
   const priceDecision = decidePaidSessionGrant(event, now, env);
   if (priceDecision.status === 'disallowed') {
     return markRefundReady(event, eventId, priceDecision, database, deps);
+  }
+  if (stripeBillingRevokeEnabled(env)) {
+    const revoke = chargeRevokeDecision(event);
+    if (revoke.action !== 'ignore') {
+      return applyChargeRevoke(event, eventId, revoke, database, deps);
+    }
   }
   const tier = planTierFromStripeEvent(event, priceTierMap, tierOptions);
   if (tier === null) {
@@ -149,6 +180,213 @@ export async function applyStripeBillingEvent(
 
     return { status: 'applied', tier };
   });
+}
+
+const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
+
+interface LinkedCharge {
+  familyId: string | null;
+  customerId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+}
+
+async function applyChargeRevoke(
+  event: unknown,
+  eventId: string,
+  decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const linked = await linkCharge(event, deps);
+  const familyId = await familyIdForLinkedCharge(linked, database);
+  if (!familyId) return unresolvedRevoke(eventId, 'no_family', null, database, deps);
+
+  type ChargeTxResult =
+    | Exclude<ApplyStripeBillingResult, { status: 'unresolved' }>
+    | { status: 'leave_unresolved' };
+
+  return database
+    .transaction(async (tx): Promise<ChargeTxResult> => {
+      const existing = await tx
+        .select({
+          planTier: schema.families.planTier,
+          stripeSubscriptionId: schema.families.stripeSubscriptionId,
+        })
+        .from(schema.families)
+        .where(eq(schema.families.id, familyId))
+        .limit(1);
+      if (existing.length === 0) {
+        console.warn(
+          `stripe billing: event ${eventId} references unknown family ${familyId} — acknowledged, not applied`,
+        );
+        return { status: 'unknown_family' };
+      }
+      const current = existing[0];
+      if (!current) return { status: 'unknown_family' };
+
+      const partial = decision.action === 'keep' && decision.reason === 'partial_refund';
+      const live =
+        linked.subscriptionStatus !== null && LIVE_SUBSCRIPTION.has(linked.subscriptionStatus);
+      const otherSubscription = Boolean(
+        linked.subscriptionId &&
+          current.stripeSubscriptionId &&
+          linked.subscriptionId !== current.stripeSubscriptionId,
+      );
+      const tiedToCurrent =
+        linked.subscriptionId !== null &&
+        current.stripeSubscriptionId !== null &&
+        linked.subscriptionId === current.stripeSubscriptionId;
+      const nothingLiveOnFile = !current.stripeSubscriptionId;
+
+      if (partial || live || otherSubscription) {
+        const reason = partial ? 'partial_refund' : 'active_subscription';
+        const claimed = await claimEvent(tx, eventId);
+        if (!claimed) return { status: 'duplicate' };
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'billing_refunded',
+          targetTable: 'families',
+          targetId: familyId,
+          after: {
+            planTier: current.planTier,
+            source: 'stripe',
+            stripeEventId: eventId,
+            reason,
+            tierChanged: false,
+          },
+        });
+        return { status: 'kept', reason };
+      }
+
+      if (!tiedToCurrent && !nothingLiveOnFile) {
+        return { status: 'leave_unresolved' };
+      }
+
+      const claimed = await claimEvent(tx, eventId);
+      if (!claimed) return { status: 'duplicate' };
+      await tx
+        .update(schema.families)
+        .set({ planTier: 'free', updatedAt: new Date() })
+        .where(eq(schema.families.id, familyId));
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'family_plan_updated',
+        targetTable: 'families',
+        targetId: familyId,
+        before: { planTier: current.planTier },
+        after: {
+          planTier: 'free',
+          source: 'stripe',
+          stripeEventId: eventId,
+          reason: decision.kind,
+        },
+      });
+      return { status: 'applied', tier: 'free' };
+    })
+    .then(async (result): Promise<ApplyStripeBillingResult> => {
+      if (result.status === 'leave_unresolved') {
+        return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps);
+      }
+      return result;
+    });
+}
+
+async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise<LinkedCharge> {
+  const link = chargeLinkFromStripeEvent(event);
+  const base: LinkedCharge = {
+    familyId: familyIdFromStripeEvent(event),
+    customerId: stripeRefsFromStripeEvent(event).customerId,
+    subscriptionId: link.subscriptionId,
+    subscriptionStatus: link.subscriptionStatus,
+  };
+  const needsLookup = !base.subscriptionId || (!base.familyId && !base.customerId);
+  if (!needsLookup || !link.chargeId) return base;
+  const lookup =
+    deps.chargeLookup === undefined
+      ? stripeChargeLookupFromEnv(deps.env ?? process.env)
+      : deps.chargeLookup;
+  if (!lookup) return base;
+  const found = await lookup.lookupCharge(link.chargeId);
+  return {
+    familyId: base.familyId ?? found.familyId,
+    customerId: base.customerId ?? found.customerId,
+    subscriptionId: base.subscriptionId ?? found.subscriptionId,
+    subscriptionStatus: base.subscriptionStatus ?? found.subscriptionStatus,
+  };
+}
+
+async function familyIdForLinkedCharge(
+  linked: LinkedCharge,
+  database: Database,
+): Promise<string | null> {
+  if (linked.familyId) return linked.familyId;
+  if (!linked.customerId) return null;
+  const rows = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.stripeCustomerId, linked.customerId))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+async function unresolvedAlreadyRecorded(
+  database: Database,
+  familyId: string,
+  eventId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'billing_revoke_unresolved'),
+      ),
+    )
+    .limit(20);
+  return rows.some((row) => auditEventId(row.after) === eventId);
+}
+
+async function unresolvedRevoke(
+  eventId: string,
+  reason: 'no_family' | 'subscription_unresolved',
+  familyId: string | null,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  if (familyId && (await unresolvedAlreadyRecorded(database, familyId, eventId))) {
+    return { status: 'duplicate' };
+  }
+  if (familyId) {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'billing_revoke_unresolved',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
+    });
+  }
+  const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
+  const posted = await alert({ eventId, reason });
+  const opsAlert = posted ?? 'sent';
+  console.warn('stripe billing: revoke unresolved', { eventId, reason, opsAlert });
+  return { status: 'unresolved', reason, opsAlert };
+}
+
+async function claimEvent(
+  tx: Parameters<Parameters<Database['transaction']>[0]>[0],
+  eventId: string,
+): Promise<boolean> {
+  const claim = await tx
+    .insert(schema.stripeBillingEvents)
+    .values({ eventId })
+    .onConflictDoNothing()
+    .returning({ id: schema.stripeBillingEvents.id });
+  return claim.length > 0;
 }
 
 async function isSubscriptionBlocked(
@@ -277,5 +515,11 @@ async function markRefundReady(
 function auditSubscriptionId(after: unknown): string | null {
   if (typeof after !== 'object' || after === null || Array.isArray(after)) return null;
   const id = (after as { subscriptionId?: unknown }).subscriptionId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+function auditEventId(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null || Array.isArray(after)) return null;
+  const id = (after as { stripeEventId?: unknown }).stripeEventId;
   return typeof id === 'string' && id.length > 0 ? id : null;
 }

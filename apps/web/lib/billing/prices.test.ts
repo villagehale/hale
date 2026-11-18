@@ -1,9 +1,11 @@
+import { PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
   foundingPromoOpen,
   isPromoPriceId,
   paidTierFromSku,
   paidTierFromUnknown,
+  parsePaidTier,
   paymentLinkUrlWhilePromoAllows,
   plusPriceIdsFromEnv,
   promoMaxPriceIdsFromEnv,
@@ -39,6 +41,17 @@ describe('paidTierFromUnknown', () => {
     expect(paidTierFromUnknown('plus')).toBe('plus');
     expect(paidTierFromUnknown(undefined)).toBe('plus');
     expect(paidTierFromUnknown('nope')).toBe('plus');
+  });
+});
+
+describe('parsePaidTier', () => {
+  it('maps Max case-insensitively and rejects an unknown tier', () => {
+    expect(parsePaidTier('Max')).toBe('family');
+    expect(parsePaidTier('MAX')).toBe('family');
+    expect(parsePaidTier('family')).toBe('family');
+    expect(parsePaidTier('Plus')).toBe('plus');
+    expect(parsePaidTier('gold')).toBeNull();
+    expect(parsePaidTier(undefined)).toBeNull();
   });
 });
 
@@ -357,6 +370,43 @@ describe('resolveCheckoutPrice', () => {
           HOLIDAY_PROMO_ENABLED: 'true',
           STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus_cad',
           STRIPE_PRICE_FAMILY_ANNUAL: 'price_family_yr',
+        },
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'no_price' });
+  });
+
+  it('uses the USD list price after the window and does not fall back to CAD when the server-currency flag is on', () => {
+    expect(PLUS_LIST_PRICE_DISPLAY.USD.monthlyCents).toBe(1400);
+    expect(PLUS_LIST_PRICE_DISPLAY.USD.annualCents).toBe(11900);
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'monthly',
+        now: AFTER,
+        env: { ...WITH_LIST, CHECKOUT_SERVER_CURRENCY_ENABLED: 'true' },
+      }),
+    ).toMatchObject({
+      price: { priceId: 'price_usd_mo', currency: 'USD', sku: 'plus_monthly' },
+    });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: AFTER,
+        env: { ...WITH_LIST, CHECKOUT_SERVER_CURRENCY_ENABLED: 'true' },
+      }),
+    ).toMatchObject({
+      price: { priceId: 'price_usd_yr', currency: 'USD', sku: 'plus_annual' },
+    });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: AFTER,
+        env: {
+          HOLIDAY_PROMO_ENABLED: 'true',
+          CHECKOUT_SERVER_CURRENCY_ENABLED: 'true',
+          STRIPE_PRICE_PLUS_ANNUAL: 'price_cad_yr',
         },
       }),
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
