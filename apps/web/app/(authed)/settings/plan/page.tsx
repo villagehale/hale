@@ -1,4 +1,8 @@
-import { currencyFromIpCountry, serverCheckoutCurrency } from '@hale/types';
+import {
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
+  currencyFromIpCountry,
+  serverCheckoutCurrency,
+} from '@hale/types';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { PortalHeading } from '~/components/portal/heading';
@@ -25,6 +29,10 @@ export default async function SettingsPlanPage() {
       <PaidPlan tier={basics.planTier} />
     ) : currency && (surface === 'founding' || surface === 'list') ? (
       <PlanOffer currency={currency} surface={surface} />
+    ) : !currency && (surface === 'founding' || surface === 'list') ? (
+      <section className={styles.card}>
+        <p className={styles.text}>{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p>
+      </section>
     ) : (
       <FoundingPlan />
     );

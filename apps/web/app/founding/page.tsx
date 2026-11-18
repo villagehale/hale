@@ -1,4 +1,8 @@
-import { currencyFromIpCountry, serverCheckoutCurrency } from '@hale/types';
+import {
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
+  currencyFromIpCountry,
+  serverCheckoutCurrency,
+} from '@hale/types';
 import type { Metadata } from 'next';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -55,7 +59,13 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
   const currency = checkoutServerCurrencyEnabled()
     ? serverCheckoutCurrency(country)
     : currencyFromIpCountry(country);
-  if (!currency) notFound();
+  if (!currency) {
+    return (
+      <ConnectStage>
+        <p className={stage.pairRow}>{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p>
+      </ConnectStage>
+    );
+  }
   const checkout = params.checkout;
 
   return (

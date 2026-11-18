@@ -21,12 +21,12 @@ describe('visitorCurrencyFromHeaders', () => {
     expect(visitorCurrencyFromHeaders(headers(null))).toBe('CAD');
   });
 
-  it('returns null for a missing or non-US/CA country when the server-currency flag is on', () => {
+  it('returns null for a non-US/CA country, and CAD for a missing header, when the server-currency flag is on', () => {
     vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
     expect(visitorCurrencyFromHeaders(headers('US'))).toBe('USD');
     expect(visitorCurrencyFromHeaders(headers('CA'))).toBe('CAD');
     expect(visitorCurrencyFromHeaders(headers('MX'))).toBeNull();
-    expect(visitorCurrencyFromHeaders(headers(null))).toBeNull();
+    expect(visitorCurrencyFromHeaders(headers(null))).toBe('CAD');
     vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'TRUE');
     expect(visitorCurrencyFromHeaders(headers('MX'))).toBe('CAD');
   });

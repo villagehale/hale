@@ -84,7 +84,10 @@ export async function POST(req: Request): Promise<Response> {
     expectedCurrency: body?.expectedCurrency,
   });
   if (currencyDecision.status !== 'ok') {
-    return NextResponse.json({ error: currencyDecision.status }, { status: 409 });
+    return NextResponse.json(
+      { error: currencyDecision.status },
+      { status: currencyDecision.status === 'region_unsupported' ? 403 : 409 },
+    );
   }
   const currency = currencyDecision.currency;
   const selected = resolveCheckoutPrice({

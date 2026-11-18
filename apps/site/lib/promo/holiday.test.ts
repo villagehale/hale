@@ -68,7 +68,7 @@ describe('resolveHolidayPromo', () => {
     }
   });
 
-  it('keeps the bare $ and hides the sale when server currency cannot be determined', () => {
+  it('keeps the bare $ and hides the sale for an explicit non-US/CA country', () => {
     const strict = { ...ON, CHECKOUT_SERVER_CURRENCY_ENABLED: 'true' };
     const us = resolveHolidayPromo({ now, country: 'US', env: strict });
     expect(us?.plus.saleLabel).toBe('$39/yr');
@@ -76,7 +76,7 @@ describe('resolveHolidayPromo', () => {
     expect(us?.plus.saleLabel).not.toMatch(/USD|CAD/);
     expect(resolveHolidayPromo({ now, country: 'CA', env: strict })?.plus.saleLabel).toBe('$59/yr');
     expect(resolveHolidayPromo({ now, country: 'MX', env: strict })).toBeNull();
-    expect(resolveHolidayPromo({ now, country: null, env: strict })).toBeNull();
+    expect(resolveHolidayPromo({ now, country: null, env: strict })?.currency).toBe('CAD');
     expect(resolveHolidayPromo({ now, country: 'GB', env: strict })).toBeNull();
   });
 });

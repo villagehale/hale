@@ -39,10 +39,10 @@ describe('serverCheckoutCurrency', () => {
     expect(serverCheckoutCurrency('ca')).toBe('CAD');
     expect(serverCheckoutCurrency('MX')).toBeNull();
     expect(serverCheckoutCurrency('GB')).toBeNull();
-    expect(serverCheckoutCurrency(null)).toBeNull();
-    expect(serverCheckoutCurrency(undefined)).toBeNull();
-    expect(serverCheckoutCurrency('')).toBeNull();
-    expect(serverCheckoutCurrency('   ')).toBeNull();
+    expect(serverCheckoutCurrency(null)).toBe('CAD');
+    expect(serverCheckoutCurrency(undefined)).toBe('CAD');
+    expect(serverCheckoutCurrency('')).toBe('CAD');
+    expect(serverCheckoutCurrency('   ')).toBe('CAD');
   });
 });
 

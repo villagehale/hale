@@ -1,4 +1,4 @@
-import type { BillingCurrency } from '@hale/types';
+import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE } from '@hale/types';
 import {
   FREE_TIER_LINE,
   maxAnnualLabel,
@@ -29,6 +29,7 @@ export function RedesignPricing({
   promo = null,
   priceSurface = 'legacy',
   currency = 'CAD',
+  regionBlocked = false,
 }: {
   locale: Locale;
   smsNumber: string;
@@ -39,6 +40,8 @@ export function RedesignPricing({
   promo?: HolidayPromo | null;
   priceSurface?: SitePriceSurface;
   currency?: BillingCurrency;
+  /** Checkout is refused for this visitor's country; show the line instead of buy buttons. */
+  regionBlocked?: boolean;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
@@ -62,6 +65,7 @@ export function RedesignPricing({
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
     <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and Free stays free with unlimited chat. Join by Dec 31 and your price is locked in for as long as you’re a member. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(FREE_TIER_LINE)}</p>
+    {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
     
    </div>
    

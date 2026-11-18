@@ -9,13 +9,14 @@ import { type PaidTier, paidTierFromUnknown, parsePaidTier } from './prices.js';
  * only a mismatch check; it never picks the price.
  *
  * Flag on (CHECKOUT_SERVER_CURRENCY_ENABLED exactly `true`): the server
- * currency is US → USD and CA → CAD. Anything else, including a client-sent
- * currency, is refused. A client currency that disagrees with geo is refused
+ * currency is US → USD and CA → CAD. A missing geo header keeps the CAD
+ * fallback. Any other explicit country is refused (`region_unsupported`, 403)
+ * with no Stripe session, as is a client-sent currency that disagrees. A client currency that disagrees with geo is refused
  * and is not charged.
  */
 export type CheckoutCurrencyDecision =
   | { status: 'ok'; currency: BillingCurrency }
-  | { status: 'currency_required' }
+  | { status: 'region_unsupported' }
   | { status: 'currency_changed' };
 
 export function decideCheckoutCurrency(input: {
@@ -33,7 +34,7 @@ export function decideCheckoutCurrency(input: {
   }
 
   const currency = serverCheckoutCurrency(input.countryHeader);
-  if (!currency) return { status: 'currency_required' };
+  if (!currency) return { status: 'region_unsupported' };
   if (input.expectedCurrency !== undefined && input.expectedCurrency !== currency) {
     return { status: 'currency_changed' };
   }

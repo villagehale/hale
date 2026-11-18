@@ -275,7 +275,7 @@ describe('POST /api/billing/checkout', () => {
     expect(arg.sku).toBe('promo_plus_annual');
   });
 
-  it('refuses a missing header and MX, and charges the USD price the server derived', async () => {
+  it('sends a missing header to CAD, refuses MX, and charges the USD price the server derived', async () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
     vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD', 'price_plus_usd');
@@ -288,15 +288,16 @@ describe('POST /api/billing/checkout', () => {
     });
 
     const missing = await post({ period: 'annual', tier: 'plus', expectedCurrency: 'CAD' });
-    expect(missing.status).toBe(409);
-    expect(await missing.json()).toEqual({ error: 'currency_required' });
+    expect(missing.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({ priceId: 'price_plus_cad', currency: 'CAD' });
+    createMock.mockClear();
 
     const mexico = await post(
       { period: 'annual', tier: 'plus', expectedCurrency: 'USD' },
       { 'x-vercel-ip-country': 'MX' },
     );
-    expect(mexico.status).toBe(409);
-    expect(await mexico.json()).toEqual({ error: 'currency_required' });
+    expect(mexico.status).toBe(403);
+    expect(await mexico.json()).toEqual({ error: 'region_unsupported' });
     expect(createMock).not.toHaveBeenCalled();
 
     const us = await post({ period: 'annual', tier: 'plus' }, { 'x-vercel-ip-country': 'US' });
@@ -395,5 +396,59 @@ describe('POST /api/billing/checkout', () => {
     const res = await post({ period: 'annual' });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'already_paid' });
+  });
+
+  describe.each([true, false])('geo matrix with CHECKOUT_SERVER_CURRENCY_ENABLED=%s', (flagOn) => {
+    function setup() {
+      vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+      if (flagOn) vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD', 'price_plus_usd');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+      vi.stubEnv('APP_URL', 'https://app.example.com');
+      createMock.mockResolvedValue({
+        status: 'created',
+        url: 'https://checkout.stripe.com/c/pay/cs_1',
+      });
+    }
+
+    it('allows US as USD', async () => {
+      setup();
+      const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'US' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'USD' });
+    });
+
+    it('allows CA as CAD', async () => {
+      setup();
+      const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'CA' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it('sends a missing geo header to CAD', async () => {
+      setup();
+      const res = await post({ period: 'annual' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it(
+      flagOn
+        ? 'refuses another country with no Stripe session'
+        : 'still charges CAD for another country (flag off, unchanged)',
+      async () => {
+        setup();
+        const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'GB' });
+        if (flagOn) {
+          expect(res.status).toBe(403);
+          expect(await res.json()).toEqual({ error: 'region_unsupported' });
+          expect(createMock).not.toHaveBeenCalled();
+        } else {
+          expect(res.status).toBe(200);
+          expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+        }
+      },
+    );
   });
 });

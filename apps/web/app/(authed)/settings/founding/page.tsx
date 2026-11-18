@@ -2,6 +2,7 @@ import {
   FOUNDING_PROMO_STARTS_AT,
   currencyFromIpCountry,
   promoPhaseAt,
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
   serverCheckoutCurrency,
 } from '@hale/types';
 import type { Metadata } from 'next';
@@ -86,7 +87,15 @@ export default async function FoundingCheckoutPage({
   if (!familyMayUseFoundingCheckout(familyId, now)) {
     notFound();
   }
-  if (!currency) notFound();
+  if (!currency) {
+    return (
+      <div className={styles.one}>
+        <section className={styles.card}>
+          <p className={styles.text}>{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p>
+        </section>
+      </div>
+    );
+  }
   const stripeReady = Boolean(process.env.STRIPE_SECRET_KEY && process.env.APP_URL);
   const plus = resolveCheckoutPrice({
     currency,

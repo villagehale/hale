@@ -74,15 +74,20 @@ export function currencyFromIpCountry(countryHeader: string | null | undefined):
   return country === 'US' ? 'USD' : 'CAD';
 }
 
+/** Shown instead of a buy button when checkout is refused for the visitor's country. */
+export const CHECKOUT_REGION_UNSUPPORTED_MESSAGE =
+  "Hale is only in the US and Canada for now. We'll let you know when it reaches you.";
+
 /**
- * The currency the server will charge. US → USD, CA → CAD. A missing, empty,
- * or any other country is null — the caller refuses checkout rather than
- * guessing CAD or accepting a currency the client sent.
+ * The currency the server will charge. US → USD, CA → CAD. A missing or empty
+ * geo header keeps the CAD fallback. Any other explicit country is null — the
+ * caller refuses checkout, with no USD/CAD fallback and no client-sent currency.
  */
 export function serverCheckoutCurrency(
   countryHeader: string | null | undefined,
 ): BillingCurrency | null {
   const country = countryHeader?.trim().toUpperCase();
+  if (!country) return 'CAD';
   if (country === 'US') return 'USD';
   if (country === 'CA') return 'CAD';
   return null;

@@ -178,8 +178,8 @@ export function resolveHolidayPromo(input: {
 
 /**
  * Sale-card amounts. Bare `$` either way. With CHECKOUT_SERVER_CURRENCY_ENABLED
- * exactly `true`, only US and CA get a number — every other country is hidden
- * so a missing header is not shown the CAD price.
+ * exactly `true`, only US and CA get a number, and a missing header keeps the
+ * CAD number — every other explicit country is hidden.
  */
 function promoDisplayCurrency(
   country: string | null | undefined,
