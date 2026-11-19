@@ -1,10 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
-import { isCanaryInbound } from '~/lib/channel/canary/config';
+import { and, eq, sql } from 'drizzle-orm';
 import { mediaKindOf } from '~/lib/analytics/product';
 import { noteMessage } from '~/lib/analytics/product-hooks';
+import { isCanaryInbound } from '~/lib/channel/canary/config';
 import { persistableMedia } from '~/lib/channel/inbound-media';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
+import { optOutUnreadHoldTurnEnabled } from '~/lib/channel/intake/opt-out-turn-flags';
+import { loadOpenSession } from '~/lib/channel/intake/session';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { armDelayedImessageTyping } from '~/lib/channel/linq/presence';
@@ -161,7 +163,14 @@ export type InboundRouteOutcome =
   /** VIL-448 · Linq group: a reminder ask whose confirmation could not be written, did
    * not land, or was held because the group may no longer hear it. Nothing was set and
    * nothing was sent. Never folded into `intake`, which says Hale replied. */
-  | 'group_reminder_unsent';
+  | 'group_reminder_unsent'
+  /**
+   * VIL-707. The opt-out read failed, or the hold write threw. Nothing was sent and
+   * the text was not handed to the coach. A failed read from a parent whose intake is
+   * finished is stored for the recovery sweep; a hold write that threw leaves the
+   * provider id unclaimed so the next delivery can try again.
+   */
+  | 'opt_out_held';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
@@ -202,6 +211,24 @@ export async function routeInboundText(
 
     const outcome = await handleInboundSms(deps.database, inbound, intake);
     if (outcome.status === 'rate_limited') return 'rate_limited';
+    if (outcome.status === 'ignored' && outcome.reason === 'opt_out_hold_unwritten') {
+      await typing.stop();
+      deps.log.error(
+        { providerMessageId: inbound.providerId, outcome: 'opt_out_held' },
+        'inbound: opt-out hold did not land, nothing sent',
+      );
+      return 'opt_out_held';
+    }
+    if (
+      outcome.status === 'ignored' &&
+      (outcome.reason === 'opt_out_unread' ||
+        (outcome.reason === 'no_open_conversation' &&
+          outcome.optOutUnread === true &&
+          optOutUnreadHoldTurnEnabled()))
+    ) {
+      await typing.stop();
+      return holdUnreadTurn(deps, inbound);
+    }
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
       return handOffToConversation(deps, inbound, outcome.optOutUnread === true);
@@ -371,10 +398,158 @@ async function handOffToConversation(
     })
     .returning({ id: schema.channelMessages.id });
   // No row means another delivery of this same MessageSid won the claim. It owns the
-  // hand-off; a second job here would be a second reply to one text.
+  // hand-off; a second job here would be a second reply to one text. A row this door
+  // stored while the opt-out read was still failing is the exception: the read has now
+  // succeeded, so that row becomes the hand-off instead of a duplicate.
   const channelMessageId = row?.id;
-  if (!channelMessageId) return 'duplicate';
+  if (!channelMessageId) {
+    if (!optOutUnread && optOutUnreadHoldTurnEnabled()) {
+      const resumed = await resumeUnreadHold(deps, inbound, owner, phoneE164);
+      if (resumed) return resumed;
+    }
+    return 'duplicate';
+  }
 
+  return queueRecordedInbound(deps, inbound, owner, channelMessageId, phoneE164, optOutUnread);
+}
+
+/**
+ * VIL-707. The opt-out read failed. Do not hand the text to the coach. A parent whose
+ * intake is finished gets a ledger row the recovery sweep can re-read (`category`
+ * `intake`, so the unhanded reconciler, which only re-drives `reply`, leaves it
+ * alone). Anyone else stays unclaimed: the next delivery of this provider id runs the
+ * read again. Nothing is sent.
+ */
+async function holdUnreadTurn(
+  deps: InboundRouteDeps,
+  inbound: InboundMessage,
+): Promise<InboundRouteOutcome> {
+  const phoneE164 = normalizePhoneE164(inbound.from);
+  if (!phoneE164) return 'opt_out_held';
+  const owner = await resolveVerifiedChannelByPhone(deps.database, phoneE164);
+  const open = await loadOpenSession(deps.database, phoneE164);
+  if (!owner || open) {
+    deps.log.info(
+      { providerMessageId: inbound.providerId, outcome: 'opt_out_held' },
+      'inbound: opt-out read failed, nothing sent',
+    );
+    return 'opt_out_held';
+  }
+  const members = await deps.database
+    .select({
+      familyId: schema.familyMembers.familyId,
+      userId: schema.familyMembers.userId,
+      role: schema.familyMembers.role,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, owner.userId));
+  const member = members.find(
+    (row) => row.userId === owner.userId && row.familyId === owner.familyId,
+  );
+  const groupTalk =
+    inbound.isGroup === true &&
+    Boolean(inbound.chatId) &&
+    (await liveMemberMayTalk(deps.database, owner.familyId, owner.userId, inbound.chatId ?? ''));
+  if ((!member || !isParentRole(member.role)) && !groupTalk) return 'opt_out_held';
+
+  const [row] = await deps.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: owner.familyId,
+      parentUserId: owner.userId,
+      channel: inbound.transport ?? 'sms',
+      direction: 'in',
+      // Not `reply`: the unhanded reconciler re-drives that category to the coach.
+      category: 'intake',
+      providerMessageId: inbound.providerId,
+      providerChatId: inbound.chatId ?? null,
+      status: 'delivered',
+      body: inbound.body,
+      inboundMedia: persistableMedia(inbound.media),
+      inGroup: inbound.isGroup ?? null,
+      providerService: inbound.service ?? null,
+      optOutUnread: true,
+      sentAt: inbound.receivedAt,
+    })
+    .onConflictDoNothing({
+      target: schema.channelMessages.providerMessageId,
+      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (row) {
+    await deps.database.insert(schema.auditLog).values({
+      familyId: owner.familyId,
+      actor: 'system',
+      actionTaken: 'opt_out_unread_held',
+      audience: owner.userId,
+      targetTable: 'users',
+      targetId: owner.userId,
+    });
+  }
+  deps.log.info(
+    { providerMessageId: inbound.providerId, outcome: 'opt_out_held' },
+    'inbound: opt-out read failed, nothing sent',
+  );
+  return 'opt_out_held';
+}
+
+/** The read succeeded on a later delivery of a text this door had held unread. */
+async function resumeUnreadHold(
+  deps: InboundRouteDeps,
+  inbound: InboundMessage,
+  owner: { familyId: string; userId: string },
+  phoneE164: string,
+): Promise<InboundRouteOutcome | null> {
+  const [existing] = await deps.database
+    .select({
+      id: schema.channelMessages.id,
+      familyId: schema.channelMessages.familyId,
+      parentUserId: schema.channelMessages.parentUserId,
+      category: schema.channelMessages.category,
+      optOutUnread: schema.channelMessages.optOutUnread,
+      handedOffAt: schema.channelMessages.handedOffAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerMessageId, inbound.providerId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    )
+    .limit(1);
+  if (
+    !existing ||
+    existing.category !== 'intake' ||
+    existing.optOutUnread !== true ||
+    existing.handedOffAt ||
+    existing.familyId !== owner.familyId ||
+    existing.parentUserId !== owner.userId
+  ) {
+    return null;
+  }
+  const [updated] = await deps.database
+    .update(schema.channelMessages)
+    .set({ category: 'reply', optOutUnread: false })
+    .where(
+      and(
+        eq(schema.channelMessages.id, existing.id),
+        eq(schema.channelMessages.category, 'intake'),
+        eq(schema.channelMessages.optOutUnread, true),
+      ),
+    )
+    .returning({ id: schema.channelMessages.id });
+  if (!updated) return null;
+  return queueRecordedInbound(deps, inbound, owner, updated.id, phoneE164, false);
+}
+
+async function queueRecordedInbound(
+  deps: InboundRouteDeps,
+  inbound: InboundMessage,
+  owner: { familyId: string; userId: string },
+  channelMessageId: string,
+  phoneE164: string,
+  optOutUnread: boolean,
+): Promise<InboundRouteOutcome> {
   await deps.database.insert(schema.auditLog).values({
     familyId: owner.familyId,
     actor: owner.userId,

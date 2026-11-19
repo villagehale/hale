@@ -169,6 +169,13 @@ export const FLAGS = [
   exact('weekday-care', 'WEEKDAY_CARE_ENABLED'),
   exact('workstreams', 'WORKSTREAMS_ENABLED'),
   exact('group-shared-lists', 'GROUP_SHARED_LISTS_ENABLED'),
+  // VIL-707. A failed opt-out read does not reach the coach. Exact `true`.
+  exact('opt-out-unread-hold-turn', 'OPT_OUT_UNREAD_HOLD_TURN_ENABLED'),
+  // VIL-707. A hold write that throws ends the turn. Exact `true`.
+  exact('opt-out-hold-write-stops-turn', 'OPT_OUT_HOLD_WRITE_STOPS_TURN_ENABLED'),
+  // VIL-707. An in-flight group reminder with no provider id can be cancelled,
+  // and the send checks opt-out again. Exact `true`.
+  exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),
