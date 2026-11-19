@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
-import { hasLinkShape } from '../../format/link-shape';
+import { hasLinkShape, noteLinkGate } from '../../format/link-shape';
 import { referralLink } from './code';
 
 /**
@@ -71,6 +71,7 @@ export function forwardViolations(forward: string): string[] {
 
   if (text === '') return ['The line was empty.'];
   if (hasLinkShape(text) || OWN_DOMAIN_NAME.test(text)) {
+    if (hasLinkShape(text)) noteLinkGate('referral', 'redraft');
     violations.push(
       'The line contains a link. Do not write one - the real link is added after your message, and any URL you compose is one you invented.',
     );

@@ -1,8 +1,7 @@
-import { createHmac } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNotNull, like, lte } from 'drizzle-orm';
 import { linqInboundConfigured, linqWebhookSecret } from '~/lib/channel/linq/config';
-import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
+import { LINQ_WEBHOOK_VERSION, signLinqWebhook } from '~/lib/channel/linq/signature';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
 import {
@@ -90,21 +89,6 @@ function canarySid(now: Date): string {
   return `${CANARY_SID_PREFIX}${minute.toISOString()}`;
 }
 
-/** Same bytes `verifyLinqWebhookSignature` checks. The secret is `whsec_` plus base64. */
-function signLinqBody(
-  secret: string,
-  webhookId: string,
-  timestamp: string,
-  rawBody: string,
-): string {
-  const secretStr = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret;
-  const key = Buffer.from(secretStr, 'base64');
-  const mac = createHmac('sha256', key)
-    .update(`${webhookId}.${timestamp}.${rawBody}`)
-    .digest('base64');
-  return `v1,${mac}`;
-}
-
 async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
   const secret = linqWebhookSecret();
   if (!secret) throw new InboundCanaryFailure('not_configured', 'inbound canary: not configured');
@@ -131,7 +115,12 @@ async function inject(deps: InboundCanaryDeps, now: Date): Promise<void> {
       'content-type': 'application/json',
       'webhook-id': webhookId,
       'webhook-timestamp': timestamp,
-      'webhook-signature': signLinqBody(secret, webhookId, timestamp, rawBody),
+      'webhook-signature': signLinqWebhook({
+        secret,
+        webhookId,
+        timestamp,
+        rawBody,
+      }),
     },
     body: rawBody,
     signal: AbortSignal.timeout(INJECTION_TIMEOUT_MS),

@@ -126,6 +126,29 @@ function input(sourceCode: string | null = null) {
   };
 }
 
+describe('provisionFromIntake — inferred zone stays off the legacy clock', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    vi.stubEnv('FAMILY_TZ_RESOLVE_ENABLED', 'true');
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('records a phone zone on resolved_timezone and leaves users.timezone at the default', async () => {
+    const { database, inserts } = fakeDatabase();
+    await provisionFromIntake(database, {
+      ...input(),
+      phoneE164: '+12125550100',
+      location: null,
+    });
+    const user = inserts.find((row) => row.table === 'users')?.values as Record<string, unknown>;
+    expect(user).toMatchObject({
+      resolvedTimezone: 'America/New_York',
+      timezoneSource: 'phone',
+    });
+    expect(user).not.toHaveProperty('timezone');
+  });
+});
+
 describe('provisionFromIntake — replayed transcript status', () => {
   beforeEach(() => {
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));

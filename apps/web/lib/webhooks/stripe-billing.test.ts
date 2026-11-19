@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   type PriceTierMap,
+  chargeRevokeDecision,
   checkoutPriceIdFromEnv,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
@@ -180,6 +181,62 @@ describe('planTierFromStripeEvent', () => {
     expect(map.price_max_cad).toBe('family');
     expect(planTierFromStripeEvent(plusPaid, map)).toBe('plus');
     expect(planTierFromStripeEvent(maxPaid, map)).toBe('family');
+  });
+
+  it('maps Max and a known price id onto a paid tier so a payer is not left on free', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted('Max'), MAP)).toBe('family');
+    expect(planTierFromStripeEvent(checkoutCompleted('PLUS'), MAP)).toBe('plus');
+    const priced = {
+      id: 'evt_price',
+      type: 'checkout.session.completed',
+      data: { object: { metadata: { priceId: PRICE_FAMILY, familyId: FAMILY_ID } } },
+    };
+    expect(planTierFromStripeEvent(priced, MAP)).toBe('family');
+    expect(planTierFromStripeEvent(checkoutCompleted('gold'), MAP)).toBeNull();
+  });
+});
+
+describe('chargeRevokeDecision', () => {
+  it('revokes a full refund or dispute when the subscription is cancelled, and keeps a partial', () => {
+    const full = {
+      id: 'evt_r',
+      type: 'charge.refunded',
+      data: {
+        object: {
+          amount: 7900,
+          amount_refunded: 7900,
+          refunded: true,
+          invoice: { subscription: { id: 'sub_1', status: 'canceled' } },
+        },
+      },
+    };
+    expect(chargeRevokeDecision(full)).toEqual({ action: 'revoke', kind: 'refund' });
+    const partial = {
+      id: 'evt_p',
+      type: 'charge.refunded',
+      data: { object: { amount: 7900, amount_refunded: 1000, refunded: false } },
+    };
+    expect(chargeRevokeDecision(partial)).toEqual({
+      action: 'keep',
+      reason: 'partial_refund',
+      kind: 'refund',
+    });
+    const live = {
+      id: 'evt_live',
+      type: 'charge.dispute.created',
+      data: { object: { subscription: { id: 'sub_1', status: 'active' } } },
+    };
+    expect(chargeRevokeDecision(live)).toEqual({
+      action: 'keep',
+      reason: 'active_subscription',
+      kind: 'dispute',
+    });
+    const dispute = {
+      id: 'evt_d',
+      type: 'charge.dispute.created',
+      data: { object: { subscription: { id: 'sub_1', status: 'canceled' } } },
+    };
+    expect(chargeRevokeDecision(dispute)).toEqual({ action: 'revoke', kind: 'dispute' });
   });
 });
 

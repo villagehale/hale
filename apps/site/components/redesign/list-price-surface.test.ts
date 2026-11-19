@@ -12,7 +12,7 @@ const base = {
 };
 
 describe('post-promo list prices on the marketing site', () => {
-  it('replaces the free claims with CAD and USD list prices', () => {
+  it('replaces the free claims with the visitor’s plain list price', () => {
     const homeCad = renderToStaticMarkup(
       createElement(RedesignHome, { ...base, priceSurface: 'list', currency: 'CAD' }),
     );
@@ -23,42 +23,50 @@ describe('post-promo list prices on the marketing site', () => {
       createElement(RedesignPricing, { ...base, priceSurface: 'list', currency: 'CAD' }),
     );
 
-    expect(homeCad).toContain('$19/mo CAD');
-    expect(homeCad).toContain('$159/yr CAD');
-    expect(homeUsd).toContain('$14/mo USD');
-    expect(homeUsd).toContain('$119/yr USD');
-    expect(homeCad).not.toContain('C$');
-    expect(homeUsd).not.toContain('US$');
+    expect(homeCad).toContain('$19/mo');
+    expect(homeCad).toContain('or $159/yr');
+    expect(homeCad).toContain('$329/yr');
+    expect(homeUsd).toContain('$14/mo');
+    expect(homeUsd).toContain('or $119/yr');
+    expect(homeUsd).toContain('$259/yr');
+    expect(homeUsd).not.toContain('$19/mo');
+    expect(homeCad).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
+    expect(homeUsd).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
     expect(homeCad).not.toContain('Only Free is available today.');
     expect(homeCad).not.toContain('Founding families join free.');
     expect(homeCad).toContain('Plus is available today.');
-    expect(pricing).toContain('$19/mo CAD');
+    expect(pricing).toContain('$19/mo');
+    expect(pricing).toContain('$329/yr');
     expect(pricing).not.toContain('Plus and Max are on the way.');
+    expect(pricing).not.toMatch(/\b(CAD|USD)\b/);
 
-    for (const locale of ['fr', 'zh'] as const) {
-      expect(() =>
-        renderToStaticMarkup(
-          createElement(RedesignHome, { ...base, locale, priceSurface: 'list', currency: 'CAD' }),
-        ),
-      ).not.toThrow();
-      expect(() =>
-        renderToStaticMarkup(
-          createElement(RedesignPricing, {
-            ...base,
-            locale,
-            priceSurface: 'list',
-            currency: 'USD',
-          }),
-        ),
-      ).not.toThrow();
-    }
+    const fr = renderToStaticMarkup(
+      createElement(RedesignHome, { ...base, locale: 'fr', priceSurface: 'list', currency: 'CAD' }),
+    );
+    const zh = renderToStaticMarkup(
+      createElement(RedesignPricing, {
+        ...base,
+        locale: 'zh',
+        priceSurface: 'list',
+        currency: 'USD',
+      }),
+    );
+    expect(fr).toContain('19 $/mois');
+    expect(fr).toContain('ou 159 $/an');
+    expect(fr).not.toMatch(/\b(CAD|USD)\b|加元|美元/);
+    expect(zh).toContain('每月 $14');
+    expect(zh).toContain('每年 $259');
+    expect(zh).not.toMatch(/加元|美元|元|\b(CAD|USD)\b/);
   });
 
-  it('keeps the free claims on the legacy surface', () => {
+  it('shows one location price and the paid tiers on the legacy surface', () => {
     const html = renderToStaticMarkup(createElement(RedesignHome, base));
-    expect(html).toContain('Only Free is available today.');
-    expect(html).toContain('Founding families');
-    expect(html).toContain('join free.');
-    expect(html).not.toContain('$19/mo CAD');
+    expect(html).toContain('Paid plans are Plus and Max.');
+    expect(html).toContain('Start with a text.');
+    expect(html).toContain('$19/mo');
+    expect(html).toContain('$329/yr');
+    expect(html).not.toContain('Founding families');
+    expect(html).not.toContain('until paid plans');
+    expect(html).not.toMatch(/\b(CAD|USD)\b/);
   });
 });

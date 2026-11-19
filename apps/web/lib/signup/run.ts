@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { type PlanTier, registrationSeasonOf } from '@hale/types';
+import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
+import { parentSeasonClock } from '~/lib/channel/family-tz';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
@@ -59,11 +60,6 @@ import {
   type SignupOutcomeWriter,
   createSignupOutcomeWriter,
 } from './outcome-reply';
-import {
-  claimSignupHelpAttempt,
-  signupHelpAttempted,
-  signupHelpSeasonFacts,
-} from './signup-help-season';
 import { type InfoPackSlot, signupInfoPack } from './pack';
 import { namesFacts } from './parent-quote';
 import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
@@ -71,6 +67,13 @@ import { untrustedActivityLabel } from './plan/reader';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
+import {
+  claimSignupHelpAttempt,
+  releaseSignupHelpAttempt,
+  signupHelpAttempted,
+  signupHelpSeasonFacts,
+  signupHelpSlotReleaseEnabled,
+} from './signup-help-season';
 import {
   type PendingSignupOffer,
   type SendStamp,
@@ -489,10 +492,10 @@ async function runOneShotAsk(
       .limit(1);
     const planTier: PlanTier = family?.planTier ?? 'free';
     const cap = entitlementsForFamily(planTier).signupHelpPerSeason;
-    const timeZone = await parentTimezone(database, input.parentUserId);
-    const season = registrationSeasonOf(input.now, timeZone);
+    const seasonClock = await parentSeasonClock(database, input.parentUserId, input.now);
+    const season = seasonClock.outcome === 'season' ? seasonClock : null;
     let atSeasonCap = false;
-    if (cap !== null) {
+    if (cap !== null && season) {
       const used = await signupHelpAttempted(database, {
         familyId: input.familyId,
         seasonKey: season.key,
@@ -508,6 +511,11 @@ async function runOneShotAsk(
           'authorized signup: Browser Use seasonal allowance spent, falling through',
         );
       }
+    } else if (cap !== null) {
+      console.info(
+        { outcome: 'timezone_unset' },
+        'authorized signup: season cap not claimed, zone unset',
+      );
     }
     if (!atSeasonCap) {
       const result = await runBrowserUseBranch(database, input, deps, {
@@ -520,9 +528,9 @@ async function runOneShotAsk(
         session,
         fieldsAllowed: consent.fieldsAllowed,
         approvedPriceCents: offer.approvedPriceCents,
-        seasonCap: cap,
-        seasonKey: season.key,
-        resetsOn: season.resetsOn,
+        seasonCap: season ? cap : null,
+        seasonKey: season?.key ?? '',
+        resetsOn: season?.resetsOn ?? '',
       });
       if (result.skipped === 'season_cap') {
         reportDeps = { ...deps, signupHelpSeason: result.signupHelpSeason };
@@ -760,6 +768,44 @@ export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
  */
 export const BROWSER_USE_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
+/**
+ * A season slot counts a run that reached the provider. A throw before any
+ * provider session exists, or a page that is not open yet (`rush`), does not.
+ * An unknown throw may have started a session, so it keeps the slot.
+ */
+function seasonSlotUnused(handoff: BrowserUseHandoff, sessionMayExist: boolean): boolean {
+  if (handoff.outcome === 'rush') return true;
+  const noProviderSession =
+    handoff.runId === null && handoff.sessionId === null && !sessionMayExist;
+  return handoff.detail === 'engine_threw' && noProviderSession;
+}
+
+async function releaseUnusedSeasonSlot(
+  database: Database,
+  input: SignupRunInput,
+  ctx: { offerId: string; seasonKey: string },
+  handoff: BrowserUseHandoff,
+  state: { claimed: boolean; sessionMayExist: boolean },
+): Promise<'returned' | null> {
+  if (!state.claimed || !signupHelpSlotReleaseEnabled()) return null;
+  if (!seasonSlotUnused(handoff, state.sessionMayExist)) return null;
+  const released = await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey: ctx.seasonKey,
+    now: input.now,
+  });
+  console.info(
+    {
+      offerId: ctx.offerId,
+      attempted: released.attempted,
+      outcome: handoff.outcome,
+      detail: handoff.detail,
+    },
+    'authorized signup: season slot returned',
+  );
+  return 'returned';
+}
+
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
   detail: 'not_configured' | 'no_provider_session' | 'engine_threw' | 'spend_reserve_reached',
@@ -824,6 +870,7 @@ async function runBrowserUseBranch(
   // A throw that does not say which session it had created may have started one:
   // its hold stays until a real cost replaces it.
   let sessionMayExist = false;
+  let seasonClaimed = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -860,6 +907,10 @@ async function runBrowserUseBranch(
         now: input.now,
       });
     }
+    const seasonSlot = await releaseUnusedSeasonSlot(database, input, ctx, handoff, {
+      claimed: seasonClaimed,
+      sessionMayExist,
+    });
     const thread = await yesThread(database, input);
     const withheld = thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {};
     await writeAudit(database, input, ctx.offerId, {
@@ -876,6 +927,7 @@ async function runBrowserUseBranch(
       costUsd: handoff.costUsd,
       sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
+      ...(seasonSlot ? { seasonSlot } : {}),
       ...withheld,
     });
     const rush: RushHandoff | null =
@@ -976,6 +1028,7 @@ async function runBrowserUseBranch(
         }),
       };
     }
+    seasonClaimed = true;
   }
 
   let result: BrowserUseSignupResult;
@@ -1135,15 +1188,6 @@ async function finish(
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
   return offer.sessions.find((item) => item.id === sessionId)?.label ?? '';
-}
-
-async function parentTimezone(database: Database, parentUserId: string): Promise<string> {
-  const [row] = await database
-    .select({ timezone: schema.users.timezone })
-    .from(schema.users)
-    .where(eq(schema.users.id, parentUserId))
-    .limit(1);
-  return row?.timezone ?? 'UTC';
 }
 
 interface ReplyFacts {

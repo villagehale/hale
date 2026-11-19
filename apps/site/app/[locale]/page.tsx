@@ -31,7 +31,7 @@ export default async function LandingPage({
   const source = await pageSource(searchParams);
   const promo = await requestHolidayPromo(locale, searchParams);
   const priceSurface = sitePriceSurface();
-  const currency = priceSurface === 'list' ? await visitorCurrency() : 'CAD';
+  const currency = await visitorCurrency();
   return (
     <>
       <script

@@ -4,7 +4,7 @@ import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
 import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
 import { stripEmailOnlyNoticeTokens } from './email-alert-notice-tokens';
@@ -207,7 +207,11 @@ export function emailAlertNoticeUserMessage(
 export function emailAlertNoticeRefusals(text: string): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
-  return hasLinkShape(body) ? ['link'] : [];
+  if (hasLinkShape(body)) {
+    noteLinkGate('email-alert', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 /** The model's `asks_to_add` against the offer row: a fact check, not a punctuation one. */

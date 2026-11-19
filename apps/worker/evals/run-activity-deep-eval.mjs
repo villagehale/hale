@@ -54,6 +54,7 @@ import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
@@ -483,7 +484,9 @@ function topPickLeads(body, slots) {
   return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 /** Mirrors `watchWarranted` — see the same in
  * run-activity-finder-eval.mjs and in the runtime (followup-note.ts, deliver.ts). */
@@ -544,7 +547,7 @@ function waitsOnAPageItCouldNotRead(body) {
 function followUpViolations(body, slots, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (LINK_SHAPE.test(body)) {
+  if (hasLinkShape(body)) {
     violations.push({
       tag: 'links_a_url',
       reason: 'The message contains a link or a web address. Never send one.',
@@ -793,6 +796,7 @@ async function cachedResearch(opts) {
 }
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const cap = installSpendCap(process.argv);
   if (cap !== null) {
     const ledger = readLedger();

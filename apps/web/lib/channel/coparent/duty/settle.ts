@@ -4,6 +4,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { queueGroupActivityDecision } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { loadRememberedLogistics } from '~/lib/channel/linq/logistics-poll';
+import { readParentCopyLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { acknowledgeDutyWrite } from './ack';
 import { DUTY_OPEN_FACT_KEY } from './asks';
@@ -377,6 +378,15 @@ async function loneSubject(database: Database, familyId: string): Promise<string
   return null;
 }
 
+/** The language a duty restatement to this parent is written in. */
+export async function dutySettleLanguage(
+  database: Database,
+  familyId: string,
+  actorUserId: string,
+): Promise<'en' | 'fr'> {
+  return readParentCopyLanguage(database, { familyId, parentUserId: actorUserId });
+}
+
 async function household(
   database: Database,
   familyId: string,
@@ -401,11 +411,6 @@ async function household(
     userId,
     name: people.find((row) => row.id === userId)?.name ?? '',
   }));
-  const [family] = await database
-    .select({ primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
   const children = await database
     .select({ name: schema.children.name, familyId: schema.children.familyId })
     .from(schema.children)
@@ -417,7 +422,7 @@ async function household(
       .map((row) => row.name),
     parentCount: parentIds.length,
     timeZone: people[0]?.timezone ?? 'America/Toronto',
-    language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
+    language: await dutySettleLanguage(database, familyId, actorUserId),
     speakerName: people.find((row) => row.id === actorUserId)?.name ?? null,
   };
 }

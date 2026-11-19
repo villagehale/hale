@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Sure, Dana, we can do Gmail first. Hale reads everything in your inbox, since Google shares it all, but it only keeps what's about the kids. You can disconnect any time. Want me to send the link for Gmail now?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false
+  },
+  "latencyMs": 1752,
+  "usage": {
+    "input_tokens": 660,
+    "output_tokens": 416,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

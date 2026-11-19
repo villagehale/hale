@@ -5,7 +5,7 @@ import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-s
 import { regionOfPostal } from '~/lib/channel/off-domain/place';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import type { ExtractedChild } from './extract';
 import { type GroundPlace, groundUserMessage } from './ground-message';
 import { officialPageReturnLine } from './official-page';
@@ -66,7 +66,10 @@ export function notesGroundACurrentSource(notes: string): boolean {
 function sendableJoined(joined: string): string | null {
   if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
-  if (hasLinkShape(joined)) return null;
+  if (hasLinkShape(joined)) {
+    noteLinkGate('live-lookup', 'refused');
+    return null;
+  }
   if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;
   return joined;
 }

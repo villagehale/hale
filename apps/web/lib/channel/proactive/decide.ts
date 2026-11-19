@@ -1,6 +1,10 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { FamilySnapshot } from './snapshot';
 import {
@@ -26,6 +30,12 @@ export type DecideSkip = 'empty_queue' | 'no_client' | 'model_failed' | 'unparse
 export interface DecideResult {
   decision: DeciderDecision | null;
   skipped: DecideSkip | null;
+  /**
+   * Set when the model call failed in a class that will fail for every family
+   * (billing, auth, usage limit). The review stops the rest of the run on it
+   * once the guards flag is on. Absent for a transient miss or a parse miss.
+   */
+  failure?: IncidentFailure;
 }
 
 /**
@@ -59,7 +69,12 @@ export async function decideForFamily(input: {
       { err: err instanceof Error ? err.constructor.name : 'unknown' },
       'proactive decider: model call failed',
     );
-    return { decision: null, skipped: 'model_failed' };
+    const failure = classifyChainedProviderFailure(err);
+    return {
+      decision: null,
+      skipped: 'model_failed',
+      ...(failure ? { failure } : {}),
+    };
   }
   const decision = parseDeciderDecision(value);
   if (!decision) return { decision: null, skipped: 'unparsed' };

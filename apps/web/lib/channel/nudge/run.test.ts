@@ -1350,6 +1350,36 @@ describe('the call-name line after a find', () => {
     return { rows, db: fake as never };
   }
 
+  it('writes the name ask in the stored language after one off-language turn', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const seen: string[] = [];
+    const open = harness({
+      windows: [win()],
+      families: [family({ language: 'en' })],
+      parentCallName: { needsName: true, alreadyAsked: false, googleGivenName: null },
+    });
+    open.deps.composeNameAsk = async ({ language }) => {
+      seen.push(language);
+      return 'NAME ASK';
+    };
+    const store = {
+      insert: () => ({
+        values: () => ({ returning: async () => [{ id: 'row-1' }] }),
+      }),
+      transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(store),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            // The last text left `locale` Chinese. The stored language is French.
+            limit: async () => [{ proactiveLanguage: 'fr', primaryLanguage: 'en', locale: 'zh' }],
+          }),
+        }),
+      }),
+    };
+    await runNudgeCron(store as never, open.deps, FRIDAY_10AM);
+    expect(seen).toEqual(['fr']);
+  });
+
   it('asks once after a registration find, confirms a Google name, and does not ask again', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const open = harness({

@@ -1,4 +1,8 @@
-import { currencyFromIpCountry } from '@hale/types';
+import {
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
+  currencyFromIpCountry,
+  serverCheckoutCurrency,
+} from '@hale/types';
 import type { Metadata } from 'next';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -6,6 +10,7 @@ import { FoundingJoinForm } from '~/components/billing/founding-join-form';
 import { FreeJoinCard } from '~/components/billing/free-join-card';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import stage from '~/components/hale/connect/connect.module.css';
+import { checkoutServerCurrencyEnabled } from '~/lib/billing/flags';
 import { promoPriceLabel } from '~/lib/billing/price-display';
 import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
 import {
@@ -51,7 +56,16 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
   }
 
   const country = (await headers()).get('x-vercel-ip-country');
-  const currency = currencyFromIpCountry(country);
+  const currency = checkoutServerCurrencyEnabled()
+    ? serverCheckoutCurrency(country)
+    : currencyFromIpCountry(country);
+  if (!currency) {
+    return (
+      <ConnectStage>
+        <p className={stage.pairRow}>{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p>
+      </ConnectStage>
+    );
+  }
   const checkout = params.checkout;
 
   return (

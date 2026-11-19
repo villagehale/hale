@@ -8,9 +8,11 @@ export const maxDuration = 300;
 
 /**
  * GET /api/cron/proactive-review — VIL-226. Hourly, on a minute no other texting leg
- * uses. While PROACTIVE_CADENCE is unset this returns at once and reads nothing. A
- * family whose queue holds nothing the model may see is not reviewed, so the model is
- * not called for it.
+ * uses. While PROACTIVE_CADENCE is off this reads no family and calls no decider
+ * (VIL-705). When PROACTIVE_REVIEW_GUARDS_ENABLED is exactly `true`, one provider
+ * probe runs first, and a low balance or a provider failure returns before any
+ * family is read (VIL-701). A family whose queue holds nothing the model may see
+ * is not reviewed, so the model is not called for it.
  */
 export const GET = cronRoute('proactive-review', async () => {
   const summary = await runProactiveReview(db(), defaultProactiveReviewDeps(), new Date());

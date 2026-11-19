@@ -1,3 +1,5 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,8 +28,15 @@ import {
 } from '~/lib/channel/weekday-care/key';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { dayKeyOf } from '~/lib/format/datetime';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { listDueWorkstreams } from '~/lib/memory/workstreams';
+import {
+  type ProviderHealthDeps,
+  claimProviderIncident,
+  probeProviderHealth,
+} from '~/lib/monitoring/provider-health';
+import { zonedLocalInstant } from '~/lib/plan/spine';
 import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { travelBriefDedupeKey } from '~/lib/travel/sweep';
@@ -36,6 +45,8 @@ import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
 import {
   FAMILY_ROWS,
+  PROACTIVE_DAILY_DECISION_CAP,
+  PROACTIVE_DECISION_CAP_ROUTE,
   type ProactiveReviewDeps,
   WAITING_ROWS,
   mark,
@@ -161,7 +172,7 @@ interface Harness {
   composed: number;
   written: ToolCandidate[][];
   rechecked: string[];
-  pages: Array<{ site: string; facts: { reason: string } }>;
+  pages: Array<{ site: string; facts: { reason: string }; count?: number }>;
 }
 
 function harness(
@@ -206,6 +217,7 @@ function harness(
       state.pages.push({
         site: opsPage.site,
         facts: opsPage.facts as { reason: string },
+        ...(opsPage.count === undefined ? {} : { count: opsPage.count }),
       });
       return 'paged';
     },
@@ -246,7 +258,7 @@ describe('runProactiveReview', () => {
     expect(h.snapshots).toEqual([]);
   });
 
-  it('decides and sends an evening check-in while the flag is unset', async () => {
+  it('sends nothing while the flag is unset, including an evening check-in', async () => {
     const id = await enqueue('evening_check_in:fam:2026-10-08', {
       kind: 'evening_check_in',
       category: 'evening_check_in',
@@ -257,16 +269,10 @@ describe('runProactiveReview', () => {
     });
     const h = harness(sendAll);
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
-    expect(summary).toMatchObject({ mode: 'off', families: 1, decided: 1, sent: 1, shadowed: 0 });
-    expect(h.transport.bodies()).toEqual([MESSAGE]);
-    expect(await candidate(id)).toMatchObject({ status: 'sent' });
-    const [sent] = await audits('evening_check_in_sent');
-    expect(sent?.after).toMatchObject({ mode: 'live' });
-    const [prefs] = await db.database
-      .select({ lastAskedAt: schema.familyCheckInPrefs.lastAskedAt })
-      .from(schema.familyCheckInPrefs)
-      .where(eq(schema.familyCheckInPrefs.familyId, familyId));
-    expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
+    expect(summary).toMatchObject({ mode: 'off', families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
   });
 
   it('leaves a waiting registration tell untouched while its own lane is switched off', async () => {
@@ -293,7 +299,10 @@ describe('runProactiveReview', () => {
       vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
       const on = harness(sendAll);
       await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
-      expect({ cadence, row: (await candidate(id))?.status }).toEqual({ cadence, row: 'sent' });
+      expect({ cadence, row: (await candidate(id))?.status }).toEqual({
+        cadence,
+        row: cadence === 'live' ? 'sent' : 'queued',
+      });
     }
   });
 
@@ -329,9 +338,12 @@ describe('runProactiveReview', () => {
       vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
       const on = harness(sendAll);
       await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
-      expect({ cadence, offered: on.snapshots.flatMap((s) => s.candidates).length }).toEqual({
+      const offered = on.snapshots
+        .flatMap((snapshot) => snapshot.candidates)
+        .filter((item) => ids.includes(item.id)).length;
+      expect({ cadence, offered }).toEqual({
         cadence,
-        offered: ids.length,
+        offered: cadence === 'live' ? ids.length : 0,
       });
     }
   });
@@ -3260,8 +3272,360 @@ describe('classes the decider sends for their own sweeps', () => {
   });
 });
 
+function billingClient(): AgentClient {
+  return {
+    messages: {
+      create: async () => {
+        throw Anthropic.APIError.generate(
+          400,
+          {
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: 'Your credit balance is too low to access the Anthropic API.',
+            },
+          },
+          undefined,
+          { 'request-id': 'req_probe' },
+        );
+      },
+    },
+  } as unknown as AgentClient;
+}
+
+function countingPreflight(): { deps: ProviderHealthDeps; sent: string[] } {
+  const sent: string[] = [];
+  const deps: ProviderHealthDeps = {
+    probe: probeProviderHealth,
+    claim: claimProviderIncident,
+    sender: {
+      send: async (subject) => {
+        sent.push(subject);
+        return 'sent';
+      },
+    },
+  };
+  return { deps, sent };
+}
+
+describe('VIL-701 credit abort, family cap, and one page per run', () => {
+  async function anotherFamily(name: string): Promise<{ familyId: string; parentUserId: string }> {
+    const seeded = await seedFamily(db.database, name);
+    await db.database
+      .update(schema.users)
+      .set({ timezone: TZ })
+      .where(eq(schema.users.id, seeded.parentUserId));
+    return seeded;
+  }
+
+  function armGuards(cadence: 'live' | 'off' = 'live'): void {
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', cadence === 'off' ? '' : 'live');
+  }
+
+  it('a billing-failed preflight makes no decider call and no send, and pages once', async () => {
+    armGuards('live');
+    const id = await enqueue();
+    const h = harness(sendAll);
+    const preflight = countingPreflight();
+    h.deps.client = billingClient();
+    h.deps.providerHealth = preflight.deps;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary.aborted).toEqual({ where: 'preflight', failure: 'billing', alerted: true });
+    expect(summary).toMatchObject({ families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(preflight.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('aborts the off hour on the same preflight, before any family is read', async () => {
+    armGuards('off');
+    const id = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+    const preflight = countingPreflight();
+    h.deps.client = billingClient();
+    h.deps.providerHealth = preflight.deps;
+
+    const nextDay = new Date('2026-10-10T22:00:00.000Z');
+    const summary = await runProactiveReview(db.database, h.deps, nextDay);
+
+    expect(summary).toMatchObject({
+      mode: 'off',
+      families: 0,
+      decided: 0,
+      sent: 0,
+      aborted: { where: 'preflight', failure: 'billing', alerted: true },
+    });
+    expect(h.snapshots).toEqual([]);
+    expect(preflight.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('leaves the run alone while the guards flag is off, even with a billing client', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true\n');
+    await enqueue();
+    const h = harness(sendAll);
+    h.deps.client = billingClient();
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary.aborted).toBeUndefined();
+    expect(summary.decided).toBe(1);
+    expect(h.snapshots).toHaveLength(1);
+  });
+
+  it('stops the families still waiting after the first billing failure, and pages once', async () => {
+    armGuards('live');
+    const firstId = await enqueue('nudge:first');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const second = await anotherFamily('Second Family');
+    const secondId = await enqueue('nudge:second', {
+      familyId: second.familyId,
+      parentUserId: second.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed', failure: 'billing' };
+    };
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots).toHaveLength(1);
+    expect(h.snapshots[0]?.candidates.map((item) => item.id)).toEqual([firstId]);
+    expect(summary.aborted).toEqual({ where: 'mid_run', failure: 'billing', alerted: false });
+    expect(summary.familiesDeferred).toBeGreaterThanOrEqual(1);
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' }, count: 1 },
+    ]);
+    expect(await candidate(firstId)).toMatchObject({ status: 'queued' });
+    expect(await candidate(secondId)).toMatchObject({ status: 'queued' });
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('defers families past the cap to the next hour, oldest due first', async () => {
+    armGuards('live');
+    const olderId = await enqueue('nudge:older');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, olderId));
+    const later = await anotherFamily('Later Family');
+    const newerId = await enqueue('nudge:newer', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, sent: 1, familiesDeferred: 1 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [olderId],
+    ]);
+    expect(await candidate(newerId)).toMatchObject({ status: 'queued' });
+
+    const next = harness(sendAll);
+    next.deps.familyCap = 1;
+    const again = await runProactiveReview(
+      db.database,
+      next.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+    expect(again).toMatchObject({ families: 1, sent: 1, familiesDeferred: 0 });
+    expect(await candidate(newerId)).toMatchObject({ status: 'sent' });
+  });
+
+  it('does not spend a cap slot on a family whose only row is still held', async () => {
+    armGuards('live');
+    const heldId = await enqueue('nudge:held');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({
+        status: 'held',
+        holdUntil: new Date('2026-10-16T22:00:00.000Z'),
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      })
+      .where(eq(schema.proactiveCandidates.id, heldId));
+    const later = await anotherFamily('Due Family');
+    const dueId = await enqueue('nudge:due', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(heldId)).toMatchObject({ status: 'held' });
+  });
+
+  it('does not spend a cap slot on a row whose lane is switched off', async () => {
+    armGuards('live');
+    vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+    const parkedId = await enqueue('registration-opening:parked', {
+      kind: 'registration_opening',
+      category: 'nudge',
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    });
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, parkedId));
+    const later = await anotherFamily('Nudge Family');
+    const dueId = await enqueue('nudge:lane', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(parkedId)).toMatchObject({ status: 'queued' });
+  });
+
+  it('pages #ops once per run when several live decisions fail', async () => {
+    armGuards('live');
+    const firstId = await enqueue('nudge:one');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const other = await anotherFamily('Other Family');
+    await enqueue('nudge:two', { familyId: other.familyId, parentUserId: other.parentUserId });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed' };
+    };
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' }, count: 2 },
+    ]);
+  });
+
+  it('still pages once per family while the guards flag is off', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const firstId = await enqueue('nudge:one');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const other = await anotherFamily('Other Family');
+    await enqueue('nudge:two', { familyId: other.familyId, parentUserId: other.parentUserId });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed' };
+    };
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+    ]);
+  });
+});
+
+describe('VIL-701 per-family daily decision cap', () => {
+  async function priorDecisions(n: number, at: Date): Promise<void> {
+    const start = zonedLocalInstant(dayKeyOf(at, TZ), '00:00', TZ);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: familyId,
+      route: PROACTIVE_DECISION_CAP_ROUTE,
+      windowStart: start,
+      count: n,
+    });
+  }
+
+  it('skips the model once the family has spent its local day, and not before', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'true');
+    await priorDecisions(PROACTIVE_DAILY_DECISION_CAP - 1, THURSDAY_EVENING);
+    await priorDecisions(3, new Date(THURSDAY_EVENING.getTime() - 2 * 24 * 60 * 60_000));
+    const id = await enqueue();
+    const first = harness(sendAll);
+
+    const open = await runProactiveReview(db.database, first.deps, THURSDAY_EVENING);
+
+    expect(open.decided).toBe(1);
+    expect(first.snapshots).toHaveLength(1);
+
+    const second = harness(sendAll);
+    await enqueue('nudge:weather:w42');
+    const capped = await runProactiveReview(
+      db.database,
+      second.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+
+    expect(capped).toMatchObject({ decided: 0, sent: 0, decisionsCapped: 1 });
+    expect(second.snapshots).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const skipped = await audits('proactive_cadence_skipped');
+    expect(skipped.map((row) => row.after)).toContainEqual({
+      reason: 'daily_decision_cap',
+      mode: 'live',
+    });
+  });
+
+  it('does not cap while the flag is unset or a trailing newline', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await priorDecisions(PROACTIVE_DAILY_DECISION_CAP, THURSDAY_EVENING);
+    await enqueue('nudge:weather:w41');
+    const unset = harness(sendAll);
+    expect((await runProactiveReview(db.database, unset.deps, THURSDAY_EVENING)).decided).toBe(1);
+
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'true\n');
+    await enqueue('nudge:weather:w42');
+    const newline = harness(sendAll);
+    const summary = await runProactiveReview(
+      db.database,
+      newline.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+    expect(summary.decided).toBe(1);
+    expect(summary.decisionsCapped).toBe(0);
+  });
+});
+
 describe('the next-day check-back', () => {
   const ANCHOR = new Date('2026-10-08T01:40:00.000Z');
+
+  beforeEach(() => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+  });
 
   async function waitingAsk(over: { checkBackAt?: Date } = {}): Promise<string> {
     const [row] = await db.database
@@ -3298,14 +3662,26 @@ describe('the next-day check-back', () => {
     });
   }
 
-  it('is decided and sent while the cadence flag is unset, and marks the ask followed up', async () => {
+  it('sends nothing while cadence is off', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'off', families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('is decided and sent while cadence is live, and marks the ask followed up', async () => {
     const workstreamId = await waitingAsk();
     const id = await enqueueCheckback(workstreamId);
     const h = harness(sendAll);
 
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-    expect(summary).toMatchObject({ mode: 'off', families: 1, sent: 1 });
+    expect(summary).toMatchObject({ mode: 'live', families: 1, sent: 1 });
     expect(h.rechecked).toEqual([nextDayCheckbackDedupeKey(workstreamId)]);
     expect(h.transport.bodies()).toEqual([MESSAGE]);
     expect(await candidate(id)).toMatchObject({ status: 'sent' });

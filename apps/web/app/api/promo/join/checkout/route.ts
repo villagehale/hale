@@ -1,15 +1,11 @@
-import { currencyFromIpCountry } from '@hale/types';
 import { NextResponse } from 'next/server';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
+import { billingWebhookReady } from '~/lib/billing/billing-live';
+import { decideCheckoutCurrency, decideCheckoutTier } from '~/lib/billing/checkout-request';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
-import {
-  isPromoAnnualSku,
-  paidTierFromSku,
-  paidTierFromUnknown,
-  resolveCheckoutPrice,
-} from '~/lib/billing/prices';
+import { isPromoAnnualSku, paidTierFromSku, resolveCheckoutPrice } from '~/lib/billing/prices';
 import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import { PROMO_JOIN_COOKIE, readPromoJoinBinding } from '~/lib/billing/promo-join-cookie';
 import {
@@ -48,10 +44,31 @@ export async function POST(req: Request): Promise<Response> {
   if (!client || !origin) {
     return NextResponse.json({ error: 'stripe_billing_not_live' }, { status: 501 });
   }
+  const webhook = await billingWebhookReady(defaultDb());
+  if (!webhook.ready) {
+    return NextResponse.json(
+      { error: 'stripe_billing_not_live', reason: webhook.reason },
+      { status: 501 },
+    );
+  }
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const tier = paidTierFromUnknown(body?.tier ?? body?.plan);
-  const currency = currencyFromIpCountry(req.headers.get('x-vercel-ip-country'));
+  const tierDecision = decideCheckoutTier(body?.tier ?? body?.plan);
+  if (tierDecision.status === 'invalid_tier') {
+    return NextResponse.json({ error: 'invalid_tier' }, { status: 400 });
+  }
+  const tier = tierDecision.tier;
+  const currencyDecision = decideCheckoutCurrency({
+    countryHeader: req.headers.get('x-vercel-ip-country'),
+    expectedCurrency: body?.expectedCurrency,
+  });
+  if (currencyDecision.status !== 'ok') {
+    return NextResponse.json(
+      { error: currencyDecision.status },
+      { status: currencyDecision.status === 'region_unsupported' ? 403 : 409 },
+    );
+  }
+  const currency = currencyDecision.currency;
   const selected = resolveCheckoutPrice({
     currency,
     period: 'annual',
