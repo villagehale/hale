@@ -230,6 +230,7 @@ function conversation(compose: (input: FriendVoiceInput) => ScriptedTurn = v2Tur
     },
     capture: async (event, _distinctId, properties) => {
       events.push({ event, properties: (properties ?? {}) as Record<string, unknown> });
+      return 'sent' as const;
     },
     now: clock,
   });

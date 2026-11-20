@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THREAD_ONBOARDING_V2_ENABLED_ENV, threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import {
+  THREAD_ONBOARDING_V2_ENABLED_ENV,
+  threadOnboardingV2Enabled,
+} from './thread-onboarding-v2';
 
 /**
  * VIL-721 · THREAD_ONBOARDING_V2_ENABLED is on for the exact string `true` and nothing
