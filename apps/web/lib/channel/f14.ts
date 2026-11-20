@@ -13,6 +13,8 @@
  * `~/lib/channel/nudge/run` re-exports these so its existing callers are unchanged.
  */
 
+import { isEnabled } from '@hale/flags';
+
 export const F14_ENABLED_ENV = 'F14_ENABLED';
 export const F14_ALLOWLIST_ENV = 'F14_FAMILY_ALLOWLIST';
 
@@ -23,7 +25,7 @@ export const F14_ALLOWLIST_ENV = 'F14_FAMILY_ALLOWLIST';
  * armed. Strict comparison fails closed on exactly that shape.
  */
 export function f14Enabled(): boolean {
-  return process.env[F14_ENABLED_ENV] === 'true';
+  return isEnabled('f14');
 }
 
 /** The comma-separated family ids allowed through while the flag is off. */
@@ -44,5 +46,5 @@ export function f14Allowlist(): Set<string> {
  * off so a missing env cannot start the product; production sets the value.
  */
 export function f14EnabledFor(familyId: string): boolean {
-  return f14Enabled() || f14Allowlist().has(familyId);
+  return isEnabled('f14', familyId);
 }

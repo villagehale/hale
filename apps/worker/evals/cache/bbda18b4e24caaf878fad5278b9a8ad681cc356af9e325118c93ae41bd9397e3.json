@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the 18-month checkup is booked, which is a scheduled_event claim. Row s1 is the same checkup, recorded as a scheduled event from the parent. No inbound message makes this an acknowledgement of the parent's own news.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "s1"
+      }
+    ]
+  },
+  "latencyMs": 2081
+}

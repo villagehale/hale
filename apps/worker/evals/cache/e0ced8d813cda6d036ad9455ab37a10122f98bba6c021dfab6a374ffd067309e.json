@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The email_alert is news from a parenting email whose occasion is soon and which expires tomorrow midday local, so it is time-critical and goes out now at Thursday 6 PM, outside quiet hours, despite the 3 unanswered texts.",
+    "action": "send_now",
+    "item_ids": [
+      "mail"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Priya, les Patel, vous voulez que j'ajoute le pique-nique de samedi à votre calendrier ?",
+    "why": "calendar_ask"
+  },
+  "latencyMs": 1287
+}

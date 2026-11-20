@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Sure, we can start with Gmail. Google shares your whole inbox with Hale, but Hale only keeps and uses what's about the kids, and you can disconnect anytime. Tap the link above when you're ready, and tell me once it's done.",
+    "asks": false,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "connectGmail": null,
+    "gmailLater": false
+  },
+  "latencyMs": 1912
+}

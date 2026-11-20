@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale texted the co-parent the pickup time, which is a send_done claim backed by row m1 (a text to the co-parent). It also says the co-parent got it, but m1's state is 'sent', not 'delivered', so that send_received claim cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "m1"
+      },
+      {
+        "sentence": 0,
+        "kind": "send_received",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1656
+}

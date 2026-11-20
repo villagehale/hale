@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names exactly one event, Saturday soccer practice at 10:00am, so drafting the move is correct. The reply names the change with details traceable to the week and asks in one plain sentence whether to go ahead. No keyword prompt, no padding.",
+    "score": 5
+  }
+}

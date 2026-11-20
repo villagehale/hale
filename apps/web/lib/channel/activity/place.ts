@@ -1,6 +1,11 @@
 import type { Database } from '@hale/db';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
-import { matchPostalToken, readPlaceRow, searchPlaceOf } from '~/lib/channel/off-domain/place';
+import {
+  coarsenPlace,
+  matchPostalToken,
+  readPlaceRow,
+  searchPlaceOf,
+} from '~/lib/channel/off-domain/place';
 import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
@@ -12,6 +17,10 @@ import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
  * (off-domain/place.ts) — never the stored text, never the postal code or ZIP. A GTA
  * postal area that names one covered municipality keeps that municipality's label, as
  * before: the registration dataset is keyed by it, and it is a refinement, not the map.
+ *
+ * A place of fewer than 10,000 people is searched as the nearest larger one, or as its
+ * province or state ({@link coarsenPlace}): a search is told a city and a country, and a
+ * village names a family. A covered GTA municipality is never that small.
  *
  * No place is a named reason. A find with no place does not run (deidentify.ts refuses
  * it as `no_place`), so "search the general area" is never a search of nowhere.
@@ -29,8 +38,9 @@ export async function activityPlaceOf(
     const towns = municipalitiesForFsa(token.areaKey);
     if (towns.length === 1) return { status: 'known', town: townLabel(towns[0]!) };
   }
-  const place = await searchPlaceOf(family);
-  if (place.status === 'unknown') return place;
+  const read = await searchPlaceOf(family);
+  if (read.status === 'unknown') return read;
+  const place = await coarsenPlace(read, true);
   return {
     status: 'known',
     town: [place.city, place.provinceOrState, place.country]

@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Le dessert, c'est déjà Hugo qui s'en occupe ! Le pain est encore libre si ça vous tente."
+  },
+  "latencyMs": 1443
+}

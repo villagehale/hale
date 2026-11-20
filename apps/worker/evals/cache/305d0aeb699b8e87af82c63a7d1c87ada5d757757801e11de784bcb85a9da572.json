@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这一场已经满员了,没有名额了。你可以在这里看看他们的报名页面:https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 1934,
+  "usage": {
+    "input_tokens": 141,
+    "output_tokens": 61,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

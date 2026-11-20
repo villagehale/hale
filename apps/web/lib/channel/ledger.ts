@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
+import { isUuid } from './mid-activity/claim';
 import type { ChannelKind } from './types';
 
 /**
@@ -92,6 +93,68 @@ export const SENT_STATUSES = ['queued', 'sent', 'delivered'] as const;
  * and deliberate retries, when we build them, will mint their own keys.
  */
 export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
+
+/**
+ * The statuses that say a message got to the parent's phone: the provider handed it on
+ * ('sent', terminal on accept for iMessage) or a receipt confirmed it ('delivered').
+ * 'queued' is still waiting for airtime and 'failed' never arrived.
+ */
+const DELIVERED_STATUSES = ['sent', 'delivered'] as const;
+
+/**
+ * An ASK as the parent holds it: the message under this dedupe key, when it reached the
+ * parent, and who it went to. Null while it is queued, after it failed, or if it never
+ * went. A question Hale put to nobody is not open. `askedAt` is when its row recorded the
+ * send ({@link sendRecordedAt}), null when not known.
+ */
+export async function deliveredAsk(
+  database: Database,
+  dedupeKey: string,
+): Promise<{ parentUserId: string; askedAt: Date | null } | null> {
+  const [row] = await database
+    .select({
+      parentUserId: schema.channelMessages.parentUserId,
+      askedAt: schema.channelMessages.sendRecordedAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.dedupeKey, dedupeKey),
+        inArray(schema.channelMessages.status, [...DELIVERED_STATUSES]),
+        isNotNull(schema.channelMessages.sentAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * VIL-302 · WHEN AN ASK WENT, on the one clock every ask a parent may answer is ranked by:
+ * the database clock when the outbound row that carried it first recorded its send
+ * (`send_recorded_at`, stamped by a trigger, migration 0249). Not `sent_at`, which is each
+ * caller's own start time, and not `created_at`, which is before the send on a row claimed
+ * first. Null when the row recorded no send, recorded it before the column existed, or is
+ * not this family's.
+ */
+export async function sendRecordedAt(
+  database: Database,
+  input: { familyId: string; channelMessageId: string },
+): Promise<Date | null> {
+  // A provenance column is text, and a value that is not a row id names no send.
+  if (!isUuid(input.channelMessageId)) return null;
+  const [row] = await database
+    .select({ at: schema.channelMessages.sendRecordedAt })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.id, input.channelMessageId),
+        eq(schema.channelMessages.familyId, input.familyId),
+        eq(schema.channelMessages.direction, 'out'),
+      ),
+    )
+    .limit(1);
+  return row?.at ?? null;
+}
 
 /**
  * Historical marker on a channel_messages row whose dedupe key was claimed

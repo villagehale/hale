@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyNZ3tHG2765agCjyrmY",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "Appeler la piscine, c'est hors de mon champ. Par contre, je peux suivre les dates d'inscription et te texter avant l'ouverture."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1634,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 488,
+      "output_tokens_details": {
+        "thinking_tokens": 434
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

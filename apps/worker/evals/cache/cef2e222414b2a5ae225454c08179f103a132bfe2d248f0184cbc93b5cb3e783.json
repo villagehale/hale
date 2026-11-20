@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "sleep transition guidance question about raising a child, not a symptom or provider request",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1110
+}

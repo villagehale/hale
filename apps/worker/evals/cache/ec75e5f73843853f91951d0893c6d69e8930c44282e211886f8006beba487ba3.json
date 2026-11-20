@@ -1,0 +1,21 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": false,
+    "joinSelf": {
+      "called": null
+    },
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "fr",
+    "reply": "Avec plaisir ! Comment on t'appelle pour le tirage ?"
+  },
+  "latencyMs": 2008,
+  "usage": {
+    "input_tokens": 157,
+    "output_tokens": 91,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

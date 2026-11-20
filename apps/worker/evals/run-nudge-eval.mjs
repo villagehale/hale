@@ -44,8 +44,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { NUDGE_FIXTURES, NUDGE_OPT_OUT } from './nudge-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { NUDGE_FIXTURES, NUDGE_OPT_OUT } from './nudge-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');

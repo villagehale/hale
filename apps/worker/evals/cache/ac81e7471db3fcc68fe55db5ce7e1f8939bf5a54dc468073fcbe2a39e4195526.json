@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Yes is for a different program (Little Kickers), not Preschool Swim",
+    "said": null,
+    "named": "Little Kickers Saturday class",
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1719
+}

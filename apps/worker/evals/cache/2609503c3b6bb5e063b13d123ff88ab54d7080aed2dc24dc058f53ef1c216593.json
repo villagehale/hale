@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "flyer",
+    "title": "Fall Swim Lessons",
+    "venue": "Riverside Rec Centre",
+    "when_text": "Saturdays 9:30 to 10:15 am, September 12 to November 14",
+    "registration_url": "https://register.riverside-rec.example/swim-fall",
+    "child_name": null,
+    "notes": "Preschool, ages 3 to 5; $96 for 10 classes",
+    "confidence": 0.97
+  },
+  "latencyMs": 4704
+}

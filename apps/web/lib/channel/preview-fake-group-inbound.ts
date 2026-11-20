@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { handleLinqGroupMessage } from '~/lib/channel/linq/inbound';
 import { parseLinqWebhook } from '~/lib/channel/linq/payload';
 import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
-import { fakeSender, previewRouteGate } from '~/lib/channel/preview-fake-inbound';
+import { fakeSender, previewRouteGate, readMedia } from '~/lib/channel/preview-fake-inbound';
 import {
   type GroupCaptureSink,
   PREVIEW_CHAT_PREFIX,
@@ -20,8 +20,9 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 /**
  * VIL-466 groups · Preview-only fake group inbound door.
  *
- * POST { chatId?, from, participants: [+1437555…, …], text } is one parent's
- * message in a fake household group. It is shaped as Linq's `message.received`
+ * POST { chatId?, from, participants: [+1437555…, …], text, media? } is one parent's
+ * message in a fake household group. `media` is the 1:1 door's `[{ url, mime }]`, so a
+ * shared `.vcf` can be proven in a group (VIL-482). It is shaped as Linq's `message.received`
  * webhook, parsed by the same `parseLinqWebhook`, and run through the same group
  * handler the signed Linq door runs (roster, STOP, turn reader, coach). Every
  * group message, tapback, poll and chat update Hale makes in reply is captured by
@@ -111,7 +112,13 @@ export async function handlePreviewFakeGroupInbound(
   const shut = gate(req, env);
   if (shut) return shut;
 
-  let payload: { chatId?: unknown; from?: unknown; participants?: unknown; text?: unknown };
+  let payload: {
+    chatId?: unknown;
+    from?: unknown;
+    participants?: unknown;
+    text?: unknown;
+    media?: unknown;
+  };
   try {
     payload = (await req.json()) as typeof payload;
   } catch {
@@ -122,7 +129,9 @@ export async function handlePreviewFakeGroupInbound(
   const from = fakeSender(payload.from);
   if (!from || !participants.includes(from)) return json({ error: 'sender_not_participant' }, 400);
   const text = typeof payload.text === 'string' ? payload.text : '';
-  if (!text.trim()) return json({ error: 'empty' }, 400);
+  const media = readMedia(payload.media);
+  if (media === 'invalid') return json({ error: 'media_invalid' }, 400);
+  if (!text.trim() && !media) return json({ error: 'empty' }, 400);
   if (text.length > MAX_FAKE_GROUP_TEXT) return json({ error: 'too_long' }, 413);
   if (payload.chatId !== undefined && !isFakeChatId(payload.chatId)) {
     return json({ error: 'chat_not_fake' }, 400);
@@ -162,7 +171,10 @@ export async function handlePreviewFakeGroupInbound(
         is_group: true,
         handles: participants.map((handle) => ({ handle, is_me: false })),
       },
-      parts: [{ type: 'text', value: text }],
+      parts: [
+        ...(text.trim() ? [{ type: 'text', value: text }] : []),
+        ...(media ?? []).map((part) => ({ type: 'media', url: part.url, mime_type: part.mime })),
+      ],
     },
   };
   const parsed = parseLinqWebhook(webhook, now);

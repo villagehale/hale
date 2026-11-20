@@ -9,6 +9,7 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import { SharedLinks } from '~/components/hale/shared-links';
 import type { ViewerConsentRecord } from '~/lib/consent-records';
 import { PRIVACY_URL } from '~/lib/legal-links';
+import { accessExportBlurb } from '~/lib/rights/export-round-2';
 import { PortalHeading } from './heading';
 import styles from './portal.module.css';
 
@@ -58,7 +59,7 @@ export function PrivacyView({
               </span>
               <span>
                 <h3>Export your data</h3>
-                <p className={styles.meta}>A copy of everything Hale holds.</p>
+                <p className={styles.meta}>{accessExportBlurb()}</p>
               </span>
               <span className={styles.end}>
                 <ExportDataButton idleLabel="Export" className={styles.secondary} />

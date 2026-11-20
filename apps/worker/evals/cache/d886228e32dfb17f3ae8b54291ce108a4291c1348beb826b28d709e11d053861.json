@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the correct opening time and both sessions at 98 $, and asks only one question. However it asks about session order and also adds an unrequested aside about registering from the parent's own device and the city site counting it as more than one spot, which is extra unrequested content and arguably a recap/extra ask. It also says 'je m'occupe de la file d'attente' and 'je me connecte à l'ouverture', which is consistent with auto mode. No invented facts or claims of a held spot, but it is longer than two short sentences and includes an unasked-for instruction.",
+    "score": 3
+  }
+}

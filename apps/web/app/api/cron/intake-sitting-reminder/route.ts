@@ -30,7 +30,9 @@ export const GET = cronRoute('intake-sitting-reminder', async () => {
   const database = db();
   const sitting = await runSittingReminderCron(database, {
     ...defaultSittingReminderDeps(),
-    friendVoice: createFriendVoiceComposer(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    friendVoice: createFriendVoiceComposer(
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' }),
+    ),
   });
   return NextResponse.json({ ok: true, ...sitting }, { status: 200 });
 });

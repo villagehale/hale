@@ -6,6 +6,7 @@ import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import {
   composeWorkstreamFollowup,
   followupBackoffUntil,
@@ -20,7 +21,7 @@ import { WORKSTREAMS_ENABLED_ENV, activeWorkstreamBlock, haleActionNextStep } fr
 /** 11:00 in Toronto, 00:00 in Tokyo. Quiet hours are 21:00–08:00 local. */
 const NOW = new Date('2026-08-12T15:00:00.000Z');
 const FAMILY = '11111111-1111-4111-8111-111111111111';
-const TITLE = 'Saturday swim for Sebastian near L7G';
+const TITLE = `Saturday swim for Sebastian near ${FIXTURE_FSA}`;
 
 function usage(): Anthropic.Usage {
   return {
@@ -252,6 +253,28 @@ describe('workstream follow-up sweep', () => {
         attempt: 0,
       },
     ]);
+  });
+
+  it('does not compose a check-back already queued for the decider', async () => {
+    vi.stubEnv(WORKSTREAMS_ENABLED_ENV, 'true');
+    const compose = vi.fn(async () => ({
+      ok: true as const,
+      body: 'The camp has not written back.',
+    }));
+    const result = await runWorkstreamFollowupSweep({} as Database, {
+      now: () => NOW,
+      listDue: async () => [due],
+      f14: () => true,
+      linkedTeen: async () => false,
+      parentFor: async () => 'user-1',
+      dedupeActive: async () => false,
+      buildGate: () => gate('America/Toronto'),
+      pendingDeferral: async () => null,
+      queuedForDecider: async () => true,
+      compose,
+    });
+    expect(result.queued).toBe(1);
+    expect(compose).not.toHaveBeenCalled();
   });
 
   it('does not compose again while a hold or a backoff is still in force', async () => {

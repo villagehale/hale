@@ -9,11 +9,14 @@ import {
   gte,
   inArray,
   isNull,
+  lt,
   lte,
+  not,
   notInArray,
   or,
   sql,
 } from 'drizzle-orm';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import {
   WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
   WEEKDAY_BREAK_TEMPLATE_KEY,
@@ -35,6 +38,12 @@ import {
   familyOutboundTarget,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import { onCheckbackClock } from '~/lib/channel/next-day-checkback/clock';
+import {
+  type OpenAskClosedReason,
+  type RecheckOpenAsk,
+  defaultRecheckOpenAsk,
+} from '~/lib/channel/next-day-checkback/recheck';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
@@ -48,14 +57,30 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  eventKeyFromWeekdayBreakDedupe,
+} from '~/lib/channel/weekday-care/key';
+import { WEEKDAY_QUESTION_TEMPLATE_KEYS } from '~/lib/channel/weekday-care/question';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { MAX_FAMILIES_PER_RUN } from '~/lib/cron/families';
 import { dayKeyOf } from '~/lib/format/datetime';
+import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import {
+  type IncidentFailure,
+  type ProviderHealthDeps,
+  abortsSendWindow,
+  providerPreflight,
+} from '~/lib/monitoring/provider-health';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { REGISTRATION_OPENING_KIND } from '~/lib/registration/city/context';
+import { ownCityRegistrationEnabled } from '~/lib/registration/city/flag';
 import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
+import { applyCandidateAfterSend, payloadOf, releaseEmailAlertReservationsFor } from './after-send';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -69,11 +94,19 @@ import {
   recordProactiveSend,
   writeProactiveAudit,
 } from './finalize';
-import { type ProactiveCadence, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
+import {
+  type ProactiveCadence,
+  familyDecisionCapEnabled,
+  proactiveCadence,
+  proactiveReviewGuardsEnabled,
+  requestedCadence,
+  unroutedKinds,
+} from './flag';
 import { type OpenCandidate, planHourlyReview } from './hold';
 import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
+import { FLORIDA_OKLAHOMA_QUIET_START } from './quiet';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -81,16 +114,24 @@ import {
   loadFamilySnapshot,
 } from './snapshot';
 import { type ToolCandidate, boundedLine } from './tools';
+import { isVerbatimKind } from './verbatim';
 import { volumeIsUnusual } from './volume';
 
 /**
- * VIL-226 · the hourly review. Off reads nothing except evening check-ins, which have
- * no fixed text left to send on their own: that one kind is decided and sent here.
- * Shadow decides and records, and still sends an evening check-in. Live composes and
- * sends what the decider chose, through the same red lines every proactive send
- * crosses: the gate (consent, opt-out, quiet hours), the sending line's health, and a
- * sendable number. Every hold and drop is a named reason on the row and an audit row
- * (rules #6 and #11).
+ * VIL-226 · the hourly review. Off reads no family and sends nothing (VIL-705): the
+ * decider-only lanes wait until shadow or live. Shadow decides and records, and still
+ * sends an evening check-in. Live composes and sends what the decider chose, through
+ * the same red lines every proactive send crosses: the gate (consent, opt-out, quiet
+ * hours), the sending line's health, and a sendable number. Every hold and drop is a
+ * named reason on the row and an audit row (rules #6 and #11).
+ *
+ * VIL-701 · when `PROACTIVE_REVIEW_GUARDS_ENABLED` is exactly `true`, a provider
+ * probe runs first and a low balance or a provider failure returns before any family
+ * is read. A billing-class miss mid-run stops the families still waiting. At most
+ * `MAX_FAMILIES_PER_RUN.proactiveReview` families are reviewed, oldest due first.
+ * Live decider failures page #ops once per run. When
+ * `PROACTIVE_FAMILY_DECISION_CAP_ENABLED` is exactly `true`, a family past its local
+ * day's decision cap is not sent to the model.
  */
 
 export interface ProactiveReviewSummary {
@@ -119,6 +160,16 @@ export interface ProactiveReviewSummary {
   familiesCut: number;
   /** Families with more holds still on their clock than `WAITING_ROWS`: their oldest unread. */
   waitingCut: number;
+  /** Due families left for a later hour: past the per-run cap, or behind a mid-run abort. */
+  familiesDeferred: number;
+  /** Families the daily decision cap kept off the model. */
+  decisionsCapped: number;
+  /**
+   * Set when the run stopped short. `preflight` paged the provider incident.
+   * `mid_run` is a billing-class decider failure; the one #ops page for those
+   * failures is separate.
+   */
+  aborted?: { where: 'preflight' | 'mid_run'; failure: IncidentFailure; alerted: boolean };
   skipped: number;
   failed: number;
 }
@@ -143,6 +194,21 @@ export interface ProactiveReviewDeps {
   threadMessage: typeof threadProactiveMessage;
   /** The sweep's own close of the first-find promise. Required, as in the sweep. */
   fulfillCommitment: typeof fulfillCommitment;
+  /** VIL-681 · is a next-day check-back still unfinished at send time. Required: a
+   * check-back sent without it could text a parent about something they already did. */
+  recheckOpenAsk: RecheckOpenAsk;
+  /** Pages #ops when a live decision fails. Defaults to failure-page.ts. */
+  page?(page: OpsPage): Promise<unknown>;
+  /**
+   * Probe and #ops sender for the credit preflight. Unset uses the real probe
+   * and the Slack sender. A test counts the page here.
+   */
+  providerHealth?: ProviderHealthDeps;
+  /**
+   * Families this run may review once the guards flag is on. Unset uses
+   * {@link MAX_FAMILIES_PER_RUN.proactiveReview}.
+   */
+  familyCap?: number;
   fetch?: typeof fetch;
 }
 
@@ -159,6 +225,7 @@ export function defaultProactiveReviewDeps(): ProactiveReviewDeps {
     outboundTarget: familyOutboundTarget,
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
+    recheckOpenAsk: defaultRecheckOpenAsk(),
   };
 }
 
@@ -193,6 +260,7 @@ interface QueuedItem extends OpenCandidate {
   category: (typeof schema.channelMessages.$inferInsert)['category'];
   templateKey: string;
   dedupeKey: string;
+  payload: Record<string, unknown> | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -209,12 +277,125 @@ const SENT_TO_MODEL: readonly DecideSkip[] = ['model_failed', 'unparsed'];
  */
 export const FAMILY_ROWS = 40;
 /**
+ * How long a hold the code placed after `send_now` waits before the next review tries
+ * again. Quiet hours pass their own end. A pause, a refused gate, or a missed delivery
+ * otherwise never reopens.
+ */
+export const CODE_HOLD_REOPEN_MS = 60 * 60 * 1000;
+/**
  * An infra bound on the holds still on their clock that one review reads, newest first.
  * They are never offered; they only show the decider its prior holds and anchor the
  * fresh-signal check (latestHold), so the oldest past it go unread, by name.
  */
 export const WAITING_ROWS = 40;
+/**
+ * Model calls one family may make on its local day while
+ * `PROACTIVE_FAMILY_DECISION_CAP_ENABLED` is exactly `true`. A decision and a
+ * call that failed or did not parse both count: each one spent the model.
+ * Compose after a send is the writer's own call and is not a second decision.
+ */
+export const PROACTIVE_DAILY_DECISION_CAP = 8;
+/** The rate_limits route that claims one decision slot per family per local day. */
+export const PROACTIVE_DECISION_CAP_ROUTE = 'proactive:decision';
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
+
+interface ReviewBudget {
+  guards: boolean;
+  failures: { model_failed: number; unparsed: number };
+  abort: IncidentFailure | null;
+}
+
+/**
+ * Families with a row the review can act on now, oldest such row first. Ids only.
+ *
+ * A hold still in the future, and a row whose own lane is switched off, are not
+ * due. Counting them would fill the cap with families the model never sees, and
+ * a family behind them would wait until those rows expired.
+ */
+async function dueFamilyIds(database: Database, now: Date, onlyDue: boolean): Promise<string[]> {
+  const open = inArray(schema.proactiveCandidates.status, ['queued', 'held']);
+  const actionable = or(
+    eq(schema.proactiveCandidates.status, 'queued'),
+    and(
+      eq(schema.proactiveCandidates.status, 'held'),
+      or(
+        isNull(schema.proactiveCandidates.holdUntil),
+        lte(schema.proactiveCandidates.holdUntil, now),
+      ),
+    ),
+  );
+  const rows = await database
+    .select({ familyId: schema.proactiveCandidates.familyId })
+    .from(schema.proactiveCandidates)
+    .where(
+      onlyDue
+        ? and(
+            actionable,
+            ownCityRegistrationEnabled()
+              ? undefined
+              : not(eq(schema.proactiveCandidates.kind, REGISTRATION_OPENING_KIND)),
+            schoolBreakEnabled()
+              ? undefined
+              : not(
+                  inArray(schema.proactiveCandidates.templateKey, [...SCHOOL_BREAK_TEMPLATE_KEYS]),
+                ),
+          )
+        : open,
+    )
+    .groupBy(schema.proactiveCandidates.familyId)
+    .orderBy(
+      sql`min(${schema.proactiveCandidates.createdAt}) asc`,
+      asc(schema.proactiveCandidates.familyId),
+    );
+  return rows.map((row) => row.familyId);
+}
+
+/**
+ * Claims one of this family's local-day decision slots before the model is called.
+ *
+ * The upsert is the cap: two overlapping reviews cannot both pass a count they
+ * both read as seven. A crash after the claim and before the call spends the
+ * slot, which is the safe side of the bound. Old windows are deleted here so
+ * the table does not keep a row per family per day.
+ */
+async function claimDecisionSlot(
+  database: Database,
+  familyId: string,
+  timeZone: string,
+  now: Date,
+): Promise<boolean> {
+  const start = zonedLocalInstant(dayKeyOf(now, timeZone), '00:00', timeZone);
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, PROACTIVE_DECISION_CAP_ROUTE),
+        lt(schema.rateLimits.windowStart, new Date(start.getTime() - 2 * DAY_MS)),
+      ),
+    );
+  const claimed = (await database.execute(sql`
+    insert into rate_limits (identifier, route, window_start, count)
+    values (${familyId}, ${PROACTIVE_DECISION_CAP_ROUTE}, ${start}, 1)
+    on conflict (identifier, route, window_start)
+    do update set count = rate_limits.count + 1
+    where rate_limits.count < ${PROACTIVE_DAILY_DECISION_CAP}
+    returning count
+  `)) as { rows?: unknown[] } | unknown[];
+  const rows = Array.isArray(claimed) ? claimed : (claimed.rows ?? []);
+  return rows.length > 0;
+}
+
+async function pageDeciderFailures(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  failures: ReviewBudget['failures'],
+): Promise<void> {
+  const total = failures.model_failed + failures.unparsed;
+  if (total === 0) return;
+  const page = deps.page ?? ((opsPage: OpsPage) => pageOps(database, opsPage));
+  const reason = failures.model_failed > 0 ? 'model_failed' : 'unparsed';
+  await page({ site: 'proactive_decider_failed', facts: { reason }, count: total });
+}
 
 export async function runProactiveReview(
   database: Database,
@@ -246,88 +427,83 @@ export async function runProactiveReview(
     parentNotInFamily: 0,
     familiesCut: 0,
     waitingCut: 0,
+    familiesDeferred: 0,
+    decisionsCapped: 0,
     skipped: 0,
     failed: 0,
   };
-  if (mode === 'off') {
-    await reviewEveningCheckIns(database, deps, now, summary);
-    return summary;
+  const guards = proactiveReviewGuardsEnabled();
+  if (guards) {
+    const preflight = await providerPreflight(
+      database,
+      'proactive_review',
+      deps.client,
+      now,
+      deps.providerHealth,
+    );
+    if (!preflight.proceed && abortsSendWindow(preflight.abort.failure)) {
+      return {
+        ...summary,
+        aborted: {
+          where: 'preflight',
+          failure: preflight.abort.failure,
+          alerted: preflight.abort.alerted,
+        },
+      };
+    }
   }
+  // Off is the kill switch for this review: no family read, no decider, no send.
+  // The probe above, when the guards flag is on, is the only call an off hour makes.
+  if (mode === 'off') return summary;
 
-  const families = await database
-    .selectDistinct({ familyId: schema.proactiveCandidates.familyId })
-    .from(schema.proactiveCandidates)
-    .where(inArray(schema.proactiveCandidates.status, ['queued', 'held']));
-  for (const { familyId } of families) {
+  const due = await dueFamilyIds(database, now, guards);
+  const cap = guards ? (deps.familyCap ?? MAX_FAMILIES_PER_RUN.proactiveReview) : due.length;
+  const chosen = due.slice(0, Math.max(0, cap));
+  summary.familiesDeferred = due.length - chosen.length;
+  const budget: ReviewBudget = {
+    guards,
+    failures: { model_failed: 0, unparsed: 0 },
+    abort: null,
+  };
+  for (let index = 0; index < chosen.length; index += 1) {
+    const familyId = chosen[index] as string;
     try {
       const items = await loadOpenItems(database, familyId, now, mode, summary);
       if (items.length === 0) continue;
       summary.families += 1;
       // An evening check-in has no sweep left to send it. A household whose open rows
       // are only that kind is decided as live, so the model can keep a pace it heard.
-      // A nudge sitting beside it stays on the shadow path.
+      // A nudge sitting beside it stays on the shadow path. Off never reaches here.
       const familyMode: 'shadow' | 'live' =
         mode === 'shadow' && items.every((item) => DECIDER_ONLY_KINDS.includes(item.kind))
           ? 'live'
           : mode;
-      await reviewFamily(database, deps, { familyId, items, now, mode: familyMode, summary });
+      await reviewFamily(database, deps, {
+        familyId,
+        items,
+        now,
+        mode: familyMode,
+        summary,
+        budget,
+      });
+      if (budget.abort) {
+        summary.familiesDeferred += chosen.length - index - 1;
+        summary.aborted = { where: 'mid_run', failure: budget.abort, alerted: false };
+        break;
+      }
     } catch (err) {
       summary.failed += 1;
       // Never the message: a postgres-js message can carry a constraint's key values.
       console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
     }
   }
+  if (guards) await pageDeciderFailures(database, deps, budget.failures);
   return summary;
-}
-
-/**
- * Evening check-ins while the cadence flag is off.
- *
- * Every other kind stays on the row. A nudge queued under `off` is not decided here,
- * which is what "the flag is unset" means for that sweep. A check-in has nothing else
- * that can speak, so this pass reviews only that kind, with live semantics.
- */
-async function reviewEveningCheckIns(
-  database: Database,
-  deps: ProactiveReviewDeps,
-  now: Date,
-  summary: ProactiveReviewSummary,
-): Promise<void> {
-  const families = await database
-    .selectDistinct({ familyId: schema.proactiveCandidates.familyId })
-    .from(schema.proactiveCandidates)
-    .where(
-      and(
-        inArray(schema.proactiveCandidates.status, ['queued', 'held']),
-        inArray(schema.proactiveCandidates.kind, [...DECIDER_ONLY_KINDS]),
-      ),
-    );
-  for (const { familyId } of families) {
-    try {
-      const items = await loadOpenItems(
-        database,
-        familyId,
-        now,
-        'live',
-        summary,
-        DECIDER_ONLY_KINDS,
-      );
-      if (items.length === 0) continue;
-      summary.families += 1;
-      await reviewFamily(database, deps, { familyId, items, now, mode: 'live', summary });
-    } catch (err) {
-      summary.failed += 1;
-      console.error({ err: errorLabel(err), familyId }, 'proactive review: family failed');
-    }
-  }
 }
 
 /**
  * This family's actionable rows, oldest first and at most `FAMILY_ROWS` of them, then its
  * holds still on their clock, newest first and at most `WAITING_ROWS` of them.
- *
- * `onlyKinds` limits both reads. The off-flag pass uses it so a nudge is neither offered
- * nor settled.
  */
 async function loadOpenItems(
   database: Database,
@@ -335,17 +511,13 @@ async function loadOpenItems(
   now: Date,
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
-  onlyKinds?: readonly ProactiveSendKind[],
 ): Promise<QueuedItem[]> {
-  const kindIs =
-    onlyKinds === undefined ? undefined : inArray(schema.proactiveCandidates.kind, [...onlyKinds]);
   const actionable = await database
     .select()
     .from(schema.proactiveCandidates)
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
-        kindIs,
         or(
           eq(schema.proactiveCandidates.status, 'queued'),
           and(
@@ -370,7 +542,6 @@ async function loadOpenItems(
     .where(
       and(
         eq(schema.proactiveCandidates.familyId, familyId),
-        kindIs,
         eq(schema.proactiveCandidates.status, 'held'),
         gt(schema.proactiveCandidates.holdUntil, now),
       ),
@@ -402,6 +573,11 @@ async function loadOpenItems(
         mode,
       });
       summary.parentNotInFamily += 1;
+      continue;
+    }
+    if (laneSwitchedOff(row.kind, row.templateKey)) {
+      // Its lane's kill switch is off: the row is left as it is, neither offered nor
+      // settled, and the next review after the switch is back on takes it up.
       continue;
     }
     if (!isProactiveSendKind(row.kind)) {
@@ -448,6 +624,7 @@ async function loadOpenItems(
       category: row.category,
       templateKey: row.templateKey,
       dedupeKey: row.dedupeKey,
+      payload: row.payload ?? null,
       what: row.what,
       why: row.why,
       decision: row.decision,
@@ -465,10 +642,30 @@ async function loadOpenItems(
 }
 
 /**
- * Kinds with no sweep of their own left to send them: the evening check-in and the
- * VIL-393 mid-activity ask. They are reviewed live even while the cadence flag is off.
+ * Kinds with no sweep of their own left to send them: the evening check-in, the VIL-393
+ * mid-activity ask, the VIL-681 next-day check-back, the VIL-684 own-city registration
+ * opening and the VIL-685 winter-break ask. Under shadow, a household whose open rows
+ * are only these kinds is decided as live. Under off, the review does not read them.
  */
-const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = ['evening_check_in', 'mid_activity_ask'];
+const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = [
+  'evening_check_in',
+  'mid_activity_ask',
+  'next_day_checkback',
+  'registration_opening',
+  'school_break_ask',
+];
+
+/** VIL-685 · the winter-break ask and the break question both stop with SCHOOL_BREAK_ENABLED. */
+const SCHOOL_BREAK_TEMPLATE_KEYS: readonly string[] = [
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+];
+
+/** A row whose own lane has a kill switch, and it is off. */
+function laneSwitchedOff(kind: string, templateKey: string | null): boolean {
+  if (kind === REGISTRATION_OPENING_KIND && !ownCityRegistrationEnabled()) return true;
+  return SCHOOL_BREAK_TEMPLATE_KEYS.includes(templateKey ?? '') && !schoolBreakEnabled();
+}
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -488,30 +685,73 @@ async function seatedParents(database: Database, familyId: string): Promise<Set<
   return new Set(rows.map((row) => row.userId));
 }
 
+/** The review runs once an hour (vercel.json): a row held to an instant wakes at the first
+ * review at or after it, up to this much later. */
+const REVIEW_INTERVAL_MS = 60 * 60_000;
+
+/** The quiet window as the earliest any number starts it (a Florida or Oklahoma line's
+ * 20:00, quiet.ts): a hold is for a family, not one number, so it wakes inside every
+ * parent's day. */
+const EARLIEST_QUIET = { start: FLORIDA_OKLAHOMA_QUIET_START, end: PROACTIVE_QUIET_HOURS.end };
+
+function inEarliestQuiet(at: Date, timeZone: string): boolean {
+  return isWithinQuietHours(at, timeZone, EARLIEST_QUIET.start, EARLIEST_QUIET.end);
+}
+
+/** The most recent start of that quiet window at or before `at`, in this zone. */
+function quietStartBefore(at: Date, timeZone: string): Date {
+  const today = dayKeyOf(at, timeZone);
+  const start = zonedLocalInstant(today, EARLIEST_QUIET.start, timeZone);
+  if (start.getTime() <= at.getTime()) return start;
+  return zonedLocalInstant(addDaysToKey(today, -1), EARLIEST_QUIET.start, timeZone);
+}
+
 /**
- * A hold never outlives what it holds. Past the earliest `worthlessAfter` of the chosen
- * items the row would sit in the waiting set (hold.ts), where no signal reopens it. With
- * no `worthlessAfter` at all, a hold never reaches past the days the decider could see
+ * The last moment a held item may wake and still be sent before `worthlessAfter`: the
+ * review it wakes at must come before that instant and outside the quiet hours of any
+ * number. A tell whose value ends at 6:30 a.m. wakes by 19:00 the evening before, never
+ * at 6:30, when the next review could only drop it as expired.
+ */
+export function lastSendBefore(worthlessAfter: Date, timeZone: string): Date {
+  const before = (ms: number) => new Date(worthlessAfter.getTime() - ms);
+  const quietInReach =
+    inEarliestQuiet(before(REVIEW_INTERVAL_MS), timeZone) || inEarliestQuiet(before(1), timeZone);
+  const edge = quietInReach ? quietStartBefore(before(1), timeZone) : worthlessAfter;
+  return new Date(edge.getTime() - REVIEW_INTERVAL_MS);
+}
+
+/**
+ * A hold never outlives what it holds. Past the last moment the chosen items can still be
+ * sent (lastSendBefore) the row would wake only to expire, or sit in the waiting set
+ * (hold.ts), where no signal reopens it. When that moment has already gone, nothing can
+ * send it later and the hold is `no_time_left`: the caller drops it by name. And whatever
+ * the items' windows, a hold never reaches past the days the decider could see
  * (`SNAPSHOT_DAYS`), so a far-off clock cannot park the row out of every review.
  */
 function clampHold(
   holdUntil: string | null,
   items: readonly QueuedItem[],
   now: Date,
-): { holdUntil: string | null; clamped: 'worthless_after' | 'snapshot_window' | null } {
+  timeZone: string,
+): {
+  holdUntil: string | null;
+  clamped: 'worthless_after' | 'snapshot_window' | 'no_time_left' | null;
+} {
   if (holdUntil === null) return { holdUntil, clamped: null };
   const bounds = items
     .map((item) => item.worthlessAfter)
     .filter((at): at is string => at !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
+    .map((at) => lastSendBefore(new Date(at), timeZone).getTime())
+    .sort((a, b) => a - b);
   const earliest = bounds[0];
-  if (earliest === undefined) {
-    const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
-    if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
-    return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
+  const edge = new Date(now.getTime() + SNAPSHOT_DAYS * DAY_MS);
+  if (earliest !== undefined && earliest <= edge.getTime()) {
+    if (Date.parse(holdUntil) <= earliest) return { holdUntil, clamped: null };
+    if (earliest <= now.getTime()) return { holdUntil: null, clamped: 'no_time_left' };
+    return { holdUntil: new Date(earliest).toISOString(), clamped: 'worthless_after' };
   }
-  if (Date.parse(holdUntil) <= Date.parse(earliest)) return { holdUntil, clamped: null };
-  return { holdUntil: earliest, clamped: 'worthless_after' };
+  if (Date.parse(holdUntil) <= edge.getTime()) return { holdUntil, clamped: null };
+  return { holdUntil: edge.toISOString(), clamped: 'snapshot_window' };
 }
 
 async function audit(
@@ -537,7 +777,9 @@ type SettledReason =
   | 'parent_not_in_family'
   | 'already_sent'
   | 'already_asked'
-  | 'requested_drop_after_parent_text';
+  | 'requested_drop_after_parent_text'
+  | 'hold_past_last_send'
+  | OpenAskClosedReason;
 
 /**
  * Moves this family's candidate rows. The family is in the write, not only the caller.
@@ -578,12 +820,16 @@ export async function mark(
         inArray(schema.proactiveCandidates.id, [...ids]),
       ),
     );
+  if (set.status === 'dropped') {
+    await releaseEmailAlertReservationsFor(database, familyId, ids);
+  }
 }
 
 /**
  * A named hold that the decider did not choose: the red lines at send time. The decider
  * chose `send_now`, and the row keeps that, so the hourly plan (hold.ts) does not hand it
- * back to the model on the day turning. Quiet hours carry their end as the clock.
+ * back to the model on the day turning. Quiet hours carry their end as the clock. Every
+ * other hold carries an hour, so a pause or a refused gate sends on its own once it lifts.
  */
 async function holdByName(
   database: Database,
@@ -594,11 +840,12 @@ async function holdByName(
   held: { holdUntil?: Date; parentUserId?: string } = {},
 ): Promise<void> {
   const itemIds = items.map((item) => item.id);
+  const reopenAt = held.holdUntil ?? new Date(now.getTime() + CODE_HOLD_REOPEN_MS);
   await mark(database, familyId, itemIds, {
     status: 'held',
     reason,
     decision: 'send_now',
-    holdUntil: held.holdUntil ? held.holdUntil.toISOString() : null,
+    holdUntil: reopenAt.toISOString(),
     now,
   });
   await audit(database, familyId, 'proactive_cadence_held', {
@@ -664,7 +911,7 @@ async function dropAlreadySent(
   summary: ProactiveReviewSummary,
 ): Promise<QueuedItem[]> {
   const care = items.some((item) => WEEKDAY_ASK_KEYS.includes(item.templateKey))
-    ? await loadWeekdayCareContext(database, familyId)
+    ? await loadWeekdayCareContext(database, familyId, now)
     : null;
   const dropped = new Map<'already_sent' | 'already_asked', QueuedItem[]>();
   const kept: QueuedItem[] = [];
@@ -689,6 +936,104 @@ async function dropAlreadySent(
     await audit(database, familyId, 'proactive_cadence_skipped', { reason, itemIds, mode: 'live' });
     summary.dropped += 1;
   }
+  return kept;
+}
+
+/**
+ * VIL-681 · a next-day check-back is read again at send time: still the ask the sweep
+ * queued, the parent still quiet, and not already signed up for somewhere Hale did not
+ * see. A closed ask is dropped by its name before the writer; one that could not be read
+ * is held with no clock. The rest of the batch goes on. An owed ask comes back with its
+ * asker's clock, which the gate's quiet floor reads for that parent.
+ */
+async function dropClosedAsks(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<{ kept: QueuedItem[]; clocks: Map<string, string> }> {
+  const kept: QueuedItem[] = [];
+  const clocks = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind !== 'next_day_checkback') {
+      kept.push(item);
+      continue;
+    }
+    const recheck = await deps.recheckOpenAsk(database, {
+      familyId,
+      parentUserId: item.parentUserId,
+      dedupeKey: item.dedupeKey,
+      payload: item.payload,
+      now,
+    });
+    if (recheck.verdict === 'owed') {
+      kept.push(item);
+      clocks.set(item.parentUserId, recheck.timeZone);
+      continue;
+    }
+    if (recheck.verdict === 'unchecked') {
+      await holdByName(database, familyId, [item], recheck.reason, now);
+      summary.held += 1;
+      continue;
+    }
+    await mark(database, familyId, [item.id], {
+      status: 'dropped',
+      reason: recheck.reason,
+      decision: 'send_now',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: recheck.reason,
+      itemIds: [item.id],
+      mode: 'live',
+    });
+    summary.dropped += 1;
+  }
+  return { kept, clocks };
+}
+
+/**
+ * A parent's reply answers the one weekday question their newest text asked
+ * (weekday-care/question.ts), and every row of one text shares its time. So a text
+ * carries at most one weekday question per parent: the first chosen goes, and any other
+ * waits as the decider's own unchosen items do, offered again the next day or on news.
+ */
+async function holdSecondQuestions(
+  database: Database,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<QueuedItem[]> {
+  const asking = new Set<string>();
+  const kept: QueuedItem[] = [];
+  const waiting: QueuedItem[] = [];
+  for (const item of items) {
+    if (!WEEKDAY_QUESTION_TEMPLATE_KEYS.includes(item.templateKey)) kept.push(item);
+    else if (asking.has(item.parentUserId)) waiting.push(item);
+    else {
+      asking.add(item.parentUserId);
+      kept.push(item);
+    }
+  }
+  if (waiting.length === 0) return kept;
+  const itemIds = waiting.map((item) => item.id);
+  await mark(database, familyId, itemIds, {
+    status: 'held',
+    reason: 'one_question_per_text',
+    decision: null,
+    holdUntil: null,
+    now,
+  });
+  await audit(database, familyId, 'proactive_cadence_held', {
+    reason: 'one_question_per_text',
+    itemIds,
+    mode: 'live',
+  });
+  summary.held += 1;
   return kept;
 }
 
@@ -755,6 +1100,19 @@ function writerItem(item: QueuedItem): ToolCandidate {
   };
 }
 
+/** The queued CTAs, in the order they were queued, without rewriting any of them. */
+function joinVerbatim(items: readonly QueuedItem[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const item of items) {
+    const key = `${item.kind}\n${item.what}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(item.what);
+  }
+  return lines.join('\n\n');
+}
+
 async function reviewFamily(
   database: Database,
   deps: ProactiveReviewDeps,
@@ -764,9 +1122,10 @@ async function reviewFamily(
     now: Date;
     mode: 'shadow' | 'live';
     summary: ProactiveReviewSummary;
+    budget: ReviewBudget;
   },
 ): Promise<void> {
-  const { familyId, items, now, mode, summary } = input;
+  const { familyId, items, now, mode, summary, budget } = input;
   const context = await loadFamilyContext(database, familyId, now);
   if (!context) {
     summary.skipped += 1;
@@ -783,6 +1142,17 @@ async function reviewFamily(
     summary.skipped += 1;
     return;
   }
+  if (
+    familyDecisionCapEnabled() &&
+    !(await claimDecisionSlot(database, familyId, context.timeZone, now))
+  ) {
+    summary.decisionsCapped += 1;
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: 'daily_decision_cap',
+      mode,
+    });
+    return;
+  }
   const offered = new Set(plan.candidates.map((candidate) => candidate.id));
   const { snapshot, textAuthors, textsRead } = await loadFamilySnapshot(database, {
     familyId,
@@ -795,7 +1165,7 @@ async function reviewFamily(
     mode,
     now,
   });
-  const { decision, skipped } = await deps.decide({ snapshot, client: deps.client });
+  const { decision, skipped, failure } = await deps.decide({ snapshot, client: deps.client });
   if (!decision) {
     summary.skipped += 1;
     // A call that failed or did not parse still handed the snapshot to the model. In
@@ -808,6 +1178,21 @@ async function reviewFamily(
       ...(readInShadow && textsRead ? { parentTextsRead: textsRead } : {}),
       mode,
     });
+    // Under live the old path is gone. A decision that did not come back leaves the
+    // lane queued and retried every hour, which is an outage unless #ops is told.
+    // With the guards flag on, the run pages once at the end with the count, and a
+    // billing-class miss stops the families still waiting.
+    if (mode === 'live' && (skipped === 'model_failed' || skipped === 'unparsed')) {
+      if (budget.guards) {
+        budget.failures[skipped] += 1;
+      } else {
+        const page = deps.page ?? ((opsPage: OpsPage) => pageOps(database, opsPage));
+        await page({ site: 'proactive_decider_failed', facts: { reason: skipped } });
+      }
+    }
+    if (budget.guards && failure && abortsSendWindow(failure)) {
+      budget.abort = failure;
+    }
     return;
   }
   summary.decided += 1;
@@ -818,7 +1203,7 @@ async function reviewFamily(
 
   const chosen = items.filter((item) => offered.has(item.id) && decision.itemIds.includes(item.id));
   const unchosen = items.filter((item) => offered.has(item.id) && !chosen.includes(item));
-  const hold = clampHold(decision.holdUntil, chosen, now);
+  const hold = clampHold(decision.holdUntil, chosen, now, context.timeZone);
   const cadence = keptCadence(decision, mode, textAuthors, snapshot.parentTextsWithheld);
   // The decision row is where a cadence preference is kept (preference.ts), and the
   // reason it was not, by name. It also says whose texts it read (snapshot.ts), how many
@@ -896,6 +1281,23 @@ async function reviewFamily(
       now,
     });
     summary.dropped += 1;
+    return;
+  }
+  if (decision.action === 'hold' && hold.clamped === 'no_time_left') {
+    // Held past the last moment it could still be sent: no later review can send it, so it
+    // is settled now under its own name rather than left to expire.
+    await mark(database, familyId, ids, {
+      status: 'dropped',
+      reason: 'hold_past_last_send',
+      decision: 'hold',
+      holdUntil: null,
+      now,
+    });
+    await audit(database, familyId, 'proactive_cadence_skipped', {
+      reason: 'hold_past_last_send',
+      itemIds: ids,
+      mode,
+    });
     return;
   }
   if (decision.action === 'hold') {
@@ -996,13 +1398,23 @@ const SEND_VERB: Partial<Record<ProactiveSendKind, string>> = {
   evening_check_in: 'evening_check_in_sent',
   co_parent_departed: 'co_parent_departure_notice_sent',
   travel_brief: 'travel_brief_sent',
+  village_intro: 'village_intro_card_sent',
+  followup: 'followup_activity_asked',
+  plan_check_in: 'coach_plan_check_in_sent',
+  activity_followup: 'activity_followup_sent',
+  spot_open: 'watched_spot_opened_sent',
+  email_alert: 'email_alert_sent',
+  calendar_alert: 'calendar_alert_sent',
+  duty_ask: 'proactive_cadence_sent',
 };
 
 /** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
 function sendAuditVerb(items: readonly QueuedItem[]): string {
   const kinds = new Set(items.map((item) => item.kind));
   const [only] = kinds;
-  return (kinds.size === 1 && only !== undefined && SEND_VERB[only]) || 'proactive_cadence_sent';
+  if (kinds.size !== 1 || only === undefined) return 'proactive_cadence_sent';
+  const fromPayload = payloadOf(items[0]?.payload)?.auditVerb;
+  return fromPayload ?? SEND_VERB[only] ?? 'proactive_cadence_sent';
 }
 
 /**
@@ -1016,10 +1428,18 @@ async function afterClassSend(
   now: Date,
 ): Promise<void> {
   for (const item of items) {
-    if (item.kind !== 'travel_brief') continue;
-    const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
-    if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
-    await closeBriefedTrip(database, { tripId, channelMessageId, now });
+    if (item.kind === 'travel_brief') {
+      const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
+      if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
+      await closeBriefedTrip(database, { tripId, channelMessageId, now });
+    }
+    await applyCandidateAfterSend(database, {
+      familyId: item.familyId,
+      parentUserId: item.parentUserId,
+      channelMessageId,
+      payload: payloadOf(item.payload),
+      now,
+    });
   }
 }
 
@@ -1037,7 +1457,16 @@ async function sendChosen(
 ): Promise<void> {
   const { familyId, now, summary } = input;
   const seated = await dropUnseated(database, familyId, input.chosen, now, summary);
-  const chosen = await dropAlreadySent(database, familyId, seated, now, summary);
+  const unsent = await dropAlreadySent(database, familyId, seated, now, summary);
+  const { kept: ready, clocks } = await dropClosedAsks(
+    database,
+    deps,
+    familyId,
+    unsent,
+    now,
+    summary,
+  );
+  const chosen = await holdSecondQuestions(database, familyId, ready, now, summary);
   if (chosen.length === 0) return;
   // Nothing in the queue is time-critical (those send immediately), so a flagged line
   // holds the whole batch.
@@ -1079,7 +1508,7 @@ async function sendChosen(
     copies = perParent.map((copy) => ({ ...copy, members: [copy.parentUserId] }));
   }
 
-  const gate = deps.buildGate(database);
+  const gate = onCheckbackClock(deps.buildGate(database), clocks);
   const gated: Array<{
     parentUserId: string;
     items: QueuedItem[];
@@ -1109,11 +1538,19 @@ async function sendChosen(
 
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
+  // VIL-612 · a class that queued its own CTA is sent as that sentence. The writer
+  // must not rewrite it.
   const writtenFor = new Map<string, WriterResult>();
   const voiced: Array<(typeof gated)[number] & { message: string }> = [];
   for (const copy of gated) {
+    const verbatim = copy.items.filter((item) => isVerbatimKind(item.kind));
+    const rest = copy.items.filter((item) => !isVerbatimKind(item.kind));
+    if (verbatim.length > 0) {
+      voiced.push({ ...copy, items: verbatim, message: joinVerbatim(verbatim) });
+    }
+    if (rest.length === 0) continue;
     const distinct = new Map<string, ToolCandidate>();
-    for (const item of copy.items) {
+    for (const item of rest) {
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
@@ -1134,11 +1571,11 @@ async function sendChosen(
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
-      await holdByName(database, familyId, copy.items, `unvoiced:${written.skipped}`, now);
+      await holdByName(database, familyId, rest, `unvoiced:${written.skipped}`, now);
       summary.held += 1;
       continue;
     }
-    voiced.push({ ...copy, message: written.message });
+    voiced.push({ ...copy, items: rest, message: written.message });
   }
 
   const finalizer: SendFinalizerPorts = {

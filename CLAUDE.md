@@ -51,7 +51,7 @@ Use the chain that **already exists** — do not spin up bespoke "factory" agent
 1. **Research** — `feature-dev:code-explorer` (read-only) maps the affected code first.
 2. **Brief** — `feature-dev:code-architect` (read-only) writes the technical brief. → **Human gate: approve the brief** before any code is written.
 3. **Build** — `superpowers:subagent-driven-development` under `test-driven-development` (red-before-green). Respect hard rule #2 (prompts via `loadPrompt`, never inline) and #8 (no LLM mocking — use the `eval-scaffold` skill).
-4. **Verify** — the `verifier` agent (no write access, adversarial) checks impl-vs-spec, then `security-reviewer` for secrets/PII.
+4. **Verify** — the `verifier` agent (no write access, adversarial) checks impl-vs-spec, then `security-reviewer` for secrets/PII. Devin Review reviews only PRs that are ready for review, so open PRs ready, not as drafts. The verifier judges every unresolved Devin finding against the code and tests, and a PR does not merge while a confirmed red Devin finding is open. `REVIEW.md` tells Devin and other reviewers what to flag and what is intended.
 5. **Review** — `superpowers:requesting-code-review`. → **Human gate: approve the PR.**
 
 Reuse the locked spec (`docs/superpowers/specs/2026-05-26-hale-newborn-platform-design.md`) as the upstream product/UX/pricing ideation — never regenerate it.

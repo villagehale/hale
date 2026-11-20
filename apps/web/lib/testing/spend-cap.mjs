@@ -28,6 +28,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const CACHE_WRITE = 1.25;
+const CACHE_WRITE_1H = 2;
 const CACHE_READ = 0.1;
 
 /** List price of one web search request, billed apart from tokens. */
@@ -155,6 +156,11 @@ export function webSearchWorst(request) {
   return { maxUses, feeUsd: maxUses * USD_PER_WEB_SEARCH };
 }
 
+function cacheWriteMultiplier(request) {
+  const prefix = cachePrefix(request);
+  return prefix?.ttlMs === 60 * 60_000 ? CACHE_WRITE_1H : CACHE_WRITE;
+}
+
 /** Projected USD: counted input + max_tokens output. `rates(model)` -> {input, output} per MTok. */
 export function projectUsd(rates, request, inputTokens) {
   const r = rates(request.model);
@@ -162,7 +168,7 @@ export function projectUsd(rates, request, inputTokens) {
     JSON.stringify(request.system ?? '').includes('cache_control') ||
     JSON.stringify(request.messages ?? '').includes('cache_control') ||
     JSON.stringify(request.tools ?? '').includes('cache_control');
-  const inRate = r.input * (cached ? CACHE_WRITE : 1);
+  const inRate = r.input * (cached ? cacheWriteMultiplier(request) : 1);
   return (inputTokens * inRate + (request.max_tokens ?? 0) * r.output) / 1e6;
 }
 
@@ -240,7 +246,7 @@ export function cacheAwareWorstUsd(rates, request, inputTokens, prefixTokens = 0
   const read = Math.min(prefixTokens, inputTokens);
   return (
     (read * r.input * CACHE_READ +
-      (inputTokens - read) * r.input * CACHE_WRITE +
+      (inputTokens - read) * r.input * cacheWriteMultiplier(request) +
       (request.max_tokens ?? 0) * r.output) /
     1e6
   );
@@ -250,12 +256,20 @@ export function searchFeeUsd(usage) {
   return (usage?.server_tool_use?.web_search_requests ?? 0) * USD_PER_WEB_SEARCH;
 }
 
+function cacheCreationUsd(rate, usage) {
+  const oneHour = usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  const fiveMin =
+    usage?.cache_creation?.ephemeral_5m_input_tokens ??
+    Math.max(0, (usage?.cache_creation_input_tokens ?? 0) - oneHour);
+  return fiveMin * rate * CACHE_WRITE + oneHour * rate * CACHE_WRITE_1H;
+}
+
 /** Real USD from a returned message's `usage`, including web search fees. */
 export function usageUsd(rates, model, usage) {
   const r = rates(model);
   return (
     ((usage?.input_tokens ?? 0) * r.input +
-      (usage?.cache_creation_input_tokens ?? 0) * r.input * CACHE_WRITE +
+      cacheCreationUsd(r.input, usage) +
       (usage?.cache_read_input_tokens ?? 0) * r.input * CACHE_READ +
       (usage?.output_tokens ?? 0) * r.output) /
       1e6 +
@@ -452,13 +466,22 @@ export async function cappedCall({ client, request, call, rates, tag = '' }) {
   const actual = message?.usage ? usageUsd(rates, request.model, message.usage) : projected;
   m.spentUsd += actual;
   m.calls += 1;
+  const usage = message?.usage ?? null;
+  const cacheRead = usage?.cache_read_input_tokens ?? 0;
+  const cacheCreation = usage?.cache_creation_input_tokens ?? 0;
+  const inputTokensBooked = usage?.input_tokens ?? 0;
+  const cacheDenom = cacheRead + cacheCreation + inputTokensBooked;
   m.log.push({
     tag,
     model: request.model,
     projected,
     ...(warmTokens ? { cacheReadPricedTokens: warmTokens } : {}),
     actual,
-    usage: message?.usage ?? null,
+    usage,
+    cache_read_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheCreation,
+    input_tokens: inputTokensBooked,
+    hale_cache_hit_rate: cacheDenom === 0 ? null : cacheRead / cacheDenom,
   });
   save(m);
   return message;
@@ -476,6 +499,15 @@ export function isSpendCapStop(err) {
 
 const CAPPED = Symbol.for('hale.spendCap');
 
+/** Wrap a string system with a 5m cache breakpoint. Arrays (already marked) pass through. */
+export function withCachedSystem(request) {
+  if (typeof request?.system !== 'string' || request.system.length === 0) return request;
+  return {
+    ...request,
+    system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
+  };
+}
+
 export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const raw = client?.[CAPPED]?.raw ?? client;
   // No passthrough with the cap off: every live call goes through cappedCall's guard.
@@ -488,24 +520,29 @@ export function capSdkClient(client, { rates, tag = 'eval' } = {}) {
   const wrapped = {
     messages: {
       countTokens: (req) => messages.countTokens(req),
-      create: (request, options) =>
-        cappedCall({
+      create: (request, options) => {
+        const req = withCachedSystem(request);
+        return cappedCall({
           client,
-          request,
-          call: () => messages.create(request, { ...options, maxRetries: 0 }),
+          request: req,
+          call: () => messages.create(req, { ...options, maxRetries: 0 }),
           rates,
-          tag: webSearchTool(request) ? `${tag}:search` : tag,
-        }),
-      stream: (request, options) => ({
-        finalMessage: () =>
-          cappedCall({
-            client,
-            request,
-            call: () => messages.stream(request, { ...options, maxRetries: 0 }).finalMessage(),
-            rates,
-            tag: webSearchTool(request) ? `${tag}:search` : tag,
-          }),
-      }),
+          tag: webSearchTool(req) ? `${tag}:search` : tag,
+        });
+      },
+      stream: (request, options) => {
+        const req = withCachedSystem(request);
+        return {
+          finalMessage: () =>
+            cappedCall({
+              client,
+              request: req,
+              call: () => messages.stream(req, { ...options, maxRetries: 0 }).finalMessage(),
+              rates,
+              tag: webSearchTool(req) ? `${tag}:search` : tag,
+            }),
+        };
+      },
     },
   };
   wrapped[CAPPED] = { raw: client };

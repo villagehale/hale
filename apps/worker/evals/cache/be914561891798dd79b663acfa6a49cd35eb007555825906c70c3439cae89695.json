@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the child has already signed up for last Saturday's swimming class, which is a registration claim. No confirmed registration row exists, and the only swimming row is a calendar entry for Nov 7, not last Saturday, so it cannot back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 3353
+}

@@ -3,7 +3,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -113,7 +113,10 @@ export function identityAskRefusals(
   const found: IdentityAskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > askCharCap(request)) found.push('over_char_cap');
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('identity-ask', 'redraft');
+    found.push('carries_link');
+  }
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
 
   // A WHOLE SENTENCE, capitalised. Found live on the first recorded run: told that the
@@ -275,7 +278,7 @@ let cached: Anthropic | undefined;
  */
 export function identityAskClient(): AgentClient {
   // Composes inside an inbound text turn — the SMS-lane budget governs (P1-7).
-  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' });
   return cached;
 }
 

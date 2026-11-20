@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
 import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -53,7 +54,7 @@ export type AutonomyNoticeOutcome =
 
 /** The same brake as the orchestrator: exact `=== 'true'`, no trim. */
 export function autonomousLaneOn(): boolean {
-  return process.env.AUTONOMOUS_EXECUTE_ENABLED === 'true';
+  return isEnabled('autonomous-execute');
 }
 
 export interface AutonomyNoticePorts {

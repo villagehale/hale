@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Totally fine. Could you share just the first three characters of your postal code instead? That's enough for me to find things by area, not your street.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "placeDeclined": false
+  },
+  "latencyMs": 1569
+}

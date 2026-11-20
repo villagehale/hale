@@ -1,8 +1,21 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { type SQL, and, asc, eq, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { noteGroupChatMemberAdded } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import {
+  type SharedListForgetReason,
+  type SharedListTurnModel,
+  applySharedListTurn,
+  forgetSharedListPeople,
+  readSharedListTurn,
+  recordKidClaim,
+  sharedListAudience,
+  sharedListTurnModel,
+  withSharedListLock,
+} from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { type SpokenLineRequest, speak as speakLine } from '~/lib/channel/spoken-line';
@@ -17,6 +30,7 @@ import { type FamilyAvailability, composeCommonTime, familyClock } from './commo
 import {
   type CommonTimePlanPorts,
   type CommonTimeProposal,
+  chatAlreadyProposedFromBusy,
   latestCommonTimeProposal,
   placePickedTime,
 } from './common-time-plan';
@@ -36,13 +50,25 @@ import {
   runPrivateAside,
 } from './group-private-aside';
 import { familyFreeBusy, formatWhen } from './household-calendar';
+import { type ParticipantRead, listedReaders } from './participant-readers';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
-import { reactionAsVote, sharedGroupReader } from './shared-group-reading';
+import { familyClaimOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
+import {
+  type SecretSantaLineWriter,
+  type SecretSantaTurnModel,
+  applySecretSantaTurn,
+  forgetSecretSantaPeople,
+  readSecretSantaTurn,
+  secretSantaEnabled,
+  secretSantaTurnModel,
+  sharedSecretSantaLineWriter,
+  stopSecretSantaPerson,
+} from './secret-santa';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { composeSharedGroupLine } from './shared-group-voice';
-import { LinqSendError } from './transport';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-456 — Hale in an existing multi-family group.
@@ -122,6 +148,12 @@ export interface MultiFamilyTurnPorts {
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
   /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
   commonTimePlan?: CommonTimePlanPorts;
+  /** VIL-687: reads a shared-list turn. Production: sharedListTurnModel(). */
+  listTurn?: SharedListTurnModel;
+  /** VIL-686: reads a Secret Santa turn. Production: secretSantaTurnModel(). */
+  santaTurn?: SecretSantaTurnModel;
+  /** VIL-686: writes the Secret Santa group lines. Production: the secret-santa-line skill. */
+  santaLine?: SecretSantaLineWriter;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -131,6 +163,14 @@ const STOP_TEMPLATE = 'linq:multi_family_member_stop';
 const INTRO_TEMPLATE = 'linq:multi_family_intro';
 const WHO_TEMPLATE = 'linq:multi_family_who_confirmed';
 const COMMON_TIME_TEMPLATE = 'linq:multi_family_common_time';
+const LIST_TEMPLATE = 'linq:multi_family_list';
+
+/**
+ * VIL-687: how far Linq's clock (a message's sent_at) may run ahead of Hale's (a seat's
+ * seated_at). A seat written less than this before the send may have been written after the
+ * message really went out, so it is never cleared for a gift hidden by it.
+ */
+const SENT_AT_CLOCK_SKEW_MS = 30_000;
 
 function haleLine(phone: string): boolean {
   const from = outboundLineFrom();
@@ -199,6 +239,7 @@ async function audit(
     targetId: string;
     after?: Record<string, unknown>;
     occurredAt?: Date;
+    audience?: string | null;
   },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
@@ -209,6 +250,7 @@ async function audit(
     targetId: input.targetId,
     after: input.after,
     ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+    ...(input.audience ? { audience: input.audience } : {}),
   });
 }
 
@@ -292,7 +334,7 @@ async function recordSend(
   });
 }
 
-async function deliverShared(
+export async function deliverShared(
   database: Database,
   input: {
     chatId: string;
@@ -478,6 +520,11 @@ export async function joinFamilyToSharedGroup(
     phone: input.phone,
     role: role === 'co_parent' ? 'co_parent' : 'parent',
     now: input.now,
+  });
+  noteGroupChatMemberAdded({
+    familyId: input.familyId,
+    chatId: input.chatId,
+    database,
   });
   return { outcome: 'joined', notice: 'already_sent' };
 }
@@ -689,49 +736,74 @@ export async function forgetSharedGroupPresence(
       ? and(eq(people.chatId, input.chatId), eq(people.phoneE164Hash, phoneBlindIndex(phone)))
       : null;
   if (!scope) return 0;
-  return forgetSharedGroupPeople(database, scope, input.now);
+  return forgetSharedGroupPeople(database, scope, input.now, 'left');
 }
 
 /**
  * Forgets the shared-chat people rows `scope` matches: a row with no stop is deleted, and a
  * stopped row keeps only its chat, number hash and stop time, so the STOP still holds when
- * the number comes back. Presence leaving and family erasure both forget through here.
+ * the number comes back. Presence leaving and family erasure both forget through here, and
+ * say which, because their list items are kept differently.
  */
 export async function forgetSharedGroupPeople(
   database: Database,
   scope: SQL,
   now: Date,
+  reason: SharedListForgetReason,
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
-  const forgotten = await database
-    .delete(people)
-    .where(and(scope, isNull(people.stoppedAt)))
-    .returning({ id: people.id });
-  const tombstoned = await database
-    .update(people)
-    .set({
-      phoneE164Encrypted: null,
-      familyId: null,
-      userId: null,
-      firstName: null,
-      inferredKidName: null,
-      inferredFamilyLabel: null,
-      inferredRole: null,
-      updatedAt: now,
-    })
-    .where(and(scope, isNotNull(people.stoppedAt)))
-    .returning({ id: people.id });
-  if (forgotten.length + tombstoned.length > 0) {
+  const chats = [
+    ...new Set(
+      (await database.select({ chatId: people.chatId }).from(people).where(scope)).map(
+        (row) => row.chatId,
+      ),
+    ),
+  ];
+  let count = 0;
+  let stopsKept = 0;
+  // VIL-687: one chat at a time under its list lock, so a hidden gift written at the same
+  // time never clears a number that is leaving.
+  for (const chatId of chats) {
+    const inChat = and(scope, eq(people.chatId, chatId));
+    const forgot = await withSharedListLock(database, chatId, async (tx) => {
+      // Their list items go first; a stopped row stays, so its cascade never fires.
+      const scoped = await tx.select({ id: people.id }).from(people).where(inChat);
+      const personIds = scoped.map((row) => row.id);
+      // VIL-686: their Secret Santa rows go too, and a drawn draw that loses anyone goes stale.
+      await forgetSecretSantaPeople(tx, personIds, now);
+      await forgetSharedListPeople(tx, personIds, reason);
+      const forgotten = await tx
+        .delete(people)
+        .where(and(inChat, isNull(people.stoppedAt)))
+        .returning({ id: people.id });
+      const tombstoned = await tx
+        .update(people)
+        .set({
+          phoneE164Encrypted: null,
+          familyId: null,
+          userId: null,
+          firstName: null,
+          inferredKidName: null,
+          inferredKidNames: [],
+          claimsUnnamedKid: false,
+          inferredFamilyLabel: null,
+          inferredRole: null,
+          updatedAt: now,
+        })
+        .where(and(inChat, isNotNull(people.stoppedAt)))
+        .returning({ id: people.id });
+      return { forgotten: forgotten.length, tombstoned: tombstoned.length };
+    });
+    count += forgot.forgotten;
+    stopsKept += forgot.tombstoned;
+  }
+  if (count + stopsKept > 0) {
     console.info(
-      {
-        outcome: 'shared_group_presence_forgotten',
-        count: forgotten.length,
-        stopsKept: tombstoned.length,
-      },
+      { outcome: 'shared_group_presence_forgotten', count, stopsKept },
       'linq multi-family: presence forgotten',
     );
   }
-  return forgotten.length + tombstoned.length;
+  return count + stopsKept;
 }
 
 /**
@@ -780,7 +852,7 @@ export async function presentHouseholds(
  * while someone from it is in this chat.
  */
 /** Whether this family's live join here carries its own granted, unrevoked consent for this chat. */
-async function joinConsent(
+export async function joinConsent(
   database: Database,
   chatId: string,
   familyId: string,
@@ -842,7 +914,8 @@ export async function readFamilySliceForAudience(
 
 /**
  * One family's private terms, ungated. Its callers gate it: the family's own aside reads it
- * only while the family is present, and the deny list reads it only to refuse those terms.
+ * only while the family is present and its join consent for this chat is granted, and the
+ * deny list reads it only to refuse those terms.
  * Calendar rows are clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone
  * so the private aside can compare plan times (privateTimesOf).
  */
@@ -954,6 +1027,19 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
 }
 
 type PersonRow = typeof schema.linqSharedGroupPeople.$inferSelect;
+
+/** Linq's participant list for the chat, or null when it could not be asked. */
+async function participantsOf(
+  chatId: string,
+  list: ListChatHandles = listLinqParticipantHandles,
+): Promise<ParticipantRead | null> {
+  try {
+    return await list({ chatId });
+  } catch (err) {
+    if (err instanceof LinqSendError) return null;
+    throw err;
+  }
+}
 
 async function peopleInChat(database: Database, chatId: string): Promise<PersonRow[]> {
   const rows = await database.select().from(schema.linqSharedGroupPeople);
@@ -1097,8 +1183,11 @@ export type MultiFamilyTurnResult =
     };
 
 /**
- * The private aside never touches the group send: it only reads each family's own
- * consented slice and texts that family 1:1. A throw is logged and never fails the turn.
+ * The private aside never touches the group send. It reads a household's own slice
+ * only when `joinConsent` allows it for this chat, then texts that family 1:1. A
+ * household without that consent is left out of the prompt and gets no aside. A
+ * consent read that throws is `read_failed` (nothing sent; presence is not used
+ * instead). Any other throw is logged and never fails the turn.
  *
  * `delivered` is true only when a 1:1 actually reached that family (`sent`, or
  * `suppressed` because the same text was already sent). A read that picks a family
@@ -1216,8 +1305,15 @@ async function proposeCommonTime(
     return null;
   }
   const families = loaded.map((entry) => ({ ...entry.family, timeZone: entry.timeZone ?? anchor }));
+  const usedBusy = families.some((family) => family.busy !== null);
+  const firstFromBusy =
+    usedBusy &&
+    !(await chatAlreadyProposedFromBusy(database, {
+      chatId: input.chatId,
+      familyIds: households,
+    }));
   const composed = await composeCommonTime(
-    { families, blocked: input.ruledOut, now: input.now },
+    { families, blocked: input.ruledOut, now: input.now, firstFromBusy },
     acceptReplyLanguage(input.language),
     input.ports.commonTimeWriter ?? speakLine,
   );
@@ -1480,6 +1576,11 @@ export async function takeMultiFamilyTurn(
     text: string;
     providerMessageId: string;
     receivedAt: Date;
+    /**
+     * VIL-687: Linq's sent_at. Null or absent when the webhook carried none (a reaction, or a
+     * payload without it): then nobody is cleared for a gift this message hides.
+     */
+    sentAt?: Date | null;
     now: Date;
     send?: SendGroup;
     reactionType?: string | null;
@@ -1497,6 +1598,25 @@ export async function takeMultiFamilyTurn(
   if (!phone) return { handled: false };
 
   const wired: MultiFamilyTurnPorts = { ...ports, send: ports.send ?? input.send };
+  // VIL-687: the seats this turn found, seated by the time the message was sent (allowing for
+  // Linq's clock running ahead). Only they can be cleared for a hidden gift written now, or
+  // count as placed when one is read; anyone the turn seats below, or seated after the message
+  // went out (a retried hide), is new.
+  const people = schema.linqSharedGroupPeople;
+  const settledIds = new Set(
+    (
+      await database
+        .select({ id: people.id })
+        .from(people)
+        .where(
+          and(
+            eq(people.chatId, input.chatId),
+            isNull(people.stoppedAt),
+            lte(people.seatedAt, new Date(input.receivedAt.getTime() - SENT_AT_CLOCK_SKEW_MS)),
+          ),
+        )
+    ).map((row) => row.id),
+  );
   const sender = await rememberHandle(database, {
     chatId: input.chatId,
     handle: input.senderHandle,
@@ -1509,12 +1629,10 @@ export async function takeMultiFamilyTurn(
     await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
   }
 
-  if (wired.listHandles) {
-    const listed = await wired.listHandles({ chatId: input.chatId });
-    if (listed.status === 'ok') {
-      for (const handle of listed.handles) {
-        await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
-      }
+  const participants = wired.listHandles ? await wired.listHandles({ chatId: input.chatId }) : null;
+  if (participants?.status === 'ok') {
+    for (const handle of participants.handles) {
+      await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
     }
   }
 
@@ -1578,6 +1696,71 @@ export async function takeMultiFamilyTurn(
       : null;
   const reader = wired.reader ?? sharedGroupReader();
   const reaction = input.targetIsHale === false ? null : reactionAsVote(input.reactionType ?? null);
+  // VIL-687: a shared-list turn (a claim, an add, "what's left?") is read beside the group
+  // read and written only if the group read hands the turn on. It never rejects.
+  const listContext =
+    groupSharedListsEnabled() && input.text.trim() && !input.reactionType
+      ? {
+          chatId: input.chatId,
+          text: input.text,
+          language: wired.language ?? null,
+          speaker: me,
+          // Linq is asked who is here only when an item in the chat is hidden, and each time
+          // afresh: the list read above, before the model call, is never reused for a line.
+          // Who was here when the message was sent is Linq's to say, on its own clock.
+          ...sharedListAudience(live, settledIds, async () =>
+            listedReaders(
+              await participantsOf(input.chatId, wired.listHandles),
+              me.phoneE164Hash,
+              haleLine,
+              input.sentAt ?? null,
+            ),
+          ),
+        }
+      : null;
+  const listModel = listContext ? (wired.listTurn ?? sharedListTurnModel()) : null;
+  const listRead = listContext
+    ? readSharedListTurn(database, listContext, listModel).catch((err: unknown) => {
+        console.error(
+          {
+            outcome: 'shared_list_read_failed',
+            fault: err instanceof Error ? err.name : 'unknown',
+          },
+          'linq multi-family: list read failed',
+        );
+        return { kind: 'failed' as const };
+      })
+    : null;
+  // VIL-686: a Secret Santa turn is read beside the group read and applied right after a
+  // stop or a calendar withdrawal, before leave/join can take its words. It never rejects.
+  const santaContext =
+    secretSantaEnabled() && input.text.trim() && !input.reactionType
+      ? {
+          chatId: input.chatId,
+          text: input.text,
+          language: wired.language ?? null,
+          providerMessageId: input.providerMessageId,
+          speaker: me,
+          customer: channel,
+          people: live,
+        }
+      : null;
+  const santaRead = santaContext
+    ? readSecretSantaTurn(
+        database,
+        santaContext,
+        wired.santaTurn ?? secretSantaTurnModel(),
+      ).catch((err: unknown) => {
+        console.error(
+          {
+            outcome: 'secret_santa_read_failed',
+            fault: err instanceof Error ? err.name : 'unknown',
+          },
+          'linq multi-family: secret santa read failed',
+        );
+        return { kind: 'failed' as const };
+      })
+    : null;
   const reading: SharedGroupReading = reader
     ? await reader.read({
         text: input.text,
@@ -1617,6 +1800,11 @@ export async function takeMultiFamilyTurn(
       };
 
   const intent = opt === 'stop' ? 'stop_me' : reading.intent;
+  // VIL-687: saying whose family you are, in any message, takes clearance off hidden gifts.
+  const familyClaim = familyClaimOf(reading);
+  if (familyClaim) {
+    await recordKidClaim(database, { chatId: input.chatId, seatId: me.id, claim: familyClaim });
+  }
   const language = wired.language ?? 'en';
   const host = (await hostLedger(database, input.chatId, familyId)) ?? {
     familyId,
@@ -1628,6 +1816,7 @@ export async function takeMultiFamilyTurn(
       .update(schema.linqSharedGroupPeople)
       .set({ stoppedAt: input.now, updatedAt: input.now })
       .where(eq(schema.linqSharedGroupPeople.id, me.id));
+    await stopSecretSantaPerson(database, me.id);
     // Withdrawn here first, so the ledger row carries the stop rather than the unseat.
     const freeBusyWithdrawn =
       me.familyId && me.userId
@@ -1648,6 +1837,7 @@ export async function takeMultiFamilyTurn(
       familyId,
       actor: userId,
       actionTaken: 'linq_multi_family_member_stopped',
+      audience: userId,
       targetTable: 'linq_shared_group_people',
       targetId: me.id,
       after: { only: 'this_member', freeBusyWithdrawn },
@@ -1666,6 +1856,68 @@ export async function takeMultiFamilyTurn(
       ports: wired,
     });
     return { handled: true, outcome: 'member_stopped', count: 'intake', notice };
+  }
+
+  if (intent === 'withdraw_calendar' && commonTimeOn && channel) {
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(database, {
+      familyId: channel.familyId,
+      userIds: [channel.userId],
+      chatId: input.chatId,
+      now: input.now,
+      interpretation:
+        'this parent asked Hale to stop using their calendar busy times in this shared group, and to keep writing here',
+    });
+    await audit(database, {
+      familyId,
+      actor: userId,
+      actionTaken: 'linq_multi_family_calendar_withdrawn',
+      targetTable: 'linq_shared_group_people',
+      targetId: me.id,
+      after: { only: 'this_member', freeBusyWithdrawn },
+    });
+    return { handled: true, outcome: 'calendar_withdrawn', count: 'intake' };
+  }
+
+  if (santaContext && santaRead) {
+    const santa = await applySecretSantaTurn(database, santaContext, await santaRead, {
+      now: input.now,
+      writer: wired.santaLine ?? sharedSecretSantaLineWriter(),
+    });
+    if (santa.handled) {
+      const notice: NoticeResult = santa.line
+        ? await deliverShared(database, {
+            familyId: host.familyId,
+            parentUserId: host.parentUserId,
+            chatId: input.chatId,
+            text: santa.line.text,
+            templateKey: santa.line.templateKey,
+            dedupeKey: santa.line.dedupeKey,
+            now: input.now,
+            send: wired.send,
+          })
+        : 'declined';
+      // Outcome tokens and the line's fate only: never a name, never a participant.
+      await audit(database, {
+        familyId,
+        actor: userId,
+        actionTaken: 'linq_secret_santa_turn',
+        targetTable: 'secret_santa_draws',
+        targetId: santa.drawId,
+        after: { outcomes: santa.outcomes, line: santa.lineWhy, notice },
+      });
+      if (santa.drawn) {
+        await audit(database, {
+          familyId,
+          actor: userId,
+          actionTaken: 'linq_secret_santa_drawn',
+          targetTable: 'secret_santa_draws',
+          targetId: santa.drawId,
+          after: { participants: santa.drawn.participants, held: 0 },
+        });
+      }
+      // No 1:1 aside on a Secret Santa turn: it drafts from the group text.
+      return { handled: true, outcome: 'secret_santa', count: 'intake', notice };
+    }
   }
 
   if (intent === 'leave' && channel) {
@@ -1799,6 +2051,56 @@ export async function takeMultiFamilyTurn(
     });
     const aside = await runAside();
     return aside ? { ...picked, aside: aside.outcome } : picked;
+  }
+
+  if (listContext && listRead) {
+    const listed = await applySharedListTurn(database, listContext, await listRead, {
+      model: listModel,
+      now: input.now,
+      deny: () => denyListForChat(database, input.chatId),
+    });
+    if (listed.handled) {
+      const notice: NoticeResult = listed.line
+        ? await deliverShared(database, {
+            familyId: host.familyId,
+            parentUserId: host.parentUserId,
+            chatId: input.chatId,
+            text: listed.line,
+            templateKey: LIST_TEMPLATE,
+            dedupeKey: `${LIST_TEMPLATE}:${input.chatId}:${input.providerMessageId}`,
+            now: input.now,
+            send: wired.send,
+          })
+        : 'declined';
+      // Every parent's export shows this row, so it holds only what the chat itself showed:
+      // what was written in the open and whether a line went. No item text, owner or kid,
+      // and nothing that tells a turn that met a hidden gift from one with nothing to do.
+      const { held, ...open } = listed.counts;
+      await audit(database, {
+        familyId,
+        actor: userId,
+        actionTaken: 'linq_multi_family_list_turn',
+        targetTable: 'shared_group_list_items',
+        targetId: me.id,
+        after: { ...open, line: listed.lineWhy === 'model' ? 'model' : 'quiet', notice },
+      });
+      console.info(
+        { outcome: 'shared_list_turn', line: listed.lineWhy, held: held ?? 0 },
+        'linq multi-family: list turn',
+      );
+      // The 1:1 aside, which drafts from the group text, runs only when the group heard the
+      // list line. A withheld line may be a secret gift, and an aside writes a row to the
+      // family's trail, so a turn that met a hidden gift and a turn with nothing to say take
+      // the same decision.
+      const aside = listed.lineWhy === 'model' ? await runAside() : undefined;
+      return {
+        handled: true,
+        outcome: 'shared_list',
+        count: 'intake',
+        notice,
+        ...(aside ? { aside: aside.outcome } : {}),
+      };
+    }
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {

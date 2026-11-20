@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reason": "Clear yes to swim plan, Saturday session; price from session",
+    "said": "Yes to the swim one, Saturday please",
+    "named": "the swim one",
+    "verdict": "approve",
+    "choiceIds": [
+      "sat-0900"
+    ],
+    "maxPriceCents": 9800,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 2083
+}

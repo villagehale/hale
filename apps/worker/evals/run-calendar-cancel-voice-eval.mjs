@@ -24,14 +24,14 @@ import { CALENDAR_CANCEL_VOICE_FIXTURES } from './calendar-cancel-voice-fixtures
 import {
   JUDGE_MIN,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
-  dryReportLine,
-  isDryRun,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 

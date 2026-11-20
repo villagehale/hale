@@ -53,15 +53,21 @@ const GROUP_FLOOR_MODULES: Record<string, string> = {
     'the family-outbound door: groupAudienceAllows before any group target',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
     'the claimed family group, after groupAudienceAllows with no skip path',
+  'apps/web/lib/channel/linq/group-experience/send.ts':
+    'the claimed family group, after groupAudienceAllows with no skip path',
   'apps/web/lib/channel/linq/group.ts':
     'deliverLinqGroupNotice asks the floor; the did-not-open notice is the parent 1:1',
   'apps/web/lib/channel/linq/household-calendar.ts':
-    "the family's group chat, after groupAudienceAllows for each household line",
+    "the family's group chat, after groupAudienceAllows for each household line; VIL-609 cross-parent clash is a 1:1 with the group excluded",
   'apps/web/lib/loop/reminders/group/line.ts':
     'the family group reminder line, after groupAudienceAllows',
 };
 
 const DIRECT_ONLY: Record<string, string> = {
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'the driver 1:1 door from resolveMessagingDoor with the family group excluded',
   'apps/web/lib/channel/calendar-write/send.ts':
     'the parent 1:1 door from resolveMessagingDoor with the family group excluded',
   'apps/web/lib/channel/connect/connected-notice.ts':

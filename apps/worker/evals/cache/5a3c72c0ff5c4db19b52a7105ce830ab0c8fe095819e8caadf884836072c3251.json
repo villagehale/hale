@@ -1,0 +1,25 @@
+{
+  "value": {
+    "cycle_on_page": "Winter Session 2027 – ten-week session",
+    "evidence": "Winter Session 2027 &ndash; ten-week session Registration Date: December 16, 2026 at 8 a.m. Start Date: January 4, 2027 End Date: March 14, 2026 Last Day to register: January 17, 2027",
+    "year_evidence": "Registration Date: December 16, 2026 at 8 a.m.",
+    "time_zone_evidence": "The City of Greater Sudbury is located on the Traditional Territory of Atikameksheng Anishnawbek",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The page gives the Winter Session 2027 registration opening no resident or non-resident label: \"Registration Date: December 16, 2026 at 8 a.m.\"",
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "December 16, 2026 at 8 a.m.",
+      "date_text": "December 16, 2026",
+      "time_text": "8 a.m.",
+      "date": "2026-12-16",
+      "time": "08:00"
+    },
+    "note": "The page prints the registration date as December 16, 2026 under the Winter Session 2027 heading. The session's end date is printed as March 14, 2026, which looks like a typo, but it is not a registration date.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.9
+  },
+  "latencyMs": 4650
+}

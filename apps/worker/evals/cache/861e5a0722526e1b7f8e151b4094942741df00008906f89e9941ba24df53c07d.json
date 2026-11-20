@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on their behalf without asking. Autonomy was turned off this turn for both send_email and reply_to_email, so \"C'est fait\" is true. The reply is in French, matching the parent, and it is short and exact with no greeting or sign-off. It does the job and stops.",
+    "score": 5
+  }
+}

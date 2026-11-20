@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Quick heads up on your Secret Santa: two draws haven't landed yet. Cy needs to text me once before I can send theirs, and I couldn't reach Ana. Might be worth giving them a nudge!"
+  },
+  "latencyMs": 2024,
+  "usage": {
+    "input_tokens": 95,
+    "output_tokens": 76,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

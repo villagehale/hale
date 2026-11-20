@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Asks one question (which day to try first), uses only the given facts (Tuesday Dec 1 7pm Eastern, Sat 9:00 or Sun 10:00, $98 each), no booked/spot claims, no link, short and warm. Minor issue: it does not mention the maximum price is still needed, but the watchFor only asks for the day question, so this is fine.",
+    "score": 5
+  }
+}

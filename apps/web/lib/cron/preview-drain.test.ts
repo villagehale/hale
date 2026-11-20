@@ -104,6 +104,7 @@ describe('Preview drains its own queue', () => {
     const body = await res.json();
     expect(body.firstReply).toEqual({ skipped: 'preview' });
     expect(body.groupReminders).toEqual({ skipped: 'preview' });
+    expect(body.anthropicCredit).toEqual({ skipped: 'preview' });
   });
 
   it('a kicked inbound drain runs on Preview', async () => {

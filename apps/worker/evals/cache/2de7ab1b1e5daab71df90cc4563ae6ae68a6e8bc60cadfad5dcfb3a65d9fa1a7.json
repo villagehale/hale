@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgwWEvDq83ZvsLbaQ49jH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzggKEAgTGAI4AUIIdGhpbmtpbmcSDE0nhna8iGOVM5P6BxoM6xohOCjN8HyEo9wnIjBQQv69LavYoihSd2HrvjFQalNd7e6gNFz5EksOvISDfIe2ENMNq08ngsV8gAj+5sUq6wcFUZGAalso6+lbasefZTu16b+5r9rpHvKlLZ7ED2BmXcCqbiNpplDdGMy7l5vYSirewzeFKvExcrZWskO8N4Xb2tFlmF5dsmbBCn9lVnRQ8i1/5X39iiJEl0Pp5s4fKSgl9dOPWrmwqvc5SUui4csPcYvTCr9ZypZ/Ca2tW5kJiTFPbz2pwR5bS7/9TjYGLWGi/fsU3mpLlNLumcPDsoHRDFWFw/99wKUjmDMOBymNOx75ryUJKQIl0MIpgzgTXqVEAW3qZCS9vWUmtdYMSjLHWbxHdGh7d6fLhgk3ajcu6rhYNgpn7ZVP7TPJHqNoZgxOR9IaXLpt3NxOlcOQcg774qPoXrEhdmwzgDxaxA1d94YjzbQpI1j2EGtdgVQDjrHLQo/oh6nuH4NqCvMjvLzLkKTqwwDSOu8pd49NO79p2gAgc4Z1O/VIbyoJ+eriiXEa8L8PgxDtAq3uRkDuEo44bM4CFuR8XMqEXf94//EYBUl47Phz6iOCa0t0sfMEEZf7nssN3r9ThbfIqnng5XBpan5CkVyIIhnvbuKUQe1Uw1FHQoPQpoTjCREiPO8mZ/NtPZ1nXW0PLUd+8Eo7ighfZeUk3IqbF4O8NtCUAg8OLAB2Pyq8ro/RYQ7mm7NVleenrlo8iaog+opQ3UMBIgZm83KZX4NRD2WYK0nSpeBcsknVAeTlJOKhl0velsFoOL9t54rrmycS18Ao89FCx3WuPEQ/mymSo2AhzsJyOKTB0caYBiuAOnshlWMvABFXiizeKg0ckeYjiZsi8yEAgAvRdlI70Ce/Nmi5niIqwm/xL1y1GbF2tdUeECWJeKpav9jYoAEcMiet/h/0sutri2CqJNPaiA9y3ZZ+1XHSlDAaaIly1Ei7/1F0TPHQKOz9qIAOZ4iFQ074HdpS+Qrh7/oIhuTtbzA4GWIcWeTsQh5vNIi38ozaXxjdZi4w4n8JelIlAbMrCsxYV4YSSQl2FIWfxId5R5zTQCBXQxgrFB1y1qZLhJLwH1tkEk4WP+Qp5+i0OCXSDZhBgo4oMAXy+0o2cdoytwmXdNdnmkH4Ak1m8ntbcGuASLaMoNbwFJMS1YOpeyzCNwkaXPZi5vYtSpC1r1ZJQwXHziITFMNK56OlmXY3m/hEAkZx9ImxHRC2L1q9WNWoeH6kJvRyVvX0QrJpQXTHJ9apv76O+CPTSj0Ng15DkclzsrG/lJtWyKExsto9EOxie1rgUCjdJvjR7jnL7E++2lSn11iS6xlt/nwLwhbywdkRSGvcpyvh/CvnnEKzcqNvoupYYl4/jdNC/R+EHFT+mWZcQ+UgAVXmbOYRI2qQ2VqaYA4pDpqHGAE="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is already on Saturday at 10:00am at Cedarvale Park. After that, High Park could work: Jamie Bell Adventure Playground, a free animal display, wading pool and splash pads. Saturday looks hot and dry, so the water play should suit. The park is open daily, but the water play is seasonal, so check that it's running before you go."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1528,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1528,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 273,
+      "output_tokens_details": {
+        "thinking_tokens": 155
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3008
+}

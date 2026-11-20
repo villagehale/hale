@@ -20,7 +20,7 @@ describe('iMessage human-feel wiring', () => {
     expect(source).toContain('beforeSend: stopTyping');
     const startAt = source.indexOf("signalImessageTyping(route, 'start'");
     const searchAt = source.indexOf('deps.searchWeekdays');
-    const coachAt = source.indexOf('return await runAgentTurn');
+    const coachAt = source.indexOf('await runAgentTurn');
     expect(startAt).toBeGreaterThan(-1);
     expect(startAt).toBeLessThan(searchAt);
     expect(startAt).toBeLessThan(coachAt);

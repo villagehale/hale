@@ -75,6 +75,9 @@ export interface FamilyMemoryExport {
     /** The schedule anchors Hale already told the parent on this promise. Null whenever
      * `withheld` is set, like the summary. */
     heardFacts: string[] | null;
+    /** The language tag read off the parent's ask an activity promise answers. Null
+     * whenever `withheld` is set, like the summary. */
+    askLanguage: string | null;
     dueAt: string;
     createdAt: string;
     fulfilledAt: string | null;
@@ -310,6 +313,7 @@ export async function loadFamilyMemoryExport(
         kind: row.commitmentKind,
         summary: words(withheld, row.summary),
         heardFacts: withheld === null ? row.heardFacts : null,
+        askLanguage: withheld === null ? row.askLanguage : null,
         dueAt: row.dueAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
         fulfilledAt: iso(row.fulfilledAt),

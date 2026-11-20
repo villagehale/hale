@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import type { PlanTier } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
+import { liveWatchCapRefusal } from '~/lib/channel/watches/cap';
+import { countFamilyLiveWatches } from '~/lib/channel/watches/live-count';
 import { signupProviderHost } from '../../consent';
 
 /**
@@ -44,6 +48,8 @@ export interface WatchToolPorts {
   parentWords: string;
   /** Pages a search tool put in front of the parent this turn: title and URL. */
   linksThisTurn: () => readonly { title: string; url: string }[];
+  /** The family row's plan. Absent treats the household as Plus. */
+  planTier?: PlanTier;
 }
 
 interface Candidate {
@@ -197,6 +203,31 @@ export function providerWatchTools(ports: WatchToolPorts): RegisteredTool[] {
         );
       }
       const db = ports.database;
+      const [existingTarget] = await db
+        .select({ id: schema.providerWatchTargets.id })
+        .from(schema.providerWatchTargets)
+        .where(
+          and(
+            eq(schema.providerWatchTargets.sourceUrl, source.url),
+            eq(schema.providerWatchTargets.kind, input.kind),
+          ),
+        )
+        .limit(1);
+      if (existingTarget) {
+        const existing = (await liveWatches(ports)).find((w) => w.targetId === existingTarget.id);
+        if (existing) {
+          return {
+            watching: true as const,
+            watchId: existing.watchId,
+            provider: source.provider,
+            kind: input.kind,
+          };
+        }
+      }
+      const watchCap = entitlementsForFamily(ports.planTier ?? 'plus').liveWatches;
+      const liveCount = await countFamilyLiveWatches(ports.database, ports.familyId);
+      const capRefusal = liveWatchCapRefusal(liveCount, watchCap);
+      if (capRefusal) throw new Error(capRefusal);
       await db
         .insert(schema.providerWatchTargets)
         .values({ providerHost: source.provider, sourceUrl: source.url, kind: input.kind })

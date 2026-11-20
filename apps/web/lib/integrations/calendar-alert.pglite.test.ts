@@ -261,6 +261,34 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 });
 
 describe('alertParentForCalendarChanges', () => {
+  it('does not compose a calendar alert already queued for the decider', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const dedupeKey = calendarAlertDedupeKey(INTEGRATION, TIMED.eventId, TIMED.updated);
+    await db.database.insert(schema.proactiveCandidates).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      kind: 'calendar_alert',
+      category: 'calendar_alert',
+      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
+      what: 'Cartwheels moved.',
+      why: 'calendar_alert',
+      sourceUrl: null,
+      worthlessAfter: null,
+      parentRequested: false,
+      dedupeKey,
+    });
+    let gates = 0;
+    const h = harness();
+    h.ports.gate = async () => {
+      gates += 1;
+      return { allowed: true, optOut: 'full' };
+    };
+
+    await expect(sweep(h)).resolves.toEqual(['queued']);
+    expect(gates).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
   it('sends exactly one text, ledgers it under the dedupe key, threads it and audits it', async () => {
     const h = harness();
 
@@ -642,6 +670,22 @@ describe('alertParentForCalendarChanges', () => {
       body: null,
     });
     await expect(auditRows()).resolves.toEqual([]);
+
+    const later = harness();
+    await expect(sweep(later)).resolves.toEqual(['sent']);
+    expect(later.transport.sent).toHaveLength(1);
+  });
+
+  it('a send pause keeps the text owed, and the next sweep after the pause sends it', async () => {
+    const paused = harness({ verdict: { allowed: false, reason: 'sends_paused' } });
+    await expect(sweep(paused)).resolves.toEqual(['gate_refused:sends_paused']);
+    expect(paused.transport.sent).toEqual([]);
+    const owed = await snapshotOf(TIMED.eventId);
+    expect(owed?.pendingSince).toBeInstanceOf(Date);
+
+    const still = harness({ verdict: { allowed: false, reason: 'sends_paused' } });
+    await expect(sweep(still)).resolves.toEqual(['gate_refused:sends_paused']);
+    expect(await snapshotOf(TIMED.eventId)).toMatchObject({ pendingSince: owed?.pendingSince });
 
     const later = harness();
     await expect(sweep(later)).resolves.toEqual(['sent']);

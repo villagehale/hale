@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LinqSendError,
   createLinqChat,
+  editLinqMessage,
   listLinqParticipantHandles,
   reactToLinqMessage,
   sendLinqChatMessage,
+  setLinqChatBackground,
   setPreviewGroupCaptureSinkForTest,
   startLinqTyping,
 } from './linq/transport';
@@ -136,6 +138,38 @@ describe('preview group capture', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('VIL-479: captures a PATCH of one text part on a fake message', async () => {
+    openEnv();
+    await sink.record({
+      chatId: CHAT,
+      kind: 'message',
+      method: 'POST',
+      path: `/chats/${CHAT}/messages`,
+      body: null,
+      handles: null,
+      providerMessageId: 'preview-msg-1',
+    });
+    const edited = await editLinqMessage({
+      messageId: 'preview-msg-1',
+      text: 'Swim is at 5.',
+      partIndex: 0,
+      fetch: fetchSpy,
+    });
+    expect(edited.providerMessageId).toBe('preview-msg-1');
+    const captured = sink.calls.filter((call) => call.kind === 'message_edit');
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      chatId: CHAT,
+      method: 'PATCH',
+      providerMessageId: 'preview-msg-1',
+      body: { text: 'Swim is at 5.', part_index: 0 },
+    });
+    await expect(
+      editLinqMessage({ messageId: 'msg_real', text: 'no', fetch: fetchSpy }),
+    ).rejects.toMatchObject({ code: 'preview_not_fake_chat', permanent: true });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('captures a tapback on a fake inbound message and on a captured reply', async () => {
     await sink.record({
       chatId: CHAT,
@@ -185,6 +219,16 @@ describe('preview group capture', () => {
     const r = await startLinqTyping({ chatId: CHAT, fetch: fetchSpy });
     expect(r.status).toBe('accepted');
     expect(sink.calls[0]?.kind).toBe('typing_start');
+  });
+
+  it('captures the household background swatch on a fake chat, no fetch (VIL-478)', async () => {
+    const r = await setLinqChatBackground({ chatId: CHAT, variant: 'ice', fetch: fetchSpy });
+    expect(r.status).toBe('accepted');
+    expect(sink.calls).toEqual([
+      expect.objectContaining({ chatId: CHAT, kind: 'chat_background', method: 'POST' }),
+    ]);
+    expect(sink.calls[0]?.body).toEqual({ type: 'color', variant: 'ice' });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('refuses a real chat id and a tapback on a real message, before any capture', async () => {

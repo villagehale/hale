@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgwVx75Td9TH4XMoggfJP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzQcKEAgTGAI4AUIIdGhpbmtpbmcSDKYc6HMz5YUq++x4YxoMAVieKvDD2kniBB7bIjBWmvOSCtBfHYzm3Jxe6lZXIg6oUPA+itjnJrBqapbKmuLy3COFgph/x1SfNSwtjTIq6gbfLGds0BV/fbl4pnbfqWNVGgfosN8wx2OIn23Elpq1NBHcUMBPL7bKJ4Qesei8Wbwe1VhKiKC/VYFJsTo7gE1GzpIyZV0t9Ygv+ZxOjoVU5d9L/XDJuExREou/K/jCihkNQxv4DgNP/hYns1St9bt617GyI0/DwXNUn8xGjXiHkAUBdHB4tUs5LdvJ40ANEBvsJlvugKveKz3T68FDjh4dk5o2Xl0aNXzPoAGAvf8UeQERQGfYECmboRwI6HNOfmQZSAuHSdu/E1Qrvtpv5SyCjzj0myCS7Q0YWeMQlTHpmPYuKbi+sQlKUBXMx5gdt/V9f/rpqHSbX36e+KWHdjIWVpf4PmkA2Mqse8uX8IZEXBW/dYoUgfy2vybGF/7RG752JKAJces9lRm8V0dmn7RlEN2slKdoijPX6l9T3l9s7tZ8nmw417zX8mhvShKIkGmWMnIVYo7CgV6KYSozjZyK/CSmcNwVa8lCoQU5MK9qtzk07C9rlZ4CVQMdFVgaLQSH6ZTu/6DVE+YQiU48QdV2hSEwO2DyEU2bYa6a5bGLvh/q+mKk5Ydm2dTKcPdycOQX9F1qQza48ifwLb83lkB7fcOZRzKuvtIPw+GEvv7/c4vrG2qpLEZIfRl9zmLfn9VRmyw8o9jXHRJYCWaZat2JmW5Kltt/0cU3IxPsBi/ps0x8Q0F6kD7/VutjopqRORudmPWtWXhu3wS4TPJAYx8hQpOt0/CkWtSij139oSmB9Yq11odSeWSH70NIRgLy8++O0heEP4lgUqjqwRVkNmoEpPpeXvVCpvxAbLjaXG56G5LPsnc5n0dTFB7jt3X2N+7/goGQWv9IS2iBw6jyUqdhTVNfphOrziCbY+sAnB4/7fwleGUGHjQ6bTFUoAK+EKBRWBT4dfBX5ofkdaAxlTL+dRNqYYCgjDV2wabZBvWtOlIveRUAw49RQL2pmySN4qX68+GLN5MG97ja1VlDnkNPgXTyhVoUWFvK4hc6oEBm96p4OW0LKPqqw2fgaHzQi+gFvkiTgDWdrnYAGpm094xig+GWHZDGPDIMeBIDgTyKTPhbmTvrLQ7zsuICjnTiGa6kVRAN5SNiqOLUiCt/Wt9Y2WGVdd7KJpARIvdYEH6ZPdMK9rXKkV+DRCSvL6woxGjDnLenlaqJ0NiqGAE="
+      },
+      {
+        "type": "text",
+        "text": "Totally common at this age, since big independence and big feelings tend to show up together. The one thing to try tonight is a boring, calm walk back to bed every single time they get up. Same short phrase each time, like \"It's sleep time, I'll see you in the morning\", with no chatting, no negotiating and no extra snuggles. It's dull and repetitive for you, and that's why it works."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 141,
+      "cache_read_input_tokens": 20980,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 141,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 248,
+      "output_tokens_details": {
+        "thinking_tokens": 126
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

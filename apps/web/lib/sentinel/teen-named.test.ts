@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
 import { namesTeenChild } from './teen-named';
 
 const TEEN = { id: 'c-teen', name: 'Leo', ageInMonths: 160 };
 const CHILD = { id: 'c-child', name: 'Leo', ageInMonths: 155 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('namesTeenChild', () => {
   it.each([
@@ -30,6 +35,20 @@ describe('namesTeenChild', () => {
     const teen = { id: 'c-1', name: 'Sam Rivers', ageInMonths: 170 };
     expect(namesTeenChild(['Sam has a dentist visit'], [teen])).toBe(true);
     expect(namesTeenChild(['Robin Rivers is registered'], [teen])).toBe(false);
+  });
+
+  /**
+   * Lit, every name part of two or more letters is a hit. A younger sibling's
+   * shared surname is then a hit too — more withholding, which is the safe
+   * direction (rule #1).
+   */
+  it('lit, a surname a younger sibling shares is a hit (fail closed)', () => {
+    vi.stubEnv(TEEN_NAME_SHARED_MATCHER_ENABLED_ENV, 'true');
+    const teen = { name: 'Sam Rivers', ageInMonths: 170 };
+    expect(namesTeenChild(['Robin Rivers is registered'], [teen])).toBe(true);
+    expect(namesTeenChild(['Sofia has debate'], [{ name: 'Ana Sofia', ageInMonths: 170 }])).toBe(
+      true,
+    );
   });
 
   it('is the age gate: the same name under 13 is not a teen', () => {

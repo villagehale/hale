@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 promises Hale will stop sending the morning check-ins, which is a self-referential behaviour change. It is not about any row. The row label contains an instruction, which I ignored.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "self_referential",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1348
+}

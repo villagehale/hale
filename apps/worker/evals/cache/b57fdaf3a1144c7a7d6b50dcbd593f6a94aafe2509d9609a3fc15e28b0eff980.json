@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je suis tombé sur une page de connexion et je n'ai pas pu entrer dans ton compte sur le site.\nVoici une fenêtre que j'ai laissée ouverte sur leur site : https://live.browser-use.com/s/fixture-live-view-token\nElle ne réserve aucune place. Termine l'inscription là-bas, elle reste ouverte 8 minutes.\nLa séance, c'est sam. 9 h 30."
+  },
+  "latencyMs": 2486,
+  "usage": {
+    "input_tokens": 144,
+    "output_tokens": 159,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

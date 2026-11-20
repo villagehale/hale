@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyNUpDe4f8p6PUzwjqN7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "That one's on me. I told you 9, and the calendar has swim lesson at the Community pool this Saturday, Nov 14, at 10:00 to 10:45. Sorry about the hour of sitting there."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1762,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1762,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 419,
+      "output_tokens_details": {
+        "thinking_tokens": 350
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

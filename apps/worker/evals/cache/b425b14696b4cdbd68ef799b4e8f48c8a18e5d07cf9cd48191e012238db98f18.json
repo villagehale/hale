@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale already sent the pickup time to the co-parent by text. Row m1 is a sent text to the co-parent, so it backs a send_done claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "m1"
+      }
+    ]
+  },
+  "latencyMs": 3338
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "permission_slip",
+    "title": "Kindergarten field trip",
+    "venue": "Science Centre",
+    "when_text": "Thursday, October 22, 2026, bus leaves 9:00 am, back by 2:30 pm",
+    "registration_url": null,
+    "child_name": "Mia",
+    "notes": "Cost $12; return signed slip by October 15",
+    "confidence": 0.96
+  },
+  "latencyMs": 1804
+}

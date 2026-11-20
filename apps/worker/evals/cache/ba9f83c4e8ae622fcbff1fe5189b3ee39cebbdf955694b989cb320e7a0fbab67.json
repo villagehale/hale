@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text is a worry about a child's health (fever of 39.5 in a 4-year-old), which per the rules is answered now with verdict answer and an empty reply, since the family data holds no guidance on this.",
+    "verdict": "answer",
+    "reply": ""
+  },
+  "latencyMs": 1348
+}

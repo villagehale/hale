@@ -1,6 +1,7 @@
 import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { SITE_URL } from '~/lib/app-url';
+import { IS_IT_FREE_ANSWER, paidPlansCostAnswer } from '~/lib/billing/plain-price';
 /**
  * The product FAQ — the questions a parent actually asks an answer engine before
  * trusting a new number with their family ("what is it?", "is it free?", "is it
@@ -110,14 +111,13 @@ export const FAQ: readonly FaqItem[] = [
   {
     id: 'is-it-free',
     question: 'Is it free?',
-    answer:
-      'Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.',
+    answer: IS_IT_FREE_ANSWER,
   },
   {
     id: 'what-do-paid-plans-cost',
     question: 'What do paid plans cost?',
-    answer:
-      'Free is $0 with unlimited chat. Plus is $19 CAD or $15 USD a month ($159 CAD or $129 USD a year). Max is $39 CAD or $29 USD a month ($329 CAD or $259 USD a year). Families who join now get every feature free until paid plans start.',
+    // CAD is the no-header default. The route swaps in the visitor's row.
+    answer: paidPlansCostAnswer('CAD'),
   },
   {
     id: 'what-happens-to-our-data',

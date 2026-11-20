@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence reports the parent's own statement about the swim booking, which is not a claim. 'I've added it to your calendar' is Hale claiming a scheduled placement for the Saturday swim lesson, which matches row e1.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2166
+}

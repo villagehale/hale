@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyWWpZiYLNdJD8YC6v5Y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSoAcKEAgTGAI4AUIIdGhpbmtpbmcSDG77brIM2gNU6QSA1xoMZP9VGIcAArGZBIFkIjAUDJBKclMpMp/NXMm6V14gyxwrTU874IWcyCAZDaDxk4VX36HIopLMbTsoOd59yTAqvQb79qO2W9T9P1ivcZdHH6fUBwbDhKVR7/SOsEUVMYMVjuvSS8X7y2t7VuIO2eQm8Wo/r8Q4LfuKN9EilCQ9AJ7SuJ3yTS6wvFVru9RLXcA2TX0PIigff7/33PVV4SSqFnvD3/JBPXvnrLXmLlG5DWHPOwuFiQLHiuAd4W0qtayveUb3Y0xNK8JnOHiKtFBNlnyVB1JwlLUoouxC8XrRCGKsKVby/0/8zc5yrVRiSewsGOfUa59VsSpAxy+eWRScdNxstMy+n/9prSIeh5nVHMJF2PyxJTwi3ypGZw37JfgCZtUHFrqau1x6Cd5vKXvUZGA1hOjGJbbDwN+5LWwzW0rbxiFMCMXBJXtTDWrwmIJAGjJVXITGlDOLhN1qKR/XrzgJLciPlNr9AkDCEXfULq+OMnHrpEMNpBS35SXL+0y3kl65UxT+a4ueVvmJxYj9dXJswDFigtjyV6vdfF9saap28fLzBmCLp4CMON35Lark40P9Fx409yvi5jEua00A4S6erooBn6W9hfE8tUVcyIGvR8uQjRzvkZ4hlrivbN0TGzCd4z7fNzfq/sjg6Tz5yo+8DD+YAsbduM1/Pn27LCMUEKn//Jd8Dzmxnm/1rmSlIe2QcdEg5FHWg0SOjLjJSN79OA++bROrVkAfFFNfL9oNKifDOzOQPDamXEr2hbjxSptHyiSiS2dDcG08nG+/QVndkF+hnooDeRVBHKkue2wWfJsoDr/ULK523SVqiGCKBGnloTX8lcUjI2vREQj59vvvvAJXM5ZN9whWNYNbJCW1zTu1iSqcJbBWS8LF2AZA34SGEfNIXKQBjSreeOirjqolItAPIEDBGfuPI1Bare1WCCVc9RZUgRMGVQbaXrUlS+clRwUJ7wZaW5LMh1Ck9YBiwrQR2/M1s3VlFqoHMKdF0S9ps6KFImL8eqsO8yUiucPctRW2dxiB3mF7pwEa0v8qXGM9Pg1Un99M6Ej/QAFhO9D7KQ7TgVfmfslrzsWWGm0FXyEk4EeSzYzlMuRZlt51NaRqyWYgtFyLOaKe5lxiBnkohqu3itvBSKii9jyVKuRFajdR+G/8dd5DSae7SKQ7bZKSOdS9ZG+QRc+fGAE="
+      },
+      {
+        "type": "text",
+        "text": "Gymnastics Tots 那个已经取消了。\n\nAda 的 Little Kickers 周六9:30(12月5日)报名将在12月1日周二早上7:00开放,多伦多时间。我会在开放时帮你排队;如果你自己也用手机或电脑排队,家里就会占两个队位。你想报哪些场次,按顺序告诉我?\nhttps://kickers.example-sport.test/register/little-kickers-sat-0930"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1147,
+      "cache_read_input_tokens": 21624,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1147,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 250,
+      "output_tokens_details": {
+        "thinking_tokens": 97
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

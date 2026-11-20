@@ -1,5 +1,5 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NamedArea, NamedAreaReader } from '~/lib/channel/named-area';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
@@ -163,6 +163,26 @@ describe('find_activities', () => {
       expect(seen).toMatchObject([{ town: 'Halton Hills' }]);
     });
 
+    it('takes a blank area as no place named, and searches home instead of refusing', async () => {
+      const seen: unknown[] = [];
+      const read: string[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE, read),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'story time', area: '' });
+      await call(tool, { subject: 'swim lessons', area: ' \t ' });
+
+      expect(read).toEqual([]);
+      expect(seen).toMatchObject([
+        { subject: 'story time', town: 'Halton Hills' },
+        { subject: 'swim lessons', town: 'Halton Hills' },
+      ]);
+    });
+
     it('searches a named place even when the family has no home town on file', async () => {
       const seen: unknown[] = [];
       const tool = findActivitiesTool({
@@ -289,6 +309,71 @@ describe('find_activities', () => {
     await expect(call(second, { subject: 'music class' })).resolves.toMatchObject({ found: true });
   });
 
+  describe('MAX_ENTITLEMENTS_ENABLED search budgets', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('keeps two calls per turn for Plus when the flag is on', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+        planTier: 'plus',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await expect(call(tool, { subject: 'music class' })).rejects.toThrow(/already searched/);
+      expect(seen).toHaveLength(2);
+    });
+
+    it('lets Max search four times per turn when the flag is on', async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      const seen: unknown[] = [];
+      const options: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: {
+          async find(query, findOptions) {
+            seen.push(query);
+            options.push(findOptions);
+            return { found: true, picks: [PICK] };
+          },
+        },
+        onPromise: () => {},
+        planTier: 'family',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await call(tool, { subject: 'music class' });
+      await call(tool, { subject: 'pottery' });
+      await expect(call(tool, { subject: 'soccer' })).rejects.toThrow(/already searched the web 4/);
+      expect(seen).toHaveLength(4);
+      expect(options[0]).toEqual({ maxSearches: 8 });
+    });
+
+    it('does not raise Max above two calls while the flag is off', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+        planTier: 'family',
+      });
+
+      await call(tool, { subject: 'gymnastics' });
+      await call(tool, { subject: 'swimming' });
+      await expect(call(tool, { subject: 'music class' })).rejects.toThrow(
+        /already searched the web 2/,
+      );
+      expect(seen).toHaveLength(2);
+    });
+  });
+
   it('carries a named failure through rather than pretending nothing was asked', async () => {
     const tool = findActivitiesTool({
       onPromise: () => {},
@@ -390,9 +475,21 @@ describe('find_activities auto-registers the rest', () => {
   it('registers NOTHING when every find is whole - a complete answer needs no follow-up', async () => {
     const promises: ActivityPromise[] = [];
 
-    await call(toolWith([whole], promises), { subject: 'toddler gymnastics' });
+    await call(toolWith([{ ...whole, url: 'https://gym.example/winter' }], promises), {
+      subject: 'toddler gymnastics',
+    });
 
     expect(promises).toEqual([]);
+  });
+
+  it('registers a follow-up when a find ships with no registration page', async () => {
+    const promises: ActivityPromise[] = [];
+
+    await call(toolWith([{ ...whole, url: undefined }], promises), {
+      subject: 'toddler gymnastics',
+    });
+
+    expect(promises).toHaveLength(1);
   });
 
   it('registers nothing when the search found nothing - there is no gap to close', async () => {
@@ -470,7 +567,16 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+    preferences: [
+      {
+        childId: CHILD,
+        key: 'indoor',
+        value: { prefers: 'indoor' },
+        source: 'parent_message' as const,
+        seenOn: '2026-10-01',
+      },
+    ],
+    recheck: [],
   };
 
   it('hands the family slice back beside the picks, and never sends it to the search', async () => {
@@ -500,5 +606,31 @@ describe('find_activities family slice (VIL-518)', () => {
       expect(result).toContain('Halton Hills Gymnastics');
       expect(result).not.toContain('"family"');
     }
+  });
+});
+
+describe('find_activities description: record over thread history (VIL-519, Design lock)', () => {
+  const description = findActivitiesTool({
+    reader: reader({}),
+    finder: fakeFinder([]),
+    onPromise: () => {},
+  }).description;
+
+  it('makes the family record win over older thread mentions of place and age', () => {
+    expect(description).toContain('the record wins');
+    expect(description).toContain('not from the old mention');
+  });
+
+  it('forbids profile / memory meta to the parent', () => {
+    expect(description).toContain(
+      'Never tell the parent about a record, profile, memory or mismatch',
+    );
+  });
+
+  it('keeps recheck to one question the model writes, and never a reason to pick', () => {
+    expect(description).toContain('must not choose the subject you search');
+    expect(description).toContain('no set sentence');
+    expect(description).not.toContain('if it would change this pick');
+    expect(description).not.toContain('loves_swimming');
   });
 });

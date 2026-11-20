@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly takes up the pasted course link and says Hale is watching it, with the 'within about ten minutes' detail matching the capability. However, it pads past the job. The overnight-quiet-hours promise and the claim that freed spots may go to the waitlist first are not traceable to anything Hale knows, and they add speculative policy detail to an otherwise clean confirmation.",
+    "score": 3
+  }
+}

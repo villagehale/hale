@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUff5VA1Cu9W9WJ5o5u",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwkKEAgTGAI4AUIIdGhpbmtpbmcSDBZz3jfSBl1SYQ5kyRoMBF5vdPX1k3gtbP73IjDT++7TAbkXmZ2V5uIfyHhXFvoY+zmaZYZvLk+pihI3T5B0FwRI25Ji1tZMGkG7Cwcq5AhDQvUVhDdulgA7qD1q2C5S92FLW0biPRrst2tTbixZ3HlPLWsC8+6Qtq4lxRMgJLVPMk+LQ+4KvjL8yK2ivjE0OKdIVYPqR/HF/XkfUMRSde17jxMPnb7ywBs04RK/bC69x2RnqFk5EYmzriWIA33Nd5lqIDrVK9GGKsHVYsas3/zTjFXu3a1A/JaI23OKL0b4PFMm05d0uUp/WPrc4fbd1fTJ2Tn9ZObf8F8hdnvO90JSKgmxDfovlBiteUxSTSipzD4QOzU9VqkjQj6f0TIlUF84THU9JRIZffWbqRLjWIZx4dk81BCxzWAC8ClQ4s4hgdeoYa8ILDM8gRRYzlCUEnrdzGAk+NEslm9bHZYC+jACXr65z5HQNP+tQq+38QNg3erOzNIbdgiBCPQr+doHKvLFdnhmtVWvWShTThkUc/sGjPlLWZq3XwVw3/QQRr+5RD3vPiSylaTQGSp8lyQKN7ggfT2T1RnQdEZ3yspAOWtJHl10gQxZgjMzOi1EG3W4/ctbEB5JIDUUAVghkvdnz9FyPvwKtqFIcIXVIcfqaGMMW2MLrTtMCIBI5WCYfQM40omWSz6AzoPDfI6gtQVVqkyW4f1HRsEKpKPAeB5nDUxGMX+qPK/RU6GB1QE55gi4rw2y2HN/vMuooi+NYge0DiDQ53nY3gOIC0UT/57vsAmu9SxRpwMs1q3QcgPMyySGSE4M992qhvUepo3UT6ws8dACW6nbHjfcnJ2tq1esA+oq3SqY3N4U4MX5aUMEZeu7GsOszTQXHQrSmxTGC/NCFYzbTd+k0a8qykqsaIeqRwH1Lj4Fw08+sDCyKucbAUSkq6w9TFWWvPqSFRZ8G3nLY0ia0mDC2pUWYnfNHFJ4nbrEfBAiV/kqWX+HcHLf18EZe6wuQnqttP20GzKjEq6DKAQWRR3+gg10pwruMqsqNvywVc9ZrZycUzLs0aJeKPo3ZZF74UJ3QKaXJpJI+wnV+8vuF6iQjg8lSwj/3x3lL/8xFCAOVt3G08lXlEPnMSS0Uhz1wChpx5eE9NjOXxI80H7NUTHqvJ8Zv5rnFVtsxOxmS2qFlQVkdph867GcnrHhPYmNQeMk65DJC05np+eiO+MQ4UYuBgzOFdxuxo4IdjhEfdYGZuHmlRARQAd5+R9cCEsjhcCMmG+ouyTFXoE/yRA86M4acJPeeAUO6YfybKy7o9gRz951exydwgW6J5n2GSA+xCSLDwzxKaPzmP8hjx4DChRzxCNaFmFuA+MFbvfuLboc78ibBYttej9tOAf5T7w8gvSvVgOtkD9Dbcdhl+B6EpGiHVyVC48PVwBNITJppUGHD0unZ8joCsNYykmNzsbMMauuaxfPtwW1od5l8SX9vRCCQYnc9Hqm9VUwG31UVwOGeMmz8KjW7tWhX3lTKhUhW/sV8iDhqPzKtePtiQA+egxe2grOUpCPTTJXxUDA4u89jtmwsHwmtcnNnZ7SrA57S86m4l0s/iMYGamYR3RhRBgB"
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Maya's swim is Saturday at 11:00am at Y on Main, and Dana can't do pickup. Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 775,
+      "cache_read_input_tokens": 19182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 775,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 259,
+      "output_tokens_details": {
+        "thinking_tokens": 211
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

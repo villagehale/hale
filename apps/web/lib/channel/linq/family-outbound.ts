@@ -1,7 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
+import { groupLineLabels, noteMessage, noteSendFailed } from '~/lib/analytics/product-hooks';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -12,6 +14,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
@@ -152,11 +155,18 @@ export type FamilyOutboundDelivery =
   | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
   | { status: 'skipped'; reason: string };
 
-function skippedRefusal(familyId: string, err: unknown): FamilyOutboundDelivery | null {
+async function skippedRefusal(
+  database: Database,
+  familyId: string,
+  err: unknown,
+): Promise<FamilyOutboundDelivery | null> {
   const refusal = readSendRefusal(err);
   if (!refusal) return null;
   if (refusal.code !== 'not_configured' && !refusal.permanent) return null;
   console.warn({ familyId, code: refusal.code }, 'family outbound: provider refused — not sent');
+  if (isGarbledRefusal(err)) {
+    await recordGarbledRefusal(database, { familyId, surface: 'family_outbound' });
+  }
   return { status: 'skipped', reason: refusal.code };
 }
 
@@ -178,6 +188,9 @@ function isCoparentAsk(body: string): boolean {
  * already in, or a spot they asked to hear about. Pass `bubbleKind` when the
  * send has a named quiet-hours class. The co-parent ask never leaves into a
  * claimed group. There is no count.
+ *
+ * `replyIn` is a later answer to an ask made in a 1:1 chat: it goes back into that
+ * chat on the legacy transport, threaded, and never to the household group.
  */
 export async function deliverFamilyOutbound(
   database: Database,
@@ -191,10 +204,13 @@ export async function deliverFamilyOutbound(
     shareGroupCap?: boolean;
     bubbleKind?: GroupBubbleKind;
     mediaUrls?: string[];
+    replyIn?: { chatId: string; messageId: string };
     now?: Date;
   },
 ): Promise<FamilyOutboundDelivery> {
-  const target = input.target ?? (await familyOutboundTarget(database, input.familyId));
+  const target: FamilyOutboundTarget = input.replyIn
+    ? { channel: 'legacy' }
+    : (input.target ?? (await familyOutboundTarget(database, input.familyId)));
   if (target.channel === 'group') {
     if (isCoparentAsk(input.body)) {
       console.warn(
@@ -232,7 +248,7 @@ export async function deliverFamilyOutbound(
         chatId: target.chatId,
       };
     } catch (err) {
-      const skipped = skippedRefusal(input.familyId, err);
+      const skipped = await skippedRefusal(database, input.familyId, err);
       if (skipped) return skipped;
       throw err;
     }
@@ -242,6 +258,7 @@ export async function deliverFamilyOutbound(
       to: input.to,
       body: input.body,
       mediaUrls: input.mediaUrls,
+      ...(input.replyIn ? { replyIn: input.replyIn } : {}),
     });
     const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
     return {
@@ -252,7 +269,7 @@ export async function deliverFamilyOutbound(
       ...(sent.linkOmitted ? { linkOmitted: sent.linkOmitted } : {}),
     };
   } catch (err) {
-    const skipped = skippedRefusal(input.familyId, err);
+    const skipped = await skippedRefusal(database, input.familyId, err);
     if (skipped) return skipped;
     throw err;
   }
@@ -317,7 +334,8 @@ export async function familySpeech(
   userId: string,
 ): Promise<{ name: string | null; language: ReplyLanguage | null }> {
   if (typeof database.select !== 'function') return { name: null, language: null };
-  const language = await familySpeechLanguage(database, familyId);
+  // The parent this line names. A missing user falls back to the family language.
+  const language = await readParentLanguage(database, { familyId, parentUserId: userId });
   const [user] = await database
     .select({ name: schema.users.name })
     .from(schema.users)
@@ -327,7 +345,11 @@ export async function familySpeech(
   return { name, language };
 }
 
-/** The language half of {@link familySpeech}, for a household line that names no speaker. */
+/**
+ * The language of a household line that names no parent. A line that names one
+ * (`familySpeech`) uses that parent's stored language. This one stays the family
+ * language: there is no parent to read (VIL-572).
+ */
 export async function familySpeechLanguage(
   database: Database,
   familyId: string,
@@ -796,6 +818,13 @@ export async function sendClaimedGroupLine(
       targetId: claimed.id,
       after: { templateKey: input.templateKey },
     });
+    noteMessage({
+      direction: 'out',
+      familyId: input.familyId,
+      channel: 'imessage',
+      ...groupLineLabels(input.chatId),
+      database,
+    });
     return 'sent';
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
@@ -803,6 +832,12 @@ export async function sendClaimedGroupLine(
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code })
       .where(eq(schema.channelMessages.id, claimed.id));
+    noteSendFailed({
+      familyId: input.familyId,
+      channel: 'imessage',
+      ...groupLineLabels(input.chatId),
+      reason: code,
+    });
     return 'not_sent';
   }
 }

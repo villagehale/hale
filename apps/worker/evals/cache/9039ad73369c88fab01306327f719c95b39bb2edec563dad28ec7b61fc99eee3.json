@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Chinese, is first person, and says Hale is handling the question and the reply is on its way. It doesn't hint at the answer, describe specific actions, give timing, or apologise. It reads like a natural quick acknowledgement, though '回复已经在路上了' is slightly formal support-desk phrasing.",
+    "score": 4
+  }
+}

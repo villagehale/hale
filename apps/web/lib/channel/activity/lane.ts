@@ -1,11 +1,18 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import {
+  type AgentClient,
+  cachedSystemBlocks,
+  layoutTools,
+  pickLane,
+  pickModel,
+} from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { namesRetiredRecPortal } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { parentFacingActivityUrl } from '~/lib/format/http-url';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { REGISTRATION_PLATFORM_HOST_MARKERS } from '~/lib/signup/plan/towns';
 import type { ActivityQuery } from './deidentify';
 import { namesAVenue, readEvidence } from './evidence';
 
@@ -216,8 +223,13 @@ export type ActivityFindResult =
   | { found: true; picks: ActivityPick[] }
   | { found: false; reason: ActivityFailure; searched?: EmptySearch };
 
+export interface ActivityFindOptions {
+  /** Override {@link MAX_SEARCHES} for this call (Max entitlements). */
+  maxSearches?: number;
+}
+
 export interface ActivityFinder {
-  find(query: ActivityQuery): Promise<ActivityFindResult>;
+  find(query: ActivityQuery, options?: ActivityFindOptions): Promise<ActivityFindResult>;
 }
 
 class ActivityUnresolvable extends Error {
@@ -323,6 +335,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(query.date ? { date: query.date } : {}),
     ...(query.today ? { today: query.today } : {}),
   });
 }
@@ -374,9 +387,13 @@ export function needsReadPass(
   return picks.length === 0 && evidence.searchResults > 0 && !namesAVenue(query.subject);
 }
 
-function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUnion[] {
+function groundTools(
+  query: ActivityQuery,
+  readPages = false,
+  maxSearches = MAX_SEARCHES,
+): Anthropic.ToolUnion[] {
   const tools: Anthropic.ToolUnion[] = [
-    { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES },
+    { name: 'web_search', type: 'web_search_20250305', max_uses: maxSearches },
   ];
   if (readPages || namesAVenue(query.subject)) {
     tools.push({
@@ -385,7 +402,7 @@ function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUni
       max_uses: MAX_INLINE_FETCHES,
     } as unknown as Anthropic.ToolUnion);
   }
-  return tools;
+  return layoutTools(tools);
 }
 
 /**
@@ -453,6 +470,39 @@ function uniqueMatch(
   return ownHosts.size === 1 ? own[0]! : null;
 }
 
+/** True when this URL's hostname is a known registration platform. */
+export function registrationPlatformUrl(url: string): boolean {
+  const safe = parentFacingActivityUrl(url);
+  if (!safe) return false;
+  try {
+    const host = new URL(safe).hostname.toLowerCase();
+    return REGISTRATION_PLATFORM_HOST_MARKERS.some((marker) => host.includes(marker));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The registration page from this turn's search hits, when compose left source_url
+ * empty. Only a hit that names THIS pick (venue or program, same rule as
+ * {@link stampReadPageUrl}) is attached — a first-hit stamp would give every
+ * URL-less card the same PerfectMind page.
+ */
+export function stampRegistrationPlatformUrl(
+  pick: { name: string; sourceName: string },
+  searchHits: ReadonlyArray<{ url: string; title: string }>,
+): string | null {
+  const needles = [pick.sourceName, pick.name].map(squash).filter((value) => value.length >= 6);
+  if (needles.length === 0) return null;
+  return uniqueMatch(
+    squash(pick.sourceName),
+    needles,
+    searchHits
+      .filter((hit) => registrationPlatformUrl(hit.url))
+      .map((hit) => ({ url: hit.url, text: hit.title })),
+  );
+}
+
 export function stampReadPageUrl(
   pick: { name: string; sourceName: string },
   pages: ReadonlyArray<{ url: string; text: string }>,
@@ -509,7 +559,8 @@ export function toPicks(
     const price = field(item.price);
     const url = preferVenuePage(
       parentFacingActivityUrl(field(item.source_url)),
-      stampReadPageUrl({ name, sourceName }, pages, searchHits),
+      stampReadPageUrl({ name, sourceName }, pages, searchHits) ??
+        stampRegistrationPlatformUrl({ name, sourceName }, searchHits),
       sourceName,
     );
     const pick: ActivityPick = {
@@ -541,6 +592,7 @@ export function toPicks(
 async function runActivityOnce(
   client: () => AgentClient,
   query: ActivityQuery,
+  maxSearches: number,
 ): Promise<ActivityPick[]> {
   let resolved: AgentClient;
   try {
@@ -550,6 +602,8 @@ async function runActivityOnce(
   }
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  let bodies: string[];
+  let extras: string[] = [];
   try {
     const [base, events] = await Promise.all([
       loadCronSkill('activity-finder'),
@@ -557,12 +611,15 @@ async function runActivityOnce(
     ]);
     // VIL-510: the dated-event / venue-name addendum rides the inline research + extract
     // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
-    skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+    bodies = [base.instructions, events.instructions];
     // VIL-435: the day check rides only when the query carries the family-local day.
+    // After the cache breakpoint, so a dated query does not bust the finder prefix.
+    extras = [];
     if (query.today) {
       const day = await loadCronSkill('activity-finder-day');
-      skill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+      extras.push(day.instructions);
     }
+    skill = { ...base, instructions: [...bodies, ...extras].join('\n\n') };
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
@@ -587,8 +644,8 @@ async function runActivityOnce(
         .stream({
           model: pickModel(skill.meta.task),
           max_tokens: GROUND_MAX_TOKENS,
-          system: skill.instructions,
-          tools: groundTools(query, readPages),
+          system: cachedSystemBlocks(bodies, '5m', undefined, extras),
+          tools: groundTools(query, readPages, maxSearches),
           messages: [{ role: 'user', content: groundUserMessage(query) }],
         })
         .finalMessage();
@@ -625,7 +682,8 @@ async function runActivityOnce(
       ({ value: composed } = await forceToolJson({
         client: resolved,
         lane: pickLane(skill.meta.task),
-        system: skill.instructions,
+        system: bodies.join('\n\n'),
+        systemExtras: extras,
         userMessage: composeUserMessage(query, researchNotes),
         toolName: 'activity_picks',
         toolDescription: 'Return the concrete programs the search actually found.',
@@ -637,16 +695,24 @@ async function runActivityOnce(
       throw new ActivityUnresolvable('compose_failed', message(err));
     }
     const picks = toPicks(composed.picks, evidence.pages, evidence.searchHits ?? []);
+    const withUrl = picks.filter((pick) => pick.url).length;
+    const searchHits = evidence.searchHits ?? [];
     // VIL-499 · counts only (no URL, no text), so a pick with no link is diagnosable.
     console.info(
       {
         picks: picks.length,
-        withUrl: picks.filter((pick) => pick.url).length,
+        withUrl,
         pagesWithText: evidence.pages.length,
-        searchHits: evidence.searchHits?.length ?? 0,
+        searchHits: searchHits.length,
       },
       'activity lane: pick urls',
     );
+    if (searchHits.some((hit) => registrationPlatformUrl(hit.url)) && withUrl === 0) {
+      console.error(
+        { picks: picks.length, withUrl, searchHits: searchHits.length },
+        'activity lane: registration page without url',
+      );
+    }
     return {
       picks,
       searchResults: evidence.searchResults,
@@ -700,10 +766,11 @@ function logActivityFailure(err: unknown, attempt: number): void {
  */
 export function createActivityFinder(client: () => AgentClient): ActivityFinder {
   return {
-    async find(query) {
+    async find(query, options) {
+      const maxSearches = options?.maxSearches ?? MAX_SEARCHES;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
-          return { found: true, picks: await runActivityOnce(client, query) };
+          return { found: true, picks: await runActivityOnce(client, query, maxSearches) };
         } catch (err) {
           logActivityFailure(err, attempt);
           if (err instanceof ActivityUnresolvable && err.reason === 'no_picks') {

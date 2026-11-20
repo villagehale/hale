@@ -26,6 +26,7 @@ const DUE = {
   createdFrom: 'msg-9',
   subjectChildId: null,
   heardFacts: null,
+  askLanguage: null,
   dueAt: new Date('2026-08-15T13:00:00.000Z'),
 };
 const COMPOSED = 'How have the first few nights gone?';
@@ -289,7 +290,7 @@ describe('when it must not send', () => {
     const result = await h.run();
 
     expect(result).toMatchObject({ unsendable: 1, sent: 0 });
-    expect(Object.values(result.held)).toEqual([0, 0, 0, 0]);
+    expect(Object.values(result.held)).toEqual([0, 0, 0, 0, 0]);
     logged.mockRestore();
   });
 

@@ -1,4 +1,5 @@
 import { noticeTitleFor } from '~/lib/integrations/calendar-notice-title';
+import { teenNameIn } from '~/lib/privacy/teen-name';
 
 /**
  * Kid-event title checks with no send path.
@@ -106,7 +107,7 @@ export function splitKidEvent(
 
 /** True when the text names one of these teens as a whole word (rule #1). */
 export function namesTeen(text: string, teenNames: readonly string[]): boolean {
-  return teenNames.some((name) => name.trim().length >= 2 && hasWord(text, name.trim()));
+  return teenNameIn(text, teenNames);
 }
 
 /**
@@ -127,8 +128,7 @@ export function withoutTeenTitles<T extends { title: string | null; kidRelated: 
     if (!title) return block;
     const credited = splitKidEvent(title, childNames)?.kid;
     const teen =
-      teens.some((name) => hasWord(title, name)) ||
-      (credited !== undefined && teens.includes(credited));
+      teenNameIn(title, teens) || (credited !== undefined && teenNameIn(credited, teens));
     return teen ? { ...block, title: null, kidRelated: false } : block;
   });
 }

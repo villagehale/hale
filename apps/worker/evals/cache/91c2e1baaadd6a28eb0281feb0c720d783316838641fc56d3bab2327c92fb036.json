@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgyNVet6TrXxTWi9MV2xy",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AYKEAgTGAI4AUIIdGhpbmtpbmcSDPQQ7n+u53c3pfOM7BoMy0kgHdvWUkiuR4p1IjA4bGXCbbyA4deLVOu4Jfe+p8foo34P5YfsCg0k4LVtMBGFkQaovpJWY7wBIoTFJD8q8QWgj/0X1prUK2nEnL/qN8vnId/CtkANoq0ohk6ucstg3enFqlocswx6JLq1KprswFqi7pY2DLpXbrrwrmQZkDpjyxVvoiN+9BqMjCYZzq/U/XbZTkA7GSkPjLMtxZ6ddWs73qffLwHGyhdi5AER2R1LHhH6rpgtgeODlG0+tvejakeVtXmj7/hOsRpvgm1G9jCoQgpynk53qkIzzQqagux9OKtpelOcSuJ7I3w33yJbcn/iJbRNNdJEA1CzOz3P17pWAFjkPpNVfR+g1tqXjc8I7VVYKqMoAz0by0MnoIVqR58oJhkfiO6tbmTG4YtaNxQX6iLLJD7EDHZ+mWeemtohRoODjEnc3WIjyNiaWmURwcgChom2q9wAyG5o+hUFjmk0t92QPUoGW9XuFUKb9L24zRlRtRucKnQFI5+/7Erwozw1B5LmyeSWISZ8VHQfH3pG/oPVlBuaaGPXLuWDSOURoZthhAvNIYfiPbpQ2+pL62nZF4Nd1ZaRpLtWfe39EynJaZjFrdoDbBLoizPmQ6AM/YPmRTlGKkLfyV23NltUT3qrb7u2xJaNoB4lz8/Fw9pujAB7LSjDOu14YYrTuY1jxNvZkTWP2IgtM181sm1lquEtt2K69vHJ9icJirtZ0S+Hn46mLeavsDnbLFkymS4UEqma76Il6TNP/+bwKfpW1rHnvySY8ilNAmdkMl1ai21RfyDBEA61LzonxedOepA4Cat3e5q2FMf8U7aJ3X3rr5YMLs+nzOnC3xSDPSD4Oq5BWBFvOiZwbEubajQAoPGJJnEqBGb3FjpAV+gVkBR8sIFBAz04D0q9QKOWMGUb4duA27COxGJRVjwATboNL8w3O09YAUARw++LnFw7byUcotTEjEydyqM1cEqLeFLfJMJYO14mnzcwu/SGozUeLGpbEWE16zfLexr5ASBVNza78y9gfxhnR5ps4Ld0P8utP3aSpQizZDyI+1JqclPjymUFbyqpWRl/D3d8Y1F5uCQ671MYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DHVEC1KKVzXg9SSfT9vbCL",
+        "name": "find_activities",
+        "input": {
+          "query": "fun activity for a 4 year old Saturday afternoon"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1973,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1973,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 133,
+      "output_tokens_details": {
+        "thinking_tokens": 66
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

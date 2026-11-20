@@ -36,9 +36,8 @@ afterEach(() => {
   vi.mocked(forceToolJson).mockReset();
 });
 
-function mentionsPreview() {
+function mentionsOn() {
   vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
-  vi.stubEnv('VERCEL_ENV', 'preview');
 }
 
 /** A roster row in a group status, so the group check passes. */
@@ -63,10 +62,8 @@ function keysUnset() {
 }
 
 describe('LINQ_GROUP_MENTIONS_ENABLED', () => {
-  it('is on only in preview when the flag is exactly true', () => {
+  it('is on when the flag is exactly true, including Production', () => {
     keysUnset();
-    expect(linqGroupMentionsEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'preview');
     expect(linqGroupMentionsEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
     expect(linqGroupMentionsEnabled()).toBe(true);
@@ -74,21 +71,11 @@ describe('LINQ_GROUP_MENTIONS_ENABLED', () => {
     expect(linqGroupMentionsEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', '');
     expect(linqGroupMentionsEnabled()).toBe(false);
-  });
-
-  it('stays off in production when the flag is true', () => {
-    keysUnset();
     vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqGroupMentionsEnabled()).toBe(false);
-  });
-
-  it('stays off when the flag is true outside preview', () => {
-    keysUnset();
-    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
-    expect(linqGroupMentionsEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'development');
-    expect(linqGroupMentionsEnabled()).toBe(false);
+    expect(linqGroupMentionsEnabled()).toBe(true);
+    vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true\n');
+    expect(linqGroupMentionsEnabled()).toBe(true);
   });
 });
 
@@ -168,7 +155,7 @@ describe('resolveGroupMention', () => {
 
   it('sends the reply without a mention when the seat read fails', async () => {
     keysUnset();
-    mentionsPreview();
+    mentionsOn();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken = {
       select: () => {
@@ -185,7 +172,7 @@ describe('resolveGroupMention', () => {
 
   it('checks the chat is a group even when the roster is passed in', async () => {
     keysUnset();
-    mentionsPreview();
+    mentionsOn();
     const chain = {
       from: () => chain,
       where: () => chain,
@@ -207,7 +194,7 @@ describe('resolveGroupMention', () => {
 
   it('never mentions in a chat whose roster says it is not a group', async () => {
     keysUnset();
-    mentionsPreview();
+    mentionsOn();
     const chain = {
       from: () => chain,
       where: () => chain,
@@ -238,7 +225,7 @@ describe('resolveGroupMention', () => {
 
   it('returns the seated handle the reader named, and nothing for an unknown id', async () => {
     keysUnset();
-    mentionsPreview();
+    mentionsOn();
     const database = groupDatabase();
     expect(
       await resolveGroupMention({
@@ -262,7 +249,7 @@ describe('resolveGroupMention', () => {
 
   it('sends no mention when the reader names nobody', async () => {
     keysUnset();
-    mentionsPreview();
+    mentionsOn();
     expect(
       await resolveGroupMention({
         database: groupDatabase(),

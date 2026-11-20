@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "Parent said they no longer want gymnastics and switched to Little Kickers",
+    "replaced": [
+      {
+        "ref": "ask-1",
+        "said": "体操那个不要了，换 Little Kickers 吧"
+      }
+    ]
+  },
+  "latencyMs": 3045
+}

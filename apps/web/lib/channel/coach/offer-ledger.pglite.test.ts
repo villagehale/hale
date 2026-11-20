@@ -122,6 +122,7 @@ function productionTools(seeded: Seeded, ledger: ReturnType<typeof createTurnOff
     undefined,
     undefined,
     'CA',
+    noop,
   );
 }
 
@@ -155,6 +156,10 @@ async function draftedPayload(familyId: string): Promise<Record<string, unknown>
 }
 
 describe('the turn offer ledger, through the production ports', () => {
+  // Production ports + pglite seed: the 5s default trips on a loaded shard (web 1/4
+  // setup on this PR was 405s). The assertions are unchanged.
+  const THROUGH_PRODUCTION = 15_000;
+
   it('records what the real search verb offered', async () => {
     const seeded = await seed();
     const ledger = createTurnOfferLedger();
@@ -177,7 +182,7 @@ describe('the turn offer ledger, through the production ports', () => {
         civicVenueId: null,
       },
     ]);
-  });
+  }, THROUGH_PRODUCTION);
 
   it('stamps the drafted add with the candidate the same turn offered', async () => {
     const seeded = await seed();
@@ -196,7 +201,7 @@ describe('the turn offer ledger, through the production ports', () => {
       table: 'family_activity_history',
       id: ledger.read()[0]?.candidateId,
     });
-  });
+  }, THROUGH_PRODUCTION);
 
   it('stamps nothing on a title the turn never offered — the control', async () => {
     const seeded = await seed();
@@ -214,5 +219,5 @@ describe('the turn offer ledger, through the production ports', () => {
     const payload = await draftedPayload(seeded.familyId);
     expect(payload?.title).toBe('Dentist');
     expect(payload?.sourceRef).toBeUndefined();
-  });
+  }, THROUGH_PRODUCTION);
 });

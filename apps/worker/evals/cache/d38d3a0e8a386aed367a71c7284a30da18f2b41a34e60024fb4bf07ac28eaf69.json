@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent wants to check with partner first; plan not settled",
+    "said": null,
+    "named": null,
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": "Would you like me to hold off for now until you've talked with your partner, or should I go ahead with the swim plan?"
+  },
+  "latencyMs": 1779
+}

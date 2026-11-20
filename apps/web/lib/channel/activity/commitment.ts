@@ -121,6 +121,10 @@ export async function recordActivityPromise(
      * so its next look can tell news from a repeat. Absent on the coach's own promise,
      * which nobody has answered yet. */
     heardFacts?: readonly string[];
+    /** The language tag the screen read off the parent's ask, so the follow-up can be
+     * written in it. The coach's promise passes this turn's; the sweep's continuation
+     * passes its promise's on. Null when the screen read none. */
+    askLanguage: string | null;
     now: Date;
   },
   ports: ActivityPromisePorts,
@@ -147,6 +151,7 @@ export async function recordActivityPromise(
     topic: input.promise.subject,
     subjectChildId: input.promise.childId,
     heardFacts: input.heardFacts ?? null,
+    askLanguage: input.askLanguage,
     dueAt: new Date(
       input.now.getTime() + (input.dueInHours ?? ACTIVITY_FOLLOWUP_DUE_HOURS) * 3_600_000,
     ),
@@ -181,13 +186,27 @@ export async function recordActivityPromise(
 export async function loadOpenActivityPromise(
   database: Database,
   familyId: string,
-): Promise<{ id: string; summary: string; subject: string; askedAt: Date } | null> {
+): Promise<{
+  id: string;
+  summary: string;
+  subject: string;
+  askedAt: Date;
+  /** The outbound row that carried the promise (VIL-302, channel/ledger.ts
+   * `sendRecordedAt`). */
+  askedVia: string;
+} | null> {
   const row = await loadOpenCommitment(database, familyId, 'activity_followup');
   if (!row) return null;
   // A row whose subject is gone cannot be re-searched, so it is not a promise anything can
   // keep. Listed anyway: Hale still said it, and the coach being told it is holding
   // something is better than the parent's next "yes" landing on an unrelated approval.
-  return { id: row.id, summary: row.summary, subject: row.topic ?? '', askedAt: row.createdAt };
+  return {
+    id: row.id,
+    summary: row.summary,
+    subject: row.topic ?? '',
+    askedAt: row.createdAt,
+    askedVia: row.createdFrom,
+  };
 }
 
 /**

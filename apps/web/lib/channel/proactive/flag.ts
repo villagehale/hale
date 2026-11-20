@@ -1,15 +1,18 @@
+import { flagValue, isEnabled } from '@hale/flags';
 import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
 
 /**
  * VIL-226 · context-driven cadence. Default off, so today's senders stay
  * exactly as they are until this is armed.
  *
- * `off` — the current send path.
+ * `off` — the review reads no family and sends nothing. Sweeps that still send on
+ *   their own clock keep doing so until `PROACTIVE_SENDS_PAUSED` is exactly `true`.
  * `shadow` — candidates are queued and the decider's choice is logged; the old path
  *   still sends.
  * `live` — queued kinds wait for the decider, and the decider sends. It arms only
- *   once every class in {@link PROACTIVE_ROUTING} is routed; until then a requested
- *   `live` runs as `shadow`, and the review's summary says so. No mode has a count.
+ *   once every class in {@link PROACTIVE_ROUTING} is routed; a requested `live`
+ *   while any class is `not_routed` runs as `shadow`, and the review's summary
+ *   says so. No mode has a count.
  *
  * Strict equality, no trim: a trailing newline from `vercel env add` must not arm it.
  */
@@ -30,26 +33,30 @@ export type ProactiveCadence = 'off' | 'shadow' | 'live';
  *
  * Every kind must be listed, so a new class cannot reach live unclassified.
  */
-export const PROACTIVE_ROUTING = {
-  nudge: 'decider',
-  registration_sequence: 'immediate',
-  village_intro: 'not_routed',
-  followup: 'not_routed',
-  plan_check_in: 'not_routed',
-  activity_followup: 'not_routed',
-  spot_open: 'not_routed',
-  spot_open_instant: 'immediate',
-  email_alert: 'not_routed',
-  calendar_alert: 'not_routed',
-  evening_check_in: 'decider',
-  mid_activity_ask: 'decider',
-  co_parent_departed: 'decider',
-  travel_brief: 'decider',
-  duty_ask: 'not_routed',
-  // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
-  autonomy_armed: 'immediate',
-  autonomy_acted: 'immediate',
-} as const satisfies Record<ProactiveSendKind, 'decider' | 'immediate' | 'not_routed'>;
+export const PROACTIVE_ROUTING: Record<ProactiveSendKind, 'decider' | 'immediate' | 'not_routed'> =
+  {
+    nudge: 'decider',
+    registration_sequence: 'immediate',
+    village_intro: 'decider',
+    followup: 'decider',
+    plan_check_in: 'decider',
+    activity_followup: 'decider',
+    spot_open: 'decider',
+    spot_open_instant: 'immediate',
+    email_alert: 'decider',
+    calendar_alert: 'decider',
+    evening_check_in: 'decider',
+    mid_activity_ask: 'decider',
+    next_day_checkback: 'decider',
+    registration_opening: 'decider',
+    school_break_ask: 'decider',
+    co_parent_departed: 'decider',
+    travel_brief: 'decider',
+    duty_ask: 'decider',
+    // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
+    autonomy_armed: 'immediate',
+    autonomy_acted: 'immediate',
+  };
 
 /** The classes whose sweeps still send on their own, in table order. */
 export function unroutedKinds(): ProactiveSendKind[] {
@@ -60,7 +67,7 @@ export function unroutedKinds(): ProactiveSendKind[] {
 
 /** What the env asks for, before the routing check. */
 export function requestedCadence(): ProactiveCadence {
-  const value = process.env[PROACTIVE_CADENCE_ENV];
+  const value = flagValue('proactive-cadence');
   if (value === 'shadow' || value === 'live') return value;
   return 'off';
 }
@@ -70,4 +77,34 @@ export function proactiveCadence(): ProactiveCadence {
   const requested = requestedCadence();
   if (requested === 'live' && unroutedKinds().length > 0) return 'shadow';
   return requested;
+}
+
+/**
+ * VIL-701 · credit abort, per-run family cap, mid-run stop, and one #ops page per
+ * review. Off unless the env is exactly `true` (no trim): a trailing newline stays off.
+ */
+export function proactiveReviewGuardsEnabled(): boolean {
+  return isEnabled('proactive-review-guards');
+}
+
+/**
+ * VIL-701 · per-family daily model-decision cap inside the hourly review. Off unless
+ * the env is exactly `true`.
+ */
+export function familyDecisionCapEnabled(): boolean {
+  return isEnabled('proactive-family-decision-cap');
+}
+
+/**
+ * VIL-705 · refuses every proactive kind, immediate ones included. Replies to an
+ * inbound text do not read this. Off unless the env is exactly `true`.
+ *
+ * An exact env `true` pauses even when PostHog has the flag loaded as false.
+ * A remote value may also pause. It cannot unpause an env that is exactly `true`.
+ */
+export function proactiveSendsPaused(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (env.PROACTIVE_SENDS_PAUSED === 'true') return true;
+  return isEnabled('proactive-sends-paused', undefined, env);
 }

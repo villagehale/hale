@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "4d2a9c17-58e3-4b06-a1f4-93c7e0b25d68",
+    "polarity": "yes",
+    "confidence": "high",
+    "reason": "Parent replied 'yes' as a bare agreement; only one open offer exists and it starts 2026-08-22, after now, so it is the one being answered."
+  },
+  "latencyMs": 2550
+}

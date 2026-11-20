@@ -129,6 +129,7 @@ describe('recordCommitment', () => {
         subjectChildId: null,
         subjectFamilyId: null,
         heardFacts: null,
+        askLanguage: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },

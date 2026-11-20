@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzTJkJJTz1Zjceho2T8f",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSugcKEAgTGAI4AUIIdGhpbmtpbmcSDEcYBZI07rtnyIiaaRoMjz52N1Bnj1PfiUQZIjCEzqhGRv+0qPeGBIfOYE9iB7RsyXwOCXy6vgZJfwTzVXv9nVa6YcE09w2IR2oyhrYq1wbL4YZxJ90VauYaMXitfV5OlirUPXx6UG8I8UrOPPcmr7clTBZe9ZsjUEdSUVxhNAKSg+FoWG9Qn7WgqeRcct9SwqNCyHhH1NCiD6qgKraMDpCY3VIGU1vPsh7FCHJNXWEmq6ubKIwmi27JswYZmcTbPIoWkuvrME8+DkBU4txhZLINftjYmvC6gfz4vur51QZzRrpwOXwzXHfuZtXqss4rNGJ1ZY/NPkAh2z7WqdKhNdMOea58Gh+ndZJyAhdfbhpYxIwCaKGrQtLe5/D+2BZTdEnFH4LX663NQS7zvA5vBlcSpN6YEF/h5a6vD7kktwiBviPO/J5WC955RzxNT9EZpiEtSqX/ScidxyRRBFXDY10EEp6w+n7QYXwLghAh2Madv83gsLC39kVIzexcyyQDjyk77r6KzZai0G/1+iak83M7oVcNRoy6RlgC8C+RDp6hddYQDrZe4e7RC1t1jgbtakMMfRbd/b6kQ88zNmW94LFQ+EOY+15+vWESpXaGDOuaZdm9qu+xenU+ZWwwtnMhHC0wapOdY6ZlA9fBMtf2Nzb3lvcMhIvjQuKvfrqvlzfM76kF8ZcellBuYCBIoQI9v3BUajhsNBwoH5OetkzZn690mDFgxlFP47g5FRvwhbGkDHWdpubiJQ4r+IHAt8v6Lyb9TJlSgOLeefhUAHMeu2UI/23fyk80UlltB+0wpSTBs4dj+pINt1r5gyp36DBBMi9kxMMBQvwy/Hvh2k75uU7gtmqEjyX4or6OIdtHXyNl01s4qPJJkxkPU18iyw0isnzYFlPURx1kDkNIAjrNnlaQeQjeHPbzzr00QRg1kjWOdquOJwdFmCzWPs+IUFjPSSTuVpor5lG6Ux6lQ1qMNtUlgPqlkb+WJsaVPga2oqY4nVLzvsC02V4nPbpGRVHTbGMOdbdvrkBGjusQpDjv30ZwLaTv+o1I+FZiFCwnq7f7OVkl3stldtXfEj1BbWE3I2bfGx+Mgw+5vcRBlECWo3rbBqL2GMvMUsbqrgXFvr8xh4R5jOeQMCSyv/9Le2Zctg6H1T4BP08cVg6LN6N2KDPZZHDvjMc0n48XlBLDsGim6Ktb+c6m9e+7BS/C15QindwFJAGUijyGIgbwZ3PYpRy4vtyzOsAYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "What to give her isn't something to decide over text. Call Health811 at 811, any time, and a nurse can walk you through it. If she's very drowsy, can't keep any fluids down, or you think it's an emergency, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 777,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 196,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3112
+}

@@ -5,17 +5,20 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { type CandidateDraft, handOffProactive, isQueuedForDecider } from './queue';
 
 /**
- * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
- * live path here is tested as it will run then; `routing.complete = false` is today's
- * table, where a requested live runs as shadow.
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING).
+ * `routing.complete = false` is a table that still has an unrouted class, where a
+ * requested live runs as shadow.
  */
 const routing = vi.hoisted(() => ({ complete: true }));
 vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 
@@ -91,6 +94,15 @@ describe('handOffProactive', () => {
     await expect(handOffProactive(db.database, [draft()], 'candidate')).resolves.toBe('queued');
     await expect(handOffProactive(db.database, [draft()], 'candidate')).resolves.toBe('queued');
     expect(await rows()).toHaveLength(1);
+  });
+
+  it('stores the sweep payload on a live-queued row', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const payload = { auditVerb: 'email_alert_sent', emailAlert: { occasionKey: 'k' } };
+    await expect(
+      handOffProactive(db.database, [{ ...draft('email:1'), payload }], 'candidate'),
+    ).resolves.toBe('queued');
+    expect((await rows())[0]?.payload).toEqual(payload);
   });
 
   it('lets an immediate item through in every mode without a row', async () => {

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks a fact about the family already in the thread: Ada's Thursday swimming time was given as 16 h 30 at the Y. It is a standalone question answerable from the thread, so I answer it without touching the art class search.",
+    "verdict": "answer",
+    "reply": "La natation d'Ada est jeudi à 16 h 30 au Y."
+  },
+  "latencyMs": 1945
+}

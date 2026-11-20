@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question with one indoor pick, in Chinese as the parent wrote, with the time converted to the family's Toronto clock (2:00 PM Sunday) and facts accurate to the tool result. It is split into two bubbles: the info, then one question in the last bubble with the page address placed by code. Splitting is reasonable, though the first bubble could arguably be one thought already. The only minor issue is the Chinese bubble phrasing, which is natural overall.",
+    "score": 5
+  }
+}

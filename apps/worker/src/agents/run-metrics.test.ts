@@ -17,5 +17,15 @@ describe('metricsFromUsage', () => {
     expect(metrics.promptTokens).toBe(150);
     expect(metrics.cacheReadTokens).toBe(400);
     expect(metrics.cacheWriteTokens).toBe(50);
+    expect(metrics.promptCacheHit).toBe(true);
+  });
+
+  it('records a known miss as promptCacheHit false, not NULL', () => {
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 10,
+    } as Anthropic.Usage;
+
+    expect(metricsFromUsage('classifier', HAIKU_MODEL, usage, 10).promptCacheHit).toBe(false);
   });
 });

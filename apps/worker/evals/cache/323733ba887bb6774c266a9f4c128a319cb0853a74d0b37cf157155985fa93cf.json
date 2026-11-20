@@ -1,0 +1,60 @@
+{
+  "response": {
+    "id": "msg_011Cgx7cvPCEXsq1giSHTjwH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016T8rN8eQP9Bj4Nvym61uFu",
+        "name": "offer_signup",
+        "input": {
+          "child": "Ada",
+          "activity": "Little Kickers",
+          "source": "chat",
+          "registrationUrl": "https://kickers.example-sport.test/register/little-kickers-sat-0930",
+          "evidence": "Gymnastics Tots 那个不要了，换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名",
+          "sessions": [
+            {
+              "id": "little-kickers-sat-0930",
+              "label": "Little Kickers 周六9:30",
+              "startsAt": "2026-12-05T09:30:00-05:00",
+              "endsAt": "2026-12-05T10:15:00-05:00",
+              "full": false,
+              "priceCents": null
+            }
+          ],
+          "approvedPriceCents": null,
+          "opensAt": "2026-12-01T07:00:00-05:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 509,
+      "cache_creation_input_tokens": 21624,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 21624
+      },
+      "output_tokens": 905,
+      "output_tokens_details": {
+        "thinking_tokens": 500
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

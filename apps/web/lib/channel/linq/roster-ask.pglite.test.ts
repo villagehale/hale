@@ -151,6 +151,7 @@ function inbound(sender: string, text: string, messageId = `in-${text.length}`):
     text,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     mentions: [],
   };
@@ -208,6 +209,34 @@ function turnPorts(
 }
 
 describe('askRoster', () => {
+  it('asks in the known parent stored language after one off-language turn', async () => {
+    const { familyId, userId } = await seedHousehold(PARENT, 'Riley');
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, userId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: userId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    await roster([PARENT, DAD]);
+    const voice = fakeGroupOnboardingComposer();
+    const { send } = wire();
+
+    await askRoster(db.database, { chatId: CHAT, now: NOW, voice, send });
+
+    expect(voice.calls[0]?.input.language).toBe('fr');
+  });
+
   it('asks the whole roster once, in a model-written line that names the known parent', async () => {
     const { familyId, userId } = await seedHousehold(PARENT, 'Riley');
     await roster([PARENT, DAD, GRAN]);

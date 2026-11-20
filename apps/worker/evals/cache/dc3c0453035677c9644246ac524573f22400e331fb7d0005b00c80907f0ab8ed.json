@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I couldn't finish the Sat 9:30 AM sign-up, so nothing is booked yet. You can do it on their registration page: https://register.example-rec.test/activity/42 Here's what the form will want: Lena Ferreira for the child, and Sam with sam@example.test for the parent."
+  },
+  "latencyMs": 2050,
+  "usage": {
+    "input_tokens": 225,
+    "output_tokens": 103,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

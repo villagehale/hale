@@ -20,9 +20,10 @@ export type OptOutReadHold = typeof optOutReadHolds.$inferSelect;
 /**
  * VIL-553 · one row per text whose opt-out read failed, keyed by the provider's message
  * id. A number is held from proactive and queued sends while any row for its phone hash
- * stands. A row is deleted only when that exact text has been read, or when nothing can
- * text the number any more. `next_read_at` is both the recovery claim and its back-off.
- * The text itself is never stored here.
+ * stands. A message hold is deleted only when that exact text has been read, or when
+ * nothing can text the number any more; a collision hold only by an operator.
+ * `next_read_at` is both the recovery claim and its back-off. The text itself is never
+ * stored here.
  */
 export const optOutHeldMessages = pgTable(
   'opt_out_held_messages',
@@ -32,6 +33,10 @@ export const optOutHeldMessages = pgTable(
     heldAt: timestamp('held_at', { withTimezone: true }).notNull(),
     nextReadAt: timestamp('next_read_at', { withTimezone: true }).notNull(),
     readAttempts: integer('read_attempts').notNull().default(0),
+    /** What the row holds (0225). `message`: a text, released once it is read. Any other
+     * value, `id_collision` or one this code does not know, is kept until an operator
+     * clears it (opt-out-hold.ts). */
+    kind: text('kind').notNull().default('message'),
     /** VIL-602 · retired plain copies of the read below (0204). Nothing writes them; an
      * erasure still clears them. Dropped after a deprecation cycle (rule #9). */
     crisisLanguage: text('crisis_language'),

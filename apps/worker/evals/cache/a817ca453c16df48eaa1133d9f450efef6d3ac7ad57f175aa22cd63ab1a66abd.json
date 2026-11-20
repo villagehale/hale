@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the child got a spot in the Tuesday art class, which is a registration_done claim. Row r1 is a confirmed registration_done row for the same class.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 1266
+}

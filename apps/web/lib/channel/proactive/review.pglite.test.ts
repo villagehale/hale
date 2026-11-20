@@ -1,15 +1,42 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WEEKDAY_CARE_ASK_TEMPLATE_KEY } from '~/lib/care/weekday';
+import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
+import {
+  WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+  WEEKDAY_BREAK_TEMPLATE_KEY,
+  WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+} from '~/lib/care/weekday';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import {
+  NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+  nextDayCheckbackDedupeKey,
+} from '~/lib/channel/next-day-checkback/claim';
+import { NEXT_DAY_CHECKBACK_ENABLED_ENV } from '~/lib/channel/next-day-checkback/flag';
+import { defaultRecheckOpenAsk } from '~/lib/channel/next-day-checkback/recheck';
+import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
-import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
+import {
+  SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+  schoolBreakAskDedupeKey,
+  weekdayFinderDedupeKey,
+} from '~/lib/channel/weekday-care/key';
+import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { dayKeyOf } from '~/lib/format/datetime';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
+import { listDueWorkstreams } from '~/lib/memory/workstreams';
+import {
+  type ProviderHealthDeps,
+  claimProviderIncident,
+  probeProviderHealth,
+} from '~/lib/monitoring/provider-health';
+import { zonedLocalInstant } from '~/lib/plan/spine';
 import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { travelBriefDedupeKey } from '~/lib/travel/sweep';
@@ -18,6 +45,8 @@ import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
 import {
   FAMILY_ROWS,
+  PROACTIVE_DAILY_DECISION_CAP,
+  PROACTIVE_DECISION_CAP_ROUTE,
   type ProactiveReviewDeps,
   WAITING_ROWS,
   mark,
@@ -34,17 +63,20 @@ import {
 import { LINE_CHARS, type ToolCandidate, boundedLine } from './tools';
 
 /**
- * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
- * live path here is tested as it will run then; `routing.complete = false` is today's
- * table, where a requested live runs as shadow.
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING).
+ * `routing.complete = false` is a table that still has an unrouted class, where a
+ * requested live runs as shadow.
  */
 const routing = vi.hoisted(() => ({ complete: true }));
 vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 
@@ -139,6 +171,8 @@ interface Harness {
   snapshots: FamilySnapshot[];
   composed: number;
   written: ToolCandidate[][];
+  rechecked: string[];
+  pages: Array<{ site: string; facts: { reason: string }; count?: number }>;
 }
 
 function harness(
@@ -152,6 +186,8 @@ function harness(
     snapshots: [],
     composed: 0,
     written: [],
+    rechecked: [],
+    pages: [],
   };
   state.deps = {
     client: null,
@@ -173,6 +209,18 @@ function harness(
     outboundTarget: async () => ({ channel: 'legacy' }),
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
+    recheckOpenAsk: async (_db, item) => {
+      state.rechecked.push(item.dedupeKey);
+      return { verdict: 'owed', timeZone: TZ };
+    },
+    page: async (opsPage) => {
+      state.pages.push({
+        site: opsPage.site,
+        facts: opsPage.facts as { reason: string },
+        ...(opsPage.count === undefined ? {} : { count: opsPage.count }),
+      });
+      return 'paged';
+    },
     ...over,
   };
   return state;
@@ -210,7 +258,7 @@ describe('runProactiveReview', () => {
     expect(h.snapshots).toEqual([]);
   });
 
-  it('decides and sends an evening check-in while the flag is unset', async () => {
+  it('sends nothing while the flag is unset, including an evening check-in', async () => {
     const id = await enqueue('evening_check_in:fam:2026-10-08', {
       kind: 'evening_check_in',
       category: 'evening_check_in',
@@ -221,17 +269,186 @@ describe('runProactiveReview', () => {
     });
     const h = harness(sendAll);
     const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
-    expect(summary).toMatchObject({ mode: 'off', families: 1, decided: 1, sent: 1, shadowed: 0 });
-    expect(h.transport.bodies()).toEqual([MESSAGE]);
-    expect(await candidate(id)).toMatchObject({ status: 'sent' });
-    const [sent] = await audits('evening_check_in_sent');
-    expect(sent?.after).toMatchObject({ mode: 'live' });
-    const [prefs] = await db.database
-      .select({ lastAskedAt: schema.familyCheckInPrefs.lastAskedAt })
-      .from(schema.familyCheckInPrefs)
-      .where(eq(schema.familyCheckInPrefs.familyId, familyId));
-    expect(prefs?.lastAskedAt).toEqual(THURSDAY_EVENING);
+    expect(summary).toMatchObject({ mode: 'off', families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
   });
+
+  it('leaves a waiting registration tell untouched while its own lane is switched off', async () => {
+    const opening = {
+      kind: 'registration_opening' as const,
+      category: 'nudge' as const,
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    };
+    for (const cadence of ['', 'live']) {
+      vi.stubEnv('PROACTIVE_CADENCE', cadence);
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+      const id = await enqueue(`registration-opening:${cadence || 'off'}`, opening);
+      const off = harness(sendAll);
+      await runProactiveReview(db.database, off.deps, THURSDAY_EVENING);
+      expect({
+        cadence,
+        snapshots: off.snapshots.length,
+        row: (await candidate(id))?.status,
+      }).toEqual({ cadence, snapshots: 0, row: 'queued' });
+
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
+      const on = harness(sendAll);
+      await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
+      expect({ cadence, row: (await candidate(id))?.status }).toEqual({
+        cadence,
+        row: cadence === 'live' ? 'sent' : 'queued',
+      });
+    }
+  });
+
+  it('VIL-685 · leaves a winter-break ask and a break question untouched while SCHOOL_BREAK_ENABLED=false', async () => {
+    const ask = {
+      kind: 'school_break_ask' as const,
+      category: 'nudge' as const,
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      what: 'Ask when winter break starts and ends.',
+      why: 'school_break_ask year=2026-27',
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+    };
+    const question = {
+      templateKey: WEEKDAY_BREAK_TEMPLATE_KEY,
+      what: 'Winter break starts Dec 21. Want me to look for camps?',
+      why: 'weekday_break',
+      worthlessAfter: new Date('2026-12-21T17:00:00.000Z'),
+    };
+    for (const cadence of ['', 'live']) {
+      vi.stubEnv('PROACTIVE_CADENCE', cadence);
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'false');
+      const ids = [await enqueue(`school-break-ask:${cadence || 'off'}`, ask)];
+      if (cadence === 'live') ids.push(await enqueue('weekday-break:live', question));
+      const off = harness(sendAll);
+      await runProactiveReview(db.database, off.deps, THURSDAY_EVENING);
+      expect({
+        cadence,
+        snapshots: off.snapshots.length,
+        rows: await Promise.all(ids.map(async (id) => (await candidate(id))?.status)),
+      }).toEqual({ cadence, snapshots: 0, rows: ids.map(() => 'queued') });
+
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+      const on = harness(sendAll);
+      await runProactiveReview(db.database, on.deps, THURSDAY_EVENING);
+      const offered = on.snapshots
+        .flatMap((snapshot) => snapshot.candidates)
+        .filter((item) => ids.includes(item.id)).length;
+      expect({ cadence, offered }).toEqual({
+        cadence,
+        offered: cadence === 'live' ? ids.length : 0,
+      });
+    }
+  });
+
+  it('VIL-685 · records the winter-break question as sent, so the reply is read against it; other rows keep no body', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+    await enqueue(schoolBreakAskDedupeKey(familyId, '2026-27', parentUserId), {
+      kind: 'school_break_ask',
+      category: 'nudge',
+      templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+      what: 'winter break 2026-27',
+      why: 'school_break_ask year=2026-27',
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+    });
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const open = await weekdayCareQuestion(db.database, {
+      familyId,
+      parentUserId,
+      now: new Date(THURSDAY_EVENING.getTime() + 60_000),
+    });
+    expect(open).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question: MESSAGE });
+
+    await enqueue('nudge:weather:w41');
+    await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
+    const rows = await db.database
+      .select({
+        templateKey: schema.channelMessages.templateKey,
+        body: schema.channelMessages.body,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+    expect(rows.map((row) => [row.templateKey, row.body]).sort()).toEqual(
+      [
+        [SCHOOL_BREAK_ASK_TEMPLATE_KEY, MESSAGE],
+        ['proactive_nudge:weather_swap', null],
+      ].sort(),
+    );
+  });
+
+  it.each([
+    [
+      'an after-school ask',
+      'after_school_household' as const,
+      WEEKDAY_AFTER_SCHOOL_TEMPLATE_KEY,
+      'weekday_after_school',
+    ],
+    [
+      'a weekend-fallback ask',
+      'weekend_fallback' as const,
+      WEEKDAY_CARE_ASK_TEMPLATE_KEY,
+      'weekday_care',
+    ],
+  ])(
+    'VIL-685 · a text carries one weekday question: the winter-break ask chosen beside %s waits for its own text and is answered there',
+    async (_case, prompt, templateKey, why) => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv(SCHOOL_BREAK_ENABLED_ENV, 'true');
+      const finder = await enqueue(weekdayFinderDedupeKey(familyId, { prompt }, parentUserId), {
+        templateKey,
+        why,
+        sourceUrl: null,
+      });
+      const breakAsk = await enqueue(schoolBreakAskDedupeKey(familyId, '2026-27', parentUserId), {
+        kind: 'school_break_ask',
+        category: 'nudge',
+        templateKey: SCHOOL_BREAK_ASK_TEMPLATE_KEY,
+        what: 'winter break 2026-27',
+        why: 'school_break_ask year=2026-27',
+        sourceUrl: null,
+        worthlessAfter: new Date('2026-12-15T17:00:00.000Z'),
+      });
+      const first = harness(sendAll);
+
+      await runProactiveReview(db.database, first.deps, THURSDAY_EVENING);
+
+      expect(first.snapshots.flatMap((s) => s.candidates.map((c) => c.id)).sort()).toEqual(
+        [finder, breakAsk].sort(),
+      );
+      expect(first.transport.sent).toHaveLength(1);
+      expect(await candidate(finder)).toMatchObject({ status: 'sent' });
+      expect(await candidate(breakAsk)).toMatchObject({
+        status: 'held',
+        reason: 'one_question_per_text',
+      });
+
+      const friday = new Date(THURSDAY_EVENING.getTime() + 24 * 3_600_000);
+      const second = harness(sendAll);
+      await runProactiveReview(db.database, second.deps, friday);
+
+      expect(second.transport.sent).toHaveLength(1);
+      expect(await candidate(breakAsk)).toMatchObject({ status: 'sent' });
+      expect(
+        await weekdayCareQuestion(db.database, {
+          familyId,
+          parentUserId,
+          now: new Date(friday.getTime() + 60_000),
+        }),
+      ).toMatchObject({ scope: 'break_dates', schoolYear: '2026-27', question: MESSAGE });
+    },
+  );
 
   it('sends an evening check-in in shadow, and still shadows a nudge', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
@@ -554,9 +771,11 @@ describe('runProactiveReview', () => {
     });
   });
 
-  it('never holds past the moment an item stops being worth sending, and names the clamp', async () => {
+  it('never holds past the last review that can still send an item, and names the clamp', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    // Saturday noon in the family's zone; the last review that can still send it is at 11.
     const worthless = new Date('2026-10-10T16:00:00.000Z');
+    const lastSend = new Date('2026-10-10T15:00:00.000Z');
     const id = await enqueue('nudge:weather:w41', { worthlessAfter: worthless });
     const asked = '2027-06-01T12:00:00.000Z';
     const h = harness((snapshot) => ({
@@ -569,12 +788,77 @@ describe('runProactiveReview', () => {
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
 
-    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(worthless.toISOString());
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(lastSend.toISOString());
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
-      holdUntil: worthless.toISOString(),
+      holdUntil: lastSend.toISOString(),
       holdClamped: 'worthless_after',
       askedHoldUntil: asked,
+    });
+  });
+
+  describe('a registration tell held past its opening', () => {
+    // Dec 1, 6:30 a.m. in the family's zone: inside the quiet hours.
+    const OPENS = new Date('2026-12-01T11:30:00.000Z');
+    const opening = {
+      kind: 'registration_opening' as const,
+      category: 'nudge' as const,
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: OPENS,
+    };
+    const holdPast = (snapshot: FamilySnapshot): DeciderDecision => ({
+      reason: 'Closer to the day',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: '2026-12-02T15:00:00.000Z',
+      frequencyPreference: null,
+    });
+
+    it('wakes while it can still be sent before the doors open, and is sent', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
+      const asked = new Date('2026-11-28T15:00:00.000Z');
+      const id = await enqueue('registration-opening:held', opening);
+
+      await runProactiveReview(db.database, harness(holdPast).deps, asked);
+
+      // The last evening hour before the doors open for any number: Nov 30, 19:00 in the
+      // family's zone, so the review it wakes at is still inside the day of a Florida or
+      // Oklahoma number, whose quiet hours start at 20:00.
+      const wake = new Date('2026-12-01T00:00:00.000Z');
+      expect((await candidate(id))?.holdUntil?.toISOString()).toBe(wake.toISOString());
+      const [decision] = await audits('proactive_cadence_decision');
+      expect(decision?.after).toMatchObject({ holdClamped: 'worthless_after' });
+
+      const later = harness(sendAll);
+      await runProactiveReview(db.database, later.deps, new Date(wake.getTime() + 23 * 60_000));
+      expect((await candidate(id))?.status).toBe('sent');
+      expect(later.transport.sent).toHaveLength(1);
+    });
+
+    it('is dropped by name when no moment is left to send it before the doors open', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'true');
+      // Nov 30, 19:30 in the family's zone: past the last hour it could still be sent.
+      const tooLate = new Date('2026-12-01T00:30:00.000Z');
+      const id = await enqueue('registration-opening:late', opening);
+
+      const summary = await runProactiveReview(db.database, harness(holdPast).deps, tooLate);
+
+      expect(await candidate(id)).toMatchObject({
+        status: 'dropped',
+        reason: 'hold_past_last_send',
+        holdUntil: null,
+      });
+      expect(summary.held).toBe(0);
+      const skipped = await audits('proactive_cadence_skipped');
+      expect(skipped.map((row) => row.after)).toContainEqual({
+        reason: 'hold_past_last_send',
+        itemIds: [id],
+        mode: 'live',
+      });
     });
   });
 
@@ -619,6 +903,31 @@ describe('runProactiveReview', () => {
     const [decision] = await audits('proactive_cadence_decision');
     expect(decision?.after).toMatchObject({
       holdUntil: edge.toISOString(),
+      holdClamped: 'snapshot_window',
+      askedHoldUntil: asked,
+    });
+  });
+
+  it('never parks an item with a far window past the days the decider can see, either', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue('nudge:weather:w41', {
+      worthlessAfter: new Date('2027-06-01T12:00:00.000Z'),
+    });
+    const asked = '2027-05-01T12:00:00.000Z';
+    const h = harness((snapshot) => ({
+      reason: 'Too early',
+      action: 'hold',
+      itemIds: snapshot.candidates.map((c) => c.id),
+      holdUntil: asked,
+      frequencyPreference: null,
+    }));
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    const edge = new Date(THURSDAY_EVENING.getTime() + SNAPSHOT_DAYS * 24 * 60 * 60_000);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(edge.toISOString());
+    const [decision] = await audits('proactive_cadence_decision');
+    expect(decision?.after).toMatchObject({
       holdClamped: 'snapshot_window',
       askedHoldUntil: asked,
     });
@@ -919,8 +1228,9 @@ describe('runProactiveReview', () => {
     expect(held.map((row) => row.after)).toEqual([
       { reason: 'delivery_3001', itemIds: [coded], mode: 'live' },
       { reason: 'delivery_other', itemIds: [coded, worded], mode: 'live' },
-      { reason: 'delivery_other', itemIds: [coded, worded, overlong], mode: 'live' },
-      { reason: 'delivery_other', itemIds: [coded, worded, overlong, spaced], mode: 'live' },
+      // Earlier holds are still on their reopen clock, so a new miss does not pull them back in.
+      { reason: 'delivery_other', itemIds: [overlong], mode: 'live' },
+      { reason: 'delivery_other', itemIds: [spaced], mode: 'live' },
     ]);
   });
 
@@ -1642,6 +1952,30 @@ describe('runProactiveReview', () => {
 
       await runProactiveReview(db.database, h.deps, HOUR_AFTER);
       expect(h.snapshots[1]?.recentParentTexts).toEqual(['text me less']);
+    });
+
+    it('when live, a model failure pages #ops and leaves the row queued for the next hour', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'live');
+      const id = await enqueue();
+      const h = skipsOnce('model_failed');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.pages).toEqual([
+        { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+      ]);
+      expect(await candidate(id)).toMatchObject({ status: 'queued' });
+      expect(h.transport.sent).toEqual([]);
+    });
+
+    it('in shadow, a model failure does not page, because the old path still sends', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      await enqueue();
+      const h = skipsOnce('model_failed');
+
+      await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(h.pages).toEqual([]);
     });
 
     it('when live, writes no read mark, so the pace request is read again and kept', async () => {
@@ -2478,6 +2812,39 @@ describe('runProactiveReview', () => {
     warn.mockRestore();
   });
 
+  it('reopens a line-health hold on its own clock and sends once the line is clear', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue();
+    let paused = true;
+    const h = harness(sendAll, { lineHold: async () => (paused ? 'line_health' : null) });
+    const hour = 60 * 60_000;
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+      new Date(THURSDAY_EVENING.getTime() + hour).toISOString(),
+    );
+    expect(h.transport.sent).toEqual([]);
+
+    await runProactiveReview(
+      db.database,
+      h.deps,
+      new Date(THURSDAY_EVENING.getTime() + 30 * 60_000),
+    );
+    expect(h.snapshots).toHaveLength(1);
+
+    const due = new Date(THURSDAY_EVENING.getTime() + hour);
+    await runProactiveReview(db.database, h.deps, due);
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.transport.sent).toEqual([]);
+    expect((await candidate(id))?.status).toBe('held');
+
+    paused = false;
+    const clear = new Date(due.getTime() + hour);
+    await runProactiveReview(db.database, h.deps, clear);
+    expect(h.transport.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+  });
+
   it('keeps a clock-less code hold from the model until something new arrives', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     // Spelled as an env var may be: the stored row below is the same line.
@@ -2488,6 +2855,12 @@ describe('runProactiveReview', () => {
     const hourAfter = new Date(nextEvening.getTime() + 60 * 60_000);
 
     await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    // A row stored with no clock (written before holds carried a reopen) still waits
+    // for a signal. New holds get a clock; this clears it to keep that case.
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ holdUntil: null })
+      .where(eq(schema.proactiveCandidates.id, id));
     expect(await candidate(id)).toMatchObject({
       status: 'held',
       reason: 'line_health',
@@ -2561,9 +2934,11 @@ describe('runProactiveReview', () => {
       expect(await candidate(id)).toMatchObject({
         status: 'held',
         reason: 'no_watch_consent',
-        holdUntil: null,
         what: 'Indoor climbing by the river',
       });
+      expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+        new Date(THURSDAY_EVENING.getTime() + 60 * 60_000).toISOString(),
+      );
 
       const summary = await runProactiveReview(
         db.database,
@@ -2870,5 +3245,665 @@ describe('classes the decider sends for their own sweeps', () => {
     const [sent] = await audits('co_parent_departure_notice_sent');
     expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
     expect(await audits('proactive_cadence_sent')).toEqual([]);
+  });
+
+  it('sends a queued email-alert CTA verbatim, without the writer', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const cta = 'Swim Level 2 is Thursday at 4. Want me to add it to your week?';
+    const id = await enqueue('email_alert:conn:msg-1', {
+      kind: 'email_alert',
+      category: 'email_alert',
+      templateKey: 'connector:email_alert',
+      what: cta,
+      why: 'email_alert',
+      sourceUrl: null,
+      payload: { auditVerb: 'email_alert_sent' },
+    });
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', sent: 1 });
+    expect(h.composed).toBe(0);
+    expect(h.transport.bodies()).toEqual([cta]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('email_alert_sent');
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+  });
+});
+
+function billingClient(): AgentClient {
+  return {
+    messages: {
+      create: async () => {
+        throw Anthropic.APIError.generate(
+          400,
+          {
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: 'Your credit balance is too low to access the Anthropic API.',
+            },
+          },
+          undefined,
+          { 'request-id': 'req_probe' },
+        );
+      },
+    },
+  } as unknown as AgentClient;
+}
+
+function countingPreflight(): { deps: ProviderHealthDeps; sent: string[] } {
+  const sent: string[] = [];
+  const deps: ProviderHealthDeps = {
+    probe: probeProviderHealth,
+    claim: claimProviderIncident,
+    sender: {
+      send: async (subject) => {
+        sent.push(subject);
+        return 'sent';
+      },
+    },
+  };
+  return { deps, sent };
+}
+
+describe('VIL-701 credit abort, family cap, and one page per run', () => {
+  async function anotherFamily(name: string): Promise<{ familyId: string; parentUserId: string }> {
+    const seeded = await seedFamily(db.database, name);
+    await db.database
+      .update(schema.users)
+      .set({ timezone: TZ })
+      .where(eq(schema.users.id, seeded.parentUserId));
+    return seeded;
+  }
+
+  function armGuards(cadence: 'live' | 'off' = 'live'): void {
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', cadence === 'off' ? '' : 'live');
+  }
+
+  it('a billing-failed preflight makes no decider call and no send, and pages once', async () => {
+    armGuards('live');
+    const id = await enqueue();
+    const h = harness(sendAll);
+    const preflight = countingPreflight();
+    h.deps.client = billingClient();
+    h.deps.providerHealth = preflight.deps;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary.aborted).toEqual({ where: 'preflight', failure: 'billing', alerted: true });
+    expect(summary).toMatchObject({ families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(preflight.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('aborts the off hour on the same preflight, before any family is read', async () => {
+    armGuards('off');
+    const id = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+    const preflight = countingPreflight();
+    h.deps.client = billingClient();
+    h.deps.providerHealth = preflight.deps;
+
+    const nextDay = new Date('2026-10-10T22:00:00.000Z');
+    const summary = await runProactiveReview(db.database, h.deps, nextDay);
+
+    expect(summary).toMatchObject({
+      mode: 'off',
+      families: 0,
+      decided: 0,
+      sent: 0,
+      aborted: { where: 'preflight', failure: 'billing', alerted: true },
+    });
+    expect(h.snapshots).toEqual([]);
+    expect(preflight.sent).toHaveLength(1);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('leaves the run alone while the guards flag is off, even with a billing client', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true\n');
+    await enqueue();
+    const h = harness(sendAll);
+    h.deps.client = billingClient();
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary.aborted).toBeUndefined();
+    expect(summary.decided).toBe(1);
+    expect(h.snapshots).toHaveLength(1);
+  });
+
+  it('stops the families still waiting after the first billing failure, and pages once', async () => {
+    armGuards('live');
+    const firstId = await enqueue('nudge:first');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const second = await anotherFamily('Second Family');
+    const secondId = await enqueue('nudge:second', {
+      familyId: second.familyId,
+      parentUserId: second.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed', failure: 'billing' };
+    };
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots).toHaveLength(1);
+    expect(h.snapshots[0]?.candidates.map((item) => item.id)).toEqual([firstId]);
+    expect(summary.aborted).toEqual({ where: 'mid_run', failure: 'billing', alerted: false });
+    expect(summary.familiesDeferred).toBeGreaterThanOrEqual(1);
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' }, count: 1 },
+    ]);
+    expect(await candidate(firstId)).toMatchObject({ status: 'queued' });
+    expect(await candidate(secondId)).toMatchObject({ status: 'queued' });
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
+  it('defers families past the cap to the next hour, oldest due first', async () => {
+    armGuards('live');
+    const olderId = await enqueue('nudge:older');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, olderId));
+    const later = await anotherFamily('Later Family');
+    const newerId = await enqueue('nudge:newer', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, sent: 1, familiesDeferred: 1 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [olderId],
+    ]);
+    expect(await candidate(newerId)).toMatchObject({ status: 'queued' });
+
+    const next = harness(sendAll);
+    next.deps.familyCap = 1;
+    const again = await runProactiveReview(
+      db.database,
+      next.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+    expect(again).toMatchObject({ families: 1, sent: 1, familiesDeferred: 0 });
+    expect(await candidate(newerId)).toMatchObject({ status: 'sent' });
+  });
+
+  it('does not spend a cap slot on a family whose only row is still held', async () => {
+    armGuards('live');
+    const heldId = await enqueue('nudge:held');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({
+        status: 'held',
+        holdUntil: new Date('2026-10-16T22:00:00.000Z'),
+        createdAt: new Date('2026-10-01T00:00:00.000Z'),
+      })
+      .where(eq(schema.proactiveCandidates.id, heldId));
+    const later = await anotherFamily('Due Family');
+    const dueId = await enqueue('nudge:due', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, decided: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(heldId)).toMatchObject({ status: 'held' });
+  });
+
+  it('does not spend a cap slot on a row whose lane is switched off', async () => {
+    armGuards('live');
+    vi.stubEnv('OWN_CITY_REGISTRATION_ENABLED', 'false');
+    const parkedId = await enqueue('registration-opening:parked', {
+      kind: 'registration_opening',
+      category: 'nudge',
+      templateKey: 'registration-opening',
+      what: 'Elm Falls Winter 2027 registration opens Dec 1, 6:30 a.m.',
+      why: 'registration_opening',
+      worthlessAfter: new Date('2026-12-01T11:30:00.000Z'),
+    });
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, parkedId));
+    const later = await anotherFamily('Nudge Family');
+    const dueId = await enqueue('nudge:lane', {
+      familyId: later.familyId,
+      parentUserId: later.parentUserId,
+    });
+    const h = harness(sendAll);
+    h.deps.familyCap = 1;
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ families: 1, sent: 1, familiesDeferred: 0 });
+    expect(h.snapshots.map((snapshot) => snapshot.candidates.map((item) => item.id))).toEqual([
+      [dueId],
+    ]);
+    expect(await candidate(parkedId)).toMatchObject({ status: 'queued' });
+  });
+
+  it('pages #ops once per run when several live decisions fail', async () => {
+    armGuards('live');
+    const firstId = await enqueue('nudge:one');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const other = await anotherFamily('Other Family');
+    await enqueue('nudge:two', { familyId: other.familyId, parentUserId: other.parentUserId });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed' };
+    };
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots).toHaveLength(2);
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' }, count: 2 },
+    ]);
+  });
+
+  it('still pages once per family while the guards flag is off', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const firstId = await enqueue('nudge:one');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ createdAt: new Date('2026-10-01T00:00:00.000Z') })
+      .where(eq(schema.proactiveCandidates.id, firstId));
+    const other = await anotherFamily('Other Family');
+    await enqueue('nudge:two', { familyId: other.familyId, parentUserId: other.parentUserId });
+    const h = harness(sendAll);
+    h.deps.decide = async ({ snapshot }) => {
+      h.snapshots.push(snapshot);
+      return { decision: null, skipped: 'model_failed' };
+    };
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.pages).toEqual([
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+      { site: 'proactive_decider_failed', facts: { reason: 'model_failed' } },
+    ]);
+  });
+});
+
+describe('VIL-701 per-family daily decision cap', () => {
+  async function priorDecisions(n: number, at: Date): Promise<void> {
+    const start = zonedLocalInstant(dayKeyOf(at, TZ), '00:00', TZ);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: familyId,
+      route: PROACTIVE_DECISION_CAP_ROUTE,
+      windowStart: start,
+      count: n,
+    });
+  }
+
+  it('skips the model once the family has spent its local day, and not before', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'true');
+    await priorDecisions(PROACTIVE_DAILY_DECISION_CAP - 1, THURSDAY_EVENING);
+    await priorDecisions(3, new Date(THURSDAY_EVENING.getTime() - 2 * 24 * 60 * 60_000));
+    const id = await enqueue();
+    const first = harness(sendAll);
+
+    const open = await runProactiveReview(db.database, first.deps, THURSDAY_EVENING);
+
+    expect(open.decided).toBe(1);
+    expect(first.snapshots).toHaveLength(1);
+
+    const second = harness(sendAll);
+    await enqueue('nudge:weather:w42');
+    const capped = await runProactiveReview(
+      db.database,
+      second.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+
+    expect(capped).toMatchObject({ decided: 0, sent: 0, decisionsCapped: 1 });
+    expect(second.snapshots).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const skipped = await audits('proactive_cadence_skipped');
+    expect(skipped.map((row) => row.after)).toContainEqual({
+      reason: 'daily_decision_cap',
+      mode: 'live',
+    });
+  });
+
+  it('does not cap while the flag is unset or a trailing newline', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await priorDecisions(PROACTIVE_DAILY_DECISION_CAP, THURSDAY_EVENING);
+    await enqueue('nudge:weather:w41');
+    const unset = harness(sendAll);
+    expect((await runProactiveReview(db.database, unset.deps, THURSDAY_EVENING)).decided).toBe(1);
+
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'true\n');
+    await enqueue('nudge:weather:w42');
+    const newline = harness(sendAll);
+    const summary = await runProactiveReview(
+      db.database,
+      newline.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+    expect(summary.decided).toBe(1);
+    expect(summary.decisionsCapped).toBe(0);
+  });
+});
+
+describe('the next-day check-back', () => {
+  const ANCHOR = new Date('2026-10-08T01:40:00.000Z');
+
+  beforeEach(() => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+  });
+
+  async function waitingAsk(over: { checkBackAt?: Date } = {}): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.familyWorkstreams)
+      .values({
+        familyId,
+        title: 'Fall swim registration',
+        status: 'waiting_on_parent',
+        nextStep: 'Pick a session',
+        checkBackAt: over.checkBackAt ?? null,
+        createdFrom: 'seed',
+        updatedFrom: 'seed',
+        createdAt: ANCHOR,
+        updatedAt: ANCHOR,
+        expiresAt: new Date(ANCHOR.getTime() + 14 * 86_400_000),
+      })
+      .returning({ id: schema.familyWorkstreams.id });
+    return row?.id as string;
+  }
+
+  async function enqueueCheckback(workstreamId: string, asker = parentUserId): Promise<string> {
+    return enqueue(nextDayCheckbackDedupeKey(workstreamId), {
+      parentUserId: asker,
+      kind: 'next_day_checkback',
+      category: 'followup',
+      templateKey: NEXT_DAY_CHECKBACK_TEMPLATE_KEY,
+      what: 'Fall swim registration: Pick a session',
+      why: `next_day_checkback asked=${ANCHOR.toISOString()}`,
+      sourceUrl: null,
+      worthlessAfter: new Date('2026-10-09T12:00:00.000Z'),
+      payload: {
+        nextDayCheckback: { workstreamId, anchorAt: ANCHOR.toISOString(), subjectChildId: null },
+      },
+    });
+  }
+
+  it('sends nothing while cadence is off', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'off', families: 0, decided: 0, sent: 0 });
+    expect(h.snapshots).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'queued' });
+  });
+
+  it('is decided and sent while cadence is live, and marks the ask followed up', async () => {
+    const workstreamId = await waitingAsk();
+    const id = await enqueueCheckback(workstreamId);
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', families: 1, sent: 1 });
+    expect(h.rechecked).toEqual([nextDayCheckbackDedupeKey(workstreamId)]);
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [ledger] = await db.database
+      .select()
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.templateKey, NEXT_DAY_CHECKBACK_TEMPLATE_KEY));
+    expect(ledger).toMatchObject({
+      direction: 'out',
+      category: 'followup',
+      dedupeKey: nextDayCheckbackDedupeKey(workstreamId),
+      parentUserId,
+    });
+    const [ask] = await db.database
+      .select({ lastFollowedUpAt: schema.familyWorkstreams.lastFollowedUpAt })
+      .from(schema.familyWorkstreams)
+      .where(eq(schema.familyWorkstreams.id, workstreamId));
+    expect(ask?.lastFollowedUpAt).toEqual(THURSDAY_EVENING);
+  });
+
+  it('drops a closed ask by its name before the writer, and sends nothing', async () => {
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'closed', reason: 'finished_elsewhere' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 0, dropped: 1 });
+    expect(h.composed).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'finished_elsewhere' });
+    const [skipped] = await audits('proactive_cadence_skipped');
+    expect(skipped?.after).toMatchObject({ reason: 'finished_elsewhere', itemIds: [id] });
+  });
+
+  it('holds an ask it could not re-check until the next hour, and sends nothing', async () => {
+    const id = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'unchecked', reason: 'recheck_failed' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 0, held: 1 });
+    expect(h.transport.bodies()).toEqual([]);
+    expect(await candidate(id)).toMatchObject({
+      status: 'held',
+      reason: 'recheck_failed',
+    });
+    expect((await candidate(id))?.holdUntil?.toISOString()).toBe(
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000).toISOString(),
+    );
+  });
+
+  it('still sends the rest of a batch whose check-back closed', async () => {
+    const checkIn = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'swim',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const checkback = await enqueueCheckback(await waitingAsk());
+    const h = harness(sendAll, {
+      recheckOpenAsk: async () => ({ verdict: 'closed', reason: 'parent_returned' }),
+    });
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ sent: 1 });
+    expect(h.written).toHaveLength(1);
+    expect(h.written[0]?.map((item) => item.id)).toEqual([checkIn]);
+    expect(await candidate(checkIn)).toMatchObject({ status: 'sent' });
+    expect(await candidate(checkback)).toMatchObject({
+      status: 'dropped',
+      reason: 'parent_returned',
+    });
+  });
+
+  it('drops a check-back offered again after it went, as already sent, and texts once', async () => {
+    const workstreamId = await waitingAsk();
+    const id = await enqueueCheckback(workstreamId);
+    const h = harness(sendAll);
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    // A crash after the ledger row and before the candidate's own mark leaves it open.
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'queued' })
+      .where(eq(schema.proactiveCandidates.id, id));
+
+    const again = await runProactiveReview(
+      db.database,
+      h.deps,
+      new Date(THURSDAY_EVENING.getTime() + 60 * 60_000),
+    );
+
+    expect(again).toMatchObject({ sent: 0, dropped: 1 });
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+    expect(h.rechecked).toEqual([nextDayCheckbackDedupeKey(workstreamId)]);
+    expect(await candidate(id)).toMatchObject({ status: 'dropped', reason: 'already_sent' });
+  });
+
+  it('leaves the VIL-419 follow-up nothing to pick up once it went', async () => {
+    const workstreamId = await waitingAsk({ checkBackAt: new Date(ANCHOR.getTime() + 3_600_000) });
+    await enqueueCheckback(workstreamId);
+    const due = await listDueWorkstreams(db.database, THURSDAY_EVENING);
+    expect(due.map((row) => row.id)).toEqual([workstreamId]);
+
+    await runProactiveReview(db.database, harness(sendAll).deps, THURSDAY_EVENING);
+
+    expect(await listDueWorkstreams(db.database, THURSDAY_EVENING)).toEqual([]);
+  });
+
+  describe('with a second parent who asked', () => {
+    const CHAT = 'chat-household';
+    const CO_PHONE = '+15555550101';
+    let coParentId: string;
+
+    async function secondParent(timezone: string): Promise<void> {
+      const [co] = await db.database
+        .insert(schema.users)
+        .values({ name: 'Second Parent', timezone })
+        .returning({ id: schema.users.id });
+      coParentId = co?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: coParentId, role: 'co_parent' });
+    }
+
+    it('goes 1:1 to the parent who asked, never into the confirmed household group', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+      await secondParent(TZ);
+      await db.database
+        .update(schema.families)
+        .set({ linqGroupChatId: CHAT })
+        .where(eq(schema.families.id, familyId));
+      const [roster] = await db.database
+        .insert(schema.linqGroupRosters)
+        .values({ chatId: CHAT, familyId, source: 'new_group', status: 'confirmed' })
+        .returning({ id: schema.linqGroupRosters.id });
+      await db.database.insert(schema.linqGroupRosterMembers).values([
+        {
+          rosterId: roster?.id as string,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-primary',
+          knownUserId: parentUserId,
+          status: 'known_parent',
+        },
+        {
+          rosterId: roster?.id as string,
+          chatId: CHAT,
+          phoneE164Hash: 'hash-co-parent',
+          userId: coParentId,
+          status: 'confirmed',
+          confirmedRole: 'co_parent',
+        },
+      ]);
+      // The chat is claimed and its roster confirmed: the review's line is refused by
+      // its audience, not for want of a group.
+      expect(await familyOutboundTarget(db.database, familyId)).toEqual({
+        channel: 'legacy',
+        reason: 'group_audience_refused',
+      });
+      const workstreamId = await waitingAsk();
+      const id = await enqueueCheckback(workstreamId, coParentId);
+      let linqCalls = 0;
+      const h = harness(sendAll, {
+        outboundTarget: familyOutboundTarget,
+        resolveSendablePhone: async (_db, userId) => (userId === coParentId ? CO_PHONE : PHONE),
+        fetch: (async () => {
+          linqCalls += 1;
+          return Response.json({ message: { id: 'msg-group-1' } }, { status: 201 });
+        }) as unknown as typeof fetch,
+      });
+
+      const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+      expect(summary).toMatchObject({ sent: 1 });
+      expect(linqCalls).toBe(0);
+      expect(h.transport.sent.map((message) => message.to)).toEqual([CO_PHONE]);
+      expect(await candidate(id)).toMatchObject({ status: 'sent' });
+      const [ledger] = await db.database
+        .select()
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.dedupeKey, nextDayCheckbackDedupeKey(workstreamId)));
+      expect(ledger).toMatchObject({ direction: 'out', parentUserId: coParentId });
+    });
+
+    it("holds it in the household's quiet hours when the asker never set a zone", async () => {
+      vi.stubEnv(NEXT_DAY_CHECKBACK_ENABLED_ENV, 'true');
+      // The UTC column default: this parent never set a zone.
+      await secondParent('UTC');
+      const id = await enqueueCheckback(await waitingAsk(), coParentId);
+      const h = harness(sendAll, {
+        // The production zone port and re-check: the stored zone as is, and the asker's
+        // clock (here the household's) from an empty calendar, with no model call.
+        buildGate: (database) => ({
+          ...openGate(),
+          parentTimeZone: buildOutboundGatePorts(database).parentTimeZone,
+        }),
+        recheckOpenAsk: defaultRecheckOpenAsk(),
+      });
+
+      // Friday 06:00 EDT: the household's night, though 10:00 in UTC.
+      const summary = await runProactiveReview(
+        db.database,
+        h.deps,
+        new Date('2026-10-09T10:00:00.000Z'),
+      );
+
+      expect(summary).toMatchObject({ sent: 0, held: 1 });
+      expect(h.transport.bodies()).toEqual([]);
+      expect(await candidate(id)).toMatchObject({
+        status: 'held',
+        reason: 'quiet_hours',
+        // Friday 08:00 EDT.
+        holdUntil: new Date('2026-10-09T12:00:00.000Z'),
+      });
+    });
   });
 });

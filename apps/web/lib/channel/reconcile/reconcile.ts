@@ -107,7 +107,16 @@ export type RefusalReason =
   /** A booking claim with nothing on the calendar it could be about. */
   | 'no_scheduled_row'
   /** "I'll send an invite" — the invite path is the only thing that may say that. */
-  | 'no_coparent_invite';
+  | 'no_coparent_invite'
+  /** VIL-581 · "she's registered", "you got the spot", "it's paid" with no confirmed
+   * signup, no recorded booking and no word from the parent that she got in. */
+  | 'no_registration_record'
+  /** VIL-581 · "I sent it" with no send an action made to someone else. */
+  | 'no_send_record'
+  /** VIL-581 · "they got it" with no send the provider said was delivered. */
+  | 'no_delivery_record'
+  /** VIL-581 · "I cancelled it", "it's off your calendar" with nothing removed. */
+  | 'no_cancel_record';
 
 export type ClaimResolution =
   | {
@@ -147,6 +156,14 @@ const VIOLATION: Record<RefusalReason, string> = {
     "The message says something is booked or on the calendar. Nothing on this family's calendar matches and the parent has not told you it is booked, so that is a claim about a row that does not exist. Say what would need to happen instead.",
   no_coparent_invite:
     'The message says an invite was sent or will be sent. Only the co-parent invite path may say that, and only after the message has actually left. Do not say you will invite someone or that you already have.',
+  no_registration_record:
+    'The message says a child is registered, enrolled, has the spot, or that it is paid. No confirmed sign-up, no recorded booking and nothing the parent said backs that, so it would be false. Say what was actually done, or what still has to happen.',
+  no_send_record:
+    'The message says something was sent to someone. No send like that left Hale, so it would be false. Say what was actually done, such as a draft, or offer to do it.',
+  no_delivery_record:
+    'The message says someone got it or that it arrived. Nothing says it was delivered yet, so that would be false. Say only what is known: that it was sent, if it was.',
+  no_cancel_record:
+    'The message says something was cancelled or removed. Nothing like that was removed or called off, so it would be false. Say what was actually done, such as a change waiting for approval, or what still has to happen.',
 };
 
 /** What a `watched_spots` row is a row ABOUT: one place in one class. The words the

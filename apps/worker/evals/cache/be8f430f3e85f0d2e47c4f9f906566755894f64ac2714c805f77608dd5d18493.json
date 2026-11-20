@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the one text, gives events on the Toronto clock (EST, UTC-5 in November): Monday 16th 21:30Z is 4:30pm, Tuesday 22:00Z is 5:00pm, Wednesday 14:15Z is 9:15am, Wednesday 21:30Z pickup 4:30pm, Thursday 23:00Z is 6:00pm, Saturday 18:00Z is 1:00pm, all correct. Only one question, in the last bubble, and in the parent's language. Bubbles are whole thoughts. However, the first bubble says 'Nothing's on for the rest of this week' which is a reasonable reading of 'now' being Thursday-ish, but the events listed start Monday 16th so the week framing is consistent. Minor issue: Monday's pickup is stated as 'next week starts Monday' which is fine. Bubble 2 crams four events into one bubble, slightly under-split, and the Wednesday pickup phrasing is a bit mushy, but nothing is invented and all facts are right.",
+    "score": 4
+  }
+}

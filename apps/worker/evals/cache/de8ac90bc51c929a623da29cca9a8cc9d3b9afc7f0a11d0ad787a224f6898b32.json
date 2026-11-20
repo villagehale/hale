@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the opening time, the link, and that nothing is booked, uses tu for a direct audience in French, and lists the pack values only because pack is present. It does not claim a spot is held or the child is signed up, and makes no retry promise. Minor issue: the opensAt is restated as an instruction to sign up then, which is a reasonable next step given the facts.",
+    "score": 5
+  }
+}

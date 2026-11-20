@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgwVLZqHSM2675BTTE6je",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmwcKEAgTGAI4AUIIdGhpbmtpbmcSDADR6X1nzfzBBEzsghoMXUvstGw1WdsSCyI9IjDauWM3PkJ/z/3j7WghVgvCJHkJ/2GlY4Q8XcOSMQzJl4JSMRufQT4m1FUOdyXVP4MquAYvquCaw0ZbOkQii1F5edhUJHyEqeeOW0W/ljfEW7WaadfDqV19OLHzf5vuIu0ESEH8zQqNnRA8oxq1xww7kXkPUCA9D8h75/oR1Mv5M9g0csdPMU/cuRde6r/R6bry9NbB6O5DsvQz6sl58kpu2fCASTZVGQ/zA0Y7WO+tQg4Q26PulLmJ4YIcarWnopOfwp26wNwcFw3NEejf1pO1N8CbfOopJV5vSV3oH1xXKbwyATbcXfytS22u3cZ5m7D/HUSMTyZc/t8rTAuOqslXr5X2csiLWdaT9PF8aZOfIK16f8DpCT5gdvz8bQZqvpFpQw51Y0/vlloiIfbRpxWXzwIOW2JpHnPPqbTURhISoN1iG7w0U63jKO2SwfKQ0x9zUc1Kmf+mAGNWamLEJ/kpJU5YJB9QP9TN9UmtSCvVxLIDFt+48I3GE2VAIyxS/iA8zfEo5DgZhHntUG15wl1WQXSZfaf2dRO8690boD9JOuT6Ei/jxrunWeKit2meYqDrBG815W9SQUJnEgIPU4VtkIdeidzdu9Sc5TWQYOq+f8FE8r9eZx/lTJTzK/QGGKz5z0z8ELGX2gR4dv0IeFSfT5x7QlGSv1p81tB5E7/N0569npTS0egIX8Nz6xwOGYMiHsU0nh4Lkye3I1VqSpmPpsWx9AuFc4tV5GGDc+j0qh9qw3o/k+ucQXOMrjD8U5xTGzMbhph8reexc6Xkjd4eCnvEmB183pRihsacmiSYNcYXT3u9tEsoi+N1XP5a6FFY2JKK9gOLeNDoVS9uT/47N+tK20jh9x0PbTVEYt8p/J+H2TYAGziJpdoDLonCq8EWBT5pKaebtRTyBClAlkxbYnVGtQMCAk9ZQsT2sbH/qG/A1SmwcZIy6Vid0TPSTNZCKzHSWjRkVbuBKVasn0u0lwoJfTWjgkRwRE9XkWwgRBnMOfrrNxY+mV6RJ9fxOnkAdKfPZepudA3IdyAaxnwjjdnLTUA4Omgwp4sWDpn8LAI/nzGxMxhVdwWa6H66lm7EWJC40Ou8p5Z2mmrpwyyScvBPiNMkDOocilr1vzrg5D3fDlNLgRQoxU9L/m2cw0Y0MmSi8yE9cGZWVRgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got one thing on this weekend: the swim lesson Saturday at 10 in the morning at the community pool. Sunday's wide open."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 714,
+      "cache_read_input_tokens": 18857,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 714,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 143,
+      "output_tokens_details": {
+        "thinking_tokens": 96
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

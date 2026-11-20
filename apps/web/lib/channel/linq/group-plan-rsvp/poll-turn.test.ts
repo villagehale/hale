@@ -116,7 +116,8 @@ function fakeCard(
 
 function harness(world = seededWorld(), card?: GroupPollCardPort) {
   const store = createMemoryGroupPlanRsvpStore(world);
-  const lines: { text: string; kind?: 'plan' | 'poll' }[] = [];
+  const lines: { text: string; kind?: 'plan' | 'poll' | 'calendar_ask' | 'calendar_written' }[] =
+    [];
   const composer = fakeGroupPlanRsvpComposer();
   const turn = (
     sender: string,

@@ -152,6 +152,9 @@ export async function recordCommitment(
     /** The schedule facts the message that carried this promise already told the parent
      * (the column's own note). Only an activity watch writes it; null for every other kind. */
     heardFacts?: readonly string[] | null;
+    /** The language tag of the parent's ask an activity promise answers (the column's own
+     * note). Null for every other kind, and when the screen read none. */
+    askLanguage?: string | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -176,6 +179,7 @@ export async function recordCommitment(
           subjectChildId: input.subjectChildId ?? null,
           subjectFamilyId: input.subjectFamilyId ?? null,
           heardFacts: input.heardFacts ? [...input.heardFacts] : null,
+          askLanguage: input.askLanguage ?? null,
           dueAt: input.dueAt,
           createdFrom: channelMessageId,
         })
@@ -409,9 +413,11 @@ export async function loadOpenCommitment(
   subjectChildId: string | null;
   subjectFamilyId: string | null;
   dueAt: Date;
-  /** When the promise was minted — which, for an offer, is when its ask went out (every
-   * writer records against the sent message). The open-question reader's recency fact. */
+  /** When the promise was minted, after the message that carried it was sent. */
   createdAt: Date;
+  /** The outbound `channel_messages` row that carried it (provenance text). The router
+   * dates the ask by that row's recorded send (VIL-302, ledger.ts `sendRecordedAt`). */
+  createdFrom: string;
 } | null> {
   const rows = await database
     .select({
@@ -422,6 +428,7 @@ export async function loadOpenCommitment(
       subjectFamilyId: schema.agentCommitments.subjectFamilyId,
       dueAt: schema.agentCommitments.dueAt,
       createdAt: schema.agentCommitments.createdAt,
+      createdFrom: schema.agentCommitments.createdFrom,
     })
     .from(schema.agentCommitments)
     .where(
@@ -460,6 +467,7 @@ export async function loadOpenCommitmentById(
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
       heardFacts: schema.agentCommitments.heardFacts,
+      askLanguage: schema.agentCommitments.askLanguage,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)
@@ -488,6 +496,9 @@ export interface DueCommitment {
   /** What the parent has already been told on this subject — set on an activity watch,
    * null on every promise no follow-up has answered yet (the column's own note). */
   heardFacts: string[] | null;
+  /** The language tag of the parent's ask an activity promise answers — null on every
+   * other kind, and when the screen read none (the column's own note). */
+  askLanguage: string | null;
   dueAt: Date;
 }
 
@@ -513,6 +524,7 @@ export async function loadDueCommitments(
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
       heardFacts: schema.agentCommitments.heardFacts,
+      askLanguage: schema.agentCommitments.askLanguage,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

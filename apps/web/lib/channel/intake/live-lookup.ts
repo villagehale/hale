@@ -1,11 +1,11 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
+import { scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
 import { regionOfPostal } from '~/lib/channel/off-domain/place';
-import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import type { ExtractedChild } from './extract';
 import { type GroundPlace, groundUserMessage } from './ground-message';
 import { officialPageReturnLine } from './official-page';
@@ -66,7 +66,10 @@ export function notesGroundACurrentSource(notes: string): boolean {
 function sendableJoined(joined: string): string | null {
   if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
-  if (hasLinkShape(joined)) return null;
+  if (hasLinkShape(joined)) {
+    noteLinkGate('live-lookup', 'refused');
+    return null;
+  }
   if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;
   return joined;
 }
@@ -103,10 +106,9 @@ export function deidentifyLiveQuery(
   const names = children.flatMap((child) => (child.name ? [child.name] : []));
   const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
   if (!scrub.ok) return scrub;
-  const withoutContacts = scrub.text
-    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
-  const query = scrubPlaceTokens(withoutContacts, ' ').replace(/\s+/g, ' ').trim();
+  const query = scrubPlaceTokens(scrubContactTokens(scrub.text, ' '), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return { ok: true, text: query === '' ? 'current official reputable source' : query };
 }
 

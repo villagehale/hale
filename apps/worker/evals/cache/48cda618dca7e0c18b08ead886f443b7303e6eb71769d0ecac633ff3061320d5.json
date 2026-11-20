@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply lists salad as open, but facts.after shows Priya already has salad. The only open items are drinks and plates. This is a taken item called open (a score-1 error), even though the tone and language are fine.",
+    "score": 1
+  }
+}

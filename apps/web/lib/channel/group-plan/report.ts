@@ -1,8 +1,9 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { foreignLinks } from '~/lib/format/link-shape';
+import { foreignLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { dayKeyIn } from '~/lib/plan/spine';
 
@@ -26,7 +27,7 @@ export const GROUP_PLAN_REPORT_TOOL = 'group_plan_report';
 export function groupPlanReportEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.GROUP_PLAN_CALENDAR_REPORT_ENABLED?.trim() === 'true';
+  return isEnabled('group-plan-calendar-report', undefined, env);
 }
 
 export type GroupPlanChange = 'added' | 'moved' | 'cancelled';
@@ -192,14 +193,20 @@ export function groupPlanReportRefusals(
     words: [...input.onCalendarOf, ...input.notYet],
   });
   if (link === null) {
-    if (others.length > 0) found.push(`carries_link: ${others.join(', ')}`);
+    if (others.length > 0) {
+      noteLinkGate('group-plan-report', 'redraft');
+      found.push(`carries_link: ${others.join(', ')}`);
+    }
     return found;
   }
   const copies = text.split(link).length - 1;
   if (copies === 0) found.push('link_missing');
   if (copies > 1) found.push('link_repeated');
   if (copies === 1 && !messages[messages.length - 1]?.includes(link)) found.push('link_not_last');
-  if (others.length > 0) found.push(`other_link: ${others.join(', ')}`);
+  if (others.length > 0) {
+    noteLinkGate('group-plan-report', 'redraft');
+    found.push(`other_link: ${others.join(', ')}`);
+  }
   return found;
 }
 

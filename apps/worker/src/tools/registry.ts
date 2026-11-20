@@ -1,7 +1,7 @@
-import { and, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import type { ToolResult } from '@hale/types';
+import { and, asc, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -17,6 +17,34 @@ import { logger } from '../logger.js';
  * `not_configured` reason — the Reviewer treats them as red and
  * flag-for-human is the route.
  */
+
+const OVERRIDE_RANK = {
+  never: 0,
+  always_ask: 1,
+  autonomous_allowed: 2,
+} as const;
+
+type KnownOverride = keyof typeof OVERRIDE_RANK;
+type OverrideValue = KnownOverride | 'none';
+
+function knownOverride(value: unknown): KnownOverride | null {
+  return value === 'never' || value === 'always_ask' || value === 'autonomous_allowed'
+    ? value
+    : null;
+}
+
+/** Any "never" wins; else any "always_ask"; "autonomous_allowed" only when every
+ * live row says so. A value outside that set is never. No live row is none. */
+function mostRestrictiveOverride(values: readonly unknown[]): OverrideValue {
+  if (values.length === 0) return 'none';
+  let winner: KnownOverride = 'autonomous_allowed';
+  for (const value of values) {
+    const ranked = knownOverride(value) ?? 'never';
+    if (OVERRIDE_RANK[ranked] < OVERRIDE_RANK[winner]) winner = ranked;
+    if (winner === 'never') return 'never';
+  }
+  return winner;
+}
 
 // The default database is the worker's db(); the web pipeline injects its own
 // request-scoped database.
@@ -297,6 +325,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
           sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
         ),
       )
+      .orderBy(asc(schema.familyMemoryFacts.validFrom))
       .limit(1);
 
     const known = facts[0];
@@ -419,7 +448,10 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
 
   // ───────────────────────────────────────────────────────────────────
   // User override — checks family_memory_facts with fact_type=preference
-  // and fact_key = "action_override:<actionType>".
+  // and fact_key = "action_override:<actionType>". After 0218, more than
+  // one live row can share that key (one adult's 1:1 and the household).
+  // Every live row is read; the most restrictive known value wins, and a
+  // value outside the known set is treated as never (VIL-648).
   // ───────────────────────────────────────────────────────────────────
   check_user_override: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_user_override.input.parse(raw);
@@ -433,12 +465,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
           eq(schema.familyMemoryFacts.factKey, `action_override:${input.actionType}`),
           sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
         ),
-      )
-      .limit(1);
+      );
 
-    const fact = facts[0];
-    const override =
-      (fact?.value as 'always_ask' | 'autonomous_allowed' | 'never' | undefined) ?? 'none';
+    const override = mostRestrictiveOverride(facts.map((fact) => fact.value));
     return {
       tool: 'check_user_override',
       ok: override !== 'never',

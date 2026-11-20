@@ -110,5 +110,7 @@ function nextWithHeaders(req: { headers: Headers; nextUrl: URL }, pathname: stri
 }
 
 export const config = {
-  matcher: ['/((?!_next|.*\\..*).*)'],
+  // Skip /ingest (the PostHog reverse proxy) so capture/flags/recordings are not
+  // header-rewritten or redirected before the next.config rewrite runs.
+  matcher: ['/((?!_next|ingest|.*\\..*).*)'],
 };

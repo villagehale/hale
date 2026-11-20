@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Three unanswered texts in a row and the weekend swim nudge is neither parent-requested nor time-critical, so it is held until the parent re-engages despite the fitting Saturday window.",
+    "action": "hold",
+    "item_ids": [
+      "weekend-swim"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

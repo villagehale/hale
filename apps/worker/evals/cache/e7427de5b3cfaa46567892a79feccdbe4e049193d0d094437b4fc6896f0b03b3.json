@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! Two things on my radar for you: there's a Paper Lantern Craft at the Elm Street library, and since Saturday afternoon looks open it could be a nice easy one: https://library.example.test/programs. Also, fall swim registration closes Friday, so if swim is on your list, here's the link: https://rec.example.test/swim-registration"
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": "Zara's birthday",
+    "add": [],
+    "claim": [
+      {
+        "item": null,
+        "text": "Lego set for Zara"
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": "Zara",
+      "keepFromKidFamily": true,
+      "kidFamily": []
+    },
+    "reply": null
+  },
+  "latencyMs": 2890
+}

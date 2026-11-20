@@ -576,16 +576,18 @@ export async function readinessQuestion(
   familyId: string,
   parentUserId: string,
   now: Date,
-): Promise<{ id: string; summary: string; askedAt: Date } | null> {
+): Promise<{ id: string; summary: string; askedAt: Date; askedVia: string } | null> {
   const sequence = await loadPreparingSequence(database, familyId, now);
   if (sequence === null) return null;
-  const askedAt = await readinessAskedLastAt(database, sequence, parentUserId);
-  if (askedAt === null) return null;
+  const ask = await readinessAsk(database, sequence, parentUserId);
+  if (ask === null) return null;
   return {
     id: sequence.sequenceId,
     // Hale's own words about its own ask: the portal, and nothing about the child.
     summary: `Whether the setup on ${sequence.portal.portalLabel} is done before the registration morning`,
-    askedAt,
+    askedAt: ask.createdAt,
+    // The ledger row that carried the ask, for the router's one send clock (VIL-302).
+    askedVia: ask.id,
   };
 }
 
@@ -607,6 +609,16 @@ export async function readinessAskedLastAt(
   sequence: PreparingSequence,
   parentUserId: string,
 ): Promise<Date | null> {
+  const ask = await readinessAsk(database, sequence, parentUserId);
+  return ask === null ? null : ask.createdAt;
+}
+
+/** The ledger row behind {@link readinessAskedLastAt}, or null. */
+async function readinessAsk(
+  database: Database,
+  sequence: PreparingSequence,
+  parentUserId: string,
+): Promise<{ id: string; createdAt: Date } | null> {
   if (sequence.readinessReady === true) return null;
 
   const askKeys = SEQUENCE_LEGS.filter((leg) => printsReadinessAsk(leg, sequence.portal)).map(
@@ -614,11 +626,11 @@ export async function readinessAskedLastAt(
   );
   if (askKeys.length === 0) return null;
 
-  return lastWordAt(database, parentUserId, askKeys);
+  return lastWord(database, parentUserId, askKeys);
 }
 
 /**
- * When one of these legs last reached this parent WITH NOTHING AFTER IT, or null.
+ * The row of the leg that last reached this parent WITH NOTHING AFTER IT, or null.
  *
  * The last-word rule itself, shared by the two questions in this module that depend on
  * it — the readiness checklist and the heads-up's YES. Two copies of a two-query rule
@@ -630,13 +642,13 @@ export async function readinessAskedLastAt(
  * row (inbound-route.ts writes it before the turn is enqueued), so a read that forgets
  * the direction closes every question on every real turn.
  */
-async function lastWordAt(
+async function lastWord(
   database: Database,
   parentUserId: string,
   dedupeKeys: string[],
-): Promise<Date | null> {
+): Promise<{ id: string; createdAt: Date } | null> {
   const [ask] = await database
-    .select({ createdAt: schema.channelMessages.createdAt })
+    .select({ id: schema.channelMessages.id, createdAt: schema.channelMessages.createdAt })
     .from(schema.channelMessages)
     .where(
       and(
@@ -661,7 +673,7 @@ async function lastWordAt(
       ),
     )
     .limit(1);
-  return newer ? null : ask.createdAt;
+  return newer ? null : ask;
 }
 
 /**
@@ -718,7 +730,7 @@ export async function approvedShortlistAskedOf(
     return null;
   }
 
-  const asked = await lastWordAt(database, parentUserId, [
+  const asked = await lastWord(database, parentUserId, [
     legDedupeKey(familyId, row.window.id, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };

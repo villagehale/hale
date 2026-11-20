@@ -93,7 +93,7 @@ const ANSWERS: AnswerPage[] = [
     keyTakeaways: [
       'Short, fragmented sleep spread around the clock is how newborn sleep is built — the Canadian Paediatric Society describes newborn sleep as having no fixed day–night pattern at first.',
       'Longer nighttime stretches develop gradually over the first several months; a newborn waking often to feed is part of the design of this stage, not a problem to fix.',
-      'Formal sleep training (such as Ferber\'s graduated checks) is aimed at older infants, commonly discussed from around 4–6 months — in the newborn stage the goal is soothing and safe sleep, not training.',
+      "Formal sleep training (such as Ferber's graduated checks) is aimed at older infants, commonly discussed from around 4–6 months — in the newborn stage the goal is soothing and safe sleep, not training.",
     ],
     sections: [
       {
@@ -163,7 +163,7 @@ const ANSWERS: AnswerPage[] = [
     answer:
       'The core safe-sleep guidance in Canada is to place a baby on their back, alone, on a firm flat surface in a crib, cradle or bassinet, with no soft bedding, and to share a room (not a bed) with the baby for the first months. Always confirm specifics with your provider.',
     keyTakeaways: [
-      'Canada\'s core safe-sleep guidance: place a baby on their back for every sleep, on a firm flat surface in a crib, cradle or bassinet, with no pillows, bumpers, loose blankets, or soft toys.',
+      "Canada's core safe-sleep guidance: place a baby on their back for every sleep, on a firm flat surface in a crib, cradle or bassinet, with no pillows, bumpers, loose blankets, or soft toys.",
       'The Public Health Agency of Canada and the Canadian Paediatric Society recommend room-sharing without bed-sharing for at least the first six months, in a smoke-free environment.',
       'If a family swaddles, the baby is still placed on their back, and swaddling is stopped once the baby shows signs of rolling. Confirm current specifics with your provider.',
     ],
@@ -318,7 +318,7 @@ const ANSWERS: AnswerPage[] = [
       'Most babies are ready to start solid foods around six months of age, when they can sit up without support and have good control of their neck muscles, have lost the reflex that pushes food out of their mouth, and show interest in what others are eating. Breast milk or formula continues alongside solids.',
     keyTakeaways: [
       'Most babies are ready for solids around six months. The Canadian Paediatric Society points to readiness signs — sitting up without support, good head and neck control, and interest in food — rather than a fixed date.',
-      'Iron-rich first foods (iron-fortified infant cereal, well-cooked meats, or legumes) are emphasized because a baby\'s iron stores start to run low around six months.',
+      "Iron-rich first foods (iron-fortified infant cereal, well-cooked meats, or legumes) are emphasized because a baby's iron stores start to run low around six months.",
       'In the first year, breast milk or formula stays the main source of nutrition; solids are added alongside it, not as a replacement.',
     ],
     sections: [
@@ -326,7 +326,7 @@ const ANSWERS: AnswerPage[] = [
         heading: 'The readiness signs',
         body: [
           'The Canadian Paediatric Society describes starting solids at around six months, and lists developmental readiness signs rather than a fixed date: being able to sit up without support, lean forward, and have good control of the neck muscles; showing interest in food; and holding food in the mouth without pushing it out with the tongue right away.',
-          'Iron-rich first foods — such as iron-fortified infant cereal, well-cooked meats, or legumes — are emphasized because a baby\'s iron stores start to run low around this age.',
+          "Iron-rich first foods — such as iron-fortified infant cereal, well-cooked meats, or legumes — are emphasized because a baby's iron stores start to run low around this age.",
         ],
       },
       {
@@ -354,7 +354,8 @@ const ANSWERS: AnswerPage[] = [
         framework: 'health_canada',
         reference:
           'Health Canada — Nutrition for Healthy Term Infants (canada.ca), joint statement with the CPS and Dietitians of Canada',
-        excerpt: 'Introduce solids at six months with iron-rich foods, continuing breast milk or formula.',
+        excerpt:
+          'Introduce solids at six months with iron-rich foods, continuing breast milk or formula.',
       },
     ],
     faqs: [
@@ -384,7 +385,7 @@ const ANSWERS: AnswerPage[] = [
       'Tantrums are a normal, developmentally expected part of being a toddler — a young child overwhelmed by a big feeling they cannot yet manage or express. What helps most is staying calm, keeping your child safe, acknowledging the feeling, and reconnecting once the storm passes, rather than punishing or reasoning in the heat of it.',
     keyTakeaways: [
       'Tantrums are developmentally normal, not misbehaviour to punish: Siegel explains a toddler\'s "upstairs brain" for self-control is still developing, so big emotions flood faster than they can be regulated.',
-      'Markham\'s guidance is to regulate yourself first — a dysregulated child cannot be calmed by a dysregulated adult — then keep the child safe and name the feeling simply.',
+      "Markham's guidance is to regulate yourself first — a dysregulated child cannot be calmed by a dysregulated adult — then keep the child safe and name the feeling simply.",
       'Lansbury\'s RIE approach shows a calm limit and empathy can coexist: you can hold the boundary ("we\'re not buying that today") while accepting the feeling. Reconnect once the child is calm rather than lecturing.',
     ],
     sections: [
@@ -392,7 +393,7 @@ const ANSWERS: AnswerPage[] = [
         heading: 'Why tantrums happen',
         body: [
           'Siegel explains that a young child\'s "upstairs brain" — the part that handles self-control and reasoning — is still under construction, so big emotions can flood the "downstairs brain" faster than a toddler can regulate them. A tantrum is that flood, not a manipulation.',
-          'Markham frames the parent\'s calm as the child\'s anchor: a dysregulated child cannot be calmed by a dysregulated adult. Regulating yourself first is the first move.',
+          "Markham frames the parent's calm as the child's anchor: a dysregulated child cannot be calmed by a dysregulated adult. Regulating yourself first is the first move.",
         ],
       },
       {
@@ -415,16 +416,18 @@ const ANSWERS: AnswerPage[] = [
         reference:
           'Daniel Siegel & Tina Payne Bryson, The Whole-Brain Child — "connect and redirect"; upstairs/downstairs brain',
         excerpt:
-          'A young child\'s self-control centres are still developing; connect with the emotion before addressing behaviour.',
+          "A young child's self-control centres are still developing; connect with the emotion before addressing behaviour.",
       },
       {
         framework: 'markham',
         reference: 'Laura Markham, Aha! Parenting — regulate yourself first (ahaparenting.com)',
-        excerpt: 'A calm parent is the child\'s anchor; you cannot calm a child from a dysregulated state.',
+        excerpt:
+          "A calm parent is the child's anchor; you cannot calm a child from a dysregulated state.",
       },
       {
         framework: 'lansbury',
-        reference: 'Janet Lansbury, No Bad Kids / RIE — calm, confident limits with empathy (janetlansbury.com)',
+        reference:
+          'Janet Lansbury, No Bad Kids / RIE — calm, confident limits with empathy (janetlansbury.com)',
         excerpt: 'Hold the limit and accept the feeling at the same time.',
       },
     ],
@@ -456,7 +459,7 @@ const ANSWERS: AnswerPage[] = [
     keyTakeaways: [
       'Toddler biting is common and usually about frustration, teething, over-excitement, or limited language — not aggression. The American Academy of Pediatrics frames young children lashing out as lacking self-control, not intending harm.',
       'Respond calmly and immediately: Lansbury\'s RIE approach suggests a confident, unshaming limit ("I won\'t let you bite") while blocking the behaviour, then giving attention to the child who was hurt.',
-      'Big dramatic reactions can accidentally reinforce biting. Markham\'s advice is to stay regulated and get ahead of the trigger — offer words or a break before frustration peaks. Biting usually fades as language grows.',
+      "Big dramatic reactions can accidentally reinforce biting. Markham's advice is to stay regulated and get ahead of the trigger — offer words or a break before frustration peaks. Biting usually fades as language grows.",
     ],
     sections: [
       {
@@ -475,7 +478,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'When to seek advice',
         body: [
-          'Biting usually fades as language grows. If it is frequent, intense, or persists well beyond the toddler years, or if you are concerned about your child\'s development or communication, talk to your provider or your daycare about a consistent plan.',
+          "Biting usually fades as language grows. If it is frequent, intense, or persists well beyond the toddler years, or if you are concerned about your child's development or communication, talk to your provider or your daycare about a consistent plan.",
         ],
       },
     ],
@@ -494,7 +497,8 @@ const ANSWERS: AnswerPage[] = [
       },
       {
         framework: 'markham',
-        reference: 'Laura Markham, Aha! Parenting — addressing the underlying feeling (ahaparenting.com)',
+        reference:
+          'Laura Markham, Aha! Parenting — addressing the underlying feeling (ahaparenting.com)',
         excerpt: 'Stay regulated and get ahead of the trigger; help with the need behind the bite.',
       },
     ],
@@ -525,8 +529,8 @@ const ANSWERS: AnswerPage[] = [
       'Tears at daycare drop-off are a normal sign of healthy attachment, not a sign you are doing something wrong. What helps most is a short, warm, predictable goodbye routine done with confidence: a consistent ritual, a genuine (not sneaked) goodbye, and trust that your child can be comforted by their caregiver.',
     keyTakeaways: [
       'Separation anxiety at drop-off is normal and healthy: the American Academy of Pediatrics calls it an entirely normal behaviour and a sign of a meaningful attachment, common from around 15 to 18 months.',
-      'A short, warm, predictable goodbye ritual done with confidence helps most — Markham notes children read a parent\'s anxiety, so staying calm matters.',
-      'Lansbury\'s RIE approach advises a genuine goodbye rather than sneaking out, which tends to increase anxiety next time. Most children settle within minutes once the parent leaves.',
+      "A short, warm, predictable goodbye ritual done with confidence helps most — Markham notes children read a parent's anxiety, so staying calm matters.",
+      "Lansbury's RIE approach advises a genuine goodbye rather than sneaking out, which tends to increase anxiety next time. Most children settle within minutes once the parent leaves.",
     ],
     sections: [
       {
@@ -538,8 +542,8 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'What helps at drop-off',
         body: [
-          'Markham suggests a warm, consistent goodbye ritual and staying calm and confident, because children read a parent\'s anxiety. A predictable sequence — a hug, a phrase you always say, and a clear goodbye — helps a child know what to expect.',
-          'Lansbury\'s RIE approach adds honesty: say a real goodbye rather than slipping out, which can leave a child more anxious the next time. Trust the caregiver to comfort your child after you go; most settle within minutes.',
+          "Markham suggests a warm, consistent goodbye ritual and staying calm and confident, because children read a parent's anxiety. A predictable sequence — a hug, a phrase you always say, and a clear goodbye — helps a child know what to expect.",
+          "Lansbury's RIE approach adds honesty: say a real goodbye rather than slipping out, which can leave a child more anxious the next time. Trust the caregiver to comfort your child after you go; most settle within minutes.",
         ],
       },
       {
@@ -559,12 +563,14 @@ const ANSWERS: AnswerPage[] = [
       },
       {
         framework: 'markham',
-        reference: 'Laura Markham, Aha! Parenting — goodbye rituals and staying calm (ahaparenting.com)',
+        reference:
+          'Laura Markham, Aha! Parenting — goodbye rituals and staying calm (ahaparenting.com)',
         excerpt: 'A warm, consistent goodbye ritual, delivered with confidence, eases drop-off.',
       },
       {
         framework: 'lansbury',
-        reference: 'Janet Lansbury, RIE — say a genuine goodbye, do not sneak out (janetlansbury.com)',
+        reference:
+          'Janet Lansbury, RIE — say a genuine goodbye, do not sneak out (janetlansbury.com)',
         excerpt: 'Honest goodbyes build trust; sneaking away tends to increase anxiety.',
       },
     ],
@@ -592,7 +598,7 @@ const ANSWERS: AnswerPage[] = [
       'Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.',
     stage: 'toddler',
     answer:
-      'Potty training tends to go best when it follows a child\'s readiness rather than a set age — some children are ready as young as 18 months, but most start between 2 and 4 years. Readiness is a mix of physical signs (staying dry in their diaper for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, being able to follow simple instructions, and telling you they need to go).',
+      "Potty training tends to go best when it follows a child's readiness rather than a set age — some children are ready as young as 18 months, but most start between 2 and 4 years. Readiness is a mix of physical signs (staying dry in their diaper for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, being able to follow simple instructions, and telling you they need to go).",
     keyTakeaways: [
       'Potty training goes best when it follows readiness signs, not a fixed age: the Canadian Paediatric Society notes some children are ready as young as 18 months, but most start between 2 and 4 years.',
       'Look for physical signs (dry for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, following simple directions, telling you they need to go).',
@@ -609,13 +615,13 @@ const ANSWERS: AnswerPage[] = [
         heading: 'A low-pressure approach',
         body: [
           'The same guidance emphasizes a relaxed, encouraging tone. Pushing before a child is ready, or reacting strongly to accidents, tends to backfire and can create power struggles. Praise for trying, matter-of-fact handling of accidents, and letting the child set some of the pace all help.',
-          'Markham\'s connection-first approach fits here: keeping it collaborative and pressure-free, rather than turning it into a battle, protects both the skill and the relationship.',
+          "Markham's connection-first approach fits here: keeping it collaborative and pressure-free, rather than turning it into a battle, protects both the skill and the relationship.",
         ],
       },
       {
         heading: 'When to talk to your provider',
         body: [
-          'If training stalls badly, if there is significant constipation or withholding, or if you are worried about your child\'s development, your provider can help. Regression around a big change (a new sibling, a move) is common and usually temporary.',
+          "If training stalls badly, if there is significant constipation or withholding, or if you are worried about your child's development, your provider can help. Regression around a big change (a new sibling, a move) is common and usually temporary.",
         ],
       },
     ],
@@ -629,7 +635,8 @@ const ANSWERS: AnswerPage[] = [
       },
       {
         framework: 'markham',
-        reference: 'Laura Markham, Aha! Parenting — pressure-free, collaborative toilet learning (ahaparenting.com)',
+        reference:
+          'Laura Markham, Aha! Parenting — pressure-free, collaborative toilet learning (ahaparenting.com)',
         excerpt: 'Keep toilet learning collaborative and calm; power struggles backfire.',
       },
     ],
@@ -637,7 +644,7 @@ const ANSWERS: AnswerPage[] = [
       {
         question: 'What age should my child be potty trained?',
         answer:
-          'There is no single right age. Some children are ready as young as 18 months, but most start between 2 and 4 years, and following the child\'s cues works better than a deadline.',
+          "There is no single right age. Some children are ready as young as 18 months, but most start between 2 and 4 years, and following the child's cues works better than a deadline.",
       },
       {
         question: 'My child was trained and started having accidents again — why?',
@@ -693,8 +700,10 @@ const ANSWERS: AnswerPage[] = [
       },
       {
         framework: 'aap',
-        reference: 'American Academy of Pediatrics, HealthyChildren.org — media use for young children',
-        excerpt: 'Avoid screens under 18–24 months apart from video chat; limit and co-view for ages two to five.',
+        reference:
+          'American Academy of Pediatrics, HealthyChildren.org — media use for young children',
+        excerpt:
+          'Avoid screens under 18–24 months apart from video chat; limit and co-view for ages two to five.',
       },
     ],
     faqs: [
@@ -731,8 +740,8 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Why the battle happens',
         body: [
-          'Siegel\'s whole-brain view is that a stressed, cornered child goes into fight-or-flight, and their reasoning brain goes offline — which is exactly the state a homework standoff creates. Pushing harder tends to deepen the resistance rather than resolve it.',
-          'When homework becomes the parent\'s job to enforce, the child stops owning it. The struggle then is over control, not the actual worksheet.',
+          "Siegel's whole-brain view is that a stressed, cornered child goes into fight-or-flight, and their reasoning brain goes offline — which is exactly the state a homework standoff creates. Pushing harder tends to deepen the resistance rather than resolve it.",
+          "When homework becomes the parent's job to enforce, the child stops owning it. The struggle then is over control, not the actual worksheet.",
         ],
       },
       {
@@ -745,7 +754,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'When to look deeper',
         body: [
-          'Persistent, intense homework struggles can signal something underneath — a learning difficulty, attention challenges, anxiety, or work that is genuinely too hard. If the battles are constant, talk with your child\'s teacher and, if needed, your provider.',
+          "Persistent, intense homework struggles can signal something underneath — a learning difficulty, attention challenges, anxiety, or work that is genuinely too hard. If the battles are constant, talk with your child's teacher and, if needed, your provider.",
         ],
       },
     ],
@@ -754,11 +763,13 @@ const ANSWERS: AnswerPage[] = [
         framework: 'siegel',
         reference:
           'Daniel Siegel & Tina Payne Bryson, The Whole-Brain Child — fight-or-flight and "connect and redirect"',
-        excerpt: 'A stressed child\'s reasoning brain goes offline; connect and calm before problem-solving.',
+        excerpt:
+          "A stressed child's reasoning brain goes offline; connect and calm before problem-solving.",
       },
       {
         framework: 'markham',
-        reference: 'Laura Markham, Aha! Parenting — reduce pressure, hand back ownership (ahaparenting.com)',
+        reference:
+          'Laura Markham, Aha! Parenting — reduce pressure, hand back ownership (ahaparenting.com)',
         excerpt: 'Connect first, keep a calm routine, and let the child own the work.',
       },
     ],
@@ -766,7 +777,7 @@ const ANSWERS: AnswerPage[] = [
       {
         question: 'Should I sit with my child for all of their homework?',
         answer:
-          'Some support helps, but doing or policing every assignment tends to remove the child\'s ownership. Aim to be available and encouraging while the work stays theirs.',
+          "Some support helps, but doing or policing every assignment tends to remove the child's ownership. Aim to be available and encouraging while the work stays theirs.",
       },
       {
         question: 'When should I worry about homework struggles?',
@@ -796,7 +807,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Some conflict is normal — and useful',
         body: [
-          'Sibling conflict is a near-universal part of family life and a training ground for social skills. Markham\'s framing is that jumping in to judge who was right usually fuels rivalry, because children compete for the parent as judge. Staying out of the role of referee lowers the stakes.',
+          "Sibling conflict is a near-universal part of family life and a training ground for social skills. Markham's framing is that jumping in to judge who was right usually fuels rivalry, because children compete for the parent as judge. Staying out of the role of referee lowers the stakes.",
         ],
       },
       {
@@ -816,12 +827,14 @@ const ANSWERS: AnswerPage[] = [
     citations: [
       {
         framework: 'markham',
-        reference: 'Laura Markham, Peaceful Parent, Happy Siblings — coach, do not referee (ahaparenting.com)',
+        reference:
+          'Laura Markham, Peaceful Parent, Happy Siblings — coach, do not referee (ahaparenting.com)',
         excerpt: 'Staying neutral and coaching resolution lowers rivalry; refereeing fuels it.',
       },
       {
         framework: 'siegel',
-        reference: 'Daniel Siegel & Tina Payne Bryson, The Whole-Brain Child — calm before problem-solving',
+        reference:
+          'Daniel Siegel & Tina Payne Bryson, The Whole-Brain Child — calm before problem-solving',
         excerpt: 'A flooded child cannot negotiate; separate and calm first, then resolve.',
       },
     ],
@@ -872,7 +885,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Keep the relationship in view',
         body: [
-          'Markham\'s connection-first lens applies to enforcement: rules land better inside a warm relationship than as pure control, and involving your child in setting limits reduces the power struggle. If screen use is genuinely interfering with sleep, mood, school, or activity, your provider can help.',
+          "Markham's connection-first lens applies to enforcement: rules land better inside a warm relationship than as pure control, and involving your child in setting limits reduces the power struggle. If screen use is genuinely interfering with sleep, mood, school, or activity, your provider can help.",
         ],
       },
     ],
@@ -881,7 +894,8 @@ const ANSWERS: AnswerPage[] = [
         framework: 'cps',
         reference:
           'Canadian Paediatric Society — "Digital media: Promoting healthy screen use in school-aged children and adolescents" (cps.ca)',
-        excerpt: 'For school-age children, ensure screens do not displace sleep, activity, and in-person time.',
+        excerpt:
+          'For school-age children, ensure screens do not displace sleep, activity, and in-person time.',
       },
       {
         framework: 'aap',
@@ -890,8 +904,10 @@ const ANSWERS: AnswerPage[] = [
       },
       {
         framework: 'markham',
-        reference: 'Laura Markham, Aha! Parenting — limits inside a warm relationship (ahaparenting.com)',
-        excerpt: 'Collaboratively set limits reduce power struggles and land better than pure control.',
+        reference:
+          'Laura Markham, Aha! Parenting — limits inside a warm relationship (ahaparenting.com)',
+        excerpt:
+          'Collaboratively set limits reduce power struggles and land better than pure control.',
       },
     ],
     faqs: [
@@ -922,7 +938,7 @@ const ANSWERS: AnswerPage[] = [
     keyTakeaways: [
       'Some moodiness is normal in adolescence; the Canadian Paediatric Society points to duration, intensity, and impact to separate typical teen moods from a concern — changes lasting more than a couple of weeks, severe, or interfering with daily life.',
       'Warning signs worth a professional conversation include persistent low or hopeless mood, withdrawal from friends and activities once enjoyed, marked changes in sleep or appetite, and falling grades.',
-      'Any mention of self-harm or suicide is an emergency: contact a crisis line, your provider, or emergency services right away and stay with your teen. Siegel\'s work stresses staying connected and approaching with calm curiosity, not interrogation.',
+      "Any mention of self-harm or suicide is an emergency: contact a crisis line, your provider, or emergency services right away and stay with your teen. Siegel's work stresses staying connected and approaching with calm curiosity, not interrogation.",
     ],
     sections: [
       {
@@ -940,7 +956,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'How to open the door',
         body: [
-          'Siegel\'s work on the adolescent brain reframes this age as a period of important development, not just difficulty, and stresses staying connected. Approach with calm curiosity rather than interrogation, listen without rushing to fix, and take what your teen says seriously. Honour their growing autonomy while making clear you are there — and loop in professionals for anything touching safety or lasting change.',
+          "Siegel's work on the adolescent brain reframes this age as a period of important development, not just difficulty, and stresses staying connected. Approach with calm curiosity rather than interrogation, listen without rushing to fix, and take what your teen says seriously. Honour their growing autonomy while making clear you are there — and loop in professionals for anything touching safety or lasting change.",
         ],
       },
     ],
@@ -955,7 +971,8 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'siegel_brainstorm',
         reference: 'Daniel Siegel, Brainstorm: The Power and Purpose of the Teenage Brain',
-        excerpt: 'Adolescence is a period of essential brain development; staying connected matters.',
+        excerpt:
+          'Adolescence is a period of essential brain development; staying connected matters.',
       },
     ],
     faqs: [
@@ -999,7 +1016,7 @@ const ANSWERS: AnswerPage[] = [
         heading: 'Setting boundaries that hold',
         body: [
           'Keep the non-negotiables few and focused on safety and respect, and explain the "why" rather than "because I said so" — teens respond to reasoning. Where you can, negotiate the details with them, which gives them ownership. Be consistent, and let natural and pre-agreed consequences do the work instead of escalating punishment.',
-          'Siegel\'s emphasis on staying connected matters most here: the relationship is what keeps a teen coming back and talking, which is your best source of influence and your best early-warning system. A limit delivered with respect protects the relationship; one delivered with contempt erodes it.',
+          "Siegel's emphasis on staying connected matters most here: the relationship is what keeps a teen coming back and talking, which is your best source of influence and your best early-warning system. A limit delivered with respect protects the relationship; one delivered with contempt erodes it.",
         ],
       },
       {

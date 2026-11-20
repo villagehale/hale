@@ -184,12 +184,19 @@ describe('pipeline cost accounting', () => {
       actionId: ACTION_ID,
       actionType: 'send_email',
       verdict,
-      usage: { promptTokens: 1_000_000, completionTokens: 0 },
+      usage: {
+        promptTokens: 1_000_000,
+        completionTokens: 0,
+        cacheReadTokens: 900_000,
+        cacheWriteTokens: 0,
+      },
       costUsd: 0.57,
       model: SONNET_MODEL,
     });
 
     expect(runs).toHaveLength(1);
     expect(runs[0]?.costUsd).toBe('0.570000');
+    expect(runs[0]?.promptCacheHit).toBe(true);
+    expect(runs[0]?.cacheReadTokens).toBe(900_000);
   });
 });

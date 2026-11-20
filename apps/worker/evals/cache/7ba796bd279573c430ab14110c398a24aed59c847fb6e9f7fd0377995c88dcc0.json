@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence claims the baby's checkup is already booked, but no row covers a checkup, so it cites none. It also promises to keep finding toddler activities, which matches the pending activity row p1. The Tuesday registration date is a fact, not a promise to watch, so it is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      }
+    ]
+  },
+  "latencyMs": 2979
+}

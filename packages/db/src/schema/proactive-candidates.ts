@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -55,6 +56,12 @@ export const proactiveCandidates = pgTable(
     worthlessAfter: timestamp('worthless_after', { withTimezone: true }),
     parentRequested: boolean('parent_requested').notNull().default(false),
     dedupeKey: text('dedupe_key').notNull(),
+    /**
+     * VIL-612 · what the sweep would have done after the text left (an offer, a
+     * booking, a watch close). Null when the class needs none. The decider's
+     * send reads it; the model never does.
+     */
+    payload: jsonb('payload').$type<Record<string, unknown>>(),
     status: text('status').notNull().default('queued').$type<ProactiveCandidateStatus>(),
     /** The decider's own action: send_now, hold, or drop. */
     decision: text('decision'),

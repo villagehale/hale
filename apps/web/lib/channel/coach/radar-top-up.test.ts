@@ -114,6 +114,27 @@ describe("VIL-522 radar top-up", () => {
     ]);
   });
 
+  it("on a register ask, two URL-less finds are not enough and the live search fires", async () => {
+    const unlinked = find({ sourceUrl: undefined, url: undefined });
+    const other = find({
+      name: "Open gym",
+      sourceName: "Gym",
+      sourceUrl: undefined,
+      url: undefined,
+    });
+    expect(isSuitableFind(unlinked, { needPage: true })).toBe(false);
+    const liveSearch = vi.fn(async () => [fair]);
+    const result = await topUpShortRadar({
+      radar: [unlinked, other],
+      liveSearch,
+      needPage: true,
+    });
+
+    expect(liveSearch).toHaveBeenCalledTimes(1);
+    expect(result.outcome).toBe("searched");
+    expect(result.picks.map((pick) => pick.name)).toEqual(["Harvest fair"]);
+  });
+
   it("keeps a find that has no page yet, and searches when it is the only one", async () => {
     const unlinked = find({ sourceUrl: undefined, url: undefined });
     expect(isSuitableFind(unlinked)).toBe(true);

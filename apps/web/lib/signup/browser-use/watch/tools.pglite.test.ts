@@ -3,13 +3,14 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, type Skill, runAgent } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   ADD_WATCH_TARGET_TOOL,
   LIST_WATCH_TARGETS_TOOL,
   REMOVE_WATCH_TARGET_TOOL,
   WATCH_TOOL_NAMES,
+  type WatchToolPorts,
   augmentCoachSkillForProviderWatch,
   providerWatchTools,
   quotesParent,
@@ -91,6 +92,9 @@ describe('coach watch tools', () => {
       vi.stubEnv(key, '');
     }
   });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   async function familyWithBooking() {
     const fam = await seedFamily(db.database);
@@ -115,6 +119,7 @@ describe('coach watch tools', () => {
     parentWords: string,
     script: Anthropic.Message[],
     toolFamilyId = fam.familyId,
+    extra: Partial<Pick<WatchToolPorts, 'planTier' | 'linksThisTurn'>> = {},
   ) {
     const { client, results } = scripted(script);
     const tools = providerWatchTools({
@@ -123,7 +128,8 @@ describe('coach watch tools', () => {
       parentUserId: fam.parentUserId,
       conversationId: 'conv-1',
       parentWords,
-      linksThisTurn: () => [],
+      linksThisTurn: extra.linksThisTurn ?? (() => []),
+      planTier: extra.planTier,
     });
     await runAgent({
       skill: SKILL,
@@ -306,6 +312,94 @@ describe('coach watch tools', () => {
     expect(quotesParent('可以帮我盯一下', '帮我盯')).toBe(true);
     expect(quotesParent('what is on saturday', 'yes')).toBe(false);
     expect(quotesParent('anything', '   ')).toBe(false);
+  });
+
+  async function fillSubscriptions(
+    fam: { familyId: string; parentUserId: string },
+    n: number,
+  ): Promise<void> {
+    for (let i = 0; i < n; i += 1) {
+      const [target] = await db.database
+        .insert(schema.providerWatchTargets)
+        .values({
+          providerHost: `fill-${fam.familyId}-${i}.example`,
+          sourceUrl: `https://fill-${fam.familyId}-${i}.example/page`,
+          kind: 'openings',
+        })
+        .returning({ id: schema.providerWatchTargets.id });
+      if (!target) throw new Error('no fill target');
+      await db.database.insert(schema.familyWatchSubscriptions).values({
+        familyId: fam.familyId,
+        parentUserId: fam.parentUserId,
+        targetId: target.id,
+        sourceRef: `fill:${i}`,
+        consentConversationId: 'conv-fill',
+        consentMessageSha256: '0'.repeat(64),
+        consentQuote: 'watch',
+      });
+    }
+  }
+
+  it('does not refuse a live watch the household already has when the cap is full', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const fam = await familyWithBooking();
+    await turn(
+      fam,
+      'please watch the swim waitlist',
+      [
+        toolUse(ADD_WATCH_TARGET_TOOL, {
+          sourceRef: fam.sourceRef,
+          kind: 'waitlist',
+          parentAgreement: 'please watch the swim waitlist',
+        }),
+        done('ok'),
+      ],
+      fam.familyId,
+      { planTier: 'plus' },
+    );
+    await fillSubscriptions(fam, 7);
+    const results = await turn(
+      fam,
+      'please watch the swim waitlist',
+      [
+        toolUse(ADD_WATCH_TARGET_TOOL, {
+          sourceRef: fam.sourceRef,
+          kind: 'waitlist',
+          parentAgreement: 'please watch the swim waitlist',
+        }),
+        done('ok'),
+      ],
+      fam.familyId,
+      { planTier: 'plus' },
+    );
+    expect(results.every((r) => !r.is_error)).toBe(true);
+    expect(await subscriptions(fam.familyId)).toHaveLength(8);
+  });
+
+  it('refuses a ninth new provider watch for Plus when MAX_ENTITLEMENTS_ENABLED is on', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const fam = await familyWithBooking();
+    await fillSubscriptions(fam, 8);
+    const results = await turn(
+      fam,
+      'please watch this gymnastics page',
+      [
+        toolUse(ADD_WATCH_TARGET_TOOL, {
+          sourceRef: 'link:0',
+          kind: 'openings',
+          parentAgreement: 'please watch this gymnastics page',
+        }),
+        done('ok'),
+      ],
+      fam.familyId,
+      {
+        planTier: 'plus',
+        linksThisTurn: () => [{ title: 'Gymnastics', url: 'https://gym.example/page' }],
+      },
+    );
+    expect(results[0]?.is_error).toBe(true);
+    expect(JSON.stringify(results[0])).toMatch(/already watching 8 classes/);
+    expect(await subscriptions(fam.familyId)).toHaveLength(8);
   });
 
   it('leaves the coach skill untouched with the flag off', () => {

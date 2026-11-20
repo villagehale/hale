@@ -1,0 +1,14 @@
+{
+  "value": {
+    "intent": "plan_needs_driver",
+    "driverName": null,
+    "driverIsSender": false,
+    "eventLabel": "Soccer carpool",
+    "pickupDate": null,
+    "pickupTime": "08:00",
+    "pickupPlace": null,
+    "kids": null,
+    "confidence": "high"
+  },
+  "latencyMs": 2696
+}

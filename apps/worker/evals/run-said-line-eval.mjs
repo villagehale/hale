@@ -45,9 +45,9 @@ import {
   readModelIds,
   summarizeJudgePlan,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { EXPECTED_FAIL, expectedFailGate } from './said-line-expected-fail.mjs';
 import { SAID_LINE_FIXTURES as FIXTURE_ROWS } from './said-line-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const HEALTH_LINE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'health-line.ts');

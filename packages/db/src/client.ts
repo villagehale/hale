@@ -13,17 +13,18 @@ interface CreateDbOptions {
   /**
    * TCP+TLS connect bound in seconds; default 5. Client-enforced by postgres.js,
    * so it holds through the transaction pooler too. The tightest consumer of the
-   * shared web pool is the Linq inbound webhook (15s total budget — see
-   * linq/transport.ts): the driver's 30s default could legally spend
-   * twice that budget on a connect that a healthy same-region pooler does in
-   * milliseconds. A 5s-stuck connect is a brown-out; failing fast is what lets
-   * the failure boundary 5xx while Linq still retries (2026-09-03 audit P1-9;
-   * formerly Twilio).
+   * shared web pool is the Linq inbound webhook (10s total budget — see
+   * LINQ_WEBHOOK_TIMEOUT_MS, apps/web/lib/channel/linq/signature.ts): the driver's
+   * 30s default could legally spend three times that budget on a connect that a
+   * healthy same-region pooler does in milliseconds. A 5s-stuck connect is a
+   * brown-out; failing fast is what lets the failure boundary 5xx while Linq still
+   * retries (2026-09-03 audit P1-9; formerly Twilio).
    */
   connectTimeoutSeconds?: number;
   /**
    * Per-statement server-side bound in ms, sent as a startup parameter; default
-   * 10_000 (inside the webhook's 15s budget).
+   * 10_000. That equals the Linq webhook's whole 10s budget (LINQ_WEBHOOK_TIMEOUT_MS)
+   * rather than fitting inside it; tightening it is a separate decision.
    *
    * HONESTY NOTE (probed live 2026-09-03): the Supabase TRANSACTION pooler
    * (:6543, prod DATABASE_URL) STRIPS startup parameters — through it the

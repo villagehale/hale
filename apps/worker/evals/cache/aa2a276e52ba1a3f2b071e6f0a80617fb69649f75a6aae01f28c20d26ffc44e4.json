@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states the order was placed, that Hale doesn't know if the card was charged or Ada is registered, and directs the parent to check email and the open browser before paying again. No invented facts, no spot claimed, no promise to retry, one ask, plain tone. Minor: 'Hale can't tell' phrasing is fine; text says the browser stays open about 15 minutes, matching holdMinutes. Slight issue: it says a link follows implicitly via 'open browser' but that is acceptable per rules.",
+    "score": 5
+  }
+}

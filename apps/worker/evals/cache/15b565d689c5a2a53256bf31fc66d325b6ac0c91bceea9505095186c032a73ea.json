@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgyNUTmLN1UAWY9rrnu5s",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSywYKEAgTGAI4AUIIdGhpbmtpbmcSDI7BBVNBvWAz0gm1JRoMAyOGHud/qV50s72tIjDN5I1PvEJZCalLHtMOC6pJ5fkSamvLvwagzMeu0p527h+dri5zKF7fChoST5nzc6Aq6AUlYZ82l4yA6GHpxnSSKkmdVJdfu1lHCeUKP2JRpkPdunxU+jGkQtbAt24D2g2yRibbyUF3keaQI2E+v4Zdh8afdOdzTy5Gh0UPMG+YrK9W2Gtsn6ZWeevKcLauLVs0WR+fcPxFBEK1mco4dpU8vW3LNm0Gskon00ugPE1vq70j3EZTi9u7QkxAx539CQmXO4AmlSxlHffBug5jeNWOBIItKgXE3nC6NlEZ3hYm3BFPM6wt5+M0wPgly6iAlu4/3IdEVJZlP7XXG1Uk1kC67b9Nssldb+cKbyYUTdu3u9DWF2k5rvMkx1whNyeP+iaLGhJFJGWnyaOQSrzZufSoeFZSY64vhDQb4VrsjrERmWqm1Vj0amsbkAXZd3J3km1LBJth5UNyQzrOy1IDu/FU9RxVeOPtlCsOuS9awnFeq4Z267hgmmJN3oHYyeHa8fi45+6/BGsx838uxgx/i6yodbjcyHc28J47Y+DAanG45U+hRm7TBgzLrQESqtx7g2xfW1lJFT7QUgw6t7jbuz9uejjDy7SvmKLoTqk4gzaIBy1zvzqY9ttE9RvxIIJ9DI0WF2UP1889S/BiXB/HLiDF1Ab4PQDBRtubniwF6w2Qw00QqgiFjbih/kAZLdROP3iR+NeihwIRs54VrAJYoCZDpZ63sV97itRnejGqYpHMyV/cr4I1w8lkp5KJixUlj2BpYlKPYQuA9DVRqVfPJ1h/9NQuIZz0anj62YbeBuEAUVi738gfXvms/JYeVBDs/GCUkqRvmg660KzsEuAd5wLAiBi8BaezNvkTPNz9NDrLsGbGVHD+Ji97ljGMoYz1m9Y44Eotr3AuymX8Ss8d9je64BsNo9at1e7x41EpfAo88OmgdPVLkiZrSuMj07VX9nuwpy8KvG6hklnlydxo/MsLzalWUS0iMcWejd0KmZY11FSPXpMOH3JqdqEs2rifw0n3uo33h8021pzoEf4vUYsw7ayYLPOlGf8y1VYYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "That isn't something to decide over text. Call 811 any time, and 911 if it is an emergency."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1548,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 113,
+      "output_tokens_details": {
+        "thinking_tokens": 80
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

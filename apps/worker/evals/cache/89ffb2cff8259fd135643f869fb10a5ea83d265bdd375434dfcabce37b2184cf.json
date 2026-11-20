@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Next-day check-back lands at 11 AM local, a good mid-day moment, with no unanswered streak, no pace preference, and the item still valid.",
+    "action": "send_now",
+    "item_ids": [
+      "checkback"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

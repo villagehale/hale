@@ -10,52 +10,18 @@ describe('catalog history cutover', () => {
     expect(pkg.scripts['migrate:guard']).toBe(pkg.scripts.migrate);
   });
   it('keeps the retirement pending after the current main watermark', () => {
+    // The tail is the journal itself. A new migration shows up here without a
+    // hand-kept copy of every tag after the watermark.
+    const journal = JSON.parse(
+      readFileSync(new URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8'),
+    );
+    const tags = journal.entries.map((entry) => entry.tag);
+    const baseIndex = tags.indexOf('0171_channel_pending_asks');
+    expect(baseIndex).toBeGreaterThanOrEqual(0);
     const entries = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
-    const base = entries.find((entry) => entry.tag === '0171_channel_pending_asks');
-    expect(computeDrift(entries, base.when).pending.map((entry) => entry.tag)).toEqual([
-      '0172_activity_history_only',
-      '0173_provider_signup_sessions',
-      '0174_family_link_wallets',
-      '0175_signup_browser_use_cost',
-      '0177_provider_watch',
-      '0178_user_timezone_from_postal',
-      '0179_channel_inbound_media',
-      '0184_preview_captured_sends',
-      '0192_preview_captured_linq_calls',
-      '0185_channel_inbound_in_group',
-      '0193_family_events_source_change',
-      '0194_preview_captured_sends_decorations',
-      '0180_linq_group_plans',
-      '0189_group_reminders',
-      '0188_family_events_group_plan_copy_key',
-      '0195_linq_shared_group_people',
-      '0190_linq_group_polls',
-      '0196_linq_group_carpools',
-      '0197_family_event_notes',
-      '0198_email_alert_occasions',
-      '0199_registration_live_watch_storage',
-      '0200_email_alert_occasion_anchors',
-      '0201_integrations_google_revoke_pending',
-      '0202_opt_out_held_messages',
-      '0203_integrations_google_account_key',
-      '0204_opt_out_held_crisis_read',
-      '0206_authorized_signup_plan',
-      '0207_family_sweep_marks',
-      '0209_agent_commitments_heard_facts',
-      '0210_watched_spots_any_page',
-      '0212_message_source',
-      '0213_parent_proactive_language',
-      '0214_activity_bookings_address',
-      '0216_group_lists',
-      '0217_capability_denials',
-      '0205_opt_out_held_crisis_read_sealed',
-      '0220_event_reminders_compose_backoff',
-      '0218_family_memory_facts_source_user',
-      '0221_family_events_calendar_standing',
-      '0222_parent_calendar_blocks_standing',
-      '0223_authorized_signup_plan_resume',
-      '0224_linq_shared_group_people_phone_nullable',
-    ]);
+    expect(
+      computeDrift(entries, journal.entries[baseIndex].when).pending.map((entry) => entry.tag),
+    ).toEqual(tags.slice(baseIndex + 1));
   });
 });
 

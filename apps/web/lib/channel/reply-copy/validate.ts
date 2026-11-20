@@ -6,9 +6,9 @@
  * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
+import { placeTokensIn } from '@hale/types';
 import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
 import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
-import { placeTokensIn } from '~/lib/channel/place-token';
 
 export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';

@@ -1,0 +1,19 @@
+{
+  "value": {
+    "intent": "stop_me",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidName": null,
+    "confidence": "high",
+    "ruledOut": [],
+    "picked": null,
+    "planTitle": null
+  },
+  "latencyMs": 7343,
+  "usage": {
+    "input_tokens": 152,
+    "output_tokens": 464,
+    "cache_read_input_tokens": 2942,
+    "cache_creation_input_tokens": 2941
+  }
+}

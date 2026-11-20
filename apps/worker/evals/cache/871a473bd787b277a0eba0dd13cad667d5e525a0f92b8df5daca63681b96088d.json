@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the co-parent already received the pickup time, which is a send_received claim. The only matching row, m1, has state 'sent' rather than 'delivered', so it cannot back that claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_received",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2118
+}

@@ -1,7 +1,0 @@
-{
-  "value": {
-    "reason": "Sentence 0 only quotes the parent's own words back to them, and sentence 1 is an acknowledgement. Neither claims a booking, watch, or promise, and there are no rows.",
-    "claims": []
-  },
-  "latencyMs": 2163
-}

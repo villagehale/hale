@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the question from recall. The Jul 28 Harbour Art Studio email says Fridays at 4:30, and it correctly notes there is no Friday event in the visible week. Fri Aug 7 is the right date, and the private items fall on Tue and Wed, so they are rightly left out. Offering to add the class is a single plain question, not a YES keyword. One small blemish: 'so Fri Aug 7 is empty' repeats what the previous clause already said.",
+    "score": 4
+  }
+}

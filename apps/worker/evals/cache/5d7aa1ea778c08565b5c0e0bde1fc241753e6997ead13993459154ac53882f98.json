@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzTL7sN9ndZD9DtE8bmg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6wYKEAgTGAI4AUIIdGhpbmtpbmcSDNQqSlsfvO5kVYpzohoMELIiVkH5enaCb8auIjCqrSZ0TZu/QhGpnZyMCEmQ+YyCT3B2E1oesqQs+qUKZcq6XH0qVuyBq+EDzdGtxRgqiAZRYxi3lVJse23EJPWLur1YG31siAWNNehRdNcQifNSsdjt1vSklSCW/AIBTlzoSOjhuXVnG0iAmkWlKuRoM2VQlSCzBnkVHGwPosHorMeQ1QGpIuHlkWnnFF0uj9wNqCkYKr+AUCy0ObecfURNR0ZkkuANeRGnDy64Q8pZeX4wd37cwL5KmOdB8jv3hwEV41bo6MdkoSHXg+84GMPKohzjmzgtAJ/2OFvKtUsSFQ8442m0rDLMoY1eAkEF0oixgQ7i4Q5LWcYviFr/RQ5u9AHTmXj9+UmaHi4O1bK2eUzwcBPXYoPvwQT7y8rS9l/PBJugQdfKrXA5odzLRNumqkKDsigP0rOS6+1w37eF/nfnCJxkhKbFRHCmumE26NFWjqUepKze7FIudxJvshMRh2Ew4lMPHBbAle8+jX9UvZv580y1yZcqQAREm7bUboNOS8G/3MYah47RUf8r394ca8iaYTe8R0l2n4E+WfBVKqPtDFBjZHRIkkDuxaYaCMMhB6RYKe8p7vuUaRboZT9MhCOdi+apOTwiOhNkiVSxzU/GGyZZnhxJApeZxBT6IyZolMmKmG0KPNkFkkyaqk/yxMP3Nlup4//T0M6upNAnXj1Hmn+rzzDRlCz80emu0b5kNNPawg7UigRjsqTsVRnId7EI5EtO5fNDQfeXupNCM9lS8SwaoURf/vwJ4Ft3kAO6BCrUHp7MkBx3DysdmbPxOL3McCKvbMcMo4e3CVnpV8KztctoE2JEFXdXaW/ksPDxICkoo120rAWnmUpNEsGVgnY4HxqeTi4OIJZtV3CcBxxvF2xlVmfYG+2kOdVqPrI39aaKY7AzULjD3gnzoMuemFXuTk7A8YMWXW/iqe1EpkWrzs1cH3e+/OYvlzoY36mWhShHxgkiHJiHxf5oi91pEvuvco/SmEZLDKTAay+NEL+CWkCUHM2LHwXUhk3kJDSivJByAA4w63mEqGsQM+76FDXppa/zem7naHB16vOfuFa4iJgTO5iThJKpHG0c2D9ECKfgXzTRjFHxIBgB"
+      },
+      {
+        "type": "text",
+        "text": "What to give her isn't something to decide over text. Call your child's doctor's after-hours line now, since a night of vomiting is worth a professional's eyes. If she can't keep any fluids down, seems very drowsy, or looks dehydrated, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 772,
+      "cache_creation_input_tokens": 23795,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 23795
+      },
+      "output_tokens": 171,
+      "output_tokens_details": {
+        "thinking_tokens": 87
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4029
+}

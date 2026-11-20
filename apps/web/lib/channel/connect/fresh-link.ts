@@ -15,6 +15,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type SaidLineWriter,
@@ -61,7 +62,9 @@ export function defaultFreshLinkPorts(): FreshLinkPorts {
     transport: createOutboundTransport(),
     imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
     threadMessage: threadProactiveMessage,
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
   };
 }
 
@@ -101,7 +104,7 @@ async function sendFresh(
   },
   ports: FreshLinkPorts,
 ): Promise<FreshLinkOutcome> {
-  const language = await familyLanguage(database, args.familyId);
+  const language = await parentLinkLanguage(database, args.familyId, args.parentUserId);
   const minted = await mintBody(database, args, language, ports.saidLine);
   if (minted.status !== 'minted') {
     console.info(
@@ -248,11 +251,13 @@ async function familyGroupChatId(database: Database, familyId: string): Promise<
   return row?.linqGroupChatId ?? null;
 }
 
-async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
-  const rows = await database
-    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  const row = rows.find((candidate) => candidate.id === familyId);
-  return row?.primaryLanguage === 'fr' ? 'fr' : 'en';
+/** The parent's stored language, as English or French. A null store falls back to the
+ * family language. Only an exact `fr` is French, as before. */
+async function parentLinkLanguage(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<ReplyLanguage> {
+  const stored = await readParentLanguage(database, { familyId, parentUserId });
+  return stored === 'fr' ? 'fr' : 'en';
 }

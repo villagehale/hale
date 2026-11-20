@@ -59,6 +59,15 @@ export const smsIntakeSessions = pgTable(
     firstReplyRecoveredAt: timestamp('first_reply_recovered_at', { withTimezone: true }),
     /** Set at provisioning; null while the session is still pre-family. */
     familyId: uuid('family_id').references(() => families.id, { onDelete: 'cascade' }),
+    /**
+     * VIL-649 · the family this session became, recorded at signup. Erasure
+     * follows this tie. Family-less sessions of a previous holder of a recycled
+     * number are not inferred from the hash alone. SET NULL so the row survives
+     * the family cascade (the funnel still counts the arrival; content is redacted).
+     */
+    becameFamilyId: uuid('became_family_id').references(() => families.id, {
+      onDelete: 'set null',
+    }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
     /** The provider id of the last inbound handled — the idempotency guard that makes
      * a carrier's webhook retry a no-op instead of a second reply. */

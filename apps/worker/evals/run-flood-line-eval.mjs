@@ -18,6 +18,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { noClient, parseEvalFlagsOrExit } from './lib/eval-flags.mjs';
 import {
   JUDGE_MIN,
@@ -32,8 +33,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
-import { normalizeForCompare } from './lib/variation.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { normalizeForCompare } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -120,12 +121,14 @@ function flatten(text) {
 }
 
 // The skill's hard facts, checked mechanically (the composer itself only refuses empty).
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
   return found;
 }
@@ -223,6 +226,7 @@ async function dryRun({ agent, skill, model, subjectLane, judgeModel }) {
 }
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const mode = parseEvalFlagsOrExit('flood-line');
   if (mode === 'dry') {
     const agent = await tsImport(AGENT_SRC, import.meta.url);

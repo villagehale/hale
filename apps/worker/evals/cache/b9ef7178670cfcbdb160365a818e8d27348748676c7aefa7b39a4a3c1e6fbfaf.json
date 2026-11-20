@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Registration for Sat 9:30 AM isn't open yet. It opens Monday, January 12 at 7:00 AM, and you'll need to do the sign-up yourself then. Here's the page: https://register.example-rec.test/activity/42\nIt'll help to have these ready: Lena, Ferreira, Sam, sam@example.test."
+  },
+  "latencyMs": 1645,
+  "usage": {
+    "input_tokens": 292,
+    "output_tokens": 120,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

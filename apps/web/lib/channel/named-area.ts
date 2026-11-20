@@ -156,7 +156,9 @@ export function createNamedAreaReader(
 let shared: NamedAreaReader | null = null;
 
 export function sharedNamedAreaReader(): NamedAreaReader {
-  shared ??= createNamedAreaReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createNamedAreaReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' }),
+  );
   return shared;
 }
 

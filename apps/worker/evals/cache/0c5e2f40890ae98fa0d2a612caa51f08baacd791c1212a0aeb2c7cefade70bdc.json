@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "Hey! How was the first parent and tot swim? Did your little one splash around or cling like a koala?"
+  },
+  "stopReason": "tool_use"
+}

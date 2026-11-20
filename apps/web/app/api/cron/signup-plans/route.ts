@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { registrationPlanRunEnabled } from '~/lib/signup/plan/flag';
-import { signupPlanDepsFromEnv } from '~/lib/signup/plan/notice';
+import { signupPlanDepsFromEnv, signupPlanPrepDepsFromEnv } from '~/lib/signup/plan/notice';
+import { runDueSignupPlanPrep } from '~/lib/signup/plan/prep';
 import { runDueSignupPlans } from '~/lib/signup/plan/run';
 
 // Node runtime: the sweep opens Postgres and drives Browser Use runs.
@@ -21,10 +22,8 @@ export const GET = cronRoute('signup-plans', async () => {
     return NextResponse.json({ ok: true, skipped: 'flag_off' }, { status: 200 });
   }
   const database = db();
-  const result = await runDueSignupPlans(
-    database,
-    { now: new Date() },
-    signupPlanDepsFromEnv(database),
-  );
-  return NextResponse.json({ ok: true, ...result }, { status: 200 });
+  const now = new Date();
+  const prep = await runDueSignupPlanPrep(database, { now }, signupPlanPrepDepsFromEnv(database));
+  const result = await runDueSignupPlans(database, { now }, signupPlanDepsFromEnv(database));
+  return NextResponse.json({ ok: true, ...result, prep }, { status: 200 });
 });

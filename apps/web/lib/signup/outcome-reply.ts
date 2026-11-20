@@ -1,7 +1,7 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, hasGarbledText, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { foreignLinks } from '~/lib/format/link-shape';
+import { foreignLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -15,6 +15,14 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * A missing client, skill or a failed draft returns null and nothing is sent.
  */
 
+/** Present only when Hale skipped Browser Use because the seasonal allowance is spent. */
+export interface SignupHelpSeasonFacts {
+  used: number;
+  cap: number;
+  /** Next season's first local calendar day (YYYY-MM-DD). */
+  resetsOn: string;
+}
+
 export interface SignupOutcomeFacts {
   outcome: string;
   reason: string | null;
@@ -22,6 +30,11 @@ export interface SignupOutcomeFacts {
   confirmed: boolean;
   sessionLabel: string | null;
   link: string;
+  /**
+   * When set, Hale did not run the assisted sign-up: this household already used
+   * its seasonal allowance. The model restates these numbers; it never names a plan.
+   */
+  signupHelpSeason?: SignupHelpSeasonFacts;
   /**
    * What `link` opens: the provider's own registration page, or a browser Hale left
    * open on the provider's site holding the page or cart. Null when `link` is ''.
@@ -76,7 +89,11 @@ export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts)
   });
   if (facts.link && !tidy.includes(facts.link)) out.push('missing the hand-off link');
   if (links.length > 0) {
+    noteLinkGate('signup-outcome', 'redraft');
     out.push(`${facts.link ? 'contains another link' : 'contains a link'}: ${links.join(', ')}`);
+  }
+  if (hasGarbledText(tidy)) {
+    out.push('garbled characters: an accented letter came out as two or three other characters');
   }
   return out;
 }

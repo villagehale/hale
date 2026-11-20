@@ -9,10 +9,12 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqChatAuditKey } from './family-audit';
 import {
   type FamilyPrivateSlice,
+  joinConsent,
   presentHouseholds,
   readFamilySliceForAudience,
 } from './multi-family';
 import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledger';
+import { primaryParentId } from './roster-ask';
 
 /**
  * VIL-457 — private info goes to that family 1:1, never into the group.
@@ -35,9 +37,10 @@ import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledge
  *      when nothing overlaps or it would repeat the last aside with nothing changed. Code
  *      never compares texts or topics, and never decides a clash by keyword.
  *
- * Code checks facts only: each ref is a household present in THIS chat; one aside per
- * (group message, family), keyed on the audit row; the draft is non-empty. A failed read
- * or draft sends nothing (no fixed copy, no fallback).
+ * Code checks facts only: each ref is a household present in THIS chat whose own join
+ * consent for the chat is granted; one aside per (group message, family), keyed on the
+ * audit row; the draft is non-empty. A failed consent read, model read, or draft sends
+ * nothing (no fixed copy, no fallback to whoever is merely present).
  */
 
 export const PRIVATE_ASIDE_AUDIT = 'linq_private_aside_sent';
@@ -246,12 +249,14 @@ async function asideForFamily(
     }),
   });
   // Recorded whatever the delivery said, so a retry of the same message never re-sends to
-  // this family. Every adult in the family gets a copy of this row, so it says only that
-  // an aside went out: the text stays on the recipient's own 1:1 ledger row.
+  // this family. The text stays on the recipient's own 1:1 ledger row. The audit names
+  // that adult as audience (the primary parent the 1:1 door texts).
+  const audience = await primaryParentId(database, familyId);
   await database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: PRIVATE_ASIDE_AUDIT,
+    ...(audience ? { audience } : {}),
     targetTable: 'channel_messages',
     targetId: input.inboundId,
     after: { ...linqChatAuditKey(input.chatId), delivered },
@@ -272,12 +277,28 @@ export async function runPrivateAside(
     language: string | null;
   },
 ): Promise<PrivateAsideOutcome> {
-  // Presence, not a join: a household hears about its own facts 1:1 while someone from it
-  // is here, has not stopped Hale here, and its parent has not said it is out.
-  const familyIds = await presentHouseholds(database, input.chatId, {
+  // Present, not stopped, and not marked out — then that household's own join consent.
+  // This runs only while LINQ_MULTI_FAMILY_GROUPS_ENABLED is exactly `true`
+  // (takeMultiFamilyTurn). The consent filter sits inside that gate.
+  const presentIds = await presentHouseholds(database, input.chatId, {
     includeStopped: false,
     includeLeft: false,
   });
+  if (presentIds.length === 0) return { outcome: 'no_families' };
+
+  let familyIds: string[];
+  try {
+    familyIds = [];
+    for (const id of presentIds) {
+      if ((await joinConsent(database, input.chatId, id)).allowed) familyIds.push(id);
+    }
+  } catch (err) {
+    console.warn(
+      { chatId: input.chatId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq private aside: consent read failed',
+    );
+    return { outcome: 'read_failed' };
+  }
   if (familyIds.length === 0) return { outcome: 'no_families' };
 
   const slices = new Map<string, FamilyPrivateSlice>();
@@ -386,6 +407,8 @@ export function createPrivateAsideModel(
 let shared: PrivateAsideModel | null = null;
 
 export function sharedPrivateAsideModel(): PrivateAsideModel {
-  shared ??= createPrivateAsideModel(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createPrivateAsideModel(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }

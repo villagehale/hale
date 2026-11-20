@@ -109,6 +109,31 @@ async function snapshot(familyEventId: string) {
   return { counts, event };
 }
 
+describe('VIL-691 calendar write notice dedupe', () => {
+  it('queues one notice per write, and a later pass matches that key', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('F14_ENABLED', 'true');
+    const s = await seed();
+    const ports = productionCalendarWriteNoticePorts(db.database);
+    const key = `calendar_write_notice:${s.familyId}:${s.parentUserId}:${s.familyEventId}:create`;
+    const text = 'Swim is on your calendar.';
+
+    await expect(ports.send(s.familyId, s.parentUserId, text, 'short', key)).resolves.toBe(
+      'queued',
+    );
+    await expect(ports.send(s.familyId, s.parentUserId, text, 'short', key)).resolves.toBe(
+      'queued',
+    );
+
+    const rows = await db.database
+      .select({ dedupeKey: schema.proactiveCandidates.dedupeKey })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, s.familyId));
+    expect(rows.map((row) => row.dedupeKey)).toEqual([key]);
+    expect(key).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
 describe('VIL-454 production notice ports, real database', () => {
   it('lets a send through for an enrolled parent in the daytime', async () => {
     const s = await seed();
@@ -153,6 +178,34 @@ describe('VIL-454 production notice ports, real database', () => {
       expect(await snapshot(s.familyEventId)).toEqual(before);
     });
   }
+
+  it('writes in the stored language after one off-language turn', async () => {
+    const s = await seed();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, s.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, s.parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: s.familyId,
+      parentUserId: s.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    const loaded = await productionCalendarWriteNoticePorts(db.database).loadEvent({
+      familyId: s.familyId,
+      familyEventId: s.familyEventId,
+      op: 'create',
+      actorUserId: s.parentUserId,
+    });
+    expect(typeof loaded === 'string' ? loaded : loaded.language).toBe('fr');
+  });
 
   it("states the start in the parent's own zone, a US zone included", async () => {
     const s = await seed('America/Los_Angeles');

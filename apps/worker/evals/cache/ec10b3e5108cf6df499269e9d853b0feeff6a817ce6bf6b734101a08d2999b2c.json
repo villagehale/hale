@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada is registered and that a spot is confirmed, but run.confirmed is false and run.detail is unconfirmed, so claiming registration breaks the rule against saying registered when not confirmed. It also says $98 went on the card, while run.charged is 9800 cents, which matches, but the registration claim is the core failure and the text omits the required note that the parent should check the browser left open.",
+    "score": 1
+  }
+}

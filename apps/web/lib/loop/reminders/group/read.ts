@@ -171,6 +171,8 @@ export function createGroupReminderReader(
 let shared: GroupReminderReader | null = null;
 
 export function sharedGroupReminderReader(): GroupReminderReader {
-  shared ??= createGroupReminderReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupReminderReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reminder' }),
+  );
   return shared;
 }

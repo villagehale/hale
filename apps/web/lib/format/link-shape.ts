@@ -15,21 +15,82 @@
  * a parent's text. So "the page.Check it", "St.Mary pool", "Mr.Smith" and "请拨打988.你"
  * are refused. What still passes: one-letter endings ("a.m.", "e.g.", "U.S."), a dot
  * before digits ("10.30am"), a dot before a space ("St. Mary's"), a doubled-letter plural
- * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 after a CJK
- * character or a digit and before a CJK run with no '/' after it ("你好。我们", "988。全天").
+ * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 before a CJK
+ * run with no '/' after it ends a sentence ("你好。我们", "7:00 AM。到时候"), unless the run
+ * starts with an ending the root zone delegates ("evil。在线", "evil。在线报名", "例子。中国").
+ *
+ * Shapes a phone also linkifies, and the first check did not, sit behind
+ * SHARED_LINK_CHECK_ENABLED (exactly `true`, otherwise off): a middle dot, a
+ * one-sided space around a real ending, a digit standing in for a letter in an
+ * ending ("evil.c0m"), localhost with a port or a path, and a scheme with no
+ * slashes. The check that already ships stays on either way. Turning that off
+ * would put bare hosts back into parent texts.
  */
+
+import { ROOT_ZONE_TLDS } from './root-zone-tlds';
+
+/** Off unless the value is exactly `true`. `true\n`, `TRUE` and `1` stay off. */
+export const SHARED_LINK_CHECK_ENABLED_ENV = 'SHARED_LINK_CHECK_ENABLED';
+
+export function sharedLinkCheckEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[SHARED_LINK_CHECK_ENABLED_ENV] === 'true';
+}
+
+export type LinkGateKind = 'refused' | 'redraft';
+
+/** Whether this attempt is asked again, or is the last one and nothing is sent. */
+export function linkAttemptKind(attempt: number, maxAttempts: number): LinkGateKind {
+  return attempt < maxAttempts ? 'redraft' : 'refused';
+}
+
+/** A count of one gate decision. The draft's words never go on this line. */
+export function noteLinkGate(gate: string, kind: LinkGateKind): void {
+  console.info({ kind, gate }, 'link gate');
+}
+
+/** The same check as {@link hasLinkShape}, plus one counts-only log when it hits. */
+export function draftCarriesLink(text: string, gate: string, kind: LinkGateKind): boolean {
+  const hit = hasLinkShape(text);
+  if (hit) noteLinkGate(gate, kind);
+  return hit;
+}
+
+/** The same check as {@link hasLinkBeyond}, plus one counts-only log when it hits. */
+export function draftCarriesLinkBeyond(
+  text: string,
+  handed: readonly string[],
+  gate: string,
+  kind: LinkGateKind,
+): boolean {
+  const hit = hasLinkBeyond(text, handed);
+  if (hit) noteLinkGate(gate, kind);
+  return hit;
+}
 
 const SCHEME = /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\//i;
 const WWW = /(?<![\p{L}\p{N}])www\./iu;
 const PUNYCODE = /xn--/i;
 const DOTTED_QUAD = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?!\p{N}|\.\p{N})/u;
+// A scheme a phone opens that has no slashes. Only when the stricter flag is on.
+const OPAQUE_SCHEME = /(?<![\p{L}\p{N}])(?:javascript|data|mailto):/iu;
+const LOCALHOST_LINK = /(?<![\p{L}\p{N}_-])localhost(?::\d+|\/\S*)/iu;
+// U+FF65 folds to U+30FB under NFKC, and U+2024 folds to '.', both before this.
+const MIDDLE_DOT = /[\u00B7\u2027\u30FB]/g;
+const SPACE_BEFORE_DOT = /([\p{L}\p{N}])[ \t]+\.(?!\s)([\p{L}\p{M}][\p{L}\p{M}\p{N}]*)/gu;
+const SPACE_AFTER_DOT = /([\p{L}\p{N}])\.[ \t]+([\p{L}\p{M}][\p{L}\p{M}\p{N}]*)/gu;
+const LEET_DIGIT = /[013457]/;
 
-const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}`;
+// Script_Extensions, so the shared marks a CJK word is written with stay in its run: the
+// Katakana long-vowel mark in 'セール', the iteration mark in '時々'.
+const CJK = String.raw`\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}`;
 // NFKC folds U+FF0E and U+FE52 to '.', and U+FF61 to U+3002, which it leaves alone.
 const IDEOGRAPHIC_DOT = /\u3002/gu;
-const CJK_OR_DIGITS = new RegExp(`^[${CJK}\\p{N}]+$`, 'u');
-const CJK_RUN_WITHOUT_PATH = new RegExp(`[${CJK}]+(?![${CJK}/])`, 'uy');
-const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
+const CJK_RUN = new RegExp(`[${CJK}]+`, 'uy');
+/** Bracketed or spaced dots ("evil[.]app", "bit . ly"), which a reader closes up. Exported
+ * for a gate that keeps its own index map over the text (coach/email-only-tokens.ts). */
+export const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
 // 'EE.UU.' (Spanish for the US) when nothing name-like follows it.
 const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p{N}])/gu;
 
@@ -41,14 +102,77 @@ const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 const NOTHING_TRUSTED: ReadonlySet<string> = new Set();
 
 function readAsHandset(text: string, trusted: ReadonlySet<string>): string {
-  return text
+  const read = text
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')
     .replace(IDEOGRAPHIC_DOT, (dot, at: number, whole: string) =>
-      endsACjkSentence(whole, at, trusted) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
+      endsBeforeCjkProse(whole, at) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
+    );
+  const folded = sharedLinkCheckEnabled() ? foldStricterDots(read) : read;
+  return folded.replace(BRACKETED_OR_SPACED_DOT, '.').replace(DOUBLED_PAIR_ABBREVIATION, ' ');
+}
+
+const LEET_TO_LETTER: Record<string, string> = {
+  '0': 'o',
+  '1': 'l',
+  '3': 'e',
+  '4': 'a',
+  '5': 's',
+  '7': 't',
+};
+
+function leetFold(ending: string, one: 'l' | 'i'): string {
+  return ending
+    .toLowerCase()
+    .replace(/[013457]/g, (digit) => (digit === '1' ? one : (LEET_TO_LETTER[digit] ?? digit)));
+}
+
+/** An ending a digit has disguised ("c0m" for "com"), and only a real ending.
+ * A run of only digits is a price or a time ("$12.50", "9.45"), not a host. */
+function leetDelegated(ending: string): boolean {
+  if (!/[\p{L}\p{M}]/u.test(ending) || !LEET_DIGIT.test(ending)) return false;
+  return (['l', 'i'] as const).some((one) => {
+    const folded = leetFold(ending, one);
+    return /^[\p{L}\p{M}]{2,}$/u.test(folded) && isDelegatedEnding(folded);
+  });
+}
+
+function endingIsDelegated(ending: string): boolean {
+  const label = ending.match(/^[\p{L}\p{M}]+/u)?.[0] ?? '';
+  if (label.length >= 2 && label === ending && isDelegatedEnding(label)) return true;
+  return leetDelegated(ending);
+}
+
+function closeOneSided(
+  whole: string,
+  prev: string,
+  ending: string,
+  offset: number,
+  text: string,
+): string {
+  if (!endingIsDelegated(ending)) return whole;
+  // A one-letter name is an abbreviation ("a.m. sharp", and .sharp is a real ending).
+  const before = offset > 0 ? text.charAt(offset - 1) : '';
+  if (!/^[\p{L}\p{N}]$/u.test(before)) return whole;
+  // "988. You" is a sentence. The root zone delegates you, it, now, call.
+  // A capital after the stop is that sentence, not a host. "evil. app" stays a host.
+  if (/\.\s+\p{Lu}/u.test(whole)) return whole;
+  const label = ending.match(/^[\p{L}\p{M}\p{N}]+/u)?.[0] ?? ending;
+  return `${prev}.${label}${ending.slice(label.length)}`;
+}
+
+/** Middle dots, and a space on one side of a dot whose ending the root zone delegates. */
+function foldStricterDots(text: string): string {
+  return text
+    .replace(MIDDLE_DOT, '.')
+    .replace(
+      SPACE_BEFORE_DOT,
+      (whole, prev: string, ending: string, offset: number, text: string) =>
+        closeOneSided(whole, prev, ending, offset, text),
     )
-    .replace(BRACKETED_OR_SPACED_DOT, '.')
-    .replace(DOUBLED_PAIR_ABBREVIATION, ' ');
+    .replace(SPACE_AFTER_DOT, (whole, prev: string, ending: string, offset: number, text: string) =>
+      closeOneSided(whole, prev, ending, offset, text),
+    );
 }
 
 /** A gate that splits or filters a draft splits this reading, never the raw text, so it
@@ -70,16 +194,28 @@ function nameBefore(text: string, at: number): string {
   return text.slice(start, at);
 }
 
-const LATIN_RUNS = /[\p{Script=Latin}\p{M}]+/gu;
+const DELEGATED = new Set(ROOT_ZONE_TLDS.trim().split(/\s+/));
+const LONGEST_DELEGATED = Math.max(...[...DELEGATED].map((ending) => [...ending].length));
 
-/** A trusted word inside the CJK run before the stop ("Hale这边不会代办。") is no host label;
- * one right before it ("我是Hale。") still is. */
-function endsACjkSentence(text: string, at: number, trusted: ReadonlySet<string>): boolean {
-  const name = nameBefore(text, at);
-  const last = [...name].pop() ?? '';
-  const rest = name.replace(LATIN_RUNS, (run) => (trusted.has(run.toLowerCase()) ? '' : run));
-  CJK_RUN_WITHOUT_PATH.lastIndex = at + 1;
-  return CJK_OR_DIGITS.test(last) && CJK_OR_DIGITS.test(rest) && CJK_RUN_WITHOUT_PATH.test(text);
+function isDelegatedEnding(label: string): boolean {
+  return DELEGATED.has(label.toLowerCase());
+}
+
+/** Unspaced CJK has no word edge a phone must respect, so any delegated ending the run
+ * starts with may be the one it links ('在线' out of '在线报名'). */
+function startsWithDelegatedEnding(run: string): boolean {
+  const chars = [...run].slice(0, LONGEST_DELEGATED);
+  return chars.some((_char, index) => isDelegatedEnding(chars.slice(0, index + 1).join('')));
+}
+
+/** The stop ends a sentence before a CJK run ("AM。到时候"), taken up to the next other
+ * character, unless that run starts with a delegated ending or a path follows it
+ * ("例子。在线", "evil。在线报名", "你好。我们/x"). */
+function endsBeforeCjkProse(text: string, at: number): boolean {
+  CJK_RUN.lastIndex = at + 1;
+  const run = CJK_RUN.exec(text)?.[0];
+  if (run === undefined) return false;
+  return text[at + 1 + run.length] !== '/' && !startsWithDelegatedEnding(run);
 }
 
 const CJK_CHAR = new RegExp(`^[${CJK}]$`, 'u');
@@ -89,7 +225,8 @@ const HOST_CONTINUES = /^[\p{L}\p{M}\p{N}._@/:'’-]$/u;
 
 /**
  * "日历上。Ana、Sam" or "没有空位了。Hale不会": a full stop after a CJK character and before
- * exactly one trusted word ends the sentence. "例子。app" and "evil。app" stay dots.
+ * exactly one trusted word ends the sentence. "例子。app" and "evil。app" stay dots, and so
+ * does a trusted name that is itself a delegated ending ("例子。Ai").
  */
 function endsBeforeTrustedWord(text: string, at: number, trusted: ReadonlySet<string>): boolean {
   if (trusted.size === 0) return false;
@@ -97,7 +234,7 @@ function endsBeforeTrustedWord(text: string, at: number, trusted: ReadonlySet<st
   if (!CJK_CHAR.test(before)) return false;
   LATIN_RUN.lastIndex = at + 1;
   const run = LATIN_RUN.exec(text)?.[0];
-  if (run === undefined || !trusted.has(run.toLowerCase())) return false;
+  if (run === undefined || !trusted.has(run.toLowerCase()) || isDelegatedEnding(run)) return false;
   const next = [...text.slice(at + 1 + run.length, at + 3 + run.length)][0] ?? '';
   return next === '' || CJK_CHAR.test(next) || !HOST_CONTINUES.test(next);
 }
@@ -107,7 +244,9 @@ function dotEndsAHost(text: string, at: number): boolean {
   const name = nameBefore(text, at);
   RUN_AFTER_DOT.lastIndex = at + 1;
   const ending = RUN_AFTER_DOT.exec(text)?.[0];
-  return LETTER_OR_DIGIT.test(name) && ending !== undefined && LETTERS_ONLY.test(ending);
+  if (!LETTER_OR_DIGIT.test(name) || ending === undefined) return false;
+  if (LETTERS_ONLY.test(ending)) return true;
+  return sharedLinkCheckEnabled() && leetDelegated(ending);
 }
 
 export function hasLinkShape(text: string): boolean {
@@ -119,7 +258,13 @@ function readHasLinkShape(read: string): boolean {
 }
 
 function hasMarkedLink(read: string): boolean {
-  return SCHEME.test(read) || WWW.test(read) || PUNYCODE.test(read) || DOTTED_QUAD.test(read);
+  return (
+    SCHEME.test(read) ||
+    WWW.test(read) ||
+    PUNYCODE.test(read) ||
+    DOTTED_QUAD.test(read) ||
+    (sharedLinkCheckEnabled() && (OPAQUE_SCHEME.test(read) || LOCALHOST_LINK.test(read)))
+  );
 }
 
 /** Each 'name.ending' a handset would link, as read. */
@@ -133,17 +278,61 @@ function hostsIn(read: string): string[] {
   return hosts;
 }
 
-const WORD_EDGE = /^[([{<"'“‘]+|[.,;:!?)\]}>"'”’]+$/gu;
+const WORD = /\S+/gu;
+const WORD_LEAD = /^[([{<"'“‘]+/u;
+const WORD_TAIL = /[.,;:!?)\]}>"'”’]+$/u;
+
+export interface WordSpan {
+  word: string;
+  /** Where the word sits in the reading it was read from. */
+  from: number;
+  to: number;
+}
+
+/** The words of a handset reading ({@link asHandsetReads}) with their prose edges dropped,
+ * and where each sits, so a gate can cut a word out of the very text it checked. */
+export function wordSpans(read: string): WordSpan[] {
+  const spans: WordSpan[] = [];
+  for (const match of read.matchAll(WORD)) {
+    const lead = match[0].match(WORD_LEAD)?.[0].length ?? 0;
+    const word = match[0].slice(lead).replace(WORD_TAIL, '');
+    const from = match.index + lead;
+    if (word) spans.push({ word, from, to: from + word.length });
+  }
+  return spans;
+}
 
 function wordsOf(read: string): string[] {
-  return read
-    .split(/\s+/)
-    .map((word) => word.replace(WORD_EDGE, ''))
-    .filter((word) => word.length > 0);
+  return wordSpans(read).map((span) => span.word);
 }
 
 export function wordsAsHandsetReads(text: string): string[] {
-  return wordsOf(asHandsetReads(text));
+  return wordSpans(asHandsetReads(text)).map((span) => span.word);
+}
+
+const LEADING_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
+/**
+ * The host a phone opens for a link-shaped word, lowercased, read by the URL parser a
+ * browser uses, so no gate reads a host differently from the browser: a scheme inside a
+ * query or a port is the parser's to read. A word with no scheme is read as an http link.
+ * Null when the parser refuses the word, when it carries a user part
+ * ('villagehale.com:443@evil.app', 'parents@evil.app'), whose host a reader mistakes, or
+ * when it holds a backslash, which the parser reads as a slash and a reader may not
+ * ('http://villagehale.com\\@evil.app' shows evil.app); a gate treats null as a host it
+ * does not know.
+ */
+export function linkHostname(word: string): string | null {
+  if (word.includes('\\')) return null;
+  let url: URL;
+  try {
+    url = new URL(LEADING_SCHEME.test(word) ? word : `http://${word}`);
+  } catch (error) {
+    if (error instanceof TypeError) return null;
+    throw error;
+  }
+  if (url.username || url.password) return null;
+  return url.hostname.toLowerCase();
 }
 
 /**
@@ -170,15 +359,16 @@ export function withoutLinks(text: string): string {
     .join(' ');
 }
 
-// A handed link is code's URL.href, so printable ASCII; the token ends at the first other
-// character, which keeps Chinese or Japanese written right after a link out of it.
+// A handed link is code's URL.href, so printable ASCII; the token ends at whitespace or the
+// first other character, which keeps Chinese or Japanese written right after a link out of it.
 const SCHEME_TOKEN = /https?:\/\/[\x21-\x7E]+/gi;
-const TRAILING_PROSE = /[.,;:!?)\]}>'"]+$/;
+// Punctuation that may close a link when nothing else in the token follows it. Anything
+// else glued on ('!@evil', ',evil', '%2F@evil.app') could carry the URL on.
+const CLOSING_PUNCTUATION = /[.,;:!?'"()[\]{}<>]*$/;
 
 function sameLink(token: string, handed: readonly string[]): boolean {
-  const bare = token.replace(TRAILING_PROSE, '');
   try {
-    const href = new URL(bare).href;
+    const href = new URL(token).href;
     return handed.some((link) => new URL(link).href === href);
   } catch (error) {
     if (error instanceof TypeError) return false;
@@ -186,15 +376,65 @@ function sameLink(token: string, handed: readonly string[]): boolean {
   }
 }
 
+function readCharacters(text: string): string {
+  return text.normalize('NFKC').replace(/\p{Cf}/gu, '');
+}
+
+// The token stops at the first non-ASCII character, but a phone reads a full stop and a
+// letter after it as more of the link: '<link>.рф' is the host '<host>.рф'.
+const READ_ON = /^[\p{L}\p{N}]/u;
+
 /**
- * Whether a draft carries any link other than the ones code handed it. A handed link
- * counts only as itself, compared as a parsed URL, so '<link>.evil.tld' or '<link>@host'
- * is another link; everything left after the handed links is read with
- * {@link hasLinkShape}, so a scheme-less domain beside them is caught too.
+ * Where a handed link ends in a scheme token, or null when the token is not one. `next` is
+ * the character after the token, so a full stop it reads on through is not closing.
+ */
+function handedLinkEnd(token: string, handed: readonly string[], next = ''): number | null {
+  if (token.endsWith('.') && READ_ON.test(next)) return null;
+  const bare = token.replace(CLOSING_PUNCTUATION, '').length;
+  for (let end = token.length; end >= bare; end -= 1) {
+    if (sameLink(token.slice(0, end), handed)) return end;
+  }
+  return null;
+}
+
+function nextAfter(read: string, index: number, token: string): string {
+  return read.charAt(index + token.length);
+}
+
+/**
+ * The text with each handed link set aside, read as a handset reads its characters. A
+ * handed link counts only as itself, compared as a parsed URL, and only where all that
+ * follows it before whitespace, the end or a non-ASCII character is closing punctuation:
+ * '<link>(场次', '<link>)。' and '<link>!' are the link, while '<link>.evil.tld',
+ * '<link>．app', '<link>@host' and '<link>!@host' are another link. The link and that
+ * closing punctuation go together: a full stop left behind would read as a spaced dot and
+ * join the words around it ('page is <link>. Max' as 'is.Max').
+ */
+function withoutHanded(text: string, handed: readonly string[]): string {
+  return readCharacters(text).replace(SCHEME_TOKEN, (token, index: number, read: string) =>
+    handedLinkEnd(token, handed, nextAfter(read, index, token)) === null ? token : ' ',
+  );
+}
+
+/**
+ * Whether the text carries this one link whole, by the rule {@link hasLinkBeyond} sets a
+ * handed link aside with. Never a substring: a text that says 'https://x.example/swim'
+ * does not carry 'https://x.example/sw'.
+ */
+export function carriesLink(text: string, link: string): boolean {
+  const read = readCharacters(text);
+  return [...read.matchAll(SCHEME_TOKEN)].some(
+    ({ 0: token, index }) => handedLinkEnd(token, [link], nextAfter(read, index, token)) !== null,
+  );
+}
+
+/**
+ * Whether a draft carries any link other than the ones code handed it. Everything left
+ * after the handed links is read with {@link hasLinkShape}, so a scheme-less domain beside
+ * them is caught too.
  */
 export function hasLinkBeyond(text: string, handed: readonly string[]): boolean {
-  const rest = text.replace(SCHEME_TOKEN, (token) => (sameLink(token, handed) ? ' ' : token));
-  return hasLinkShape(rest);
+  return hasLinkShape(withoutHanded(text, handed));
 }
 
 /** Hale's own name, which every writer may say. */
@@ -240,10 +480,7 @@ export function foreignLinks(text: string, trusted: TrustedFacts): string[] {
   const names = new Set(trustedNames(trusted.words));
   const email = trusted.email?.trim().toLowerCase();
   const known = email ? new Set([...names, email]) : names;
-  const rest = text.replace(SCHEME_TOKEN, (token) =>
-    sameLink(token, trusted.handed) ? ' ' : token,
-  );
-  const found = wordsOf(readAsHandset(rest, names))
+  const found = wordsOf(readAsHandset(withoutHanded(text, trusted.handed), names))
     .filter((word) => readHasLinkShape(word) && !isTrustedWord(word, known))
     .flatMap(namedPart);
   return [...new Set(found)];

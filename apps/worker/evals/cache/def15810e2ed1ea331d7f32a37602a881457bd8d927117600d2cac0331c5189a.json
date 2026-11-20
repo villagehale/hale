@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "A followup is Hale checking back on something it set up; it is Thursday 6 PM local (outside quiet hours), the parent replied to the last send, no streak, no pace preference, no decline, so it goes on time.",
+    "action": "send_now",
+    "item_ids": [
+      "back"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -17,8 +17,35 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /** Linq's documented replay window. */
 export const LINQ_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 
+/**
+ * How long Linq waits for this door to answer one delivery attempt, counted from the
+ * attempt's `webhook-timestamp`. Past it the attempt has failed and Linq retries with the
+ * same event (docs: "Response timeout: 10 seconds").
+ */
+export const LINQ_WEBHOOK_TIMEOUT_MS = 10_000;
+
 /** The payload version this door accepts. Pinned on the subscription URL. */
 export const LINQ_WEBHOOK_VERSION = '2026-02-03';
+
+/**
+ * The bytes {@link verifyLinqWebhookSignature} checks. One signer, so the
+ * ten-minute canary and the production text gate cannot drift apart.
+ */
+export function signLinqWebhook(input: {
+  secret: string;
+  webhookId: string;
+  timestamp: string;
+  rawBody: string;
+}): string {
+  const secretStr = input.secret.startsWith('whsec_')
+    ? input.secret.slice('whsec_'.length)
+    : input.secret;
+  const key = Buffer.from(secretStr, 'base64');
+  const mac = createHmac('sha256', key)
+    .update(`${input.webhookId}.${input.timestamp}.${input.rawBody}`)
+    .digest('base64');
+  return `v1,${mac}`;
+}
 
 export function verifyLinqWebhookSignature(input: {
   secret: string;

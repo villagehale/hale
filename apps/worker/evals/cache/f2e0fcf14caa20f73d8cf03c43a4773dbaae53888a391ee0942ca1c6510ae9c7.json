@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale will send an invitation to a number, which is a co-parent or caregiver invite. Rows are empty and such claims always cite none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2008
+}

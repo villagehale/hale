@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse, after } from 'next/server';
+import { reportBillingPurchase } from '~/lib/billing/conversions';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
@@ -56,7 +57,20 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
     }
     const applied = await applyStripeBillingEvent(billingEvent);
-    return NextResponse.json({ status: applied.status }, { status: 200 });
+    if (applied.status === 'applied') {
+      try {
+        await reportBillingPurchase(billingEvent);
+      } catch (err) {
+        console.warn('billing conversions: report failed', {
+          err: err instanceof Error ? err.name : 'unknown',
+        });
+      }
+    }
+    const body: { status: string; opsAlert?: string } = { status: applied.status };
+    if (applied.status === 'refund_ready') {
+      body.opsAlert = applied.opsAlert;
+    }
+    return NextResponse.json(body, { status: 200 });
   }
 
   // ── Gmail / Calendar push (VIL-401) ───────────────────────────────────────

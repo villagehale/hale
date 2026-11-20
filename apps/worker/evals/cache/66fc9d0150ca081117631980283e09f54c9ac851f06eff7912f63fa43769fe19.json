@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这一场,我这边没能完成报名。\n你可以直接在这里报名:https://register.example-rec.test/activity/42\n表单要填的信息我帮你列好了:孩子名字 Lena,姓 Ferreira,家长名字 Sam,邮箱 sam@example.test。"
+  },
+  "latencyMs": 2521,
+  "usage": {
+    "input_tokens": 224,
+    "output_tokens": 114,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -455,6 +455,7 @@ export async function runDeletionSweep(
       database,
       inArray(schema.linqSharedGroupPeople.familyId, familyIds),
       now,
+      'erased',
     );
   }
 

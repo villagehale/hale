@@ -7,7 +7,7 @@ import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -121,7 +121,10 @@ function shapeIntroAskRefusals(body: string, request: IntroAskRequest): IntroAsk
   if (body === '') return ['empty'];
   if (body.length > MAX_INTRO_ASK_CHARS) found.push('over_char_cap');
   if (smsSegments(body) > MAX_INTRO_SEGMENTS) found.push('over_segment_cap');
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('intro-voice', 'redraft');
+    found.push('carries_link');
+  }
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
 
@@ -316,7 +319,7 @@ let cached: Anthropic | undefined;
  * construction — it must produce the named `client_unavailable` deferral. */
 export function introVoiceClient(): AgentClient {
   // Sweep composer under the nudge cron's maxDuration 300 (audit P1-7).
-  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'voice' });
   return cached;
 }
 

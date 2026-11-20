@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale will keep searching for activities for young children, matching pending row p1. It also says the child's checkup is booked, but no row covers the checkup, so that claim is cited to none. The Tuesday registration opening is a statement about the world with no Hale watch behind it, so it is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2841
+}

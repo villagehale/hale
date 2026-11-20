@@ -12,11 +12,26 @@ export {
   TORONTO_FOLLOW,
   YMCA_FOLLOW,
   recMorningBody,
+  recMorningCatalog,
+  recMorningIntakeAsksOwnTown,
   recMorningIntakeReply,
   recMorningReply,
+  recMorningTopicsForCity,
   writeRecMorningIntakeReply,
   writeRecMorningReply,
 } from './copy';
+export {
+  REC_MORNING_MODEL_TOPIC_ENABLED_ENV,
+  recMorningModelTopicEnabled,
+} from './flag';
+export {
+  type RecMorningCatalogEntry,
+  type RecMorningPicked,
+  type RecMorningTopicPickInput,
+  type RecMorningTopicPicker,
+  acceptRecMorningTopic,
+  setSharedRecMorningTopicPicker,
+} from './topic';
 export { cityRecLine } from './city-line';
 export {
   type RecHelloCity,
@@ -24,6 +39,7 @@ export {
   type RecMorningTopic,
   type RecMorningWhere,
   matchRecMorning,
+  recMorningAsksOwnTown,
   resolveHelloCity,
   resolveRecMorningWhere,
 } from './match';

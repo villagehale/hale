@@ -26,8 +26,11 @@ vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
   const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
   return {
     ...actual,
-    proactiveCadence: () =>
-      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+    proactiveCadence: () => {
+      const requested = actual.requestedCadence();
+      if (!routing.complete && requested === 'live') return 'shadow';
+      return requested;
+    },
   };
 });
 

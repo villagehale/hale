@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question with two class recommendations and the registration date, all in Chinese and matching the facts. Bubble 1 and bubble 2 each carry one class with its day/time and dates; bubble 3 states the shared registration opening and has the single question in the final bubble, followed by the page addresses. Both classes, their days and times, and Dec 1 at 7:00 are present. Times are given in Toronto local clock as the facts indicate (9:30 and 10:15 as listed). No lead-in or count bubble, no invented facts, and the question is in the last bubble. The registration bubble is slightly a separate thought, but it is a reasonable standalone point, so this is a small stylistic issue at most.",
+    "score": 4
+  }
+}

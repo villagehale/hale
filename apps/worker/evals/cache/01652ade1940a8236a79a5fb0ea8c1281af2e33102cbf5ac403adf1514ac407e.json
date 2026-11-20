@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reasoning": "m1 asks about a fall program for Ada with a $600 budget. m2 is a correction of the budget to $900, which changes a number in m1, so it joins m1 as one ask.",
+    "groups": [
+      [
+        "m1",
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1977
+}

@@ -24,6 +24,7 @@ import {
   loadOpenCommitments,
 } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -51,9 +52,10 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
 const KEY = Buffer.alloc(32, 9).toString('base64');
 const PARENT_PHONE = '+14165550100';
 const TZ = 'America/Toronto';
-/** Halton Hills: outside civic-adapter coverage, no registration windows, nothing
- * discovered yet — the geo-empty cohort the forward beat exists for. */
-const AREA = 'L7G';
+/** Documented in lib/testing/fixture-postal.ts — outside the GTA municipality table,
+ * so no registration windows and nothing discovered yet. The geo-empty cohort the
+ * forward beat exists for. */
+const AREA = FIXTURE_FSA;
 /** Friday 10:00 Toronto — the parent texts in. */
 const INTAKE_AT = new Date('2026-07-31T14:00:00.000Z');
 /** Where "a day or two" runs out, per the promise's own clock. */
@@ -122,7 +124,7 @@ async function runIntakeRadar(): Promise<Intake> {
     handleInboundSms(fake.db, transport.inbound(PARENT_PHONE, body), deps);
 
   await text('hi');
-  const provisioned = await text('Nora is 30 months, we are at L7G');
+  const provisioned = await text(`Nora is 30 months, we are at ${AREA}`);
   // The name ask has to land before the sweep, or the find nudge asks it again.
   // Turtle, then the name. The year-find bubble is already its own turn.
   await text('later');
@@ -156,7 +158,7 @@ function liveFindFinallyAvailable(): void {
       ageFit: 'ages 0-5',
       when: 'Saturday 10 AM',
       price: 'free',
-      sourceName: 'Halton Hills Library',
+      sourceName: 'Riverside Library',
       source: 'web',
       sourceUrl: 'https://example.org/library',
       eventDate: '2026-08-08',

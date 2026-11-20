@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgwVNxQQ76kjUxgQ4U4fy",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAgKEAgTGAI4AUIIdGhpbmtpbmcSDAGv1E9x8TR+ooh6dRoMw1DWHAhLs/3Jan8aIjB53SQi6qa85CI8akXayB7SM8dQgdvZ1jS2zGivple2Y8ZWU4bPzStbrK0S+4JfqoAqxQcndabT5pyjEs5lwZjLp1gSaqADbIctVhD4KfU1vkUW9zmCbE/tYHCBcu6zPEv5BHQZhnjj0B6R5Kl4p7h/K1BmcouGvkjgXaq4j3lPFT3KIhklKG3Fn6lyqOBE18/E82kYaUoWkjV610eNkk10TZd/BPLeap5DAhLlsXxgvCtEcUm/EPP1yL76Efc1XGPbTP2ntRME1tisIszqY2EAoY6nyzRRSkWCAzJ6Xq2hogs4dCOp0W6X7G/GNOKY8nV+MH1NcIS+ZJGBN401IoFuu9zsUjOhxKw8xa1kdaUdaYfV74cejd5oR9MRC3XAYwkoWAJbGxQ0jZl0ou7JR8gJHetIX6/RV31Fi8EX3HaSdbfb0kixcZqs9m2dttnwq6DJvCLjK4IZRP1pv832CaPoCH69EBJoim/a13Y1NBFx04JIZmLaDh8aM12sdKvDfYW1iWfEIIgTfmT8PDTKiYO4ROKnMmi2AZgk+STHsgTgGpzAuBGKyiDEGIckiyDE8EhcP4gfNK+qAa4s82FLkgwtrBWWxa9SGI3q0O17noZYTN9+lD8D21RcwXJlo2Vpftd4PfH2DVTlwVIZ3P+HFvN5wlcTQnRsMOY5QFEwBtLO/ag4a9SJCT3pGVlfYgo6iqQJ1BZUJibiVsCFI89/LJmQOyBSdmK1BrL4kEOnCgqPnmtdKDO1rnc9rsSQvHd6enlCrogGtX5qtAtFKlZrysu75B84+jB4eh+4xBsGLZIfEAAscFIUZ8beJZPBHqZmXwJIjxc2EZC33x3z5TNKg4NRbdTqfjHk8sa5UgwdAI/6TyQejfJvZ/gEtjbAuh+e8vEf05Tu81jK9wxl8MJFhQqHKY5SD46ttdV3z9sK4a9cVoeq0E2eU+VAfPcRx1QVB5TuMqyPQuIDfkV3h+3HH9gIKrwz2hVJcOJEsansI2BYqVSXSAt8oIO7NYhrm+jy+mH5HkVB+Ijae9RTin8XOpyvP3kVWCliceM7dsGoVInyVAb1UYwfQWjuMSs2F2rsfIhmdmnojBNko4wS7Raj52yBl2gXJ94Ac81eSk5iPGZfNFUcYHb74rQ/PYsJ+3DVlpQfBFsZorIJDua+y9FJghzeX85X8sqNZk8jfJheIpXXtduegmVI2iqBHGxb/6A1iFBcOTBx1GyEa66SQBiLBUsSKgMvf58mr8K2g2u4kwvt8XQ2rL+nZk5YWxfMpL1WHE0dDmO+Xs+z6crlj+i2kTDa1NjAnG6EZ5Ce8ULBbcRlDEbSXfcItsj/nmiAxkqyrUP51vR2yEU4uhgB"
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Maya's swim is Saturday at 11:00am at Y on Main and Dana needs someone to do pickup. Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 700,
+      "cache_read_input_tokens": 18829,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 700,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 195,
+      "output_tokens_details": {
+        "thinking_tokens": 145
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

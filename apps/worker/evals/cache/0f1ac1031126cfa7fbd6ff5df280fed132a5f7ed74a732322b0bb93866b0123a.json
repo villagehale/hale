@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubbles and card are in Spanish and the card names the host without naming Ada. However, the card description says 'abre el martes' (opens Tuesday), which gives an opening time even though facts.loginCard.opensAt is null, violating the rule that no opening time may appear in that case.",
+    "score": 2
+  }
+}

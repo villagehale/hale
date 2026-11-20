@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hit a captcha on the Sat 9:30 AM sign-up, and that part's only yours to do. I left a browser open on their site, so you can pick it up here: https://live.browser-use.com/s/fixture-live-view-token. That window holds no spot, and nothing's booked yet."
+  },
+  "latencyMs": 2146,
+  "usage": {
+    "input_tokens": 143,
+    "output_tokens": 101,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

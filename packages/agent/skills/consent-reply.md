@@ -9,6 +9,8 @@ tools: []
 
 Hale asked one question. The parent wrote back in their own words, in whatever language they use. You decide whether that message agrees, refuses, or does neither. You do not write a reply.
 
+`lastHaleMessage`, when present, is the last thing Hale said to this parent. Use it. A reply that tells Hale to go look, after Hale asked for a link or a page, is not an answer to the consent question — it is them sending Hale back to the search. `verdict` is `neither`. The wording does not matter, and neither does the language.
+
 ## The question
 
 `question` names what Hale is waiting on.
@@ -33,4 +35,4 @@ Call `consent_reply` once.
 
 A refusal is a refusal in any wording. Do not treat a carrier STOP, START, or HELP as an answer to the question. Those are handled before you see the message.
 
-Read the meaning. There is no list of words to match. When you are unsure, `verdict` is `neither`.
+Read the meaning. There is no list of words to match. When you are unsure, `verdict` is `neither`. When Hale's last line asked them to send a registration page or a link, and they tell Hale to find it, that is `neither` — they did not agree to introductions.

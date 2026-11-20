@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
+import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
@@ -48,6 +49,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     parentPhone: async () => null,
     smsConsentLive: async () => true,
     activeDedupe: async () => false,
+    chatService: async () => null,
     record: async (w) => {
       ledger.push(w);
       return `row-${ledger.length}`;
@@ -65,6 +67,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     claimShadow: { dispatch: () => 'off' },
+    claimEnforce: { enforces: () => false, decide: async () => ({ status: 'off' as const }) },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -827,6 +830,121 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       { text: SAME, bold: undefined },
     ]);
   });
+
+  /** A channel whose texts land in one Linq chat on `transport`, stamped with the clock. */
+  function stampedChannel(transport: 'imessage' | 'sms') {
+    const sends: Array<[number, string]> = [];
+    return {
+      sends,
+      channel: {
+        kind: 'sms' as const,
+        async send(input: { userId: string; rendered: RenderedContent }) {
+          sends.push([Date.now(), input.rendered.text]);
+          return {
+            status: 'sent' as const,
+            providerMessageId: `m-${sends.length}`,
+            transport,
+            providerChatId: 'chat-1',
+          };
+        },
+      },
+    };
+  }
+
+  describe('VIL-682 K5 · paced between bubbles', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    });
+
+    it('lit, a set that went into a chat Linq said is iMessage waits about two seconds before each later text', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const im = stampedChannel('imessage');
+      const asked: Array<[string, string]> = [];
+      const { ports, ledger } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: im.channel },
+        chatService: async (parentUserId, chatId) => {
+          asked.push([parentUserId, chatId]);
+          return 'iMessage';
+        },
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual([
+        [start, TEXTS[0]],
+        [start + 2_000, TEXTS[1]],
+        [start + 4_000, TEXTS[2]],
+      ]);
+      expect(ledger.map((r) => r.dedupeKey)).toEqual([
+        'reminder:k:sms:0',
+        'reminder:k:sms:1',
+        'reminder:k:sms:2',
+      ]);
+      // Asked once per set, about the chat the first text landed in.
+      expect(asked).toEqual([['user-1', 'chat-1']]);
+    });
+
+    // Linq reports `imessage` for every chat on its line, green-bubble SMS and RCS chats
+    // included, so only the service Linq said carried the parent's texts there decides.
+    it.each([
+      ['dark, on iMessage', 'false', 'imessage', 'iMessage'],
+      ['lit, but the set went as SMS', 'true', 'sms', null],
+      ['lit, Linq transport, but Linq said the chat is SMS', 'true', 'imessage', 'SMS'],
+      ['lit, Linq transport, but Linq said the chat is RCS', 'true', 'imessage', 'RCS'],
+      ['lit, Linq transport, and Linq never said', 'true', 'imessage', null],
+    ] as const)('%s: the texts go back to back', async (_label, flag, transport, service) => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', flag);
+      const ch = stampedChannel(transport);
+      const { ports } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: ch.channel },
+        chatService: async () => service,
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(ch.sends).toEqual(TEXTS.map((text) => [start, text]));
+    });
+
+    // The read only decides the pacing: one that fails costs the gaps, never a text.
+    it('lit, a chat service read that fails: every text still goes, back to back, and the miss is named', async () => {
+      vi.useFakeTimers();
+      vi.stubEnv('COACH_BUBBLES_ENABLED', 'true');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const im = stampedChannel('imessage');
+      const { ports, ledger } = makePorts({
+        renderer: multiRenderer,
+        channels: { sms: im.channel },
+        chatService: async () => {
+          throw new Error('connection reset');
+        },
+      });
+      const start = Date.now();
+
+      const result = dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+      await vi.advanceTimersByTimeAsync(2 * BUBBLE_GAP_MS);
+
+      expect((await result).legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(im.sends).toEqual(TEXTS.map((text) => [start, text]));
+      expect(ledger).toHaveLength(TEXTS.length);
+      expect(
+        warn.mock.calls.flatMap(([fields]) =>
+          fields && typeof fields === 'object' && 'outcome' in fields ? [fields.outcome] : [],
+        ),
+      ).toEqual(['pacing_read_failed']);
+      warn.mockRestore();
+    });
+  });
 });
 
 describe('VIL-581 · the claim shadow reads model-written bodies only, and the leg is unchanged', () => {
@@ -884,6 +1002,93 @@ describe('VIL-581 · the claim shadow reads model-written bodies only, and the l
   });
 });
 
+describe('VIL-581 · enforce at the dispatch choke reads model-written bodies only', () => {
+  const MODEL_BODY = 'Votre visite chez le dentiste est réservée.';
+
+  function enforcePorts(
+    decision: Awaited<ReturnType<DispatchPorts['claimEnforce']['decide']>>,
+    modelWritten: boolean,
+    text = MODEL_BODY,
+  ) {
+    const decided: unknown[] = [];
+    const shadowed: DispatchShadowInput[] = [];
+    const run = makePorts({
+      renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
+      claimShadow: {
+        dispatch: (input) => {
+          shadowed.push(input);
+          return 'started';
+        },
+      },
+      claimEnforce: {
+        enforces: () => true,
+        decide: async (input) => {
+          decided.push(input);
+          return decision;
+        },
+      },
+    });
+    return { ...run, decided, shadowed };
+  }
+
+  it('a clean read sends, and the shadow is not started', async () => {
+    const { ports, decided, shadowed } = enforcePorts({ status: 'clean' }, true);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(decided).toHaveLength(1);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('a template body is never read (control)', async () => {
+    const { ports, decided, shadowed } = enforcePorts({ status: 'clean' }, false);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(decided).toEqual([]);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('an unbacked read fails the leg the same way the regex floor does', async () => {
+    const { ports, ledger, shadowed } = enforcePorts({ status: 'unbacked' }, true);
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
+    expect(shadowed).toEqual([]);
+  });
+
+  it('a retryable read failure throws ChannelRetryableError and writes no row', async () => {
+    const { ports, ledger } = enforcePorts(
+      { status: 'failed', reason: 'unreachable', retry: true },
+      true,
+    );
+    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(
+      ChannelRetryableError,
+    );
+    expect(ledger).toEqual([]);
+  });
+
+  it('a non-retryable read failure fails the leg as claim_read_failed', async () => {
+    const { ports, ledger } = enforcePorts(
+      { status: 'failed', reason: 'oversize', retry: false },
+      true,
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'failed', reason: 'claim_read_failed' },
+    ]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'claim_read_failed']]);
+  });
+
+  it('the regex floor still refuses without spending a read', async () => {
+    const { ports, decided, ledger } = enforcePorts(
+      { status: 'clean' },
+      true,
+      "I'll stop sending the one-sec messages.",
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(decided).toEqual([]);
+    expect(ledger.map((w) => w.errorCode)).toEqual(['unbacked_claim']);
+  });
+});
+
 describe("VIL-581 · each renderer says whether its words are the model's", () => {
   it('reminder, calendar invite and calendar cancel are model-written', async () => {
     const { renderReminderSms } = await import('~/lib/loop/templates/reminder/sms');
@@ -894,7 +1099,15 @@ describe("VIL-581 · each renderer says whether its words are the model's", () =
     >[0]);
     const url = 'https://app.example.org/i/abc';
     const invite = calendarInviteSmsRenderer.render(
-      message({ payload: { summary: 'Swim', when: 'Sat 10:00', url, line: `Add swim: ${url}` } }),
+      message({
+        payload: {
+          familyEventId: 'e1',
+          summary: 'Swim',
+          when: 'Sat 10:00',
+          url,
+          line: `Add swim: ${url}`,
+        },
+      }),
       'sms',
       'generic',
     );
@@ -930,9 +1143,9 @@ describe("VIL-581 · each renderer says whether its words are the model's", () =
 });
 
 describe('VIL-581 · the production dispatch port is bound and does nothing while off', () => {
-  it('buildDispatchPorts wires a claim shadow that answers off with no env and no query', async () => {
+  it('buildDispatchPorts wires a claim shadow that answers off under the kill switch, with no query', async () => {
     const { buildDispatchPorts } = await import('./wiring');
-    vi.stubEnv('CLAIM_READER_MODE', '');
+    vi.stubEnv('CLAIM_READER_MODE', 'off');
     try {
       const noQueries = new Proxy(
         {},
@@ -952,6 +1165,15 @@ describe('VIL-581 · the production dispatch port is bound and does nothing whil
           claims: [],
         }),
       ).toBe('off');
+      expect(ports.claimEnforce.enforces('fam-1')).toBe(false);
+      await expect(
+        ports.claimEnforce.decide({
+          familyId: 'fam-1',
+          parentUserId: 'user-1',
+          body: MODEL_BODY_FOR_WIRING,
+          now: NOON,
+        }),
+      ).resolves.toEqual({ status: 'off' });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -959,3 +1181,80 @@ describe('VIL-581 · the production dispatch port is bound and does nothing whil
 });
 
 const MODEL_BODY_FOR_WIRING = 'Swim is at 10 on Saturday.';
+
+/**
+ * VIL-683 · a loop text the send seam refuses as garbled. The refusal comes from the REAL
+ * Linq door under the real SMS adapter (fetch spied). Its writer was already asked once
+ * more, so nothing is sent, nothing stands in, and the family's audit trail names it.
+ */
+describe('a garbled loop text sends nothing and is on the audit trail', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+
+  function realSms() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    const sms = createSmsChannel({
+      transport: createLinqPhoneTransport({ fetch: fetchSpy as typeof fetch }),
+      resolveTarget: async () => '+14165550101',
+      configured: true,
+    });
+    return { fetchSpy, sms };
+  }
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['one text', { kind: 'sms', text: GARBLED, modelWritten: true }],
+    [
+      'a set of texts',
+      { kind: 'sms', text: GARBLED, texts: [GARBLED, 'Swim is Saturday.'], modelWritten: true },
+    ],
+    [
+      'a set of texts whose garbled one comes after a clean one',
+      { kind: 'sms', text: GARBLED, texts: ['Swim is Saturday.', GARBLED], modelWritten: true },
+    ],
+  ] satisfies [string, RenderedContent][])('%s', async (_name, rendered) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fetchSpy, sms } = realSms();
+    const { ports, ledger, audits } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { sms },
+      renderer: { render: () => rendered },
+    });
+
+    const result = await dispatchLoopMessage(message(), ports);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.legs).toEqual([
+      expect.objectContaining({ channel: 'sms', outcome: 'failed', reason: 'garbled_text' }),
+    ]);
+    expect(ledger).toEqual([
+      expect.objectContaining({ status: 'failed', errorCode: 'garbled_text' }),
+    ]);
+    expect(audits).toEqual([
+      {
+        actionTaken: 'channel_text_garbled',
+        after: { channel: 'sms', category: 'reminder', templateKey: 'weekly-plan-v1' },
+      },
+    ]);
+  });
+
+  it('the same text spelled right is sent (positive control)', async () => {
+    const { fetchSpy, sms } = realSms();
+    const { ports, audits } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { sms },
+      renderer: {
+        render: () => ({ kind: 'sms', text: 'Natation préscolaire sam. 9h00', modelWritten: true }),
+      },
+    });
+
+    await dispatchLoopMessage(message(), ports);
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.actionTaken)).toEqual(['channel_sent']);
+  });
+});

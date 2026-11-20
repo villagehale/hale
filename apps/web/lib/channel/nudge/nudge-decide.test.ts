@@ -5,6 +5,7 @@ import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-deci
 import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
   REGISTRATION_HORIZON_DAYS,
@@ -441,8 +442,8 @@ describe('decideNudge — no health checkpoint', () => {
 
   it('says nothing about the 18-month window either', () => {
     const toddler = [healthChild({ ageMonths: 18 })];
-    expect(inWindow(toddler, 'L7G')).toContain('immunization_18_months');
-    expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
+    expect(inWindow(toddler, FIXTURE_FSA)).toContain('immunization_18_months');
+    expect(decide({ healthChildren: toddler, areaCoarse: FIXTURE_FSA })).toBeNull();
   });
 
   it('says nothing to a household whose only child is 13 or older', () => {
@@ -937,6 +938,65 @@ describe('decideNudge — priority 5: the weekday finder ask', () => {
       label: 'PA day',
     });
     expect(JSON.stringify(nudge.ask)).not.toContain('after-school');
+  });
+
+  describe('VIL-685 · only the break question armed (breakOnly)', () => {
+    const WINTER = {
+      eventKey: 'winter-break-2026-12-21',
+      label: 'Winter Break',
+      date: '2026-12-21',
+      source: 'school_calendar' as const,
+    };
+
+    it('asks the verified winter break, once per event key', () => {
+      const first = decide({
+        ...READY,
+        weekdayCare: { ...READY.weekdayCare, verifiedBreak: WINTER, breakOnly: true },
+      });
+      if (first?.kind !== 'weekday_care') throw new Error('expected the break ask');
+      expect(first.ask).toEqual({
+        prompt: 'verified_break',
+        eventKey: 'winter-break-2026-12-21',
+        label: 'Winter Break',
+      });
+      const again = decideAll({
+        ...READY,
+        weekdayCare: {
+          ...READY.weekdayCare,
+          verifiedBreak: WINTER,
+          breakOnly: true,
+          askedBreakKeys: ['winter-break-2026-12-21'],
+        },
+      });
+      expect(again.nudge).toBeNull();
+    });
+
+    it('asks about a break the parent gave no name for, naming none', () => {
+      const nudge = decide({
+        ...READY,
+        weekdayCare: {
+          ...READY.weekdayCare,
+          verifiedBreak: { ...WINTER, label: null, source: 'parent_said' as const },
+          breakOnly: true,
+        },
+      });
+      if (nudge?.kind !== 'weekday_care') throw new Error('expected the break ask');
+      expect(nudge.ask).toEqual({
+        prompt: 'verified_break',
+        eventKey: 'winter-break-2026-12-21',
+        label: null,
+      });
+    });
+
+    it('offers no other weekday prompt and no drop-in while weekday care itself is off', () => {
+      // Positive control: the same family with weekday care armed hears the fallback.
+      expect(decide(READY)?.kind).toBe('weekday_care');
+      const decision = decideAll({
+        ...READY,
+        weekdayCare: { ...READY.weekdayCare, breakOnly: true },
+      });
+      expect(decision.nudge).toBeNull();
+    });
   });
 
   it('a verified named break uses that name and not a fabricated PA day', () => {

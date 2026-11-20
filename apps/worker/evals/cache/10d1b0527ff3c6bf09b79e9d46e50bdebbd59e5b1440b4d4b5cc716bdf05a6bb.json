@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Need at least 4 people in before I can draw, and there are 3 so far. Once one more joins, we're good to go! 🎅"
+  },
+  "latencyMs": 1846,
+  "usage": {
+    "input_tokens": 58,
+    "output_tokens": 49,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -97,9 +97,13 @@ export const AUDIT_VERBS = [
   'child_updated',
   'child_removed',
   'family_location_updated',
+  'timezone_resolved',
   'family_plan_updated',
   'family_plan_change_refused',
   'family_plan_comped',
+  'billing_refund_ready',
+  'billing_grant_blocked',
+  'billing_revoke_unresolved',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -144,6 +148,10 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-707. A text whose opt-out read failed was held and not answered.
+  'opt_out_unread_held',
+  // VIL-553. An operator cleared a hold no read could release (a shared provider id).
+  'opt_out_hold_cleared',
   // VIL-572. One parent's texting language became the one Hale writes to them in.
   'parent_language_changed',
   'sms_reply_received',
@@ -170,6 +178,8 @@ export const AUDIT_VERBS = [
   'linq_contact_card_shared',
   'linq_tapback',
   'linq_sticker',
+  'linq_message_edited',
+  'linq_parent_message_edited',
   'linq_link_preview',
   'linq_group_opened',
   'linq_group_claimed',
@@ -182,6 +192,8 @@ export const AUDIT_VERBS = [
   'linq_group_roster_fetched',
   'linq_group_roster_numbers_released',
   'linq_group_ejected',
+  'linq_group_background_set',
+  'linq_group_background_parent_set',
   'linq_group_left_on_ask',
   'linq_group_roster_asked',
   'linq_group_role_confirmed',
@@ -194,6 +206,11 @@ export const AUDIT_VERBS = [
   'linq_group_plan_started',
   'linq_group_plan_rsvp_recorded',
   'linq_group_plan_rsvp_edited',
+  'linq_group_plan_calendar_asked',
+  'linq_group_plan_calendar_declined',
+  'linq_group_plan_calendar_written',
+  'linq_group_plan_calendar_removed',
+  'linq_group_plan_calendar_withdrawn',
   'linq_group_poll_started',
   'linq_group_poll_vote_recorded',
   'linq_group_poll_vote_removed',
@@ -207,6 +224,7 @@ export const AUDIT_VERBS = [
   // VIL-448. A reminder anyone in the family group asked for.
   'group_reminder_set',
   'group_reminder_cancelled',
+  'group_reminder_landed_after_stop',
   'group_reminder_sent',
   'group_reminder_dropped',
   'group_reminder_failed',
@@ -216,8 +234,15 @@ export const AUDIT_VERBS = [
   'linq_multi_family_left',
   'linq_multi_family_unseated',
   'linq_multi_family_member_stopped',
+  'linq_multi_family_calendar_withdrawn',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
+  'linq_multi_family_list_turn',
+  'linq_secret_santa_turn',
+  'linq_secret_santa_drawn',
+  'linq_secret_santa_draw_sent',
+  'linq_secret_santa_delivery_counted',
+  'linq_secret_santa_noted',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
   'linq_multi_family_common_time_picked',
@@ -255,6 +280,8 @@ export const AUDIT_VERBS = [
   'voice_call_completed',
   'voice_relay_ticket_replayed',
   'channel_sent',
+  // VIL-683 · the send seam refused a garbled text, so nothing went out.
+  'channel_text_garbled',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
   // The claim sweep naming an executor send claim nothing ever confirmed.
@@ -284,8 +311,13 @@ export const AUDIT_VERBS = [
   'proactive_cadence_sent',
   'proactive_cadence_skipped',
   'weekday_care_recorded',
+  'school_break_recorded',
+  'school_break_retired',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-569 · a quiet-hours hold Hale still owes, and its end (sent, declined or stale).
+  'email_alert_held',
+  'email_alert_hold_closed',
   // VIL-619 · the one-time scrub of the email previews older alerts kept.
   'email_alert_snippets_scrubbed',
   'email_alert_event_added',
@@ -471,6 +503,9 @@ export const AUDIT_VERBS = [
   'integration.gmail_draft_failed',
   'user_preferences_updated',
   'billing_checkout_started',
+  'promo_join_family_created',
+  'promo_join_verified',
+  'billing_refunded',
   'upgrade_ask_sent',
   'upgrade_link_sent',
   'upgrade_declined',
@@ -527,6 +562,8 @@ export const AUDIT_VERBS = [
   // ── the review pool: the ONE verb the capture pass writes, on every model read ──
   'activity_verdict_read',
   'activity_followup_sent',
+  // VIL-682 · whether a promise went on the deep queue at question time.
+  'activity_deep_dispatched',
   'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
@@ -541,6 +578,7 @@ export const AUDIT_VERBS = [
   'smoke_alarm_fired',
   'sms_reader_timeout',
   'sms_turn_unanswered',
+  'sms_turn_folded',
   // ── the founder's welcome note ──────────────────────────────────────────
   'founder_welcome_offered',
   'founder_welcome_sent',
@@ -555,6 +593,10 @@ export const AUDIT_VERBS = [
   // This household's own yes. The trail sentence names no other household.
   'same_activity_opt_in_recorded',
   'same_activity_opt_in_revoked',
+  // ── going-count share (VIL-399) ─────────────────────────────────────────
+  // This household's own yes. The trail sentence names no other household.
+  'going_count_opt_in_recorded',
+  'going_count_opt_in_revoked',
   // ── active workstreams (VIL-419) ────────────────────────────────────────
   'workstream_opened',
   'workstream_updated',
@@ -574,6 +616,8 @@ export const AUDIT_VERBS = [
   // ── stale denials (VIL-303) ─────────────────────────────────────────────
   'capability_denial_recorded',
   'capability_denial_corrected',
+  // ── rail refusal (VIL-635) ──────────────────────────────────────────────
+  'tool_refused',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -683,6 +727,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_updated: { sentence: 'you updated a child’s details', family: 'done' },
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
+  timezone_resolved: { sentence: 'learned the clock from where you are', family: 'note' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
   family_plan_change_refused: {
     sentence: 'a paid plan starts at checkout, so your plan did not change',
@@ -691,6 +736,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   family_plan_comped: {
     sentence: 'your family got the Family plan, free for life',
     family: 'done',
+  },
+  billing_refund_ready: {
+    sentence: 'a payment came in at the wrong price and was not added to your plan',
+    family: 'problem',
+  },
+  billing_grant_blocked: {
+    sentence: 'a later charge for that same payment was not added to your plan',
+    family: 'problem',
   },
   family_intents_updated: { sentence: 'you updated what you’d like help with', family: 'done' },
   parent_name_updated: { sentence: 'you updated your name', family: 'done' },
@@ -743,6 +796,14 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
     family: 'note',
   },
+  opt_out_unread_held: {
+    sentence: 'Hale held a text it could not read, and sent nothing',
+    family: 'note',
+  },
+  opt_out_hold_cleared: {
+    sentence: 'Hale stopped holding back its messages to your phone after a check',
+    family: 'note',
+  },
   parent_language_changed: {
     sentence: 'Hale started writing to you in the language you text it in',
     family: 'note',
@@ -776,6 +837,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_tapback: { sentence: 'Hale reacted to your message', family: 'note' },
   linq_sticker: { sentence: 'Hale put a sticker on your message', family: 'note' },
+  linq_message_edited: { sentence: 'Hale corrected a message it had just sent', family: 'note' },
+  linq_parent_message_edited: { sentence: 'you edited a message you sent', family: 'note' },
   linq_link_preview: { sentence: 'Hale sent a link preview', family: 'note' },
   linq_group_opened: {
     sentence: 'Hale opened a household thread in Messages',
@@ -822,6 +885,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale left your family group and went back to texting you directly',
     family: 'note',
   },
+  // VIL-478 · internal-only (Sloane Design lock): no parent-facing copy. Hidden from
+  // the trail via INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  linq_group_background_set: { sentence: 'recorded an update', family: 'neutral' },
+  linq_group_background_parent_set: { sentence: 'recorded an update', family: 'neutral' },
   linq_group_left_on_ask: {
     sentence:
       'Someone in your family group asked Hale to leave, so Hale left and went back to texting you directly',
@@ -871,6 +938,26 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale updated who is coming to a plan in your family group',
     family: 'done',
   },
+  linq_group_plan_calendar_asked: {
+    sentence: 'Hale asked your household before putting a group plan on your calendar',
+    family: 'awaiting',
+  },
+  linq_group_plan_calendar_declined: {
+    sentence: 'Your household said not to put a group plan on your calendar',
+    family: 'note',
+  },
+  linq_group_plan_calendar_written: {
+    sentence: 'Hale put a group plan on your household calendar after your household agreed',
+    family: 'done',
+  },
+  linq_group_plan_calendar_removed: {
+    sentence: 'Hale took a group plan off your household calendar',
+    family: 'done',
+  },
+  linq_group_plan_calendar_withdrawn: {
+    sentence: 'Hale set aside the calendar question',
+    family: 'note',
+  },
   linq_group_poll_started: {
     sentence: 'Hale started a poll in your family group',
     family: 'done',
@@ -919,6 +1006,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'A reminder asked for in your family group was cancelled',
     family: 'note',
   },
+  group_reminder_landed_after_stop: {
+    sentence: 'A reminder reached the chat after this person had asked not to be texted',
+    family: 'note',
+  },
   group_reminder_sent: {
     sentence: 'Hale sent a reminder someone in your family group asked for',
     family: 'done',
@@ -958,6 +1049,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Someone asked Hale to leave them out of the shared thread',
     family: 'note',
   },
+  linq_multi_family_calendar_withdrawn: {
+    sentence:
+      'A parent asked Hale to stop using their calendar busy times in a shared thread, and to keep writing there',
+    family: 'note',
+  },
   linq_multi_family_refused: {
     sentence: 'Hale did not add that family to the shared thread',
     family: 'problem',
@@ -965,6 +1061,30 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_reply_sent: {
     sentence: 'Hale replied in a shared thread from what was already said',
     family: 'done',
+  },
+  linq_multi_family_list_turn: {
+    sentence: 'Hale kept track of who is bringing or giving what in a shared thread',
+    family: 'note',
+  },
+  linq_secret_santa_turn: {
+    sentence: 'Hale kept track of who is in a Secret Santa in a shared thread',
+    family: 'note',
+  },
+  linq_secret_santa_drawn: {
+    sentence: 'Hale drew the names for a Secret Santa in a shared thread',
+    family: 'done',
+  },
+  linq_secret_santa_draw_sent: {
+    sentence: 'Hale texted you your Secret Santa draw privately',
+    family: 'done',
+  },
+  linq_secret_santa_delivery_counted: {
+    sentence: 'Hale sent a Secret Santa draw privately to someone in a shared thread',
+    family: 'done',
+  },
+  linq_secret_santa_noted: {
+    sentence: 'Hale told you whose Secret Santa draw could not reach them yet',
+    family: 'note',
   },
   linq_multi_family_common_time_proposed: {
     sentence: 'Hale suggested times that work for the families in a shared thread',
@@ -1060,6 +1180,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  channel_text_garbled: {
+    sentence: 'Hale held back a message that came out garbled',
+    family: 'problem',
+  },
   // The sweep gave up waiting for a delivery receipt: the message may never have
   // reached the phone, and the trail must say so rather than imply it arrived.
   delivery_status_forced: {
@@ -1134,6 +1258,17 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you told Hale how your weeks are covered',
     family: 'done',
   },
+  // VIL-685 · from the board's own calendar page, or from the parent's answer.
+  school_break_recorded: {
+    sentence: "Hale noted when your kids' winter break is",
+    family: 'done',
+  },
+  // VIL-685 · the school's break stopped applying: the mail that named the school was
+  // withdrawn, no child is at that school's age, or two schools gave other days.
+  school_break_retired: {
+    sentence: "Hale stopped using the school's winter break it had noted",
+    family: 'note',
+  },
   followup_daycare_asked: { sentence: 'Hale asked how daycare is going', family: 'note' },
   // Read in a connected mailbox, not guessed. The sentence says WHERE it came from,
   // because that is the part a parent has to be able to check: the row is the receipt for
@@ -1141,6 +1276,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
+  },
+  email_alert_held: {
+    sentence: 'Hale held an email alert for quiet hours',
+    family: 'note',
+  },
+  email_alert_hold_closed: {
+    sentence: 'Hale settled an email alert it had held for quiet hours',
+    family: 'note',
   },
   // A count only, across the family's threads: no row says which adult had alerts.
   email_alert_snippets_scrubbed: {
@@ -1779,6 +1922,19 @@ const VERBS: Record<AuditVerb, Verb> = {
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
+  promo_join_family_created: {
+    sentence: 'you started a founding family from a text code',
+    family: 'note',
+  },
+  promo_join_verified: {
+    sentence: 'you confirmed the founding text code',
+    family: 'note',
+  },
+  billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
+  billing_revoke_unresolved: {
+    sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
+    family: 'problem',
+  },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
   upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },
@@ -1959,6 +2115,13 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale came back to you about an activity search',
     family: 'done',
   },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // it is about one adult's own question, so the row carries that adult as its audience
+  // (VIL-635). The answer it brings is the row History shows (activity_followup_sent).
+  activity_deep_dispatched: {
+    sentence: 'Hale started a closer look at an activity question',
+    family: 'note',
+  },
   // Historical. Follow-ups used to put the rest of a schedule on a public page. The
   // verb stays so those audit rows still read. 'done' because the row records something
   // Hale finished, not something it is waiting on.
@@ -2007,6 +2170,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale had no reply to send',
     family: 'problem',
   },
+  // A text read into the turn of the text just before it (router/burst.ts). Internal:
+  // the answer to the earlier text is the row that matters.
+  sms_turn_folded: {
+    sentence: 'Hale read two texts in a row as one message',
+    family: 'note',
+  },
   // Written on the FOUNDER's own trail when a family arrives from one of his posters.
   // 'awaiting' because the note has not been sent — a word from him is what sends it.
   founder_welcome_offered: {
@@ -2027,6 +2196,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   same_activity_opt_in_revoked: {
     sentence: 'you took back a yes to a meet or a group',
+    family: 'done',
+  },
+  going_count_opt_in_recorded: {
+    sentence: 'you said Hale may count your household among other Hale families',
+    family: 'done',
+  },
+  going_count_opt_in_revoked: {
+    sentence: 'you took back a yes to being counted among other Hale families',
     family: 'done',
   },
   workstream_opened: {
@@ -2092,6 +2269,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'let a parent know it can now do something it had said it could not',
     family: 'done',
   },
+  // VIL-635. Content-free: the tool name and the rail, never the refused input.
+  tool_refused: {
+    sentence: 'Hale did not run a tool that would have broken a safety rule',
+    family: 'note',
+  },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
     sentence: 'noticed a possible stamp from something it saw',
@@ -2140,6 +2322,28 @@ export function trailVerb(actionTaken: string): Verb {
 }
 
 /**
+ * The withdrawn-ask row's sentence, from the reason stored on the audit row.
+ * A missing reason keeps the registry sentence, which does not name a cause.
+ */
+const CALENDAR_WITHDRAW_LINE = {
+  send_failed: 'Hale set aside the calendar question because the message did not send',
+  household_said_no: 'Hale set aside the calendar question after your household said no',
+  household_said_maybe: 'Hale set aside the calendar question after your household said maybe',
+  plan_changed: 'Hale set aside the calendar question after the plan changed',
+} as const;
+
+export function calendarWithdrawnSentence(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null || !('reason' in after)) return null;
+  const reason = (after as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') return null;
+  return CALENDAR_WITHDRAW_LINE[reason as keyof typeof CALENDAR_WITHDRAW_LINE] ?? null;
+}
+
+export function calendarWithdrawnSentences(): readonly string[] {
+  return Object.values(CALENDAR_WITHDRAW_LINE);
+}
+
+/**
  * VIL-226 · while PROACTIVE_CADENCE is `shadow` the decider governs nothing that reaches
  * the phone (the old path still texts), so the rows it writes there are not on the
  * receipts at all: the trail query drops them, and the audit rows themselves stay. The
@@ -2168,14 +2372,28 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-707. The held text is that parent's. Another adult does not see it.
+  'opt_out_unread_held',
+  // VIL-553. About the one adult who holds the number.
+  'opt_out_hold_cleared',
   // VIL-572. About the one parent whose language changed.
   'parent_language_changed',
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',
+  'linq_group_background_set',
+  'linq_group_background_parent_set',
   // VIL-303. A no Hale said to one parent, and its correction to that same parent.
   'capability_denial_recorded',
   'capability_denial_corrected',
+  // VIL-635. A rail refusal is one adult's, and names no input.
+  'tool_refused',
+  // About one parent's own texts.
+  'sms_turn_folded',
+  // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
+  'activity_deep_dispatched',
+  // VIL-686. One giver's own draw text: about that adult alone.
+  'linq_secret_santa_draw_sent',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
@@ -2236,6 +2454,7 @@ const TARGET_NOUNS: Record<string, string> = {
   village_candidates: 'village suggestion', // Historical audit rows retain this key.
   consent_records: 'consent',
   activity_bookings: 'a class you signed up for',
+  going_count_opt_ins: 'going-count share',
   // A BARE noun, like every value here ('draft', 'plan', 'child'): an article baked into
   // the value is an article the renderer may double. Deliberately absent from
   // TARGET_ROUTES - there is no receipts page for a trip, so targetLink correctly

@@ -24,6 +24,8 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { composeEventCancel } from '~/lib/loop/ics-invite';
@@ -58,7 +60,23 @@ import {
 
 export const CALENDAR_WRITE_NOTICE_TEMPLATE_KEY = 'calendar_write_notice';
 
-export type NoticeSendOutcome = 'sent' | 'no_send_target' | 'no_chat' | 'send_failed' | 'errored';
+/** Stable across retries of the same write. A clock in the key never matches. */
+export function calendarWriteNoticeDedupeKey(
+  familyId: string,
+  parentUserId: string,
+  familyEventId: string,
+  op: string,
+): string {
+  return `calendar_write_notice:${familyId}:${parentUserId}:${familyEventId}:${op}`;
+}
+
+export type NoticeSendOutcome =
+  | 'sent'
+  | 'queued'
+  | 'no_send_target'
+  | 'no_chat'
+  | 'send_failed'
+  | 'errored';
 
 export interface CalendarWriteNoticePorts {
   enabled(): boolean;
@@ -76,11 +94,14 @@ export interface CalendarWriteNoticePorts {
   /** A one-tap calendar connect link for this parent, or null when none could be minted. */
   connectLink(familyId: string, parentUserId: string): Promise<string | null>;
   compose(input: CalendarWriteNoticeInput): Promise<string | null>;
+  /** True when live cadence already holds this write, so compose is skipped. */
+  alreadyQueued?(request: GoogleCalendarPlacementRequest): Promise<boolean>;
   send(
     familyId: string,
     parentUserId: string,
     text: string,
     optOut: OptOutForm,
+    dedupeKey: string,
   ): Promise<NoticeSendOutcome>;
 }
 
@@ -111,6 +132,7 @@ export async function noticeAfterSync(
     if (!outcome) return 'no_news';
     const verdict = await ports.gate(request.familyId, actorUserId, ports.now?.() ?? new Date());
     if (!verdict.allowed) return `held:${verdict.reason}`;
+    if ((await ports.alreadyQueued?.(request)) === true) return 'queued';
     const loaded = await ports.loadEvent({ ...request, actorUserId });
     if (typeof loaded === 'string') return loaded;
     const needsLink =
@@ -126,7 +148,18 @@ export async function noticeAfterSync(
     if (!input) return 'no_link';
     const text = await ports.compose(input);
     if (!text) return 'unwritten';
-    return await ports.send(request.familyId, actorUserId, text, verdict.optOut);
+    return await ports.send(
+      request.familyId,
+      actorUserId,
+      text,
+      verdict.optOut,
+      calendarWriteNoticeDedupeKey(
+        request.familyId,
+        actorUserId,
+        request.familyEventId,
+        request.op,
+      ),
+    );
   } catch (err) {
     console.error(
       { familyId: request.familyId, err: err instanceof Error ? err.name : 'unknown' },
@@ -151,14 +184,6 @@ export function withCalendarWriteNotice(
       return report;
     },
   };
-}
-
-async function familyLanguage(database: Database, familyId: string): Promise<ReplyLanguage> {
-  const [row] = await database
-    .select({ primaryLanguage: schema.families.primaryLanguage })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId));
-  return row?.primaryLanguage ?? 'en';
 }
 
 async function familyGroupChatId(database: Database, familyId: string): Promise<string | null> {
@@ -218,7 +243,12 @@ export function productionCalendarWriteNoticePorts(
       return {
         // Rendered at this parent's own privacy level; the place is left out on purpose.
         event: { title: composed.summary, when, where: null },
-        language: await familyLanguage(database, request.familyId),
+        // The approving parent's stored language (VIL-690). A null store falls back
+        // to the family language, which is what this notice used before.
+        language: await readParentLanguage(database, {
+          familyId: request.familyId,
+          parentUserId: request.actorUserId,
+        }),
       };
     },
     async connectLink(familyId, parentUserId) {
@@ -231,8 +261,58 @@ export function productionCalendarWriteNoticePorts(
       return minted.status === 'minted' ? minted.url : null;
     },
     compose: (input) =>
-      composeCalendarWriteNotice(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
-    async send(familyId, parentUserId, text, optOut) {
+      composeCalendarWriteNotice(
+        budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'notice' }),
+        input,
+      ),
+    alreadyQueued: async (request) => {
+      const actorUserId = request.actorUserId;
+      if (!actorUserId) return false;
+      return isQueuedForDecider(
+        database,
+        request.familyId,
+        calendarWriteNoticeDedupeKey(
+          request.familyId,
+          actorUserId,
+          request.familyEventId,
+          request.op,
+        ),
+      );
+    },
+    async send(familyId, parentUserId, text, optOut, dedupeKey) {
+      const now = new Date();
+      if (await isQueuedForDecider(database, familyId, dedupeKey)) return 'queued';
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId,
+            parentUserId,
+            kind: 'calendar_alert',
+            category: PROACTIVE_CATEGORY.calendar_alert,
+            templateKey: CALENDAR_WRITE_NOTICE_TEMPLATE_KEY,
+            what: text,
+            why: 'calendar_alert',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'calendar_alert_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: familyId,
+          after: { kind: 'calendar_alert' },
+        });
+        return 'queued';
+      }
       const body = withOptOut(text, optOut);
       const phone = await resolveSendablePhone(database, parentUserId);
       if (!phone) return 'no_send_target';
@@ -242,7 +322,6 @@ export function productionCalendarWriteNoticePorts(
       const chatId = door.channel === 'imessage' ? door.chatId : null;
       if (door.channel === 'imessage' && !chatId) return 'no_chat';
       const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
-      const now = new Date();
       const [claimed] = await database
         .insert(schema.channelMessages)
         .values({

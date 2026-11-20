@@ -32,6 +32,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { FIXTURE_COUNTRY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type RecordedModel, recordedModel } from '~/lib/testing/recorded-model';
 import { isStage } from '~/lib/testing/structured-reply';
@@ -64,8 +65,8 @@ import { isStage } from '~/lib/testing/structured-reply';
  */
 
 const TZ = 'America/Toronto';
-/** Georgetown, Halton Hills — the incident family's real FSA. */
-const AREA = 'L7G';
+/** Documented in lib/testing/fixture-postal.ts — not a Hale household. */
+const AREA = FIXTURE_FSA;
 const PHONE = '+14165550100';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 
@@ -118,14 +119,13 @@ const JOB_AT = new Date('2026-08-24T23:44:00.000Z');
 const CHILD_DOB = '2025-02-20';
 
 const VENUE_PAGE = 'https://cartwheelsgymcentre.example/programs';
-const TOWN_PAGE = 'https://haltonhills.example/recreation/registration';
+const TOWN_PAGE = 'https://kingston.example/recreation/registration';
 
 /** What the two legs that opened pages actually read. The refutation checks the merge's
  * quotes against THESE STRINGS, so a fabricated fact cannot survive the journey. */
 const VENUE_TEXT =
   'Fall block runs Sept 14 to Oct 26.\nTiny Gym | Sun | 9:30-10:15 AM | walking to 3.5 years\nTiny Gym (10 wks) .......... $124.00';
-const TOWN_TEXT =
-  'Fall registration opens Tuesday, July 22 at 7:00 a.m. for Halton Hills residents.';
+const TOWN_TEXT = 'Fall registration opens Tuesday, July 22 at 7:00 a.m. for Kingston residents.';
 
 // A recording waits on live model calls, which outlast the 5s default; replay keeps it.
 const RECORD_TIMEOUT = process.env.HALE_RECORD === '1' ? 180_000 : undefined;
@@ -143,12 +143,15 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
+    // Dark, nothing is queued at question time and this whole arc is the sweep's a day later.
+    vi.stubEnv('DEEP_FOLLOWUP_NOW_ENABLED', 'true');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database
       .insert(schema.families)
       .values({
         displayName: 'Test family',
+        country: FIXTURE_COUNTRY,
         provinceOrState: 'ON',
         areaCoarse: AREA,
         onboardingStage: 'sms_active',
@@ -349,10 +352,10 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
    * at 17,956 and the Parent-and-Tot grid began at 27,153 — past the 24,000-character bound
    * the merge is prompted with. Every fact below is published; none of it is a paraphrase.
    */
-  const GELLERT_PAGE = 'https://haltonhills.example/play/recreation/swimming/swimming-lessons';
+  const GELLERT_PAGE = 'https://kingston.example/play/recreation/swimming/swimming-lessons';
 
   const GELLERT_FEES = [
-    'Halton Hills Taxpayer Fees:',
+    'Kingston Taxpayer Fees:',
     'P&T to Swimmer 3: $86.22 for 9 lessons (30 minute lesson)',
     'Swimmer 4-6: $117.09 for 9 lessons (45 minute lesson)',
   ].join('\n');
@@ -372,11 +375,11 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     );
 
   const GELLERT_TEXT = [
-    'Swimming Lessons - Town of Halton Hills',
-    'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
+    'Swimming Lessons - Town of Kingston',
+    'Kingston taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
     GELLERT_FEES,
     FILLER,
-    'Gellert Evenings & Weekends - Fall Schedule',
+    'Riverside Evenings & Weekends - Fall Schedule',
     GELLERT_GRID,
   ].join('\n');
 
@@ -396,11 +399,11 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
     // absence of it.
     const text = options.silentPage
       ? [
-          'Swimming Lessons - Town of Halton Hills',
+          'Swimming Lessons - Town of Kingston',
           'Registration for Fall Recreation Programs opens on Tuesday, September 1.',
           'Our fall lesson schedule will be posted here when it is ready.',
           FILLER,
-          'Questions? Call the Gellert Community Centre front desk.',
+          'Questions? Call the Riverside Community Centre front desk.',
         ].join('\n')
       : GELLERT_TEXT;
     const bounded = boundEvidence({
@@ -452,7 +455,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
             status: 'synthesised',
             rows: [
               {
-                name: 'Parent and Tot 1, 2, 3, Gellert Community Centre',
+                name: 'Parent and Tot 1, 2, 3, Riverside Community Centre',
                 age_fit: 'Parent and Tot 1: 4 to 12 months; 2: 12 to 24 months; 3: 2 to 3 years',
                 // THE QUOTES THE LIVE RUN RETURNED: a table row read left to right and
                 // written back as a sentence, and a fee composed with the heading above it.
@@ -476,12 +479,12 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
                   ? null
                   : options.unquotableSchedule
                     ? 'fees are set by the Town and apply to all lessons'
-                    : '$86.22 for 9 lessons (30 minute lesson), Halton Hills taxpayer fee',
+                    : '$86.22 for 9 lessons (30 minute lesson), Kingston taxpayer fee',
                 registration: 'Registration opens Tuesday, September 1',
                 registration_quote: options.silentPage
                   ? 'Registration for Fall Recreation Programs opens on Tuesday, September 1.'
-                  : 'Halton Hills taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
-                source_name: 'Town of Halton Hills',
+                  : 'Kingston taxpayers can register for Fall Recreation Programs beginning Tuesday, September 1 at 7 a.m.',
+                source_name: 'Town of Kingston',
                 source_url: GELLERT_PAGE,
               },
             ],
@@ -537,6 +540,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       }),
       loadRegistrationWindows: async () => [],
+      loadHealthPlace: async () => null,
       loadTranscript: async () => [],
       loadContext: async (input) => ({
         parentName: null,
@@ -593,6 +597,8 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         },
       },
       client,
+      // The turn asks about a gym's fall term: an activity ask, as the model read would say.
+      readFindTurn: async () => ({ findTurn: true }),
       judgeFindReply: findReplyNotJudged,
       runAgent: scriptedRunAgent(steps, write),
       recordRun: async () => {},
@@ -656,9 +662,9 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         const { loadOpenCommitmentById } = await import('~/lib/commitments/ledger');
         return loadOpenCommitmentById(db2, id);
       },
-      resolveRecipient: async (db2, channelMessageId) => {
+      resolveRecipient: async (db2, promise) => {
         const { resolveFollowUpRecipient } = await import('~/lib/channel/activity/sweep');
-        return resolveFollowUpRecipient(db2, channelMessageId);
+        return resolveFollowUpRecipient(db2, promise);
       },
       reader: productionActivityFamilyReader(),
       buildGate: () => openGate,
@@ -697,6 +703,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
         recordWatch: async () => ({ status: 'recorded', commitmentId: 'watch-1' }),
       },
       cancelPromise: cancelActivityPromise,
+      clock: () => JOB_AT,
       ...overrides,
     };
   }
@@ -890,7 +897,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
    * THE RUN THAT SENT A LIE, REPLAYED.
    *
    * Live, 2026-08-24, on the real subject. The merge returned twenty-seven true rows off
-   * the Halton Hills swim page — day, clock time, session code, taxpayer fee, all of it
+   * the municipal swim page — day, clock time, session code, taxpayer fee, all of it
    * published. The refutation refused all fifty-three facts, and the parent was texted
    * "their site lists these but no day, time or price on the fall page yet".
    *
@@ -904,7 +911,12 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
   it('THE 2026-08-24 FAILURE - a grid past the prompt bound reaches the parent as facts', async () => {
     const transport = new FakeTransport();
     const enqueued: DeepResearchPayload[] = [];
-    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    await askAboutTheGym(
+      transport,
+      enqueued,
+      false,
+      'Riverside Community Centre fall swim schedule',
+    );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');
 
@@ -955,7 +967,12 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
   it('THE 2026-08-24 FAILURE - facts it cannot verify become uncertainty, never an absence', async () => {
     const transport = new FakeTransport();
     const enqueued: DeepResearchPayload[] = [];
-    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    await askAboutTheGym(
+      transport,
+      enqueued,
+      false,
+      'Riverside Community Centre fall swim schedule',
+    );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');
 
@@ -988,7 +1005,12 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
   it('a page that truly publishes nothing still licenses "not posted yet" and a watch', async () => {
     const transport = new FakeTransport();
     const enqueued: DeepResearchPayload[] = [];
-    await askAboutTheGym(transport, enqueued, false, 'Gellert Community Centre fall swim schedule');
+    await askAboutTheGym(
+      transport,
+      enqueued,
+      false,
+      'Riverside Community Centre fall swim schedule',
+    );
     const payload = enqueued[0];
     if (!payload) throw new Error('journey: nothing was enqueued');
 

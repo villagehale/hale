@@ -1,12 +1,13 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { type CoachingPlaybook, type FamilyStage, goDeeperNames } from '@hale/types';
 import { z } from 'zod';
+import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { plainText } from '~/lib/channel/coach/reply';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
 
@@ -248,6 +249,7 @@ export function planViolations(
       );
     }
     if (hasLinkShape(body)) {
+      noteLinkGate('coach-plan', 'redraft');
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }
     if (DOSING_SHAPE.test(body)) {
@@ -403,18 +405,21 @@ export function createPlanComposer(client: () => AgentClient): PlanComposer {
       for (let attempt = 1; attempt <= MAX_COMPOSE_ATTEMPTS; attempt += 1) {
         let value: z.infer<typeof planSchema>;
         try {
-          const result = await forceToolJson({
-            client: resolved,
-            lane: pickLane(skill.meta.task),
-            system: skill.instructions,
-            userMessage: retryUserMessage(planUserMessage(grounding), violations),
-            toolName: 'plan',
-            toolDescription:
-              'Return the plan as two or three text messages in order, plus how many days from today to check back.',
-            inputJsonSchema: planJsonSchema,
-            schema: planSchema,
-            maxTokens: MAX_TOKENS,
-          });
+          const result = await withLlmContext({ stage: 'plan' }, () =>
+            forceToolJson({
+              client: resolved,
+              lane: pickLane(skill.meta.task),
+              system: skill.instructions,
+              cacheTtl: SPARSE_CACHE_TTL,
+              userMessage: retryUserMessage(planUserMessage(grounding), violations),
+              toolName: 'plan',
+              toolDescription:
+                'Return the plan as two or three text messages in order, plus how many days from today to check back.',
+              inputJsonSchema: planJsonSchema,
+              schema: planSchema,
+              maxTokens: MAX_TOKENS,
+            }),
+          );
           value = result.value;
         } catch (err) {
           // An outage is not a prompt problem, and retrying it here would spend the

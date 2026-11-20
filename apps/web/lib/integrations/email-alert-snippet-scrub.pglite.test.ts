@@ -6,6 +6,7 @@ import {
   productionCoachEmailReaderDeps,
 } from '~/lib/channel/coach/read-email-tool';
 import { createConversation } from '~/lib/coach/conversation';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { scrubEmailAlertSnippets } from './email-alert-snippet-scrub';
 import { CONNECTOR_SCOPES } from './google-oauth';
@@ -107,10 +108,14 @@ describe('scrubEmailAlertSnippets', () => {
     expect(everything).not.toContain('snippet');
 
     const audits = await db.database
-      .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
+      .select({
+        actor: schema.auditLog.actor,
+        audience: schema.auditLog.audience,
+        after: schema.auditLog.after,
+      })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'email_alert_snippets_scrubbed'));
-    expect(audits).toEqual([{ actor: 'system', after: { rows: 3 } }]);
+    expect(audits).toEqual([{ actor: 'system', audience: null, after: { rows: 3 } }]);
     expect(JSON.stringify(audits)).not.toContain(SENDER_WORDS);
 
     // The private meaning survives the rewrite: the 13+ child's email is still refused,
@@ -140,5 +145,29 @@ describe('scrubEmailAlertSnippets', () => {
       families: 0,
       applied: true,
     });
+  });
+
+  it('names the 1:1 SMS parent as audience on the scrub audit', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId, noteKey: channelSmsNoteKey(parentUserId) })
+      .returning({ id: schema.conversations.id });
+    await db.database.insert(schema.messages).values({
+      conversationId: conversation?.id as string,
+      role: 'assistant',
+      content: 'Hale wrote this.',
+      source: { kind: 'gmail', eventId: null, gmailMessageId: 'gm-1to1', snippet: SENDER_WORDS },
+    });
+
+    await expect(scrubEmailAlertSnippets(db.database, { apply: true })).resolves.toMatchObject({
+      rows: 1,
+      applied: true,
+    });
+    const audits = await db.database
+      .select({ audience: schema.auditLog.audience, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'email_alert_snippets_scrubbed'));
+    expect(audits).toEqual([{ audience: parentUserId, after: { rows: 1 } }]);
   });
 });

@@ -6,7 +6,11 @@ import {
   SCRIPTED_STOP_CONFIRMATION,
 } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { LinqSendError, createLinqTextTransport } from '~/lib/channel/linq/transport';
+import {
+  LinqSendError,
+  createLinqPhoneTransport,
+  createLinqTextTransport,
+} from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
@@ -1261,5 +1265,132 @@ describe('intake · the provider answered the keyword first (VIL-348)', () => {
         transport: refusingTransport(new LinqSendError('20500', 503, false)),
       }),
     ).rejects.toBeInstanceOf(LinqSendError);
+  });
+});
+
+/**
+ * VIL-683 · an onboarding reply the send seam refuses as garbled. The refusal comes from
+ * the REAL Linq door (createLinqPhoneTransport, fetch spied), not a stipulated throw.
+ */
+describe('intake · a garbled reply sends nothing (VIL-683)', () => {
+  // Each apostrophe as UTF-8 read back in windows-1252, the most common shape.
+  const garble = (reply: string) => reply.replaceAll("'", 'â€™');
+
+  function linqDoor() {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+14165550100');
+    const fetchSpy = vi.fn(async () =>
+      Response.json({ chat: { id: 'chat-1', message: { id: 'msg-1' } } }, { status: 201 }),
+    );
+    return { fetchSpy, transport: createLinqPhoneTransport({ fetch: fetchSpy as typeof fetch }) };
+  }
+
+  const garbling: IntakeDeps['friendVoice'] = {
+    async compose(input, options) {
+      const composed = await scriptedFriendVoice.compose(input, options);
+      return { ...composed, reply: garble(composed.reply) };
+    },
+  };
+
+  it('ends the turn by name: no send, no webhook failure, logged by code only', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, 'hi', {
+      ...deps,
+      transport: door.transport,
+      friendVoice: garbling,
+    });
+
+    expect(result).toEqual({ status: 'reply_garbled' });
+    expect(door.fetchSpy).not.toHaveBeenCalled();
+    const lines = JSON.stringify(warn.mock.calls);
+    expect(lines).toContain('garbled_text');
+    expect(lines).not.toContain('postal');
+  });
+
+  it('the same reply spelled right goes out through the same door (positive control)', async () => {
+    const { fake, transport, deps } = harness({});
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, 'hi', {
+      ...deps,
+      transport: door.transport,
+      friendVoice: {
+        async compose(input, options) {
+          const composed = await scriptedFriendVoice.compose(input, options);
+          return { ...composed, reply: composed.reply.replaceAll("'", '’') };
+        },
+      },
+    });
+
+    expect(result).toEqual({ status: 'first_touch', step: 'place_asked' });
+    expect(door.fetchSpy).toHaveBeenCalled();
+  });
+
+  /** A keyword confirmation the send seam refuses as garbled went to nobody: the outcome
+   * says voice_unsent, never sent (what a carrier refusal means) or provider_refused. */
+  function confirming(intent: 'stop' | 'start', confirmation: string): IntakeDeps['optOutReader'] {
+    return {
+      read: async (input) =>
+        acceptOptOutReading(
+          { intent, verbatim: input.text, language: 'fr', confirmation },
+          input.text,
+        ),
+    };
+  }
+
+  it.each([
+    ['garbled', 'Câ€™est notÃ©, plus de messages.', 'voice_unsent', 0],
+    ['spelled right (positive control)', 'C’est noté, plus de messages.', 'sent', 1],
+  ] as const)('a STOP confirmation %s', async (name, confirmation, ack, posts) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    const door = linqDoor();
+
+    // Its own words per case: the text-read cache is shared.
+    const result = await text(fake, transport, deps, `arrête, stop case ${name}`, {
+      ...deps,
+      transport: door.transport,
+      optOutReader: confirming('stop', confirmation),
+    });
+
+    expect(result).toEqual({ status: 'stopped', ack });
+    expect(door.fetchSpy).toHaveBeenCalledTimes(posts);
+  });
+
+  it.each([
+    ['garbled', 'Rebonjour, câ€™est reparti.', 'voice_unsent', 0],
+    ['spelled right (positive control)', 'Rebonjour, c’est reparti.', 'sent', 1],
+  ] as const)('a START confirmation %s', async (name, confirmation, ack, posts) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f6';
+    const userId = '00000000-0000-4000-8000-0000000000u6';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'primary_parent' } as never);
+    const door = linqDoor();
+
+    const result = await text(fake, transport, deps, `reprends, start case ${name}`, {
+      ...deps,
+      transport: door.transport,
+      optOutReader: confirming('start', confirmation),
+    });
+
+    expect(result).toEqual({ status: 'restarted', ack });
+    expect(door.fetchSpy).toHaveBeenCalledTimes(posts);
   });
 });

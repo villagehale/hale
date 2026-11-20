@@ -61,6 +61,11 @@ export interface GroupPlanRsvpReadInput {
   recent: readonly { from: 'hale' | 'member'; text: string }[];
   /** Present only while group polls are on. `live` is null when no poll is open. */
   polls?: { live: GroupPollReadView | null };
+  /**
+   * VIL-686: present (true) only where Secret Santa runs in this chat, so its asks are
+   * not read as a plan. Absent everywhere else, so every other read is unchanged.
+   */
+  secretSanta?: true;
 }
 
 export interface GroupPlanRsvpReading {
@@ -145,6 +150,7 @@ export function groupPlanRsvpUserMessage(input: GroupPlanRsvpReadInput): string 
     plan: input.plan,
     recent: input.recent.slice(-6),
     ...(input.polls ? { polls: input.polls } : {}),
+    ...(input.secretSanta ? { secretSanta: true } : {}),
   });
 }
 
@@ -180,16 +186,24 @@ export function readingFromTapback(
   };
 }
 
+/** VIL-686: the addendum the reader carries where Secret Santa runs in the chat. */
+export const GROUP_PLAN_RSVP_SECRET_SANTA_SKILL = 'group-plan-rsvp-read-secret-santa';
+
 export function createGroupPlanRsvpReader(
   clientOrResolver: AgentClient | (() => AgentClient),
 ): GroupPlanRsvpReader {
   const once = async (input: GroupPlanRsvpReadInput): Promise<GroupPlanRsvpReading | null> => {
     const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
     const skill = await loadCronSkill(GROUP_PLAN_RSVP_READ_SKILL);
+    // VIL-686: only where Secret Santa runs; every other read keeps its exact request.
+    const santa = input.secretSanta
+      ? await loadCronSkill(GROUP_PLAN_RSVP_SECRET_SANTA_SKILL)
+      : null;
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
+      ...(santa ? { systemExtras: [santa.instructions] } : {}),
       userMessage: groupPlanRsvpUserMessage(input),
       toolName: 'group_plan_rsvp',
       toolDescription: 'Return what this group message meant for a shared plan.',
@@ -227,7 +241,9 @@ export function createGroupPlanRsvpReader(
 let shared: GroupPlanRsvpReader | null = null;
 
 export function sharedGroupPlanRsvpReader(): GroupPlanRsvpReader {
-  shared ??= createGroupPlanRsvpReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupPlanRsvpReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

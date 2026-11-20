@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says the baby checkup is already booked, but no row is about that appointment, so it cites none. It also promises to keep looking for activities, which matches pending row p1. The registration-opening remark is a fact, not a Hale watch promise, so it is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      }
+    ]
+  },
+  "latencyMs": 2277
+}

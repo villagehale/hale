@@ -1,9 +1,22 @@
 import { type Database, schema } from '@hale/db';
+import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
+import { parentSeasonClock } from '~/lib/channel/family-tz';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import type { Asked } from '~/lib/channel/router/open-questions';
+import {
+  type AskPlace,
+  SIGNUP_ASK_BACK_QUESTION,
+  loadLiveAsks,
+  stoppedTurn,
+  wordsNameAsk,
+} from './asks';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -42,18 +55,30 @@ import { inspectRegistrationPage } from './inspect';
 import { LINK_SPEND_CEILING_CENTS } from './link/client';
 import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
 import {
+  type SignupHelpSeasonFacts,
   type SignupOutcomeFacts,
   type SignupOutcomeWriter,
   createSignupOutcomeWriter,
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
-import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
+import { namesFacts } from './parent-quote';
+import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
+import { untrustedActivityLabel } from './plan/reader';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
 import {
+  claimSignupHelpAttempt,
+  releaseSignupHelpAttempt,
+  signupHelpAttempted,
+  signupHelpSeasonFacts,
+  signupHelpSlotReleaseEnabled,
+} from './signup-help-season';
+import {
+  type PendingSignupOffer,
+  type SendStamp,
+  askStamp,
   loadBusy,
-  loadPendingOffer,
   loadSignupIdentity,
   markOffer,
   recordBrowserUseCost,
@@ -70,6 +95,14 @@ export interface SignupRunInput {
   /** True when this turn is already inside a thread the parent opened. */
   existingThread: boolean;
   now: Date;
+  /** The door's opt-out read could not read this text (`ChannelTurn.optOutUnread`). */
+  optOutUnread?: boolean;
+  /**
+   * The parent's open questions on the router's list (`HandlerContext.openQuestions`). One
+   * asked after Hale's last text about their sign-up asks takes a bare yes or no instead
+   * (VIL-302, `loadLiveAsks`). Absent: no list was read for this turn, and none is ranked.
+   */
+  openQuestions?: readonly Asked[];
 }
 
 export interface SignupRunDeps {
@@ -80,6 +113,8 @@ export interface SignupRunDeps {
   /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
+  mismatchReader?: PlanTurnDeps['mismatchReader'];
+  sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -103,6 +138,11 @@ export interface SignupRunDeps {
     familyId: string,
     cost: { amountUsd: number; category: string },
   ) => Promise<{ ok: boolean; reason: string }>;
+  /**
+   * When Browser Use was skipped because the seasonal allowance is spent, the
+   * numbers the reply model restates. Production sets this internally.
+   */
+  signupHelpSeason?: SignupHelpSeasonFacts | null;
 }
 
 export interface SignupRunResult {
@@ -111,7 +151,15 @@ export interface SignupRunResult {
   claimed: boolean;
   outcome: string;
   reply: string | null;
+  /** Separate Linq sends, one bubble each. When set, the handler sends these instead of `reply`. */
+  replies?: string[];
   deliverOnThread: boolean;
+  /**
+   * For the router to bracket the send of the reply on the thread (`askStamp`): the ask it
+   * speaks to becomes the one Hale asked this parent last, so their next bare yes or no
+   * answers it.
+   */
+  stamp?: SendStamp;
   /**
    * Set on the Browser Use path. Hale's AI writes the parent message from it;
    * this module has no fixed copy for it. `liveViewUrl` goes to the parent only.
@@ -171,29 +219,119 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
-  const planTurn = await runPlanTurn(database, input, {
+  const planDeps: PlanTurnDeps = {
     planReader: deps.planReader,
     planWriter: deps.planWriter,
+    mismatchReader: deps.mismatchReader,
     declineSeat: deps.declineSeat,
+    sendProviderEmail:
+      deps.sendProviderEmail ??
+      (async (payload) => {
+        const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
+        await createGmailEmailSender(database)(
+          { to: payload.to, subject: payload.subject, body: payload.body },
+          { familyId: payload.familyId, actorUserId: payload.actorUserId },
+        );
+      }),
+  };
+  // This parent's asks, newest first, plan and one-shot alike: each is read by its own lane,
+  // and a message one ask's reader finds unrelated goes on to the next. No ask left:
+  // someone else's.
+  const asks = await loadLiveAsks(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+    openQuestions: input.openQuestions ?? [],
   });
-  if (planTurn) return planTurn;
+  // A stop is the opt-out's, read at the door before any turn reaches here. A text of theirs
+  // the opt-out read could not read may be one, so until it is read it moves none of their
+  // asks: this text, as the turn carries it (the door's hold row may not have been written),
+  // or an earlier one still held (opt-out-hold.ts).
+  if (
+    asks.length > 0 &&
+    (input.optOutUnread === true || (await isParentHeld(database, input.parentUserId)))
+  ) {
+    console.warn(
+      {
+        outcome: 'signup_opt_out_unread',
+        asks: asks.length,
+        thisText: input.optOutUnread === true,
+      },
+      'signup asks: a text of theirs may be an unread stop - no ask moves',
+    );
+    return { ...UNCLAIMED, outcome: 'opt_out_unread' };
+  }
+  for (const ask of asks) {
+    const turn =
+      ask.lane === 'plan'
+        ? await runPlanAsk(database, input, planDeps, ask.plan, ask.place)
+        : await runOneShotAsk(
+            database,
+            input,
+            deps,
+            ask.offer,
+            ask.place,
+            asks.some((other) => other !== ask && wordsNameAsk(input.body, other)),
+          );
+    if (turn !== 'unrelated') return turn;
+  }
+  return UNCLAIMED;
+}
 
-  // No pending offer: nothing to consent to, and the message is someone else's. An offer
-  // made to the other parent is theirs to answer: this parent's yes would register with
-  // their own details on a sign-up the other parent was asked about.
-  const offer = await loadPendingOffer(database, input.familyId);
-  if (!offer || offer.parentUserId !== input.parentUserId) return UNCLAIMED;
+/**
+ * One pending ask Hale made this parent with no open ahead: the consent read, then the
+ * booking. `unrelated` hands the message to the next ask. A yes or a no moves this ask only
+ * when Hale asked the parent about it last, or when it is the sign-up ask Hale asked about
+ * last and their words name it while an open question outranks it (`AskPlace.laneNewest`).
+ * Otherwise words that carry its program's name or its site, in whole words, only make Hale
+ * ask about it; once that question went out it is the ask asked last, and the parent's next
+ * answer is its. A yes or no in no ask's words stops the
+ * turn, and so does one whose words name another of their asks (`namesAnother`) and not
+ * this one: it is not this ask's, and it is not handed on. A reading that failed stops the
+ * turn. A question back comes only from the ask Hale asked last or one their words name;
+ * any other passes the message on.
+ */
+async function runOneShotAsk(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  offer: PendingSignupOffer,
+  place: AskPlace,
+  namesAnother: boolean,
+): Promise<SignupRunResult | 'unrelated'> {
+  let reportDeps = deps;
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading: SignupConsentReading | null = await reader.read({ text: input.body, offer });
   // Unreadable (no model, model failure) is not consent and does not claim the message.
-  if (!reading || reading.verdict === 'unrelated') return UNCLAIMED;
-  if (reading.verdict === 'consent' && deps.declineSeat && (await deps.declineSeat())) {
-    return {
-      claimed: true,
-      outcome: 'group_member_not_authorized',
-      reply: null,
-      deliverOnThread: false,
-    };
+  if (!reading) return stoppedTurn('signup_unread', { offerId: offer.id, status: 'pending' });
+  if (reading.verdict === 'unrelated') return 'unrelated';
+  const named = namesFacts(input.body, {
+    activity: untrustedActivityLabel(offer.activityLabel),
+    host: offer.providerHost,
+  });
+  if (namesAnother && !named) {
+    console.info(
+      { offerId: offer.id, verdict: reading.verdict },
+      'signup asks: words name another ask',
+    );
+    if (reading.verdict === 'unclear') return 'unrelated';
+    return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
+  }
+  if (reading.verdict === 'unclear' && !place.newest && !named) return 'unrelated';
+  // Named in whole words while only an open question outranks it: the words bind it.
+  const binds = place.newest || (place.laneNewest && named);
+  if (reading.verdict === 'consent' || reading.verdict === 'decline') {
+    if (!place.newest && !named) {
+      return stoppedTurn('signup_unnamed', { offerId: offer.id, status: 'pending' });
+    }
+    if (deps.declineSeat && (await deps.declineSeat())) {
+      return {
+        claimed: true,
+        outcome: 'group_member_not_authorized',
+        reply: null,
+        deliverOnThread: false,
+      };
+    }
   }
   const door = await reportDoor(database, input);
 
@@ -213,20 +351,20 @@ export async function runAuthorizedSignup(
     };
   }
 
-  if (reading.verdict === 'unclear') {
-    return replyFor(database, input, deps, door, {
+  if (reading.verdict === 'unclear' || !binds) {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'clarify',
       reason: null,
       link: '',
       prefilled: [],
       host,
-      question: reading.question,
+      question: reading.verdict === 'unclear' ? reading.question : SIGNUP_ASK_BACK_QUESTION,
     });
   }
   if (reading.verdict === 'decline') {
     await markFromPending(database, input, offer.id, null);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'declined',
       reason: null,
@@ -243,7 +381,7 @@ export async function runAuthorizedSignup(
   });
   if (!decision.ok) {
     await markFromPending(database, input, offer.id, null);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: decision.reason,
       reason: decision.reason,
@@ -261,7 +399,7 @@ export async function runAuthorizedSignup(
   });
   if (!identity) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'missing_detail',
       reason: 'missing_detail',
@@ -272,7 +410,7 @@ export async function runAuthorizedSignup(
   }
   if (!allowed.ok) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'url_refused',
       reason: 'url_refused',
@@ -286,7 +424,7 @@ export async function runAuthorizedSignup(
   const session = offer.sessions.find((item) => item.id === decision.sessionId);
   if (!session) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'session_not_offered',
       reason: 'session_not_offered',
@@ -308,7 +446,7 @@ export async function runAuthorizedSignup(
   });
   if (!consent.ok) {
     await markFromPending(database, input, offer.id, decision.sessionId);
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: consent.reason,
       reason: consent.reason,
@@ -327,7 +465,7 @@ export async function runAuthorizedSignup(
     now: input.now,
   });
   if (!claimed) {
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'already_in_progress',
       reason: 'already_in_progress',
@@ -347,17 +485,68 @@ export async function runAuthorizedSignup(
   });
 
   if (browserUseSignupEnabled()) {
-    return runBrowserUseBranch(database, input, deps, {
-      door,
-      offerId: offer.id,
-      href: allowed.href,
-      providerHost,
-      host,
-      identity,
-      session,
-      fieldsAllowed: consent.fieldsAllowed,
-      approvedPriceCents: offer.approvedPriceCents,
-    });
+    const [family] = await database
+      .select({ planTier: schema.families.planTier })
+      .from(schema.families)
+      .where(eq(schema.families.id, input.familyId))
+      .limit(1);
+    const planTier: PlanTier = family?.planTier ?? 'free';
+    const cap = entitlementsForFamily(planTier).signupHelpPerSeason;
+    const seasonClock = await parentSeasonClock(database, input.parentUserId, input.now);
+    const season = seasonClock.outcome === 'season' ? seasonClock : null;
+    let atSeasonCap = false;
+    if (cap !== null && season) {
+      const used = await signupHelpAttempted(database, {
+        familyId: input.familyId,
+        seasonKey: season.key,
+      });
+      if (used >= cap) {
+        atSeasonCap = true;
+        reportDeps = {
+          ...deps,
+          signupHelpSeason: signupHelpSeasonFacts({ used, cap, resetsOn: season.resetsOn }),
+        };
+        console.info(
+          { outcome: 'signup_help_season_spent', used, cap, resetsOn: season.resetsOn },
+          'authorized signup: Browser Use seasonal allowance spent, falling through',
+        );
+      }
+    } else if (cap !== null) {
+      console.info(
+        { outcome: 'timezone_unset' },
+        'authorized signup: season cap not claimed, zone unset',
+      );
+    }
+    if (!atSeasonCap) {
+      const result = await runBrowserUseBranch(database, input, deps, {
+        door,
+        offerId: offer.id,
+        href: allowed.href,
+        providerHost,
+        host,
+        identity,
+        session,
+        fieldsAllowed: consent.fieldsAllowed,
+        approvedPriceCents: offer.approvedPriceCents,
+        seasonCap: season ? cap : null,
+        seasonKey: season?.key ?? '',
+        resetsOn: season?.resetsOn ?? '',
+      });
+      if (result.skipped === 'season_cap') {
+        reportDeps = { ...deps, signupHelpSeason: result.signupHelpSeason };
+        console.info(
+          {
+            outcome: 'signup_help_season_spent',
+            used: result.signupHelpSeason.used,
+            cap: result.signupHelpSeason.cap,
+            resetsOn: result.signupHelpSeason.resetsOn,
+          },
+          'authorized signup: Browser Use seasonal allowance spent, falling through',
+        );
+      } else {
+        return result;
+      }
+    }
   }
 
   if (route.kind === 'connector') {
@@ -368,7 +557,7 @@ export async function runAuthorizedSignup(
     });
     if (!slots.ok) {
       await finish(database, input, offer.id, 'handed_back');
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: slots.reason,
         reason: slots.reason,
@@ -387,7 +576,7 @@ export async function runAuthorizedSignup(
       });
       if (!booked.ok) {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: booked.reason,
           reason: booked.reason,
@@ -405,7 +594,7 @@ export async function runAuthorizedSignup(
         connector: route.connector.id,
         host,
       });
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: 'completed',
         reason: null,
@@ -421,7 +610,7 @@ export async function runAuthorizedSignup(
         { familyId: input.familyId, offerId: offer.id, connector: route.connector.id },
         'authorized signup: connector stopped',
       );
-      return replyFor(database, input, deps, door, {
+      return replyFor(database, input, reportDeps, door, {
         offerId: offer.id,
         outcome: 'connector_failed',
         reason: 'connector_failed',
@@ -435,7 +624,7 @@ export async function runAuthorizedSignup(
   const acquired = await resolveBrowser(deps);
   if (!acquired.browser) {
     await finish(database, input, offer.id, 'handed_back');
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'browser_unavailable',
       reason: 'browser_unavailable',
@@ -473,7 +662,7 @@ export async function runAuthorizedSignup(
       });
       if (inspection.action === 'stop') {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: inspection.reason,
           reason: inspection.reason,
@@ -490,7 +679,7 @@ export async function runAuthorizedSignup(
         )
       ) {
         await finish(database, input, offer.id, 'handed_back');
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: 'consent_short',
           reason: 'consent_short',
@@ -510,7 +699,7 @@ export async function runAuthorizedSignup(
         const after = await page.snapshot();
         if (!after.confirmed) {
           await finish(database, input, offer.id, 'handed_back');
-          return replyFor(database, input, deps, door, {
+          return replyFor(database, input, reportDeps, door, {
             offerId: offer.id,
             outcome: 'unconfirmed',
             reason: 'unconfirmed',
@@ -527,7 +716,7 @@ export async function runAuthorizedSignup(
           fieldsFilled: filled,
           host,
         });
-        return replyFor(database, input, deps, door, {
+        return replyFor(database, input, reportDeps, door, {
           offerId: offer.id,
           outcome: 'completed',
           reason: null,
@@ -541,7 +730,7 @@ export async function runAuthorizedSignup(
       await page.continue();
     }
     await finish(database, input, offer.id, 'handed_back');
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'unconfirmed',
       reason: 'unconfirmed',
@@ -557,7 +746,7 @@ export async function runAuthorizedSignup(
       { familyId: input.familyId, offerId: offer.id, reason },
       'authorized signup: browser stopped',
     );
-    return replyFor(database, input, deps, door, {
+    return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: reason,
       reason,
@@ -578,6 +767,44 @@ export const BROWSER_USE_REGISTRATION_RESERVE_USD = 25;
  * search and profile seeding).
  */
 export const BROWSER_USE_RUN_ALLOWANCE_USD = SIGNUP_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
+
+/**
+ * A season slot counts a run that reached the provider. A throw before any
+ * provider session exists, or a page that is not open yet (`rush`), does not.
+ * An unknown throw may have started a session, so it keeps the slot.
+ */
+function seasonSlotUnused(handoff: BrowserUseHandoff, sessionMayExist: boolean): boolean {
+  if (handoff.outcome === 'rush') return true;
+  const noProviderSession =
+    handoff.runId === null && handoff.sessionId === null && !sessionMayExist;
+  return handoff.detail === 'engine_threw' && noProviderSession;
+}
+
+async function releaseUnusedSeasonSlot(
+  database: Database,
+  input: SignupRunInput,
+  ctx: { offerId: string; seasonKey: string },
+  handoff: BrowserUseHandoff,
+  state: { claimed: boolean; sessionMayExist: boolean },
+): Promise<'returned' | null> {
+  if (!state.claimed || !signupHelpSlotReleaseEnabled()) return null;
+  if (!seasonSlotUnused(handoff, state.sessionMayExist)) return null;
+  const released = await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey: ctx.seasonKey,
+    now: input.now,
+  });
+  console.info(
+    {
+      offerId: ctx.offerId,
+      attempted: released.attempted,
+      outcome: handoff.outcome,
+      detail: handoff.detail,
+    },
+    'authorized signup: season slot returned',
+  );
+  return 'returned';
+}
 
 function browserUseAbsent(
   outcome: 'error' | 'needs_login',
@@ -610,6 +837,10 @@ function browserUseAbsent(
  * page comes back as a handoff. Every outcome ends through `replyFor`, so the
  * parent hears it in the reply model's words, or the non-send is named.
  */
+type BrowserUseBranchResult =
+  | (SignupRunResult & { skipped?: undefined })
+  | { skipped: 'season_cap'; signupHelpSeason: SignupHelpSeasonFacts };
+
 async function runBrowserUseBranch(
   database: Database,
   input: SignupRunInput,
@@ -630,12 +861,16 @@ async function runBrowserUseBranch(
     };
     fieldsAllowed: readonly ShareableSignupField[];
     approvedPriceCents: number | null;
+    seasonCap: number | null;
+    seasonKey: string;
+    resetsOn: string;
   },
-): Promise<SignupRunResult> {
+): Promise<BrowserUseBranchResult> {
   let allowanceHeld = false;
   // A throw that does not say which session it had created may have started one:
   // its hold stays until a real cost replaces it.
   let sessionMayExist = false;
+  let seasonClaimed = false;
   const done = async (
     raw: BrowserUseHandoff,
     paymentSkipped: SignupPaymentSkipped | null = null,
@@ -648,6 +883,14 @@ async function runBrowserUseBranch(
         : raw;
     const paid = handoff.outcome === 'completed';
     await finish(database, input, ctx.offerId, paid ? 'completed' : 'handed_back');
+    if (handoff.outcome === 'error') {
+      noteRegistrationRunFailed({
+        familyId: input.familyId,
+        providerDomain: ctx.host ?? ctx.providerHost,
+        stage: handoff.detail ?? 'error',
+        source: 'signup',
+      });
+    }
     // No Browser Use session ever started (setup failed or the engine threw
     // before a run): release the held allowance. A started session keeps its
     // hold until its real cost replaces it.
@@ -664,6 +907,10 @@ async function runBrowserUseBranch(
         now: input.now,
       });
     }
+    const seasonSlot = await releaseUnusedSeasonSlot(database, input, ctx, handoff, {
+      claimed: seasonClaimed,
+      sessionMayExist,
+    });
     const thread = await yesThread(database, input);
     const withheld = thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {};
     await writeAudit(database, input, ctx.offerId, {
@@ -680,6 +927,7 @@ async function runBrowserUseBranch(
       costUsd: handoff.costUsd,
       sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
+      ...(seasonSlot ? { seasonSlot } : {}),
       ...withheld,
     });
     const rush: RushHandoff | null =
@@ -756,6 +1004,32 @@ async function runBrowserUseBranch(
     return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
   }
   allowanceHeld = true;
+
+  if (ctx.seasonCap !== null) {
+    const claimed = await claimSignupHelpAttempt(database, {
+      familyId: input.familyId,
+      seasonKey: ctx.seasonKey,
+      cap: ctx.seasonCap,
+      now: input.now,
+    });
+    if (!claimed.ok) {
+      await recordBrowserUseCost(database, {
+        offerId: ctx.offerId,
+        familyId: input.familyId,
+        sessionCostUsd: '0',
+        now: input.now,
+      });
+      return {
+        skipped: 'season_cap',
+        signupHelpSeason: signupHelpSeasonFacts({
+          used: claimed.attempted,
+          cap: ctx.seasonCap,
+          resetsOn: ctx.resetsOn,
+        }),
+      };
+    }
+    seasonClaimed = true;
+  }
 
   let result: BrowserUseSignupResult;
   try {
@@ -907,6 +1181,9 @@ async function finish(
     status,
     now: input.now,
   });
+  if (status === 'completed') {
+    noteTaskCompleted({ familyId: input.familyId, type: 'registration', source: 'browser_use' });
+  }
 }
 
 function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionId: string): string {
@@ -914,10 +1191,11 @@ function labelFor(offer: { sessions: { id: string; label: string }[] }, sessionI
 }
 
 interface ReplyFacts {
-  offerId: string | null;
+  offerId: string;
   outcome: string;
   reason: SignupStopReason | BrowserUseHandoff['detail'] | null;
   link: string;
+  signupHelpSeason?: SignupHelpSeasonFacts;
   /** Browser Use only. Elsewhere a set link is the registration page. */
   linkIs?: SignupOutcomeFacts['linkIs'];
   /** Browser Use live view only. */
@@ -1109,6 +1387,7 @@ async function replyFor(
         : rawFacts.reason,
   };
   const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
+  const signupHelpSeason = facts.signupHelpSeason ?? deps.signupHelpSeason;
   // A held turn sends nothing, so the pack and the live view never go to the model.
   const line: string | null =
     door.kind === 'held'
@@ -1143,6 +1422,7 @@ async function replyFor(
             familyId: input.familyId,
             parentUserId: input.parentUserId,
           }),
+          ...(signupHelpSeason ? { signupHelpSeason } : {}),
         });
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
@@ -1179,8 +1459,13 @@ async function replyFor(
       parentUserId: input.parentUserId,
       chatId: door.chatId,
       body: line,
-      dedupeKey: `authorized_signup:${facts.offerId ?? 'none'}:${facts.outcome}`,
+      dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
+      stamp: askStamp(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        offerIds: [facts.offerId],
+      }),
     });
     if (status === 'sent' || status === 'already_sent') {
       return {
@@ -1205,7 +1490,18 @@ async function replyFor(
       };
     }
   }
-  return { ...rush, claimed: true, outcome: facts.outcome, reply: line, deliverOnThread: true };
+  return {
+    ...rush,
+    claimed: true,
+    outcome: facts.outcome,
+    reply: line,
+    deliverOnThread: true,
+    stamp: askStamp(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      offerIds: [facts.offerId],
+    }),
+  };
 }
 
 async function writeAudit(

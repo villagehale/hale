@@ -159,6 +159,35 @@ describe('onboarding capture', () => {
     expect(stored.collectedChildren[1]).toMatchObject({ name: 'Leo', ageMonths: null });
   });
 
+  it('treats a named birth date as the age, so the age ask is done (VIL-532)', () => {
+    const capture = acceptOnboardingCapture({
+      children: [{ name: 'Lin', ageMonths: null, agePrecision: null, dateOfBirth: '2016-05-01' }],
+    });
+    expect(capture.children[0]?.dateOfBirth).toBe('2016-05-01');
+    expect(agesAreComplete(capture.children)).toBe(true);
+    const after = checklistAfter({ ...EMPTY_CHECKLIST, postal: true }, capture);
+    expect(after.kids).toBe(true);
+    expect(after.ages).toBe(true);
+    const stored = storedFromCapture(prior, capture);
+    expect(stored.collectedChildren[0]).toMatchObject({
+      name: 'Lin',
+      ageMonths: null,
+      dateOfBirth: '2016-05-01',
+    });
+  });
+
+  it('keeps a civil date off a datetime and drops a day that is not a date', () => {
+    const kept = acceptOnboardingCapture({
+      children: [{ name: 'Lin', dateOfBirth: '2016-05-01T00:00:00.000Z' }],
+    });
+    expect(kept.children[0]?.dateOfBirth).toBe('2016-05-01');
+    const dropped = acceptOnboardingCapture({
+      children: [{ name: 'Lin', dateOfBirth: 'May 1, 2016' }],
+    });
+    expect(dropped.children[0]?.dateOfBirth).toBeUndefined();
+    expect(agesAreComplete(dropped.children)).toBe(false);
+  });
+
   it('updates the only child when the model returns a corrected age', () => {
     const merged = mergeChildFacts(
       [{ name: 'Maya', ageMonths: 48, agePrecision: 'years' }],

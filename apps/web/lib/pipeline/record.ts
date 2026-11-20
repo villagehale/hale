@@ -233,7 +233,12 @@ export interface RecordVerdictInput {
   actionId: string;
   actionType: ActionType;
   verdict: ReviewerVerdict;
-  usage: { promptTokens: number; completionTokens: number };
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
   /** Priced by the reviewer loop itself, which is the only place that still holds
    * the per-turn tier split — `usage.promptTokens` here is the sum the row records
    * (full-rate + cache reads), so re-deriving from it would bill every cached
@@ -259,6 +264,10 @@ export async function recordVerdict(database: Database, input: RecordVerdictInpu
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
     costUsd: input.costUsd,
+    promptCacheHit:
+      input.usage.cacheReadTokens === undefined ? undefined : input.usage.cacheReadTokens > 0,
+    cacheReadTokens: input.usage.cacheReadTokens,
+    cacheWriteTokens: input.usage.cacheWriteTokens,
     status: 'completed',
     langfuseTraceId: input.langfuseTraceId,
   });

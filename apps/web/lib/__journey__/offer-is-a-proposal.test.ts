@@ -84,6 +84,9 @@ describe('the offer is a proposal', () => {
     db = await createTestDb();
     database = db.database;
     vi.stubEnv('F14_ENABLED', 'true');
+    // The burst settle waits in real time on every lone text; burst-drain.pglite.test.ts
+    // covers it. This journey is about the answer, so it keeps the path it had before.
+    vi.stubEnv('INBOUND_BURST_ENABLED', 'false');
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
 
     const [family] = await database

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says she is registered for swim lessons on Saturday at 10am, which matches the confirmed registration row r1 with the same day and time. It also states the placement is set for that time, so a scheduled_event claim is backed by the same row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "r1"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 2581
+}

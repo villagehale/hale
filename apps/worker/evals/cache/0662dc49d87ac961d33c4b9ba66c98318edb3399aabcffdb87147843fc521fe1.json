@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reasoning": "m1 asks whether swim is still on Thursday, a question about swimming. m2 asks for a Saturday art class for Ada, an unrelated request about a different activity and day. Separate asks, so two groups.",
+    "groups": [
+      [
+        "m1"
+      ],
+      [
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1240
+}

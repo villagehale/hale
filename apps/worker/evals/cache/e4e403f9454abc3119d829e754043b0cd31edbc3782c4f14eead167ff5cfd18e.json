@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent cancels the approved plan",
+    "said": "Cancel it please",
+    "named": null,
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1332
+}

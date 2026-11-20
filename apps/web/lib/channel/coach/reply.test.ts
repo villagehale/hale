@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { linkRef } from './activity-links';
-import { plainText, redactTeenNames, toSmsReply } from './reply';
+import {
+  joinReplyBubbles,
+  plainText,
+  redactTeenNames,
+  splitReplyBubbles,
+  toSmsBubbles,
+  toSmsReply,
+} from './reply';
 
 /**
  * The post-processing between the model and the carrier. Everything asserted here is a
@@ -586,5 +593,146 @@ describe('activity links', () => {
     expect(toSmsReply(zh, { children: [], now: NOW, activityLinks: [LANTERN] })).toBe(
       '周六下午北约克中央图书馆有灯笼手工活动。 https://tpl.example/lantern',
     );
+  });
+});
+
+/**
+ * Several short bubbles on a 1:1 iMessage turn. The model leaves a blank line between
+ * bubbles; everything else `toSmsReply` does still happens, once per bubble, and every
+ * code-appended tail (offer, referral, nearby count, pages) rides the LAST bubble, which
+ * is where the skill puts the one question. Expected values are written out by hand.
+ */
+describe('toSmsBubbles', () => {
+  const PAGE = { ref: linkRef('https://tpl.example/lantern'), url: 'https://tpl.example/lantern' };
+  const OFFER_LINE = 'Want me to send the full plan?';
+
+  it('splits on blank lines and flattens each paragraph on its own', () => {
+    const raw =
+      '**Swim** is Saturday at 10.\n\nBring a towel,\nand goggles.\n\n\n  \n- Pool opens at 9:45.';
+
+    expect(toSmsBubbles(raw, { children: [], now: NOW, bubbles: true })).toEqual([
+      'Swim is Saturday at 10.',
+      'Bring a towel, and goggles.',
+      'Pool opens at 9:45.',
+    ]);
+  });
+
+  it('drops a paragraph that flattens to nothing', () => {
+    const raw = 'Swim is Saturday.\n\n```\nnotes\n```\n\nBring a towel.';
+
+    expect(toSmsBubbles(raw, { children: [], now: NOW, bubbles: true })).toEqual([
+      'Swim is Saturday.',
+      'Bring a towel.',
+    ]);
+  });
+
+  it('puts the page for a ref cited in the first bubble at the end of the last', () => {
+    const raw = `Fanous lantern craft is Saturday at North York. [${PAGE.ref}]\n\nWant me to hold a spot?`;
+
+    expect(
+      toSmsBubbles(raw, { children: [], now: NOW, activityLinks: [PAGE], bubbles: true }),
+    ).toEqual([
+      'Fanous lantern craft is Saturday at North York.',
+      'Want me to hold a spot? https://tpl.example/lantern',
+    ]);
+  });
+
+  it('never sends a ref as a bubble of its own', () => {
+    const raw = `Lantern craft is Saturday.\n\n[${PAGE.ref}]`;
+
+    expect(
+      toSmsBubbles(raw, { children: [], now: NOW, activityLinks: [PAGE], bubbles: true }),
+    ).toEqual(['Lantern craft is Saturday. https://tpl.example/lantern']);
+  });
+
+  it('appends the plan offer to the last bubble', () => {
+    const raw = 'Try a gradual fade.\n\nStart at bedtime.';
+
+    expect(
+      toSmsBubbles(raw, { children: [], now: NOW, planOffer: OFFER_LINE, bubbles: true }),
+    ).toEqual(['Try a gradual fade.', 'Start at bedtime. Want me to send the full plan?']);
+  });
+
+  it('sends the offer once when the model wrote it as its own last bubble', () => {
+    const raw = `Try a gradual fade.\n\n${OFFER_LINE}`;
+
+    expect(
+      toSmsBubbles(raw, { children: [], now: NOW, planOffer: OFFER_LINE, bubbles: true }),
+    ).toEqual(['Try a gradual fade. Want me to send the full plan?']);
+  });
+
+  it('reads the nearby naming check across every bubble and appends the count to the last', () => {
+    const nearby = {
+      clause: '3 families near you say Riverdale storytime is worth it.',
+      title: 'Riverdale storytime',
+      otherTitles: ['Wychwood swim'],
+    };
+    const raw = 'Riverdale storytime runs Saturdays at 10.\n\nIt fills up fast.';
+
+    expect(toSmsBubbles(raw, { children: [], now: NOW, nearby, bubbles: true })).toEqual([
+      'Riverdale storytime runs Saturdays at 10.',
+      'It fills up fast. 3 families near you say Riverdale storytime is worth it.',
+    ]);
+  });
+
+  it('redacts a teen name in every bubble', () => {
+    const raw = 'Nora has a shift Thursday.\n\nNora can take the bus.';
+
+    expect(toSmsBubbles(raw, { children: [TEEN], now: NOW, bubbles: true })).toEqual([
+      'your kid has a shift Thursday.',
+      'your kid can take the bus.',
+    ]);
+  });
+
+  it('refuses to emit an empty set', () => {
+    expect(() => toSmsBubbles('\n\n**  **\n\n', { children: [], now: NOW, bubbles: true })).toThrow(
+      /empty/,
+    );
+  });
+
+  it('is exactly toSmsReply, as one bubble, when bubbles are off', () => {
+    const inputs: Array<[string, Parameters<typeof toSmsReply>[1]]> = [
+      ['Swim is Saturday.\n\nBring a towel.', { children: [], now: NOW }],
+      [
+        'Try a gradual fade.\n\nStart at bedtime.',
+        { children: [], now: NOW, planOffer: OFFER_LINE },
+      ],
+      [
+        `Lantern craft is Saturday. [${PAGE.ref}]`,
+        { children: [], now: NOW, activityLinks: [PAGE] },
+      ],
+      ['Nora has a shift Thursday.', { children: [TEEN], now: NOW }],
+    ];
+    for (const [raw, args] of inputs) {
+      expect(toSmsBubbles(raw, { ...args, bubbles: false })).toEqual([toSmsReply(raw, args)]);
+    }
+    expect(
+      toSmsBubbles('Swim is Saturday.\n\nBring a towel.', {
+        children: [],
+        now: NOW,
+        bubbles: false,
+      }),
+    ).toEqual(['Swim is Saturday. Bring a towel.']);
+  });
+});
+
+describe('the bubble break inside one reply string', () => {
+  it('joins bubbles with a line break and keeps every other whitespace a space', () => {
+    expect(joinReplyBubbles(['Swim is  Saturday.', 'Bring a towel,\nand goggles.'])).toBe(
+      'Swim is Saturday.\nBring a towel, and goggles.',
+    );
+  });
+
+  it('splits on every line break and drops blank bubbles', () => {
+    expect(splitReplyBubbles('Swim is Saturday.\n\n  Bring a towel.  \nGoggles too.')).toEqual([
+      'Swim is Saturday.',
+      'Bring a towel.',
+      'Goggles too.',
+    ]);
+  });
+
+  it('round-trips a set', () => {
+    const set = ['Swim is Saturday.', 'Bring a towel.'];
+    expect(splitReplyBubbles(joinReplyBubbles(set))).toEqual(set);
   });
 });

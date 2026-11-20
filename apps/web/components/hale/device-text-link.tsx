@@ -16,6 +16,7 @@ export function DeviceTextLink({
   prefill,
   source = null,
   className,
+  onClick,
   children,
 }: {
   /** E.164, or '' when the line is not live — then the href stays on /text. */
@@ -24,6 +25,7 @@ export function DeviceTextLink({
   prefill: string | null;
   source?: string | null;
   className?: string;
+  onClick?: () => void;
   children: React.ReactNode;
 }) {
   const [href, setHref] = useState(
@@ -51,7 +53,7 @@ export function DeviceTextLink({
   }, [smsNumber, prefill, source]);
 
   return (
-    <a href={href} className={className}>
+    <a href={href} className={className} onClick={onClick}>
       {children}
     </a>
   );

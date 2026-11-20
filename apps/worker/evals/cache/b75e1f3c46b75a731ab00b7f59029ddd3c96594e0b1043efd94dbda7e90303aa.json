@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I couldn't confirm the sign-up for Sat 9:30 AM went through. Please check on their page: https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 1674,
+  "usage": {
+    "input_tokens": 139,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

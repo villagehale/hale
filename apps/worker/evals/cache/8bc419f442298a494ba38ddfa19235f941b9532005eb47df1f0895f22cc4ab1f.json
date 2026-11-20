@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the Thursday 3pm swim class is already booked, which is a scheduled_event claim. The only row is a swim class on Tue Nov 10 at 9:00 AM in open state, which is not the same day and time, so it cannot back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1688
+}

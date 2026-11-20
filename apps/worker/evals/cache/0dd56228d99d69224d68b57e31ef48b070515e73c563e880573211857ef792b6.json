@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The sentence says nothing has been booked yet, which is a negation and makes no claim. No rows exist.",
+    "claims": []
+  },
+  "latencyMs": 1180
+}

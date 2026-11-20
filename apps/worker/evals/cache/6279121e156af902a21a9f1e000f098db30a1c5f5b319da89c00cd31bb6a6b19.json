@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's question using only the calendar facts, with correct times converted to Toronto time (EST, UTC-5). The first bubble says nothing is on until Monday, which is a fact from the calendar, and the schedule bubbles are whole thoughts by day. The final question is in the last bubble, which is correct. However, the first bubble is not a complete thought about the week's content but a lead-in-like statement, and the last bubble is a question tied to a specific event, which is acceptable. Overall it meets the rubric, though the first bubble ('Nothing's on for the rest of this week') is a sentence that frames what follows somewhat rather than being a direct answer, and Wednesday is packed into one bubble with two separate events, which is a mild under-split. Minor stylistic flaws only.",
+    "score": 4
+  }
+}

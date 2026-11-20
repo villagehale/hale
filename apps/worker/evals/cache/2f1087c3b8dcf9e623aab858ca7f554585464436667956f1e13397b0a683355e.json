@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is short and warm and answers the parent's yes, but it says the group gets going once they send the number and phrase, which implies setup completes with that step; householdGroup is unclaimed, so this sits close to suggesting setup is done. It makes no claim of completion, though, and the number and phrase are placed by code as watchFor describes.",
+    "score": 4
+  }
+}

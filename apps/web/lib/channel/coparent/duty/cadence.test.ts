@@ -267,8 +267,14 @@ describe('parent-initiated asks', () => {
 });
 
 describe('ask budget and stop asking', () => {
-  it('counts which-kid, both-claimed, re-ask, and night-before, and not the other three', () => {
-    for (const mode of ['which_kid', 'both_claimed', 'reask_48h', 'night_before'] as const) {
+  it('counts which-kid, both-claimed, re-ask, night-before, and split-duty, and not the other three', () => {
+    for (const mode of [
+      'which_kid',
+      'both_claimed',
+      'reask_48h',
+      'night_before',
+      'split_duty',
+    ] as const) {
       expect(dutyModeCountsAgainstAskBudget(mode)).toBe(true);
     }
     for (const mode of ['week_overview', 'parent_initiated', 'silent_parent'] as const) {
@@ -323,5 +329,66 @@ describe('duty extractor', () => {
   it('does not run when the send flag is off', () => {
     expect(dutyExtractorMayRun({ sendsActive: false })).toBe(false);
     expect(dutyExtractorMayRun({ sendsActive: true })).toBe(true);
+  });
+});
+
+describe('split-duty cadence (VIL-661)', () => {
+  const hockey = occasion({
+    eventKey: 'hockey',
+    kid: 'Maya',
+    eventLabel: 'hockey',
+    startsAt: MONDAY,
+  });
+  const dance = occasion({
+    eventKey: 'dance',
+    kid: 'Leo',
+    eventLabel: 'dance',
+    role: 'attend',
+    startsAt: MONDAY,
+  });
+
+  it('sends one split ask covering both kids when no bubble is leaving', () => {
+    const plan = planDutyCadence(
+      ctx({
+        weekday: 1,
+        occasions: [hockey, dance],
+        splitPair: { first: hockey, second: dance },
+      }),
+    );
+    expect(plan.sendLines).toEqual([
+      expect.objectContaining({
+        mode: 'split_duty',
+        eventKey: 'hockey',
+        peerEventKey: 'dance',
+        opensQuestion: true,
+      }),
+    ]);
+    expect(plan.foldLines).toEqual([]);
+  });
+
+  it('folds the split ask into a bubble that is already leaving', () => {
+    const plan = planDutyCadence(
+      ctx({
+        bubbleLeaving: true,
+        occasions: [hockey, dance],
+        splitPair: { first: hockey, second: dance },
+      }),
+    );
+    const split = plan.foldLines.find((row) => row.mode === 'split_duty');
+    expect(split?.peerEventKey).toBe('dance');
+    expect(plan.sendLines).toEqual([]);
+  });
+
+  it('holds the split ask in quiet hours', () => {
+    const plan = planDutyCadence(
+      ctx({
+        quiet: true,
+        weekday: 1,
+        occasions: [hockey, dance],
+        splitPair: { first: hockey, second: dance },
+      }),
+    );
+    expect(plan.sendLines).toEqual([]);
+    expect(plan.held).toBe('quiet_hours');
   });
 });

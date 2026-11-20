@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, accepts the no warmly, and asks one question: just the first three characters of the postal code, which is what watchFor calls right. The claim that this is enough to find things nearby only holds if they give it, so it is not a premature promise. It does not press or ask for a street or town. It is short and plain.",
+    "score": 5
+  }
+}

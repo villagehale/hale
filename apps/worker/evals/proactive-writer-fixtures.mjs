@@ -70,4 +70,70 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: null,
     expect: { names: ['swim'], urls: [] },
   },
+  {
+    // VIL-681 · one check-back on something the parent started yesterday: the thread's
+    // own title and next step, no link.
+    id: 'next-day-checkback',
+    items: [
+      {
+        id: 'checkback',
+        what: 'Fall swim registration for the 4 year old: pick a session',
+        why: 'next_day_checkback asked=2026-10-08T01:40:00.000Z',
+        sourceUrl: null,
+        worthlessAfter: '2026-10-09T12:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['swim'], urls: [] },
+  },
+  {
+    // VIL-684 · when winter registration opens in their own city, read off its own page.
+    id: 'registration-opening',
+    items: [
+      {
+        id: 'opening',
+        what: 'Elm Falls Winter 2027 recreation programs registration opens Dec 1, 6:30 a.m.; everyone else Dec 2, 6:30 a.m.',
+        why: 'registration_opening read=2026-11-12T20:00:00.000Z',
+        sourceUrl: 'https://rec.example.test/winter-registration',
+        worthlessAfter: '2026-12-01T11:30:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['dec 1', 'registration'], urls: [] },
+  },
+  {
+    // VIL-685 · the one question when no school page or email has their winter break.
+    id: 'school-break-ask',
+    items: [
+      {
+        id: 'break-ask',
+        what: 'winter break 2026-27',
+        why: 'school_break_ask year=2026-27',
+        sourceUrl: null,
+        worthlessAfter: '2026-12-15T17:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['break'], urls: [] },
+  },
+  {
+    // VIL-685 · the school's own email stated the break: its days are put to the parent
+    // to confirm, never filed on the email's word alone.
+    id: 'school-break-ask-proposal',
+    items: [
+      {
+        id: 'break-ask',
+        what: 'winter break 2026-27; the school email gives Winter Break 2026-12-21 to 2027-01-01',
+        why: 'school_break_ask year=2026-27',
+        sourceUrl: null,
+        worthlessAfter: '2026-12-15T17:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['21', 'jan'], urls: [] },
+  },
 ];

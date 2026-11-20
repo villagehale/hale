@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the correct opening time and both sessions with correct prices, asks one question, and avoids claiming a spot. However it is three sentences, not two, and combines the session-order ask with the queueing note, which is a second ask-like clause. Minor issues only, no invented facts or privacy problems.",
+    "score": 4
+  }
+}

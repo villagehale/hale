@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the Tuesday 9:00 appointment is still on, which claims a scheduled placement. Row e1 is a calendar item for Tue, Nov 10 at 9:00 AM, matching the day and time.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2604
+}

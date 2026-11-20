@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale promises to remind the parent 15 minutes before Maple Bend swim lesson registration opens. That is a registration-season watch, and row q1 is the Maple Bend winter swim registration watch.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      }
+    ]
+  },
+  "latencyMs": 1588
+}

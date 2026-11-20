@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All bubbles are in Spanish, both Saturday picks are named with their own times and venues, and no bubble is a lead-in or count. The first bubble is already the first item. Facts match the tool output, the weekRead is empty so stating the Saturday is free is correct, and there is no question. The final bubble adds a single combined free-day remark and the page links, which is acceptable. Minor issue: the first bubble's date is written as 'sáb, 14 de nov' with a comma style that is slightly clunky, but it is correct.",
+    "score": 5
+  }
+}

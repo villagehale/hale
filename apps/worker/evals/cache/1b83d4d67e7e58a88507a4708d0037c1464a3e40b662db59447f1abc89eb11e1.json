@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUeWyXnqLDEUouRyuAQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzQgKEAgTGAI4AUIIdGhpbmtpbmcSDIn9YN5Xp4kUADJ+ThoMcExUuhj4met/KBCQIjAVlgKNGxAR2WeBS1h5LrgtWmHRqRU3FgmR1PJv+798d8BAaqfUgiB3Jh2vTnkk7zEq6gccqJX/Hxef67xPEAqVhNRn0wago2x6tfcwSjKq7nOYb7P0MBkHB0U/wBoOpkX58TCnnZaroT8sjkXooAfT1Cs0hMd7PmKJo2gYv9XRFzEgcvsx4CO166lEiaGFcRrRDvBeoeD9zJ8d3Jf/InIfAyfAl2a0dD5BdEE/dElj02Y8v4pSBhYCH4htQjlo8oWlRQN3DNexNg0rkTYS3RxpYL4l+8OfK0NqLbrr2ydX2TFRjd8bYTW3nKFZSIjppKMSD3UAanC82H8Bb/QJffXoQxMr0LrtG5GKvu8s6/a1c1WDmgI3fnXPr7cWU4q5wIX8BP/KLW7FeYANU1RkKSwdVBtpjodw1Yjbvu108ZoNJV4LKfc6wKgAlwsu4iNvZQXy0SIFhuH0xiRtA0vjy4hEtLEIeMW2Jb+HG9ZnRgN5B3sfE4rB0bL/TyoClHDeCS7hxfoIfwZPgkdr2KSbxzINGVxFFQObCW7doc4+g2PcPxwKEgwMA8vv88XFcWuze7wJZS8uwm7asFyajS6E0Ywcag1RaJg4FmjkPBqKjS4z1e4FB0UMyU7dHBrFq6JFqI2hLZlEzDorRrneVeD2/Q+cg13Hd8KKNR9+6B1gXlZ5N+yaA5cBqBVryWECjsMCs2wDnTaOY4Zgy2p6RHiNNGGd7TwIv4rrHTvf8EsljCCt8yZ1cC2DM+xFxbH7TOribS1bNnT+DiFzByOgvcErohNTDEOhBXWX5jEwA8TFJAPoOR8cvANC4yIxwgSk71Kv3ls+5GJU9F+bjZkZrcJ71THhUcbjBVRHLakAc0JfbWtmxHt9ZLZLp1zOjM2pTFWuMC6KM9iDv/3tVJNgTZCPzk3RE3iqp4OkwFUwSzLqYYN86sAl+/R3Mz2LGMiVkbBtJ1bNSuRfEGmrAL6SxRGirqxcuVIhopqn3Hj1Jg8LROTqWeVva1GtR46xRFpgKpIaD8ldQRyvvx0x+0aFeF4HTU2kMN0bqTOQ7ao80uwp4BYzJgUleiDjMD95xMHc17jKkm2Ag2KGriM6KpVduSzG6xnPD4snEr8ugnJYWaFkD/CZF4ZSKo2wDSAYCdyutx00WHw1gnXvzIGm+/mvd37BOqeFgNXNJfIsX+tSYyOuZrAZcsaH79W/GiqyAUvMFemptlUYcFDbHyL/wzRRwvrhWlPpsPkQDASu0H5W0wy8Ka6KvdWO4IrTIcBRc67GwqGgk8eBO+7N9GQE94mefEcYDIxqZcvX7otNX2XR8gxJxAjXw2v+xLFK7S5jYiAWRneLj9+WYsIAhbO0PT5zLNNAycigp0WxeJZoVDQ4ivzYuyYR0ZQkC5Bz95FBtV809ewYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "这周六 Leo 有足球课，上午10点，在社区中心。另外上午9点到10点有人占了时间。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 583,
+      "cache_read_input_tokens": 19182,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 583,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 217,
+      "output_tokens_details": {
+        "thinking_tokens": 175
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

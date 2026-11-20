@@ -31,7 +31,9 @@ export const GET = cronRoute('registration-verify', async () => {
   // working, and an SDK-default 600s stall inside maxDuration 300 burned the
   // whole claimed week silently. 60s×2 worst-case per call sits inside the wall.
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const client = apiKey ? budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS) : null;
+  const client = apiKey
+    ? budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'registration' })
+    : null;
 
   try {
     const summary = await runRegistrationVerifySweep(db(), defaultRegistrationVerifyDeps(client));

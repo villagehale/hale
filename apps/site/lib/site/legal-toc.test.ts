@@ -10,8 +10,8 @@ describe('legal table-of-contents marker', () => {
   });
 
   it('does not stay on the previous section once the next heading reaches that line', () => {
-    expect(currentLegalSection([ -240, 108, 640 ], 112)).toBe(1);
-    expect(currentLegalSection([ -800, -40, 96 ], 112)).toBe(2);
+    expect(currentLegalSection([-240, 108, 640], 112)).toBe(1);
+    expect(currentLegalSection([-800, -40, 96], 112)).toBe(2);
   });
 
   it('keeps the first section while every heading is still below the line', () => {

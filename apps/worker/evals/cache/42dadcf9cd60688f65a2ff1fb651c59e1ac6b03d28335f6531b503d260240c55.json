@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale's sentence says the soccer registration fee was paid, which is a registration_done claim. There are no rows on record, so it cannot be backed and cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1742
+}

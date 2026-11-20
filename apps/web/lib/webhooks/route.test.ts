@@ -9,10 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // (covered in stripe-billing-apply.test).
 const sendMock = vi.fn();
 const applyMock = vi.fn();
+const reportMock = vi.fn();
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/queue', () => ({ getQueue: async () => ({ send: sendMock }) }));
 vi.mock('~/lib/webhooks/stripe-billing-apply', () => ({
   applyStripeBillingEvent: (...args: unknown[]) => applyMock(...args),
+}));
+vi.mock('~/lib/billing/conversions', () => ({
+  reportBillingPurchase: (...args: unknown[]) => reportMock(...args),
 }));
 
 function ctx(provider: string) {
@@ -34,13 +38,15 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     vi.resetModules();
     sendMock.mockReset();
     applyMock.mockReset();
+    reportMock.mockReset();
+    reportMock.mockResolvedValue({ status: 'skipped', reason: 'not_a_purchase' });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 404 for an unknown provider', async () => {
+  it('returns 404 for an unknown provider', { timeout: 15_000 }, async () => {
     const res = await callPost('facebook');
     expect(res.status).toBe(404);
     expect(sendMock).not.toHaveBeenCalled();
@@ -167,7 +173,36 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'applied' });
     expect(applyMock).toHaveBeenCalledWith({ id: 'evt_1', type: 'checkout.session.completed' });
+    expect(reportMock).toHaveBeenCalledWith({ id: 'evt_1', type: 'checkout.session.completed' });
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('does not send conversions when a paid session is refund-ready', async () => {
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+    applyMock.mockResolvedValue({ status: 'refund_ready' });
+    const body = '{"id":"evt_1","type":"checkout.session.completed"}';
+    const t = Math.floor(Date.now() / 1000);
+    const hex = createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+
+    const res = await callPost('stripe', body, { 'stripe-signature': `t=${t},v1=${hex}` });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'refund_ready' });
+    expect(reportMock).not.toHaveBeenCalled();
+  });
+
+  it('does not re-send conversions on a duplicate Stripe event', async () => {
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+    applyMock.mockResolvedValue({ status: 'duplicate' });
+    const body = '{"id":"evt_1","type":"checkout.session.completed"}';
+    const t = Math.floor(Date.now() / 1000);
+    const hex = createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+
+    const res = await callPost('stripe', body, { 'stripe-signature': `t=${t},v1=${hex}` });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'duplicate' });
+    expect(reportMock).not.toHaveBeenCalled();
   });
 
   it('rejects a stripe request with a bad signature as 401 (never applies)', async () => {

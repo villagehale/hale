@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { textSlots, watchWarranted } from './deliver';
+import type { Database } from '@hale/db';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import {
+  type FollowUpDelivery,
+  type FollowUpDeliveryInput,
+  type FollowUpRecipient,
+  deliverFollowUp,
+  noEvidence,
+  textSlots,
+  watchWarranted,
+} from './deliver';
 import type { FollowUpPick } from './followup-note';
 
 /**
@@ -109,4 +119,104 @@ describe('textSlots', () => {
     expect(picks).toEqual([classRow, scheduleRow]);
     expect(held).toEqual([otherClass]);
   });
+});
+
+/**
+ * WHERE A KEPT PROMISE LANDS. The answer to a question asked in a 1:1 iMessage chat goes
+ * back into that chat, threaded under the message that carried the promise, which was
+ * itself the reply to the ask. It never moves to the household group, which other adults
+ * read. A promise with no known 1:1 thread keeps today's routing.
+ */
+describe('deliverFollowUp: the thread the answer lands in', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const NOW = new Date('2026-08-24T18:00:00.000Z');
+
+  function delivery(transport: FakeTransport): FollowUpDelivery {
+    return {
+      composer: {
+        async compose() {
+          return {
+            status: 'composed',
+            message: 'Tiny Gym runs Sundays 9:30.',
+            mentionsWatch: false,
+          };
+        },
+      },
+      refuseUnbackedSend: async () => [],
+      resolveSendablePhone: async () => '+14165550100',
+      transport,
+      recordSend: async () => 'msg-out-1',
+      audit: async () => {},
+      threadMessage: async () => 'conv-1',
+      fulfillCommitment: async () => ({ status: 'closed' as const, commitmentIds: ['commit-1'] }),
+      recordWatch: async () => ({ status: 'recorded' as const, commitmentId: 'commit-2' }),
+    };
+  }
+
+  function input(thread: FollowUpRecipient['thread']): FollowUpDeliveryInput {
+    return {
+      commitmentId: 'commit-1',
+      familyId: 'fam-1',
+      subjectChildId: null,
+      subject: 'indoor swim lessons',
+      recipient: { parentUserId: 'parent-1', conversationId: 'conv-1', language: 'en', thread },
+      dedupeKey: 'activity_followup:commit-1',
+      optOut: 'short',
+      picks: [pick()],
+      held: [],
+      pageEvidence: 'page_has_schedule',
+      evidence: noEvidence(),
+      heardFacts: null,
+      askLanguage: null,
+      lane: 'immediate',
+    };
+  }
+
+  it('a 1:1 iMessage promise is answered in that chat, threaded under the message that carried it', async () => {
+    const transport = new FakeTransport();
+    const outcome = await deliverFollowUp(
+      {} as Database,
+      delivery(transport),
+      input({ chatId: 'chat-1', messageId: 'pm-1' }),
+      NOW,
+    );
+    expect(outcome.status).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]?.replyIn).toEqual({ chatId: 'chat-1', messageId: 'pm-1' });
+  });
+
+  it('positive control: no known 1:1 thread carries no thread target, and routes as today', async () => {
+    const transport = new FakeTransport();
+    await deliverFollowUp({} as Database, delivery(transport), input(null), NOW);
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]).not.toHaveProperty('replyIn');
+  });
+
+  // The watch a follow-up mints keeps answering the same ask, so it carries the ask's
+  // language on its own row: the look a week later is written in it too, while lit.
+  it.each([['zh'], [null]])(
+    "the watch it mints carries the language of the parent's ask (%s)",
+    async (askLanguage) => {
+      const watched: Array<Record<string, unknown>> = [];
+      const deps: FollowUpDelivery = {
+        ...delivery(new FakeTransport()),
+        recordWatch: async (_db, watch) => {
+          watched.push(watch);
+          return { status: 'recorded' as const, commitmentId: 'commit-2' };
+        },
+      };
+      const outcome = await deliverFollowUp(
+        {} as Database,
+        deps,
+        { ...input(null), picks: [pick({ price: null })], askLanguage },
+        NOW,
+      );
+      expect(outcome).toMatchObject({ status: 'sent', watchRecorded: true });
+      expect(watched).toHaveLength(1);
+      expect(watched[0]?.askLanguage).toBe(askLanguage);
+    },
+  );
 });

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reasoning": "m1 'yes' decides Hale's question about moving swim to Tuesday at 4:30, so it stands alone as its own ask. m2 asks about Saturday's schedule, a separate new ask, so it is its own group.",
+    "groups": [
+      [
+        "m1"
+      ],
+      [
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1373
+}

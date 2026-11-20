@@ -34,8 +34,8 @@ import {
   readModelIds,
   scoreFirstJudgeSchema,
 } from './lib/harness.mjs';
-import { OPT_OUT_FIXTURES } from './opt-out-read-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { OPT_OUT_FIXTURES } from './opt-out-read-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read.md');

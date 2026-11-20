@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale sent a tapback alone for a message asking it to cancel a reminder, but the reply carried the essential fact that it cannot cancel and the reminder is still on the phone. The parent needs that information, so omitting it is a serious meaning failure.",
+    "score": 1
+  }
+}

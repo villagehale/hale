@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { postalCountryOf } from '@hale/types';
+import { recordCorrections } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
 import type { HealthPlace } from '../health-line';
 import type { FamilyPlace, PlaceUnknown } from './answer';
@@ -239,6 +240,50 @@ export async function placeOf(family: {
   return { status: 'known', city: town, provinceOrState, country };
 }
 
+/** A city the postal table has in one country, spelled as the table spells it. */
+export interface NamedCity {
+  city: string;
+  provinceOrState: string | null;
+  /** Areas (FSA or ZIP5) the table assigns to this city, in this region when one was named. */
+  areaKeys: string[];
+}
+
+/**
+ * The table's city for a name the parent already gave as its own field, in the
+ * country they named. A name more than one province or state has is returned only
+ * when `region` picks one of them. Null when the table has no such place: nothing
+ * is guessed, and the other country's table is not consulted.
+ */
+export async function cityInCountry(
+  country: PostalCountry,
+  city: string,
+  region: string | null,
+): Promise<NamedCity | null> {
+  const name = stored(city);
+  if (name === null) return null;
+  const table = await TABLES[country]();
+  const cityAt = table.cities.findIndex((entry) => folded(entry) === folded(name));
+  const named = table.cities[cityAt];
+  if (named === undefined) return null;
+  const among = sharedAmong(table, cityAt);
+  const regionAt = among === undefined ? -1 : regionNamed(table, stored(region));
+  if (among !== undefined && !among.includes(regionAt)) return null;
+  const areaKeys: string[] = [];
+  const regions = new Set<number>();
+  for (let index = 0; index < table.codes.length; index++) {
+    if (table.cityOf[index] !== cityAt) continue;
+    const areaRegion = table.regionOf[index] ?? -1;
+    if (regionAt !== -1 && areaRegion !== regionAt) continue;
+    const code = table.codes[index];
+    if (code !== undefined) areaKeys.push(code);
+    if (areaRegion >= 0) regions.add(areaRegion);
+  }
+  const onlyRegion = regions.size === 1 ? [...regions][0] : undefined;
+  const provinceOrState =
+    regionAt >= 0 ? (table.regions[regionAt] ?? null) : (table.regions[onlyRegion ?? -1] ?? null);
+  return { city: named, provinceOrState, areaKeys };
+}
+
 /**
  * {@link placeOf}, with the province or state ALWAYS named where the postal area gives
  * one — the activity find's grain (VIL-590), where "Seattle, Washington" is a better
@@ -424,7 +469,7 @@ export async function healthPlaceOf(family: {
 
 /** The columns {@link placeOf} and {@link healthPlaceOf} read: the active saved area's,
  * with the family's country, or the home row's when there is no active area. */
-export async function readPlaceRow(database: Database, familyId: string) {
+export async function readPlaceRow(database: Database, familyId: string, now: Date = new Date()) {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,
@@ -446,7 +491,44 @@ export async function readPlaceRow(database: Database, familyId: string) {
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
+  // The parent said where they live after the record was last written (VIL-519): that is
+  // where they are now, but only when what they said IS a place name in the table for the
+  // family's country, sent in the table's spelling. Any other text is the parent's own words
+  // (a street, a child's name): it stays out of every place read and rides only in the
+  // teen-filtered memory facts, and the stored record stands.
+  const corrected = await tableCityNamed(
+    family.country,
+    placeText((await recordCorrections(database, familyId, now)).place?.factValue),
+  );
+  if (corrected !== null) {
+    return {
+      country: family.country,
+      province: null,
+      city: corrected,
+      postalCode: null,
+      areaCoarse: null,
+    };
+  }
   return active ? { ...active, country: family.country, areaCoarse: null } : family;
+}
+
+async function tableCityNamed(country: string | null, text: string | null): Promise<string | null> {
+  const postalCountry = country === null ? undefined : postalCountryOf(country);
+  if (postalCountry === undefined || text === null) return null;
+  const asSaid = folded(text);
+  const table = await TABLES[postalCountry]();
+  return table.cities.find((city) => folded(city) === asSaid) ?? null;
+}
+
+function placeText(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  for (const key of ['city', 'text', 'summary', 'value']) {
+    const field = fields[key];
+    if (typeof field === 'string' && field.trim()) return field.trim();
+  }
+  return null;
 }
 
 /**

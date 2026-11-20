@@ -10,6 +10,8 @@
  * reach Google. Everyone else stays on today's readonly grant. The scopes stored
  * on the integration are checked again at write time.
  */
+import { isEnabled, isFlagKilled } from '@hale/flags';
+
 export const GOOGLE_WRITE_SCOPES_ENABLED_ENV = 'GOOGLE_WRITE_SCOPES_ENABLED';
 export const GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV = 'GOOGLE_WRITE_SCOPES_ALLOWLIST';
 
@@ -20,7 +22,7 @@ export const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compos
 export type WriteScopeEnv = Record<string, string | undefined>;
 
 export function googleWriteScopesEnabled(env: WriteScopeEnv = process.env): boolean {
-  return env[GOOGLE_WRITE_SCOPES_ENABLED_ENV] === 'true';
+  return isEnabled('google-write-scopes', undefined, env);
 }
 
 /** Hale user ids armed while the global flag is unset. Empty tokens are dropped. */
@@ -43,6 +45,7 @@ export function googleWriteScopesEnabledFor(
   userId: string | null | undefined,
   env: WriteScopeEnv = process.env,
 ): boolean {
+  if (isFlagKilled('google-write-scopes', env)) return false;
   if (googleWriteScopesEnabled(env)) return true;
   if (!userId) return false;
   return googleWriteScopesAllowlist(env).has(userId);

@@ -232,8 +232,10 @@ describe('reminderFacts — overlaps, the clash stated as a fact (VIL-551)', () 
   const swimTimes = { startsAt: swim.startsAt, endsAt: swim.endsAt };
 
   it('names, on each event, the other events whose times run into it', () => {
-    const [a, b] = facts([swim, at('2026-10-26T14:30:00Z', '2026-10-26T15:30:00Z', 'Art', 'e2')])
-      .events;
+    const [a, b] = facts([
+      swim,
+      at('2026-10-26T14:30:00Z', '2026-10-26T15:30:00Z', 'Art', 'e2'),
+    ]).events;
     expect(a?.overlaps).toEqual(['Art']);
     expect(b?.overlaps).toEqual(['Swim']);
   });
@@ -516,7 +518,12 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
     async (status, type, message, cause, calls) => {
       const failure = () => apiError(status, type, message);
       const { outcome, runs, create } = await compose(failure(), failure());
-      expect(outcome).toEqual({ status: 'unavailable', cause, httpStatus: status, errorType: type });
+      expect(outcome).toEqual({
+        status: 'unavailable',
+        cause,
+        httpStatus: status,
+        errorType: type,
+      });
       expect(create).toHaveBeenCalledTimes(calls);
       expect(runs).toHaveLength(calls);
     },

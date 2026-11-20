@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question with one indoor Sunday option, names it with its time in Chinese, and has no question. However, the second bubble adds a claim about a 4:30 swimming class that is not in the facts (no such event appears in the village or weekRead data), so it invents a fact. It also bundles a separate thought (the swim class conflict check) with the link, and the link placement is fine. Because of the invented swim-class fact, the reply breaks point 5 and cannot score above 3.",
+    "score": 2
+  }
+}

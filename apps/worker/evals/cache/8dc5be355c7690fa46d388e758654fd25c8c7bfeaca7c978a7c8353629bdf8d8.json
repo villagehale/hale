@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reason": "Parent dropped gymnastics in favor of Little Kickers",
+    "replaced": [
+      {
+        "ref": "ask-1",
+        "said": "Forget the gymnastics, let's do Little Kickers on Saturday at 9:30 instead"
+      }
+    ]
+  },
+  "latencyMs": 2552
+}

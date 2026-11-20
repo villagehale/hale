@@ -1,6 +1,6 @@
 import { CRISIS_LINE_NAMES } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 
 /**
  * The crisis acceptance checks: the digit tokenizer, the hours forms, the link and
@@ -310,7 +310,10 @@ export function crisisReplyViolation(
     return 'emergency_988';
   }
   if (!tokens.every(tokenIsCrisisLinesOnly)) return 'other_number';
-  if (hasLinkShape(text)) return 'link';
+  if (hasLinkShape(text)) {
+    noteLinkGate('crisis-reply', 'redraft');
+    return 'link';
+  }
   const scriptLetter = replyScriptLetter(language);
   if (scriptLetter && !replyMostlyInScript(text, scriptLetter)) return 'wrong_script';
   return null;
@@ -322,6 +325,9 @@ export function crisisReplyViolation(
  */
 export function readerConfirmationViolation(text: string): 'other_number' | 'link' | null {
   if (crisisNumberTokens(text).length > 0) return 'other_number';
-  if (hasLinkShape(text)) return 'link';
+  if (hasLinkShape(text)) {
+    noteLinkGate('crisis-confirmation', 'redraft');
+    return 'link';
+  }
   return null;
 }

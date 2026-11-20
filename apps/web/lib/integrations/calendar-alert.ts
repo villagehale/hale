@@ -19,6 +19,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -127,6 +128,8 @@ export interface CalendarChange {
 export const CALENDAR_ALERT_OUTCOMES = [
   'sent',
   'already_sent',
+  /** VIL-612 · live cadence queued the composed notice for the hourly decider. */
+  'queued',
   'dark',
   'seeding_run',
   'outside_window',
@@ -136,6 +139,7 @@ export const CALENDAR_ALERT_OUTCOMES = [
   'gate_refused:opt_out_unread',
   'gate_refused:no_watch_consent',
   'gate_refused:quiet_hours',
+  'gate_refused:sends_paused',
   'no_send_target',
   'send_failed',
   'alert_failed',
@@ -236,7 +240,10 @@ export const CALENDAR_KID_NOTICE_TEMPLATE_KEY = 'connector:calendar_kid_notice';
  * so unless the sweep writes down that it still owes one, the news is gone for good. A
  * consent refusal is deliberately not here: `not_enrolled` is not a wait, it is an answer.
  */
-const HELD_OUTCOMES = new Set<CalendarAlertOutcome>(['gate_refused:quiet_hours']);
+const HELD_OUTCOMES = new Set<CalendarAlertOutcome>([
+  'gate_refused:quiet_hours',
+  'gate_refused:sends_paused',
+]);
 
 /**
  * Keyed on the CONNECTION, the event and Google's `updated` stamp.
@@ -969,6 +976,9 @@ async function sendOffer(
   const lead = offer.group[0];
   if (lead === undefined) throw new Error('sendOffer: an offer with no instances');
   if (await dedupeActive(offer.dedupeKey, database)) return 'already_sent';
+  // Before the gate and the writer: a tick that already queued this change must not
+  // compose it again.
+  if (await isQueuedForDecider(database, familyId, offer.dedupeKey)) return 'queued';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'calendar_alert', now });
   if (!verdict.allowed) {
@@ -1007,6 +1017,38 @@ async function sendOffer(
   if (message === null) {
     console.warn({ familyId }, 'calendar alert: the writer returned no text - nothing sent');
     return 'notice_unwritten';
+  }
+
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'calendar_alert',
+        category: 'calendar_alert',
+        templateKey: offer.templateKey,
+        what: message,
+        why: 'calendar_alert',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey: offer.dedupeKey,
+        payload: { auditVerb: 'calendar_alert_sent' },
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'calendar_alert' },
+    });
+    return 'queued';
   }
 
   // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race.

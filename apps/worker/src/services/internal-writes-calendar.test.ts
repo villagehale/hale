@@ -169,6 +169,27 @@ describe('moveCalendarEvent', () => {
     expect(updateSets[0]).toStrictEqual({ startsAt, endsAt });
   });
 
+  it('writes location when updateLocation is set (VIL-662)', async () => {
+    const { database, updateSets } = fakeDb({});
+    const startsAt = new Date('2026-07-23T14:00:00.000Z');
+    const endsAt = new Date('2026-07-23T15:00:00.000Z');
+
+    await moveCalendarEvent(
+      {
+        familyId: FAMILY_ID,
+        actionId: ACTION_ID,
+        reversalHandle: HANDLE,
+        startsAt,
+        endsAt,
+        updateLocation: true,
+        location: 'Rink 2',
+      },
+      database,
+    );
+
+    expect(updateSets[0]).toStrictEqual({ startsAt, endsAt, location: 'Rink 2' });
+  });
+
   it('throws (no false ok) when the target row is missing or already deleted', async () => {
     const missing = fakeDb({ updateReturns: [] });
     await expect(

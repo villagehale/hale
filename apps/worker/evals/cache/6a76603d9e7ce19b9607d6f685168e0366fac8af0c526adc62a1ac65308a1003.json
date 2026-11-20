@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Village intro is sendable: it's Thursday 6 PM local (outside quiet hours), the parent has no pace preference, and the unanswered streak is 0 with the last send replied to.",
+    "action": "send_now",
+    "item_ids": [
+      "intro"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

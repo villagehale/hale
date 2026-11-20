@@ -48,6 +48,13 @@ export function isChannelSmsNoteKey(noteKey: string | null): boolean {
   return noteKey?.startsWith(CHANNEL_SMS_NOTE_KEY_PREFIX) ?? false;
 }
 
+/** The parent this 1:1 SMS thread belongs to. Null when the key is not that namespace. */
+export function parentUserIdFromSmsNoteKey(noteKey: string | null): string | null {
+  if (!isChannelSmsNoteKey(noteKey) || noteKey === null) return null;
+  const id = noteKey.slice(CHANNEL_SMS_NOTE_KEY_PREFIX.length);
+  return id.length > 0 ? id : null;
+}
+
 export function isChannelGroupNoteKey(noteKey: string | null): boolean {
   return noteKey?.startsWith(CHANNEL_GROUP_NOTE_KEY_PREFIX) ?? false;
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line 'All drawn! Ana has Ben' is a group_done message that directly reveals a pairing (Ana drew Ben) in the group chat, which is exactly the secret that must never be disclosed. It also contradicts the facts, which say 2 people are still waiting, so 'All drawn' is inaccurate. Tone and language are fine, but the secrecy violation is disqualifying.",
+    "score": 1
+  }
+}

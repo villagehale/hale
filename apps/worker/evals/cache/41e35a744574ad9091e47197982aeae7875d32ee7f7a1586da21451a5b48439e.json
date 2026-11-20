@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "Says the answer is coming and will appear here, with no timing given.",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1304
+}

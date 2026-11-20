@@ -5,6 +5,7 @@ import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -46,6 +47,40 @@ describe('textFreshConnectorLink', () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     await db.close();
+  });
+
+  it('writes the fresh link in the stored language after one off-language turn', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    const calls: SaidLineInput[] = [];
+
+    const outcome = await textFreshConnectorLink(
+      db.database,
+      { familyId, parentUserId, provider: 'gmail', now: NOW },
+      {
+        transport,
+        threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(calls),
+      },
+    );
+
+    expect(outcome).toBe('sent');
+    expect(calls.map((call) => call.language)).toEqual(['fr']);
   });
 
   it('texts a Gmail link when the Gmail connect failed, and leaves the old token spent', async () => {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_CITY, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   MAX_QUERY_FIELD_CHARS,
   deidentifyActivityQuery,
   deidentifyActivitySubject,
   refusalSentence,
 } from './deidentify';
+import { groundUserMessage } from './lane';
 
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
@@ -18,7 +20,7 @@ import {
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  town: 'Halton Hills',
+  town: FIXTURE_CITY,
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -39,6 +41,25 @@ describe('a name never crosses the border', () => {
     expect(label).toBeTypeOf('string');
   });
 
+  it.each([
+    ['a name in a script written without spaces', ['小明'], '小明的游泳课'],
+    ['a name typed without its accent', ['Zoé'], 'swim lessons for Zoe'],
+  ])('refuses %s, by the matcher the intake searches use', (_label, householdNames, subject) => {
+    expect(deidentifyActivityQuery({ ...base, householdNames, subject })).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });
+  });
+
+  it('POSITIVE CONTROL - the same households let a subject without the name through', () => {
+    for (const [householdNames, subject] of [
+      [['小明'], '幼儿游泳课'],
+      [['Zoé'], 'toddler swim lessons'],
+    ] as const) {
+      expect(deidentifyActivityQuery({ ...base, householdNames, subject }).ok).toBe(true);
+    }
+  });
+
   it('POSITIVE CONTROL - lets an ordinary subject through the same call', () => {
     const result = deidentifyActivityQuery({ ...base, subject: 'toddler gymnastics' });
     expect(result).toEqual({
@@ -46,7 +67,7 @@ describe('a name never crosses the border', () => {
       query: {
         subject: 'toddler gymnastics',
         window: null,
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });
@@ -67,11 +88,11 @@ describe('what is stripped rather than refused', () => {
   it('strips an exact age, a postal code and a phone number', () => {
     const result = deidentifyActivityQuery({
       ...base,
-      subject: 'gymnastics for 18 months, L7G 4S6, call 416-555-0100',
+      subject: `gymnastics for 18 months, ${FIXTURE_POSTAL}, call 416-555-0100`,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.query.subject).not.toMatch(/18 months|L7G|416/);
+    expect(result.query.subject).not.toMatch(/18 months|K7L|416/);
     // POSITIVE CONTROL on the same string: the useful part survives the scrub.
     expect(result.query.subject).toContain('gymnastics');
   });
@@ -91,12 +112,12 @@ describe('what is stripped rather than refused', () => {
  */
 describe('a street-level location never crosses the border', () => {
   it.each([
-    ['the audit probe', 'toddler gym near 42 Wallace St Georgetown', ['42', 'Wallace']],
+    ['the audit probe', `toddler gym near 42 Wallace St ${FIXTURE_CITY}`, ['42', 'Wallace']],
     ['an avenue', 'swim lessons at 121 Maple Ave', ['121', 'Maple']],
     [
       'a street and the postal code beside it',
-      'drop-in at 12 Guelph Street L7G 4A1',
-      ['12 Guelph', 'L7G'],
+      `drop-in at 12 Guelph Street ${FIXTURE_POSTAL}`,
+      ['12 Guelph', 'K7L'],
     ],
     ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
     // The forms below crossed intact while the four formal suffixes were the whole rule,
@@ -144,7 +165,7 @@ describe('a street-level location never crosses the border', () => {
       query: {
         subject: 'Cartwheel Gym parent and tot classes',
         window: 'fall term',
-        town: 'Halton Hills',
+        town: FIXTURE_CITY,
         stage: 'toddler',
       },
     });
@@ -193,6 +214,102 @@ describe('the window is held to the same ceiling as the subject', () => {
     expect(refusalSentence('subject_too_long')).toContain('subject');
     // Neither sentence may echo what it refused (rule #1).
     expect(refusalSentence('window_too_long')).not.toContain('subject is longer');
+  });
+});
+
+/**
+ * THE DAY A FIND IS FOR CROSSES ONLY AS `date`. Free text is scrubbed of every full date,
+ * whatever day it names, so a newborn's "born <today>" never crosses. The one date that
+ * may cross is the structured `date`, and only when it is today on the family's clock or a
+ * later day within FIND_DATE_MAX_DAYS_AHEAD of it. Weekdays here are worked out by hand
+ * from 2026-08-09, a Sunday.
+ */
+describe('the day a find is for crosses as `date`, and a date in free text never does', () => {
+  const today = '2026-08-09 (Sunday)';
+  const subject = 'things to do';
+
+  it('carries a window "today Sunday" with the system date to the search', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject,
+      window: 'today Sunday',
+      date: '2026-08-09',
+      today,
+    });
+    expect(result).toEqual({
+      ok: true,
+      query: {
+        subject,
+        window: 'today Sunday',
+        date: '2026-08-09 (Sunday)',
+        town: FIXTURE_CITY,
+        stage: 'toddler',
+        today,
+      },
+    });
+    if (!result.ok) throw new Error('unreachable');
+    expect(groundUserMessage(result.query)).toBe(
+      `{"subject":"things to do","town":"${FIXTURE_CITY}","stage":"toddler","window":"today Sunday","date":"2026-08-09 (Sunday)","today":"2026-08-09 (Sunday)"}`,
+    );
+  });
+
+  it.each([
+    ['six days on', '2026-08-15', '2026-08-15 (Saturday)'],
+    ['the last day of the reach', '2027-09-13', '2027-09-13 (Monday)'],
+  ])('carries a later day: %s', (_label, date, crossed) => {
+    expect(deidentifyActivityQuery({ ...base, subject, date, today })).toMatchObject({
+      ok: true,
+      query: { date: crossed },
+    });
+  });
+
+  it('scrubs "born <today>" in the query text', () => {
+    expect(
+      deidentifyActivityQuery({ ...base, subject: 'class for a baby born 2026-08-09', today }),
+    ).toMatchObject({ ok: true, query: { subject: 'class for a baby born [redacted]' } });
+  });
+
+  it('scrubs every full date in the window text, today and later days included', () => {
+    const result = deidentifyActivityQuery({
+      ...base,
+      subject,
+      window: 'today Sunday 2026-08-09, appointment August 20, 2026',
+      date: '2026-08-09',
+      today,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      query: { window: 'today Sunday [redacted], appointment [redacted]' },
+    });
+  });
+
+  it.each([
+    ['a past date of birth', '2024-03-15'],
+    ['yesterday', '2026-08-08'],
+    ['two years out', '2028-08-09'],
+    ['one day past the reach', '2027-09-14'],
+    ['no such day', '2026-09-31'],
+    ['a weekday and not a date', 'Saturday'],
+    ['a date with words around it', '2026-08-15 (Saturday)'],
+  ])('drops a `date` that is %s', (_label, date) => {
+    const result = deidentifyActivityQuery({ ...base, subject, window: 'Saturday', date, today });
+    expect(result).toEqual({
+      ok: true,
+      query: {
+        subject,
+        window: 'Saturday',
+        town: FIXTURE_CITY,
+        stage: 'toddler',
+        today,
+      },
+    });
+  });
+
+  it('drops a `date` when there is no family clock to hold it against', () => {
+    expect(deidentifyActivityQuery({ ...base, subject, date: '2026-08-09' })).toEqual({
+      ok: true,
+      query: { subject, window: null, town: FIXTURE_CITY, stage: 'toddler' },
+    });
   });
 });
 

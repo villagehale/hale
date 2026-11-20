@@ -31,7 +31,6 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', HALE);
   vi.stubEnv('LINQ_GROUP_MENTIONS_ENABLED', 'true');
-  vi.stubEnv('VERCEL_ENV', 'preview');
 });
 
 afterEach(async () => {

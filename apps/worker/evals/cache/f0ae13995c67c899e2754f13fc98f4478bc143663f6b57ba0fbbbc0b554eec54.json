@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgzU8PMKQ95mzXCVfoWEC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSswYKEAgTGAI4AUIIdGhpbmtpbmcSDIzzEMe6k7XnzMQVPRoMTjyHAlPnvR+8Cdo8IjDOqjWZj5sLOkmAaNL5OjUwdF1HM/hZ32nLyd4qxFevRRoUIuhQHLmyvbT/9Nj9e1Qq0AUelTTZAZ+sAUjYlqc6lRoxEi/uohbYCQQyS++pgP6ZnpaPBq/zo9duBXJ9xT9fB0r8zJSgDPGFQ2s9LFlzujiXedHB4lWfevr/NZbgIAgfOsoG/w1TwEOfXM3VRLMcDem4hjTrVLK6/o8o55UsnVSUo4Li0T0UC7tEnYS664vkgrne56jDB6hT7ekQAwt5OpugRgbZU2tgcX274qQv+6ahASrF71J5xG43JoxdbqWfW4GAMHIX9yr4Rqm0yMnsP0r+01hn+oMbmw7W6ZG+a8qnu0ZRN9Tuy4nyyo6ExKh20OUVjno2eGGiB9G5zbnp6bL1gWlhr37zp2bKeqa9EN96DTOuG+F+M42Diqmbws5Agk0Gw+aiz25/7RpTSE79O1HXexehaJF6HO9+6Hs2qrSAfOSMI0vjMksJBF5/nFX2h7ckhSIEsTPFZ1QkA3WPbkuwLYxpqv9kOBqnYcmx22hg1pqmiJhgEmjVi326MgeLLNii/eAdmksWGp17WXSZCYhVd92ws9C6oMQaicHHE4n4O003tTQ1wZ1s4UQlKuzytQuePPkam+sOCPRzZtxMOQi7zL1kzKT7TaM5uqqnTzpQC9nKlGg3/lnCv++TL5sF6uJgRJqF3MbTQVEPwZD5mj6NHhsqYstto0XoxLsEo42c5fkvgUnir8Sw7UsbP3hM9mr9Fkk5tc1DnsFNu3BB3jEFN+UPNmlMVyauXVemm7t4H6MGSwFn+w4x6jkTl+Yjr3TtjrX+Dt7c5e1NWbS9X04FBr4aDkIh2hSJRrIHiQ3UjnOV5VH9ZGqMCE9qi3tsx9c87fcu72k7P1qqN9WM9JArsrybUtaT24a7zZiM127Ht5WD9cJMUVY2rmAYuebW2nxRJFZDKRcW9oPRo+gpjAciqWnniljlpaUleXl0h/BtkmqTvlhoHOhooscC/+Kb6TplBkXsnmsrfqH/cyDK244YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GNy8nqapwRn37Mspvf1T1K",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "toddler gymnastics this winter",
+          "childId": "child-toddler"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 106,
+      "cache_read_input_tokens": 22803,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 106,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 123,
+      "output_tokens_details": {
+        "thinking_tokens": 33
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

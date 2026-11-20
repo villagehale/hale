@@ -1,0 +1,53 @@
+{
+  "response": {
+    "id": "msg_011CgzZzVyuCvDgq4KSFe3iH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01GNttVMVqNRCeUNmehdFPqc",
+        "name": "find_activities",
+        "input": {
+          "subject": "Harbour Art Studio kids art classes",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01HRXhrhtP5YQ4bmG8hVVqaM",
+        "name": "find_activities",
+        "input": {
+          "subject": "Lakeshore Art Studio kids art classes",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1128,
+      "cache_read_input_tokens": 24577,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1128,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 175,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1627
+}

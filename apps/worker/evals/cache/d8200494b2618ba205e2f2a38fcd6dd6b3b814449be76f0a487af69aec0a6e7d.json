@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the child is not signed up (confirmed false), gives the link exactly, says Hale did not attempt login so no login failure is claimed, includes no personal details, no retry promise, and is in zh with appropriate group register. Only minor issue: it does not clearly say the sign-up is not done yet, but 'Hale现在还不能…帮你们完成报名' conveys that adequately.",
+    "score": 5
+  }
+}

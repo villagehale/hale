@@ -13,6 +13,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { maxEntitlementsEnabled } from '~/lib/billing/max-entitlements';
 import { aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import {
   aggregateMedicalAnswers,
@@ -75,6 +76,10 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  * The inbound-queue line is the pg-boss table at post time (VIL-535): jobs still
  * active past their expiry, unfinished jobs, and the age of the oldest. Slack
  * only. It does not email, and it does not text a parent.
+ *
+ * POSTHOG_OPS_ALERTS_ENABLED (exact `true`) means PostHog insight alerts are the
+ * paging path for send/turn/registration failures (docs/posthog-ops-alerts.md).
+ * This daily post still runs until Barton retires it; the flag does not skip it.
  */
 
 export const OPS_DAILY_ROUTE = 'ops:daily';
@@ -210,6 +215,12 @@ export interface OpsDailyReport {
   linqChatIds: number;
   /** The inbound pg-boss queue at the moment of the post. Counts only. */
   queue: InboundQueueSnapshot;
+  /**
+   * Max (`family`) families in the 24h real set, and how many of them have an
+   * unanswered step. Absent while MAX_ENTITLEMENTS_ENABLED is off, so the daily
+   * post stays the same 18 lines. Counts only — never a family id.
+   */
+  prioritySupport?: { maxFamilies: number; withUnanswered: number } | null;
 }
 
 export type OpsDailyOutcome = 'posted' | 'already_posted' | 'failed' | 'skipped_not_configured';
@@ -443,6 +454,7 @@ async function loadRuns(database: Database, realIds: string[], window: { start: 
       agentName: r.agentName,
       promptCacheHit: r.promptCacheHit,
       cacheReadTokens: r.cacheReadTokens,
+      cacheWriteTokens: r.cacheWriteTokens,
       promptTokens: r.promptTokens,
       latencyMs: r.latencyMs,
       costUsd: r.costUsd,
@@ -469,12 +481,16 @@ function summarizeCache(rows: RunRow[]): OpsDailyReport['cache'] {
       const measured = agentRows.filter((row) => row.promptCacheHit !== null);
       const tokenRows = agentRows.filter((row) => row.cacheReadTokens !== null);
       const read = tokenRows.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0);
-      const fresh = tokenRows.reduce((sum, row) => sum + (row.promptTokens ?? 0), 0);
+      const write = tokenRows.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0);
+      const billed = tokenRows.reduce((sum, row) => sum + (row.promptTokens ?? 0), 0);
+      // promptTokens is billed full-rate (input + cache writes). Fall back to writes
+      // when billed is missing so the rate is cacheRead / (read + input + creation).
+      const inputAndWrites = billed > 0 ? billed : write;
       return {
         agentName,
         runs: measured.length,
         hitRuns: measured.filter((row) => row.promptCacheHit === true).length,
-        tokenRate: read + fresh > 0 ? read / (read + fresh) : null,
+        tokenRate: read + inputAndWrites > 0 ? read / (read + inputAndWrites) : null,
         tokenRuns: tokenRows.length,
         latencyP95Ms: percentileNearestRank(
           agentRows.flatMap((row) => (row.latencyMs === null ? [] : [row.latencyMs])),
@@ -482,7 +498,10 @@ function summarizeCache(rows: RunRow[]): OpsDailyReport['cache'] {
         ),
       };
     })
-    .sort((a, b) => b.runs - a.runs || a.agentName.localeCompare(b.agentName));
+    .sort(
+      (a, b) =>
+        b.tokenRuns - a.tokenRuns || b.runs - a.runs || a.agentName.localeCompare(b.agentName),
+    );
 }
 
 /** Recorded spend per real family. A lower bound: not every model call records a run. */
@@ -627,6 +646,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     loadInboundQueueStall(database),
   ]);
   const graded = w4Cohorts.filter((row) => row.weekN === RETENTION_GRADED_WEEK);
+  const prioritySupport = await loadPrioritySupport(database, realIds, window);
 
   return {
     window,
@@ -665,7 +685,37 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     week,
     linqChatIds,
     queue,
+    ...(prioritySupport ? { prioritySupport } : {}),
   };
+}
+
+async function loadPrioritySupport(
+  database: Database,
+  realIds: string[],
+  window: { start: Date; end: Date },
+): Promise<{ maxFamilies: number; withUnanswered: number } | null> {
+  if (!maxEntitlementsEnabled()) return null;
+  if (realIds.length === 0) return { maxFamilies: 0, withUnanswered: 0 };
+  const f = schema.families;
+  const a = schema.auditLog;
+  const [maxRow] = await database
+    .select({ n: sql<number>`count(*)::int` })
+    .from(f)
+    .where(and(inArray(f.id, realIds), eq(f.planTier, 'family')));
+  const unanswered = await database
+    .selectDistinct({ familyId: a.familyId })
+    .from(a)
+    .innerJoin(f, eq(f.id, a.familyId))
+    .where(
+      and(
+        inArray(a.familyId, realIds),
+        eq(f.planTier, 'family'),
+        eq(a.actionTaken, TURN_UNANSWERED_AUDIT_ACTION),
+        gte(a.occurredAt, window.start),
+        lt(a.occurredAt, window.end),
+      ),
+    );
+  return { maxFamilies: maxRow?.n ?? 0, withUnanswered: unanswered.length };
 }
 
 // ── the post ─────────────────────────────────────────────────────────────────
@@ -740,6 +790,11 @@ function papercutLine(p: OpsDailyReport['week']['papercuts']): string {
   return `Papercuts (7d): unmet ${p.unmet_intent} | medical fallback ${p.medical_fallback} | reply fallback ${p.reply_fallback} | voice fallback ${p.voice_failure} | turn failures ${p.turn_failure}`;
 }
 
+function prioritySupportLine(priority: OpsDailyReport['prioritySupport']): string | null {
+  if (!priority) return null;
+  return `Priority support: ${priority.maxFamilies} Max families | unanswered ${priority.withUnanswered}`;
+}
+
 /** The #ops text. ASCII, counts and closed-vocabulary reasons only. */
 export function composeOpsDailyPost(report: OpsDailyReport): string {
   const end = `${report.window.end.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -772,9 +827,12 @@ export function composeOpsDailyPost(report: OpsDailyReport): string {
     loopLine(report.week),
     unmetLine(report.week.unmetIntents),
     papercutLine(report.week.papercuts),
+    prioritySupportLine(report.prioritySupport),
     `Linq chat IDs (DB): ${report.linqChatIds} of ${LINQ_CHAT_ID_LIMIT}`,
     queueLine(report.queue),
-  ].join('\n');
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n');
 }
 
 // ── claim and post ───────────────────────────────────────────────────────────

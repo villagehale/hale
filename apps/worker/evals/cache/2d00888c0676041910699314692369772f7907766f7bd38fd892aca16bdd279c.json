@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The co-parent departure news goes out now at 6 PM local since it is never held; the Saturday market find does not fit because Saturday is an all-day family visit and there are no free windows, so it is not sent.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

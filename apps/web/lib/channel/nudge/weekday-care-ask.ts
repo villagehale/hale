@@ -11,7 +11,8 @@ export type WeekdaySearchPrompt = 'after_school' | 'weekend_fallback' | 'break';
 export type WeekdayFinderAsk =
   | { prompt: 'after_school_named'; childId: string; name: string }
   | { prompt: 'after_school_household' }
-  | { prompt: 'verified_break'; eventKey: string; label: string }
+  /** `label` is the break's own name, or null when its source gave none. */
+  | { prompt: 'verified_break'; eventKey: string; label: string | null }
   | { prompt: 'weekend_fallback' };
 
 /** A school-age given name this ask may print. Null means the household ask. */

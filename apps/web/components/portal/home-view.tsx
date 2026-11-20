@@ -25,6 +25,10 @@ function connected(connections: FamilyConnectorView[], provider: string): boolea
  * Portal home. Waiting rows use the same approve and decline routes as
  * Approvals; the labels are the portal's. Example names from the mockups are
  * never filled in — an empty thread stays empty.
+ *
+ * PostHog web surveys (never SMS) can target this dashboard when
+ * NEXT_PUBLIC_POSTHOG_WEB_ENABLED is on: the SDK is initialized with
+ * disable_surveys: false. No survey copy is created in this repo.
  */
 export function PortalHome({
   firstName,

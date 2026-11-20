@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a single French bubble answering the parent's one request. It states the drafted move to Sunday Nov 15 at 10:00 (the event was 15:00 UTC Saturday, which is 10:00 Toronto time, so the local time matches the drafted slot). It asks one question, a confirmation, which is in the last and only bubble. It is brief and friendly, and invents nothing beyond the drafted facts. It does not explicitly mention the Pape Recreation Centre location, which is acceptable since the parent did not ask for it.",
+    "score": 4
+  }
+}

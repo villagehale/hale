@@ -1,4 +1,5 @@
 import type { AgentClient } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 
 /**
  * An injected client wins, including an explicit null. Undefined means the
@@ -9,7 +10,7 @@ export async function resolveReplyClient(
   passed: AgentClient | null | undefined,
 ): Promise<AgentClient | null> {
   if (passed !== undefined) return passed;
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return null;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return null;
   const { voiceClient } = await import('~/lib/loop/voice/compose');
   return voiceClient();
 }

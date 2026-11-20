@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "find",
+    "reason": "asks what is on nearby this weekend"
+  },
+  "latencyMs": 2604
+}

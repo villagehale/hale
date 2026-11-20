@@ -19,6 +19,7 @@ const runDepartureNoticeRedriveMock = vi.fn();
 const runAutonomyNoticeRedriveMock = vi.fn();
 const runGroupPlanReportRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
+const runNextDayCheckbackSweepMock = vi.fn();
 const runProactiveReviewMock = vi.fn();
 const dbMock = vi.fn();
 
@@ -81,6 +82,10 @@ vi.mock('~/lib/channel/group-plan/redrive', async (importOriginal) => ({
 // import budget, and an unwired sweep must not stay green.
 vi.mock('~/lib/channel/coparent/duty/asks', () => ({
   sweepDutyAsks: (...a: unknown[]) => sweepDutyAsksMock(...a),
+}));
+
+vi.mock('~/lib/channel/next-day-checkback/sweep', () => ({
+  runNextDayCheckbackSweep: (...a: unknown[]) => runNextDayCheckbackSweepMock(...a),
 }));
 
 vi.mock('~/lib/channel/proactive/review', () => ({
@@ -147,6 +152,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
       skipped: 0,
       failed: 0,
     });
+    runNextDayCheckbackSweepMock.mockReset().mockResolvedValue({ skipped: 'flag_off' });
     sweepDutyAsksMock.mockReset().mockResolvedValue({
       enabled: false,
       considered: 0,
@@ -234,12 +240,18 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
       );
       expect(sweepDutyAsksMock).toHaveBeenCalledTimes(1);
       expect(sweepDutyAsksMock).toHaveBeenCalledWith({});
+      expect(runNextDayCheckbackSweepMock).toHaveBeenCalledTimes(1);
+      expect(runNextDayCheckbackSweepMock).toHaveBeenCalledWith({}, expect.any(Date));
+      await expect(res.json()).resolves.toMatchObject({
+        nextDayCheckbacks: { skipped: 'flag_off' },
+      });
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
       expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
       expect(runAutonomyNoticeRedriveMock).not.toHaveBeenCalled();
       expect(runGroupPlanReportRedriveMock).not.toHaveBeenCalled();
       expect(sweepDutyAsksMock).not.toHaveBeenCalled();
+      expect(runNextDayCheckbackSweepMock).not.toHaveBeenCalled();
     }
   });
 });

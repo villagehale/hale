@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cappedCall, readLedger, usageUsd, worstCaseUsd } from './spend-cap.mjs';
+import { cappedCall, readLedger, usageUsd, withCachedSystem, worstCaseUsd } from './spend-cap.mjs';
 import * as spendCap from './spend-cap.mjs';
 
 // spend-cap.mjs is untyped JS; its inferred options type misses `rates`.
@@ -203,6 +203,24 @@ describe('spend cap at the call site', () => {
     expect(m.create).not.toHaveBeenCalled();
   });
 
+  it('prices a 1h cache write at 2x on real usage', () => {
+    expect(
+      usageUsd(rates, 'claude-haiku-4-5', {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+        cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1_000_000 },
+      }),
+    ).toBeCloseTo(2, 9);
+    expect(
+      usageUsd(rates, 'claude-haiku-4-5', {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 1_000_000,
+      }),
+    ).toBeCloseTo(1.25, 9);
+  });
+
   it('books the projection when the call fails after it was sent', async () => {
     vi.stubEnv('HALE_MAX_USD', '1');
     const m = mockClient();
@@ -371,5 +389,18 @@ describe('spend cap when tokens cannot be counted', () => {
       }),
     ).rejects.toThrow(/max_uses/);
     expect(m.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('withCachedSystem', () => {
+  it('wraps a string system in a 5m breakpoint and leaves an array alone', () => {
+    expect(withCachedSystem({ system: 'STABLE' }).system).toEqual([
+      { type: 'text', text: 'STABLE', cache_control: { type: 'ephemeral' } },
+    ]);
+    const marked = [
+      { type: 'text', text: 'STABLE', cache_control: { type: 'ephemeral', ttl: '1h' } },
+    ];
+    expect(withCachedSystem({ system: marked }).system).toBe(marked);
+    expect(withCachedSystem({ messages: [] }).system).toBeUndefined();
   });
 });

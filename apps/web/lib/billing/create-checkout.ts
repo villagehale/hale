@@ -1,7 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import type { BillingPeriod } from '@hale/types';
+import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
+import { eq } from 'drizzle-orm';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import type { AdsCheckoutContext } from './ads-context.js';
+import { familyAlreadySubscribed } from './already-subscribed.js';
+import { checkoutSuccessUrl } from './checkout-session.js';
+import { holidayPromoEnabled } from './flags.js';
+import {
+  type CheckoutSku,
+  foundingWindowOpen,
+  isPromoAnnualSku,
+  isPromoPriceId,
+} from './prices.js';
+import { isPromoPreviewFamily } from './promo-preview.js';
 import type { StripeCheckoutClient } from './stripe-client.js';
 
 /**
@@ -11,12 +23,19 @@ import type { StripeCheckoutClient } from './stripe-client.js';
  * them here — so this is exercised with fakes (no live Stripe, no real DB).
  *
  * Returns not_found (and creates nothing) when the caller has no family, matching
- * the other family-scoped mutations. The audit row is the billing intent — the
- * user chose to upgrade — written once the session is created.
+ * the other family-scoped mutations. already_paid when the family is on plus or
+ * family — a leftover stripeSubscriptionId after cancel/delete is not live.
+ * Duplicate live subscriptions are blocked by that tier check plus reusing the
+ * Stripe Customer. The audit row is the billing intent, written once the session
+ * is created.
  */
 export type CreateBillingCheckoutResult =
   | { status: 'created'; url: string }
-  | { status: 'not_found' };
+  | { status: 'not_found' }
+  | { status: 'already_paid' }
+  | { status: 'founding_only' };
+
+export { familyAlreadySubscribed } from './already-subscribed.js';
 
 export async function createBillingCheckout(input: {
   tier: PaidTier;
@@ -34,23 +53,83 @@ export async function createBillingCheckout(input: {
   database: Database;
   client: StripeCheckoutClient;
   origin: string;
+  /** Marketing origin — Google Ads gtag lives on villagehale.com, not the app. */
+  marketingOrigin: string;
+  sku?: CheckoutSku;
+  currency?: BillingCurrency;
+  attribution?: Attribution;
+  adsContext?: AdsCheckoutContext;
+  /** When set, skip the session family lookup (the ads new-visitor path). */
+  familyId?: string;
+  /** Defaults to the settings billing hash. Founding join cancels back to /founding. */
+  cancelUrl?: string;
+  now?: Date;
+  env?: Record<string, string | undefined>;
 }): Promise<CreateBillingCheckoutResult> {
-  const { tier, period, priceId, externalAuthId, customerEmail, database, client, origin } = input;
+  const {
+    tier,
+    period,
+    priceId,
+    externalAuthId,
+    customerEmail,
+    database,
+    client,
+    origin,
+    marketingOrigin,
+    sku,
+    currency,
+    attribution,
+    adsContext,
+  } = input;
 
-  const familyId = await resolveFamilyForUser(externalAuthId, database);
+  const familyId = input.familyId ?? (await resolveFamilyForUser(externalAuthId, database));
   if (!familyId) {
     return { status: 'not_found' };
   }
   const userId = await requireUserIdForUser(externalAuthId, database);
+
+  const [family] = await database
+    .select({
+      planTier: schema.families.planTier,
+      stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      stripeCustomerId: schema.families.stripeCustomerId,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (!family) {
+    return { status: 'not_found' };
+  }
+  if (familyAlreadySubscribed(family)) {
+    return { status: 'already_paid' };
+  }
+
+  const now = input.now ?? new Date();
+  const env = input.env ?? process.env;
+  const promoActive =
+    foundingWindowOpen(now, env) &&
+    (holidayPromoEnabled(env) || isPromoPreviewFamily(familyId, env));
+  if (promoActive && (!isPromoPriceId(priceId, env) || period !== 'annual')) {
+    return { status: 'founding_only' };
+  }
 
   const { url } = await client.createCheckoutSession({
     priceId,
     familyId,
     tier,
     period,
-    successUrl: `${origin}/settings?checkout=success#billing`,
-    cancelUrl: `${origin}/settings?checkout=cancelled#billing`,
-    customerEmail,
+    successUrl: checkoutSuccessUrl(marketingOrigin),
+    cancelUrl:
+      input.cancelUrl ??
+      (sku && isPromoAnnualSku(sku)
+        ? `${origin}/settings/founding?checkout=cancelled`
+        : `${origin}/settings?checkout=cancelled#billing`),
+    customerEmail: family.stripeCustomerId ? null : customerEmail,
+    customerId: family.stripeCustomerId,
+    sku,
+    currency,
+    attribution,
+    adsContext,
   });
 
   await database.insert(schema.auditLog).values({
@@ -59,7 +138,7 @@ export async function createBillingCheckout(input: {
     actionTaken: 'billing_checkout_started',
     targetTable: 'families',
     targetId: familyId,
-    after: { tier, period },
+    after: { tier, period, sku: sku ?? null, currency: currency ?? null },
   });
 
   return { status: 'created', url };

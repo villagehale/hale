@@ -61,6 +61,45 @@ describe('createIntakeExtractor rollout', () => {
     expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: SONNET_MODEL }));
   });
 
+  it('keeps a named birth date as the civil day, with no timezone conversion (VIL-531)', async () => {
+    const create = vi.fn(async () => ({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            children: [
+              {
+                name: 'Lin',
+                age_months: null,
+                age_precision: null,
+                date_of_birth: '2016-05-01T00:00:00.000Z',
+              },
+            ],
+            postal_code: null,
+            confidence: 0.9,
+          }),
+        },
+      ],
+      stop_reason: 'end_turn',
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+      },
+    }));
+    const result = await createIntakeExtractor({
+      messages: { create },
+    } as unknown as AgentClient).extract({
+      message: 'Lin was born May 1, 2016',
+      alreadyKnown: { children: [], postalCode: null },
+    });
+
+    expect(result.children).toEqual([
+      { name: 'Lin', ageMonths: null, agePrecision: null, dateOfBirth: '2016-05-01' },
+    ]);
+  });
+
   it('uses Sonnet 5 when current mode is explicit', async () => {
     const create = vi.fn(async () => response());
     const client = { messages: { create } } as unknown as AgentClient;

@@ -9,7 +9,13 @@ import { findInventedFacts } from '../../loop/voice/facts-lint';
  */
 
 export const DECIDER_TOOL = 'proactive_decision';
-export const DECIDER_MAX_TOKENS = 600;
+/**
+ * A token ceiling, not a send rule. The draft lane writes its reasoning before the call,
+ * so most of the output is that text: the recorded snapshots took 304-681 output tokens,
+ * and the two-candidate one ran past 600 in two of three draws (2026-11-11). A cut-off
+ * decision is a skipped family, and production ids are uuids, so the room is generous.
+ */
+export const DECIDER_MAX_TOKENS = 1500;
 export const WRITER_TOOL = 'proactive_text';
 export const WRITER_MAX_TOKENS = 400;
 

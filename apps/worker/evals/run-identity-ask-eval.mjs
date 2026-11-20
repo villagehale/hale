@@ -42,6 +42,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { IDENTITY_ASK_FIXTURES } from './identity-ask-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -120,7 +121,9 @@ const ASSENT_ACK =
   "Done - you're covered. I only text when something actually matters, and STOP always works.";
 const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 function askCharCap(request) {
   return request.reason === 'getting_started' ? MAX_TAIL_ASK_CHARS : MAX_ASK_CHARS;
@@ -130,7 +133,7 @@ function identityAskRefusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
   if (body.length > askCharCap(request)) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   // Mirrors the `not_a_sentence` gate: the ask is appended after a full stop, so a clause
   // that continues the previous sentence reads as a typo. Caught on this eval's own first
@@ -191,6 +194,7 @@ const BROKEN_ASK =
   'your email like sam@example.com within 2 days? See www.example.com';
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   assertRunFlags(['--broken', '--env-file', '--max-usd', '--only']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');

@@ -15,8 +15,14 @@ export const EXPECTED_FAIL = Object.freeze([]);
  * @param {{ id: string, failed: boolean }[]} results
  * @param {readonly string[]} expectedFail
  * @param {readonly string[]} knownIds every fixture id (defaults to the ids in `results`)
+ * @param {string} ticket the ticket the listed cases belong to, named in every line
  */
-export function expectedFailGate(results, expectedFail, knownIds = results.map((r) => r.id)) {
+export function expectedFailGate(
+  results,
+  expectedFail,
+  knownIds = results.map((r) => r.id),
+  ticket = 'VIL-608',
+) {
   const listed = new Set(expectedFail);
   const known = new Set(knownIds);
   const unexpectedFail = results.filter((r) => r.failed && !listed.has(r.id)).map((r) => r.id);
@@ -25,12 +31,12 @@ export function expectedFailGate(results, expectedFail, knownIds = results.map((
   const unknown = expectedFail.filter((id) => !known.has(id));
   const lines = [];
   if (expectedFailed.length > 0)
-    lines.push(`expected-fail (VIL-608, still failing as listed): ${expectedFailed.join(', ')}`);
+    lines.push(`expected-fail (${ticket}, still failing as listed): ${expectedFailed.join(', ')}`);
   if (unexpectedFail.length > 0)
     lines.push(`FAIL unexpected failures: ${unexpectedFail.join(', ')}`);
   if (unexpectedPass.length > 0)
     lines.push(
-      `FAIL expected-fail case now passes, remove it from EXPECTED_FAIL (VIL-608): ${unexpectedPass.join(', ')}`,
+      `FAIL expected-fail case now passes, remove it from EXPECTED_FAIL (${ticket}): ${unexpectedPass.join(', ')}`,
     );
   if (unknown.length > 0)
     lines.push(`FAIL EXPECTED_FAIL lists unknown case ids: ${unknown.join(', ')}`);

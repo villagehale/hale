@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { linqAppClipPayEnabled } from '~/lib/channel/linq/config';
 import {
   LinkApiError,
   linkAuthorizeUrl,
@@ -438,5 +439,8 @@ describe('link oauth', () => {
     expect(browserUseSignupPaymentEnabled({ BROWSER_USE_SIGNUP_PAYMENT_ENABLED: 'true' })).toBe(
       true,
     );
+    expect(linqAppClipPayEnabled({})).toBe(false);
+    expect(linqAppClipPayEnabled({ LINQ_APP_CLIP_PAY_ENABLED: 'TRUE' })).toBe(false);
+    expect(linqAppClipPayEnabled({ LINQ_APP_CLIP_PAY_ENABLED: 'true' })).toBe(true);
   });
 });

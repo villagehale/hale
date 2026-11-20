@@ -1029,6 +1029,7 @@ describe('4 · the 48h sweep passes the gate and stays quiet', () => {
       no_watch_consent: 0,
       opt_out_unread: 0,
       quiet_hours: 0,
+      sends_paused: 0,
     });
     // Every check ran, against the rows intake wrote — not a stub that said yes.
     expect(journey.gateCalls.slice(0, 3)).toEqual(['enrolled', 'watch_consent', 'quiet_hours']);

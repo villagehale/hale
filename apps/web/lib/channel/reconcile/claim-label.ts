@@ -44,7 +44,32 @@ export type ClaimLabelSource =
   /** A booking the parent stated (a 13+ child's is excluded upstream). */
   | { from: 'stated_booking'; text: string }
   /** This turn's activityPromise.subject or spotWatch.label. */
-  | { from: 'pending'; text: string };
+  | { from: 'pending'; text: string }
+  /** authorized_signup_offers: the program's public name, else its host. Private when
+   * the child it registers is 13+. */
+  | {
+      from: 'signup';
+      activityLabel: string | null;
+      host: string;
+      childId: string;
+      childDateOfBirth: string | null;
+    }
+  /** activity_bookings.title. A 13+ child's confirmation writes no row at all. */
+  | { from: 'booking'; title: string }
+  /** A send Hale made, by channel and audience only: never a body or a person. */
+  | { from: 'send_receipt'; channel: 'text' | 'email'; audience: SendAudience };
+
+/** Who a send went to, as a role. A text to the parent being written to is the
+ * conversation itself, never a receipt. */
+export type SendAudience = 'group_chat' | 'co_parent' | 'other_parent' | 'caregiver' | 'for_family';
+
+const SEND_RECEIPT_WHAT: Record<SendAudience, string> = {
+  group_chat: 'in a group chat',
+  co_parent: 'to the co-parent',
+  other_parent: 'to the other parent',
+  caregiver: 'to a caregiver',
+  for_family: 'sent for this family',
+};
 
 /** What the reader sees for a 13+ child's commitment: the kind travels on the row. */
 export const PRIVATE_ITEM_WHAT = 'A private item';
@@ -82,5 +107,14 @@ export function claimRowLabel(source: ClaimLabelSource, now: Date): ClaimRowLabe
     case 'stated_booking':
     case 'pending':
       return brand(source.text);
+    case 'signup':
+      if (isPrivate(source, false, now)) return brand(PRIVATE_ITEM_WHAT);
+      return brand(source.activityLabel ?? `A registration on ${source.host}`);
+    case 'booking':
+      return brand(source.title);
+    case 'send_receipt':
+      return brand(
+        `${source.channel === 'email' ? 'An email' : 'A text'} ${SEND_RECEIPT_WHAT[source.audience]}`,
+      );
   }
 }

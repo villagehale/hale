@@ -371,9 +371,9 @@ export interface OpenQuestion {
   answerable: Answerable;
   /**
    * When this ask was last put in front of the parent, off the owning row, or null where
-   * no source threads it (an approval draft, the intro asks). Null is a fact, not a
-   * default: it says recency CANNOT be established, which disables the newest-solicited
-   * precedence for the whole list (see {@link newestSolicitedKind}).
+   * no source threads it (an approval draft). Null is a fact, not a default: it says
+   * recency CANNOT be established, which disables both recency preferences for the whole
+   * list (see {@link newestSolicitedKind} and {@link latestAsked}).
    */
   askedAt: Date | null;
   /** True when this class's ask PRINTS an explicit keyword instruction ("Reply YES ...")
@@ -464,17 +464,92 @@ const SOLICITED: Record<OpenQuestionKind, boolean> = {
  * established is not recency.
  */
 export function newestSolicitedKind(questions: readonly OpenQuestion[]): OpenQuestionKind | null {
-  if (questions.length === 0) return null;
-  if (questions.some((question) => question.askedAt === null)) return null;
-  const byRecency = [...questions].sort(
-    (a, b) => (b.askedAt as Date).getTime() - (a.askedAt as Date).getTime(),
+  const newest = newestAsks(questions);
+  if (newest?.length !== 1) return null;
+  const [only] = newest as [OpenQuestion];
+  return only.solicited ? only.kind : null;
+}
+
+/**
+ * VIL-302 · THE ASK THE PARENT IS REPLYING TO: the open questions Hale asked most
+ * recently, or null when recency may not decide.
+ *
+ * On 2026-08-20 Hale offered an introduction, later answered a search with an offer to
+ * add the find, and the founder's "yes" was bound to the introduction. A parent who says
+ * a bare yes is answering the last thing Hale asked, so when the whole open list cannot
+ * place their words (`ambiguous`), the router reads them again against this subset.
+ *
+ * `offList` is Hale's last text about each lane whose asks are not on this list (the
+ * sign-up lane's: DeterministicHandler.offListAsks). They are ranked with the open
+ * questions by the one rule, {@link newestAsks}: when one of them is the newest, or ties
+ * it, no open question is preferred and the answer reaches that lane, which takes it only
+ * by the same rule.
+ *
+ * Every ask on the top tie is kept, so two offers in one message still reach the reader
+ * together and a bare yes between them is ambiguous: Hale asks which. Null when any ask
+ * is undated (an approval draft is: its draft time is not when it was put to the
+ * parent), when nothing on the list is older than the newest, because then there is
+ * nothing to prefer it over, and when the newest ask and an older one are both
+ * consequential: a household disclosure and a calendar write are not picked between by
+ * which came last, so Hale asks.
+ */
+export function latestAsked(
+  questions: readonly OpenQuestion[],
+  offList: readonly Asked[],
+): readonly OpenQuestion[] | null {
+  const newest = newestAsks<Asked>([...questions, ...offList]);
+  if (!newest || newest.some((ask) => offList.includes(ask))) return null;
+  const top = questions.filter((question) => newest.includes(question));
+  if (top.length === questions.length) return null;
+  const consequential = (question: OpenQuestion) => GRADE[question.kind] === 'consequential';
+  const olderConsequential = questions.some(
+    (question) => !top.includes(question) && consequential(question),
   );
-  const newest = byRecency[0] as OpenQuestion;
-  const runnerUp = byRecency[1];
-  if (runnerUp && (runnerUp.askedAt as Date).getTime() === (newest.askedAt as Date).getTime()) {
-    return null;
+  if (olderConsequential && top.some(consequential)) return null;
+  return top;
+}
+
+/**
+ * VIL-302 · whether an ask off the open-question list (the sign-up lane's last text) keeps a
+ * reply the reader placed on an open question from binding it: that off-list ask is the
+ * newest of all the parent's asks, or ties the newest, or some ask's time is not known.
+ * False when no ask is off the list.
+ */
+export function offListOutranks(
+  questions: readonly OpenQuestion[],
+  offList: readonly Asked[],
+): boolean {
+  if (offList.length === 0) return false;
+  const newest = newestAsks<Asked>([...questions, ...offList]);
+  return newest === null || newest.some((ask) => offList.includes(ask));
+}
+
+/**
+ * Two asks whose sends were recorded this close together are a tie. Carriers deliver texts
+ * sent seconds apart in either order, so the parent cannot know which came last.
+ */
+export const ASK_TIE_WINDOW_MS = 10_000;
+
+/** Anything Hale asked a parent, with when it was put to them. Null: not known. */
+export interface Asked {
+  readonly askedAt: Date | null;
+}
+
+/**
+ * VIL-302 · THE NEWEST-ASK RULE, the one every lane ranks by: every ask whose send was
+ * recorded less than {@link ASK_TIE_WINDOW_MS} before the newest one's (the newest tie), or
+ * null when the list is empty or any ask time is unknown. Recency that cannot be
+ * established is not recency, and two asks this close are not an order either.
+ */
+export function newestAsks<T extends Asked>(asks: readonly T[]): T[] | null {
+  if (asks.length === 0) return null;
+  const times: number[] = [];
+  for (const ask of asks) {
+    if (ask.askedAt === null) return null;
+    times.push(ask.askedAt.getTime());
   }
-  return newest.solicited ? newest.kind : null;
+  const newest = Math.max(...times);
+  return asks.filter((_, index) => newest - (times[index] as number) < ASK_TIE_WINDOW_MS);
 }
 
 /**
@@ -596,30 +671,40 @@ export interface OpenQuestionReaderOptions {
 /**
  * The per-kind readers, injected — each one the function the OWNING module already
  * exports, so this file adds no second opinion about whether anything is open.
+ *
+ * Every `askedAt` is when the outbound row that carried the ask recorded its send
+ * (`channel_messages.send_recorded_at`, channel/ledger.ts `sendRecordedAt`), the one clock
+ * every ask of every lane is ranked by (VIL-302), or null when that is not known.
  */
 export interface OpenQuestionSources {
   /** The approvals spine's own pending list, oldest first. */
   pendingApprovals(database: Database, familyId: string): Promise<PendingAction[]>;
-  /** True when the discoverability ask was delivered and carries no answer yet. */
+  /** The discoverability ask, when it was delivered to this parent and carries no answer
+   * yet, or null. */
   introOptInOpen(
     database: Database,
     input: { familyId: string; parentUserId: string },
-  ): Promise<boolean>;
-  /** The proposal this family may answer right now, or null. */
-  introProposal(database: Database, familyId: string, now: Date): Promise<{ id: string } | null>;
-  /** The live, unexpired plan offer, or null. `askedAt` is the commitment row's own
-   * mint time — when the offer sentence went out. */
+  ): Promise<{ askedAt: Date | null } | null>;
+  /** The proposal this parent may answer right now, or null, dated by the card that was
+   * delivered to this parent on their family's side of the pair. */
+  introProposal(
+    database: Database,
+    familyId: string,
+    parentUserId: string,
+    now: Date,
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
+  /** The live, unexpired plan offer, or null, dated by the message that carried it. */
   planOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /** The live, unexpired health-checkpoint booking offer, or null. */
   checkupOffer(
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The founder's live, unexpired welcome offer, or null. Null for every other family in
    * the product by construction — the row is only ever written against his.
@@ -628,7 +713,7 @@ export interface OpenQuestionSources {
     database: Database,
     familyId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The activity follow-up Hale still owes this family, or null.
    *
@@ -639,7 +724,7 @@ export interface OpenQuestionSources {
   activityPromise(
     database: Database,
     familyId: string,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The registration ladder's readiness checklist, while its ask is still Hale's LAST
    * WORD to this parent — or null.
@@ -652,15 +737,15 @@ export interface OpenQuestionSources {
    * interval would have claimed the "yes" a parent said to the coach's own prose
    * question in the middle of it.
    *
-   * `askedAt` is the NEWEST ask, so the battle plan's re-ask the evening before
-   * outranks an older solicited question rather than losing to it.
+   * Dated by the NEWEST ask, so the battle plan's re-ask the evening before outranks an
+   * older solicited question rather than losing to it.
    */
   registrationReadiness(
     database: Database,
     familyId: string,
     parentUserId: string,
     now: Date,
-  ): Promise<{ id: string; summary: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; summary: string; askedAt: Date | null } | null>;
   /**
    * The co-parent invite THIS parent still owes a yes/no on, or null (VIL-355).
    *
@@ -672,7 +757,7 @@ export interface OpenQuestionSources {
   coParentAssent(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The email alerts this parent has not answered — a LIST, unlike every other offer
    * here, because the outbound gate permits three a day and each one asks about a
@@ -695,7 +780,7 @@ export interface OpenQuestionSources {
       id: string;
       summary: string;
       subject: string;
-      askedAt: Date;
+      askedAt: Date | null;
       /** The occasion, so a matching calendar draft is the same question. */
       title?: string;
       startsAt?: string;
@@ -711,7 +796,7 @@ export interface OpenQuestionSources {
   eveningCheckIn(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The activity follow-up ask, while it is Hale's last word to this parent and the
    * morning has not come — or null (channel/followup/ask-open.ts).
@@ -723,7 +808,7 @@ export interface OpenQuestionSources {
   activityFollowupAsk(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The weekday-care ask, while it is Hale's last word to this parent and inside its
    * 48h window — or null (VIL-360, channel/weekday-care/question.ts).
@@ -734,7 +819,7 @@ export interface OpenQuestionSources {
   weekdayCare(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null; scope?: string } | null>;
   /**
    * The empty-Saturday ask, while it is Hale's last word to this parent and inside
    * its 48h window — or null (VIL-365, channel/nudge/empty-saturday-question.ts).
@@ -742,7 +827,7 @@ export interface OpenQuestionSources {
   emptySaturday(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The daycare follow-up, while its ask is Hale's last word to this parent and inside
    * its window — or null (VIL-360, channel/followup/question.ts).
@@ -752,7 +837,7 @@ export interface OpenQuestionSources {
   daycareFollowup(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
   /**
    * The forwarding-address revoke confirm this parent has not answered, or null
    * (VIL-352 round 6, email/forward-request.ts).
@@ -771,7 +856,7 @@ export interface OpenQuestionSources {
   forwardAddressRevoke(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<{ id: string; askedAt: Date } | null>;
+  ): Promise<{ id: string; askedAt: Date | null } | null>;
 }
 
 /**
@@ -856,14 +941,14 @@ export function createOpenQuestionReader(
           [] as Awaited<ReturnType<OpenQuestionSources['pendingApprovals']>>,
           () => sources.pendingApprovals(database, input.familyId),
         ),
-        readerTask('introOptIn', false, () =>
+        readerTask('introOptIn', null, () =>
           sources.introOptInOpen(database, {
             familyId: input.familyId,
             parentUserId: input.parentUserId,
           }),
         ),
         readerTask('introProposal', null, () =>
-          sources.introProposal(database, input.familyId, input.now),
+          sources.introProposal(database, input.familyId, input.parentUserId, input.now),
         ),
         readerTask('planOffer', null, () => sources.planOffer(database, input.familyId, input.now)),
         readerTask('checkupOffer', null, () =>
@@ -989,9 +1074,7 @@ export function createOpenQuestionReader(
           description: 'Whether to be introduced to other Hale families nearby',
           subject: SUBJECT.intro_optin,
           answerable: KIND_ANSWERABLE.intro_optin,
-          // The ask time is not threaded off the ledger row here; null disables the
-          // recency precedence whenever this question is open (fail toward asking).
-          askedAt: null,
+          askedAt: optIn.askedAt,
           solicited: SOLICITED.intro_optin,
         });
       }
@@ -1003,7 +1086,7 @@ export function createOpenQuestionReader(
           description: 'Whether to meet one nearby Hale family',
           subject: SUBJECT.intro_proposal,
           answerable: KIND_ANSWERABLE.intro_proposal,
-          askedAt: null,
+          askedAt: proposal.askedAt,
           solicited: SOLICITED.intro_proposal,
         });
       }
@@ -1074,9 +1157,11 @@ export function createOpenQuestionReader(
       }
       // OLDEST FIRST — the order the texts reached the phone — because a position printed
       // against two notices about the same occasion has to mean what a parent means by
-      // "the first one".
-      const orderedOffers = [...emailOffers].sort(
-        (a, b) => a.askedAt.getTime() - b.askedAt.getTime(),
+      // "the first one". One whose send time is not known went before the clock existed.
+      const orderedOffers = [...emailOffers].sort((a, b) =>
+        a.askedAt === null || b.askedAt === null
+          ? Number(b.askedAt === null) - Number(a.askedAt === null)
+          : a.askedAt.getTime() - b.askedAt.getTime(),
       );
       const offerPositions = duplicatePositions(orderedOffers.map((offer) => offer.subject));
       for (const [index, emailOffer] of orderedOffers.entries()) {
@@ -1133,7 +1218,10 @@ export function createOpenQuestionReader(
         questions.push({
           id: weekdayCare.id,
           kind: 'weekday_care',
-          description: 'How this household covers its weekdays',
+          description:
+            weekdayCare.scope === 'break_dates'
+              ? "When this household's winter break starts and ends"
+              : 'How this household covers its weekdays',
           subject: SUBJECT.weekday_care,
           answerable: KIND_ANSWERABLE.weekday_care,
           askedAt: weekdayCare.askedAt,

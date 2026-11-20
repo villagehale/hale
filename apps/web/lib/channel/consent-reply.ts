@@ -33,8 +33,19 @@ export interface ConsentReadingResult {
   target: ConsentTarget;
 }
 
+export interface ConsentReadInput {
+  question: ConsentQuestion;
+  text: string;
+  /**
+   * The last thing Hale said to this parent, when it is known. The model uses it to tell
+   * an answer to the question from a reply to a different ask (a "go find it" after Hale
+   * asked for a registration link is not consent).
+   */
+  lastHaleMessage?: string | null;
+}
+
 export interface ConsentReader {
-  read(input: { question: ConsentQuestion; text: string }): Promise<ConsentReadingResult | null>;
+  read(input: ConsentReadInput): Promise<ConsentReadingResult | null>;
 }
 
 const MAX_TEXT_CHARS = 1600;
@@ -63,11 +74,12 @@ export const CONSENT_REPLY_TOOL_SCHEMA = {
 } as const;
 
 /** The user-turn payload. Shared with the eval, which replicates this request shape. */
-export function consentReplyUserMessage(input: {
-  question: ConsentQuestion;
-  text: string;
-}): string {
-  return JSON.stringify({ question: input.question, text: input.text });
+export function consentReplyUserMessage(input: ConsentReadInput): string {
+  return JSON.stringify({
+    question: input.question,
+    text: input.text,
+    ...(input.lastHaleMessage ? { lastHaleMessage: input.lastHaleMessage } : {}),
+  });
 }
 
 export function toConsentReading(raw: {
@@ -98,6 +110,7 @@ export function createConsentReader(client: () => AgentClient): ConsentReader {
   return {
     async read(input) {
       const bounded = input.text.slice(0, MAX_TEXT_CHARS);
+      const lastHale = input.lastHaleMessage?.slice(0, MAX_TEXT_CHARS) ?? null;
       let resolved: AgentClient;
       try {
         resolved = client();
@@ -117,7 +130,11 @@ export function createConsentReader(client: () => AgentClient): ConsentReader {
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: consentReplyUserMessage({ question: input.question, text: bounded }),
+          userMessage: consentReplyUserMessage({
+            question: input.question,
+            text: bounded,
+            lastHaleMessage: lastHale,
+          }),
           toolName: CONSENT_REPLY_TOOL,
           toolDescription: 'Decide whether this message agrees, refuses, or does neither.',
           inputJsonSchema: CONSENT_REPLY_TOOL_SCHEMA,
@@ -137,7 +154,7 @@ export function createConsentReader(client: () => AgentClient): ConsentReader {
 /** Absence is named. The caller treats null as neither and does not act. */
 export async function readConsent(
   reader: ConsentReader | undefined,
-  input: { question: ConsentQuestion; text: string },
+  input: ConsentReadInput,
 ): Promise<ConsentReadingResult | null> {
   if (!reader) {
     console.info(

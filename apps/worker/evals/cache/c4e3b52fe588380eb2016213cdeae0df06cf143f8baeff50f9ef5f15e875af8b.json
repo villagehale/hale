@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "reschedule request for the swim class on the family's schedule",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2217
+}

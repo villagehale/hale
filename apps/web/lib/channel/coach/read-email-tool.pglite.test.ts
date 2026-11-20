@@ -247,7 +247,8 @@ describe('read_email · a write refused after the read leaves no audit row (VIL-
     );
 
     const audit = await rows();
-    expect(audit.map((row) => row.actionTaken)).toEqual(['tool:read_email']);
+    // VIL-635: the refusal leaves a content-free tool_refused row, never a tool:<name> row.
+    expect(audit.map((row) => row.actionTaken).sort()).toEqual(['tool:read_email', 'tool_refused']);
     expect(JSON.stringify(audit)).not.toContain('Dale Quill');
   });
 

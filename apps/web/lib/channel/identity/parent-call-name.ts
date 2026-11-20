@@ -5,7 +5,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY } from './asked';
 import { type ParentRoleGuess, storeParentRole } from './parent-role';
 
@@ -35,7 +35,11 @@ export function safeGivenName(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0 || trimmed.length > 40) return null;
-  if (hasLinkShape(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
+  if (hasLinkShape(trimmed)) {
+    noteLinkGate('parent-call-name', 'refused');
+    return null;
+  }
+  if (trimmed.includes('@') || /\d/.test(trimmed)) return null;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length === 0) return null;
   const kept = words.length <= 2 ? words : words.slice(0, 1);
@@ -278,13 +282,21 @@ export interface ParentCallNameVoice {
  * call them. A different name stores THAT name, not the Google one. A reply
  * the model read as none of those is not claimed.
  */
+/** Whether Hale's latest name ask to this parent is the confirm of a held name: the only
+ * time a text is a reply to it. */
+export async function parentNameConfirmPending(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<boolean> {
+  return (await latestAsk(database, input)) === PARENT_NAME_CONFIRM_TEMPLATE_KEY;
+}
+
 export async function handleParentCallNameReply(
   database: Database,
   input: { familyId: string; parentUserId: string; body: string },
   voice: ParentCallNameVoice,
 ): Promise<ParentCallNameReply> {
-  const pending = await latestAsk(database, input);
-  if (pending !== PARENT_NAME_CONFIRM_TEMPLATE_KEY) return { status: 'declined' };
+  if (!(await parentNameConfirmPending(database, input))) return { status: 'declined' };
 
   const held = safeGivenName(await readHeldGivenName(database, input.parentUserId));
   if (!held) {

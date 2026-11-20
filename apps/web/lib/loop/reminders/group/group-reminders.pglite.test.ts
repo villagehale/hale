@@ -17,8 +17,13 @@ import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
-import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
+import {
+  LinqSendError,
+  listLinqParticipantHandles,
+  refuseGarbledText,
+} from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { buildDistillTools } from '~/lib/cron/inference-tools';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -26,6 +31,8 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
 import { fakeGroupReminderReader, fakeGroupReminderVoice } from './fake';
 import { runGroupReminderTick } from './fire';
+import { GROUP_REMINDER_INFLIGHT_CANCEL_ENV } from './flag';
+import { postGroupReminderLine } from './line';
 import { LATE_LIMIT_MS, type ReminderAsk } from './policy';
 import type { GroupReminderReading } from './read';
 import {
@@ -245,6 +252,7 @@ function inbound(sender: string, text: string, messageId: string): LinqInboundTe
     text,
     mediaCount: 0,
     receivedAt: NOW,
+    sentAt: NOW,
     otherHandles: [],
     isGroup: true,
     mentions: [],
@@ -539,6 +547,44 @@ describe('asking for a reminder in the group', () => {
 
     expect(await runGroupReminderTick(db.database, tick.ports)).toMatchObject({ due: 0 });
     expect(tick.direct.sent).toHaveLength(1);
+  });
+
+  it("signs each group ask with its sender, so the nightly distiller reads the parent's and not the grandparent's", async () => {
+    const home = await seedHousehold();
+    const { ports } = turnPorts(reading([ask()]));
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'Hale, remind me Thursday at 4, Maya has her inhaler check', 'in-ruth-sig'),
+      ports,
+    );
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(PRIYA, 'remind me at 4 to grab Maya', 'in-priya-sig'),
+      ports,
+    );
+
+    const signed = await db.database
+      .select({ role: schema.messages.role, authorUserId: schema.messages.authorUserId })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+      .where(eq(schema.conversations.noteKey, channelGroupNoteKey(CHAT)));
+    expect(signed).toEqual(
+      expect.arrayContaining([
+        { role: 'user', authorUserId: home.ruth },
+        { role: 'user', authorUserId: home.priya },
+      ]),
+    );
+
+    const read = buildDistillTools(db.database, new Date()).find(
+      (tool) => tool.name === 'read_recent_conversations',
+    );
+    if (!read) throw new Error('no read_recent_conversations tool');
+    const { turns } = (await read.handler({}, { familyId: home.familyId, actor: 'system' })) as {
+      turns: { role: string; content: string }[];
+    };
+    expect(turns.map((turn) => `${turn.role}: ${turn.content}`)).toEqual([
+      'user: remind me at 4 to grab Maya',
+    ]);
   });
 
   it('keeps that same parent in the group while the loop cannot send 1:1', async () => {
@@ -841,6 +887,30 @@ describe('asking for a reminder in the group', () => {
       ),
     ).toEqual({ handled: true, outcome: 'group_reminder_set' });
     expect(await onlyReminder()).toMatchObject({ status: 'scheduled' });
+  });
+
+  // VIL-683 · the send seam's own check, as the real Linq door runs it, on a garbled line.
+  it('a garbled confirmation the send seam refuses sends nothing and is on the audit trail', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+    const send = ports.send;
+    if (!send) throw new Error('turnPorts sends');
+    const garbled = {
+      ...ports,
+      send: async (input: { chatId: string; text: string; replyTo?: string }) => {
+        refuseGarbledText(`${input.text} Câ€™est notÃ©.`);
+        return send(input);
+      },
+    };
+    await takeGroupReminderTurn(
+      db.database,
+      inbound(RUTH, 'remind me at 4', 'in-garbled'),
+      garbled,
+    );
+    expect(sends).toEqual([]);
+    expect(await verbs(home.familyId)).toContain('channel_text_garbled');
+    expect(await verbs(home.familyId)).not.toContain('sms_reply_sent');
   });
 
   it('sets nothing, and says so to ops, when no voice is configured at all', async () => {
@@ -1179,6 +1249,157 @@ describe('when a group reminder is due', () => {
     const actions = await verbs(home.familyId);
     expect(actions).toContain('group_reminder_sent');
     expect(actions).not.toContain('group_reminder_cancelled');
+  });
+
+  it('cancels an in-flight reminder with no provider id, and a queued one, when the flag is exactly true', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    await setFor(DAN);
+    const ruth = (await reminders()).find((row) => row.askedByUserId === home.ruth);
+    if (!ruth) throw new Error('expected Ruth’s reminder');
+    const claimed = await claimReminder(db.database, ruth.id, THURSDAY_FOUR);
+    if (!claimed || !(await commitSend(db.database, claimed)))
+      throw new Error('expected in flight');
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(1);
+    const rows = await reminders();
+    expect(rows.find((row) => row.id === ruth.id)).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+    });
+    expect(rows.find((row) => row.askedByUserId === home.dan)?.status).toBe('scheduled');
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(DAN),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(1);
+    expect((await reminders()).find((row) => row.askedByUserId === home.dan)?.status).toBe(
+      'cancelled',
+    );
+  });
+
+  it('audits landed_after_stop when Linq already accepted an in-flight reminder', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    await setFor(RUTH);
+    const { id } = await onlyReminder();
+    const claimed = await claimReminder(db.database, id, THURSDAY_FOUR);
+    if (!claimed || !(await commitSend(db.database, claimed)))
+      throw new Error('expected in flight');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: home.familyId,
+      parentUserId: home.priya,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'reply',
+      templateKey: 'linq:group_reminder',
+      dedupeKey: `linq:group_reminder:${id}`,
+      providerMessageId: 'out-accepted',
+      providerChatId: CHAT,
+      status: 'sent',
+      sentAt: THURSDAY_FOUR,
+    });
+
+    expect(
+      await cancelGroupReminders(db.database, {
+        chatId: CHAT,
+        phoneHash: phoneBlindIndex(RUTH),
+        reason: 'member_stop',
+        now: THURSDAY_FOUR,
+      }),
+    ).toBe(0);
+    expect(await onlyReminder()).toMatchObject({ status: 'in_flight' });
+    const [audit] = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_reminder_landed_after_stop'));
+    expect(audit?.actionTaken).toBe('group_reminder_landed_after_stop');
+    expect(audit?.after).toMatchObject({ reason: 'landed_after_stop' });
+  });
+
+  it('does not send an in-flight reminder once the member has left the chat', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const leftWhileWriting: GroupReminderVoice = {
+      async write(facts) {
+        await db.database
+          .update(schema.linqGroupMembers)
+          .set({ removedAt: THURSDAY_FOUR })
+          .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(RUTH)));
+        return tick.voice.write(facts);
+      },
+    };
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, voice: leftWhileWriting }),
+    ).toMatchObject({ due: 1, sent: 0, lost: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'member_stop',
+    });
+  });
+
+  it('retries a reminder whose opt-out check threw before Linq was called', async () => {
+    vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+    const home = await seedHousehold();
+    const sends: Array<{ chatId: string; text: string }> = [];
+    const input = {
+      familyId: home.familyId,
+      ledgerUserId: home.priya,
+      chatId: CHAT,
+      text: 'reminder for Ruth',
+      templateKey: 'linq:group_reminder',
+      dedupeKey: 'linq:group_reminder:retry-check',
+      now: THURSDAY_FOUR,
+      listChatHandles: liveList,
+      send: async (message: { chatId: string; text: string }) => {
+        sends.push(message);
+        return { providerMessageId: 'out-retry' };
+      },
+    };
+
+    expect(
+      await postGroupReminderLine(db.database, {
+        ...input,
+        beforeSend: async () => {
+          throw new Error('db down');
+        },
+      }),
+    ).toEqual({ outcome: 'not_sent', code: 'opt_out_check_failed', retryable: true });
+    expect(sends).toEqual([]);
+    const [failed] = await db.database
+      .select({
+        dedupeKey: schema.channelMessages.dedupeKey,
+        status: schema.channelMessages.status,
+        errorCode: schema.channelMessages.errorCode,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.errorCode, 'opt_out_check_failed'));
+    expect(failed).toMatchObject({
+      dedupeKey: null,
+      status: 'failed',
+      errorCode: 'opt_out_check_failed',
+    });
+
+    expect(
+      await postGroupReminderLine(db.database, { ...input, beforeSend: async () => true }),
+    ).toMatchObject({ outcome: 'sent' });
+    expect(sends).toEqual([{ chatId: CHAT, text: 'reminder for Ruth' }]);
   });
 
   it('audits only a close that happened: a stale tick can neither commit nor close the newer claim', async () => {

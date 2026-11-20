@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzZzchDUtixP7XQqXbYQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSggcKEAgTGAI4AUIIdGhpbmtpbmcSDBK2eqp8nrTzq9mRDxoMVJMlqZ0QtUd317ybIjAN4FuDbbFQwzZpM+lRoUToUbpapa+PynkTcIWKnz3rNNe1g8AYV61maRA1zuE1EfYqnwZ57TKWg9P9lEJXNtM7z3ovkssiC1b4Rshc8U4d51eY7koR8jLDUkDEp1gvA1fy7guIyVPjJSLkelWlqoDSVgyiOQZaU7rYQxH3a9Yiav/5QADXcftyf4jMaG3P88XJ5uHMCZzkgktqDLApRX2xC0P/RTkvjptug5xdz+C0mqmY7V6h1uqDUIWx9uDI/eGtHKMG5yZj1Y6EHXGVeZjjSERfzaPLm2h8KRmiO+HHTPDo1n6sNyQsK+FWPTIbiCeQTWp+J7krHsb7/cMMI7hq2tch/eG/jZe9Hi4Gg9o3wKNjDH2UGrlXqWHRRzH9EwQl9wxEOET2Y9Oym4Y6zc7O5ViVgOsLhwOcaJbAgu16Q07a/OJxwKYbYgA5JUA0WMreaVu/gyQyu5pkngWUvKKdNUrN4d9hmw6zobcc0DVg7P4wToWN8gK0f9EaMER0UMefF6GkIOD2L0xEJaHLfM6P7aRUotcJ1sIBqKrXhV2EcqCbmQgpKKrX/UKaQYBTLbyxOhDtgIMrXZBfn8Nj4j/xDE69fliMREn5Qha7GibLCsn8Wj61bRLPGD2in933W+VsAzrtCjYsxr21Sf5uom4fPTwIT/zrjajx2q1Zr6qn8sNxjXG9BVi2IbByyXuNpAqL0lAhTw7HmwcLVhGA0VC4qmc08yHMsIoXmQ8ETxjvdWnh1VexvE8QFqnUUV2m0tNVPf8DylD75Yix+GCpOWl5R4eCMJ/b38O6jZN9VywlpZxVRsiz0wkrJfk1lXD1ClUjpod9vdWai+n03l9S17lBz6mVBWSOOS3J2mGZpROY6Jg6eptBO/Op0r7AcafE6mOSAZpd1xP+kHaeIByBziUPRqxukuYRntkHLbvsPj2T0poXpganmfK89HfU0bzIIxNEjiYX84Hm3dNqdTQvjkmSFbccFp1PfoAh2ONVOXSBwdlY4kPRT6X2mwpWtmCEDwQE2YsesOwCeIrvQbRR+9Fmdmc48F3/6CCCLmvHWAB/olh2tZ72WZBGBHVKp0T64jAYGECSYUE0UZZiTBcMa8yqCu329fm+6tyyJ+FCgdht2IwAGAE="
+      },
+      {
+        "type": "text",
+        "text": "Going by their own pages, both fit Ada (8), since each lists kids classes for ages 6 to 12. Neither page gave me a price or specific times, so I can't call one better yet. Harbour Art Studio's page is [link-7ca715] and Lakeshore Art Studio's is [link-d61337]. Is Ada after a particular day of the week, or a certain kind of art, so I can narrow it down?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 567,
+      "cache_read_input_tokens": 25705,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 567,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 199,
+      "output_tokens_details": {
+        "thinking_tokens": 64
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2551
+}

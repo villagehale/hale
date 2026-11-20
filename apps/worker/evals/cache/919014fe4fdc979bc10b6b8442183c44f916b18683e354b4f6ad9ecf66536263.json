@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The line correctly tells Priya she drew Ana, but it also adds '(Ben got Cy, don't tell!)', which reveals a second pairing to a giver. This is a direct secrecy violation (a second receiver in a giver's text, and a pairing Priya has no reason to know). It also invents a gossipy aside and contradicts the secrets list. Everything else (English, short, warm) is fine but the reveal is disqualifying.",
+    "score": 1
+  }
+}

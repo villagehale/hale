@@ -99,3 +99,30 @@ async function spokeIn(database: Database, parentUserId: string, chatId: string)
     .limit(1);
   return row !== undefined;
 }
+
+/**
+ * The service Linq said carried this parent's texts in this chat: `provider_service` on
+ * their newest inbound row there that names one. Linq relays green-bubble SMS and RCS
+ * chats as `imessage` too, so the channel alone cannot say the chat is iMessage. Null:
+ * they have not texted in it since Linq started saying, which is not a yes.
+ */
+export async function chatServiceSaid(
+  database: Database,
+  parentUserId: string,
+  chatId: string,
+): Promise<schema.LinqServiceValue | null> {
+  const [row] = await database
+    .select({ service: schema.channelMessages.providerService })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'in'),
+        eq(schema.channelMessages.providerChatId, chatId),
+        isNotNull(schema.channelMessages.providerService),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(1);
+  return row?.service ?? null;
+}

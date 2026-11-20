@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Fair enough, and I won't push past that. Then I'll leave the place out and you can tell me about the kids next. Who's in your family, and what are their first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1659
+}

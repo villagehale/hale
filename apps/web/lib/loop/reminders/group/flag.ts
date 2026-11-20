@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { linqGroupTurnAiEnabled } from '~/lib/channel/linq/group-turn-reader';
 
@@ -11,7 +12,20 @@ import { linqGroupTurnAiEnabled } from '~/lib/channel/linq/group-turn-reader';
  * turn reader, then this.
  */
 export function groupRemindersEnabled(): boolean {
-  return process.env.LINQ_GROUP_REMINDERS_ENABLED?.trim() === 'true';
+  return isEnabled('linq-group-reminders');
+}
+
+/**
+ * VIL-707. An in-flight group reminder that Linq has not accepted yet can be
+ * cancelled, and the send checks the member's opt-out again immediately before
+ * the provider call. Exactly `true`. Anything else leaves `in_flight` to land.
+ */
+export const GROUP_REMINDER_INFLIGHT_CANCEL_ENV = 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED';
+
+export function groupReminderInFlightCancelEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('group-reminder-inflight-cancel', undefined, env);
 }
 
 /**

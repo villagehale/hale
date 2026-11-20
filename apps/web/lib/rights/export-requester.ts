@@ -1,9 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { ACTIVITY_HELD_TOPIC } from '~/lib/channel/activity/venue-pages';
 import { privateAsidesSentTo } from '~/lib/channel/linq/private-aside-ledger';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import type { ExportTeenGate } from './export-memory';
+import { accessExportRound2Enabled } from './export-round-2';
 
 /**
  * The part of a right-to-access copy that is about the requesting adult alone: their 1:1
@@ -25,7 +27,10 @@ import type { ExportTeenGate } from './export-memory';
  * consent given before the family existed). A record is one adult's yes or no in their
  * own words, so a co-parent's never reaches this copy. A teen-access request's evidence
  * describes the teen, so it leaves as null with `withheld: 'teen'` (rule #1); its type,
- * scope and dates stay. A connection is the provider, the scopes and the dates; its tokens,
+ * scope and dates stay. Lit, every type's evidence also runs through the teen gate, and
+ * a type that names another adult or household (`village_intro`,
+ * `caregiver_access_grant`) leaves evidence null with `withheld: 'another_adult'`. A
+ * connection is the provider, the scopes and the dates; its tokens,
  * provider metadata and account key never leave. A calendar mirror is keyed on the
  * requester's own connection. Every connection has a user (integrations/store.ts is the
  * one writer), so this section covers them all.
@@ -61,7 +66,7 @@ export interface RequesterOnlyExport {
     evidence: Record<string, unknown> | null;
     ip: string | null;
     userAgent: string | null;
-    withheld: 'teen' | null;
+    withheld: 'teen' | 'another_adult' | null;
   }[];
   connections: {
     provider: string;
@@ -87,6 +92,8 @@ export interface RequesterOnlyExport {
 }
 
 const TEEN_EVIDENCE_CONSENT = 'teen_content_access';
+/** Types whose evidence names another adult or another household. */
+const OTHER_ADULT_EVIDENCE_CONSENTS = new Set(['village_intro', 'caregiver_access_grant']);
 
 function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
@@ -214,14 +221,17 @@ export async function loadRequesterOnlyExport(
 
   const asides = await privateAsidesSentTo(database, { familyId, userId: requesterUserId });
 
+  const round2 = accessExportRound2Enabled();
   return {
-    textThread: turns.map((turn) => ({
-      role: turn.role,
-      content: turn.content,
-      topic: turn.topic,
-      sentAt: turn.createdAt.toISOString(),
-      removedAt: turn.deletedAt?.toISOString() ?? null,
-    })),
+    textThread: turns
+      .filter((turn) => !round2 || turn.topic !== ACTIVITY_HELD_TOPIC)
+      .map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+        topic: turn.topic,
+        sentAt: turn.createdAt.toISOString(),
+        removedAt: turn.deletedAt?.toISOString() ?? null,
+      })),
     language: user,
     languageChanges: changes.map((row) => ({
       changedAt: row.occurredAt.toISOString(),
@@ -230,7 +240,10 @@ export async function loadRequesterOnlyExport(
       why: field(row.after, 'why'),
     })),
     consents: consentRows.map((row) => {
-      const withheld = row.type === TEEN_EVIDENCE_CONSENT ? ('teen' as const) : null;
+      const teen =
+        row.type === TEEN_EVIDENCE_CONSENT || (round2 && gate.isPrivate([], [row.evidence]));
+      const otherAdult = round2 && OTHER_ADULT_EVIDENCE_CONSENTS.has(row.type);
+      const withheld = teen ? ('teen' as const) : otherAdult ? ('another_adult' as const) : null;
       return {
         type: row.type,
         scope: row.scope,

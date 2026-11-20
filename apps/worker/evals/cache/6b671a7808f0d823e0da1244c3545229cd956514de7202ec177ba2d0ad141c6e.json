@@ -1,0 +1,13 @@
+{
+  "value": {
+    "intent": "pick_time",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidNames": [],
+    "confidence": "high",
+    "ruledOut": [],
+    "picked": "2026-10-31T15:00:00.000Z",
+    "planTitle": "Get-together"
+  },
+  "latencyMs": 1690
+}

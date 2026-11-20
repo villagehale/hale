@@ -6,6 +6,11 @@ import {
   denyGoogleAds,
   installGoogleAds,
 } from '~/lib/analytics/google-ads-client';
+import {
+  clearMetaClickCookies,
+  denyMetaPixel,
+  installMetaPixel,
+} from '~/lib/analytics/meta-pixel-client';
 import { CONSENT_OPEN_EVENT, readConsent, writeConsent } from '~/lib/site/consent';
 
 /** Keeps the last ZH clause on one line so a single character is not stranded. */
@@ -23,6 +28,13 @@ function ConsentSentence({ text }: { text: string }): ReactNode {
   );
 }
 
+function pixelIdFromPropsOrEnv(pixelId: string | null | undefined): string | null {
+  if (pixelId) return pixelId;
+  if (process.env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true') return null;
+  const id = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
+  return id ? id : null;
+}
+
 export function ConsentBanner({
   privacyHref,
   text,
@@ -30,6 +42,7 @@ export function ConsentBanner({
   rejectLabel,
   acceptLabel,
   regionLabel,
+  pixelId = null,
 }: {
   privacyHref: string;
   text: string;
@@ -37,22 +50,31 @@ export function ConsentBanner({
   rejectLabel: string;
   acceptLabel: string;
   regionLabel: string;
+  pixelId?: string | null;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (readConsent() === 'granted') installGoogleAds();
+    const id = pixelIdFromPropsOrEnv(pixelId);
+    if (readConsent() === 'granted') {
+      installGoogleAds();
+      if (id) installMetaPixel(id);
+    }
     const onOpen = () => setOpen(true);
     window.addEventListener(CONSENT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CONSENT_OPEN_EVENT, onOpen);
-  }, []);
+  }, [pixelId]);
 
   function accept() {
     const previous = readConsent();
     if (!writeConsent('granted')) return;
     setOpen(false);
-    if (previous !== 'granted') installGoogleAds();
+    if (previous !== 'granted') {
+      installGoogleAds();
+      const id = pixelIdFromPropsOrEnv(pixelId);
+      if (id) installMetaPixel(id);
+    }
   }
 
   function reject() {
@@ -62,6 +84,8 @@ export function ConsentBanner({
     if (previous !== 'granted') return;
     denyGoogleAds();
     clearGoogleClickCookies();
+    denyMetaPixel();
+    clearMetaClickCookies();
     void import('posthog-js')
       .then(({ default: posthog }) => {
         if (posthog.__loaded) posthog.opt_out_capturing();

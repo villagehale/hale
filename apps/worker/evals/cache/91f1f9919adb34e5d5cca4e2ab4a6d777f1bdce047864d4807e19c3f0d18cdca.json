@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "co_parent_departed must be sent: the parent who stayed hasn't been told, and the unanswered streak, empty free windows and evening hour don't hold it; 6:00 PM Thursday is outside quiet hours.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

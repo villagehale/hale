@@ -1,0 +1,22 @@
+{
+  "value": {
+    "reply": "Done, Swim Kids 3 for Mia every Saturday at 11, starting this Saturday, November 7. Next, would a group chat with the other parent help? Both of you would see the same kid plans and reminders, and nothing private.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": true,
+    "scheduleAdds": [
+      {
+        "line": 1,
+        "child": "Mia",
+        "cadence": "weekly",
+        "date": "2026-11-07",
+        "time": "11:00",
+        "weeks": 8
+      }
+    ],
+    "scheduleDone": true
+  },
+  "latencyMs": 1589
+}

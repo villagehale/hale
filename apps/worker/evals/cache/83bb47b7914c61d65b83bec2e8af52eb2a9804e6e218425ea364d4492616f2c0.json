@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the single question in French, keeps one thought in one bubble, and places the only question in the last bubble. It states the drafted move to Sunday Nov 15 at 10:00 (same clock time as the original 10:00 Saturday slot, converted from UTC 15:00 in Toronto) and does not invent facts. The rubric is met, though the bubble is a single question-form confirmation so there is no splitting issue.",
+    "score": 5
+  }
+}

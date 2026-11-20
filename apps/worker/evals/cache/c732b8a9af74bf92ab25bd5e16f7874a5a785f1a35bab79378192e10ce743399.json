@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Secrecy is intact: no pairings, no names after a draw. Language is correct (Chinese), tone is warm and friendly, and it's one bubble with one ask. But the line is not fully grounded in facts: facts say outcome 'name_needed', minimum 4, with the speaker unnamed. The reply says '你已经加入啦' (you've already joined), which matches inAfterThisMessage, but it omits the minimum of 4 context, which is acceptable. A minor issue is that 'please tell me what name you'd like' is a mild request rather than a keyword command, which is fine. The first sentence plus second sentence is slightly long for a Kat-short single bubble, and the exclamation/wording is a bit stiff ('才能叫你'), but overall solid.",
+    "score": 4
+  }
+}

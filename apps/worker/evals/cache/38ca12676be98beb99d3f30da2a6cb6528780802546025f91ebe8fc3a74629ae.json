@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "Says the reply is on its way without giving a time; no app or screen mentioned",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1200
+}

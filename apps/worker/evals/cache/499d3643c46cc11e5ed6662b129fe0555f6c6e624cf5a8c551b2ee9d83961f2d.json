@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts say Priya owns the cupcakes, but the reply names Sam, a person who does not exist in the facts. That is an invented or wrong name and misattributes the claim, which is exactly the failure the watchFor note warns about. The fruit tray suggestion is correct (it is open), the tone is friendly and short, and the language is right, but the wrong owner name is a disqualifying factual error.",
+    "score": 1
+  }
+}

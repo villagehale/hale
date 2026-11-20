@@ -1,7 +1,7 @@
+import { scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
-import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import type { ExtractedChild } from './extract';
 
 /**
@@ -62,7 +62,10 @@ export function joinOfficialAnswer(answer: string, pendingAsk: string): string |
   const joined = [answer, ask].filter((part) => part.length > 0).join(' ');
   if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
-  if (hasLinkShape(joined)) return null;
+  if (hasLinkShape(joined)) {
+    noteLinkGate('official-page', 'refused');
+    return null;
+  }
   return joined;
 }
 
@@ -84,10 +87,9 @@ export function deidentifyOfficialQuery(
   const names = children.flatMap((child) => (child.name ? [child.name] : []));
   const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
   if (!scrub.ok) return scrub;
-  const withoutContacts = scrub.text
-    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
-  const query = scrubPlaceTokens(withoutContacts, ' ').replace(/\s+/g, ' ').trim();
+  const query = scrubPlaceTokens(scrubContactTokens(scrub.text, ' '), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return {
     ok: true,
     text: query === '' ? 'municipal recreation registration dates official page' : query,

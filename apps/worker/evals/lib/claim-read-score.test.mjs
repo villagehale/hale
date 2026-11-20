@@ -229,7 +229,31 @@ describe('degenerate readers', () => {
       'registration_watch',
       'activity_followup',
     ]);
-    expect(READ_CLAIM_KINDS).toHaveLength(6);
+    expect(READ_CLAIM_KINDS).toHaveLength(10);
+  });
+
+  it('registered-backed cites a registration row for a false "registered" only', () => {
+    const registered = {
+      id: 'en-toy-registered',
+      category: 'registered',
+      candidates: [
+        { ref: 'cal', source: 'calendar', kind: 'scheduled_event' },
+        { ref: 'soccer', source: 'signup_confirmed', kind: 'registration_done' },
+      ],
+      expect: {
+        claims: [
+          { sentence: 'She is registered for swim.', kind: 'registration_done', row: 'none' },
+          { sentence: 'Swim is Saturday.', kind: 'scheduled_event', row: 'none' },
+        ],
+        refused: [],
+        minted: [],
+      },
+    };
+    expect(DEGENERATE_READERS['registered-backed'].read(registered)).toEqual([
+      // Never the calendar row: only a row the verifier would accept, for the wrong program.
+      { sentence: 'She is registered for swim.', kind: 'registration_done', row: 'soccer' },
+      { sentence: 'Swim is Saturday.', kind: 'scheduled_event', row: 'none' },
+    ]);
   });
 
   it('random-row is seeded: the same fixture reads the same twice', () => {
@@ -255,7 +279,32 @@ describe('degenerate readers', () => {
       'random-row': 'caught',
       'wrong-kind': 'truePassed',
       'silent-on-injection': 'caught',
+      'registered-backed': 'caught',
+      'received-as-sent': 'caught',
     });
+  });
+
+  it('received-as-sent reads a false "they got it" as "I sent it" on the receipt it was offered', () => {
+    const got = {
+      id: 'en-toy-received',
+      category: 'sent',
+      candidates: [{ ref: 'co', source: 'send_receipt', kind: 'send_done', delivered: false }],
+      expect: {
+        claims: [
+          { sentence: 'I texted your co-parent.', kind: 'send_done', row: 'co' },
+          { sentence: 'She got it.', kind: 'send_received', row: 'none' },
+        ],
+        refused: [{ sentence: 'She got it.', reason: 'no_delivery_record' }],
+        minted: [],
+      },
+    };
+    expect(DEGENERATE_READERS['received-as-sent'].read(got)).toEqual([
+      { sentence: 'I texted your co-parent.', kind: 'send_done', row: 'co' },
+      { sentence: 'She got it.', kind: 'send_done', row: 'co' },
+    ]);
+    // The compatibility table: an undelivered receipt never backs an arrival.
+    expect(compatibleRefs(got, 'send_received')).toEqual([]);
+    expect(compatibleRefs(got, 'send_done')).toEqual(['co']);
   });
 });
 

@@ -130,6 +130,10 @@ export const channelMessageReceivedPayloadSchema = z.object({
   // the door's bit rides here. Optional because a job queued before it existed, or
   // re-driven by the reconciler from the row alone, does not carry it.
   in_group: z.boolean().optional(),
+  // True when the door's opt-out read could not read this text, so it may be a stop: the
+  // router moves no sign-up ask on that turn. Optional because a job queued before it
+  // existed does not carry it; such a job runs as before, guarded by the door's hold row.
+  opt_out_unread: z.boolean().optional(),
 });
 export type ChannelMessageReceivedPayload = z.infer<typeof channelMessageReceivedPayloadSchema>;
 

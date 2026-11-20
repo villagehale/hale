@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale removed the Saturday swimming class from the calendar, which is a cancellation. Row x1 is a cancelled swimming class on Sat Nov 7 at 10:00, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "x1"
+      }
+    ]
+  },
+  "latencyMs": 1937
+}

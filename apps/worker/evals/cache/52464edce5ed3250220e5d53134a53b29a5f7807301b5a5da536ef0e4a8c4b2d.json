@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUQT13AFBkPvGwyYMHi",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsgoKEAgTGAI4AUIIdGhpbmtpbmcSDJUocBmoWf8H+XOaihoM6aSEQjO0vigfUmM8IjB4roezKSORhvTB1foeZKzdKqjLaTlZzcrr18KVYX8/wAzc41yh8PL4FT7Cn8Yac8sqzwlUfEEgbyDNWYPx2LKpkge82dlc3869nwUSiiurtvVi/xj90D0yRQVL3cZZeRC8+c8R/Hs0xxvRCqAmngnHjv8oypD6+/+5IkHS5CVkArO0iGT0ONMMBC527Bl8KI4wbqQSjIYyyBxQ+CCwNu53Br80V0LqOxrEcSKtph2W5p/926NyoCknSEknp+78EdfLPFnwjAlYgjewx6FW6e9wnUbSaahCgamTZxp9ZBp7HkhVk3vUTiPsYK6vc+o3TuCoq8QCJxDZ/s3KxPxojLsw07C+rBsA0XXLI4E3y8R2R203ulD4yqupzpyyBU/CHkAp9aM43bYdoibhPDMd3AfYCs9eBdKW8Dau4LqxFZnWjMIXZqlkYx98G+VrWcIjRL3Wt7G044Qjkj83P6TAKeKTFBN9UvDW+WEAMM0WHnWzCh0wEomDeGt2Sc2O9lGI/TDYE1l2r8W0GMeJBreBV4C8IA/CP4H37uIw9U0WqSni9l/hD1VzAPxEhXYezM+zCHw0tkwuCumiMeF/GqhSicfCpXi9/7ffI9sDLUxo4iJrMWijiSks2Dbf8+EzPBy36LjnesAPKbKxJmmCCbJIZv3snK3WUBH1TeyKtBb7uv5dbDNst3TNc0uFJraLGZuX1jxMvWnDkwvT2pXeukBINAxKqor9TOTHTYrscdZfMWmIz0fbs48GfsW3UbbcNTeTqdQBWrjRNP6q/uv+NC+pnj/yzVJ0IBEujQddhJL3Ht4lz3Sc44YarM7EFweFZOqFdz2Hh/dc3sZWXAz7vaexma75WRlsTVCzfBciovJAHdT8Hex9OaxCMYRz7LWQAeC3uT62W11bPpM7rEOUOxM00VNSb5sBfqrpcnEuOpc4fgr6gvxsvhcnolfV3bSTY0+d37EEYudWWlwBxW7OkC7AzrtKTzN01fc7+/s9fntQiAE9pubZsBp4TdGm+ToNauUbsa03Fwd8OZoA0JW6eV6YJCRd+J/tCINT2INvFNUz3kD0VyRjA56xvlaiBdjpYYDUr0lVaIclvPWF2wOT3mZlJuBN8sRYJh+frUZfUxZU4Lg4WuFhGc54g92lFkOoZInZm6eCJDKRtStd0uEN+m3MTIiJb29FuuO3DS2PlAK5njRHvsm+zm2hC4DkKqz4bls4zpzYRfsgi5gq/29hwsvoEGjwSTg3yAgF7UHYejvzEEPPzwde3F7w/aLzNoMHsfwckVQwSrCie6Jn5hMsN3cD5/U7f4TftCW9hwcjbQQ04wbFI4m6s9y+j91RfclS76mU16kWgTcEPRGwtIOb2DY6sYx/qzyW88VRO1PYZHoBmwU6B2PkQHyekWMzmgeZrEIvBilD817Er292wWnDwJJHrWV3gF0dwwFjUYsYR9s8nd9yCRdSHeHwlo/q3AizFU077DrvUwph190pP9KfMOPtS4CL83RmzH92RQ/yI56ElJj1p96y3oXKqbZ6f4lZkklzsx8iwOt6xHzvol87iCdLBZmdF4KVRJzKYPC5r85vzenCPtxPM5U9x5aHnfE3J7063V4TUjjRJurIBEnTj0jOh6FDzj4Udp3GIX1v4mvgWEcoBKIJKgpFS/x0HHtj3y6lXjY0e0yRfaltVi22tt8rdWnUxHZawVVhrxtJGmhUCqWmcBs5GAE="
+      },
+      {
+        "type": "text",
+        "text": "You're right, and I'm sorry. I gave you the wrong time. The swim lesson at the Community pool is at 10 on Saturday, and I said 9. That cost you an hour of sitting there."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1799,
+      "cache_read_input_tokens": 18193,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1799,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 347,
+      "output_tokens_details": {
+        "thinking_tokens": 281
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese and says login failed, nothing registered, no charge, and points to the page to register manually, matching watchFor. It does not claim a spot or registration and makes no retry promise. Minor issue: it says the session is at 10:00 Sunday, which matches the label, and the price 98 matches 9800 cents. Tone is clear and warm, one simple message with no asks. Facts are accurate.",
+    "score": 5
+  }
+}

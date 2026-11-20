@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the swim is booked, which matches the swim lesson calendar row e1. The registration-opening remark is a fact about the world with no Hale watch promise, so it is not a claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3313
+}

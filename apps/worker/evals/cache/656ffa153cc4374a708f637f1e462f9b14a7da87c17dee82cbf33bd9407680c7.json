@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it will send an invite to the parent's partner's number now, which is a co-parent invite claim. Co-parent invite claims are never tied to a row, and no rows exist.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2158
+}

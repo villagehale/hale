@@ -1,6 +1,7 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
+import { makeFakeDb } from './fakes';
 import { provisionFromIntake } from './provision';
 
 /**
@@ -124,6 +125,29 @@ function input(sourceCode: string | null = null) {
     now: NOW,
   };
 }
+
+describe('provisionFromIntake — inferred zone stays off the legacy clock', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    vi.stubEnv('FAMILY_TZ_RESOLVE_ENABLED', 'true');
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('records a phone zone on resolved_timezone and leaves users.timezone at the default', async () => {
+    const { database, inserts } = fakeDatabase();
+    await provisionFromIntake(database, {
+      ...input(),
+      phoneE164: '+12125550100',
+      location: null,
+    });
+    const user = inserts.find((row) => row.table === 'users')?.values as Record<string, unknown>;
+    expect(user).toMatchObject({
+      resolvedTimezone: 'America/New_York',
+      timezoneSource: 'phone',
+    });
+    expect(user).not.toHaveProperty('timezone');
+  });
+});
 
 describe('provisionFromIntake — replayed transcript status', () => {
   beforeEach(() => {
@@ -263,5 +287,93 @@ describe('provisionFromIntake — the contact card share written once the family
     expect(after).toMatchObject({ outcome: 'shared' });
     expect(after).not.toHaveProperty('chatKey');
     expect(after).not.toHaveProperty('chatId');
+  });
+});
+
+describe('provisionFromIntake — named birth date and a retried SMS channel (VIL-531, VIL-532)', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('stores the calendar day the parent named, exact, not a timezone-shifted derived date', async () => {
+    const fake = makeFakeDb();
+    const incidentNow = new Date('2026-11-02T18:00:00.000Z');
+
+    await provisionFromIntake(fake.db, {
+      ...input(),
+      now: incidentNow,
+      children: [
+        {
+          name: 'Lin',
+          ageMonths: 125,
+          agePrecision: 'months',
+          dateOfBirth: '2016-05-01',
+        },
+      ],
+    });
+
+    const [child] = fake.rows(schema.children);
+    expect(child?.name).toBe('Lin');
+    expect(child?.dateOfBirth).toBe('2016-05-01');
+    expect(child?.dobPrecision).toBe('exact');
+  });
+
+  it('reuses a pending family the ads join already created, and still enrols the channel', async () => {
+    const fake = makeFakeDb();
+    const [user] = await fake.db
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:blind-index-hash', email: null, name: null })
+      .returning({ id: schema.users.id });
+    const [family] = await fake.db
+      .insert(schema.families)
+      .values({ displayName: 'Family', onboardingStage: 'pending_invite', planTier: 'plus' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const userId = user?.id as string;
+    await fake.db.insert(schema.familyMembers).values({
+      familyId,
+      userId,
+      role: 'primary_parent',
+    });
+
+    const result = await provisionFromIntake(fake.db, input());
+
+    expect(result.familyId).toBe(familyId);
+    expect(result.userId).toBe(userId);
+    expect(fake.rows(schema.families)).toHaveLength(1);
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    expect(fake.rows(schema.families)[0]?.planTier).toBe('plus');
+  });
+
+  it('reuses the active SMS channel on a second provision instead of inserting another (VIL-532)', async () => {
+    const fake = makeFakeDb();
+    const first = await provisionFromIntake(fake.db, input());
+    const second = await provisionFromIntake(fake.db, input());
+
+    expect(second).toEqual(first);
+    expect(fake.rows(schema.parentChannels)).toHaveLength(1);
+    expect(fake.rows(schema.families)).toHaveLength(1);
+  });
+
+  it('the fake raises parent_channels_user_kind_active_idx on a second active SMS row', async () => {
+    const fake = makeFakeDb();
+    await fake.db.insert(schema.parentChannels).values({
+      userId: 'user-1',
+      familyId: 'fam-1',
+      kind: 'sms',
+      phoneE164Encrypted: 'x',
+      phoneE164Hash: 'h1',
+    });
+
+    await expect(
+      fake.db.insert(schema.parentChannels).values({
+        userId: 'user-1',
+        familyId: 'fam-2',
+        kind: 'sms',
+        phoneE164Encrypted: 'y',
+        phoneE164Hash: 'h2',
+      }),
+    ).rejects.toThrow('parent_channels_user_kind_active_idx');
   });
 });

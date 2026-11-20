@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "The email is signed by a coach of Riverside Soccer Club U8, a sports club rather than a school or board.",
+    "sender": "other",
+    "school_words": null
+  },
+  "latencyMs": 1946,
+  "usage": {
+    "input_tokens": 97,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 718,
+    "cache_creation_input_tokens": 0
+  }
+}

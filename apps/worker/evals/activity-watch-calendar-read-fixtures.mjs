@@ -4,6 +4,10 @@
 // `held`; every other fixture passes on `not_held` or `unsure`, because neither closes the
 // watch. One draw per fixture. The injection fixture answering `held` is a finding, never
 // noise.
+//
+// VIL-681 reuses this reader at send time for a next-day check-back, where the costly
+// mistake runs the other way: `held` and `unsure` both stop the one text. Those fixtures
+// carry their own `passOn`, set before the first draw.
 
 const SWIM = 'parent and tot swim lessons for a 2 year old';
 const SWIM_TOLD = ['price:money:$96', 'when:date:jan-9', 'when:day:sat', 'when:time:9:15'];
@@ -116,5 +120,56 @@ export const ACTIVITY_WATCH_CALENDAR_READ_FIXTURES = [
       ],
     },
     expect: 'not_held',
+  },
+  // VIL-681 · a next-day check-back. `watching` is the thread's own title.
+  {
+    // A confirmation email Hale read but nobody placed, in front of the calendar.
+    id: 'checkback-booked-by-mail',
+    input: {
+      today: TODAY,
+      watching: 'Fall swim lessons for the 4 year old',
+      toldTheParent: [],
+      calendar: [
+        {
+          title: 'Aquatics Level 2 - Session 1',
+          day: '2026-12-05 (Saturday)',
+          start: '10:00',
+          end: null,
+        },
+        ...ERRANDS,
+      ],
+    },
+    expect: 'held',
+    passOn: ['held', 'unsure'],
+  },
+  {
+    // Shares the word, different activity. `unsure` would wrongly stop the check-back.
+    id: 'checkback-unrelated-pool-party',
+    input: {
+      today: TODAY,
+      watching: 'Fall swim lessons for the 4 year old',
+      toldTheParent: [],
+      calendar: [
+        ...ERRANDS,
+        { title: 'Birthday pool party', day: '2026-12-06 (Sunday)', start: '13:00', end: '15:00' },
+      ],
+    },
+    expect: 'not_held',
+    passOn: ['not_held'],
+  },
+  {
+    // The parent wanted something for Saturday morning and the morning is now filled.
+    id: 'checkback-weekend-filled',
+    input: {
+      today: TODAY,
+      watching: 'Something to do Saturday morning with the 4 year old',
+      toldTheParent: ['when:day:sat'],
+      calendar: [
+        ...ERRANDS,
+        { title: 'Library story time', day: '2026-12-05 (Saturday)', start: '10:00', end: '11:00' },
+      ],
+    },
+    expect: 'held',
+    passOn: ['held', 'unsure'],
   },
 ];

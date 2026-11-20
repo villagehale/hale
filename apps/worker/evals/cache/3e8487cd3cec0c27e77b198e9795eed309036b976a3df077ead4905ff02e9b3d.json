@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale added the Saturday swim to the calendar, which claims a scheduled event. The booking itself is attributed to the parent ('me dijiste'), so it is not a Hale claim. Row e1 is the Saturday 10:00 swim class.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2328
+}

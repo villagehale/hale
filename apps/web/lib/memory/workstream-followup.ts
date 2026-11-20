@@ -20,6 +20,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -83,7 +84,7 @@ export type WorkstreamComposeResult = { ok: true; body: string } | { ok: false; 
 export function workstreamFollowupClient(): AgentClient | null {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key?.startsWith('sk-')) return null;
-  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 });
+  return budgetedAnthropic({ timeout: 20_000, maxRetries: 0 }, { stage: 'memory_infer' });
 }
 
 const WEEKDAY_ISO: Record<string, number> = {
@@ -852,6 +853,8 @@ export interface WorkstreamFollowupResult {
     compose_failed: number;
     deferred: number;
   };
+  /** VIL-612 · live cadence queued the composed check-in for the hourly decider. */
+  queued: number;
   failed: number;
 }
 
@@ -861,6 +864,7 @@ function emptyHeld(): WorkstreamFollowupResult['held'] {
     opt_out_unread: 0,
     no_watch_consent: 0,
     quiet_hours: 0,
+    sends_paused: 0,
     coparent_ask: 0,
   };
 }
@@ -882,6 +886,7 @@ function emptyResult(enabled: boolean): WorkstreamFollowupResult {
       compose_failed: 0,
       deferred: 0,
     },
+    queued: 0,
     failed: 0,
   };
 }
@@ -899,6 +904,8 @@ export interface WorkstreamFollowupDeps {
   ) => Promise<boolean>;
   buildGate?: (database: Database) => OutboundGatePorts;
   dedupeActive?: (database: Database, dedupeKey: string) => Promise<boolean>;
+  /** Live cadence already holds this check-back. Checked before compose. */
+  queuedForDecider?: (database: Database, familyId: string, dedupeKey: string) => Promise<boolean>;
   resolvePhone?: (database: Database, parentUserId: string) => Promise<string | null>;
   compose?: (row: DueWorkstream) => Promise<WorkstreamComposeResult>;
   deliver?: typeof deliverFamilyOutbound;
@@ -1233,6 +1240,8 @@ export async function runWorkstreamFollowupSweep(
   const teen = deps.linkedTeen ?? linkedTeen;
   const buildGate = deps.buildGate ?? buildOutboundGatePorts;
   const claimed = deps.dedupeActive ?? ((db, key) => dedupeActive(key, db));
+  const queuedForDecider =
+    deps.queuedForDecider ?? ((db, familyId, key) => isQueuedForDecider(db, familyId, key));
   const phoneFor = deps.resolvePhone ?? resolveSendablePhone;
   const compose = deps.compose ?? ((row: DueWorkstream) => defaultCompose(database, row, now));
   const deliver = deps.deliver ?? deliverFamilyOutbound;
@@ -1318,6 +1327,10 @@ export async function runWorkstreamFollowupSweep(
           now,
         });
       };
+      if (await queuedForDecider(database, row.familyId, dedupeKey)) {
+        result.queued += 1;
+        continue;
+      }
       const composed = await compose(row);
       if (!composed.ok) {
         if (composed.reason === 'not_configured') {
@@ -1339,6 +1352,38 @@ export async function runWorkstreamFollowupSweep(
       if (!composed.body) {
         await stamp(database, row.id, now);
         result.skipped.nothing_to_say += 1;
+        continue;
+      }
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId: row.familyId,
+            parentUserId,
+            kind: 'followup',
+            category: 'followup',
+            templateKey: 'workstream:followup',
+            what: composed.body,
+            why: 'followup',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'followup_activity_asked' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId: row.familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'family_workstreams',
+          targetId: row.id,
+          after: { kind: 'followup' },
+        });
+        result.queued += 1;
         continue;
       }
       const to = await phoneFor(database, parentUserId);

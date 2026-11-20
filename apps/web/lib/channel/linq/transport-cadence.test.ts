@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinqSendError, sendLinqChatMessage } from './transport';
 
 /**
- * VIL-226 · what PROACTIVE_CADENCE adds to the Linq send: a `message.idempotency_key`
- * that names one send, and a rate limit (HTTP 429 or Linq error 1007) that is retryable
- * and honours Retry-After. Unset, the request and the refusal are exactly today's.
+ * VIL-226 · what PROACTIVE_CADENCE adds to the Linq send: a rate limit (HTTP 429 or
+ * Linq error 1007) that is retryable and honours Retry-After. Unset, a 429 is not
+ * retried.
  * VIL-611 · the key names the send, never its words: two sends of the same text are two
  * keys, or Linq would drop the second one as a duplicate.
+ * VIL-705 · the key is attached in every cadence, including off.
  */
 
 const CHAT = 'chat-under-test';
@@ -46,7 +47,7 @@ const RATE_LIMITED: Reply = {
 const LINQ_1007: Reply = { status: 400, body: { error: { code: 1007 } } };
 
 describe('the Linq send while PROACTIVE_CADENCE is unset', () => {
-  it('carries no idempotency key and does not retry a 429', async () => {
+  it('still names the send, and does not retry a 429', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     const { calls, fetchImpl } = linq([RATE_LIMITED, OK]);
     await expect(
@@ -54,7 +55,19 @@ describe('the Linq send while PROACTIVE_CADENCE is unset', () => {
     ).rejects.toMatchObject({ code: '429', permanent: false });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers['Idempotency-Key']).toBeUndefined();
-    expect(calls[0]?.body.message).not.toHaveProperty('idempotency_key');
+    expect(keyOf(calls[0])).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('reuses the key for a retry of the same send', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const { calls, fetchImpl } = linq([OK]);
+    const send = (sendKey: string) =>
+      sendLinqChatMessage({ chatId: CHAT, text: 'Saturday works', sendKey, fetch: fetchImpl });
+    await send('ledger-row-off');
+    await send('ledger-row-off');
+    expect(keyOf(calls[0])).toMatch(/^[0-9a-f]{64}$/);
+    expect(keyOf(calls[1])).toBe(keyOf(calls[0]));
+    expect(keyOf(calls[0])).not.toContain('ledger-row-off');
   });
 
   it('keeps Linq 1007 a permanent refusal, as today', async () => {

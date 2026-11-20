@@ -139,6 +139,7 @@ function harness(byMessage: Record<string, SentinelClassification> = {}): Harnes
       transport,
       threadMessage: async () => 'conv-1',
       timeZone: async () => FAMILY_TIMEZONE,
+      rereadEnvelope: async () => null,
     },
   };
   return h;
@@ -450,6 +451,22 @@ describe('one occasion in one thread is told once', () => {
         )
         .where(eq(schema.channelMessages.familyId, family.familyId)),
     ).resolves.toEqual([{ channelMessageId: rows[0]?.id }]);
+  });
+
+  it('T4 live: two messages about the same Saturday queue one notice, and the second is not written', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const h = harness();
+    const outcomes = await sweep(h, [inbound('k1', 't-swim', 0), inbound('k2', 't-swim', 10)]);
+
+    expect(alerts(outcomes)).toEqual(['queued', 'already_sent']);
+    expect(h.classified).toEqual(['k1', 'k2']);
+    expect(h.writer.seen).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    const queued = await db.database
+      .select({ dedupeKey: schema.proactiveCandidates.dedupeKey })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, family.familyId));
+    expect(queued.map((row) => row.dedupeKey)).toEqual([`email_alert:${integrationId}:k1`]);
   });
 
   it('T4a: the same pair in two threads is two alerts', async () => {

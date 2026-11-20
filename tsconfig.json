@@ -3,6 +3,7 @@
   "include": [],
   "references": [
     { "path": "./packages/db" },
+    { "path": "./packages/flags" },
     { "path": "./packages/types" },
     { "path": "./packages/tools-contracts" },
     { "path": "./packages/agent" }

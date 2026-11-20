@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { noteOnboardingCompleted, noteOnboardingStep } from '~/lib/analytics/product-hooks';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { SealedBlobRejected, decryptString, encryptString } from '~/lib/crypto/string-cipher';
@@ -55,6 +56,15 @@ export type IntakeState =
    * Terminal, and deliberately not `complete`: nothing was assembled here, and a row
    * that claimed otherwise would read as a household that finished intake. */
   | 'superseded';
+
+/**
+ * How long a silent intake session is still this number's conversation.
+ * First-reply recovery stops owing a reply past this (a later opener would be
+ * Hale texting first). Pre-signup erasure uses the same bound as the lower
+ * edge of the inferred window, measured before the channel's first
+ * verification, and does not add a second duration (VIL-649).
+ */
+export const INTAKE_SESSION_LIFETIME_MS = 24 * 3_600_000;
 
 /** One later job. The year-find turn already sent the next ask. The Linq card, when it shares, left on the first outbound. */
 export type IntakeLadderStep = 'turtle' | 'name' | 'name_reply' | 'calendar' | 'gmail' | 'coparent';
@@ -131,6 +141,11 @@ export interface FirstTouchPersisted {
     postalCode: string | null;
     municipality: string | null;
     city: string | null;
+    country?: 'Canada' | 'United States';
+    countryCode?: 'CA' | 'US';
+    province?: string | null;
+    timezone?: string | null;
+    currency?: 'CAD' | 'USD';
   } | null;
   locationRequest: {
     at: string;
@@ -592,15 +607,28 @@ function decodeFirstTouchPlace(value: unknown): FirstTouchPersisted['place'] {
     postalCode?: unknown;
     municipality?: unknown;
     city?: unknown;
+    country?: unknown;
+    countryCode?: unknown;
+    province?: unknown;
+    timezone?: unknown;
+    currency?: unknown;
   };
   if (row.kind !== 'postal' && row.kind !== 'city') return null;
   if (typeof row.areaCoarse !== 'string' || row.areaCoarse.length === 0) return null;
+  const country = row.country === 'Canada' || row.country === 'United States' ? row.country : null;
+  const countryCode = row.countryCode === 'CA' || row.countryCode === 'US' ? row.countryCode : null;
+  const currency = row.currency === 'CAD' || row.currency === 'USD' ? row.currency : null;
   return {
     kind: row.kind,
     areaCoarse: row.areaCoarse,
     postalCode: typeof row.postalCode === 'string' ? row.postalCode : null,
     municipality: typeof row.municipality === 'string' ? row.municipality : null,
     city: typeof row.city === 'string' ? row.city : null,
+    ...(country ? { country } : {}),
+    ...(countryCode ? { countryCode } : {}),
+    ...(typeof row.province === 'string' ? { province: row.province } : {}),
+    ...(typeof row.timezone === 'string' ? { timezone: row.timezone } : {}),
+    ...(currency ? { currency } : {}),
   };
 }
 
@@ -827,13 +855,20 @@ export async function saveSession(
       }),
       ...(patch.followUpCount === undefined ? {} : { followUpCount: patch.followUpCount }),
       ...(patch.clarifyCount === undefined ? {} : { clarifyCount: patch.clarifyCount }),
-      ...(patch.familyId ? { familyId: patch.familyId } : {}),
+      ...(patch.familyId ? { familyId: patch.familyId, becameFamilyId: patch.familyId } : {}),
       ...(patch.userId ? { userId: patch.userId } : {}),
       ...(patch.lastProviderId ? { lastProviderId: patch.lastProviderId } : {}),
       ...(patch.closedAt ? { closedAt: patch.closedAt } : {}),
       updatedAt: now,
     })
     .where(eq(schema.smsIntakeSessions.id, session.id));
+  if (patch.state && patch.state !== session.state) {
+    const familyId = patch.familyId ?? session.familyId;
+    noteOnboardingStep({ sessionId: session.id, step: patch.state, familyId });
+    if (patch.state === 'complete') {
+      noteOnboardingCompleted({ sessionId: session.id, familyId });
+    }
+  }
 }
 
 export function appendTranscript(

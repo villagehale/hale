@@ -61,7 +61,9 @@ function openQuestions(seeded: { familyId: string; parentUserId: string }) {
 }
 
 describe('the co-parent scope question, through the production reader', () => {
-  it('lists the pending assent, asked at the moment the parent asked, and not as a keyword', async () => {
+  // Undated: no row names the message that put the question to the parent, so it ranks
+  // against no other ask and a bare yes beside one makes Hale ask which (VIL-302).
+  it('lists the pending assent, undated, and not as a keyword', async () => {
     const seeded = await seedFamily();
     await startCoParentInvite(db.database, {
       familyId: seeded.familyId,
@@ -77,7 +79,7 @@ describe('the co-parent scope question, through the production reader', () => {
     const questions = await openQuestions(seeded);
     expect(
       questions.map((q) => ({ kind: q.kind, askedAt: q.askedAt, solicited: q.solicited })),
-    ).toEqual([{ kind: 'co_parent_assent', askedAt: NOW, solicited: false }]);
+    ).toEqual([{ kind: 'co_parent_assent', askedAt: null, solicited: false }]);
   });
 
   /** The role filter's negative control: a CAREGIVER ask awaiting the same parent's yes

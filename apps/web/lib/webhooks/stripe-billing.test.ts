@@ -2,10 +2,13 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   type PriceTierMap,
+  chargeRevokeDecision,
   checkoutPriceIdFromEnv,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
+  paidEventOccurredAt,
+  paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
   stripeRefsFromStripeEvent,
@@ -120,6 +123,26 @@ describe('planTierFromStripeEvent', () => {
       }),
     ).toBeNull();
     expect(planTierFromStripeEvent(event, MAP)).toBeNull();
+    expect(
+      planTierFromStripeEvent(event, MAP, {
+        paymentLinkId: 'plink_year',
+        paymentLinkTier: 'plus',
+        allowPaymentLink: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('disables the Payment Link fallback while the founding window is open', () => {
+    const env = {
+      STRIPE_PAYMENT_LINK_ID: 'plink_year',
+      STRIPE_PAYMENT_LINK_TIER: 'plus',
+    };
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2026-11-16T12:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: false },
+    );
+    expect(paymentLinkTierOptionsFromEnv(env, new Date('2027-01-01T00:00:00-05:00'))).toMatchObject(
+      { allowPaymentLink: true },
+    );
   });
 
   it('maps invoice.paid from the line price and refuses an unknown price', () => {
@@ -137,6 +160,83 @@ describe('planTierFromStripeEvent', () => {
       },
     };
     expect(planTierFromStripeEvent(unknown, MAP)).toBeNull();
+  });
+
+  it('keeps a promo yearly invoice.paid on plus or family after the promo cutoff', () => {
+    const map = priceTierMapFromEnv({
+      STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD: 'price_plus_usd',
+      STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
+    });
+    const plusPaid = {
+      id: 'evt_renew',
+      type: 'invoice.paid',
+      data: { object: { lines: { data: [{ price: { id: 'price_plus_usd' } }] } } },
+    };
+    const maxPaid = {
+      id: 'evt_renew_max',
+      type: 'invoice.paid',
+      data: { object: { lines: { data: [{ price: { id: 'price_max_cad' } }] } } },
+    };
+    expect(map.price_plus_usd).toBe('plus');
+    expect(map.price_max_cad).toBe('family');
+    expect(planTierFromStripeEvent(plusPaid, map)).toBe('plus');
+    expect(planTierFromStripeEvent(maxPaid, map)).toBe('family');
+  });
+
+  it('maps Max and a known price id onto a paid tier so a payer is not left on free', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted('Max'), MAP)).toBe('family');
+    expect(planTierFromStripeEvent(checkoutCompleted('PLUS'), MAP)).toBe('plus');
+    const priced = {
+      id: 'evt_price',
+      type: 'checkout.session.completed',
+      data: { object: { metadata: { priceId: PRICE_FAMILY, familyId: FAMILY_ID } } },
+    };
+    expect(planTierFromStripeEvent(priced, MAP)).toBe('family');
+    expect(planTierFromStripeEvent(checkoutCompleted('gold'), MAP)).toBeNull();
+  });
+});
+
+describe('chargeRevokeDecision', () => {
+  it('revokes a full refund or dispute when the subscription is cancelled, and keeps a partial', () => {
+    const full = {
+      id: 'evt_r',
+      type: 'charge.refunded',
+      data: {
+        object: {
+          amount: 7900,
+          amount_refunded: 7900,
+          refunded: true,
+          invoice: { subscription: { id: 'sub_1', status: 'canceled' } },
+        },
+      },
+    };
+    expect(chargeRevokeDecision(full)).toEqual({ action: 'revoke', kind: 'refund' });
+    const partial = {
+      id: 'evt_p',
+      type: 'charge.refunded',
+      data: { object: { amount: 7900, amount_refunded: 1000, refunded: false } },
+    };
+    expect(chargeRevokeDecision(partial)).toEqual({
+      action: 'keep',
+      reason: 'partial_refund',
+      kind: 'refund',
+    });
+    const live = {
+      id: 'evt_live',
+      type: 'charge.dispute.created',
+      data: { object: { subscription: { id: 'sub_1', status: 'active' } } },
+    };
+    expect(chargeRevokeDecision(live)).toEqual({
+      action: 'keep',
+      reason: 'active_subscription',
+      kind: 'dispute',
+    });
+    const dispute = {
+      id: 'evt_d',
+      type: 'charge.dispute.created',
+      data: { object: { subscription: { id: 'sub_1', status: 'canceled' } } },
+    };
+    expect(chargeRevokeDecision(dispute)).toEqual({ action: 'revoke', kind: 'dispute' });
   });
 });
 
@@ -181,6 +281,39 @@ describe('stripeRefsFromStripeEvent', () => {
       subscriptionId: 'sub_1',
     });
   });
+
+  it('uses the subscription object id when the event is customer.subscription.*', () => {
+    const event = {
+      id: 'evt_sub',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_self',
+          customer: 'cus_1',
+          items: { data: [{ price: { id: 'price_plus' } }] },
+        },
+      },
+    };
+    expect(stripeRefsFromStripeEvent(event)).toEqual({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_self',
+    });
+  });
+});
+
+describe('paidEventOccurredAt', () => {
+  it('reads Stripe event.created unix seconds and ignores a later fallback', () => {
+    const during = Math.floor(new Date('2026-11-16T12:00:00-05:00').getTime() / 1000);
+    const after = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ created: during }, after)).toEqual(
+      new Date('2026-11-16T12:00:00-05:00'),
+    );
+  });
+
+  it('falls back when created is missing', () => {
+    const fallback = new Date('2027-01-02T12:00:00-05:00');
+    expect(paidEventOccurredAt({ id: 'evt_1' }, fallback)).toBe(fallback);
+  });
 });
 
 describe('eventIdFromStripeEvent', () => {
@@ -208,6 +341,47 @@ describe('priceTierMapFromEnv', () => {
   it('omits price ids that are absent', () => {
     expect(priceTierMapFromEnv({ STRIPE_PRICE_PLUS_MONTHLY: 'p_m' })).toEqual({ p_m: 'plus' });
     expect(priceTierMapFromEnv({})).toEqual({});
+  });
+
+  it('maps promo yearly and Plus USD list ids to the right tier', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus_cad',
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD: 'price_plus_usd',
+        STRIPE_PRICE_PROMO_MAX_ANNUAL_CAD: 'price_max_cad',
+        STRIPE_PRICE_PROMO_MAX_ANNUAL_USD: 'price_max_usd',
+        STRIPE_PRICE_PLUS_MONTHLY_USD: 'price_usd_mo',
+        STRIPE_PRICE_PLUS_ANNUAL_USD: 'price_usd_yr',
+      }),
+    ).toEqual({
+      price_plus_cad: 'plus',
+      price_plus_usd: 'plus',
+      price_max_cad: 'family',
+      price_max_usd: 'family',
+      price_usd_mo: 'plus',
+      price_usd_yr: 'plus',
+    });
+  });
+
+  it('does not map leftover founding env names onto a paid tier', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_FOUNDING_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_FOUNDING_ANNUAL_USD: 'price_founding_usd',
+      }),
+    ).toEqual({});
+  });
+
+  it('maps Max list annual ids to family', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_MAX_ANNUAL_CAD: 'price_max_list_cad',
+        STRIPE_PRICE_MAX_ANNUAL_USD: 'price_max_list_usd',
+      }),
+    ).toEqual({
+      price_max_list_cad: 'family',
+      price_max_list_usd: 'family',
+    });
   });
 });
 

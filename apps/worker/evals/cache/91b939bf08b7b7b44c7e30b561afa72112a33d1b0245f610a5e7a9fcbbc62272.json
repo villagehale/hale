@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "not_find",
+    "reason": "calendar change: moving an existing swim event"
+  },
+  "latencyMs": 1613
+}

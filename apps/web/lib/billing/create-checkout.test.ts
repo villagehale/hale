@@ -33,9 +33,26 @@ function fakeClient(url = 'https://checkout.stripe.com/c/pay/cs_test_1'): {
   };
 }
 
-function fakeDb(): { db: Database; audits: Array<Record<string, unknown>> } {
+function fakeDb(
+  family: {
+    planTier: string;
+    stripeSubscriptionId: string | null;
+    stripeCustomerId: string | null;
+  } | null = {
+    planTier: 'free',
+    stripeSubscriptionId: null,
+    stripeCustomerId: null,
+  },
+): { db: Database; audits: Array<Record<string, unknown>> } {
   const audits: Array<Record<string, unknown>> = [];
   const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => (family ? [family] : []),
+        }),
+      }),
+    }),
     insert: () => ({
       values: async (v: Record<string, unknown>) => {
         audits.push(v);
@@ -60,6 +77,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(result).toEqual({
@@ -74,7 +92,35 @@ describe('createBillingCheckout', () => {
       period: 'annual',
       customerEmail: 'parent@example.com',
     });
-    expect(calls[0]?.successUrl).toContain('https://app.example.com');
+    expect(calls[0]?.successUrl).toBe(
+      'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+    );
+    expect(calls[0]?.idempotencyKey).toBeUndefined();
+    expect(calls[0]?.cancelUrl).toBe('https://app.example.com/settings?checkout=cancelled#billing');
+  });
+
+  it('sends a cancelled founding checkout back to the founding confirmation page', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb();
+
+    await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding_cad',
+      sku: 'promo_plus_annual',
+      currency: 'CAD',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+    });
+
+    expect(calls[0]?.cancelUrl).toBe(
+      'https://app.example.com/settings/founding?checkout=cancelled',
+    );
   });
 
   it('writes a billing_checkout_started audit row for the family (rule #6)', async () => {
@@ -91,6 +137,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(audits).toHaveLength(1);
@@ -100,7 +147,7 @@ describe('createBillingCheckout', () => {
       actionTaken: 'billing_checkout_started',
       targetTable: 'families',
       targetId: 'fam-9',
-      after: { tier: 'family', period: 'monthly' },
+      after: { tier: 'family', period: 'monthly', sku: null, currency: null },
     });
   });
 
@@ -117,6 +164,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     expect(result).toEqual({ status: 'not_found' });
@@ -139,6 +187,7 @@ describe('createBillingCheckout', () => {
       database: db,
       client,
       origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
     });
 
     // A family that arrived by text has no address on file. Refusing checkout over that
@@ -146,5 +195,113 @@ describe('createBillingCheckout', () => {
     // its own page instead, which is where a billing address belongs anyway.
     expect(result.status).toBe('created');
     expect(calls[0]?.customerEmail).toBeNull();
+  });
+
+  it('returns already_paid and creates no session when the family is on Plus', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db, audits } = fakeDb({
+      planTier: 'plus',
+      stripeSubscriptionId: 'sub_live',
+      stripeCustomerId: 'cus_1',
+    });
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+    });
+
+    expect(result).toEqual({ status: 'already_paid' });
+    expect(calls).toEqual([]);
+    expect(audits).toEqual([]);
+  });
+
+  it('lets a cancelled household (free, leftover Stripe id) open checkout again', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb({
+      planTier: 'free',
+      stripeSubscriptionId: 'sub_old',
+      stripeCustomerId: 'cus_existing',
+    });
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+    });
+
+    expect(result.status).toBe('created');
+    expect(calls[0]?.customerId).toBe('cus_existing');
+  });
+
+  it('reuses the Stripe Customer and honors a founding cancel URL', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb({
+      planTier: 'free',
+      stripeSubscriptionId: null,
+      stripeCustomerId: 'cus_existing',
+    });
+
+    await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      familyId: 'fam-9',
+    });
+
+    expect(calls[0]?.customerId).toBe('cus_existing');
+    expect(calls[0]?.customerEmail).toBeNull();
+    expect(calls[0]?.cancelUrl).toBe('https://app.example.com/founding?checkout=cancelled');
+  });
+
+  it('refuses a list price while the promo window is open', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db, audits } = fakeDb();
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'monthly',
+      priceId: 'price_cad_mo',
+      sku: 'plus_monthly',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com',
+      now: new Date('2026-11-16T12:00:00-05:00'),
+      env: {
+        HOLIDAY_PROMO_ENABLED: 'true',
+        STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_founding_cad',
+        STRIPE_PRICE_PLUS_MONTHLY: 'price_cad_mo',
+      },
+    });
+
+    expect(result).toEqual({ status: 'founding_only' });
+    expect(calls).toEqual([]);
+    expect(audits).toEqual([]);
   });
 });

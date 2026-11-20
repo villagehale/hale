@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent cancels the approved swim plan",
+    "said": "取消吧",
+    "named": "游泳那个",
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1540
+}

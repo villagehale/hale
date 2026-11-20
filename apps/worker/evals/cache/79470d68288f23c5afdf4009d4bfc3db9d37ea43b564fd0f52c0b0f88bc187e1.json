@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for send_email and reply_to_email was turned off this turn, so the confirmation is true. It is one short sentence in the parent's language, with no machinery, greeting or sign-off. It does not mention replies to email specifically, but '发邮件' reasonably covers that.",
+    "score": 5
+  }
+}

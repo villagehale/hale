@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzShoT5uKr7c3B2pWSHN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wgKEAgTGAI4AUIIdGhpbmtpbmcSDP/W5myc84lnpW4rxxoMpneOro1XE5mVhOdSIjBO3xORhktRniDsWr2Z8Vi2gXrgbSD564orThme9/V9/hDJI77wRDRZR6UH5cm06qcq/AcVlUuHtF6TFSNzJiv/jNbGAlsmstO9RFtn9BqNtiU8bSk5S8soXjq7IaNOYuXE+hmjIk26GDtzRszRq4IOoMqB6lNp5ALtHSEuDfb1hy8AXHEUn85A7Mtp+UOihmpEvBtdGP2VMyuQXbW0vq8/C+BeghacPZS8YZQspZMpsH3C+fX0czl/hmCok4SN5iey6IAK7529TIQyzXqyqbcmr5d3bpB+h66yZyQUw857rZWRLF/7e6ddhtjOGk7vAt5NAT9xb91UFu9EOl/WOF9tzdKSLTM7k9JnqwTXppY/ixkTmXinJek4iyyqw89sCHpp/E4WtgYyso2pnbp1hh8ShU8cox0U0IYeBA7KWmiHK8RDdhf0W5ywEgG9NixGO+XN1IUv3dBNrhiPVZEljTWuMqn1G3o7ZsfgQ2gBqb3QdHF++LEdXoB2Z5W8oQ0j0PkTuXXmYmJnedCM/0louM5kUwvzJ1WIunbB0ak4ohhQBzK//80KevDI1VTGELF/qAl5R8e6eNvcdARvTWYXd4AKsdVfrKB01Cu5pKvEA9dlBsQ6vH2EhCmpbndtWWwVtTF/Jw3ZMHQkS7hJ+q58E4zsZE8oe8DCmruzRa1rMZjQp4zkTBVvczIhlw/NO04+8Kyf5FytPd2eMZzwVXbbSuHjGubin9fgkdp1SNVgu+l6sW7iFFgYe2MO+YsNUPNYaaoeko0ks4nof7QO9oyWqoWehF4WDKKIX7q/qg5iQ8acH0qzRMJzTYslkMLC97kPWYD8VNf53RYqTZlkJ62lsX28lPAidzasQx6VH2gRLGDGDM364ZYhnicGddiXl70mis6xqW9+Q51Pj1jM3MeszV/ac3p+xqzzO92YpKjjvuVlohWAvmeRnkbogP3IBBy96zT5W/eIIpBZEsR/kCIzYQWWIcfhHJ5GnQQoaMu+YDBnoVRujZCcG+dOLEeXlIlZ325WQNKoPWRTmgBG2Xzjm6Wdy8qvkA9cXME1A/71LrgK67O00ypdN7fsttyiqqnckxmRCFv756iw4QY7XsG2LhVq4IK0B7KSkZJVlUvQiRvzYGgUBXDxjysf5havm+uGhvqPFAQZHdUDiXHTa+T+Sxz8mNW4gg8RoKuETiB3INp5tltW9A1kLtJaXMOgbRN90J2CpFztUGvOW0B49TBav8yzM/VStmf0Jb2TEnrjag50vncQzMv8HkJA4ttNuEa/LiN/RLF6gXG2kUD/dRcCK9dYlnbd8sauSWMreHnDPhkD5eQJ1k0YkelKZItzOQs4MejeyFM1Nb7B/bUCRuTyoUmfPZo9FseiVUtG5YihFXgWef8m7V97HleSHtNGWyj9fuv8q+vi7KNwD6g1lXv5gl0YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Wellesley Community Centre 泳池有 Parent and tot swim,适合6到36个月,需要家长一起下水,时间是 Saturdays 9:30,Jan 9 to Mar 13。20个月正好在范围内。[link-fd81ce]\n\nRegent Park Aquatic Centre 有 Little splashers,适合12到36个月,家长同样下水,时间是 Sundays 10:15,Jan 10 to Mar 14。[link-bf3175]\n\n两个班都是 Dec 1 早上7:00开放报名。报名和占位我没法替你操作。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2268,
+      "cache_read_input_tokens": 20788,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2268,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 363,
+      "output_tokens_details": {
+        "thinking_tokens": 165
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Yes given, but the requested Monday evening session matches none of the offered sessions",
+    "said": null,
+    "named": null,
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": "Which session do you want? The ones I found are Preschool Swim Sat 9:00 and Sun 10:00, and neither is on a Monday evening. Should I go with one of these, and what is the most you'll pay?"
+  },
+  "latencyMs": 1945
+}

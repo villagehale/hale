@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up could not be confirmed, gives the session label and the exact registration link, and tells the parent to check on the provider page. It does not claim signed up or failed, lists no personal details, makes no retry or follow-up promise, and is in English as required for a direct audience.",
+    "score": 5
+  }
+}

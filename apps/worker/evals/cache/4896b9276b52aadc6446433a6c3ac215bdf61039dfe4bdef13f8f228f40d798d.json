@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reason": "The sentence says a baby follow-up appointment is booked, which no row backs, so it is cited as none. It also says Hale keeps looking for toddler activities, which matches the pending activity row p1. It states that registrations open Tuesday, implying Hale is tracking that season, but no registration row supports it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      },
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 4350
+}

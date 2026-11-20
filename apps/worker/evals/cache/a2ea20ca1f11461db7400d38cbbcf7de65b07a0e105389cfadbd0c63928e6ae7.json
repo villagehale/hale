@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will send an invitation to the co-parent's number, which is a co-parent invite claim. Co-parent invite claims always cite none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1738
+}

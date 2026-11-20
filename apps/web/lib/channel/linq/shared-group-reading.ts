@@ -1,9 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { linqGroupCommonTimeEnabled } from './config';
 
 /**
  * VIL-456 — read one turn in a multi-family group.
@@ -13,11 +15,30 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * then `unclear`, and Hale does not change state.
  */
 
+/**
+ * Intents the recorded shared-group-reading skill (and its cached eval) asks for.
+ * Byte-stable: adding a value here re-keys that eval.
+ */
+export const SHARED_GROUP_RECORDED_INTENTS = [
+  'who_i_am',
+  'join',
+  'leave',
+  'stop_me',
+  'find_time',
+  'pick_time',
+  'question',
+  'yes',
+  'no',
+  'chatter',
+  'unclear',
+] as const;
+
 export const SHARED_GROUP_INTENTS = [
   'who_i_am',
   'join',
   'leave',
   'stop_me',
+  'withdraw_calendar',
   'find_time',
   'pick_time',
   'question',
@@ -73,7 +94,20 @@ export interface SharedGroupReading {
   intent: SharedGroupIntent;
   role: SharedGroupRole;
   familyLabel: string | null;
+  /** The first of `kidNames`, for the line that confirms who someone is. */
   kidName: string | null;
+  /**
+   * VIL-687: every child this person said in this message they are family of, one per
+   * entry ("Mia and Leo", "Mia, Leo", "Mia y Leo" are two). Hidden gifts for each of them
+   * stop being shown to this person. A reading built without it holds only `kidName`.
+   */
+  kidNames?: readonly string[];
+  /**
+   * VIL-687: what the model's object said about whose family this person is, on any intent
+   * and at any confidence, kept even when the rest of the reading is downgraded to unclear.
+   * Read it through familyClaimOf.
+   */
+  familyClaim?: FamilyClaim | null;
   confidence: SharedGroupConfidence;
   /** VIL-459: on `find_time`, the times the chat said do not work. Empty otherwise. */
   ruledOut?: readonly RuledOutSpan[];
@@ -92,7 +126,7 @@ const readingSchema = z
     intent: z.enum(SHARED_GROUP_INTENTS),
     role: z.enum(SHARED_GROUP_ROLES),
     familyLabel: z.string().nullable(),
-    kidName: z.string().nullable(),
+    kidNames: z.array(z.string()),
     confidence: z.enum(['high', 'low']),
     ruledOut: z.array(z.object({ start: z.string(), end: z.string() }).strict()).optional(),
     picked: z.string().nullable().optional(),
@@ -100,44 +134,54 @@ const readingSchema = z
   })
   .strict();
 
-export const sharedGroupReadingJsonSchema = {
-  type: 'object' as const,
-  additionalProperties: false,
-  properties: {
-    intent: { type: 'string', enum: [...SHARED_GROUP_INTENTS] },
-    role: { type: 'string', enum: [...SHARED_GROUP_ROLES] },
-    familyLabel: { type: ['string', 'null'] },
-    kidName: { type: ['string', 'null'] },
-    confidence: { type: 'string', enum: ['high', 'low'] },
-    ruledOut: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { start: { type: 'string' }, end: { type: 'string' } },
-        required: ['start', 'end'],
+function readingJsonSchema(intents: readonly string[]) {
+  return {
+    type: 'object' as const,
+    additionalProperties: false,
+    properties: {
+      intent: { type: 'string', enum: [...intents] },
+      role: { type: 'string', enum: [...SHARED_GROUP_ROLES] },
+      familyLabel: { type: ['string', 'null'] },
+      kidNames: { type: 'array', items: { type: 'string' } },
+      confidence: { type: 'string', enum: ['high', 'low'] },
+      ruledOut: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { start: { type: 'string' }, end: { type: 'string' } },
+          required: ['start', 'end'],
+        },
       },
+      picked: { type: ['string', 'null'] },
+      planTitle: { type: ['string', 'null'] },
     },
-    picked: { type: ['string', 'null'] },
-    planTitle: { type: ['string', 'null'] },
-  },
-  required: [
-    'intent',
-    'role',
-    'familyLabel',
-    'kidName',
-    'confidence',
-    'ruledOut',
-    'picked',
-    'planTitle',
-  ],
-};
+    required: [
+      'intent',
+      'role',
+      'familyLabel',
+      'kidNames',
+      'confidence',
+      'ruledOut',
+      'picked',
+      'planTitle',
+    ],
+  };
+}
+
+/** Request shape of the recorded shared-group-reading skill. Do not add enum values. */
+export const sharedGroupReadingJsonSchema = readingJsonSchema(SHARED_GROUP_RECORDED_INTENTS);
+
+/** VIL-643: common-time reader, which also returns `withdraw_calendar`. */
+export const sharedGroupReadingCommonTimeJsonSchema = readingJsonSchema(SHARED_GROUP_INTENTS);
 
 const UNCLEAR: SharedGroupReading = {
   intent: 'unclear',
   role: 'unclear',
   familyLabel: null,
   kidName: null,
+  kidNames: [],
+  familyClaim: null,
   confidence: 'low',
   ruledOut: [],
   picked: null,
@@ -149,6 +193,7 @@ const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
   'join',
   'leave',
   'stop_me',
+  'withdraw_calendar',
   'pick_time',
 ]);
 
@@ -175,6 +220,50 @@ function spansOf(raw: readonly { start: string; end: string }[] | undefined): Ru
     spans.push({ start, end });
   }
   return spans;
+}
+
+/** At most this many children in one reading, each at most KID_NAME_MAX characters. */
+const KID_NAMES_MAX = 10;
+const KID_NAME_MAX = 100;
+
+/** The children a reading names, trimmed, without blanks or repeats. */
+export function kidNamesOf(reading: Pick<SharedGroupReading, 'kidName' | 'kidNames'>): string[] {
+  const names = reading.kidNames ?? (reading.kidName ? [reading.kidName] : []);
+  return [...new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))];
+}
+
+/**
+ * Someone saying whose family they are: the children they named, or `unnamed` when they
+ * gave a family role without a child, or named children Hale cannot take as stated (past
+ * the bounds, or at low confidence), so the claim could be about any child.
+ */
+export type FamilyClaim = { kids: readonly string[] } | 'unnamed';
+
+/** Every role but these says the person is a child's family (a nanny included). */
+const NOT_FAMILY_ROLES: ReadonlySet<SharedGroupRole> = new Set(['guest', 'unclear']);
+
+function claimFrom(
+  role: SharedGroupRole,
+  kids: readonly string[],
+  confidence: SharedGroupConfidence,
+): FamilyClaim | null {
+  if (kids.length > 0) {
+    const stated =
+      confidence === 'high' &&
+      kids.length <= KID_NAMES_MAX &&
+      kids.every((name) => name.length <= KID_NAME_MAX);
+    return stated ? { kids } : 'unnamed';
+  }
+  return NOT_FAMILY_ROLES.has(role) ? null : 'unnamed';
+}
+
+/**
+ * VIL-687: whose family a reading says this person is, whatever the intent. A reading built
+ * without `familyClaim` (not from the model's object) is read from its role and children.
+ */
+export function familyClaimOf(reading: SharedGroupReading): FamilyClaim | null {
+  if (reading.familyClaim !== undefined) return reading.familyClaim;
+  return claimFrom(reading.role, kidNamesOf(reading), reading.confidence);
 }
 
 function blankToNull(value: string | null): string | null {
@@ -205,19 +294,28 @@ export function parseSharedGroupReading(
 ): SharedGroupReading {
   const parsed = readingSchema.safeParse(value);
   if (!parsed.success) return UNCLEAR;
-  const { intent, role, familyLabel, kidName, confidence, ruledOut, picked, planTitle } =
+  const { intent, role, familyLabel, kidNames, confidence, ruledOut, picked, planTitle } =
     parsed.data;
-  if (STATE_CHANGE.has(intent) && confidence !== 'high') return UNCLEAR;
-  if (intent === 'unclear') return UNCLEAR;
+  const kids = kidNamesOf({ kidName: null, kidNames });
+  // A claim is kept whatever happens to the rest of the reading.
+  const familyClaim = claimFrom(role, kids, confidence);
+  const unclear = { ...UNCLEAR, familyClaim };
+  if (kids.length > KID_NAMES_MAX || kids.some((name) => name.length > KID_NAME_MAX)) {
+    return unclear;
+  }
+  if (STATE_CHANGE.has(intent) && confidence !== 'high') return unclear;
+  if (intent === 'unclear') return unclear;
   const pick = intent === 'pick_time' ? offeredPick(picked, offered) : null;
-  if (intent === 'pick_time' && !pick) return UNCLEAR;
+  if (intent === 'pick_time' && !pick) return unclear;
   const title =
     intent === 'find_time' || intent === 'pick_time' ? blankToNull(planTitle ?? null) : null;
   return {
     intent,
     role,
     familyLabel: blankToNull(familyLabel),
-    kidName: blankToNull(kidName),
+    kidName: kids[0] ?? null,
+    kidNames: kids,
+    familyClaim,
     confidence,
     ruledOut: intent === 'find_time' ? spansOf(ruledOut) : [],
     picked: pick,
@@ -233,7 +331,13 @@ export function createSharedGroupReader(
 ): SharedGroupReader {
   const once = async (input: SharedGroupReadInput): Promise<SharedGroupReading | null> => {
     const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
-    const skill = await loadCronSkill('shared-group-reading');
+    // VIL-643: while common time is dark, the live reader stays the recorded
+    // shared-group-reading skill and schema (cached evals keep hitting). Once
+    // the flag is on, the common-time skill also reads a calendar-only withdrawal.
+    const commonTime = linqGroupCommonTimeEnabled();
+    const skill = await loadCronSkill(
+      commonTime ? 'shared-group-reading-common-time' : 'shared-group-reading',
+    );
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
@@ -241,7 +345,9 @@ export function createSharedGroupReader(
       userMessage: sharedGroupUserMessage(input),
       toolName: 'record_shared_group_reading',
       toolDescription: 'What this person meant in the shared group.',
-      inputJsonSchema: sharedGroupReadingJsonSchema,
+      inputJsonSchema: commonTime
+        ? sharedGroupReadingCommonTimeJsonSchema
+        : sharedGroupReadingJsonSchema,
       schema: readingSchema,
       maxTokens: SHARED_GROUP_READ_MAX_TOKENS,
     });
@@ -272,8 +378,10 @@ export function createSharedGroupReader(
 let shared: SharedGroupReader | null = null;
 
 export function sharedGroupReader(): SharedGroupReader | null {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return null;
-  shared ??= createSharedGroupReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return null;
+  shared ??= createSharedGroupReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
+  );
   return shared;
 }
 

@@ -1,4 +1,10 @@
-import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
+import {
+  type AgentClient,
+  HAIKU_MODEL,
+  type LaneConfig,
+  SPARSE_CACHE_TTL,
+  pickLane,
+} from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { contactsOutside } from '~/lib/format/contact-shape';
@@ -89,6 +95,7 @@ export function createSpokenLineWriter(
             client: client(),
             lane: lanes[attempt] ?? first,
             system: skill.instructions,
+            cacheTtl: SPARSE_CACHE_TTL,
             userMessage: JSON.stringify({
               purpose: request.purpose,
               language: request.language,
@@ -129,7 +136,7 @@ let shared: SpokenLineWriter | null = null;
 
 export function sharedSpokenLineWriter(): SpokenLineWriter {
   shared ??= createSpokenLineWriter(
-    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
     sharedOpsPager,
   );
   return shared;

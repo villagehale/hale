@@ -734,6 +734,15 @@
   color: #17294a;
 }
 
+.fp-currency {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
 .card.fp-card h2.fp-title {
   margin: 22px 0 0;
   font-family: var(--font-display);

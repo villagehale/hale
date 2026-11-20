@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { z } from 'zod';
 import type { AgentClient } from './agent.js';
+import { holdsGarbledText } from './garbled-text.js';
 import type { JsonSchemaNode } from './json-schema.js';
 import {
   type Effort,
@@ -10,6 +11,7 @@ import {
   structuredToolChoice,
   withoutThinking,
 } from './model.js';
+import { type PromptCacheTtl, cachedSystem } from './prompt-cache.js';
 
 /**
  * Single-shot structured output, validated against the caller's Zod schema. The one
@@ -46,7 +48,20 @@ export interface StructuredRequestArgs {
    */
   lane: LaneConfig;
   system: string;
+  /**
+   * Skill addendums after the cache breakpoint (per-family / per-turn). Concatenated
+   * model text is `system` plus these, joined by `\n\n`.
+   */
+  systemExtras?: readonly string[];
+  /** Default 5m. Sparse composers pass 1h so a later wave still reads the prefix. */
+  cacheTtl?: PromptCacheTtl;
   userMessage: string;
+  /**
+   * Native image/document blocks for this turn (VIL-413). Absent or empty: the
+   * user content stays the string, so every existing structured call keeps its
+   * request bytes.
+   */
+  attachments?: Anthropic.ContentBlockParam[];
   toolName: string;
   toolDescription: string;
   inputJsonSchema: Anthropic.Tool.InputSchema;
@@ -99,15 +114,6 @@ export class StructuredOutputError extends Error {
 }
 
 /**
- * The stable system prompt behind one ephemeral cache breakpoint. Wire order is
- * tools → system → messages, so the breakpoint caches the tool definitions and the
- * instructions together; the per-turn payload goes in the user message, after it.
- */
-export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
-}
-
-/**
  * The request body. The pinned SDK (0.41.0) types neither the current `thinking` shapes,
  * `output_config` nor `disable_parallel_tool_use` with `auto`; all are plain body fields
  * it serialises as given, so the body is widened rather than cast field by field.
@@ -124,14 +130,21 @@ export type StructuredRequest = Omit<LaneRequestFields, 'output_config'> & {
   messages: Anthropic.MessageParam[];
 };
 
+function userContent(args: StructuredRequestArgs): Anthropic.MessageParam['content'] {
+  if (!args.attachments || args.attachments.length === 0) {
+    return args.userMessage;
+  }
+  return [{ type: 'text', text: args.userMessage }, ...args.attachments];
+}
+
 export function structuredRequest(args: StructuredRequestArgs): StructuredRequest {
   const grammar = strictToolSchema(args.inputJsonSchema as JsonSchemaNode);
   const { output_config, ...fields } = laneRequestFields(args.lane);
   const common = {
     ...fields,
     max_tokens: args.maxTokens,
-    system: cachedSystem(args.system),
-    messages: [{ role: 'user' as const, content: args.userMessage }],
+    system: cachedSystem(args.system, args.cacheTtl, args.systemExtras),
+    messages: [{ role: 'user' as const, content: userContent(args) }],
   };
   if (grammar) {
     return {
@@ -360,6 +373,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   // of them thinking; the medical answer, 1,024, mostly thinking). The room belongs to the
   // turn that proved it needed it, so the lane keeps its budget. A turn that spent none of
   // it thinking is not re-asked: the same answer would be cut again.
+  let answered = request;
   const lessThinking = withoutThinking(args.lane);
   if (lessThinking && spentBudgetThinking(response)) {
     console.warn(
@@ -369,19 +383,41 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
         model: request.model,
       }),
     );
-    const retry = structuredRequest({ ...args, lane: lessThinking });
-    response = await send(retry);
+    answered = structuredRequest({ ...args, lane: lessThinking });
+    response = await send(answered);
     usage = sumUsage(usage, response.usage);
-    return {
-      value: args.schema.parse(readCounted(retry, response, args.toolName)),
-      usage,
-    };
   }
 
-  return {
-    value: args.schema.parse(readCounted(request, response, args.toolName)),
-    usage,
-  };
+  let value = args.schema.parse(readCounted(answered, response, args.toolName));
+
+  // A GARBLED ANSWER IS A MISSED DRAW (VIL-683): text read back in the wrong code page, a
+  // replacement character, half an emoji. The same request is sent once more, because a
+  // fresh draw usually spells it right. A second garbled draw is returned as drawn and
+  // logged by name: the writer's own check, and the send seam after it (linq/transport.ts),
+  // refuse it, so nothing reaches a parent and nothing stands in for it.
+  if (holdsGarbledText(value)) {
+    console.warn(
+      JSON.stringify({
+        event: 'structured_reask_garbled',
+        stage: args.toolName,
+        model: answered.model,
+      }),
+    );
+    response = await send(answered);
+    usage = sumUsage(usage, response.usage);
+    value = args.schema.parse(readCounted(answered, response, args.toolName));
+    if (holdsGarbledText(value)) {
+      console.warn(
+        JSON.stringify({
+          event: 'structured_garbled_again',
+          stage: args.toolName,
+          model: answered.model,
+        }),
+      );
+    }
+  }
+
+  return { value, usage };
 }
 
 /** Markup refusals so far in this process, per stage. */

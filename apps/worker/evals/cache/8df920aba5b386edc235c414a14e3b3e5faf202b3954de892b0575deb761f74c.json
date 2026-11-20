@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CgzTyZj9piia7UNr7YvbS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwQsKEAgTGAI4AUIIdGhpbmtpbmcSDB38wIzhuuBR553p0BoMf5DU/feBAOH551UkIjCh1rKIyyO78CfWnqx0+09/SRBUr4uS7en+oyI03QKhoEg20sKoN1FlcGvQsyPuC40q3gr1mdbeZXKwxVVn1C/kCBm3gxfgqHdcjFBAGHufbu6+mcRCtmQfgvYRqJ7ct+H8dAULMT8RGkcTnD6dFKEREnTTESBuyNMk6AHidxt7AIRzHGZnGvrUIWqyBMO+9oiAr5tmNXJT4xAsLmE/mBWNE2I7dW91kxMN2QlDr7yeEV1OZ/AT6bqhf9mJyPVJfhjhKNxfZWvabIE3oWA8I0u8NZF4FKsbxwgELwJsP5n4uCNLZa+lkizgE6Rmr+3mHBBuKqlCAg8stDErQMFYNXSda8nuU4NKXAr4u++cgwSGwaLEK+DfwvMV6Vu+2STC3tgP5lLc98w+/dQ9F7NupdPFN42l41tgjo+8PqhphMjESQ+osj1it4KXUrOMPUFOlB8mU30tKwJmVW7CiNis/0KwaNwXzMKRVKQoO/tbZnCXswRIcYvbr+vCjrVIOXYg57BIqJu7yXV/TBLKd7bGdFZE54ILcVVAEd6EbKxPwTk3ZREA1KCmRNbGI1X3MQqQTm7c+y810JjVSYps6b35VjDr8ktH5aCwTQUP7K+vOelOZheNYkvP9ISLSJ6YVrgIZuxViERs/IpUknJFQpcE9MkMNPDJ1GXmw9payhb1+C26nz9jmijSayRcGNizRdFaxsVDM4SET9PlSpI6cqFUmTphAG3b+Axu/dpxTf8fNh0eN4FRkYOHH30fZub0ABNBXDaCH6VI0pXb7COM6qeygjX4Yu4AnxPj22x63/ViDg+76V1PuCZWkD9vkaKrVZmD8Vol0lFEtYRuqAHzH86eIFoguB3qeeWl0be4f98XAkKrmhkTIPKAWTE+kE6F13ZS2elDZLlwbjzGVYt37zKmUGpGI7BcMrXYltol5wnBc1FhrfYWakq3VuBJDUgmohaggHZIIbIVyYU6pKimUa91ezCbN3NaK9SjLgTv4hyECA4Pp027N86xinfCJD3Sw8HOP7Z7ipl1Oq+XBqe8JS/87l7RfjIcrYBl2TxKjDsNK56Wst+EHqKM5qGyUIFuxLdU5KvtLrbNYb8k9QCsQjqOw+bvmq7b7h+1WMX9XNo2FBs8h3JvdZlAEGqKjkH1dBmrWRb3Da8f/HkJ2bjxBw1+Mvctpr+aECS3vO+VvNYmD4Sw9CCi2Y2Xwj7YUJ4n2No4IaATTwUXZuqUahibDciiAtN49wuCokO3V6etkmQd+rc4Lg66AiQByjVwOmDovrSwvC9Sijv5eIyGRArHTDzvGlnndBT3espDPqmeUGygCc3P0gIdpd9omPav8zOhbBTMoBYvwEj/0mKeS6fVHfHDSr6IU3L1BIfPwgY0wifDaEqXVRXR5RN/XvdbB2f29UVGZYBo0zy1K8m7D/iShNYQq58QcNTL9AapBjhePEn8YvJzIfjQHdxm97t6+0mW+HJI+zI4WXGBMsDtsezDjgtT5X/4pqZo9k/DTB2oDgWVCQsb4io3pRGiTXeq1c/VaH6wWnQEbXQmbaLqxXX16DVzC6yl46XPXd6fTYbNB7x9SgfKy9AYcLfQ76Q4nwEk/xS1ZE1O5YEtZVVLJB93H90JVJsayBgBU439Y2Wu73akubje8gbJC0TBH9r11WYBHEjvlximNLLo/t2jPkZiTPGT6bmivoM3Ai4OzLiBSV84cbl9MRACr+TmYiFQQdZocWGWEbGrQ62K29jvoh+L3d9mY/gNFUk8aWJtFU1SA23gXXsXuzc7bMaKkeiq2SLz6jEIWqtjyjuwNilCWcZe5p/oEhagn04cm0If+Nsw7foJ+hV+9dBkGen+3sM1/9wNjJjiqNeAoWXzcWWf1SfRKzPsYpCq6NwsLqGrvG0kSkG8JFPIRY4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018v5F6R94ECT3FmWEgBimHo",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Art class",
+          "date": "2026-08-07",
+          "weekday": "Friday",
+          "time": "16:30",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1371,
+      "cache_read_input_tokens": 23969,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1371,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 469,
+      "output_tokens_details": {
+        "thinking_tokens": 314
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4486
+}

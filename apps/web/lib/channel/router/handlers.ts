@@ -20,21 +20,29 @@ import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
-import { type FounderReplyDeps, handleFounderWelcomeReply } from '~/lib/channel/founder/reply';
+import {
+  type FounderReplyDeps,
+  handleFounderWelcomeReply,
+  standingFounderWelcomeOffer,
+} from '~/lib/channel/founder/reply';
 import { type NameCaptureDeps, handleNameCaptureReply } from '~/lib/channel/identity/name-reply';
 import {
   type ParentCallNameVoice,
   handleParentCallNameReply,
+  parentNameConfirmPending,
 } from '~/lib/channel/identity/parent-call-name';
 import {
   type CoParentNumberDeps,
   deliverCoParentNumberInvite,
+  parseCoParentNumberReply,
 } from '~/lib/channel/linq/coparent-invite';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type RecMorningPlace,
+  recMorningAsksOwnTown,
+  recMorningReply,
   resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
@@ -45,7 +53,11 @@ import {
   writeConnectorLinks,
 } from '~/lib/channel/voice/said-line';
 import { readFamilyTimezone, readStoredFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import {
+  type HealthReplyDeps,
+  handleHealthCheckpointReply,
+  matchHealthReply,
+} from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
@@ -56,16 +68,23 @@ import {
 } from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { ownCityRegistrationContext } from '~/lib/registration/city/context';
 import {
   type PrepareReplyDeps,
   handleCourseBind,
   handleReadinessAnswer,
 } from '~/lib/registration/sequence/prepare-reply';
-import { type SequenceReplyDeps, handleSequenceReply } from '~/lib/registration/sequence/reply';
+import {
+  type SequenceReplyDeps,
+  handleSequenceReply,
+  matchCheckInReply,
+} from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
+  lastHaleOutboundBody,
+  readIntroKeyword,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { type OpenQuestionKind, soleOpenKind } from './open-questions';
@@ -141,6 +160,12 @@ function introKeywordFrom(ctx: HandlerContext): ResolvedIntroAnswer | null {
  * discoverability must not depend on which other handlers declined the turn, and
  * first is the only position where that is true by construction.
  */
+function introAskOutstanding(questions: readonly { kind: OpenQuestionKind }[]): boolean {
+  return questions.some(
+    (question) => question.kind === 'intro_optin' || question.kind === 'intro_proposal',
+  );
+}
+
 export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
   return {
     name: 'village_intro',
@@ -149,7 +174,25 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
     // grade above it is what makes the proposal (a disclosure) need `high` while the
     // opt-in does not.
     resolves: new Set<OpenQuestionKind>(['intro_optin', 'intro_proposal']),
+    async detects(database, ctx) {
+      // Side-turn only. Read consent when THIS parent has an intro_optin standing or an
+      // open card, same recipient rule as the open-question reader. Otherwise this text
+      // is the coach's — a "go find it" after a link ask is not an intro answer.
+      if (!introAskOutstanding(await ctx.openQuestions())) return false;
+      const lastHale = await lastHaleOutboundBody(database, ctx);
+      return (await readIntroKeyword(deps.consent, ctx.body, lastHale)) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = introKeywordFrom(ctx);
+      // After the resolver already ran and did not place this reply (not_answerable /
+      // no_target), intros must not re-read the words as a GRANT — that is the
+      // go-find-it misroute. A REVOCATION still has to land while an intro ask is
+      // open, or a family that said "no intros" stays discoverable until the ask ages out.
+      if (!resolved && introAskOutstanding(await ctx.openQuestions())) {
+        const lastHale = await lastHaleOutboundBody(database, ctx);
+        const keyword = await readIntroKeyword(deps.consent, ctx.body, lastHale);
+        if (!keyword || keyword.granted) return { claimed: false };
+      }
       const outcome = await handleVillageIntroReply(
         database,
         {
@@ -157,7 +200,8 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
-          resolved: introKeywordFrom(ctx),
+          resolved,
+          lastHaleMessage: await lastHaleOutboundBody(database, ctx),
         },
         deps,
       );
@@ -176,6 +220,10 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
   return {
     name: 'approval',
     resolves: new Set<OpenQuestionKind>(['approval']),
+    // It claims only what the resolver read, and nothing has read this text.
+    async detects() {
+      return false;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       // A resolved answer NAMES its action, so it does not need — and must not use — the
       // ordinal grammar: the two reads of the pending list are a co-parent's tap apart,
@@ -283,10 +331,15 @@ async function familyGroupTurn(database: Database, ctx: HandlerContext): Promise
 
 export function connectorLinkHandler(
   log: Pick<Console, 'error'> = console,
-  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  saidLine: SaidLineWriter = createSaidLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  ),
 ): DeterministicHandler {
   return {
     name: 'connector_link',
+    async detects(_database, ctx) {
+      return matchConnectorRequest(ctx.body) !== null || matchFreshConnectorFollowUp(ctx.body);
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const named = await matchConnectorRequestSweep(ctx.body);
       const fresh = named
@@ -440,14 +493,19 @@ export function connectorLinkHandler(
  */
 export function connectorDisconnectHandler(
   log: Pick<Console, 'error'> = console,
-  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  saidLine: SaidLineWriter = createSaidLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  ),
   google: GoogleDisconnectPorts = defaultGoogleDisconnectPorts(),
   reader: DisconnectReader = createDisconnectReader(() =>
-    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' }),
   ),
 ): DeterministicHandler {
   return {
     name: 'connector_disconnect',
+    async detects(_database, ctx) {
+      return matchConnectorDisconnectRequest(ctx.body) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const provider = await matchConnectorDisconnectRequestSweep(ctx.body);
       if (!provider) return { claimed: false };
@@ -535,6 +593,9 @@ export function connectorDisconnectHandler(
 export function parentCallNameHandler(voice: ParentCallNameVoice): DeterministicHandler {
   return {
     name: 'parent_call_name',
+    async detects(database, ctx) {
+      return parentNameConfirmPending(database, ctx);
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const outcome = await handleParentCallNameReply(
         database,
@@ -554,6 +615,9 @@ export function parentCallNameHandler(voice: ParentCallNameVoice): Deterministic
 export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler {
   return {
     name: 'name_capture',
+    async detects(database, ctx) {
+      return deps.askOpen(database, { familyId: ctx.familyId, parentUserId: ctx.parentUserId });
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const outcome = await handleNameCaptureReply(
         database,
@@ -594,6 +658,10 @@ export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHand
   return {
     name: 'founder_welcome',
     resolves: new Set<OpenQuestionKind>(['founder_welcome_offer']),
+    async detects(database, ctx) {
+      if (!soleOpenKind(await ctx.openQuestions(), 'founder_welcome_offer')) return false;
+      return (await standingFounderWelcomeOffer(database, deps, ctx.familyId, ctx.now)) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved =
         ctx.resolved?.kind === 'founder_welcome_offer' ? ctx.resolved.polarity : null;
@@ -656,6 +724,9 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
     // stays a word this handler reads for itself and is not a question the resolver may
     // answer (see the OpenQuestionKind note in open-questions.ts).
     resolves: new Set<OpenQuestionKind>(['checkup_offer']),
+    async detects(_database, ctx) {
+      return matchHealthReply(ctx.body) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
       if (resolved?.polarity === 'no') return { claimed: false };
@@ -730,6 +801,10 @@ export function emailAlertAddHandler(deps: {
   return {
     name: 'email_alert_add',
     resolves: new Set<OpenQuestionKind>(['email_alert_add']),
+    // It claims only what the resolver read, and nothing has read this text.
+    async detects() {
+      return false;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const answer = ctx.resolved?.kind === 'email_alert_add' ? ctx.resolved : null;
       if (!answer) return { claimed: false };
@@ -804,6 +879,10 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
     name: 'coach_plan',
     resolves: new Set<OpenQuestionKind>(['plan_offer']),
+    // It claims only what the resolver read, and nothing has read this text.
+    async detects() {
+      return false;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = ctx.resolved?.kind === 'plan_offer' && ctx.resolved.polarity === 'yes';
       if (!resolved) return { claimed: false };
@@ -863,6 +942,13 @@ export function sequenceReplyHandler(
   return {
     name: 'registration',
     resolves: new Set(['registration_readiness']),
+    // A link while a sign-up is being prepared, or a check-in outcome. The already-approved
+    // yes is the resolver's.
+    async detects(database, ctx) {
+      if (matchCheckInReply(ctx.body) !== null) return true;
+      if (!LINK_TOKEN.test(ctx.body) || !f14EnabledFor(ctx.familyId)) return false;
+      return (await prepare.loadPreparingSequence(database, ctx.familyId, ctx.now)) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const preOpen = await preOpenReply(database, ctx, prepare);
       if (preOpen !== null) return preOpen;
@@ -944,6 +1030,9 @@ export function coParentAssentHandler(): DeterministicHandler {
   return {
     name: 'co_parent_assent',
     resolves: new Set<OpenQuestionKind>(['co_parent_assent']),
+    async detects() {
+      return false;
+    },
     async handle(): Promise<HandlerVerdict> {
       return { claimed: false };
     },
@@ -961,6 +1050,9 @@ export function coParentAssentHandler(): DeterministicHandler {
 export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHandler {
   return {
     name: 'co_parent_number',
+    async detects(_database, ctx) {
+      return parseCoParentNumberReply(ctx.body) !== null;
+    },
     async handle(database, ctx): Promise<HandlerVerdict> {
       const outcome = await deliverCoParentNumberInvite(database, {
         familyId: ctx.familyId,
@@ -1000,6 +1092,9 @@ export function weekdayCareHandler(): DeterministicHandler {
   return {
     name: 'weekday_care',
     resolves: new Set<OpenQuestionKind>(['weekday_care']),
+    async detects() {
+      return false;
+    },
     async handle(): Promise<HandlerVerdict> {
       return { claimed: false };
     },
@@ -1017,6 +1112,9 @@ export function emptySaturdayHandler(): DeterministicHandler {
   return {
     name: 'empty_saturday',
     resolves: new Set<OpenQuestionKind>(['empty_saturday']),
+    async detects() {
+      return false;
+    },
     async handle(): Promise<HandlerVerdict> {
       return { claimed: false };
     },
@@ -1036,6 +1134,9 @@ export function daycareFollowupHandler(): DeterministicHandler {
   return {
     name: 'daycare_followup',
     resolves: new Set<OpenQuestionKind>(['daycare_followup']),
+    async detects() {
+      return false;
+    },
     async handle(): Promise<HandlerVerdict> {
       return { claimed: false };
     },
@@ -1167,9 +1268,35 @@ async function loadFamilyRecWhere(
   };
 }
 
-export function recMorningHandler(): DeterministicHandler {
+/** The family's own city's reading, as the coach reads it (VIL-684). A port so the
+ * handler's stub-database tests can say "none"; production reads the cache. */
+export type OwnCityOpeningRead = typeof ownCityRegistrationContext;
+
+/**
+ * VIL-684: a date question about the family's own town, once that town's own page has
+ * been read, is the coach's: it answers from that reading, and this lane's hand dataset
+ * (an older season, or "not posted yet") must never contradict it.
+ */
+async function ownTownReadingAnswers(
+  database: Database,
+  ctx: Pick<HandlerContext, 'familyId' | 'parentUserId' | 'body' | 'now'>,
+  where: ReturnType<typeof resolveRecMorningWhere>,
+  ownCity: OwnCityOpeningRead,
+): Promise<boolean> {
+  if (!recMorningAsksOwnTown(ctx.body, where)) return false;
+  return (await ownCity(database, ctx.familyId, ctx.parentUserId, ctx.now)).length > 0;
+}
+
+export function recMorningHandler(
+  ownCity: OwnCityOpeningRead = ownCityRegistrationContext,
+): DeterministicHandler {
   return {
     name: 'rec_morning',
+    async detects(database, ctx) {
+      const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
+      if (await ownTownReadingAnswers(database, ctx, where, ownCity)) return false;
+      return recMorningReply(ctx.body, ctx.now, where) !== null;
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       // VIL-508: the facts are reviewed; the words are the model's. A miss leaves the
       // text unclaimed for the coach rather than sending a fixed line.
@@ -1179,6 +1306,7 @@ export function recMorningHandler(): DeterministicHandler {
       // VIL-591: the facts are GTA facts, so the family's stored place - never the
       // words of the text - decides whether this lane answers. No GTA place: unclaimed.
       const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
+      if (await ownTownReadingAnswers(database, ctx, where, ownCity)) return { claimed: false };
       const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };
@@ -1214,6 +1342,16 @@ export function eveningCheckInHandler(reader: EveningRequestReader): Determinist
   return {
     name: 'evening_check_in',
     resolves: new Set<OpenQuestionKind>(['evening_check_in']),
+    // Hale holding the evening question, alone, on the door this text came in on. Whether
+    // the words answer it is the reader's, so a held question is enough.
+    async detects(database, ctx) {
+      const questions = await ctx.openQuestions();
+      const standing = questions.find((question) => question.kind === 'evening_check_in');
+      if (!standing || standing.askedAt === null) return false;
+      if (!soleOpenKind(questions, 'evening_check_in')) return false;
+      if (ctx.inboundChannelMessageId === null) return false;
+      return answeredOnTheSameChannel(database, standing.id, ctx.inboundChannelMessageId);
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       if (ctx.resolved !== null) return { claimed: false };
 

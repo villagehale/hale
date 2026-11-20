@@ -1,11 +1,14 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { and, asc, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
+import { recordSchoolBreak } from '~/lib/care/school-break/facts';
+import { createSchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import {
   defaultActivityPromisePorts,
@@ -16,7 +19,7 @@ import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/acti
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
-import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
+import { loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
@@ -37,9 +40,10 @@ import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
-import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { deliveredAsk, sendRecordedAt } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
+import { reactToParentMessage } from '~/lib/channel/linq/tapback';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
@@ -82,9 +86,11 @@ import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import { introAskDedupeKey } from '~/lib/village/intros/run';
+import { introAskDedupeKey, introCardDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
+import { createInboundBurst } from './burst';
+import { createBurstReader } from './burst-reader';
 import { createDisambiguationStore } from './disambiguation';
 import { createFloodLine } from './flood-line';
 import {
@@ -108,6 +114,7 @@ import {
   weekdayCareHandler,
 } from './handlers';
 import { createHoldingLine } from './holding-line';
+import { createHoldingTapback } from './holding-tapback';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -122,8 +129,19 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { SIDE_TURN_CLAIM_LEASE_MS, productionSideTurnFamily } from './side-turn';
+import { createSideTurnReader } from './side-turn-reader';
 import type { SmokeAlarmClaim } from './smoke-alarm';
-import type { InboundTurnLedger } from './turn-ledger';
+import {
+  type InboundTurnLedger,
+  TURN_ANSWERED_ACTION,
+  TURN_CLAIMED_AHEAD_ACTION,
+  TURN_DEFERRED_ACTION,
+  TURN_FAILED_ACTION,
+  TURN_FOLDED_ACTION,
+  TURN_LEDGER_LOOKBACK_MS,
+  TURN_LEDGER_TARGET,
+} from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the production wiring. The one place the router meets real tables, a
@@ -157,6 +175,7 @@ export async function loadInboundContext(
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
       providerChatId: schema.channelMessages.providerChatId,
+      providerService: schema.channelMessages.providerService,
       inboundMedia: schema.channelMessages.inboundMedia,
     })
     .from(schema.channelMessages)
@@ -182,6 +201,7 @@ export async function loadInboundContext(
       message.channel,
       message.providerMessageId,
       message.providerChatId,
+      message.providerService,
     ),
     arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
@@ -235,6 +255,7 @@ async function resolveReplyRoute(
   channel: typeof schema.channelMessages.$inferSelect.channel,
   providerMessageId: string | null,
   providerChatId: string | null,
+  providerService: schema.LinqServiceValue | null,
 ): Promise<ReplyRoute | null> {
   switch (channel) {
     case 'sms': {
@@ -256,6 +277,7 @@ async function resolveReplyRoute(
             to: phoneE164,
             chatId: providerChatId,
             replyToMessageId: providerMessageId,
+            service: providerService,
           }
         : null;
     }
@@ -586,40 +608,7 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
   };
 }
 
-/**
- * The two audit actions the turn ledger reads back. DATA values, like
- * {@link SMOKE_ALARM_ACTION}: they are what a PIPEDA access request renders and what the
- * re-drive gate reads, so they are never renamed with the code.
- */
-export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
-export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
-
-/**
- * The third one, and the one whose absence made the 2026-08-22 turn unreadable. A DATA
- * value like the two above. The re-drive gate does NOT read it: a failed turn that
- * apologised is still answered, and answering twice is the thing the ledger exists to
- * prevent.
- */
-export const TURN_FAILED_ACTION = 'sms_turn_failed';
-
-/** The table both rows point at, named ONCE. The reader's predicate and the writers'
- * values are the same three strings; a fourth copy of any of them is how a gate stops
- * matching the rows it is supposed to find. */
-const TURN_LEDGER_TARGET = 'channel_messages';
-
-/**
- * How far back the stage read looks.
- *
- * The ONLY index on audit_log is (family_id, occurred_at), and this read now runs on
- * every inbound text rather than only on a failed turn during an outage. Bounding the
- * time makes it a range scan over one family's recent rows instead of a filter over
- * their whole history.
- *
- * A week is far past the point where the answer could change: pg-boss exhausts this
- * queue's retries in one to two hours (channel/config.ts), so a turn older than that is
- * not going to be re-driven at all.
- */
-const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export { TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION, TURN_FAILED_ACTION, TURN_FOLDED_ACTION };
 
 /**
  * The router's memory of its own attempts, in audit_log — no new table and no migration,
@@ -662,18 +651,86 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
           .returning({ id: schema.channelTurnAnswerClaims.id });
         if (claimed.length === 0) return 'already_answered';
 
+        await tx.insert(schema.auditLog).values([
+          {
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: input.channelMessageId,
+          },
+          // A folded text is answered by this same reply. Its claim is the fold's, so
+          // only the anchor's claim above arbitrates; `into` names the turn that answered.
+          ...input.folded.map((memberId) => ({
+            familyId: input.familyId,
+            actor: input.parentUserId,
+            actionTaken: TURN_ANSWERED_ACTION,
+            targetTable: TURN_LEDGER_TARGET,
+            targetId: memberId,
+            after: { into: input.channelMessageId },
+          })),
+        ]);
+        return 'claimed';
+      }),
+    recordRouted: async ({ channelMessageId }) => {
+      await database
+        .insert(schema.channelTurnAnswerClaims)
+        .values({ channelMessageId })
+        .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId });
+    },
+    claimAhead: async (input, alongside) =>
+      database.transaction(async (tx) => {
+        const claimed = await tx
+          .insert(schema.channelTurnAnswerClaims)
+          .values({ channelMessageId: input.channelMessageId })
+          .onConflictDoNothing({ target: schema.channelTurnAnswerClaims.channelMessageId })
+          .returning({ id: schema.channelTurnAnswerClaims.id });
+        if (claimed.length === 0) return 'already_answered';
         await tx.insert(schema.auditLog).values({
           familyId: input.familyId,
           actor: input.parentUserId,
-          actionTaken: TURN_ANSWERED_ACTION,
+          actionTaken: TURN_CLAIMED_AHEAD_ACTION,
           targetTable: TURN_LEDGER_TARGET,
           targetId: input.channelMessageId,
         });
+        await alongside(tx as unknown as Database);
         return 'claimed';
       }),
+    recordAnsweredAhead: async (input) => {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: TURN_ANSWERED_ACTION,
+        targetTable: TURN_LEDGER_TARGET,
+        targetId: input.channelMessageId,
+      });
+    },
+    releaseAhead: async (input) =>
+      database.transaction(async (tx) => {
+        await tx
+          .delete(schema.channelTurnAnswerClaims)
+          .where(eq(schema.channelTurnAnswerClaims.channelMessageId, input.channelMessageId));
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: input.parentUserId,
+          actionTaken: TURN_DEFERRED_ACTION,
+          targetTable: TURN_LEDGER_TARGET,
+          targetId: input.channelMessageId,
+          after: { reason: input.reason },
+        });
+      }),
+    // A side reply's claim row is read beside the others (claimAhead): taken before its
+    // reply is sent, with no answered row yet, it is held until its lease lapses. Given
+    // back, it has a deferred row at or after it. Only the NEWEST claim is read, and only a
+    // deferred row from its time on gives it back: an older one released an earlier claim
+    // or deferred the text's own turn, and reading it as this claim's would let that turn
+    // answer while the side turn holding the claim is still sending.
     stageOf: async ({ familyId, channelMessageId }) => {
       const rows = await database
-        .select({ actionTaken: schema.auditLog.actionTaken })
+        .select({
+          actionTaken: schema.auditLog.actionTaken,
+          occurredAt: schema.auditLog.occurredAt,
+        })
         .from(schema.auditLog)
         .where(
           and(
@@ -681,10 +738,32 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
             eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
             eq(schema.auditLog.targetId, channelMessageId),
-            inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION]),
+            inArray(schema.auditLog.actionTaken, [
+              TURN_ANSWERED_ACTION,
+              TURN_DEFERRED_ACTION,
+              TURN_FOLDED_ACTION,
+              TURN_CLAIMED_AHEAD_ACTION,
+            ]),
           ),
         );
+      if (rows.some((row) => row.actionTaken === TURN_FOLDED_ACTION)) return 'folded';
       if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      const ahead = rows
+        .filter((row) => row.actionTaken === TURN_CLAIMED_AHEAD_ACTION)
+        .reduce<(typeof rows)[number] | undefined>(
+          (newest, row) => (newest && newest.occurredAt >= row.occurredAt ? newest : row),
+          undefined,
+        );
+      if (
+        ahead &&
+        !rows.some(
+          (row) => row.actionTaken === TURN_DEFERRED_ACTION && row.occurredAt >= ahead.occurredAt,
+        )
+      ) {
+        return Date.now() - ahead.occurredAt.getTime() < SIDE_TURN_CLAIM_LEASE_MS
+          ? 'held'
+          : 'lapsed';
+      }
       return rows.length > 0 ? 'deferred' : 'fresh';
     },
     recordDeferred: async (input) => {
@@ -761,6 +840,8 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
+    schoolBreakReplyReader: createSchoolBreakReplyReader(screenClient),
+    recordSchoolBreak,
     consent: createConsentReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
@@ -770,11 +851,30 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
+    // Back-to-back texts read as one turn, on the same lazy client as the screen. On
+    // unless INBOUND_BURST_ENABLED is `false`.
+    burst: createInboundBurst(database, {
+      enabled: (familyId) => isEnabled('inbound-burst', familyId),
+      reader: createBurstReader(screenClient),
+      now: () => new Date(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: console,
+    }),
+    // A text that lands while this parent's turn runs, read beside it, on the same lazy
+    // client. On unless INBOUND_MIDTURN_ENABLED=false.
+    sideTurn: {
+      enabled: (familyId) => isEnabled('inbound-midturn', familyId),
+      reader: createSideTurnReader(screenClient),
+      family: productionSideTurnFamily(database),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    },
     // The words a broken turn gets, on the same lazy client the screen and the general
     // answer use — one key, one failure story, resolved only by the turn that needs one.
     apology: createTurnApology(screenClient),
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
+    holdingTapback: createHoldingTapback(screenClient),
+    sendParentReaction: reactToParentMessage,
     floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
@@ -788,8 +888,17 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
-    dispatchDeepResearch: (payload) =>
-      dispatchDeepResearch(async () => (await getQueue()) as unknown as DeepResearchQueue, payload),
+    dispatchDeepResearch: (payload, askedBy) =>
+      dispatchDeepResearch(
+        {
+          resolve: async () => (await getQueue()) as unknown as DeepResearchQueue,
+          audit: async (row) => {
+            await database.insert(schema.auditLog).values(row);
+          },
+        },
+        payload,
+        askedBy,
+      ),
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
@@ -809,6 +918,14 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
       // from being the thing that says so: a constraint violation is thrown from inside
       // the write, out through the gate, and retried into the same wall until the
       // question closes.
+      if (ask.scope === 'break_dates') {
+        return {
+          status: 'open' as const,
+          scope: 'break_dates' as const,
+          schoolYear: ask.schoolYear,
+          question: ask.question,
+        };
+      }
       if (ask.scope === 'search') {
         return {
           status: 'open' as const,
@@ -870,8 +987,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
       introOptInOpen: async (database, { familyId, parentUserId }) => {
         // ASKED AND UNANSWERED, read from two different places because they are two
-        // different facts: the ask is an outbound ledger row (so a card that was composed
-        // and never sent is not a question), and the answer is a consent row of EITHER
+        // different facts: the ask is a DELIVERED outbound ledger row (so a card that was
+        // composed, queued or failed is not a question), and the answer is a consent row of EITHER
         // polarity (a decline is an answer, and re-asking a family that said no would be
         // the worst version of this feature).
         //
@@ -879,19 +996,31 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // question is asked once per household, but only the parent it was TEXTED to has it
         // open — otherwise a co-parent who never saw it could answer it, and Hale would
         // write a consent row in their name for a question it never put to them.
-        const [askedParentUserId, answered] = await Promise.all([
-          introAskRecipient(database, familyId),
+        const [ask, answered] = await Promise.all([
+          deliveredAsk(database, introAskDedupeKey(familyId)),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return askedParentUserId === parentUserId && !answered;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.askedAt } : null;
       },
-      introProposal: async (database, familyId, now) => {
+      introProposal: async (database, familyId, parentUserId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
         // returns cards this family has already answered (so a repeat can be told from a
         // card that never existed), and offering one of those to the resolver would invite
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
-        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+        if (proposal?.standing !== 'unanswered') return null;
+        // Open only once the card reached this side, and dated by its row. The proposal's
+        // own per-side stamp is written when the provider accepts the send, and a receipt
+        // can still say it never arrived.
+        //
+        // ASKED THIS PARENT, for the same reason as the opt-in above: the card is keyed
+        // per side, but texted to one parent, and a co-parent who never saw it must not
+        // agree to an introduction with another family on the household's behalf.
+        const side = proposal.familyAId === familyId ? 'a' : 'b';
+        const card = await deliveredAsk(database, introCardDedupeKey(proposal.id, side));
+        return card?.parentUserId === parentUserId
+          ? { id: proposal.id, askedAt: card.askedAt }
+          : null;
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
@@ -900,14 +1029,23 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // answerable. Reporting one as a question would let a parent accept a plan the
         // handler behind it is about to decline.
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.createdFrom),
+        };
       },
       // The health nudge's booking offer. Its TTL is applied inside the reader, so an
       // offer past its week can never be listed, named in a clarifying sentence, or
       // resolved — the same discipline the plan offer keeps one line above.
       checkupOffer: async (database, familyId, now) => {
         const offer = await loadOpenCheckupOffer(database, familyId, now);
-        return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
+        if (!offer) return null;
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.askedVia),
+        };
       },
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
@@ -916,20 +1054,36 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       founderWelcomeOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
-        return { id: offer.id, summary: offer.summary, askedAt: offer.createdAt };
+        return {
+          id: offer.id,
+          summary: offer.summary,
+          askedAt: await askSent(database, familyId, offer.createdFrom),
+        };
       },
       // The coach's "I'll come back to you". NO TTL, unlike the two offers above: a promise
       // does not stop being owed by getting late (commitment.ts), so it is listed until the
       // sweep keeps it or a cancellation voids it.
       activityPromise: async (database, familyId) => {
         const promise = await loadOpenActivityPromise(database, familyId);
-        return promise && { id: promise.id, summary: promise.summary, askedAt: promise.askedAt };
+        if (!promise) return null;
+        return {
+          id: promise.id,
+          summary: promise.summary,
+          askedAt: await askSent(database, familyId, promise.askedVia),
+        };
       },
       // The registration ladder's readiness checklist. Its whole TTL is the last-word rule
       // inside the reader — the question closes the moment anything else goes out to this
       // parent — so, unlike the offers above, there is no window to apply here.
-      registrationReadiness: (database, familyId, parentUserId, now) =>
-        readinessQuestion(database, familyId, parentUserId, now),
+      registrationReadiness: async (database, familyId, parentUserId, now) => {
+        const readiness = await readinessQuestion(database, familyId, parentUserId, now);
+        if (!readiness) return null;
+        return {
+          id: readiness.id,
+          summary: readiness.summary,
+          askedAt: await askSent(database, familyId, readiness.askedVia),
+        };
+      },
       // The co-parent scope question (VIL-355), read through the invite module's own
       // `loadPendingAssent` — which also applies the 72h expiry on read, so a lapsed ask
       // is never listed. Filtered to the co-parent role here rather than in the reader: a
@@ -940,44 +1094,49 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // discipline the readiness question keeps, and for the same reason: openness is
       // already implied by the message ledger, so a stored flag would be a second answer
       // every other sender in the product would have to remember to clear.
-      eveningCheckIn: (database, input) => eveningCheckInQuestion(database, input),
+      eveningCheckIn: async (database, input) =>
+        datedByItsRow(database, input.familyId, await eveningCheckInQuestion(database, input)),
       // The activity follow-up ask, read through the followup lane's own last-word reader
       // — the same discipline the readiness question and the evening check-in keep, and
       // the line that stops a bare "yes" meant for "how did swim go?" approving a drafted
       // calendar write.
-      activityFollowupAsk: (database, input) => activityFollowupAskOpen(database, input),
+      activityFollowupAsk: async (database, input) =>
+        datedByItsRow(database, input.familyId, await activityFollowupAskOpen(database, input)),
       // VIL-360 · the weekday-care ask, through the same kind of last-word reader. It has
       // a 48h clock of its own rather than the evening's 08:00 lapse, because a household
       // arrangement does not go stale by breakfast.
-      weekdayCare: (database, input) => weekdayCareQuestion(database, input),
-      emptySaturday: (database, input) => emptySaturdayQuestion(database, input),
+      weekdayCare: async (database, input) =>
+        datedByItsRow(database, input.familyId, await weekdayCareQuestion(database, input)),
+      emptySaturday: async (database, input) =>
+        datedByItsRow(database, input.familyId, await emptySaturdayQuestion(database, input)),
       // VIL-360 · the daycare check-in. The follow-up lane registers nothing when it
       // sends, so this reader is the only thing that makes its ask a question the router
       // can see - and a bare "yes" near it safe.
-      daycareFollowup: (database, input) => daycareFollowupQuestion(database, input),
+      daycareFollowup: async (database, input) =>
+        datedByItsRow(database, input.familyId, await daycareFollowupQuestion(database, input)),
       coParentAssent: async (database, { parentUserId, familyId, now }) => {
         const pending = await loadPendingAssent(database, parentUserId, now);
         if (!pending || pending.role !== 'co_parent' || pending.familyId !== familyId) return null;
-        // The ask went out with the invite, so the invite's own clock is when it was put to
-        // them: `expiresAt` is 72h after that, by construction.
-        return {
-          id: pending.id,
-          askedAt: new Date(pending.expiresAt.getTime() - INVITE_SILENCE_MS),
-        };
+        // The ask went out in the reply to the turn that started the invite, and no row
+        // names that message, so when it went is not known: a bare yes beside another ask
+        // makes Hale ask which (VIL-302).
+        return { id: pending.id, askedAt: null };
       },
       // The Gmail alerts this parent has not answered. Its TTL is applied inside the reader,
-      // the same discipline the three offers above keep — and `askedAt` is the row's own mint
-      // time, which is the moment the text went out, because the row is written at send.
+      // the same discipline the three offers above keep, and each is dated by the alert
+      // that carried it.
       emailAlertOffers: async (database, input) => {
         const offers = await loadOpenEmailAlertOffers(database, input);
-        return offers.map((offer) => ({
-          id: offer.id,
-          summary: emailAlertOfferSummary(offer),
-          subject: emailAlertOfferSubject(offer),
-          askedAt: offer.askedAt,
-          title: offer.title,
-          startsAt: offer.startsAt.toISOString(),
-        }));
+        return Promise.all(
+          offers.map(async (offer) => ({
+            id: offer.id,
+            summary: emailAlertOfferSummary(offer),
+            subject: emailAlertOfferSubject(offer),
+            askedAt: await askSent(database, input.familyId, offer.askedVia),
+            title: offer.title,
+            startsAt: offer.startsAt.toISOString(),
+          })),
+        );
       },
       // The email forwarding door is retired with the email channel, so no revoke
       // confirm can be standing any more.
@@ -987,18 +1146,23 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
   );
 }
 
-/** Who the one discoverability ask actually went to, or null if it never went. The
- * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
-async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
-  const [row] = await database
-    .select({ parentUserId: schema.channelMessages.parentUserId })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
-        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
-      ),
-    )
-    .limit(1);
-  return row?.parentUserId ?? null;
+/** When the row that carried an ask recorded its send: the one clock every ask is ranked
+ * by (VIL-302, channel/ledger.ts `sendRecordedAt`). Null when not known. */
+function askSent(
+  database: Database,
+  familyId: string,
+  channelMessageId: string,
+): Promise<Date | null> {
+  return sendRecordedAt(database, { familyId, channelMessageId });
+}
+
+/** A ledger-read question whose id is the row that carried it, dated by that row. The
+ * rest of what its reader said (the weekday ask's `scope`) is kept. */
+async function datedByItsRow<Q extends { id: string }>(
+  database: Database,
+  familyId: string,
+  question: Q | null,
+): Promise<(Omit<Q, 'askedAt'> & { askedAt: Date | null }) | null> {
+  if (!question) return null;
+  return { ...question, askedAt: await askSent(database, familyId, question.id) };
 }

@@ -1,1 +1,0 @@
-You score ONE observation of Hale handling a group-chat carpool. Score 1-5 for meaning. Do not require particular words. Call the score tool with score first, then reason. Reason is at most {{reasonMaxChars}} characters. A 5 matches the situation and the rubric. A 1 or 2 misses the driver, asks twice, texts through quiet hours, or reminds after a cancel.

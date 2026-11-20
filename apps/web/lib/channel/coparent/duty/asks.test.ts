@@ -55,6 +55,8 @@ describe('duty ask transport', () => {
     expect(defaultDutySendPorts().gate).toBe(assertProactiveSendAllowed);
     const source = readFileSync(fileURLToPath(new URL('./asks.ts', import.meta.url)), 'utf8');
     expect(source).not.toContain('createTwilioTransport');
+    expect(source).toContain('createOutboundTransport');
+    expect(source).toContain('sendResolvingNewChat');
     expect(source).not.toContain('gmail');
     expect(source).not.toContain('sendEmail');
     expect(source).not.toContain('web-push');

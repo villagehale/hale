@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "\"Stop the reminders\" asks Hale to cancel something, which is an action, so it must be handed back.",
+    "verdict": "hand_back",
+    "reply": ""
+  },
+  "latencyMs": 1132
+}

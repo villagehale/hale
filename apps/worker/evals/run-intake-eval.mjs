@@ -59,6 +59,7 @@ const EXTRACT_TOOL_SCHEMA = {
           name: { type: ['string', 'null'] },
           age_months: { type: ['number', 'null'], minimum: 0, maximum: MAX_AGE_MONTHS },
           age_precision: { type: ['string', 'null'], enum: ['years', 'months', null] },
+          date_of_birth: { type: ['string', 'null'] },
         },
       },
     },

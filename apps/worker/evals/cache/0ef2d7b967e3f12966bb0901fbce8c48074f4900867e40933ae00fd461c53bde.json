@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks to cancel a scheduled activity for the week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1424
+}

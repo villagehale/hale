@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Fair enough, I won't push it. Then let's skip the place for now and just get the kids sorted. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "language": "en"
+  },
+  "latencyMs": 1550
+}

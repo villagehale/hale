@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reasoning": "The new text asks Hale to disconnect the calendar, which is an action request, so it must be handed back.",
+    "verdict": "hand_back",
+    "reply": ""
+  },
+  "latencyMs": 1235
+}

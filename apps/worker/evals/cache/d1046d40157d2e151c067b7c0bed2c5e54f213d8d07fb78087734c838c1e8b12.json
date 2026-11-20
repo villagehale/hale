@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "抽签完成啦!🎁 一共5个人参加,每个人的抽签结果都会由Hale私下发给你们。有1位还需要先给Hale发条消息,这样结果才能送到哦。"
+  },
+  "latencyMs": 1603,
+  "usage": {
+    "input_tokens": 49,
+    "output_tokens": 77,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

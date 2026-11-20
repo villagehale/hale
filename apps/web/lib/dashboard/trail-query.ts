@@ -1,8 +1,9 @@
 import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, inArray, notInArray, notLike, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, notInArray, notLike, or, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '../format/datetime';
+import { auditLogAudienceEnabled } from '../privacy/audit-audience';
 import { NO_TEEN_UNLOCKS, type TeenAccessUnlocks, redactsTeenContent } from '../teen-access';
 import {
   type AuditVerb,
@@ -119,6 +120,85 @@ export interface LoadTrailOptions {
   includeInternal?: boolean;
   /** Verbs this surface never shows, internal or not (rights/export.ts). */
   exclude?: readonly AuditVerb[];
+  /** Of the excluded verbs, these still show where the row is about this user
+   * (target users/<userId>): a right-to-access copy holds the requester's own rows. */
+  keepOwn?: { userId: string; verbs: readonly AuditVerb[] };
+  /**
+   * VIL-635. The signed-in / requesting parent. Lit, a row whose audience is set
+   * shows only to this adult — even when History would otherwise hide the verb,
+   * and even when the family export would otherwise exclude it. Unlit, ignored.
+   * Null / omitted with the flag on: only null-audience rows.
+   */
+  viewerUserId?: string | null;
+}
+
+function isOwnRow(
+  entry: { actionTaken: string; targetTable: string | null; targetId: string | null },
+  keepOwn: LoadTrailOptions['keepOwn'],
+): boolean {
+  return (
+    keepOwn !== undefined &&
+    (keepOwn.verbs as readonly string[]).includes(entry.actionTaken) &&
+    entry.targetTable === 'users' &&
+    entry.targetId === keepOwn.userId
+  );
+}
+
+function trailVerbHide(options: LoadTrailOptions) {
+  const internal = options.includeInternal
+    ? undefined
+    : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]);
+  const excluded = options.exclude?.length
+    ? or(
+        notInArray(schema.auditLog.actionTaken, [...options.exclude]),
+        options.keepOwn?.verbs.length
+          ? and(
+              inArray(schema.auditLog.actionTaken, [...options.keepOwn.verbs]),
+              eq(schema.auditLog.targetTable, 'users'),
+              eq(schema.auditLog.targetId, options.keepOwn.userId),
+            )
+          : undefined,
+      )
+    : undefined;
+  return { internal, excluded };
+}
+
+/**
+ * Unlit: today's INTERNAL / exclude filters. Lit: a row with an audience is
+ * visible only to that adult (overriding INTERNAL/exclude); a null-audience
+ * row keeps today's filters so pre-column rows stay as they are.
+ */
+function trailAudienceWhere(options: LoadTrailOptions) {
+  const { internal, excluded } = trailVerbHide(options);
+  if (!auditLogAudienceEnabled()) return and(internal, excluded);
+  const legacy = and(isNull(schema.auditLog.audience), internal, excluded);
+  const viewer = options.viewerUserId ?? null;
+  if (!viewer) return legacy;
+  return or(eq(schema.auditLog.audience, viewer), legacy);
+}
+
+function trailRowVisible(
+  entry: {
+    actionTaken: string;
+    after: unknown;
+    audience: string | null;
+    targetTable: string | null;
+    targetId: string | null;
+  },
+  options: LoadTrailOptions,
+): boolean {
+  const { actionTaken } = entry;
+  if (isAgentToolStep(actionTaken) || isShadowOnlyRow(actionTaken, entry.after)) return false;
+  if (auditLogAudienceEnabled()) {
+    if (entry.audience !== null) return entry.audience === (options.viewerUserId ?? null);
+  }
+  if (!options.includeInternal && isInternalTrailVerb(actionTaken)) return false;
+  if (
+    (options.exclude as readonly string[] | undefined)?.includes(actionTaken) &&
+    !isOwnRow(entry, options.keepOwn)
+  )
+    return false;
+  return true;
 }
 
 export async function loadTrailForFamily(
@@ -184,25 +264,14 @@ export async function loadTrailForFamily(
         // VIL-226 · the proactive decider's shadow rows (trail/verbs.ts SHADOW_ONLY_VERBS):
         // nothing the parent got, so not on their receipts, and not in the 50-row window.
         sql`not (${inArray(schema.auditLog.actionTaken, [...SHADOW_ONLY_VERBS])} and coalesce(${schema.auditLog.after} ->> 'mode', '') = 'shadow')`,
-        // The 7-day unsent mark stays in the audit log. History does not show it.
-        // The export passes includeInternal so the row stays in the access file.
-        options.includeInternal
-          ? undefined
-          : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
-        options.exclude?.length
-          ? notInArray(schema.auditLog.actionTaken, [...options.exclude])
-          : undefined,
+        trailAudienceWhere(options),
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
     .limit(50);
   return rows
-    .filter(
-      (row) =>
-        !isAgentToolStep(row.entry.actionTaken) &&
-        !isShadowOnlyRow(row.entry.actionTaken, row.entry.after) &&
-        (options.includeInternal || !isInternalTrailVerb(row.entry.actionTaken)) &&
-        !(options.exclude as readonly string[] | undefined)?.includes(row.entry.actionTaken),
+    .filter((row) =>
+      trailRowVisible({ ...row.entry, audience: row.entry.audience ?? null }, options),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;

@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { localClockFact, localDateFact } from '~/lib/loop/reminders/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -22,7 +22,12 @@ import type { QuietShift } from './policy';
 export const GROUP_REMINDER_VOICE_SKILL = 'group-reminder-voice';
 export const GROUP_REMINDER_VOICE_TOOL = 'group_reminder_text';
 export const GROUP_REMINDER_VOICE_TOOL_DESCRIPTION = 'The one text Hale sends.';
-export const GROUP_REMINDER_VOICE_MAX_TOKENS = 300;
+/**
+ * Thinking plus the text. The lane thinks (with thinking off, a French group
+ * confirm took the familiar "you" whatever the skill said), and a confirm spends about
+ * 400-550 tokens of it; a budget it spends thinking is re-asked with thinking off.
+ */
+export const GROUP_REMINDER_VOICE_MAX_TOKENS = 1024;
 export const GROUP_REMINDER_MAX_ATTEMPTS = 2;
 
 export interface ConfirmSetFact {
@@ -82,12 +87,16 @@ export function groupReminderVoiceUserMessage(facts: GroupReminderFacts): string
 
 /**
  * Structural refusals only, never wording: empty, or a link. Length is the skill's to
- * judge; `GROUP_REMINDER_VOICE_MAX_TOKENS` keeps a draft far inside one Linq text part.
+ * judge.
  */
 export function groupReminderRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) {
+    noteLinkGate('reminder-group', 'redraft');
+    return ['link'];
+  }
+  return [];
 }
 
 const outputSchema = z.object({ text: z.string() });
@@ -153,6 +162,8 @@ let shared: GroupReminderVoice | null = null;
 /** The production voice, or null when no model key is configured: a named absence. */
 export function sharedGroupReminderVoice(): GroupReminderVoice | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  shared ??= createGroupReminderVoice(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupReminderVoice(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'reminder' }),
+  );
   return shared;
 }

@@ -5,6 +5,8 @@
  * `1`, and `ON` stay off. Unset stays off. The ladder is new/unknown parents
  * only; a session already on it keeps going if the flag later flips.
  */
+import { isEnabled } from '@hale/flags';
+
 export const FIRST_TOUCH_LADDER_ENABLED_ENV = 'FIRST_TOUCH_LADDER_ENABLED';
 
 /**
@@ -17,11 +19,11 @@ export const FIRST_TOUCH_LOCATION_CARD_ENABLED_ENV = 'FIRST_TOUCH_LOCATION_CARD_
 export function firstTouchLadderEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return (env[FIRST_TOUCH_LADDER_ENABLED_ENV] ?? '').trim() === 'on';
+  return isEnabled('first-touch-ladder', undefined, env);
 }
 
 export function firstTouchLocationCardEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[FIRST_TOUCH_LOCATION_CARD_ENABLED_ENV] === 'true';
+  return isEnabled('first-touch-location-card', undefined, env);
 }

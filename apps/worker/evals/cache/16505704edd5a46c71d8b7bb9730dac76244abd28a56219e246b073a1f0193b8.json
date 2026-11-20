@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is a single bubble in English, matching the parent's text, and states the calendar fact that the week is empty as returned by weekRead. It stays within the facts, gives one thought, and ends with the only question in the final bubble. No invented detail, no heading or count bubble, and it is a whole thought rather than a fragment.",
+    "score": 5
+  }
+}

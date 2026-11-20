@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Great, I'll keep it simple for you both. When you're ready, start a group text with Mia's other parent and send the number and phrase that will appear below, and that gets the group going.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1454
+}

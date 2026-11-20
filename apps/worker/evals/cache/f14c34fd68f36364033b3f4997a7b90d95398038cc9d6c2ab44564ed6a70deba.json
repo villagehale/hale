@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale has already added Saturday's swimming class to the parent's calendar, which is a scheduled_event claim about row e1 (same class, Sat Nov 7 10 AM). The 'you said it's booked' part is attributed to the parent, so it is not counted.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 2755
+}

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "Hale promises to text when Maple Bend swim registration opens, which matches the existing Maple Bend registration watch row. It also says it will keep looking for art classes, which is a follow-up with no matching row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2626
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubble 1 is a lead-in count ('有两个适合…的'), which the rubric treats as a rule break even though it is a full sentence. Bubbles 2 and 3 correctly name each class with its venue, day, time and age range, and bubble 4 states the registration opening, so content and language are otherwise accurate and the reply stays in Chinese. Because the first bubble should be the first item itself, this is a rule violation rather than a stylistic flaw.",
+    "score": 3
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgzUWq4jwTAcwHkbGfuJz",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That sounds exhausting, and two hours of screaming at 1am is brutal. Take a breath, you're doing fine.\n\nLong screaming bouts at this age are common, and they're often night terrors. Kids in that state can look awake but aren't, and they settle faster when you don't try to wake or talk them out of it. So tonight, stay close, keep the lights low, and just make sure they're safe. Move bedtime 30 minutes earlier too, since being overtired is one of the most common triggers."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1657,
+      "cache_read_input_tokens": 20477,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1657,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 160,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

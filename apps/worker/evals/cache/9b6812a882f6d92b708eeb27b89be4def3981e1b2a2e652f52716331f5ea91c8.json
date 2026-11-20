@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Travel brief is due before the trip, home calendar and free windows don't apply, it's Thursday evening outside quiet hours, and there's no unanswered streak or pace preference.",
+    "action": "send_now",
+    "item_ids": [
+      "trip"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

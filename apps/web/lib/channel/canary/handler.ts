@@ -23,6 +23,9 @@ import { CANARY_ANSWERED_ACTION, isCanaryTurn } from './config';
 export function inboundCanaryHandler(): DeterministicHandler {
   return {
     name: 'inbound_canary',
+    async detects(database, ctx) {
+      return isCanaryTurn(database, ctx.body, ctx.familyId);
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       if (!(await isCanaryTurn(database, ctx.body, ctx.familyId))) return { claimed: false };
 
@@ -31,12 +34,17 @@ export function inboundCanaryHandler(): DeterministicHandler {
       // handlers and the coach.
       await ctx.openQuestions();
 
+      // The production text gate reads this id back. The build still serving
+      // the domain does not write it, so a cron on that build cannot pass for
+      // the candidate. Null when the process has no deployment id (local, tests).
+      const deploymentId = process.env.VERCEL_DEPLOYMENT_ID?.trim() || null;
       await database.insert(schema.auditLog).values({
         familyId: ctx.familyId,
         actor: ctx.parentUserId,
         actionTaken: CANARY_ANSWERED_ACTION,
         targetTable: 'channel_messages',
         targetId: ctx.inboundChannelMessageId,
+        after: { deploymentId },
       });
 
       return { claimed: true, outcome: 'canary_answered', reply: null };

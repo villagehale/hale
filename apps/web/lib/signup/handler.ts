@@ -5,13 +5,16 @@ import type {
   HandlerContext,
   HandlerVerdict,
 } from '~/lib/channel/router/route';
+import { loadLiveAsks } from './asks';
 import { AUTHORIZED_SIGNUP_TEMPLATE_KEY } from './copy';
+import { authorizedSignupEnabled } from './flag';
 import type { GroupSignupDelivery } from './report';
 import { type SignupRunDeps, runAuthorizedSignup } from './run';
+import { loadLastAsked } from './store';
 import type { SignupBrowser } from './types';
 
 export interface AuthorizedSignupHandlerDeps
-  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter'> {
+  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter'> {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }
@@ -28,6 +31,25 @@ export function authorizedSignupHandler(
 ): DeterministicHandler {
   return {
     name: 'authorized_signup',
+    // Any live ask of theirs: which one a text answers is the consent model's to read, so
+    // which ask is the newest does not matter here.
+    async detects(database, ctx) {
+      if (!authorizedSignupEnabled()) return false;
+      const asks = await loadLiveAsks(database, {
+        familyId: ctx.familyId,
+        parentUserId: ctx.parentUserId,
+        now: ctx.now,
+        openQuestions: [],
+      });
+      return asks.length > 0;
+    },
+    // Hale's last text about any of their asks, live or not, as `loadLiveAsks` ranks it.
+    async offListAsks(database, ctx) {
+      if (!authorizedSignupEnabled()) return [];
+      const last = await loadLastAsked(database, ctx);
+      if (last.status === 'none') return [];
+      return [{ askedAt: last.status === 'asked' ? last.askedAt : null }];
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const result = await runAuthorizedSignup(
         database,
@@ -38,6 +60,8 @@ export function authorizedSignupHandler(
           inboundChannelMessageId: ctx.inboundChannelMessageId,
           existingThread: true,
           now: ctx.now,
+          optOutUnread: ctx.optOutUnread === true,
+          openQuestions: await ctx.openQuestions(),
         },
         {
           ...deps,
@@ -54,6 +78,8 @@ export function authorizedSignupHandler(
         claimed: true,
         outcome: result.unsent ?? result.outcome,
         reply: result.deliverOnThread ? result.reply : null,
+        replies: result.deliverOnThread ? result.replies : undefined,
+        stamp: result.deliverOnThread ? result.stamp : undefined,
         templateKey: AUTHORIZED_SIGNUP_TEMPLATE_KEY,
       };
     },

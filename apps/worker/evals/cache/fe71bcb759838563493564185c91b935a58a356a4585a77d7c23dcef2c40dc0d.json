@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgwWMF8JA1SGVCdHfnviG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Theo's at 5 months, so you're close. Health Canada's guidance is to start around 6 months, when he sits with support, holds his head steady and shows interest in your food. Until then, milk is still all he needs. Meanwhile, let him watch you eat and sit him in the high chair at mealtimes so it feels familiar. Check timing with your provider too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 139,
+      "cache_read_input_tokens": 25072,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 139,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 117,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1971
+}

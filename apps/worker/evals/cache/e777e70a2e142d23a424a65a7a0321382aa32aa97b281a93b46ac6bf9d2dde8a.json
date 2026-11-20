@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgxCJ4EXEe2SFSqRHpJti",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvQcKEAgTGAI4AUIIdGhpbmtpbmcSDAwd/8CzkozM7UqEXRoMkIWlPXP87HJGfu9AIjDvH+UaT++Dnv1h/gXCCiRoYV52ooyijRXw57OEAFv/DxkWPRWX7jPVmiCI7jVAI54q2gbKPdNW4chOwp3MjTB1pZPl2FWRbgMZoJCohzr7YC8v4Z99UulfOa/vBxRYImQROxKfendeTxtrC8hEFjyTeEmTmp+VEWNSrpZ9EZHf8nz/DLW2yLYpteA9w9Z73v2IoWgYbYfRsrkc/Xi++ciGPjuOiduoxhCzUG/MLBid5exUx8n6fhq70bqwS5Hs4RwuTnralxFlgFrjUiFtbV6AqzRmlPQZuWD96CwydaS4EtGnmBKFbowsytfZsS5QDPYKkBqOUBAYvNQOTJCa3scdi3959zetysC7xoppwS6rSjJ/4t9EB3eIKFdRCVRAN7HmSGMobL/2pst3RyjoVRE5IJduQ9CFrK9JquSxR36poharohELSPAUt7mSgnM/mOcKomQJHOpM/LrxK/I6NAG69uzh9Sevd/ki7ixBhIUFrN4IpbrWatzR575KpPOQ2g97vO7zJJaLrpBh2urDCrDjLWNvZhK0fh8f75KMrwFacnEtzReFM+W4ipdnXwXOsvHThzVZL1eSUeXdaO/adtyp1X3mYtDdhO7MSUZBvCfjmh8J6Q1hZxarBKf2NTW+6UoLGY0dwrtSMooy0mpFqSEyReEnC/oJBvfXuVTdE9JYOV/+on4rtkd7x0I7PB6ZMWWkwP+fneWkhFKeQGbSurs51SzGDg9DEtE0Zoh2mFVGNXtbY+V7UpVnDlsMij0aiMY/YDw6MHPsifOoD6WRY1ZSyLPLamavePeI4muWbfcuws2HaNPd1mQHwCe9macRTBNvcG3S+wvM/33fRS70LOzEDm4KN+vRQVkRlTv3us9WD96kangnVxhDCe5n02JMR/9UraUfG63P/PwilkX/lNoawfwGrD0d/Pv+iWa5F63HfCcTz5hWol7VdeyPw6syA/sCkL+OG41LFALyh5uDiXgJN08yzDyJ9NWIvecApfYzjariI62N7QsnuF/oX94QMrthI9H0YDo3H2W1RjGc/VLgrkDlx9JAfh7yMZsEWpSWTSd0vuUSbDaub7mAei8remYNfgcLO3sJ3IeGdiWiq9yZzS5Fiku0UiOoFRXxGNjOHTLUKAUX7KpWFoLIsmy/iDUYkwXNV4gSBudUV8S0jyZj81lp6pGx3MrsgfMpx8DOX0XTsAmN3gTPpvtNzKEYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LExcnKFU6vGKhkfqHqLXHa",
+        "name": "search_village",
+        "input": {
+          "query": "parent and tot swim lessons toddler 20 months winter"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1645,
+      "cache_creation_input_tokens": 17537,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 17537
+      },
+      "output_tokens": 167,
+      "output_tokens_details": {
+        "thinking_tokens": 101
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

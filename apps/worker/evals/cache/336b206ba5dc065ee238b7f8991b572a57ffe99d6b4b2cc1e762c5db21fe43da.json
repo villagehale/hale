@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "No worries, I'll drop it for now. Want me to ask again later, or should I leave it open?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1396
+}

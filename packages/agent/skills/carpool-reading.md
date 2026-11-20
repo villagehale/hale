@@ -26,6 +26,13 @@ Decide one `intent`:
   driver and do not change it, jokes, and anything that is not about this ride.
 - `unclear`: you cannot tell. Prefer this over guessing a driver.
 
+`now` is the family's local calendar: `date` (YYYY-MM-DD), `weekday`, `time`
+(24-hour), and `nextDays` — today and the next seven days, each with its date
+and weekday. `timeZone` is the zone that calendar is in. Resolve a day from
+`nextDays` only. Do not add a day to a UTC timestamp, and do not attach the
+offset that is in force right now to a later day. A Friday evening in this
+zone is still Friday here even when UTC has already turned Saturday.
+
 Fill the facts only when the message (or the recent lines) said them. Leave a field
 null when it was not said. Never copy a name, place, time, or child from anywhere
 else.
@@ -38,8 +45,15 @@ else.
   name as the sender, and false when no one is driving.
 - `eventLabel`: the activity or plan in the words they used, shortened to a short
   label. Null when they did not name one.
-- `pickupAtIso`: the pickup instant in ISO-8601 when they gave a day and time you
-  can resolve from `nowIso` and `timeZone`. Null when the time is missing.
+- `pickupDate`: YYYY-MM-DD copied from `now.nextDays` when they named a day
+  ("tomorrow", "Saturday", "明天", "周六", "demain"). Tomorrow is the day after
+  `now.date`. A weekday is that weekday's date in `nextDays`. When they name
+  both ("tomorrow Saturday", "明天周六"), both have to be that same date; if
+  they are not the same day in `nextDays`, leave this null. Null when they
+  named no day.
+- `pickupTime`: HH:MM on a 24-hour clock, the wall time they said in `timeZone`
+  (8am is 08:00, 上午八点 is 08:00). Do not convert it to UTC and do not attach
+  an offset. Null when they gave no clock time.
 - `pickupPlace`: the pickup place in their words. Null when they did not name one.
 - `kids`: the children being driven, in their words. Null when they did not name
   them.

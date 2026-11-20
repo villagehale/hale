@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Registration for Sat 9:30 AM opens Monday, January 12 at 7:00 AM. You'll need to do it yourself when it opens, so I haven't signed Lena up yet. Here's the registration page: https://register.example-rec.test/activity/42 Have these ready: Lena, Ferreira, Sam, sam@example.test."
+  },
+  "latencyMs": 3096,
+  "usage": {
+    "input_tokens": 315,
+    "output_tokens": 120,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

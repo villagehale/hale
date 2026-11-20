@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hale couldn't get into your account on their site. Nothing is signed up for the Sat 9:30 AM session yet. I left a browser window open on their site, and it holds no spot: https://live.browser-use.com/s/fixture-live-view-token. It stays open for about 8 minutes, so you can log in and finish there."
+  },
+  "latencyMs": 2196,
+  "usage": {
+    "input_tokens": 144,
+    "output_tokens": 111,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

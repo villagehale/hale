@@ -1,0 +1,15 @@
+{
+  "value": {
+    "fact_updates": [],
+    "episode_summaries": [],
+    "pattern_detections": [],
+    "retire_facts": []
+  },
+  "latencyMs": 4105,
+  "usage": {
+    "input_tokens": 181,
+    "output_tokens": 299,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1786
+  }
+}

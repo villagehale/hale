@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says the child is enrolled in swimming on Thursday at 16:00. That is a registration claim and a scheduled-placement claim. The only registration row is for swimming, but its confirmed time is Saturday 10:00, which does not match the Thursday 16:00 named in the sentence, so neither claim is backed.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 4048
+}

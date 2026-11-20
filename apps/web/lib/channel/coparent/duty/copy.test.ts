@@ -41,6 +41,15 @@ describe('duty lines — VIL-507 absolute zero fixed copy', () => {
     expect(
       dutyLinePlan('silent_parent', { name: 'Ana', event: 'swim', day: 'Monday' }).questionAllowed,
     ).toBe(false);
+    expect(
+      dutyLinePlan('split_duty', {
+        list: 'Saturday Maya hockey 9:00am 14 Alder Ave; Saturday Leo dance 9:30am 221 Guelph St',
+      }),
+    ).toEqual({
+      purpose: 'duty_split',
+      questionAllowed: true,
+      facts: ['Saturday Maya hockey 9:00am 14 Alder Ave; Saturday Leo dance 9:30am 221 Guelph St'],
+    });
   });
 
   it('refuses a missing fact or a booking claim instead of planning a line', () => {

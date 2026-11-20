@@ -184,6 +184,8 @@ export type SendTextsOutcome<R> =
  *   is never split across the quiet-hours line.
  * - One ledger row per text, keyed `<setKey>:<i>`. A retry asks `alreadySent` for
  *   each key and sends only the texts that did not go, starting at the first unsent.
+ * - A garbled text anywhere in the set (linq/transport.ts refuseGarbledText) fails the set
+ *   at text 0, before anything is sent, so the parent never gets the clean texts before it.
  * - A failure stops the set where it is. Nothing is sent in its place: no sorry, no
  *   fallback, no summary text. A transient failure is rethrown (after the rows for
  *   the texts that did go are written) so the caller's queue retries the rest.
@@ -206,10 +208,21 @@ export async function sendTexts<R = ResolvedOutbound>(input: {
   deliverableNow?: () => boolean | Promise<boolean>;
   /** A thrown error that should be rethrown for a queue retry. Default: none. */
   isTransient?: (err: unknown) => boolean;
+  /**
+   * Wraps the send of each text that follows one this call sent, and gets that text's
+   * result: the pause between bubbles (linq/bubble-gap.ts). Absent: each text goes as
+   * soon as the one before it is recorded.
+   */
+  pace?: (send: () => Promise<R>, previous: R) => Promise<R>;
 }): Promise<SendTextsOutcome<R>> {
   const texts = input.texts.map((t) => t.trim());
   if (texts.length === 0 || texts.some((t) => t === '')) {
     throw new Error('sendTexts: every text must be non-empty');
+  }
+  try {
+    for (const text of texts) linq.refuseGarbledText(text);
+  } catch (error) {
+    return { status: 'failed', failedAt: 0, error, sent: [], alreadySent: [] };
   }
   if (input.deliverableNow && !(await input.deliverableNow())) {
     return { status: 'held', reason: 'quiet_hours' };
@@ -224,9 +237,13 @@ export async function sendTexts<R = ResolvedOutbound>(input: {
       alreadySent.push(index);
       continue;
     }
+    const previous = sent.at(-1);
     let result: R;
     try {
-      result = await send(text, index);
+      result =
+        previous && input.pace
+          ? await input.pace(() => send(text, index), previous.result)
+          : await send(text, index);
     } catch (error) {
       if (input.isTransient?.(error)) throw error;
       return { status: 'failed', failedAt: index, error, sent, alreadySent };
@@ -313,6 +330,20 @@ export function outboundLineFrom(): string | null {
     return PREVIEW_CAPTURE_LINE;
   }
   return linqApiKey() !== null ? linqFromE164() : null;
+}
+
+/** VIL-479 · edit one text part of a message already sent. The text is the caller's. */
+export async function editLinqMessage(
+  input: In<typeof linq.editLinqMessage>,
+): Promise<{ providerMessageId: string }> {
+  return captureOrLinq(
+    input,
+    'message_edit',
+    () => linq.editLinqMessage(input),
+    (id) => ({
+      providerMessageId: id,
+    }),
+  );
 }
 
 export async function sendLinqChatMessage(
@@ -402,6 +433,19 @@ export async function updateLinqGroupChat(
     input,
     'update_group',
     () => linq.updateLinqGroupChat(input),
+    () => ({
+      status: 'accepted' as const,
+    }),
+  );
+}
+
+export async function setLinqChatBackground(
+  input: In<typeof linq.setLinqChatBackground>,
+): Promise<linq.LinqEffectResult> {
+  return captureOrLinq(
+    input,
+    'set_background',
+    () => linq.setLinqChatBackground(input),
     () => ({
       status: 'accepted' as const,
     }),

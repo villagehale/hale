@@ -259,6 +259,18 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.pairRow {
+  width: 100%;
+  max-width: 1008px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s5);
+}
+
+.pairRow > .card {
+  max-width: none;
+}
+
 .act {
   padding: var(--s7);
   display: flex;
@@ -781,7 +793,8 @@
     padding: var(--s6) var(--s5) var(--s6);
   }
 
-  .split {
+  .split,
+  .pairRow {
     grid-template-columns: 1fr;
   }
 

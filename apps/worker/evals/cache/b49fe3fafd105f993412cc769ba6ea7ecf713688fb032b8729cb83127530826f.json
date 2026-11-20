@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's single question and gives times on the Toronto clock correctly (17:30 UTC is 12:30pm EST? No: Nov 16 21:30Z is 4:30pm EST, correct). However, bubble 1 says \"Nothing's on for the rest of this week\" but the week read shows Mon Nov 16 pickup, which is next week relative to Thursday Nov 12, so that framing is accurate. The main flaws: bubble 4 contains a question but it is in the last bubble as required, yet it also adds an unsupported judgment that Wednesday is the 'tightest day for work', which is an inference not given in the facts, and the checkup at 9:15am is correct. The split is reasonable, though bubble 2 combines two separate events across the day, and the Saturday party is correctly dated Nov 21. The unsupported work-tightness claim is an invention beyond the facts, so the score drops.",
+    "score": 3
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Ce prénom est déjà pris dans le groupe 😊 Pouvez-vous m'en donner un autre, par exemple en ajoutant une initiale ?"
+  },
+  "latencyMs": 1768,
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 63,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

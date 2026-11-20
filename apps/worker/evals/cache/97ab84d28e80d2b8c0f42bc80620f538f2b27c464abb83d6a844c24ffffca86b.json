@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This matches the connect-link shape the rubric requires. It recalls a real feature, quotes the plain ask word for word, and writes out no URL. It also doesn't send the parent to the app. The \"Yes, I can.\" opener is a slight extra beat but natural.",
+    "score": 5
+  }
+}

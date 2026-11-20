@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the child is registered for Saturday swim, which is a registration_done claim. The only row is an open calendar entry, which cannot back a registration, so it cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2438
+}

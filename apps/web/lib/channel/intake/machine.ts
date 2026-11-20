@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
-import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { noteMessage } from '~/lib/analytics/product-hooks';
+import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
@@ -19,10 +21,12 @@ import {
   handleKnownNumberInbound,
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
+import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
+import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
-import { householdTimezone } from '~/lib/channel/household-timezone';
+import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -34,10 +38,12 @@ import {
   safeGivenName,
 } from '~/lib/channel/identity/parent-call-name';
 import { type ParentRoleGuess, storeParentRole } from '~/lib/channel/identity/parent-role';
+import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import { isJoinCode } from '~/lib/channel/join/code';
 import { type JoinOutcome, handleJoinArrival } from '~/lib/channel/join/route';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { bubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { linqFromE164, linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import {
   deliverHaleLinqContactCard,
@@ -49,6 +55,16 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import {
+  optOutSecretSantaOnStop,
+  sharedSecretSantaLineWriter,
+} from '~/lib/channel/linq/secret-santa';
+import { answerGuestDraws, owedGuestDraws } from '~/lib/channel/linq/secret-santa-send';
+import {
+  GARBLED_TEXT,
+  type LinqChatService,
+  refuseGarbledText,
+} from '~/lib/channel/linq/transport';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
@@ -81,6 +97,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
 import { type IntakeAnswerComposer, OWED_LINES } from './answer';
+import { acceptCalendarDate } from './calendar-date';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
@@ -100,6 +117,7 @@ import {
   type PostalContext,
   crisisRegionForPlace,
   deriveDateOfBirth,
+  fillAgesFromDates,
   parseIntakePostal,
   summarizeChildren,
 } from './derive';
@@ -121,6 +139,7 @@ import {
 } from './friend-voice';
 import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
+import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
@@ -145,7 +164,8 @@ import {
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
-import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
+import { optOutHoldWriteStopsTurnEnabled, optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
+import { type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import { writeScheduleAdds } from './schedule-adds';
@@ -166,6 +186,13 @@ import {
   transcriptHasOutbound,
 } from './session';
 import type { SignupStepReader } from './signup-step';
+import {
+  type IntakeLocation,
+  currencyOfPlace,
+  intakeLocationFromPlace,
+  intakeStatedPlaceEnabled,
+  resolveStatedPlace,
+} from './stated-place';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -226,6 +253,17 @@ export interface IntakeDeps {
    * leaves it off gets the named fallback inside {@link speakFriend}.
    */
   friendVoice?: FriendVoiceComposer;
+  /**
+   * Reads a photo sent during intake, including HEIC. Absent is named
+   * `not_configured` when the flag is on and the turn has an image: the
+   * friend voice is told the image was unread, and nothing is invented.
+   */
+  readIntakePhoto?: (input: {
+    media: readonly InboundMediaPart[];
+    parentWords: string;
+    now: Date;
+    timeZone: string | null;
+  }) => Promise<NonNullable<FriendVoiceInput['photo']>>;
   /**
    * #868 · the model reads an opt-out from any wording. Read after the carrier STOP
    * keyword (which still revokes first) and before any onboarding or group turn.
@@ -298,7 +336,18 @@ export type IntakeOutcome =
    * outbound, so the first-reply sweep also owes it one reply.
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
+  /**
+   * VIL-683 · the send seam refused this turn's reply as garbled, after its writer was
+   * asked once more. Nothing was sent, and the rest of the turn did not run.
+   */
+  | { status: 'reply_garbled' }
   | { status: 'greeted' }
+  /**
+   * VIL-686 · a guest (no Hale channel of their own) whose Secret Santa draw waited on
+   * their first text got it as this turn's reply, in place of intake's greeting.
+   * `delivered` is how many draws landed; zero means nothing was sent this turn.
+   */
+  | { status: 'secret_santa_draw'; delivered: number }
   /** VIL-385 ladder beat that is not yet a provisioned family. */
   | { status: 'first_touch'; step: 'place_asked' | 'place_waiting' | 'find_sent' | 'ages_waiting' }
   | { status: 'follow_up_asked' }
@@ -374,7 +423,29 @@ export type IntakeOutcome =
       // `group_turn_during_intake` (group onboarding v2): a family-group message from a
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
-      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
+      reason:
+        | 'invalid_number'
+        | 'no_open_conversation'
+        | 'group_turn_during_intake'
+        | 'opted_out'
+        /**
+         * VIL-707. The opt-out read failed. With `OPT_OUT_UNREAD_HOLD_TURN_ENABLED`
+         * exactly `true`, the turn ends here: nothing is sent and the text is not
+         * claimed for the coach. The hold row is what the recovery sweep re-reads.
+         */
+        | 'opt_out_unread'
+        /**
+         * VIL-707. The hold write threw. With `OPT_OUT_HOLD_WRITE_STOPS_TURN_ENABLED`
+         * exactly `true`, the turn ends here after one `opt_out_hold_unwritten` page.
+         * The text stays unclaimed so a later delivery can try the hold again.
+         */
+        | 'opt_out_hold_unwritten';
+      /**
+       * On the hand-off (`no_open_conversation`) only, set by {@link handleInboundSms}: this
+       * turn's opt-out read failed, so the text may be a stop. It rides to the router with
+       * the text, so no ask moves on it whether or not the hold row was written.
+       */
+      optOutUnread?: true;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -403,6 +474,10 @@ export interface Inbound {
   chatId?: string;
   /** A Linq group turn. The Name and Photo card is 1:1 only and never shares here. */
   isGroup?: boolean;
+  /** See `InboundMessage.service` (intake/transport.ts): what says the chat is iMessage. */
+  service?: LinqChatService;
+  /** See `InboundMessage.answerBy` (intake/transport.ts). */
+  answerBy?: Date;
   /** See `InboundMessage.budget` (intake/transport.ts). Absent is the sender's. */
   budget?: 'sender' | 'chat';
   /** VIL-348 — the provider already answered this keyword itself; see
@@ -411,6 +486,8 @@ export interface Inbound {
    * there: a caller written before the provider could answer a keyword means "it
    * answered nothing", which is exactly what absent resolves to. */
   providerAnsweredKeyword?: ProviderKeyword | null;
+  /** Linq parts that were not text. Absent on a text-only turn. */
+  media?: readonly InboundMediaPart[];
 }
 
 /** The caregiver lane's ports, taken off intake's deps. The names differ on purpose. */
@@ -428,6 +505,36 @@ export async function handleInboundSms(
   database: Database,
   inbound: Inbound,
   deps: IntakeDeps,
+): Promise<IntakeOutcome> {
+  const read = { optOutUnread: false };
+  let outcome: IntakeOutcome;
+  try {
+    outcome = await runIntakeTurn(database, inbound, deps, read);
+  } catch (err) {
+    // VIL-683 · the send seam refused a garbled reply its writer had already drafted
+    // twice. Nothing went out and nothing stands in for it; the turn ends here by name
+    // rather than as a webhook failure. sendAndRecord put it on the family's audit trail.
+    if (!isGarbledRefusal(err)) throw err;
+    console.warn({ code: GARBLED_TEXT }, 'intake: a garbled reply was refused - nothing sent');
+    return { status: 'reply_garbled' };
+  }
+  // The hand-off carries a failed opt-out read with the text itself, so the router's guard
+  // never rests on the hold row alone: settleOptOutHold may fail to write it.
+  if (
+    outcome.status === 'ignored' &&
+    outcome.reason === 'no_open_conversation' &&
+    read.optOutUnread
+  ) {
+    return { ...outcome, optOutUnread: true };
+  }
+  return outcome;
+}
+
+async function runIntakeTurn(
+  database: Database,
+  inbound: Inbound,
+  deps: IntakeDeps,
+  read: { optOutUnread: boolean },
 ): Promise<IntakeOutcome> {
   const now = deps.now ?? inbound.receivedAt;
 
@@ -456,7 +563,16 @@ export async function handleInboundSms(
         text: inbound.body,
         language: null,
       });
-      await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
+      const settled = await settleOptOutHold(
+        database,
+        phoneHash,
+        inbound,
+        reading,
+        now,
+        deps.optOutHold,
+      );
+      const held = heldUnreadOutcome(settled, reading);
+      if (held) return held;
       if (reading?.intent === 'stop') {
         return handleStop(
           database,
@@ -495,13 +611,25 @@ export async function handleInboundSms(
   // UNCLAIMED: a stop is a legal instruction, its handling is idempotent, and a claim here
   // would refuse the resend that re-runs a stop whose first attempt crashed. The model
   // writes the one confirmation; an empty one sends nothing (the revocation still runs).
+  let turnIntent: string | null = null;
   if (inbound.body.trim().length > 0) {
     const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
-    await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
+    turnIntent = reading?.intent ?? null;
+    read.optOutUnread = reading === null;
+    const settled = await settleOptOutHold(
+      database,
+      phoneHash,
+      inbound,
+      reading,
+      now,
+      deps.optOutHold,
+    );
+    const held = heldUnreadOutcome(settled, reading);
+    if (held) return held;
     if (reading?.intent === 'stop') {
       return handleStop(
         database,
@@ -544,6 +672,28 @@ export async function handleInboundSms(
     linqGroupOnboardingV2Enabled()
   ) {
     return { status: 'ignored', reason: 'group_turn_during_intake' };
+  }
+
+  // 5c. VIL-686 · a guest whose Secret Santa draw waits on their first text to Hale. Only a
+  // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
+  // unread text) from a number that has not stopped intake: their draw is this turn's reply,
+  // and the kid-oriented greeting does not run on it. Intake can start on a later turn.
+  if (inbound.isGroup !== true && turnIntent === 'none' && session?.state !== 'stopped') {
+    const owed = await owedGuestDraws(database, phoneHash);
+    if (owed.length > 0) {
+      return claimedTurn(database, inbound, now, async () => {
+        const answered = await answerGuestDraws(
+          database,
+          {
+            participantIds: owed,
+            reply: (body) => deps.transport.send({ to: phoneE164, body }),
+            now,
+          },
+          { writer: sharedSecretSantaLineWriter() },
+        );
+        return { status: 'secret_santa_draw', delivered: answered.delivered };
+      });
+    }
   }
 
   // 6. A live join code outranks whatever conversation this number is already in.
@@ -781,8 +931,16 @@ interface SendContext {
   phoneE164: string;
   now: Date;
   /** The pipe this turn arrived on. Outbound rows and the transcript replay
-   * record it, so a later receipt can find the Linq chat. */
-  pipe: { channel: 'sms' | 'imessage'; chatId: string | null; isGroup: boolean };
+   * record it, so a later receipt can find the Linq chat. `service` is the one Linq said
+   * carried the text, null when it did not say. `answerBy` is when the webhook it came on
+   * stops waiting, null when none waits. */
+  pipe: {
+    channel: 'sms' | 'imessage';
+    chatId: string | null;
+    isGroup: boolean;
+    service: LinqChatService | null;
+    answerBy: Date | null;
+  };
 }
 
 function messagingPipe(inbound: Inbound): SendContext['pipe'] {
@@ -791,9 +949,11 @@ function messagingPipe(inbound: Inbound): SendContext['pipe'] {
       channel: 'imessage',
       chatId: inbound.chatId ?? null,
       isGroup: inbound.isGroup === true,
+      service: inbound.service ?? null,
+      answerBy: inbound.answerBy ?? null,
     };
   }
-  return { channel: 'sms', chatId: null, isGroup: false };
+  return { channel: 'sms', chatId: null, isGroup: false, service: null, answerBy: null };
 }
 
 /** One in-flight share per session object, so a second bubble in the same turn cannot double-post. */
@@ -856,12 +1016,42 @@ async function sendMapBubbles(
   transcript: TranscriptEntry[],
 ): Promise<'delivered' | 'send_failed'> {
   const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  // VIL-683 · every bubble is checked before the first goes: a garbled one leaves the whole
+  // map owed, so the parent never has the bubbles before it.
+  try {
+    for (const bubble of toSend) refuseGarbledText(bubble);
+  } catch (err) {
+    if (!isGarbledRefusal(err)) throw err;
+    if (ctx.session.familyId) {
+      await recordGarbledRefusal(database, { familyId: ctx.session.familyId, surface: 'intake' });
+    }
+    console.error(
+      { reason: 'map_send_failed', err: GARBLED_TEXT, landed: 0, bubbles: toSend.length },
+      'intake: activity map not delivered, still owed',
+    );
+    return 'send_failed';
+  }
+  // VIL-682 K5 · lit, on a chat Linq said is iMessage each bubble after the first waits
+  // the bubble gap, none past the moment Linq stops waiting for this webhook.
+  const familyId = ctx.session.familyId;
+  const chatId = ctx.pipe.channel === 'imessage' ? ctx.pipe.chatId : null;
+  const gaps =
+    chatId && familyId && coachBubblesEnabled(familyId)
+      ? bubbleGaps({
+          chatId,
+          service: ctx.pipe.service,
+          answerBy: ctx.pipe.answerBy,
+          log: console,
+        })
+      : null;
   for (const [index, bubble] of toSend.entries()) {
     let landed = false;
     let err: string | null = null;
     try {
-      landed =
-        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+      const send = () => sendAndRecord(database, ctx, bubble, deps, transcript);
+      const sent =
+        index > 0 && gaps ? await gaps(send, (out) => out.channelMessageId != null) : await send();
+      landed = sent.channelMessageId != null;
     } catch (caught) {
       err = caught instanceof Error ? caught.name : 'unknown';
     }
@@ -905,7 +1095,15 @@ async function sendAndRecord(
       ? liftPreviewLink(body)
       : null;
   const text = lifted ? lifted.text : body;
-  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  } catch (err) {
+    if (isGarbledRefusal(err) && ctx.session.familyId) {
+      await recordGarbledRefusal(database, { familyId: ctx.session.familyId, surface: 'intake' });
+    }
+    throw err;
+  }
   const wireBody = sent.linkOmitted ? plainTextWithoutLinks(text) : text;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
@@ -1030,6 +1228,14 @@ export async function writeChannelMessage(
     actionTaken: entry.direction === 'in' ? 'sms_intake_inbound' : 'sms_intake_outbound',
     targetTable: 'channel_messages',
     targetId: id,
+  });
+  noteMessage({
+    direction: entry.direction,
+    familyId,
+    channel,
+    isGroup: entry.inGroup,
+    chatId: entry.chatId,
+    database,
   });
   return id;
 }
@@ -1427,6 +1633,34 @@ function linesOfFind(message: string): string[] {
 
 function friendAddress(ctx: SendContext): 'tu' | 'vous' {
   return ctx.pipe.isGroup ? 'vous' : 'tu';
+}
+
+async function intakePhotoExtra(
+  deps: IntakeDeps,
+  inbound: Inbound,
+  timeZone: string | null,
+): Promise<{ photo: NonNullable<FriendVoiceInput['photo']> } | Record<string, never>> {
+  if (!intakePhotoReadEnabled() || inbound.isGroup) return {};
+  if (!inbound.media?.some((part) => part.kind === 'image')) return {};
+  if (!deps.readIntakePhoto) {
+    console.info({ skipped: 'not_configured' }, 'intake photo: reader absent');
+    return { photo: { read: 'unread' } };
+  }
+  return {
+    photo: await deps.readIntakePhoto({
+      media: inbound.media,
+      parentWords: inbound.body,
+      now: inbound.receivedAt,
+      timeZone,
+    }),
+  };
+}
+
+function placeCurrency(
+  place: Parameters<typeof currencyOfPlace>[0],
+): { currency: 'CAD' | 'USD' } | Record<string, never> {
+  const currency = currencyOfPlace(place);
+  return currency ? { currency } : {};
 }
 
 function friendFields(
@@ -1868,6 +2102,7 @@ async function friendOnboardingTurn(
     card = located.accepted;
   }
   const priorGiven = session.firstTouch?.given ?? null;
+  const photo = await intakePhotoExtra(deps, inbound, place?.timezone ?? null);
   // Pre-family: the map, the schedule and the co-parent ask come after provisioning.
   const checklist: OnboardingChecklist = {
     postal: placeSettled({ place, given: priorGiven }),
@@ -1907,6 +2142,8 @@ async function friendOnboardingTurn(
         introduce: opening && !transcriptHasOutbound(transcript),
         parentWords: inbound.body,
         placeLabel: place?.city || place?.areaCoarse || null,
+        ...placeCurrency(place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -1924,9 +2161,11 @@ async function friendOnboardingTurn(
       ...(opening ? { attemptTimeoutMs: OPENING_ATTEMPT_TIMEOUT_MS } : {}),
       // Place and an age provision this turn: the map and the name ask are the
       // reply, written next. This draft is read for its facts only.
-      replyDiscardedWhen: (capture) => {
+      replyDiscardedWhen: async (capture) => {
         const next = storedFromCapture(prior, capture);
-        const kids = withKnownAges(next.collectedChildren);
+        next.place = await withStatedPlace(capture, next.place);
+        next.collectedChildren = fillAgesFromDates(next.collectedChildren, now);
+        const kids = withKnownAges(next.collectedChildren, now);
         const settled = settledLocation(next.place ? persistPlace(next.place) : null, {
           placeDeclined: priorGiven?.placeDeclined === true || capture.placeDeclined,
         });
@@ -1936,6 +2175,8 @@ async function friendOnboardingTurn(
   );
   language = spoken.capture.language ?? language;
   const stored = storedFromCapture(prior, spoken.capture);
+  stored.place = await withStatedPlace(spoken.capture, stored.place);
+  stored.collectedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const nextPlace = stored.place ? persistPlace(stored.place) : null;
   const collected: IntakeCollected = {
     children: stored.collectedChildren,
@@ -1945,7 +2186,7 @@ async function friendOnboardingTurn(
   const given = givenFromStored(priorGiven, stored, spoken.capture, {
     coarseCodeAsked: friendOutbound(spoken) != null && spoken.placeAsk === 'coarse',
   });
-  const children = withKnownAges(collected.children);
+  const children = withKnownAges(collected.children, now);
   const settled = settledLocation(nextPlace, given);
   const baseTouch: FirstTouchPersisted = {
     language,
@@ -1992,7 +2233,7 @@ async function friendOnboardingTurn(
   const waitingAges = settled != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
-  const partial = knownAgeChildren(collected.children);
+  const partial = knownAgeChildren(collected.children, now);
   if (settled && priorCount >= REASK_CAP && partial.length > 0) {
     return provision(
       database,
@@ -2142,12 +2383,14 @@ async function retryFailedLinqContactCard(
 }
 
 function childAgesChanged(
-  prior: readonly { ageMonths: number | null }[],
-  next: readonly { ageMonths: number | null }[],
+  prior: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
+  next: readonly { ageMonths: number | null; dateOfBirth?: string | null }[],
 ): boolean {
-  return next.some(
-    (child, index) => child.ageMonths != null && child.ageMonths !== prior[index]?.ageMonths,
-  );
+  return next.some((child, index) => {
+    const before = prior[index];
+    if (child.dateOfBirth && child.dateOfBirth !== before?.dateOfBirth) return true;
+    return child.ageMonths != null && child.ageMonths !== before?.ageMonths;
+  });
 }
 
 function childNamesChanged(
@@ -2172,11 +2415,13 @@ async function syncOnboardingChildren(
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   next: readonly {
     name: string | null;
     ageMonths: number | null;
     agePrecision: 'years' | 'months' | null;
+    dateOfBirth?: string | null;
   }[],
   now: Date,
 ): Promise<void> {
@@ -2200,7 +2445,11 @@ async function syncOnboardingChildren(
     const patch: { name?: string; dateOfBirth?: string; dobPrecision?: string } = {};
     const first = kidFirstName(child.name);
     if (first && row.name !== first) patch.name = first;
-    if (child.ageMonths != null && child.ageMonths !== before?.ageMonths) {
+    const exact = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+    if (exact && exact !== before?.dateOfBirth) {
+      patch.dateOfBirth = exact;
+      patch.dobPrecision = 'exact';
+    } else if (child.ageMonths != null && child.ageMonths !== before?.ageMonths && !exact) {
       patch.dateOfBirth = deriveDateOfBirth(child.ageMonths, child.agePrecision ?? 'years', now);
       patch.dobPrecision = 'derived';
     }
@@ -2318,6 +2567,7 @@ async function friendColdTurn(
   }
   // Their Saturday, on their clock: the zone signup wrote from their postal code.
   const timeZone = await householdTimezone(database, familyId);
+  const photo = await intakePhotoExtra(deps, inbound, knownTimezone(timeZone));
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
   let alreadyRecorded: {
@@ -2332,6 +2582,8 @@ async function friendColdTurn(
         parentWords: inbound.body,
         placeLabel:
           session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+        ...placeCurrency(session.firstTouch?.place),
+        ...photo,
         agesLabel: summarizeChildren(session.collected.children),
         ageMonths: session.collected.children.flatMap((child) =>
           child.ageMonths == null ? [] : [child.ageMonths],
@@ -2394,6 +2646,8 @@ async function friendColdTurn(
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session.firstTouch?.place),
+      ...photo,
       agesLabel: summarizeChildren(session.collected.children),
       ageMonths: session.collected.children.flatMap((child) =>
         child.ageMonths == null ? [] : [child.ageMonths],
@@ -2449,7 +2703,7 @@ async function friendColdTurn(
     },
     spoken.capture,
   );
-  const mergedChildren = stored.collectedChildren;
+  const mergedChildren = fillAgesFromDates(stored.collectedChildren, now);
   const agesChanged = childAgesChanged(session.collected.children, mergedChildren);
   if (agesChanged || childNamesChanged(session.collected.children, mergedChildren)) {
     await syncOnboardingChildren(
@@ -2719,14 +2973,32 @@ function persistPlace(place: FirstTouchPlace): NonNullable<FirstTouchPersisted['
     postalCode: place.postalCode,
     municipality: place.municipality,
     city: place.city,
+    ...(place.country ? { country: place.country } : {}),
+    ...(place.countryCode ? { countryCode: place.countryCode } : {}),
+    ...(place.province ? { province: place.province } : {}),
+    ...(place.timezone ? { timezone: place.timezone } : {}),
+    ...(place.currency ? { currency: place.currency } : {}),
   };
+}
+
+async function withStatedPlace(
+  capture: OnboardingCapture,
+  place: FirstTouchPlace | null,
+): Promise<FirstTouchPlace | null> {
+  if (!intakeStatedPlaceEnabled()) return place;
+  const stated = await resolveStatedPlace({
+    postalCode: capture.postalCode,
+    city: capture.city,
+    country: capture.country ?? null,
+    region: capture.region ?? null,
+  });
+  return stated ?? place;
 }
 
 function intakeLocationFor(
   place: NonNullable<FirstTouchPersisted['place']> | FirstTouchPlace,
 ): IntakeLocation | null {
-  if (place.kind !== 'postal') return null;
-  return parseIntakePostal(place.postalCode ?? place.areaCoarse);
+  return intakeLocationFromPlace(place);
 }
 
 /**
@@ -2765,23 +3037,37 @@ async function handleDetails(
  * child we know only the name of cannot reach provisioning at all, and no branch
  * downstream has to decide what date to invent for them.
  */
-function withKnownAges(children: readonly ExtractedChild[]): ProvisionChild[] | null {
+function withKnownAges(children: readonly ExtractedChild[], now: Date): ProvisionChild[] | null {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) return null;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (!provisioned) return null;
+    known.push(provisioned);
   }
   return known;
 }
 
 /** Children whose age was actually told. Siblings still missing an age are left out. */
-function knownAgeChildren(children: readonly ExtractedChild[]): ProvisionChild[] {
+function knownAgeChildren(children: readonly ExtractedChild[], now: Date): ProvisionChild[] {
   const known: ProvisionChild[] = [];
   for (const child of children) {
-    if (child.ageMonths === null || child.agePrecision === null) continue;
-    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+    const provisioned = provisionChildFromExtracted(child, now);
+    if (provisioned) known.push(provisioned);
   }
   return known;
+}
+
+function provisionChildFromExtracted(child: ExtractedChild, now: Date): ProvisionChild | null {
+  const dateOfBirth = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
+  const ageMonths = child.ageMonths ?? (dateOfBirth ? ageInMonths(dateOfBirth, now) : null);
+  const agePrecision = child.agePrecision ?? (dateOfBirth ? 'months' : null);
+  if (ageMonths === null || agePrecision === null) return null;
+  return {
+    name: child.name,
+    ageMonths,
+    agePrecision,
+    ...(dateOfBirth ? { dateOfBirth } : {}),
+  };
 }
 
 /**
@@ -2985,18 +3271,41 @@ async function provision(
   const children = discoveryOn
     ? gathered.children.map((child) => ({ ...child, name: kidFirstName(child.name) }))
     : gathered.children;
-  const { familyId, userId } = await provisionFromIntake(database, {
-    phoneE164,
-    phoneHash: session.phoneHash,
-    children,
-    location,
-    sourceCode: session.sourceCode,
-    firstMessage: firstInbound?.body ?? inbound.body,
-    transcript: gathered.transcript,
-    now,
-    language,
-    linqContactCardClaim: session.linqContactCardClaim,
-  });
+  let familyId: string;
+  let userId: string;
+  if (session.familyId && session.userId) {
+    familyId = session.familyId;
+    userId = session.userId;
+  } else {
+    const provisioned = await provisionFromIntake(database, {
+      phoneE164,
+      phoneHash: session.phoneHash,
+      children,
+      location,
+      sourceCode: session.sourceCode,
+      firstMessage: firstInbound?.body ?? inbound.body,
+      transcript: gathered.transcript,
+      now,
+      language,
+      linqContactCardClaim: session.linqContactCardClaim,
+    });
+    familyId = provisioned.familyId;
+    userId = provisioned.userId;
+    // VIL-532: the channel row commits inside provisionFromIntake. Link the
+    // session before radar / voice, which can throw, so a retry does not insert
+    // a second SMS channel and does not leave the family unlinked.
+    await saveSession(
+      database,
+      session,
+      {
+        collected: gathered.collected,
+        familyId,
+        userId,
+        lastProviderId: inbound.providerId,
+      },
+      now,
+    );
+  }
 
   const locationRequest = session.firstTouch?.locationRequest;
   if (locationRequest) {
@@ -3020,7 +3329,7 @@ async function provision(
 
   deps.keepTyping?.();
   // No place, no find: nothing is searched and nothing nearby is said.
-  const radar = location
+  const radar = location?.timezone
     ? await deps.radar.compose({
         familyId,
         children: gathered.collected.children,
@@ -3031,7 +3340,12 @@ async function provision(
         ...(discoveryOn ? { activityMap: true } : {}),
       })
     : null;
-  if (!radar) console.info({ outcome: 'no_place' }, 'intake: provisioned without a place');
+  if (!radar) {
+    console.info(
+      { outcome: location ? 'zone_unknown' : 'no_place' },
+      location ? 'intake: provisioned without a zone' : 'intake: provisioned without a place',
+    );
+  }
   const placeLabel =
     session.firstTouch?.place?.city ||
     session.firstTouch?.place?.areaCoarse ||
@@ -3078,8 +3392,8 @@ async function provision(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       checklist,
-      // Dated facts need the family's own clock; with no place there is none to read.
-      ...(location ? { now, timeZone: location.timezone } : {}),
+      // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
+      ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3325,6 +3639,18 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
+  // The web funnel's other end of signup_started (the "Text Hale to start" click).
+  // Distinct id is the hashed family — the same person IdentifyUser will use —
+  // never the phone, never the intake session. Dark until WEB_ENABLED. Not
+  // through deps.capture: tests stub that seam for intake_started/completed.
+  void captureWebEvent('signup_completed', hashFamilyId(familyId), { surface: 'sms' }).then(
+    () => undefined,
+    (err: unknown) => {
+      console.warn('analytics: signup_completed not recorded', {
+        err: err instanceof Error ? err.name : 'unknown',
+      });
+    },
+  );
   return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 
@@ -3729,6 +4055,7 @@ async function helpBody(
       parentWords,
       placeLabel:
         session?.firstTouch?.place?.city || session?.firstTouch?.place?.areaCoarse || null,
+      ...placeCurrency(session?.firstTouch?.place),
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,
@@ -3750,6 +4077,25 @@ export interface OptOutHoldPort {
  * read settles only the message it read; another unread text of the same number stays
  * held until it is read (opt-out-recovery.ts).
  */
+type HoldSettle = 'ok' | 'hold_unwritten';
+
+/**
+ * VIL-707. A failed read, or a hold that did not land, ends the turn when its flag is
+ * exactly `true`. Off, the turn continues as before.
+ */
+function heldUnreadOutcome(
+  settled: HoldSettle,
+  reading: OptOutReading | null,
+): Extract<IntakeOutcome, { status: 'ignored' }> | null {
+  if (settled === 'hold_unwritten') {
+    return { status: 'ignored', reason: 'opt_out_hold_unwritten' };
+  }
+  if (reading === null && optOutUnreadHoldTurnEnabled()) {
+    return { status: 'ignored', reason: 'opt_out_unread' };
+  }
+  return null;
+}
+
 async function settleOptOutHold(
   database: Database,
   phoneHash: string,
@@ -3757,8 +4103,8 @@ async function settleOptOutHold(
   reading: OptOutReading | null,
   now: Date,
   hold?: OptOutHoldPort,
-): Promise<void> {
-  if (inbound.body.trim().length === 0) return;
+): Promise<HoldSettle> {
+  if (inbound.body.trim().length === 0) return 'ok';
   const port: OptOutHoldPort = hold ?? {
     hold: async (hash, providerMessageId, at) => {
       await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
@@ -3770,16 +4116,20 @@ async function settleOptOutHold(
   try {
     if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
     else await port.settled(inbound.providerId);
+    return 'ok';
   } catch (err) {
-    // The hold is a guard, never a reason to drop the turn: the turn goes on. A hold that
-    // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
+    // A hold that did not land leaves a possibly unread stop with no row for the sweep,
+    // so it pages. With the flag exactly `true`, that is also the end of the turn.
+    // Off, the turn goes on, which is the path this flag exists to close.
     const name = err instanceof Error ? err.name : 'unknown';
     if (reading === null) {
       console.error({ err: name }, 'opt-out hold: write failed');
       await pageOps(database, { site: 'opt_out_hold_unwritten', facts: {} });
+      if (optOutHoldWriteStopsTurnEnabled()) return 'hold_unwritten';
     } else {
       console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
     }
+    return 'ok';
   }
 }
 
@@ -3817,6 +4167,9 @@ async function restartFromReader(
   try {
     sent = await sendResolvingNewChat(deps.transport, { to: args.phoneE164, body });
   } catch (error) {
+    // VIL-683 · the send seam refused a garbled confirmation: no provider refused anything,
+    // the words never went. Re-enrolled, nothing sent, as for a withheld one.
+    if (isGarbledRefusal(error)) return { status: 'restarted', ack: 'voice_unsent' };
     // VIL-348: an opt-out list that still holds this number refuses the confirmation
     // permanently (21610) although Hale has re-enrolled them. Named, never a 500 that
     // would only retry identically after the consent write. A transient failure throws.
@@ -3874,6 +4227,10 @@ export async function handleStop(
   // STOP has to reach that row directly, and it erases the stored number along with the
   // opt-in: the consent was the only basis for holding a non-user's number at all.
   await optOutGuestRemindersOnStop(database, phoneE164, now);
+
+  // VIL-686 · the same for a Secret Santa draw still waiting on this number: a guest has no
+  // channel to revoke, so the STOP reaches the draw row directly.
+  await optOutSecretSantaOnStop(database, phoneE164);
 
   // A STOP after provisioning must revoke the real channel + append the consent
   // withdrawal + audit — the enrolment engine already owns that transaction, so this
@@ -3941,6 +4298,9 @@ export async function handleStop(
     // would fail the one message we are legally required to get right. A TRANSIENT
     // failure is still a failure: it throws, and the retry finds the session closed and
     // sends the ack again.
+    // VIL-683 · a garbled confirmation the send seam refused reached nobody, not even by
+    // the carrier: the stop is recorded and the outcome says nothing went.
+    if (isGarbledRefusal(error)) return { status: 'stopped', ack: 'voice_unsent' };
     const refusal = readSendRefusal(error);
     if (!refusal?.permanent) throw error;
   }

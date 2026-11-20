@@ -62,6 +62,18 @@ describe('redaction', () => {
 });
 
 describe('captureSafeException', () => {
+  it('is a named no-op without POSTHOG_ERROR_TRACKING_ENABLED even when a key is set', async () => {
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', 'phc_project_test');
+    vi.stubEnv('POSTHOG_ERROR_TRACKING_ENABLED', '');
+    resetPosthogClientsForTests();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(captureSafeException(poisoned(), 'system', { hale_surface: 'api' })).resolves.toBe(
+      'not_configured',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('is a named no-op without POSTHOG_PROJECT_API_KEY — nothing leaves', async () => {
     vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
     resetPosthogClientsForTests();
@@ -75,6 +87,7 @@ describe('captureSafeException', () => {
 
   it('with a key, the wire carries the class and not the message', async () => {
     vi.stubEnv('POSTHOG_PROJECT_API_KEY', 'phc_project_test');
+    vi.stubEnv('POSTHOG_ERROR_TRACKING_ENABLED', 'true');
     vi.stubEnv('POSTHOG_HOST', 'https://ph.example.com');
     resetPosthogClientsForTests();
     const fetchMock = vi.fn(

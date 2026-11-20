@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
+import { loadFactSources } from '@hale/worker/fact-sources';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -10,7 +11,6 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
-import { loadFactSources } from '@hale/worker/fact-sources';
 import { handleParentMemory } from './store';
 
 const NOW = new Date('2026-10-09T15:00:00.000Z');

@@ -15,18 +15,19 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { INTRO_GROUP_VOICE_FIXTURES } from './intro-group-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
-  dryReportLine,
-  isDryRun,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
 
@@ -41,7 +42,9 @@ const TOOL_SCHEMA = {
   required: ['intro'],
 };
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 const MAX_TOKENS = 320;
 const MAX_CHARS = 480;
@@ -63,7 +66,7 @@ function refusals(body, request) {
   if (body === '') return ['empty'];
   const found = [];
   if (body.length > MAX_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   const lower = body.toLowerCase();
   if (
@@ -97,6 +100,7 @@ function flatten(text) {
 }
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();

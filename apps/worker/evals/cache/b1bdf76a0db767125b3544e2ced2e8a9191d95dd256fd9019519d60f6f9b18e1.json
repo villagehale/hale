@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzSiNCpKdWMDCEKMNBAj",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2QYKEAgTGAI4AUIIdGhpbmtpbmcSDGTyMDaA6MZKAxGfrxoMpb/nZ8efVJqd/dPSIjDawFPYUdPXbX763S/vc1SgYp5oIfKx/sJVrw/IVcIezo7Lunwsaphbp1r4GTOv+m0q9gUAXhSablmUS+DWUZQxHvHo/ICHU2/t/Gev2W7QAivsIrYOww2pIzZ+uGJa0o60jtQphMcF1yGIi7JVPNTHt0mbicHS6WTTzpx6qWfeaibXHvO9D6iQ+KW0ap9VOLCXx+Xgh4/9Gt29CNwKmaNB8HzwEGrPokswnT8/k5cHqjZq5+zRw/B4yLvXszzaUjetIytlsykjOrcl+LfDsqYQBonwPZx3WwD3maDePLj/VIrOkny8Vv7BdVtaVMGxS+FBkpsoy/Soxn6ZorO0I8a/cPHu3KXxG2srtKWHuRFIJ7S+L0bGG4Y4dPOOeuH83uhqnRomGwQ1IHjIYjMS9v82wN+CzDl/vHtdXNOo6TxHtRmpfsjLPYfuBiE9k/ke5XxchevAvbO+TmV5KqGBh1pYxji/rr6ozYaUNQO6aCHE8zcm+ImwaFDlW70A/x1bKXx++N3xQVCUUn8EUDLtFDems844aQCK9jKPD4B8UeXX7DR63ReAeTmt4nuYx/gtPaS9BtGWKxPycCI4jebb7cAyGMKkYjBZloKYRSikw7ILzdmkrZjfK/lwPgsNgbbg69lPCalHstBuSTPGtqCnQr61ZE0UWcEvRvW7zSs+9J1GWYFNHErcQOf1P2sjCc6xvfRp6C+5eK1jaK5r1x2WmtynguLx/lSp1q+a0sFf+0JAztSL/Q2bIqxPkDULoeu/Myp0QBed6tKvBqXGU8JL+22F14PY5WH4mCNlgdr5nmi1YqGWC3Y7xXER7dXiQRF5WaKBBUDzAjsQ7Zreuk/VpCGLL5mpPr1Z+OM4uMhkPMvAUiq8WbtTQPq3hkVbx8VQPxpcNVb62dtot4gP91zhnjMIGwkG6Vq3QtipvhdzVKFnVMwpD5Tr6X9ZfQ+BdPwpEFAcT+pxTGpLl7XHQZWv2tTSBhuC8HEWS14HUmJw5ghleHgub2NZd1lFeNz5bh65jD3oswCU/tPOi/D5/JjDYjbUyDFWQfE5xQrc7SQwQNc3+XePpvK67/zdoRgB"
+      },
+      {
+        "type": "text",
+        "text": "有两个适合20个月宝宝的，都是家长陪着下水的班。\n\nParent and tot swim 在 Wellesley Community Centre pool，周六早上9:30，1月9日到3月13日，招收6到36个月的宝宝。[link-fd81ce]\n\nLittle splashers 在 Regent Park Aquatic Centre，周日10:15，1月10日到3月14日，招收12到36个月的宝宝。[link-bf3175]\n\n两个班都是12月1日早上7:00开始报名。我没办法替你报名，只能把日期告诉你。"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2266,
+      "cache_read_input_tokens": 20788,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2266,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 273,
+      "output_tokens_details": {
+        "thinking_tokens": 81
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

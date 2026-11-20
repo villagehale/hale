@@ -173,6 +173,16 @@ describe('composeOpsDailyPost', () => {
     );
   });
 
+  it('adds a counts-only Priority support line when Max entitlements are on', () => {
+    const text = composeOpsDailyPost({
+      ...SAMPLE,
+      prioritySupport: { maxFamilies: 2, withUnanswered: 1 },
+    });
+    expect(text).toContain('Priority support: 2 Max families | unanswered 1');
+    expect(text).not.toMatch(UUID);
+    expect(composeOpsDailyPost(SAMPLE)).not.toContain('Priority support:');
+  });
+
   it('still posts on a day with no families, so silence never reads as an outage', () => {
     expect(composeOpsDailyPost(ZERO)).toBe(
       [

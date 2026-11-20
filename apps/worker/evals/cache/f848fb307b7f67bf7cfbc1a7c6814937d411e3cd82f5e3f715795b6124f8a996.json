@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这一场,对方会在1月12日(周一)早上7:00开放报名,到时需要你自己去报。报名页面:https://register.example-rec.test/activity/42 。需要填的信息先备好:孩子名 Lena,孩子姓 Ferreira,家长名 Sam,家长邮箱 sam@example.test。目前还没有报上名。"
+  },
+  "latencyMs": 3250,
+  "usage": {
+    "input_tokens": 313,
+    "output_tokens": 135,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

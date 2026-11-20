@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30这一场,Hale现在还不能在这个网站上帮你们完成报名。Hale没有尝试登录,所以不是登录失败。报名请你们在这里自己完成:https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 2166,
+  "usage": {
+    "input_tokens": 136,
+    "output_tokens": 90,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

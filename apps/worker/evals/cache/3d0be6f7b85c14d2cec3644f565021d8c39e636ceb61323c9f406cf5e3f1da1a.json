@@ -1,0 +1,60 @@
+{
+  "response": {
+    "id": "msg_011CgwpCc8gkWrQJJrXFRYjH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Pyymt88UBAhLcvZnGQvpaM",
+        "name": "offer_signup",
+        "input": {
+          "child": "Ada",
+          "activity": "Little Kickers",
+          "source": "chat",
+          "registrationUrl": "https://kickers.example-sport.test/register/little-kickers-sat-0930",
+          "evidence": "体操那个不要了，换 Little Kickers 吧，周六9:30那个班，12月1号早上7点开放报名",
+          "sessions": [
+            {
+              "id": "little-kickers-sat-0930",
+              "label": "Little Kickers Saturday 9:30",
+              "startsAt": "2026-12-05T09:30:00-05:00",
+              "endsAt": "2026-12-05T09:30:00-05:00",
+              "full": false,
+              "priceCents": null
+            }
+          ],
+          "approvedPriceCents": null,
+          "opensAt": "2026-12-01T07:00:00-05:00"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 493,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21624,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 880,
+      "output_tokens_details": {
+        "thinking_tokens": 481
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -90,15 +90,27 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     // Carpool and group-plan family sweeps, not yet scoped.
     'carpool-reminders': 'skip',
     'group-plan-rsvp-followups': 'skip',
+    // VIL-686 draws text givers 1:1 from a shared-chat sweep, not yet scoped.
+    'secret-santa': 'skip',
     'spend-alert': 'skip',
+    // Reads every family's plan against Stripe and pages #ops. Preview shares
+    // production's database, so this never runs there.
+    'billing-reconcile': 'skip',
     'delete-sweep': 'skip',
     'attachment-sweep': 'skip',
     inference: 'skip',
     'memory-digest': 'skip',
     'ops-daily': 'skip',
     'registration-verify': 'skip',
+    // Live searches and city page reads on the deploy's model key, and tells queued for
+    // real families: never on Preview.
+    'city-registration': 'skip',
+    // Live searches and board page reads on the deploy's model key, and asks queued for
+    // real families: never on Preview.
+    'school-break': 'skip',
     'watched-spots': 'skip',
     'failure-page': 'skip',
+    unanswered: 'skip',
     'connector-sync': 'skip',
     'inbound-canary': 'skip',
     'browser-use-watch': 'skip',

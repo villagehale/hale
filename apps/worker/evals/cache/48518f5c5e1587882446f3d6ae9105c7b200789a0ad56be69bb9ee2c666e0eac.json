@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parent's question with calendar facts in the family's timezone, but bubble 1 is a lead-in that introduces the list ('The next stretch looks like this:'), which breaks point 3 outright. The final bubble also asks a question, placed correctly in the last bubble, but it is still a second thought alongside the summary. Times are correct: 21:30Z is 4:30pm EST, 22:00Z is 5:00pm, 14:15Z is 9:15am, 23:00Z is 6:00pm, 18:00Z is 1:00pm. Bubble 2 bundles Monday through Wednesday, arguably over-combined. The lead-in bubble alone should lower the score.",
+    "score": 3
+  }
+}

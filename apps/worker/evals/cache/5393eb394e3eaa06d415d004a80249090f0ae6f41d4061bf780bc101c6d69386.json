@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply lists salad as open, but facts.after shows Priya already has salad. Only drinks and plates are open, so a taken item is wrongly called open. Tone and language are fine, but this is a core factual error.",
+    "score": 1
+  }
+}

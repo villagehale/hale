@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports a child choking and turning blue, a current injury-level event",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1479
+}

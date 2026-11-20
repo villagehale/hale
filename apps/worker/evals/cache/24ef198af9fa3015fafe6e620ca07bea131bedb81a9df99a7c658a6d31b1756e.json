@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The ask came in words the connect branch did not catch, and the reply does exactly the required thing: it says the link is a text away and quotes the short ask verbatim. It writes out no URL, does not refuse, and gives a correct detail about the 15-minute window. \"Yep, I can.\" is a small preamble but natural.",
+    "score": 5
+  }
+}

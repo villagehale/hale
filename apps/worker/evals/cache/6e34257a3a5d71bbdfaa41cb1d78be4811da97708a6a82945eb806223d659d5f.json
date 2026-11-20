@@ -1,0 +1,21 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Maya",
+        "age_months": 48,
+        "age_precision": "years",
+        "date_of_birth": null
+      },
+      {
+        "name": "Leo",
+        "age_months": 12,
+        "age_precision": "years",
+        "date_of_birth": null
+      }
+    ],
+    "postal_code": null,
+    "confidence": 0.95
+  },
+  "latencyMs": 1968
+}

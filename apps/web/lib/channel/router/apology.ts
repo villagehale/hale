@@ -4,7 +4,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
 import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -106,7 +106,10 @@ function shapeRefusals(body: string): ApologyRefusal[] {
   if (body === '') return ['empty'];
   const found: ApologyRefusal[] = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (hasLinkShape(body)) found.push('carries_link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('apology', 'redraft');
+    found.push('carries_link');
+  }
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('invented_number');

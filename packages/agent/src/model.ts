@@ -46,10 +46,13 @@ export type ModelId =
  *    it — the stage exists to cost a fraction of the coach turn it replaces, so anything
  *    dearer than Haiku defeats its whole reason for being. Its error case falls through
  *    to the coach, so a wrong screen costs a deflection, never an answer.
- *    `answer` writes the one brief reply to a question about the WORLD — no family
- *    context, no tools of its own — behind that same screen and on that same hot path,
- *    so it is held to the same cost and latency shape. Its error case falls back to a
- *    fixed line, so the tier can cost a dull answer and never a fact about a child.
+ *    `answer` writes one brief reply on that same hot path, with no tools of its own,
+ *    so it is held to the same cost and latency shape. Behind that same screen it answers
+ *    a question about the WORLD with no family context, and its error case falls back to
+ *    a fixed line. Beside a turn still running (inbound-side-turn) it answers a quick
+ *    question about the FAMILY from the facts it is handed, an age already in years and
+ *    months. There a wrong word is a wrong fact about a child, so that eval checks the
+ *    fact exactly, and every error case hands the text back to the full turn.
  *    `speak` is one turn of a live PHONE CALL: the parent is holding the line, so time
  *    to first token is the whole experience and a tier that thinks for two seconds is
  *    worse at this job than one that starts talking. It calls no tools and writes about

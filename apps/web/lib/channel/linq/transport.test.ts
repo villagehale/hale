@@ -6,6 +6,7 @@ import {
   createLinqChat,
   createLinqPhoneTransport,
   createLinqTextTransport,
+  editLinqMessage,
   leaveLinqChat,
   listLinqChatsPage,
   listLinqParticipantHandles,
@@ -19,6 +20,7 @@ import {
   retrieveLinqLocation,
   sendLinqChatMessage,
   sendLinqEffect,
+  sendLinqExperience,
   sendLinqParts,
   sendLinqPoll,
   setupLinqContactCard,
@@ -69,7 +71,10 @@ describe('sendLinqChatMessage', () => {
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${API_KEY}`);
     expect(JSON.parse(String(init.body))).toEqual({
-      message: { parts: [{ type: 'text', value: 'Thursday works' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: 'Thursday works' }],
+      },
     });
   });
 
@@ -110,6 +115,7 @@ describe('sendLinqChatMessage', () => {
     expect(sent).toEqual({ providerMessageId: 'msg-out-2' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Thursday works' }],
         reply_to: { message_id: 'msg-in-1' },
       },
@@ -142,11 +148,17 @@ describe('sendLinqChatMessage', () => {
     expect(bodies).toEqual([
       {
         message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
           parts: [{ type: 'text', value: 'Thursday works' }],
           reply_to: { message_id: 'msg-in-1' },
         },
       },
-      { message: { parts: [{ type: 'text', value: 'Thursday works' }] } },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Thursday works' }],
+        },
+      },
     ]);
     expect(warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain('Thursday');
@@ -168,6 +180,7 @@ describe('sendLinqChatMessage', () => {
     expect(sent).toEqual({ providerMessageId: 'msg-out-mention' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
       },
     });
@@ -194,8 +207,18 @@ describe('sendLinqChatMessage', () => {
 
     expect(sent).toEqual({ providerMessageId: 'msg-plain' });
     expect(bodies).toEqual([
-      { message: { parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }] } },
-      { message: { parts: [{ type: 'text', value: 'Swim is at 4.' }] } },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
+        },
+      },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Swim is at 4.' }],
+        },
+      },
     ]);
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain('+14155551234');
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain(CHAT);
@@ -260,6 +283,7 @@ describe('createLinqTextTransport', () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
       },
     });
@@ -283,6 +307,7 @@ describe('createLinqTextTransport', () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Done' }],
         reply_to: { message_id: 'msg-in-9' },
       },
@@ -295,7 +320,10 @@ describe('createLinqTextTransport', () => {
     const transport = createLinqTextTransport({ chatId: CHAT, fetch: fetchMock });
     await transport.send({ to: '+12025559876', body: 'Hey, it is Hale.' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value: 'Hey, it is Hale.' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: 'Hey, it is Hale.' }],
+      },
     });
   });
 
@@ -338,6 +366,10 @@ describe('listLinqParticipantHandles', () => {
       status: 'ok',
       handles: ['+14165550101', '+14165550102'],
       isGroup: true,
+      joinedAt: new Map([
+        ['+14165550101', null],
+        ['+14165550102', null],
+      ]),
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -361,12 +393,14 @@ describe('listLinqParticipantHandles', () => {
       status: 'ok',
       handles: ['+14165550101'],
       isGroup: false,
+      joinedAt: new Map([['+14165550101', null]]),
     });
     const unsaid = jsonFetch(200, { id: CHAT, handles: [{ handle: '+14165550101' }] });
     expect(await listLinqParticipantHandles({ chatId: CHAT, fetch: unsaid })).toEqual({
       status: 'ok',
       handles: ['+14165550101'],
       isGroup: null,
+      joinedAt: new Map([['+14165550101', null]]),
     });
   });
 
@@ -492,6 +526,7 @@ describe('Linq human-feel helpers', () => {
     const init = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(String(init?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'media', url: 'https://example.com/photo.jpg' }],
         reply_to: { message_id: 'msg-in-1', part_index: 0 },
       },
@@ -504,7 +539,10 @@ describe('Linq human-feel helpers', () => {
       fetch: link,
     });
     expect(JSON.parse(String(link.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'link', value: 'https://example.com/camp' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'link', value: 'https://example.com/camp' }],
+      },
     });
 
     await expect(
@@ -535,6 +573,7 @@ describe('Linq human-feel helpers', () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [
           {
             type: 'text',
@@ -556,7 +595,10 @@ describe('Linq human-feel helpers', () => {
       fetch: plain,
     });
     expect(JSON.parse(String(plain.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value }],
+      },
     });
   });
 
@@ -617,6 +659,76 @@ describe('Linq human-feel helpers', () => {
       fetch: ok,
     });
     expect(ok).toHaveBeenCalledTimes(1);
+  });
+
+  it('VIL-479: patches one text part and refuses an empty edit before Linq sees it', async () => {
+    vi.stubEnv('LINQ_API_KEY', '');
+    const offline = vi.fn();
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'Swim is at 5.',
+        partIndex: 0,
+        fetch: offline,
+      }),
+    ).rejects.toMatchObject({ code: 'not_configured', permanent: true });
+    expect(offline).not.toHaveBeenCalled();
+
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const refused = vi.fn();
+    await expect(
+      editLinqMessage({ messageId: 'msg-out-1', text: '', partIndex: 0, fetch: refused }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'x'.repeat(10_001),
+        partIndex: 0,
+        fetch: refused,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({ messageId: '', text: 'Swim is at 5.', fetch: refused }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    await expect(
+      editLinqMessage({
+        messageId: 'msg-out-1',
+        text: 'Swim is at 5.',
+        partIndex: -1,
+        fetch: refused,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_edit', permanent: true });
+    expect(refused).not.toHaveBeenCalled();
+
+    const fetchMock = jsonFetch(200, { id: 'msg-out-1' });
+    const edited = await editLinqMessage({
+      messageId: 'msg-out-1',
+      text: 'Swim is at 5.',
+      partIndex: 0,
+      fetch: fetchMock,
+    });
+    expect(edited).toEqual({ providerMessageId: 'msg-out-1' });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('https://api.linqapp.com/api/partner/v3/messages/msg-out-1');
+    expect(init?.method).toBe('PATCH');
+    expect(JSON.parse(String(init?.body))).toEqual({ text: 'Swim is at 5.', part_index: 0 });
+
+    const nested = jsonFetch(200, { message: { id: 'msg-out-2' } });
+    const fromNested = await editLinqMessage({
+      messageId: 'msg-out-2',
+      text: 'Swim is at 5.',
+      fetch: nested,
+    });
+    expect(fromNested.providerMessageId).toBe('msg-out-2');
+    expect(JSON.parse(String(nested.mock.calls[0]?.[1]?.body))).toEqual({
+      text: 'Swim is at 5.',
+      part_index: 0,
+    });
+
+    const denied = jsonFetch(400, { error: { code: 2019 } });
+    await expect(
+      editLinqMessage({ messageId: 'msg-out-1', text: 'Swim is at 5.', fetch: denied }),
+    ).rejects.toMatchObject({ code: '2019', httpStatus: 400, permanent: true });
   });
 
   it('adds a tapback and refuses a custom reaction with no emoji', async () => {
@@ -841,6 +953,7 @@ describe('Linq group, card, poll, and effect helpers', () => {
     expect(effect.providerMessageId).toBe('effect-1');
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'nice' }],
         effect: { type: 'screen', name: 'confetti' },
       },
@@ -937,6 +1050,234 @@ const FROM = '+16462352164';
 const TO = '+14165550100';
 
 describe('createLinqPhoneTransport', () => {
+  /**
+   * A later answer to an ask goes into the chat the ask was made in, threaded under the
+   * message given — but only while that chat is still this parent's 1:1 on this line, read
+   * the way a link send finds its chat (GET /chats by Hale's line and the parent's number).
+   * A chat that moved, none at all, or a lookup that failed, sends as any other text does:
+   * unthreaded, to `to`.
+   */
+  describe("replyIn: a later answer, in the ask's thread", () => {
+    function linq(stored: string | null, posted: unknown[] = []) {
+      return vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        const href = String(url);
+        if (href.includes('/chats?')) {
+          return Response.json({ chats: stored ? [{ id: stored, is_group: false }] : [] });
+        }
+        posted.push({ href, body: JSON.parse(String(init?.body)) });
+        if (href.endsWith('/v3/chats')) {
+          return Response.json(
+            { chat: { id: 'chat-now', message: { id: 'msg-new-chat' } } },
+            { status: 201 },
+          );
+        }
+        return Response.json({ message: { id: 'msg-threaded' } }, { status: 201 });
+      });
+    }
+
+    it("posts into that chat with reply_to after checking it is still this parent's 1:1 on this line", async () => {
+      vi.stubEnv('LINQ_API_KEY', API_KEY);
+      vi.stubEnv('LINQ_FROM_E164', FROM);
+      const posted: unknown[] = [];
+      const fetchMock = linq('c1', posted);
+      const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+      const sent = await transport.send({
+        to: TO,
+        body: 'Tiny Gym runs Sundays 9:30. https://example.test/gym',
+        replyIn: { chatId: 'c1', messageId: 'm1' },
+      });
+
+      expect(sent).toEqual({
+        providerMessageId: 'msg-threaded',
+        transport: 'imessage',
+        chatId: 'c1',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const lookup = String(fetchMock.mock.calls[0]?.[0]);
+      expect(lookup).toContain('/chats?');
+      expect(lookup).toContain(encodeURIComponent(FROM));
+      expect(lookup).toContain(encodeURIComponent(TO));
+      expect(posted).toEqual([
+        {
+          href: 'https://api.linqapp.com/api/partner/v3/chats/c1/messages',
+          body: {
+            message: {
+              idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+              parts: [
+                { type: 'text', value: 'Tiny Gym runs Sundays 9:30. https://example.test/gym' },
+              ],
+              reply_to: { message_id: 'm1' },
+            },
+          },
+        },
+      ]);
+    });
+
+    it("never replies in a chat that is no longer this parent's 1:1 on this line, and says so", async () => {
+      vi.stubEnv('LINQ_API_KEY', API_KEY);
+      vi.stubEnv('LINQ_FROM_E164', FROM);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const posted: Array<{ href: string; body: unknown }> = [];
+      const transport = createLinqPhoneTransport({ fetch: linq('c2', posted) });
+
+      const sent = await transport.send({
+        to: TO,
+        body: 'Tiny Gym runs Sundays 9:30.',
+        replyIn: { chatId: 'c1', messageId: 'm1' },
+      });
+
+      expect(sent).toEqual({
+        providerMessageId: 'msg-new-chat',
+        transport: 'imessage',
+        chatId: 'chat-now',
+      });
+      expect(posted).toEqual([
+        {
+          href: 'https://api.linqapp.com/api/partner/v3/chats',
+          body: {
+            from: FROM,
+            to: [TO],
+            message: { parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }] },
+          },
+        },
+      ]);
+      expect(JSON.stringify(posted)).not.toContain('reply_to');
+      expect(warn).toHaveBeenCalledWith({ reason: 'chat_moved' }, expect.any(String));
+    });
+
+    it.each([
+      ['throws', 'network', () => Promise.reject(new TypeError('fetch failed'))],
+      [
+        'is refused',
+        '503',
+        () =>
+          Promise.resolve(
+            Response.json({ error: { status: 503, code: 503, message: 'down' } }, { status: 503 }),
+          ),
+      ],
+    ])(
+      'a 1:1 lookup that %s still delivers the answer, once, unthreaded, and names why',
+      async (_, code, lookup) => {
+        vi.stubEnv('LINQ_API_KEY', API_KEY);
+        vi.stubEnv('LINQ_FROM_E164', FROM);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const posted: Array<{ href: string; body: unknown }> = [];
+        const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+          const href = String(url);
+          if (href.includes('/chats?')) return lookup();
+          posted.push({ href, body: JSON.parse(String(init?.body)) });
+          return Response.json(
+            { chat: { id: 'chat-now', message: { id: 'msg-new-chat' } } },
+            { status: 201 },
+          );
+        });
+        const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+        const sent = await transport.send({
+          to: TO,
+          body: 'Tiny Gym runs Sundays 9:30.',
+          replyIn: { chatId: 'c1', messageId: 'm1' },
+        });
+
+        expect(sent).toEqual({
+          providerMessageId: 'msg-new-chat',
+          transport: 'imessage',
+          chatId: 'chat-now',
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(posted).toEqual([
+          {
+            href: 'https://api.linqapp.com/api/partner/v3/chats',
+            body: {
+              from: FROM,
+              to: [TO],
+              message: { parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }] },
+            },
+          },
+        ]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith({ reason: 'lookup_failed', code }, expect.any(String));
+      },
+    );
+
+    it('a parent with no 1:1 on this line gets a link answer refused as any link send is', async () => {
+      vi.stubEnv('LINQ_API_KEY', API_KEY);
+      vi.stubEnv('LINQ_FROM_E164', FROM);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const posted: unknown[] = [];
+      const transport = createLinqPhoneTransport({ fetch: linq(null, posted) });
+
+      await expect(
+        transport.send({
+          to: TO,
+          body: 'Tiny Gym runs Sundays 9:30. https://example.test/gym',
+          replyIn: { chatId: 'c1', messageId: 'm1' },
+        }),
+      ).rejects.toMatchObject({ code: 'link_on_new_chat', permanent: true });
+      expect(posted).toEqual([]);
+      expect(warn).toHaveBeenCalledWith({ reason: 'no_direct_chat' }, expect.any(String));
+    });
+
+    it('a thread target Linq refuses is resent plain, in the SAME chat', async () => {
+      vi.stubEnv('LINQ_API_KEY', API_KEY);
+      vi.stubEnv('LINQ_FROM_E164', FROM);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const urls: string[] = [];
+      const bodies: unknown[] = [];
+      const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes('/chats?')) {
+          return Response.json({ chats: [{ id: 'c1', is_group: false }] });
+        }
+        urls.push(String(url));
+        bodies.push(JSON.parse(String(init?.body)));
+        if (bodies.length === 1) {
+          return Response.json(
+            { error: { status: 400, code: 4001, message: 'reply_to: unknown message' } },
+            { status: 400 },
+          );
+        }
+        return Response.json({ message: { id: 'msg-plain' } }, { status: 201 });
+      });
+      const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+      const sent = await transport.send({
+        to: TO,
+        body: 'Tiny Gym runs Sundays 9:30.',
+        replyIn: { chatId: 'c1', messageId: 'm1' },
+      });
+
+      expect(sent).toEqual({ providerMessageId: 'msg-plain', transport: 'imessage', chatId: 'c1' });
+      expect(urls).toEqual([
+        'https://api.linqapp.com/api/partner/v3/chats/c1/messages',
+        'https://api.linqapp.com/api/partner/v3/chats/c1/messages',
+      ]);
+      expect(bodies[1]).toEqual({
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }],
+        },
+      });
+    });
+
+    it('refuses media on a threaded answer rather than dropping it', async () => {
+      vi.stubEnv('LINQ_API_KEY', API_KEY);
+      vi.stubEnv('LINQ_FROM_E164', FROM);
+      const fetchMock = vi.fn();
+      const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+      await expect(
+        transport.send({
+          to: TO,
+          body: 'card',
+          mediaUrls: ['https://example.test/card.vcf'],
+          replyIn: { chatId: 'c1', messageId: 'm1' },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_parts', permanent: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   it('names a missing Hale line and does not call the network', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     vi.stubEnv('LINQ_FROM_E164', '');
@@ -1018,7 +1359,10 @@ describe('createLinqPhoneTransport', () => {
       `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/messages`,
     );
     expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value: body }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: body }],
+      },
     });
 
     const empty = vi.fn(async () => Response.json({ chats: [] }));
@@ -1046,6 +1390,7 @@ describe('createLinqPhoneTransport', () => {
     expect(sent.providerMessageId).toBe('msg-card');
     expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [
           { type: 'text', value: 'save this' },
           { type: 'media', url: media },
@@ -1181,5 +1526,101 @@ describe('readLinqChatPage', () => {
     expect(readLinqChatPage({ chats: { id: CHAT } })).toBeNull();
     expect(readLinqChatPage(null)).toBeNull();
     expect(readLinqChatPage({ chats: [{ is_group: false }] })).toBeNull();
+  });
+});
+
+/**
+ * VIL-683 · THE SEND SEAM. Every text that reaches a parent is a Linq text part, an edit or
+ * a poll option, and each passes here. A garbled one is a permanent, named refusal before
+ * any fetch, so every caller's existing refusal handling records it and nothing goes out.
+ */
+describe('a garbled text never reaches a parent', () => {
+  const GARBLED = 'Natation prรฉscolaire sam. 9h00';
+  const sent = () =>
+    vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ chat_id: CHAT, message: { id: 'msg-out-1' } }, { status: 201 }),
+    );
+
+  it.each([
+    [
+      'a chat message',
+      (f: typeof fetch) => sendLinqChatMessage({ chatId: CHAT, text: GARBLED, fetch: f }),
+    ],
+    [
+      'message parts',
+      (f: typeof fetch) =>
+        sendLinqParts({ chatId: CHAT, parts: [{ type: 'text', value: GARBLED }], fetch: f }),
+    ],
+    [
+      'an effect',
+      (f: typeof fetch) =>
+        sendLinqEffect({
+          chatId: CHAT,
+          text: GARBLED,
+          effect: { type: 'bubble', name: 'gentle' },
+          fetch: f,
+        }),
+    ],
+    [
+      'a new chat',
+      (f: typeof fetch) => createLinqChat({ from: FROM, to: [TO], text: GARBLED, fetch: f }),
+    ],
+    [
+      'an edit',
+      (f: typeof fetch) => editLinqMessage({ messageId: 'msg-out-1', text: GARBLED, fetch: f }),
+    ],
+    [
+      'a poll option',
+      (f: typeof fetch) => sendLinqPoll({ chatId: CHAT, options: ['Saturday', GARBLED], fetch: f }),
+    ],
+    [
+      'a reply turn',
+      (f: typeof fetch) =>
+        createLinqTextTransport({ chatId: CHAT, fetch: f }).send({ to: '', body: GARBLED }),
+    ],
+    [
+      'an experience card title',
+      (f: typeof fetch) =>
+        sendLinqExperience({
+          chatId: CHAT,
+          experience: {
+            name: 'link',
+            action: 'open',
+            params: { url: 'https://example.test/plan', title: GARBLED },
+          },
+          fetch: f,
+        }),
+    ],
+    [
+      'a replacement character',
+      (f: typeof fetch) => sendLinqChatMessage({ chatId: CHAT, text: 'Swim Sat�rday', fetch: f }),
+    ],
+  ])('refuses %s, permanently and by name, before any fetch', async (_name, send) => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = sent();
+    const error = await send(fetchMock as unknown as typeof fetch).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(LinqSendError);
+    expect(error).toMatchObject({ code: 'garbled_text', permanent: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Logged by name, never with the words.
+    expect(JSON.stringify(warn.mock.calls)).toContain('garbled_text');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Natation');
+    warn.mockRestore();
+  });
+
+  it.each([
+    ['French', 'Natation préscolaire samedi à 9 h, « c’est noté ».'],
+    ['Chinese', '周六上午九点的游泳课已经报名成功。'],
+    ['Arabic', 'درس السباحة يوم السبت الساعة 9، تم التسجيل.'],
+    ['emoji', 'See you Saturday 🏊‍♀️👨‍👩‍👧 🇨🇦'],
+    ['CJK punctuation', '「周六」上午九点，好的！（确认）'],
+  ])('sends honest %s text (positive control)', async (_name, text) => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const fetchMock = sent();
+    await expect(sendLinqChatMessage({ chatId: CHAT, text, fetch: fetchMock })).resolves.toEqual({
+      providerMessageId: 'msg-out-1',
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

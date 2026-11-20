@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Saturday's swimming is booked, which is a scheduled_event claim. The only row is a dentist appointment on Thursday, Nov 5, so it does not back the swimming claim and the row is none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1429
+}

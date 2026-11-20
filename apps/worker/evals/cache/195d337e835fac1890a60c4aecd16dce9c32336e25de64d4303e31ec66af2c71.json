@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, accepts the parent's refusal warmly, and asks one time for only the first three characters of the postal code. It also explains that this places them by neighbourhood, not by address, which matches what watchFor calls right. It asks for no town or street, makes no promise to find things nearby while no place is known, and does not press or make the code sound required. It is short and plain.",
+    "score": 5
+  }
+}

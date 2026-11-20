@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
@@ -23,12 +23,14 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
-import { asHandsetReads, linksOutside } from '~/lib/format/link-shape';
+import { asHandsetReads, linksOutside, noteLinkGate } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { ageFitCorrectionEnabled } from './age-fit-correction';
+import { friendVoiceModelFieldsEnabled } from './friend-voice-model-fields';
 import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
@@ -45,6 +47,7 @@ import {
   mergeCaptures,
   onboardingMissing,
 } from './onboarding-turn';
+import { intakeStatedPlaceEnabled } from './stated-place';
 
 /**
  * VIL-413 / VIL-417. The onboarding reply, written from a per-step direction.
@@ -75,6 +78,15 @@ import {
 const MAX_TOKENS = 1000;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
+
+/**
+ * Dark stays at {@link MAX_TOKENS}, so a recorded eval's request is unchanged.
+ * Lit, the reply fills seven more fields. A map turn that fills every field
+ * ran past 1000 tokens (VIL-541); the extra room is billed only if it is used.
+ */
+export function onboardingReplyMaxTokens(): number {
+  return friendVoiceModelFieldsEnabled() ? 2000 : MAX_TOKENS;
+}
 export const ONBOARDING_REPLY_TOOL = 'reply';
 export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
   'Return the onboarding reply and any facts the parent just gave.';
@@ -254,6 +266,28 @@ export interface FriendVoiceInput {
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
+   * CAD or USD for the place already stored. Absent when the place is unknown
+   * or INTAKE_STATED_PLACE_ENABLED is off, so a turn without it keeps its bytes.
+   */
+  currency?: 'CAD' | 'USD';
+  /**
+   * A photo on this turn. Absent when there wasn't one, or the intake photo
+   * flag is off, so those turns keep their prompt bytes.
+   */
+  photo?:
+    | {
+        read: 'facts';
+        facts: {
+          kind: string;
+          title: string | null;
+          venue: string | null;
+          whenText: string | null;
+          notes: string | null;
+          childName: string | null;
+        };
+      }
+    | { read: 'unread' };
+  /**
    * VIL-641. Code's record that an earlier reply asked for the coarse code after a
    * first no, so a no now is the second one. Absent when it did not.
    */
@@ -323,6 +357,23 @@ export interface FriendComposed {
   claimsSaved?: boolean;
   /** What this reply asks for about where they live. Null or omitted: the model did not say. */
   placeAsk?: PlaceAsk | null;
+  /**
+   * How many questions `reply` asks, in any language. Set only on the model-fields
+   * path. Omitted means the model did not say.
+   */
+  asksCount?: number;
+  /** `reply` asks what to call the parent. Omitted means the model did not say. */
+  asksName?: boolean;
+  /** `reply` speaks as the parent or calls itself by their name. Omitted: not said. */
+  speaksAsParent?: boolean;
+  /** `reply` writes the join number or the phrase code places under it. Omitted: not said. */
+  joinInProse?: boolean;
+  /** Their message agrees to the open item. Omitted means the model did not say. */
+  messageIsYes?: boolean;
+  /** Their message is only the name they want. Null: it is not. Omitted: not said. */
+  messageOnlyName?: string | null;
+  /** A question in `reply` sits above a numbered list. Omitted: not said. */
+  questionBeforeList?: boolean;
 }
 
 export type OfferedConnector = 'gmail' | 'calendar';
@@ -404,7 +455,7 @@ export interface SpeakOptions {
    * The reply will not be sent whatever it says (the turn hands over to the
    * map). The first draft's capture is taken as is: no judging, no retry, no page.
    */
-  replyDiscardedWhen?: (capture: OnboardingCapture) => boolean;
+  replyDiscardedWhen?: (capture: OnboardingCapture) => boolean | Promise<boolean>;
   /**
    * Real data appended under the prose after judging, as its own lines: the
    * co-parent join line and phrase. Never written by the model.
@@ -437,12 +488,18 @@ type JudgeOptions = Omit<SpeakOptions, 'linkFollows'> & {
   linkFollows?: boolean;
   /** Skip the five meaning checks the Haiku screen owns when the sweep is on. */
   skipMeaning?: boolean;
+  asksCount?: number;
+  asksName?: boolean;
+  speaksAsParent?: boolean;
+  questionBeforeList?: boolean;
+  connectorsOffered?: readonly OfferedConnector[];
 };
 
 const childSchema = z.object({
   name: z.string().nullable().optional().default(null),
   ageMonths: z.number().nullable().optional().default(null),
   agePrecision: z.enum(['years', 'months']).nullable().optional().default(null),
+  dateOfBirth: z.string().nullable().optional().default(null),
 });
 
 const scheduleAddSchema = z.object({
@@ -550,6 +607,17 @@ const replyFields = z.object({
     .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   placeAsk: z.enum(PLACE_ASKS).nullable().optional().default(null).catch(null),
+  country: z.enum(['CA', 'US', 'other']).nullable().optional().default(null).catch(null),
+  region: z.string().nullable().optional().default(null).catch(null),
+  // Decision fields for VIL-541. Optional so a dark turn's tool value still parses.
+  // No default: an omitted field is "did not say", never a guessed false or zero.
+  asksCount: z.number().int().nonnegative().optional(),
+  asksName: z.boolean().optional(),
+  speaksAsParent: z.boolean().optional(),
+  joinInProse: z.boolean().optional(),
+  messageIsYes: z.boolean().optional(),
+  messageOnlyName: z.string().nullable().optional(),
+  questionBeforeList: z.boolean().optional(),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
@@ -569,10 +637,16 @@ function readParentQuestion(value: {
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
+  messageIsYes?: boolean;
 }): boolean {
   if (value.parentQuestion === undefined) {
     return (
-      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
+      value.connectGmail === true ||
+      value.connectCalendar === true ||
+      value.coparentGroup === true ||
+      // A yes the model did not classify is a question. Checked only on the lit
+      // path, so a dark turn's parse is unchanged.
+      (friendVoiceModelFieldsEnabled() && value.messageIsYes === true)
     );
   }
   return value.parentQuestion !== false;
@@ -596,6 +670,7 @@ const replyJsonSchema = {
             type: ['string', 'null'],
             enum: ['years', 'months', null],
           },
+          dateOfBirth: { type: ['string', 'null'] },
         },
       },
     },
@@ -666,11 +741,54 @@ export function onboardingReplyToolSchema(
   const schema = linqGroupOnboardingV2Enabled()
     ? replyJsonSchema
     : { ...replyJsonSchema, properties: flagOff };
-  if (!input || !placeInPlay(input)) return schema;
+  const stated = intakeStatedPlaceEnabled()
+    ? {
+        country: { type: ['string', 'null'], enum: ['CA', 'US', 'other', null] },
+        region: { type: ['string', 'null'] },
+      }
+    : {};
+  const withStated = { ...schema, properties: { ...schema.properties, ...stated } };
+  if (!input || !placeInPlay(input)) return withModelFieldSchema(withStated);
+  return withModelFieldSchema({
+    ...withStated,
+    properties: { ...withStated.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
+    required: [...withStated.required, 'placeAsk'],
+  });
+}
+
+/** Fields the lit path requires. None of them start with `par` (that prefix leaked markup). */
+const MODEL_FIELD_NAMES = [
+  'asksCount',
+  'asksName',
+  'speaksAsParent',
+  'joinInProse',
+  'messageIsYes',
+  'messageOnlyName',
+  'questionBeforeList',
+] as const;
+
+const MODEL_FIELDS_JSON = {
+  asksCount: { type: 'number' },
+  asksName: { type: 'boolean' },
+  speaksAsParent: { type: 'boolean' },
+  joinInProse: { type: 'boolean' },
+  messageIsYes: { type: 'boolean' },
+  messageOnlyName: { type: ['string', 'null'] },
+  questionBeforeList: { type: 'boolean' },
+} as const;
+
+/**
+ * Dark returns the schema unchanged, so a recorded tool request keeps its bytes.
+ * Lit adds the decision fields and requires them.
+ */
+function withModelFieldSchema<
+  T extends { properties: Record<string, unknown>; required: readonly string[] },
+>(schema: T): T {
+  if (!friendVoiceModelFieldsEnabled()) return schema;
   return {
     ...schema,
-    properties: { ...schema.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
-    required: [...schema.required, 'placeAsk'],
+    properties: { ...schema.properties, ...MODEL_FIELDS_JSON },
+    required: [...schema.required, ...MODEL_FIELD_NAMES],
   };
 }
 
@@ -908,6 +1026,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
             }
         : null,
       coparentGroup: input.coparentGroup ?? null,
+      ...(input.currency ? { currency: input.currency } : {}),
+      ...(input.photo ? { photo: photoForModel(input.photo) } : {}),
       // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
       ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
       // Who runs Hale is for when they ask; otherwise the founder's name is
@@ -998,6 +1118,8 @@ export function parentReading(
 }
 
 function readingForModel(input: FriendVoiceInput): string | null {
+  // Lit, the model decides a yes and a lone name. A code reading would be the word list.
+  if (friendVoiceModelFieldsEnabled()) return null;
   const reading = parentReading(input);
   if (!reading) return null;
   return reading.kind === 'name'
@@ -1049,6 +1171,54 @@ function settleSchedule(capture: OnboardingCapture): OnboardingCapture {
   return capture.scheduleAdds.length > 0 && capture.scheduleDone
     ? { ...capture, scheduleDone: false }
     : capture;
+}
+
+/**
+ * A yes or a lone name, from the model's fields. Held only when Hale's last reply
+ * said it asked. A question mark in either text is not the signal.
+ */
+function withModelReading(
+  capture: OnboardingCapture,
+  input: FriendVoiceInput,
+  composed: FriendComposed,
+): OnboardingCapture {
+  const item = answeringItem(input);
+  if (!item) return capture;
+  const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
+  if (lastHale?.asked !== true) return capture;
+  if (item === 'name') {
+    const name = composed.messageOnlyName?.trim() ?? '';
+    if (!name) return capture;
+    if (capture.nameDeclined || capture.nameTakenBack) return capture;
+    const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
+    if (capture.parentName || kids.includes(name.toLowerCase())) return capture;
+    return { ...capture, parentName: name };
+  }
+  const yesItem =
+    YES_ITEMS.has(item) || (item === 'schedule' && (input.scheduled ?? []).length > 0);
+  // Consent needs an explicit "not a question". A missing parentQuestion is not that.
+  if (!yesItem || composed.messageIsYes !== true || composed.parentQuestion !== false)
+    return capture;
+  if (item === 'gmail') return { ...capture, connectGmail: true, gmailLater: false };
+  if (item === 'calendar') return { ...capture, connectCalendar: true, calendarLater: false };
+  if (item === 'schedule') return { ...capture, scheduleDone: true };
+  return { ...capture, coparentGroup: true };
+}
+
+/** Lit, an omitted decision field is a failed reply. A default would be a guess. */
+function modelFieldsMissing(composed: FriendComposed): boolean {
+  const name = composed.messageOnlyName;
+  return (
+    typeof composed.asksCount !== 'number' ||
+    !Number.isInteger(composed.asksCount) ||
+    composed.asksCount < 0 ||
+    typeof composed.asksName !== 'boolean' ||
+    typeof composed.speaksAsParent !== 'boolean' ||
+    typeof composed.joinInProse !== 'boolean' ||
+    typeof composed.messageIsYes !== 'boolean' ||
+    !(name === null || typeof name === 'string') ||
+    typeof composed.questionBeforeList !== 'boolean'
+  );
 }
 
 /** The capture, held to what code read for certain. */
@@ -1458,7 +1628,7 @@ const ALLOWED_NAMES = new Set([
 /**
  * A proper name the model wrote mid-sentence (a town, a school, a venue) that
  * is not in the facts or the parent's words. "That's the Dundas area" for an
- * L7G postal code is a guess, and a guess said as fact.
+ * postal code is a guess, and a guess said as fact.
  */
 function namesOutsideSlots(text: string, slots: readonly string[]): string[] {
   const haystack = slots.join(' ').toLowerCase();
@@ -1648,28 +1818,51 @@ export function judgeFriendReply(
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
   const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
   const groupLines = (input.findGroups ?? []).flatMap((group) => group.lines);
-  const asked = questionsBeyondFacts(trimmed, [
-    ...input.findLines,
-    ...groupLines,
-    ...trailerFacts(options),
-  ]);
-  const flex =
-    FLEX_QUESTION_STEPS.has(input.step) ||
-    (options.yesToLink === true && LINK_STEPS.has(input.step)) ||
-    options.scheduleRecorded === true;
-  if (flex) {
-    if (asked > 1) return { ok: false, reason: 'question' };
+  const fields = friendVoiceModelFieldsEnabled();
+  const asked = fields
+    ? options.asksCount
+    : questionsBeyondFacts(trimmed, [...input.findLines, ...groupLines, ...trailerFacts(options)]);
+  if (fields && (typeof asked !== 'number' || !Number.isInteger(asked) || asked < 0)) {
+    return { ok: false, reason: 'question', detail: 'asks_count_missing' };
+  }
+  const receipt =
+    (options.yesToLink === true && LINK_STEPS.has(input.step)) || options.scheduleRecorded === true;
+  const flex = FLEX_QUESTION_STEPS.has(input.step) || receipt;
+  // Lit, a receipt asks nothing. Code no longer deletes the question, so a
+  // count of one is a refusal, not a trim. name_reply may still ask one or none.
+  if (fields && receipt) {
+    if (asked !== 0) return { ok: false, reason: 'question', detail: 'asks_nothing' };
+  } else if (flex) {
+    if ((asked ?? 0) > 1) return { ok: false, reason: 'question' };
   } else if (asked !== needed) {
     return { ok: false, reason: 'question' };
   }
-  // The question may sit anywhere in the prose, but never above a list it asks about.
-  if (asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
-    return { ok: false, reason: 'question' };
-  if (NAME_ASK.test(trimmed) && !NAME_STEPS.has(input.step)) {
-    return { ok: false, reason: 'question' };
+  if (fields) {
+    // A question above a list is the model's field. A mark in the text is not.
+    if (options.questionBeforeList == null) {
+      return { ok: false, reason: 'question', detail: 'question_before_list_missing' };
+    }
+    if (options.questionBeforeList) return { ok: false, reason: 'question' };
+    if (options.asksName == null) {
+      return { ok: false, reason: 'question', detail: 'asks_name_missing' };
+    }
+    if (options.asksName && !NAME_STEPS.has(input.step)) {
+      return { ok: false, reason: 'question' };
+    }
+    if (options.speaksAsParent == null) {
+      return { ok: false, reason: 'identity', detail: 'speaks_as_parent_missing' };
+    }
+    if (options.speaksAsParent) return { ok: false, reason: 'identity' };
+  } else {
+    // The question may sit anywhere in the prose, but never above a list it asks about.
+    if (asked === 1 && /[?\uFF1F\u061F][\s\S]*\n\s*\d+\.\s/u.test(trimmed))
+      return { ok: false, reason: 'question' };
+    if (NAME_ASK.test(trimmed) && !NAME_STEPS.has(input.step)) {
+      return { ok: false, reason: 'question' };
+    }
+    // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
+    if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
   }
-  // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
-  if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
   if (replyAddressesByOtherName(trimmed, input)) {
     return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
@@ -1695,10 +1888,12 @@ export function judgeFriendReply(
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
+  const domainLinks = linksOutside(trimmed, linkAllowList(input, options));
+  if (domainLinks.length > 0) noteLinkGate('friend-voice', 'redraft');
   const found: [kind: string, matched: string[]][] = skipMeaning
     ? [
         ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-        ['domain', linksOutside(trimmed, linkAllowList(input, options))],
+        ['domain', domainLinks],
         ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
       ]
     : [
@@ -1709,7 +1904,7 @@ export function judgeFriendReply(
         ['quote', quotesOutsideSlots(trimmed, slots)],
         ['name', namesOutsideSlots(trimmed, slots)],
         ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-        ['domain', linksOutside(trimmed, linkAllowList(input, options))],
+        ['domain', domainLinks],
         ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
       ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1737,13 +1932,20 @@ export function judgeFriendReply(
   }
   // The connector ask carries that connector's card: the prose has to be about it.
   if (LINK_STEPS.has(input.step) && options.yesToLink !== true) {
-    const topic =
-      input.step === 'email'
-        ? /\b(gmail|inbox|e-?mails?|mail|courriels?)\b/i
-        : /\b(calendars?|calendrier|agenda)\b/i;
-    // An answer to their own question about it is on topic without naming it again.
-    if (!topic.test(trimmed) && !topic.test(input.parentWords)) {
-      return { ok: false, reason: 'topic' };
+    if (friendVoiceModelFieldsEnabled()) {
+      const wanted = input.step === 'email' ? 'gmail' : 'calendar';
+      if (!options.connectorsOffered?.includes(wanted)) {
+        return { ok: false, reason: 'topic' };
+      }
+    } else {
+      const topic =
+        input.step === 'email'
+          ? /\b(gmail|inbox|e-?mails?|mail|courriels?)\b/i
+          : /\b(calendars?|calendrier|agenda)\b/i;
+      // An answer to their own question about it is on topic without naming it again.
+      if (!topic.test(trimmed) && !topic.test(input.parentWords)) {
+        return { ok: false, reason: 'topic' };
+      }
     }
   }
 
@@ -1752,24 +1954,37 @@ export function judgeFriendReply(
   }
   if (input.step === 'connected') {
     const named = options.ahaMention?.trim() ?? '';
-    const outside = named.length > 0 ? trimmed.replace(named, ' ') : trimmed;
-    const namesGmail = /\bgmail\b/i.test(outside);
-    const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(outside);
-    if (input.connector === 'gcal' && namesGmail) {
-      return {
-        ok: false,
-        reason: 'invented',
-        detail: 'gmail on calendar wow',
-        kinds: ['other_connector'],
-      };
-    }
-    if (input.connector === 'gmail' && namesCalendar) {
-      return {
-        ok: false,
-        reason: 'invented',
-        detail: 'calendar on gmail wow',
-        kinds: ['other_connector'],
-      };
+    if (friendVoiceModelFieldsEnabled()) {
+      const other =
+        input.connector === 'gcal' ? 'gmail' : input.connector === 'gmail' ? 'calendar' : null;
+      if (other && options.connectorsOffered?.includes(other)) {
+        return {
+          ok: false,
+          reason: 'invented',
+          detail: other === 'gmail' ? 'gmail on calendar wow' : 'calendar on gmail wow',
+          kinds: ['other_connector'],
+        };
+      }
+    } else {
+      const outside = named.length > 0 ? trimmed.replace(named, ' ') : trimmed;
+      const namesGmail = /\bgmail\b/i.test(outside);
+      const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(outside);
+      if (input.connector === 'gcal' && namesGmail) {
+        return {
+          ok: false,
+          reason: 'invented',
+          detail: 'gmail on calendar wow',
+          kinds: ['other_connector'],
+        };
+      }
+      if (input.connector === 'gmail' && namesCalendar) {
+        return {
+          ok: false,
+          reason: 'invented',
+          detail: 'calendar on gmail wow',
+          kinds: ['other_connector'],
+        };
+      }
     }
     const grounded = ahaGrounding(trimmed, input, named);
     if (grounded) return { ok: false, reason: 'invented', detail: grounded, kinds: ['aha'] };
@@ -2077,7 +2292,9 @@ export async function speakFriend(
 ): Promise<FriendVoiceResult> {
   // A lone name after the name ask is read by code: the reply is written from
   // the step after it, so the model greets them and moves on instead of asking again.
-  const reading = parentReading(given);
+  // Lit, a lone name is the model's field, read after it writes. Code does not
+  // decide one from a capital letter before the reply exists.
+  const reading = friendVoiceModelFieldsEnabled() ? null : parentReading(given);
   const pre =
     reading?.kind === 'name'
       ? advancedInput(given, {
@@ -2187,29 +2404,30 @@ export async function speakFriend(
       const limits = scheduleLimits(input);
       // A message Hale sends on its own (a card, a receipt) answers nothing:
       // there are no parent words to read a yes or a fact from.
+      const parsed = acceptOnboardingCapture(composed.capture, limits);
+      // Lit, the field reading runs first, then the name and question guards, so a
+      // yes the model also marked as a question does not connect anything.
+      const decided =
+        input.parentWords.trim().length === 0
+          ? parsed
+          : friendVoiceModelFieldsEnabled()
+            ? noYesInAQuestion(
+                ownNameOnly(withModelReading(parsed, input, composed), input),
+                marks.parentQuestion,
+              )
+            : withReading(
+                noYesInAQuestion(ownNameOnly(parsed, input), marks.parentQuestion),
+                input,
+              );
       const capture =
         input.parentWords.trim().length > 0
           ? placeOpenUntilCoarseAsked(
-              dropTakeBackName(
-                input.parentWords,
-                settleSchedule(
-                  withGroupMode(
-                    withReading(
-                      noYesInAQuestion(
-                        ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                        marks.parentQuestion,
-                      ),
-                      input,
-                    ),
-                    input,
-                  ),
-                ),
-              ),
+              dropTakeBackName(input.parentWords, settleSchedule(withGroupMode(decided, input))),
               input,
             )
           : empty;
       const draft = composed.reply.trim();
-      if (options.replyDiscardedWhen?.(capture)) {
+      if (await options.replyDiscardedWhen?.(capture)) {
         return {
           prose: '',
           bubbles: [],
@@ -2217,6 +2435,14 @@ export async function speakFriend(
           step: input.step,
           asks: marks.asks,
           placeAsk: marks.placeAsk,
+        };
+      }
+      if (friendVoiceModelFieldsEnabled() && modelFieldsMissing(composed)) {
+        noteRefusal({ reason: 'model_fields', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture: empty,
+          retry: { draft, problem: retryProblem('model_fields') },
         };
       }
       // A refused add means the reply may confirm a reminder that was never written.
@@ -2269,7 +2495,10 @@ export async function speakFriend(
       };
       // A stop closes intake and tidyProse would strip its question, so a stop
       // that still asks goes back to the model rather than out with the ask cut.
-      if (capture.stopAsking && (marks.asks || draft.normalize('NFKC').includes('?'))) {
+      const stopStillAsks = friendVoiceModelFieldsEnabled()
+        ? marks.asks || (composed.asksCount ?? 0) > 0
+        : marks.asks || draft.normalize('NFKC').includes('?');
+      if (capture.stopAsking && stopStillAsks) {
         noteRefusal({ reason: 'stop_still_asking', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
@@ -2301,7 +2530,12 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('join') },
         };
       }
-      if (input.coparentJoin && carriesJoin(prose, input.coparentJoin)) {
+      const joinWritten =
+        input.coparentJoin != null &&
+        (friendVoiceModelFieldsEnabled()
+          ? composed.joinInProse === true
+          : carriesJoin(prose, input.coparentJoin));
+      if (joinWritten) {
         noteRefusal({ reason: 'join_in_prose', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
@@ -2317,6 +2551,15 @@ export async function speakFriend(
         ahaMention: composed.ahaMention ?? null,
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
+        ...(friendVoiceModelFieldsEnabled()
+          ? {
+              asksCount: composed.asksCount,
+              asksName: composed.asksName,
+              speaksAsParent: composed.speaksAsParent,
+              questionBeforeList: composed.questionBeforeList,
+              connectorsOffered: composed.connectorsOffered,
+            }
+          : {}),
       };
       // A card is for one connector. The model lists what the reply offers to connect.
       const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
@@ -2520,11 +2763,14 @@ export function retryProblem(
     | 'unbacked_claim'
     | 'no_group_bubble'
     | 'stop_still_asking'
-    | 'place_closed',
+    | 'place_closed'
+    | 'model_fields',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'model_fields':
+      return 'The reply left out a decision field. Fill asksCount, asksName, speaksAsParent, joinInProse, messageIsYes, messageOnlyName, and questionBeforeList. Write the reply again.';
     case 'place_closed':
       return 'They turned the place down twice, so it is settled, and the draft asked for it again. Accept the no and ask `next`, with no code, ZIP or town in it.';
     case 'no_group_bubble':
@@ -2544,8 +2790,11 @@ export function retryProblem(
     case 'unbacked_claim':
       return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
+      if (detail === 'asks_nothing') return 'This message asks nothing. Set asksCount to 0.';
       return input && ZERO_QUESTION_STEPS.has(input.step)
-        ? 'This message asks nothing. No question mark.'
+        ? friendVoiceModelFieldsEnabled()
+          ? 'This message asks nothing. Set asksCount to 0.'
+          : 'This message asks nothing. No question mark.'
         : `Exactly one question: ${askInWords(input?.step, input)}. Never ask for something already known.`;
     case 'privacy':
       return 'It made a privacy claim that is not true. Google shares the whole inbox or calendar with Hale; Hale keeps and uses only what is about the kids. Do not say Hale only reads, only sees, or never sees some of it.';
@@ -2681,6 +2930,9 @@ export function tidyProse(
   judgedStep: FriendStep,
   asksNothing = false,
 ): string {
+  // Lit, code never takes a sentence out. A question or the other connector is
+  // the model's field, and a draft that breaks it is not sent.
+  if (friendVoiceModelFieldsEnabled()) return reply.trim();
   let sentences = sentencesOf(reply.trim());
   if (ZERO_QUESTION_STEPS.has(judgedStep) || asksNothing) {
     sentences = sentences.filter((sentence) => !sentence.includes('?'));
@@ -2770,8 +3022,24 @@ export function findShowGroupBubbles(
  * The system text for one compose. The co-parent choice and the household-group
  * addendum ride only on the turns that need them, so every other turn keeps its bytes.
  */
+function photoForModel(photo: NonNullable<FriendVoiceInput['photo']>): unknown {
+  if (photo.read === 'unread') return { read: 'unread' };
+  return {
+    read: 'facts',
+    kind: photo.facts.kind,
+    title: photo.facts.title,
+    venue: photo.facts.venue,
+    when: photo.facts.whenText,
+    notes: photo.facts.notes,
+    child: photo.facts.childName,
+  };
+}
+
 export async function friendVoiceSystem(
-  input: Pick<FriendVoiceInput, 'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined'>,
+  input: Pick<
+    FriendVoiceInput,
+    'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined' | 'photo'
+  >,
   short: boolean,
 ) {
   const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
@@ -2781,10 +3049,23 @@ export async function friendVoiceSystem(
       : null;
   const group = input.householdGroup ? await loadCronSkill('household-group') : null;
   const place = placeInPlay(input) ? await loadCronSkill('onboarding-friend-place') : null;
-  const system = [skill, choice, group, place]
-    .flatMap((part) => (part ? [part.instructions] : []))
-    .join('\n\n');
-  return { skill, system };
+  // VIL-568: the age-fit correction addendum rides only when the flag is on, so
+  // every other onboarding turn (and its eval cache key) keeps its bytes.
+  const ageFit = ageFitCorrectionEnabled() ? await loadCronSkill('age-fit-correction') : null;
+  const statedPlace = intakeStatedPlaceEnabled()
+    ? await loadCronSkill('onboarding-stated-place')
+    : null;
+  const photo = input.photo ? await loadCronSkill('intake-photo-read') : null;
+  // VIL-541: the decision-field addendum rides only when the flag is on, so a
+  // dark turn (and its eval cache key) keeps today's skill bytes.
+  const modelFields = friendVoiceModelFieldsEnabled()
+    ? await loadCronSkill('onboarding-friend-model-fields')
+    : null;
+  const extras = [choice, group, place, ageFit, statedPlace, photo, modelFields].flatMap((part) =>
+    part ? [part.instructions] : [],
+  );
+  const system = [skill.instructions, ...extras].join('\n\n');
+  return { skill, system, extras };
 }
 
 /** The parsed tool value as the composer hands it to speakFriend. */
@@ -2810,6 +3091,8 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
       nameTakenBack: value.nameTakenBack,
       kidsNamesDeclined: value.kidsNamesDeclined,
       placeDeclined: value.placeDeclined,
+      ...(value.country ? { country: value.country } : {}),
+      ...(value.region ? { region: value.region } : {}),
       calendarLater: value.calendarLater,
       gmailLater: value.gmailLater,
       stopAsking: value.stopAsking,
@@ -2822,6 +3105,13 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
     joinPointer: value.joinPointer,
     claimsSaved: value.claimsSaved,
     placeAsk: value.placeAsk,
+    asksCount: value.asksCount,
+    asksName: value.asksName,
+    speaksAsParent: value.speaksAsParent,
+    joinInProse: value.joinInProse,
+    messageIsYes: value.messageIsYes,
+    messageOnlyName: value.messageOnlyName,
+    questionBeforeList: value.questionBeforeList,
   };
 }
 
@@ -2835,17 +3125,19 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
     async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
       const short = options?.prompt === 'short';
-      const { skill, system } = await friendVoiceSystem(input, short);
+      const { skill, extras } = await friendVoiceSystem(input, short);
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system,
+        system: skill.instructions,
+        systemExtras: extras,
+        cacheTtl: SPARSE_CACHE_TTL,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: onboardingReplyToolSchema(input),
         schema: replySchema,
-        maxTokens: MAX_TOKENS,
+        maxTokens: onboardingReplyMaxTokens(),
         transport: llmTransport(),
       });
       return composedFromReply(value);

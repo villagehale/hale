@@ -37,6 +37,22 @@ describe('site buildEvent privacy gate', () => {
     });
   });
 
+  it('keeps advertising attribution keys, including utm_content', () => {
+    expect(
+      buildEvent('cta_text_click', {
+        utm_source: 'google',
+        utm_content: 'hero',
+        gclid: 'Click1',
+        cta_placement: 'hero',
+      }).properties,
+    ).toEqual({
+      utm_source: 'google',
+      utm_content: 'hero',
+      gclid: 'Click1',
+      cta_placement: 'hero',
+    });
+  });
+
   it('never lets the phone number ride along on the text CTA', () => {
     // The CTA's own href is an sms: deep link, so the number is the one identifying
     // value sitting closest to this capture.

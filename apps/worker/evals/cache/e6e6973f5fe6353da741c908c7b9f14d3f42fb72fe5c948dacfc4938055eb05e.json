@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Question about Friday pickup, not about this plan",
+    "said": null,
+    "named": null,
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1485
+}

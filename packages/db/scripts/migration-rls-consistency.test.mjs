@@ -20,8 +20,6 @@ const drizzleDir = path.resolve(scriptDir, '..', 'drizzle');
 /** Tables created before the gap was found, still unprotected. Never add to this list. */
 const KNOWN_UNPROTECTED = [
   'caregiver_invites',
-  'civic_sessions',
-  'civic_venues',
   'party_invites',
   'party_rsvps',
   'sms_intake_sessions',

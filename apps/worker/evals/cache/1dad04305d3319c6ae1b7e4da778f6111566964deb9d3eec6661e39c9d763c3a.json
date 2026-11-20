@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "L'inscription pour le créneau du samedi 9 h 30 ouvre le lundi 12 janvier à 7 h 00. Je n'ai rien réservé : ce sera à toi de la faire à ce moment-là, ici : https://register.example-rec.test/activity/42\nPour aller vite, tiens ces infos prêtes : prénom de l'enfant : Lena, nom de l'enfant : Ferreira, ton prénom : Sam, ton courriel : sam@example.test"
+  },
+  "latencyMs": 2593,
+  "usage": {
+    "input_tokens": 292,
+    "output_tokens": 224,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

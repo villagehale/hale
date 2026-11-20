@@ -7,14 +7,18 @@ import {
 } from './flag';
 
 describe('CLAIM_READER_MODE', () => {
-  it('is off unless set to exactly shadow or enforce', () => {
+  it('enforces by default; off (trimmed) is the kill switch', () => {
     expect(CLAIM_READER_MODE_ENV).toBe('CLAIM_READER_MODE');
-    expect(claimReaderMode({})).toBe('off');
+    expect(claimReaderMode({})).toBe('enforce');
     expect(claimReaderMode({ CLAIM_READER_MODE: 'shadow' })).toBe('shadow');
     expect(claimReaderMode({ CLAIM_READER_MODE: 'enforce' })).toBe('enforce');
-    expect(claimReaderMode({ CLAIM_READER_MODE: 'enforce\n' })).toBe('off');
-    expect(claimReaderMode({ CLAIM_READER_MODE: 'ENFORCE' })).toBe('off');
     expect(claimReaderMode({ CLAIM_READER_MODE: 'off' })).toBe('off');
+    expect(claimReaderMode({ CLAIM_READER_MODE: 'off\n' })).toBe('off');
+    expect(claimReaderMode({ CLAIM_READER_MODE: ' off ' })).toBe('off');
+    expect(claimReaderMode({ CLAIM_READER_MODE: 'false' })).toBe('off');
+    // Anything else is not a kill: the default stands.
+    expect(claimReaderMode({ CLAIM_READER_MODE: 'OFF' })).toBe('enforce');
+    expect(claimReaderMode({ CLAIM_READER_MODE: 'shadow\n' })).toBe('enforce');
   });
 });
 
@@ -38,8 +42,9 @@ describe('claimReaderEnforces', () => {
     expect(claimReaderEnforces(FAMILY, allow('shadow', undefined))).toBe(false);
   });
 
-  it('a listed family is not enforced while the mode is off', () => {
-    expect(claimReaderEnforces(FAMILY, allow(undefined, FAMILY))).toBe(false);
-    expect(claimReaderEnforces(FAMILY, allow('enforce\n', FAMILY))).toBe(false);
+  it('every family is enforced with nothing set; a listed family is not enforced while off', () => {
+    expect(claimReaderEnforces(OTHER, allow(undefined, undefined))).toBe(true);
+    expect(claimReaderEnforces(FAMILY, allow('off', FAMILY))).toBe(false);
+    expect(claimReaderEnforces(FAMILY, allow('off\n', FAMILY))).toBe(false);
   });
 });

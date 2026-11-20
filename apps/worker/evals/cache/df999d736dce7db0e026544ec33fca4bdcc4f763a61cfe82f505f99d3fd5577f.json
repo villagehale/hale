@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale is watching the Saturday swim class page and will report when a spot opens, which is a spot_watch claim. Row g1 is the spot_watch for that same Saturday swim class.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "g1"
+      }
+    ]
+  },
+  "latencyMs": 1762
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states cart total 98$ over 90$ max, nothing charged, and does not claim registration or a held spot. It says the browser was left open but may have expired, consistent with holdMinutes 0. Minor issue: French uses 'tu' correctly, but the text is a bit dense and 'dĂ©bitĂ©' and 'payĂ©' show encoding garbling ('Ă©' for 'é'), which the parent would see on their phone, a defect the rubric penalizes heavily.",
+    "score": 2
+  }
+}

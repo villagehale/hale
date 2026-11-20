@@ -1,6 +1,10 @@
-import { randomBytes } from 'node:crypto';
-import type { BillingPeriod } from '@hale/types';
+import { createHash } from 'node:crypto';
+import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import type { AdsCheckoutContext } from './ads-context.js';
+import { adsContextToStripeMetadata } from './ads-context.js';
+import { attributionToStripeMetadata } from './attribution.js';
+import type { CheckoutSku } from './prices.js';
 
 /**
  * Minimal Stripe Checkout client, behind an interface so the route is testable
@@ -19,10 +23,24 @@ export interface CheckoutSessionParams {
   readonly cancelUrl: string;
   /** Prefills the Stripe-hosted form; safe to omit. */
   readonly customerEmail?: string | null;
+  /** Reuses an existing Stripe Customer so a family cannot mint a second one. */
+  readonly customerId?: string | null;
+  /**
+   * Optional Stripe Idempotency-Key for retrying the same request. Not a
+   * lifetime lock: Checkout bodies include ads IP/UA, so a family-wide key
+   * rejects a later legitimate session. Duplicate live subscriptions are
+   * blocked by plan_tier + reused Stripe Customer.
+   */
+  readonly idempotencyKey?: string;
+  readonly sku?: CheckoutSku;
+  readonly currency?: BillingCurrency;
+  readonly attribution?: Attribution;
+  readonly adsContext?: AdsCheckoutContext;
 }
 
 export interface StripeCheckoutClient {
   createCheckoutSession(params: CheckoutSessionParams): Promise<{ url: string }>;
+  retrieveCheckoutSession?(sessionId: string): Promise<unknown | null>;
 }
 
 const STRIPE_CHECKOUT_ENDPOINT = 'https://api.stripe.com/v1/checkout/sessions';
@@ -40,12 +58,16 @@ export function stripeCheckoutClientFromEnv(
   return {
     async createCheckoutSession(params) {
       const form = checkoutForm(params);
+      const headers: Record<string, string> = {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      };
+      if (params.idempotencyKey) {
+        headers['Idempotency-Key'] = params.idempotencyKey;
+      }
       const res = await fetchImpl(STRIPE_CHECKOUT_ENDPOINT, {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${secret}`,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
+        headers,
         body: form.toString(),
       });
       if (!res.ok) {
@@ -56,6 +78,17 @@ export function stripeCheckoutClientFromEnv(
         throw new Error('stripe checkout session response missing url');
       }
       return { url: json.url };
+    },
+    async retrieveCheckoutSession(sessionId) {
+      const res = await fetchImpl(`${STRIPE_CHECKOUT_ENDPOINT}/${sessionId}`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`stripe checkout session retrieve failed: ${res.status}`);
+      }
+      return res.json();
     },
   };
 }
@@ -83,19 +116,41 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     'metadata[priceId]': params.priceId,
     'subscription_data[metadata][familyId]': params.familyId,
     'subscription_data[metadata][tier]': params.tier,
-    integration_identifier: integrationIdentifier(),
+    integration_identifier: integrationIdentifier(params.familyId),
   });
-  if (params.customerEmail) {
+  if (params.sku) {
+    form.set('metadata[sku]', params.sku);
+    form.set('subscription_data[metadata][sku]', params.sku);
+  }
+  if (params.currency) {
+    form.set('metadata[currency]', params.currency);
+    form.set('subscription_data[metadata][currency]', params.currency);
+  }
+  const attribution = params.attribution ? attributionToStripeMetadata(params.attribution) : {};
+  for (const [key, value] of Object.entries(attribution)) {
+    form.set(`metadata[${key}]`, value);
+    form.set(`subscription_data[metadata][${key}]`, value);
+  }
+  const ads = params.adsContext ? adsContextToStripeMetadata(params.adsContext) : {};
+  for (const [key, value] of Object.entries(ads)) {
+    form.set(`metadata[${key}]`, value);
+  }
+  if (params.customerId) {
+    form.set('customer', params.customerId);
+  } else if (params.customerEmail) {
     form.set('customer_email', params.customerEmail);
   }
   return form;
 }
 
-/** Dashboard label. The 8-letter suffix is what Stripe asks for on this field. */
-function integrationIdentifier(): string {
+/**
+ * Dashboard label. The 8-letter suffix is what Stripe asks for on this field.
+ * Derived from the family so two calls with the same params stay identical.
+ */
+export function integrationIdentifier(familyId: string): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  const bytes = randomBytes(8);
+  const digest = createHash('sha256').update(familyId).digest();
   let suffix = '';
-  for (const byte of bytes) suffix += alphabet[byte % 26];
+  for (let i = 0; i < 8; i++) suffix += alphabet[(digest[i] ?? 0) % 26];
   return `hale-checkout-${suffix}`;
 }

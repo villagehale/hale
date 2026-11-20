@@ -7,6 +7,7 @@ import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import type { ChannelRouterDeps, HandlerContext } from '~/lib/channel/router/route';
 import { routeChannelMessage } from '~/lib/channel/router/route';
+import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
 import {
   auditSmokeAlarmClaim,
   auditTurnLedger,
@@ -93,6 +94,9 @@ async function seedAsk(
       templateKey: overrides.templateKey ?? CHECK_IN_ASK_TEMPLATE_KEY,
       status: overrides.status ?? 'queued',
       createdAt: overrides.createdAt ?? ASKED_AT,
+      // As the send records it; the router dates the ask by `send_recorded_at` (VIL-302).
+      sentAt: overrides.createdAt ?? ASKED_AT,
+      sendRecordedAt: overrides.createdAt ?? ASKED_AT,
     })
     .returning({ id: schema.channelMessages.id });
   return row?.id as string;
@@ -553,8 +557,12 @@ describe('a diary answer through the real router', () => {
       },
       smokeAlarm: auditSmokeAlarmClaim(db.database),
       turns: auditTurnLedger(db.database),
+      burst: { plan: async () => ({ kind: 'lone', waitedMs: 0, why: 'flag_off' }) },
+      sideTurn: darkSideTurn(),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+      holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+      sendParentReaction: async () => ({ status: 'sent' }),
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
       recordCapabilityNotes: async () => ({ status: 'recorded', declined: 0, corrected: 0 }),
@@ -565,6 +573,8 @@ describe('a diary answer through the real router', () => {
       replyResolver: { read: async () => ({ status: 'unresolved', reason: 'no_target' }) },
       calendarOffers: calendarOffersIdle,
       weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
+      schoolBreakReplyReader: { read: async () => ({ status: 'nothing_stated' as const }) },
+      recordSchoolBreak: async () => {},
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },

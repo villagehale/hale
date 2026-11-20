@@ -70,7 +70,12 @@ export type AnalyticsEvent =
   // How far down the landing a reader got: 25/50/75/100, at most once per depth
   // per view. The only signal the page has about whether the scroll earns the
   // CTA at the bottom of it.
-  | 'landing_scroll';
+  | 'landing_scroll'
+  // Holiday founding promo: a tap on the "already texting Hale? lock in the price"
+  // link, which opens the app's founding checkout page. Properties: cta_placement,
+  // promo_phase (black_friday / holiday), currency (CAD / USD). The promo's
+  // Text Hale doors stay cta_text_click / cta_message_click with promo_* placements.
+  | 'promo_cta_click';
 
 /**
  * PostHog's own pageview. Not ours to name, but it goes through the same gate as
@@ -85,6 +90,16 @@ export type CapturedEvent = AnalyticsEvent | typeof PAGEVIEW;
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
 export type EventProperties = Record<string, EventProperty>;
+
+const ATTRIBUTION_PROPERTY_KEYS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid',
+  'fbclid',
+]);
 
 const FORBIDDEN_KEY_FRAGMENTS = [
   'name',
@@ -127,7 +142,7 @@ export function buildEvent(
 ): BuiltEvent {
   const safe: EventProperties = {};
   for (const [key, value] of Object.entries(properties)) {
-    if (isForbiddenKey(key)) continue;
+    if (!ATTRIBUTION_PROPERTY_KEYS.has(key) && isForbiddenKey(key)) continue;
     if (!isCoarseValue(value)) continue;
     safe[key] = value;
   }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up could not be confirmed, gives the sessionLabel and the exact registration link, asks the parent to check, and makes no claim of signed up or failed, no hold, no follow-up promise, no personal details. Language zh matches, and audience is direct so no vous/tu issue applies to Chinese.",
+    "score": 5
+  }
+}

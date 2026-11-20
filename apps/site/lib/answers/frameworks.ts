@@ -22,10 +22,7 @@ export type AnswerSourceKey = CoachingFramework | 'siegel_brainstorm';
  * on a page whose whole pitch is cited, auditable guidance, that is the first
  * thing a careful reader pokes.
  */
-export const FRAMEWORK_SOURCES: Record<
-  AnswerSourceKey,
-  { label: string; home?: string }
-> = {
+export const FRAMEWORK_SOURCES: Record<AnswerSourceKey, { label: string; home?: string }> = {
   karp: {
     label: 'Harvey Karp — The Happiest Baby on the Block',
     home: 'https://www.happiestbaby.com',

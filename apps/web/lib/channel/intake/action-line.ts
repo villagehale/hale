@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
 import type { RadarDecision } from './radar-decide';
@@ -96,7 +97,7 @@ export type ActionLine =
 export const FIRST_REPLY_ACTION_LINE_ENV = 'FIRST_REPLY_ACTION_LINE';
 
 export function firstReplyActionLineEnabled(): boolean {
-  return process.env[FIRST_REPLY_ACTION_LINE_ENV] === 'true';
+  return isEnabled('first-reply-action-line');
 }
 
 async function render(

@@ -1,12 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import {
-  type ActionType,
-  deriveStage,
-  gcalItemAlreadyEnded,
-  gcalPastClassifySkipEnabled,
-} from '@hale/types';
+import { isEnabled } from '@hale/flags';
+import { type ActionType, deriveStage, gcalItemAlreadyEnded } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ClassifyResult, classifyEvent } from './classify';
 import { draftAction } from './draft';
@@ -111,7 +108,9 @@ export async function ingestEvent(
   // the family can still take, and a first sync is mostly those items. Future items,
   // items still in progress, and every other source still call the model.
   const skipEndedCalendar =
-    gcalPastClassifySkipEnabled() && input.source === 'gcal' && gcalItemAlreadyEnded(payload, now);
+    isEnabled('gcal-past-classify-skip', familyId) &&
+    input.source === 'gcal' &&
+    gcalItemAlreadyEnded(payload, now);
 
   // 1. Classify. Traced as 'classify-event'; the mask is the rule-#1 backstop over the
   // inbound raw content the classifier sees. WHICH MODEL RAN IS THE STAGE'S TO SAY, not
@@ -142,7 +141,10 @@ export async function ingestEvent(
         metadata: { familyId },
       },
       async (trace) => {
-        const result = await classifyEvent({ source: input.source, payload, childNames }, client);
+        const result = await withLlmContext(
+          { stage: 'classify_event', ...llmFamilyContext(familyId) },
+          () => classifyEvent({ source: input.source, payload, childNames }, client),
+        );
         trace.recordGeneration('classify-event-call', { model: result.model, usage: result.usage });
         return { classified: result, classifyTraceId: trace.traceId };
       },
@@ -205,13 +207,15 @@ export async function ingestEvent(
   const { drafted, draftTraceId } = await traceAgentRun(
     { name: 'draft-action', userId: 'system', tags: ['draft-action'], metadata: { familyId } },
     async (trace) => {
-      const result = await draftAction(
-        {
-          familyId,
-          event: { eventId, eventType: classified.eventType, payload: classified.payload },
-          actionType,
-        },
-        client,
+      const result = await withLlmContext({ stage: 'drafter', ...llmFamilyContext(familyId) }, () =>
+        draftAction(
+          {
+            familyId,
+            event: { eventId, eventType: classified.eventType, payload: classified.payload },
+            actionType,
+          },
+          client,
+        ),
       );
       trace.recordGeneration('draft-action-call', { model: result.model, usage: result.usage });
       return { drafted: result, draftTraceId: trace.traceId };
@@ -233,10 +237,10 @@ export async function ingestEvent(
   const { reviewed, reviewTraceId } = await traceAgentRun(
     { name: 'review-action', userId: 'system', tags: ['review-action'], metadata: { familyId } },
     async (trace) => {
-      const result = await reviewAction(
-        { familyId, draft: { ...drafted.draft, id: actionId } },
-        database,
-        client,
+      const result = await withLlmContext(
+        { stage: 'reviewer', ...llmFamilyContext(familyId) },
+        () =>
+          reviewAction({ familyId, draft: { ...drafted.draft, id: actionId } }, database, client),
       );
       trace.recordGeneration('review-action-loop', { model: result.model, usage: result.usage });
       return { reviewed: result, reviewTraceId: trace.traceId };

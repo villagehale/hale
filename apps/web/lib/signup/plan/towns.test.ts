@@ -1,37 +1,30 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
-import { PLAN_ASSISTED_HOSTS, PLAN_AUTO_HOSTS, planModeFor } from './towns';
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
+import { describe, expect, it } from 'vitest';
+import { PLAN_ASSISTED_HOSTS, PLAN_AUTO_HOSTS, planModeFor, providerHint } from './towns';
 
 describe('plan towns', () => {
-  it('runs a listed PerfectMind host end to end, whatever its case or trailing dot', () => {
-    const host = PLAN_AUTO_HOSTS[0] as string;
-    expect(planModeFor(`${host.toUpperCase()}.`)).toBe('auto');
+  it('runs any public host through the generic auto path, including an unseen fixture', () => {
+    expect(planModeFor('register.example-rec.test')).toBe('auto');
+    expect(planModeFor('REC.FIXTURE-UNSEEN.TEST.')).toBe('auto');
+    expect(planModeFor('cityofmarkham.perfectmind.com')).toBe('auto');
+    expect(planModeFor('anc.ca.apm.activecommunities.com')).toBe('auto');
+    expect(planModeFor('gym.jackrabbitclass.com')).toBe('auto');
+    expect(planModeFor('haltonhills.perfectmind.com')).toBe('auto');
+    expect(planModeFor('www.haltonhills.ca')).toBe('auto');
+    expect(planModeFor('haltonhills.perfectmind.com', ['cityofmarkham.perfectmind.com'])).toBe(
+      'auto',
+    );
+    expect(PLAN_AUTO_HOSTS).toEqual([]);
+    expect(PLAN_ASSISTED_HOSTS).toEqual([]);
   });
 
-  it('prepares an ActiveNet host for the parent to submit only while the assisted switch is on', () => {
-    expect(PLAN_ASSISTED_HOSTS).toEqual([
-      'anc.ca.apm.activecommunities.com',
-      'apm.activecommunities.com',
-    ]);
-    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
-    expect(planModeFor('ANC.CA.APM.ACTIVECOMMUNITIES.COM.')).toBe('assisted');
-    expect(planModeFor('apm.activecommunities.com')).toBe('assisted');
-    expect(planModeFor(PLAN_AUTO_HOSTS[0] as string)).toBe('auto');
-    expect(planModeFor('register.example-rec.test')).toBe('parent');
-
-    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true\n');
-    expect(planModeFor('anc.ca.apm.activecommunities.com')).toBe('parent');
-    vi.unstubAllEnvs();
-    expect(planModeFor('anc.ca.apm.activecommunities.com')).toBe('parent');
+  it('is parent only when there is no host at all', () => {
+    expect(planModeFor('')).toBe('parent');
+    expect(planModeFor('   ')).toBe('parent');
   });
 
-  it('never reads a look-alike host as ActiveNet', () => {
-    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
-    expect(planModeFor('anc.ca.apm.activecommunities.com.evil.test')).toBe('parent');
-    expect(planModeFor('evil-apm.activecommunities.com')).toBe('parent');
+  it('may hint a known platform without gating on it', () => {
+    expect(providerHint('haltonhills.perfectmind.com')).toBe('perfectmind');
+    expect(providerHint('anc.ca.apm.activecommunities.com')).toBe('activenet');
+    expect(providerHint('rec.fixture-unseen.test')).toBeNull();
   });
 });

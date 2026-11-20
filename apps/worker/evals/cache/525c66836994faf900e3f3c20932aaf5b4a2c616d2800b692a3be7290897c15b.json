@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every bubble is in Chinese and names the Sunday pick with its time, matching the rubric. The reply answers the single question with one event and no question is asked, so point 1 holds. Point 3 is met: the first bubble is the answer itself with no lead-in or count. Splitting into two bubbles is reasonable: the first gives the event and why it fits, the second states the free afternoon and the page link, which is placed last by code. The time 'Sun, Nov 15, 2:00' is given on the family's clock as required. Nothing is invented; the weekRead is empty so the free-afternoon claim is supported. Minor flaw: the second bubble's statement about the free schedule is slightly separate from the first thought, but it is a distinct, brief fact rather than filler.",
+    "score": 4
+  }
+}

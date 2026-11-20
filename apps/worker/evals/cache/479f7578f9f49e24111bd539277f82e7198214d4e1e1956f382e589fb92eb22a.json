@@ -1,0 +1,6 @@
+{
+  "value": {
+    "message": "hey, saw there's a Paper Lantern Craft at the Elm Street library and your Saturday afternoon looks open, could be a fun one: https://library.example.test/programs"
+  },
+  "stopReason": "tool_use"
+}

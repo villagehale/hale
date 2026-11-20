@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "No problem, I'll leave the name for now. Want me to keep going with the Gmail step, or would you rather skip that too?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameDeclined": true,
+    "nameConfirmed": false
+  },
+  "latencyMs": 1297
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "traffic-or-transit",
+    "reason": "asks about current traffic on the 401 highway, nothing about the family's week",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 986
+}

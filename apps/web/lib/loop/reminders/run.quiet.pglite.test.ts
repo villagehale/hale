@@ -113,6 +113,22 @@ describe('runReminderCron with the shipped deps - the quiet floor (VIL-562)', ()
     expect(await reminder('-PT1H')).toEqual({ status: 'sent', suppressReason: null });
   });
 
+  it('positive control: a T-1h due at 20:00 for a 21:00 event is sent, the floor still open', async () => {
+    await seedEvent('2026-11-11T04:00:00Z'); // 21:00 MST
+    await runReminderCron(db.database, deps(), new Date('2026-11-11T01:12:00Z')); // 18:12 MST the day before
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual([
+      expect.stringMatching(/^reminder:-P1D:/),
+    ]);
+
+    const open = await runReminderCron(db.database, deps(), new Date('2026-11-11T03:00:00Z')); // 20:00 MST
+    expect(open).toMatchObject({ fired: 1, firedLate: 0, heldQuietHours: 0, suppressed: 0 });
+    expect(enqueued.map((job) => job.dedupeKey)).toEqual([
+      expect.stringMatching(/^reminder:-P1D:/),
+      expect.stringMatching(/^reminder:-PT1H:/),
+    ]);
+    expect(await reminder('-PT1H')).toEqual({ status: 'sent', suppressReason: null });
+  });
+
   it('drops a T-1h due at 21:12 for a 22:00 event, with one audit row, and never revisits it', async () => {
     await seedEvent('2026-11-12T05:00:00Z'); // 22:00 MST on the 11th
     await runReminderCron(db.database, deps(), new Date('2026-11-11T01:12:00Z')); // 18:12 MST the day before

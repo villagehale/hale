@@ -1,9 +1,5 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import {
-  type InboundMediaPart,
-  classifyInboundMedia,
-  httpsMediaUrl,
-} from '~/lib/channel/inbound-media';
+import { type InboundMediaPart, classifyInboundMedia } from '~/lib/channel/inbound-media';
 import { type InboundRouteDeps, routeInboundText } from '~/lib/channel/inbound-route';
 import { countUncapturedLedgerRows, readCapturedSends } from '~/lib/channel/preview-capture-store';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
@@ -13,6 +9,7 @@ import {
   databaseGroupCaptureSink,
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
+import { httpsMediaUrl } from '~/lib/channel/public-url';
 import { isSyntheticProbeNumber, normalizePhoneE164 } from '~/lib/channels/phone';
 
 /**
@@ -76,7 +73,7 @@ export function fakeSender(raw: unknown): string | null {
 
 const MAX_MEDIA = 8;
 
-function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
+export function readMedia(raw: unknown): InboundMediaPart[] | null | 'invalid' {
   if (raw === undefined || raw === null) return null;
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MEDIA) return 'invalid';
   const parts: InboundMediaPart[] = [];

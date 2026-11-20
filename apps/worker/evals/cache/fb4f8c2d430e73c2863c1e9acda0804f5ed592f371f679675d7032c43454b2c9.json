@@ -1,0 +1,7 @@
+{
+  "value": {
+    "intent": "not_find",
+    "reason": "Asks to move their own swimming booking to Tuesday, a calendar change, not a search."
+  },
+  "latencyMs": 1118
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "周六上午9:30的课我已经帮你弄到付款这一步了,付款需要你来完成。我在服务商网站上留了一个浏览器窗口,停在付款页面,这个窗口不会替你占位,大约能开12分钟:https://live.browser-use.com/s/fixture-live-view-token"
+  },
+  "latencyMs": 1949,
+  "usage": {
+    "input_tokens": 141,
+    "output_tokens": 112,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

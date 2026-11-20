@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'a pas besoin de ton code postal pour continuer. Si tu veux, tu peux me donner juste les trois premiers caractères, ça suffit pour trouver les activités de ton coin. Sinon, on passe aux enfants : comment s'appellent-ils?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse",
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "language": "fr",
+    "placeDeclined": false
+  },
+  "latencyMs": 2115,
+  "usage": {
+    "input_tokens": 623,
+    "output_tokens": 511,
+    "cache_read_input_tokens": 7119,
+    "cache_creation_input_tokens": 0
+  }
+}

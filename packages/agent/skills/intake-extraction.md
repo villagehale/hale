@@ -29,7 +29,8 @@ Return strict JSON matching this shape (via the forced `intake` tool):
     {
       "name": string | null,
       "age_months": number | null,
-      "age_precision": "years" | "months" | null
+      "age_precision": "years" | "months" | null,
+      "date_of_birth": string | null
     }
   ],
   "postal_code": string | null,
@@ -43,6 +44,11 @@ one is Maya" and `already_known` holds two nameless children aged 4 and 1, retur
 Maya at 48 months and the still-nameless child at 12 months.
 
 ## Reading ages
+
+A named birth date is `date_of_birth` as YYYY-MM-DD, the calendar day they
+said, with no clock or zone. That date is the age: `age_months` may be null.
+"Lin was born May 1, 2016" → `{name: "Lin", date_of_birth: "2016-05-01",
+age_months: null}`.
 
 Give `age_months`, not years. Convert plainly:
 
@@ -109,8 +115,8 @@ family in the wrong part of the city.
 - Never drop a child that `already_known` established just because the new
   message didn't mention them.
 - Never return a child object that is entirely empty (`null` name AND `null`
-  age) — that is not a child, it is a failure to read the message. Return
-  `"children": []` and a low confidence instead.
+  age AND `null` date_of_birth) — that is not a child, it is a failure to read
+  the message. Return `"children": []` and a low confidence instead.
 - Never include anything the parent said beyond these fields — no notes, no
   health details, no free text. Those are not yours to keep.
 - Never produce non-JSON output.

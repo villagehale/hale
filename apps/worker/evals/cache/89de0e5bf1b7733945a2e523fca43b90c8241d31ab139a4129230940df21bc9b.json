@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to cancel a reminder and Hale cannot do that, so the reply carries essential information (the reminder is still active, and why). Sending only a like tapback would leave the parent believing the request was handled, so this is a clear failure of the meaning requirement.",
+    "score": 1
+  }
+}

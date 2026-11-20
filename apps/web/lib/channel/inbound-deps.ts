@@ -21,6 +21,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
+import { readIntakePhoto } from '~/lib/channel/intake/intake-photo';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createOptOutReader, sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
@@ -49,6 +50,7 @@ import {
 } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { postalOwnCityOpening } from '~/lib/registration/city/context';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -115,7 +117,10 @@ export function buildIntakeDeps(
       yearFinder: createActivityFinder(activityClient),
     }),
     friendVoice: createFriendVoiceComposer(client),
-    answerComposer: createIntakeAnswerComposer(client),
+    readIntakePhoto: (input) => readIntakePhoto({ ...input, client }),
+    answerComposer: createIntakeAnswerComposer(client, (postal, now) =>
+      postalOwnCityOpening(database, postal, now),
+    ),
     identityAsk: createIdentityAskVoice(() => client),
     optOutReader: sharedOptOutReader(),
     saidLine: createSaidLineWriter(client),
@@ -138,7 +143,9 @@ export function welcomeCardRedrivePorts(): WelcomeCardPorts {
     threadMessage: threadProactiveMessage,
     // VIL-505: the card's line is model-written. Lazily resolved, so a tick with no
     // held card due never warms a client.
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
   };
 }
 
@@ -279,14 +286,18 @@ export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJ
  * timeout that short would turn a working writer into a failed one.
  */
 export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecoveryDeps {
-  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS);
+  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS, {
+    stage: 'inbound_screen',
+  });
   return {
     reader: createOptOutReader(
       client,
       failurePageOpsPager(() => database),
     ),
     transport: createOutboundTransport(),
-    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    saidLine: createSaidLineWriter(() =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+    ),
     crisisPager: failurePageCrisisPager(database),
     threadMessage: threadIfParent,
     preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),

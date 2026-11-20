@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Point 1 holds: one answer, no questions. Point 2 holds: both bubbles are Chinese, with names kept as given. Point 3: the first bubble is the answer itself, but the second bubble is a sentence about the family's schedule that is not a fact from the tools, and it adds nothing the parent asked about; it also reads as an invented claim about their calendar. Point 5 is broken by that unsupported statement that the Sunday is free. The page address at the end is code-placed and correct. The rubric is met (Chinese, named pick with time), but the invented schedule claim breaks point 5, so the score drops.",
+    "score": 3
+  }
+}

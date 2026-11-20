@@ -1,0 +1,24 @@
+{
+  "value": {
+    "intent": "start_tracking",
+    "planTitle": "Picnic",
+    "startsAt": "Saturday",
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollChoice": null
+  },
+  "latencyMs": 1373,
+  "usage": {
+    "input_tokens": 183,
+    "output_tokens": 111,
+    "cache_read_input_tokens": 2453,
+    "cache_creation_input_tokens": 0
+  }
+}

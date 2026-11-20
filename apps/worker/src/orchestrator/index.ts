@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import {
   type IngestedEventPayload,
   coverageSatisfiedWithResults,
@@ -9,7 +10,6 @@ import {
   type DraftedAction,
   type FamilyStage,
   gcalItemAlreadyEnded,
-  gcalPastClassifySkipEnabled,
   mintApprovedAction,
   stageFromAgeInMonths,
 } from '@hale/types';
@@ -69,8 +69,8 @@ const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
  */
 const AUTONOMOUS_EXECUTE_ENV = 'AUTONOMOUS_EXECUTE_ENABLED';
 
-function autonomousExecuteEnabled(): boolean {
-  return process.env[AUTONOMOUS_EXECUTE_ENV] === 'true';
+function autonomousExecuteEnabled(familyId?: string): boolean {
+  return isEnabled('autonomous-execute', familyId);
 }
 
 // An accepted village item is a KNOWN, user-initiated intent — the parent tapped
@@ -299,7 +299,7 @@ export async function runOrchestrator(
       job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;
     const skipEndedCalendar =
       !isAcceptedVillageItem &&
-      gcalPastClassifySkipEnabled() &&
+      isEnabled('gcal-past-classify-skip', familyId) &&
       job.source === 'gcal' &&
       gcalItemAlreadyEnded(job.payload, new Date());
     if (skipEndedCalendar) {
@@ -709,7 +709,7 @@ export async function runOrchestrator(
     return;
   }
 
-  if (!autonomousExecuteEnabled()) {
+  if (!autonomousExecuteEnabled(familyId)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, actionType: draft.actionType },

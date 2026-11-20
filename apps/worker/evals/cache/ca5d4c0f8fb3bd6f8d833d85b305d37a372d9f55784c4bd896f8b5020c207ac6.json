@@ -1,0 +1,54 @@
+{
+  "response": {
+    "id": "msg_011CgwWy627Xdc78GuKZVwVK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6QYKEAgTGAI4AUIIdGhpbmtpbmcSDCBX3qmJOkfuY/Hd+BoM/eeqoBYzfR2QjXq+IjAFzNor3Z7/AtEYeEH6zloSGtWzVlSxSKdHJWOWOOlYdsZsvyQYL69Ej80Mfv9YpOgqhgaGr0zj5R+Dsa4C/Mfq67O2P1InCThwPbS6uOhTV+csh0p8fUnRR5mrODdTxAFG7ONJV4GnqcNaJ4ecurXmp+jzUPml+m3N1qJa7ti80Spk6akdDUNdpJgPCFf9CjW0tkfR13Wxr/ag26wJeWKz94iBJB6Y24kyRXdbMrABCZWRvnmW1dZSIBDRvzyK0j3/J5hubWWzCNmhKH0UfRaXccRDRp2US5/qsoKCuN19eWG5AGp7aca6Xd9G2b//kFjRHGEXCvwFdYogNSHspn0d+E88xXeFKzBPL6DNFAm89l2hnKj6D38H5RRyTFXhN7IODzxL3/Ci7yOSH7DGWDTMT+JPtrVLAouK5619ZX9kjz/4g6NjXFBPJYUCmuueuaofseqzJhROXlJmgtsHR3Q06psohkYonttFqG+3kgz1CTfTT++OLiHu0cskVUmq4B98fYxnlbdlulgYRPzzy2Cxd5KIcHa9sMSQt2GFSGeU839MEDNWX82SIDlCJbX7MKLNLvvI4A9ldLFso06YXilQLpxZIWzzmxEAA9ay5nd8n0VCA2c/kMhQJO2w0zqLC7PQSKpIOKRv7EcK+FYryOqGTps6GufvHzBaBpJ7kLaxHHpRRwawlsTZiYpY1Qqe2qb3v7L3uSDdUK60POXDX1de/3Bl8JxBFJGSvz+vj3iEjYiK7aAX6NyaoDJqWSmfoQ6zFGPc/6wRLukjX2uTjPmF1QdZVrIXR7xttB5WWuUmvkQYvT+G57YPK3qdRZUSLohB7HCpSGi6gODAjRCpvz8tEKZC4LCsFudkrv7jHEXnzbeXMVSKfLbc1LsZ4jjnn3HmFJrVgngvzB3TkGKGgRMq1u+iHzR2qAwu9bjJ0eNdBTT+Z6izXQMmIx7yBz66cHZSPkTm/xsc1ZbHx0A+D7eNPCaH5iYbm3n5JlLRTndJ3/eFa217Ns6x3xXyKJU83MnXYIfe1jRHnMlzcWSdtAZvMY+I+Edz5jcxuShMQhxxDYBxtwjINRDn1DTLUuvap2dXsjS2qSwrPl4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01CQ6WxtmG6GgMBonNrNNyfk",
+        "name": "search_village",
+        "input": {
+          "query": "Sunday afternoon kids activity"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_011TLf3SUPT2Ay3MgExy5XvS",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 804,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 168,
+      "output_tokens_details": {
+        "thinking_tokens": 84
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3499
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Glad you're in! I just need a name to call you by though. What should I put down for you?"
+  },
+  "latencyMs": 1574,
+  "usage": {
+    "input_tokens": 54,
+    "output_tokens": 34,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

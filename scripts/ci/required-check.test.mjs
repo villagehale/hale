@@ -9,6 +9,7 @@ describe('requiredCheckPasses', () => {
     tests: 'success',
     evals: 'success',
     workerEvals: 'true',
+    everyEval: 'success',
   };
 
   it('passes when workspace checks and worker evals passed', () => {
@@ -47,6 +48,19 @@ describe('requiredCheckPasses', () => {
 
   it('fails when evals fail even if the filter called the diff site-only', () => {
     expect(requiredCheckPasses({ ...ok, evals: 'failure', workerEvals: 'false' }).ok).toBe(false);
+  });
+
+  it('fails when the every-eval replay did not succeed, site-only diff or not', () => {
+    for (const everyEval of ['failure', 'cancelled', 'skipped', '']) {
+      expect(requiredCheckPasses({ ...ok, everyEval }).ok).toBe(false);
+      expect(
+        requiredCheckPasses({ ...ok, everyEval, evals: 'skipped', workerEvals: 'false' }).ok,
+      ).toBe(false);
+    }
+    expect(requiredCheckPasses({ ...ok, everyEval: 'failure' }).reason).toBe(
+      'every eval suite failure',
+    );
+    expect(requiredCheckPasses({ ...ok, everyEval: '' }).reason).toBe('every eval suite missing');
   });
 });
 

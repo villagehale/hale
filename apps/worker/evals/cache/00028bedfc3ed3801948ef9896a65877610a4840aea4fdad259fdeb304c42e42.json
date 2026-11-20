@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "The email is addressed to 'Dear families' from the school office of Example Public School about a PA Day and winter break for its students.",
+    "sender": "school",
+    "school_words": "Example Public School"
+  },
+  "latencyMs": 3178,
+  "usage": {
+    "input_tokens": 138,
+    "output_tokens": 65,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 718
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will write to the parent before Riverford's winter registration opens, which is a watch on that registration season. Row w1 is that same winter registration and is mintable.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "w1"
+      }
+    ]
+  },
+  "latencyMs": 2118
+}

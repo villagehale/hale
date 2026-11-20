@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reason": "Bare ok with one session and a stated price; label's claims ignored",
+    "said": "ok",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sat-0900"
+    ],
+    "maxPriceCents": 9800,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 2500
+}

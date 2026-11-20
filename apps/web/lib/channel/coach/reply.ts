@@ -178,19 +178,40 @@ export function plainText(text: string): string {
  * honesty sentence on this path.
  */
 export function toSmsReply(raw: string, args: SmsReplyArgs): string {
-  const flattened = plainText(raw);
-  if (flattened === '') {
+  return toSmsBubbles(raw, { ...args, bubbles: false })[0] as string;
+}
+
+/**
+ * The only bubble boundary inside one reply string (ChannelTurnResult.reply) on a turn
+ * whose answer may go out as several iMessage bubbles. A one-text turn never has one.
+ */
+export const REPLY_BUBBLE_BREAK = '\n';
+
+/**
+ * `toSmsReply`, one bubble per paragraph the model wrote (a blank line between them),
+ * when `bubbles` is on. Each paragraph is flattened and redacted on its own; a ref cited
+ * in any of them adds its page; every code-appended tail (offer, referral, nearby count,
+ * pages) rides the LAST bubble, where the skill puts the one question. A paragraph that
+ * flattens to nothing — a ref alone, a code block — is not a bubble.
+ *
+ * With `bubbles` off the whole answer is one paragraph, which is exactly `toSmsReply`.
+ */
+export function toSmsBubbles(raw: string, args: SmsReplyArgs & { bubbles: boolean }): string[] {
+  const flattened = (args.bubbles ? raw.split(/\n[^\S\n]*\n\s*/) : [raw])
+    .map(plainText)
+    .filter((paragraph) => paragraph !== '');
+  if (flattened.length === 0) {
     throw new Error('channel coach: model answer was empty after post-processing');
   }
-  const cited = attachLinks(
-    redactTeenNames(flattened, args.children, args.now),
-    args.activityLinks,
+  const cited = flattened.map((paragraph) =>
+    attachLinks(redactTeenNames(paragraph, args.children, args.now), args.activityLinks),
   );
-  const redacted = cited.body;
-  if (redacted === '' && cited.urls.length === 0) {
+  const urls = [...new Set(cited.flatMap((paragraph) => paragraph.urls))];
+  const bodies = cited.map((paragraph) => paragraph.body).filter((body) => body !== '');
+  if (bodies.length === 0 && urls.length === 0) {
     throw new Error('channel coach: model answer was only an uncited link');
   }
-  if (reachesForTheHealthLine(redacted)) {
+  if (reachesForTheHealthLine(bodies.join(' '))) {
     // The model wrote a health-line number in its own words. That is the reply. The
     // log counts the screen miss; the body never reaches it (rule #1).
     console.error('channel coach: model composed a safety referral; sent what it wrote');
@@ -201,7 +222,7 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const link = cited.urls.join(' ');
+  const link = urls.join(' ');
   // A plan offer or a referral drops the nearby count. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(
@@ -212,34 +233,56 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     args.children,
     args.now,
   );
-  if (protectedTail === '') {
-    const answer = dropDuplicateOffer(redacted, link);
-    const nearby = nearbyClause(answer, args.nearby);
-    const tail = [nearby ?? '', link]
-      .map((part) => part.trim())
-      .filter((part) => part !== '')
-      .join(' ');
-    if (tail === '') return answer;
-    if (answer === '') return tail;
-    return `${answer} ${tail}`;
-  }
-
-  const suffix = redactTeenNames(
-    [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
-    args.children,
-    args.now,
-  );
   // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
-  // sentence arriving twice.
-  const answer = dropDuplicateOffer(redacted, suffix);
-  // Nothing but the suffix left: the model answered with it and nothing else, so it IS
-  // the reply. Joining an empty answer to it would send a leading space.
-  if (answer === '') return suffix;
+  // sentence arriving twice. Matched against the end of the last bubble only.
+  const suffix =
+    protectedTail === ''
+      ? link
+      : redactTeenNames(
+          [protectedTail, link].filter((part) => part.trim() !== '').join(' '),
+          args.children,
+          args.now,
+        );
+  const lastIndex = bodies.length - 1;
+  if (lastIndex >= 0) {
+    const last = dropDuplicateOffer(bodies[lastIndex] as string, suffix);
+    if (last === '') bodies.pop();
+    else bodies[lastIndex] = last;
+  }
   // PRECEDENCE: a plan offer or a referral drops the nearby count. A count is the least
   // important thing in a message that also carries a promise. The activity URL still
   // rides along — it is the find, not a second ask.
-  return `${answer} ${suffix}`;
+  const nearby = protectedTail === '' ? nearbyClause(bodies.join(' '), args.nearby) : null;
+  const tail = [nearby ?? '', suffix]
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+    .join(' ');
+  if (tail === '') return bodies;
+  // Nothing but the tail left: the model answered with it and nothing else, so it IS
+  // the reply. Joining an empty answer to it would send a leading space.
+  if (bodies.length === 0) return [tail];
+  bodies[bodies.length - 1] = `${bodies[bodies.length - 1]} ${tail}`;
+  return bodies;
+}
+
+/**
+ * One reply string from a set of bubbles: every bubble flattened to one line (a code-
+ * appended tail may carry a line break of its own), joined by {@link REPLY_BUBBLE_BREAK}.
+ */
+export function joinReplyBubbles(bubbles: readonly string[]): string {
+  return bubbles
+    .map((bubble) => bubble.replace(/\s+/g, ' ').trim())
+    .filter((bubble) => bubble !== '')
+    .join(REPLY_BUBBLE_BREAK);
+}
+
+/** The bubbles inside one reply string, in order, with blank ones dropped. */
+export function splitReplyBubbles(reply: string): string[] {
+  return reply
+    .split(REPLY_BUBBLE_BREAK)
+    .map((bubble) => bubble.trim())
+    .filter((bubble) => bubble !== '');
 }
 
 /**

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "Says the answer comes shortly, which is a vague time claim, and sends the parent to a website for the rest.",
+    "promises_a_time": "yes",
+    "points_at_an_app": "yes"
+  },
+  "latencyMs": 985
+}

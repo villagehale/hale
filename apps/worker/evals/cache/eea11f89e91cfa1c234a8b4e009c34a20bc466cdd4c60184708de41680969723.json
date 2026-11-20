@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent cancels the approved swim plan",
+    "said": "Please cancel the swim one",
+    "named": "the swim one",
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 2018
+}

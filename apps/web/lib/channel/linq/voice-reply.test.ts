@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { sendReplyAsVoiceMemo } from './voice-reply';
+import { sendReplyAsVoiceMemo, voiceMemoTextOnly } from './voice-reply';
 
 const base = {
   text: 'a written reply',
@@ -52,6 +52,8 @@ describe('sendReplyAsVoiceMemo (VIL-476 Design lock)', () => {
     ['not_one_to_one', () => {}, { chatId: null }],
     ['text_only_turn', () => {}, { textOnly: true }],
     ['has_link', () => {}, { text: 'Their page: https://example.org/swim' }],
+    // VIL-683 · the text door refuses the same words, so nothing is said either way.
+    ['garbled_text', () => {}, { text: 'Natation prรฉscolaire sam. 9h00' }],
   ])('stays text: %s', async (why, setup, over) => {
     setup();
     const d = deps();
@@ -107,5 +109,25 @@ describe('sendReplyAsVoiceMemo (VIL-476 Design lock)', () => {
       why: 'send_failed',
       code: 'Error',
     });
+  });
+});
+
+describe('voiceMemoTextOnly — Hale kinds that must stay text (VIL-495)', () => {
+  it('stays text for the onboard ladder, a connect receipt, a poll, a card, and a glanceable reminder', () => {
+    expect(voiceMemoTextOnly({ templateKey: 'intake:welcome_card' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'intake:coparent_ask' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'connector:connected' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'connector:fresh_link' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'linq:poll' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'linq:experience_card' })).toBe(true);
+    expect(voiceMemoTextOnly({ hasCard: true })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'reminder' })).toBe(true);
+    expect(voiceMemoTextOnly({ templateKey: 'reminder:day_before' })).toBe(true);
+  });
+
+  it('lets the model choose voice on an ordinary coach reply', () => {
+    expect(voiceMemoTextOnly({})).toBe(false);
+    expect(voiceMemoTextOnly({ templateKey: null })).toBe(false);
+    expect(voiceMemoTextOnly({ templateKey: 'linq:tapback' })).toBe(false);
   });
 });

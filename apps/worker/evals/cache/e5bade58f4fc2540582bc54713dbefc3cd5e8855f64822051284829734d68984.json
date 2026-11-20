@@ -1,0 +1,20 @@
+{
+  "value": {
+    "ops": [
+      {
+        "action": "open",
+        "title": "Swim lessons for Robin",
+        "status": "waiting_on_parent",
+        "nextStep": "Parent picks one of the three Saturday options",
+        "childIds": [
+          "6f0d6a5e-2b1c-4c1e-9a7f-0a1b2c3d4e01"
+        ],
+        "eventIds": [],
+        "activityRefs": [
+          "swim lessons"
+        ]
+      }
+    ]
+  },
+  "latencyMs": 10111
+}

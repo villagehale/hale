@@ -17,7 +17,7 @@ import { REGISTRATION_WINDOWS } from './registration-windows-data';
 
 describe('municipalitiesForFsa', () => {
   it('resolves the whole M range to Toronto by rule, not by enumeration', () => {
-    // The rule is the point: an enumerated M list was missing four real FSAs.
+    // The rule is the point: an enumerated M list was missing four Toronto codes.
     for (const fsa of ['M4K', 'M5V', 'M1B', 'M9W', 'M6H']) {
       expect(municipalitiesForFsa(fsa)).toEqual(['toronto']);
     }

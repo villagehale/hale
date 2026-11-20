@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Jordan tried to claim cupcakes, but Priya already has them (facts.after shows owner Priya). The reply says 'Cupcakes are yours', which is the exact doubled-claim error: it wrongly tells Jordan they own an item someone else holds, and never mentions Priya or that the fruit tray is still open. No secrets or language issues, but the core fact is wrong.",
+    "score": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The parent asks when winter programs open for sign-up in their town, which the facts cover (Markham Winter 2027 registration opening dates).",
+    "reading": "answers"
+  },
+  "latencyMs": 1469,
+  "usage": {
+    "input_tokens": 96,
+    "output_tokens": 62,
+    "cache_read_input_tokens": 816,
+    "cache_creation_input_tokens": 0
+  }
+}

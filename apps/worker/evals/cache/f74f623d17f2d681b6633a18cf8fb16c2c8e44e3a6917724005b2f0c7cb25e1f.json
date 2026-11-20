@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgzPbj5dwhq8GSSCNDpJP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkQcKEAgTGAI4AUIIdGhpbmtpbmcSDDKhLyREOkc3QP2ylBoM0XxZoGirEmGH6LxbIjCX7eLyzeoYYiJFXSx9jED1H0r3F/Czupq8KnwI5xTb4mqJnW9eBY4namHhhSXSKHAqrgaBh4kRouWrk2XBFLzqg7aYViagv9sPQQzsTspwlmCLMiGBtwlHJtbJ0xuL7bXFHo1g9FX9Vz2y34ZOKqFNdoBityrrye18ypCKRqxejRY6snw5IKvOX8rR/CWwH8tsDxzy64yTmZ1+vfcplp03zjOG56lgVkvOCQ+PL0evV3dnseGQjcuydLwW36viQhdWu4Qpni59vsZ3GME7n9DpGmGJjp6JAegxcWkL8v+gMNDOuKuT6uwuInHy7uEc7kbA+tYOUqF70xWSOCxb6A/3wzQxBCbNTU7/mLPiQkFs6XVGU7qYeL7gNV9WnlbasrFCqyF8ARfeIOAzP9xB/rTXaYkECb3MHv/+YP48tgM4gHJKwS3YV1p0Ku/E19R4+smY6H7Mfo5PR9tKNRdbuPDelJ3fcrgual7Y42fQTbxKWuF6Pd88uqjmoxh2pzDK8muZ2sPYsuVLxwr/l71Z6zx80EJS9vG+QDZ9U+TsuC2oDtTHm/HtuOc5w+UoZgjKvI7udAkaoAyxqFpfv1IWV96HZvEfqQHdZU7x1IixFWrcgQpOZDefyMlA0v5+Kifkb3mW9h5p4FykGyMgixQu4NxLxLKYGcNgj06L7rnVUeVDl/9fpOj/dXWBTaUS0r1vJLtQaG8Hd9/NNnqq240MpaqNJZwgt31F1e7irdXQYIqiHLrsHckCW1xHBemq4lJ+ipLKTxAUmS8gsZQWtQEOFj09xCe6aB+9vKw+rMbSoB9tPPQo8wc+DIGek1npbzZeEU/6JkZsVmtp3FdwnjvBIM/bGhdvQpQnKo+F2b0nRZgtKL3eUNsH86FBZeLcLJLozUNGCj51Ct4SWjGZUJsWI2Am7DCKojdLx2f+HVHa30IzPVVRh0EHE0smX2jsaSJedq1YHLH7GF2R4e0nq6fLX4RDSNwirUU6s0b3ldKVPF1L4RPQbBwBZIejvuPo1Zyeuo6FczC84hCJlreodWyugORhMLxISxrHZFrFX9ugJak6wju2FJuP8FkPYSmNRWipRQhYb3QHeIZzDSyTEisxC359iEfACQJi0L5LLDm0nGLnldqSvh4GzQ3+xaNKk4x/DbCHGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EgDDZu9Qssf9ckUavvrewW",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "fall program for an 8 year old, up to $900",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 212,
+      "cache_read_input_tokens": 25167,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 212,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 167,
+      "output_tokens_details": {
+        "thinking_tokens": 73
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1794
+}

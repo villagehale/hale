@@ -1,0 +1,9 @@
+{
+  "value": {
+    "effect": {
+      "type": "bubble",
+      "name": "gentle"
+    }
+  },
+  "latencyMs": 1910
+}

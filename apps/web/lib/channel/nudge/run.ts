@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
 import type { ActivityPick } from '~/lib/channel/activity/lane';
@@ -29,6 +30,7 @@ import {
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import { type RadarChild, upcomingWeekend } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
@@ -50,6 +52,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { parentLanguage, readParentLanguage } from '~/lib/channel/parent-language';
 import {
   type ProactiveLedgerWrite,
   finalizeProactiveSend,
@@ -164,8 +167,9 @@ export interface NudgeFamily {
   areaCoarse: string | null;
   timeZone: string;
   provisionedAt: Date;
-  /** `families.primary_language`, handed to the live search so the model can weigh the
-   * holidays this household is likely to keep. Optional so older fixtures stay valid. */
+  /** The primary parent's stored proactive language, else `families.primary_language`.
+   * Handed to the live search so the model can weigh the holidays this household is
+   * likely to keep. Optional so older fixtures stay valid. */
   language?: string | null;
 }
 
@@ -234,7 +238,11 @@ export interface NudgeRunDeps {
    * expressed by the flag and carried into the decide as `'disarmed'`, never by
    * withholding this.
    */
-  loadWeekdayCareContext(database: Database, familyId: string): Promise<WeekdayCareContext>;
+  loadWeekdayCareContext(
+    database: Database,
+    familyId: string,
+    now: Date,
+  ): Promise<WeekdayCareContext>;
   /**
    * Occupancy of the coming Saturday (VIL-365). REQUIRED (rule #11): withholding it
    * would look like an open Saturday. `'unread'` is only for a caller that is
@@ -393,7 +401,13 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     queued: 0,
     shadowUnqueued: 0,
     failed: 0,
-    held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
+    held: {
+      not_enrolled: 0,
+      opt_out_unread: 0,
+      no_watch_consent: 0,
+      quiet_hours: 0,
+      sends_paused: 0,
+    },
     skips: {},
     dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
       DateCheckOutcome,
@@ -480,8 +494,11 @@ function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
       if (!slot) throw new Error(`nudgeWorthlessAfter: no ${nudge.day} in the coming weekend`);
       return slot.date;
     }
-    case 'registration':
     case 'weekday_care':
+      // A verified break's key ends with its first day (nudge-decide checks it): asking
+      // who covers the break is worthless once it has begun. The other prompts have no day.
+      return nudge.ask.prompt === 'verified_break' ? nudge.ask.eventKey.slice(-10) : null;
+    case 'registration':
       return null;
     default:
       return assertNever(nudge);
@@ -583,6 +600,9 @@ async function decideForFamily(
   // reports nothing (see WeekdayCareInput: silent counters mean the flag, zeroed ones
   // would mean the legs ran).
   const weekdayArmed = weekdayCareEnabled();
+  // VIL-685 · the break question reads the same context, armed by its own kill switch;
+  // with weekday care itself off, only its break rung may speak (`breakOnly`).
+  const breakArmed = schoolBreakEnabled();
   const [
     candidates,
     windowRows,
@@ -601,8 +621,10 @@ async function decideForFamily(
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
       : Promise.resolve([]),
     deps.loadClaimedWindowIds(database, family.familyId),
-    weekdayArmed
-      ? deps.loadWeekdayCareContext(database, family.familyId)
+    weekdayArmed || breakArmed
+      ? deps
+          .loadWeekdayCareContext(database, family.familyId, now)
+          .then((context) => (weekdayArmed ? context : { ...context, breakOnly: true }))
       : Promise.resolve('disarmed' as const),
     deps.loadSaturdayPlans(database, family.familyId, now, family.timeZone),
     deps.loadHouseholdBias(database, family.familyId),
@@ -1050,7 +1072,10 @@ async function runForFamily(
         });
         const nameLine = decideParentCallName({ ...callName, isWin: true });
         if (nameLine.kind !== 'none') {
-          const body = await deps.composeNameAsk({ ask: nameLine, language: 'en' });
+          const body = await deps.composeNameAsk({
+            ask: nameLine,
+            language: await nameAskLanguage(database, family.familyId, recipient.parentUserId),
+          });
           if (body === null) {
             console.warn(
               { familyId: family.familyId, kind: nameLine.kind },
@@ -1177,12 +1202,26 @@ export async function runNudgeCron(
  * parent. Consent, enrolment, volume and the clock are the GATE's business — selecting
  * on them here would put the same policy in two places and let them disagree.
  */
-async function selectNudgeFamilies(database: Database, now: Date): Promise<NudgeFamily[]> {
+/** The language a 1:1 name ask is written in. A unit-test database with no `select`
+ * keeps English, which is what this ask used to hard-code. */
+async function nameAskLanguage(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<'en' | 'fr'> {
+  if (typeof database.select !== 'function') return 'en';
+  return copyLanguage(await readParentLanguage(database, { familyId, parentUserId })) === 'fr'
+    ? 'fr'
+    : 'en';
+}
+
+export async function selectNudgeFamilies(database: Database, now: Date): Promise<NudgeFamily[]> {
   const rows = await database
     .select({
       familyId: schema.families.id,
       areaCoarse: schema.families.areaCoarse,
-      language: schema.families.primaryLanguage,
+      familyLanguage: schema.families.primaryLanguage,
+      proactiveLanguage: schema.users.proactiveLanguage,
       provisionedAt: schema.families.createdAt,
       parentUserId: schema.users.id,
       timeZone: schema.users.timezone,
@@ -1202,7 +1241,12 @@ async function selectNudgeFamilies(database: Database, now: Date): Promise<Nudge
         lte(schema.families.createdAt, new Date(now.getTime() - MIN_FAMILY_AGE_HOURS * 3_600_000)),
       ),
     );
-  return rows;
+  return rows.map(({ proactiveLanguage, familyLanguage, ...row }) => ({
+    ...row,
+    language: proactiveLanguage
+      ? parentLanguage(proactiveLanguage, familyLanguage)
+      : familyLanguage,
+  }));
 }
 
 async function readNudgeChildren(database: Database, familyId: string): Promise<NudgeChildRow[]> {

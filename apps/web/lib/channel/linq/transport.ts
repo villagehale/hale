@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { hasGarbledText } from '@hale/agent';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import {
@@ -31,8 +32,9 @@ import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
 
 const LINQ_API_BASE = 'https://api.linqapp.com/api/partner/v3';
 
-/** Inside Linq's 10s webhook budget when a keyword ack sends inline, and short
- * enough that a hung partner fails the turn instead of holding the instance. */
+/** Inside Linq's webhook timeout (LINQ_WEBHOOK_TIMEOUT_MS, signature.ts) when a keyword
+ * ack sends inline, and short enough that a hung partner fails the turn instead of holding
+ * the instance. */
 export const SEND_TIMEOUT_MS = 8_000;
 
 const TEXT_MAX = 10_000;
@@ -66,8 +68,29 @@ export class LinqSendError extends Error {
 }
 
 /**
- * VIL-226 · the rate-limit and idempotency rules ride PROACTIVE_CADENCE, so an unset
- * flag sends exactly today's request and reads exactly today's refusal.
+ * VIL-683 · THE ONE SEND SEAM FOR GARBLED TEXT. Every text that reaches a parent leaves as a
+ * Linq text part (assertParts), an edit, a poll option or an experience card's copy, and
+ * each is checked here before any fetch. A garbled text is a model failure: a permanent refusal named `garbled_text`,
+ * so each caller's refusal handling ledgers it and sends nothing in its place. The writer
+ * was already asked once more at the model seam (@hale/agent forceToolJson and runAgent).
+ * Logged by code only, never the words (rule #1).
+ */
+export const GARBLED_TEXT = 'garbled_text';
+
+/** Also called on every text of a set before its first is sent (sendTexts, the router's
+ * reply set, the intake map), so a set with one garbled text sends none of them. */
+export function refuseGarbledText(text: string): void {
+  if (!hasGarbledText(text)) return;
+  console.warn({ code: GARBLED_TEXT }, 'linq: garbled text refused — not sent');
+  throw new LinqSendError(GARBLED_TEXT, 0, true);
+}
+
+/**
+ * VIL-226 · the in-call rate-limit retry rides PROACTIVE_CADENCE. Unset, a 429 is
+ * today's refusal: one attempt, not retried.
+ *
+ * VIL-705 · the idempotency key does not. It names the send in every cadence,
+ * including `off`, so rolling the flag back does not drop duplicate-send protection.
  */
 function cadenceArmed(): boolean {
   return proactiveCadence() !== 'off';
@@ -389,6 +412,7 @@ function assertParts(parts: readonly LinqOutboundPart[]): void {
     if (part.type === 'text' && (part.value.length === 0 || part.value.length > TEXT_MAX)) {
       throw new LinqSendError('invalid_parts', 400, true);
     }
+    if (part.type === 'text') refuseGarbledText(part.value);
     if (part.type === 'text' && part.decorations) {
       assertDecorations(part.value, part.decorations);
     }
@@ -407,6 +431,8 @@ export async function sendLinqParts(input: {
   chatId: string;
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
+  /** iMessage only; Linq ignores this on SMS and RCS. */
+  effect?: LinqMessageEffect;
   /** The caller's identity for this one send (see `linqSendKey`). */
   sendKey?: string;
   fetch?: typeof fetch;
@@ -422,8 +448,11 @@ export async function sendLinqParts(input: {
       ...(input.replyTo.partIndex !== undefined ? { part_index: input.replyTo.partIndex } : {}),
     };
   }
+  if (input.effect) {
+    message.effect = { type: input.effect.type, name: input.effect.name };
+  }
   const armed = cadenceArmed();
-  if (armed) message.idempotency_key = linqSendKey(input.sendKey);
+  message.idempotency_key = linqSendKey(input.sendKey);
   const send = () =>
     linqRequest({
       method: 'POST',
@@ -473,9 +502,10 @@ export async function sendLinqExperience(input: {
   if (!input.experience.name || !input.experience.action) {
     throw new LinqSendError('invalid_experience', 400, true);
   }
+  for (const value of Object.values(input.experience.params)) refuseGarbledText(value);
   const message = {
     experience: input.experience,
-    ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+    idempotency_key: linqSendKey(input.sendKey),
   };
   const result = await linqRequest({
     method: 'POST',
@@ -505,6 +535,7 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  effect?: LinqMessageEffect;
   /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
   mention?: string;
   /** The caller's identity for this one send (see `linqSendKey`). */
@@ -529,6 +560,7 @@ export async function sendLinqChatMessage(input: {
         },
       ],
       replyTo,
+      effect: input.effect,
       sendKey,
       fetch: input.fetch,
     });
@@ -580,6 +612,52 @@ export async function sendLinqChatMessage(input: {
       input.sendKey === undefined ? undefined : `${input.sendKey}:plain`,
     );
   }
+}
+
+/**
+ * VIL-479 · Replace one text part of a message Hale already sent.
+ *
+ * `PATCH /v3/messages/{messageId}` with `part_index` and the new `text`. iMessage
+ * only, text parts only, and Linq keeps the same message id. There is no unsend:
+ * this is the correction, and the wording is the caller's — this function sends
+ * `text` and nothing else.
+ *
+ * https://docs.linqapp.com/channel/imessage/api/resources/messages/methods/update/
+ */
+export async function editLinqMessage(input: {
+  messageId: string;
+  text: string;
+  /** 0-based. Omitted means the first part, which is the only part of a text bubble. */
+  partIndex?: number;
+  fetch?: typeof fetch;
+}): Promise<{ providerMessageId: string }> {
+  const partIndex = input.partIndex ?? 0;
+  if (
+    !input.messageId ||
+    input.text.length === 0 ||
+    input.text.length > TEXT_MAX ||
+    !Number.isInteger(partIndex) ||
+    partIndex < 0
+  ) {
+    throw new LinqSendError('invalid_edit', 400, true);
+  }
+  refuseGarbledText(input.text);
+  const result = await linqRequest({
+    method: 'PATCH',
+    path: `/messages/${encodeURIComponent(input.messageId)}`,
+    body: { text: input.text, part_index: partIndex },
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const providerMessageId = readLinqMessageId(result.payload) ?? topLevelId(result.payload);
+  return { providerMessageId: providerMessageId ?? input.messageId };
+}
+
+function topLevelId(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  return typeof payload.id === 'string' && payload.id ? payload.id : null;
 }
 
 /**
@@ -761,10 +839,15 @@ export function readLinqPollEnvelope(
   return { messageId, options };
 }
 
+/** A participant Linq listed whose handle could not be read: no caller can place it. */
+const UNREADABLE_HANDLE = '';
+
 /** Non-me handles of the people in the chat now, emails included. Linq keeps a person
  * who left listed; only an explicit status `left` or `removed` drops them. Any other
  * status, or none, counts as present, and `left_at` alone never drops anyone: a person
- * added back can carry a stale one, and an audience gate must not lose them.
+ * added back can carry a stale one, and an audience gate must not lose them. A present
+ * record without a readable handle is still someone in the chat, so it is returned as
+ * UNREADABLE_HANDLE, which every audience check holds on, rather than skipped.
  * Phones stay in the return value for the caller to hash; this function does not log them. */
 export function readLinqChatHandles(payload: unknown): string[] {
   if (!isRecord(payload)) return [];
@@ -772,9 +855,47 @@ export function readLinqChatHandles(payload: unknown): string[] {
   const handles = Array.isArray(chat.handles) ? chat.handles : [];
   const out: string[] = [];
   for (const handle of handles) {
-    if (!isRecord(handle) || handle.is_me === true) continue;
+    if (!isRecord(handle)) {
+      out.push(UNREADABLE_HANDLE);
+      continue;
+    }
+    if (handle.is_me === true) continue;
     if (handle.status === 'left' || handle.status === 'removed') continue;
-    if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
+    out.push(typeof handle.handle === 'string' ? handle.handle : UNREADABLE_HANDLE);
+  }
+  return out;
+}
+
+/** A Linq timestamp, or null when it is absent or not one. */
+function linqTime(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** When Linq says each present handle (as readLinqChatHandles reads them) joined the chat,
+ * on Linq's clock, the one a message's sent_at is on. Null when it cannot say: no readable
+ * `joined_at`, or a `left_at` that is not before it (added back on a record that kept an
+ * earlier join) or cannot be read. A handle listed more than once is null unless every
+ * present record gives a time, and then the latest. */
+export function readLinqChatJoinedAt(payload: unknown): Map<string, Date | null> {
+  const out = new Map<string, Date | null>();
+  if (!isRecord(payload)) return out;
+  const chat = isRecord(payload.chat) ? payload.chat : payload;
+  const handles = Array.isArray(chat.handles) ? chat.handles : [];
+  for (const record of handles) {
+    if (!isRecord(record) || record.is_me === true) continue;
+    if (record.status === 'left' || record.status === 'removed') continue;
+    if (typeof record.handle !== 'string') continue;
+    const joined = linqTime(record.joined_at);
+    const neverLeft = record.left_at === undefined || record.left_at === null;
+    const left = linqTime(record.left_at);
+    const at = joined && (neverLeft || (left && left < joined)) ? joined : null;
+    const before = out.get(record.handle);
+    out.set(
+      record.handle,
+      before === undefined ? at : before && at ? (before > at ? before : at) : null,
+    );
   }
   return out;
 }
@@ -852,13 +973,38 @@ export async function updateLinqGroupChat(input: {
   });
 }
 
-/** GET the chat and return the other participants' handles and whether Linq says it
- * is a group (null when the payload does not say). A miss is named. */
+/**
+ * VIL-478 — set a named colour swatch behind a chat. Colour only: no dynamic, no
+ * photo. Linq answers 202 (accepted, not applied); the result lands on
+ * `chat.background_updated`. Sends no message bubble.
+ */
+export async function setLinqChatBackground(input: {
+  chatId: string;
+  variant: 'ice';
+  fetch?: typeof fetch;
+}): Promise<LinqEffectResult> {
+  return linqEffect({
+    method: 'POST',
+    path: `/chats/${encodeURIComponent(input.chatId)}/background`,
+    body: { type: 'color', variant: input.variant },
+    fetch: input.fetch,
+  });
+}
+
+/** GET the chat and return the other participants' handles, when Linq says each joined,
+ * and whether Linq says it is a group (null when the payload does not say). A miss is
+ * named. `joinedAt` is optional for callers that only count who is here; a handle missing
+ * from it is one whose join time is unknown. */
 export async function listLinqParticipantHandles(input: {
   chatId: string;
   fetch?: typeof fetch;
 }): Promise<
-  | { status: 'ok'; handles: string[]; isGroup: boolean | null }
+  | {
+      status: 'ok';
+      handles: string[];
+      isGroup: boolean | null;
+      joinedAt?: ReadonlyMap<string, Date | null>;
+    }
   | Exclude<LinqEffectResult, { status: 'accepted' }>
 > {
   try {
@@ -879,6 +1025,7 @@ export async function listLinqParticipantHandles(input: {
       status: 'ok',
       handles: readLinqChatHandles(result.payload),
       isGroup: readLinqChatIsGroup(result.payload),
+      joinedAt: readLinqChatJoinedAt(result.payload),
     };
   } catch (err) {
     if (err instanceof LinqSendError && err.code === 'not_configured') {
@@ -1168,6 +1315,7 @@ export async function sendLinqPoll(input: {
 }): Promise<{ messageId: string; options: LinqPollOptionRef[] }> {
   const texts = input.options.map((option) => option.trim()).filter((option) => option.length > 0);
   if (texts.length < 2) throw new LinqSendError('invalid_poll', 400, true);
+  for (const text of texts) refuseGarbledText(text);
   const result = await linqRequest({
     method: 'POST',
     path: `/chats/${encodeURIComponent(input.chatId)}/polls`,
@@ -1205,36 +1353,51 @@ export const LINQ_BUBBLE_EFFECTS = ['slam', 'loud', 'gentle', 'invisible'] as co
 
 export type LinqScreenEffect = (typeof LINQ_SCREEN_EFFECTS)[number];
 export type LinqBubbleEffect = (typeof LINQ_BUBBLE_EFFECTS)[number];
+export type LinqMessageEffect =
+  | { type: 'screen'; name: LinqScreenEffect }
+  | { type: 'bubble'; name: LinqBubbleEffect };
+
+const SCREEN_EFFECTS: ReadonlySet<string> = new Set(LINQ_SCREEN_EFFECTS);
+const BUBBLE_EFFECTS: ReadonlySet<string> = new Set(LINQ_BUBBLE_EFFECTS);
+
+/** True when `value` is a screen or bubble effect Linq will accept. */
+export function isLinqMessageEffect(value: unknown): value is LinqMessageEffect {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as { type?: unknown; name?: unknown };
+  if (typeof record.name !== 'string') return false;
+  if (record.type === 'screen') return SCREEN_EFFECTS.has(record.name);
+  if (record.type === 'bubble') return BUBBLE_EFFECTS.has(record.name);
+  return false;
+}
 
 /**
- * Send one text with an iMessage effect. Helper only — no product moment calls
- * this. Confetti and invisible ink stay off the kids-year path until Design
- * names a moment.
+ * Send one text with an iMessage effect (VIL-473). The product moment is
+ * `applyLinqEffect`: the model chooses the effect, this helper posts it.
+ * Cadence and a refused `replyTo` follow {@link sendLinqChatMessage}.
  *
  * https://docs.linqapp.com/guides/messaging/message-effects/
  */
 export async function sendLinqEffect(input: {
   chatId: string;
   text: string;
-  effect: { type: 'screen'; name: LinqScreenEffect } | { type: 'bubble'; name: LinqBubbleEffect };
+  effect: LinqMessageEffect;
+  replyTo?: LinqReplyTarget;
+  /** VIL-475 — one seated participant's handle. Group chats only. Never logged. */
+  mention?: string;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.text.trim()) throw new LinqSendError('invalid_parts', 400, true);
-  const result = await linqRequest({
-    method: 'POST',
-    path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
-    body: {
-      message: {
-        parts: [{ type: 'text', value: input.text }],
-        effect: { type: input.effect.type, name: input.effect.name },
-      },
-    },
+  return sendLinqChatMessage({
+    chatId: input.chatId,
+    text: input.text,
+    replyTo: input.replyTo,
+    effect: input.effect,
+    ...(input.mention ? { mention: input.mention } : {}),
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     fetch: input.fetch,
   });
-  if (!result.ok) throw new LinqSendError(result.code, result.status, result.permanent);
-  const providerMessageId = readLinqMessageId(result.payload);
-  if (!providerMessageId) throw new LinqSendError('missing_message_id', result.status, false);
-  return { providerMessageId };
 }
 
 const URL_IN_TEXT = /https?:\/\//i;
@@ -1267,6 +1430,11 @@ async function findLinqDirectChat(input: {
 export type LinqChatService = 'iMessage' | 'SMS' | 'RCS' | 'other';
 
 const LINQ_CHAT_SERVICES: ReadonlySet<string> = new Set(['iMessage', 'SMS', 'RCS']);
+
+/** A service string Linq sent, or `other` for one this code does not know. */
+export function linqChatService(value: string): LinqChatService {
+  return LINQ_CHAT_SERVICES.has(value) ? (value as LinqChatService) : 'other';
+}
 
 /** One page of the account's chats, reduced to what a count needs. Handles and
  * display names never leave the parser (rule #1). */
@@ -1353,7 +1521,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls, decorations }) {
+    async send({ to, body, mediaUrls, decorations, replyIn }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1362,6 +1530,46 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
       }
       const from = linqFromE164();
       if (!from) throw new LinqSendError('not_configured', 0, true);
+
+      // A later answer goes into the ask's own chat, under the message given, but only
+      // while that chat is still this parent's 1:1 on this line — found the way a link
+      // send finds its chat, by Hale's line and the parent's number now. A number or a
+      // line that moved since the ask, no 1:1 at all, or a lookup Linq failed or refused,
+      // sends as any other text below, unthreaded, and says why. A thread target Linq
+      // refuses is resent plain in that same chat (sendLinqChatMessage).
+      if (replyIn) {
+        if (mediaUrls) throw new LinqSendError('invalid_parts', 400, true);
+        const current = await findLinqDirectChat({ from, to, fetch: deps.fetch }).catch(
+          (err: unknown) => {
+            if (!(err instanceof LinqSendError)) throw err;
+            return err;
+          },
+        );
+        if (current instanceof LinqSendError) {
+          console.warn(
+            { reason: 'lookup_failed', code: current.code },
+            "linq: could not read this parent's 1:1 on this line - sending unthreaded",
+          );
+        } else if (current === replyIn.chatId) {
+          const sent = await sendLinqChatMessage({
+            chatId: replyIn.chatId,
+            text: body,
+            decorations,
+            replyTo: { messageId: replyIn.messageId },
+            fetch: deps.fetch,
+          });
+          return {
+            providerMessageId: sent.providerMessageId,
+            transport: 'imessage' as const,
+            chatId: replyIn.chatId,
+          };
+        } else {
+          console.warn(
+            { reason: current === null ? 'no_direct_chat' : 'chat_moved' },
+            "linq: the ask's chat is not this parent's 1:1 on this line - sending unthreaded",
+          );
+        }
+      }
 
       const media = mediaUrls ?? [];
       const hasUrl = URL_IN_TEXT.test(body);

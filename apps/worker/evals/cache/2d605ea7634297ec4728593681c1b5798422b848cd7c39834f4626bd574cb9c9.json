@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "这个网站我目前还没办法帮你完成报名。我没有尝试登录,所以不是登录失败。\n周六上午9:30这个时段,你可以在这里自己报名:https://register.example-rec.test/activity/42\n表单要填的信息我帮你列好了:\n孩子名字:Lena\n孩子姓氏:Ferreira\n家长名字:Sam\n家长邮箱:sam@example.test"
+  },
+  "latencyMs": 2648,
+  "usage": {
+    "input_tokens": 228,
+    "output_tokens": 153,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

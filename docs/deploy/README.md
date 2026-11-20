@@ -72,6 +72,8 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `APP_URL` | ✓ | — | Public app origin |
 | (none app-specific) | — | ✓ | site is static marketing |
 
+Prepaid Anthropic credit #ops alert (optional, dark): `ANTHROPIC_CREDIT_ALERT_ENABLED` (exact `true`), `ANTHROPIC_CREDIT_START_USD`, `ANTHROPIC_CREDIT_START_AT`, optional `ANTHROPIC_CREDIT_ALERT_USD` (default 40), optional `ANTHROPIC_CREDIT_EXPIRES_AT`, and optional `ANTHROPIC_CREDIT_EXPIRY_WARN_DAYS` (default 7,3). Pages Slack #ops from `/api/cron/spend-alert` and the scheduled drain when remaining credit drops below the thresholds, once per expiry warning day at 10:00 America/Toronto, and at once on a credit/billing API error. Never a parent text. See `.env.example`.
+
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
 These drive `.github/workflows/deploy.yml` (which has one leg, `migrate`;
@@ -217,6 +219,52 @@ understand:
    new hale-web deployment from taking traffic while migrations are unapplied.
    There is no worker deploy in this workflow. Scheduled agents ship with the
    `hale-web` Vercel deployment (`/api/cron/*`).
+
+### Production text gate (VIL-696)
+
+A ready production build of `hale-web` does not serve the parent domain until
+one synthetic text against **that** build gets a reply. The check is
+`.github/workflows/prod-text-gate.yml`, triggered by Vercel's
+`vercel.deployment.ready` event. It calls `GET /api/cron/prod-text-gate` on the
+deployment URL (not `app.villagehale.com`). That route posts one Linq-signed
+`CANARY` inbound from the synthetic probe number, kicks this deployment's
+drain, and reads the `sms_canary_answered` audit row stamped with this
+deployment id. No model call, no parent text.
+
+The workflow sets the commit status
+`Vercel - hale-web: prod-text-gate (production)`. It does not alias and it
+does not roll a deployment back. With the Deployment Check required, Vercel
+aliases the production domains only after that status succeeds. A failure
+leaves the previous deployment serving, posts one Slack message to #ops, and
+opens one GitHub issue for the commit. A failure before the probe runs still
+opens that issue. After a transient failure, re-run the failed jobs on that
+Actions run. That re-reports the status. A separate manual run cannot.
+
+The route is not in `apps/web/vercel.json`. A schedule would hit the build
+already serving parents.
+
+**Turn this on only after the workflow file is on `main`.** Requiring the
+status earlier holds every production deploy on a check nothing writes.
+
+Project setting, `hale-web` (team `village-hale-project`):
+
+1. Settings → Build and Deployment → Deployment Checks → Add Checks → GitHub.
+2. Select the commit status `Vercel - hale-web: prod-text-gate (production)`.
+3. Leave automatic production aliasing on. The check decides when it happens.
+4. Deployment Protection: enable Protection Bypass for Automation, or add
+   GitHub Actions as a Trusted Source for this repository. The candidate URL
+   is behind Standard Protection until it is aliased.
+
+GitHub Actions secrets (names only; same names as the app, values not printed
+here):
+
+| Secret | Where the value already lives |
+|---|---|
+| `CRON_SECRET` | hale-web Production env |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | The bypass created in step 4. Also set it on the hale-web Production env so the deployment can call its own webhook and drain. |
+| `OPS_SLACK_WEBHOOK_URL` | Already used by the cron dead-man. One #ops post when the gate holds. |
+
+`LINQ_WEBHOOK_SECRET` stays on the deployment. Actions does not need it.
 
 > The web build and this workflow both use `DATABASE_DIRECT_URL` (Supabase
 > direct, port 5432). See [Migration drift guard](#migration-drift-guard).

@@ -32,6 +32,9 @@ describe('share_experience_card (VIL-497)', () => {
     expect(
       experienceCardViolations({ ref: LINKS[0]!.ref, title: 'see https://x.y' }, LINKS),
     ).toHaveLength(1);
+    for (const title of ['Swim at evil.app', 'bit.ly/x tonight', 'See EVIL.IO', 'xn--80ak6aa92e']) {
+      expect(experienceCardViolations({ ref: LINKS[0]!.ref, title }, LINKS)).toHaveLength(1);
+    }
   });
 
   it('resolves the url from the ref; the model never supplies one', async () => {

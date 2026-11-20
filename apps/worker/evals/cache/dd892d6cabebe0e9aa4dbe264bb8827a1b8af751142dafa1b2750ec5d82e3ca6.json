@@ -1,0 +1,16 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Cake is still open. Balloons are with Sam."
+  },
+  "latencyMs": 1165
+}

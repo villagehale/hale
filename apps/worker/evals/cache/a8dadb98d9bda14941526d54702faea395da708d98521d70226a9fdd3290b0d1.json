@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Duty night question goes the evening before; it's Thursday 6 PM local, outside quiet hours, no unanswered streak, no pace preference, and free windows don't apply to duty_ask.",
+    "action": "send_now",
+    "item_ids": [
+      "duty"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

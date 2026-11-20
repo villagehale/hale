@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je n'ai pas pu confirmer que l'inscription pour sam. 9 h 30 est passée. Va vérifier sur la page de l'activité : https://register.example-rec.test/activity/42"
+  },
+  "latencyMs": 2136,
+  "usage": {
+    "input_tokens": 139,
+    "output_tokens": 75,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

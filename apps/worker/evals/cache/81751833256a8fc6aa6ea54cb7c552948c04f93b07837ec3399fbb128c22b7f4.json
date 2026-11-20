@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Language switch request, no safety or off-domain content",
+    "language": "es",
+    "language_request": "en"
+  },
+  "latencyMs": 2877
+}

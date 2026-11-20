@@ -39,9 +39,9 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 
 /**
  * How long a row must sit unmarked before it counts as abandoned rather than in flight.
- * A request still running holds an unmarked row for its whole life, and the webhook
- * budget is 15s — two minutes is far past any live attempt while still
- * being a delay a parent experiences as slow, not as ignored.
+ * A request still running holds an unmarked row for its whole life, and Linq's webhook
+ * timeout is 10s (LINQ_WEBHOOK_TIMEOUT_MS) — two minutes is far past any live attempt
+ * while still being a delay a parent experiences as slow, not as ignored.
  */
 export const HANDOFF_GRACE_MS = 2 * 60 * 1000;
 
@@ -74,6 +74,8 @@ export interface UnhandedInboundRow {
   sentAt: Date | null;
   /** The door's group bit (migration 0185). Null on rows written before it. */
   inGroup: boolean | null;
+  /** The door's opt-out read could not read it (migration 0238). Null on rows before it. */
+  optOutUnread: boolean | null;
   createdAt: Date;
 }
 
@@ -112,6 +114,7 @@ export async function selectUnhandedInbound(
       providerMessageId: schema.channelMessages.providerMessageId,
       sentAt: schema.channelMessages.sentAt,
       inGroup: schema.channelMessages.inGroup,
+      optOutUnread: schema.channelMessages.optOutUnread,
       createdAt: schema.channelMessages.createdAt,
     })
     .from(schema.channelMessages)
@@ -174,6 +177,8 @@ export async function reconcileUnhandedInbound(
         // before the column says null, passed on as unknown, and the router refuses an
         // unknown iMessage turn instead of running it on the sender's 1:1 thread.
         in_group: row.inGroup ?? undefined,
+        // A text the door could not read as a stop or not stays unread on the re-drive.
+        opt_out_unread: row.optOutUnread ?? undefined,
       });
       await deps.database
         .update(schema.channelMessages)

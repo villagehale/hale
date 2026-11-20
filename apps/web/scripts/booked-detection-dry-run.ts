@@ -29,7 +29,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
 const emails = envelopesFrom(parsed);
-const client = budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
+const client = budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'classify_event' });
 
 try {
   const verdicts = await runBookedDetectionDryRun(emails, { client });

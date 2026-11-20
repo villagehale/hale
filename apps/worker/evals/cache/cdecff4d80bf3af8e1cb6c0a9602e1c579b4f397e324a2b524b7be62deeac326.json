@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The only sentence says nothing is booked yet, which is an absence, not a claim. No rows exist.",
+    "claims": []
+  },
+  "latencyMs": 1178
+}

@@ -9,13 +9,20 @@ import type { FamilyChildRef } from '~/lib/sentinel';
  * alert path is tested against literal writer answers — the same precedent as the scripted
  * `classify` port — while the writer's own words are judged by the cached eval
  * (`apps/worker/evals/run-email-alert-notice-eval.mjs`). Records every facts object it was
- * handed so a test can assert on what the model would have been told.
+ * handed so a test can assert on what the model would have been told, and every body
+ * argument so a test can assert the flag-off path still hands none.
  */
 export interface ScriptedNoticeWriter {
   familyChildren: () => Promise<readonly FamilyChildRef[]>;
   parentLanguage: (parentUserId: string, now: Date) => Promise<string>;
-  writeNotice: (facts: EmailAlertNoticeFacts, familyId: string) => Promise<EmailAlertNotice>;
+  writeNotice: (
+    facts: EmailAlertNoticeFacts,
+    familyId: string,
+    body?: string | null,
+  ) => Promise<EmailAlertNotice>;
   seen: EmailAlertNoticeFacts[];
+  /** The optional body argument from each `writeNotice` call, in order. */
+  bodies: Array<string | null | undefined>;
 }
 
 export function scriptedNoticeWriter(
@@ -26,13 +33,16 @@ export function scriptedNoticeWriter(
   } = {},
 ): ScriptedNoticeWriter {
   const seen: EmailAlertNoticeFacts[] = [];
+  const bodies: Array<string | null | undefined> = [];
   const children = options.children ?? [];
   return {
     seen,
+    bodies,
     familyChildren: async () => children,
     parentLanguage: async () => options.language ?? 'en',
-    writeNotice: async (facts) => {
+    writeNotice: async (facts, _familyId, body) => {
       seen.push(facts);
+      bodies.push(body);
       const answer = options.answer;
       if (typeof answer === 'function') return answer(facts);
       if (answer !== undefined) return answer;

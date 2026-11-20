@@ -4,14 +4,20 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { sitePriceSurface } from '~/lib/billing/site-price-surface';
+import { visitorCheckoutCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
+import { requestHolidayPromo } from '~/lib/promo/server';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
-  searchParams?: Promise<{ s?: string | string[] }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
+
+/** Request-time promo flag + cutoff; see the homepage note. */
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { locale } = await params;
@@ -36,12 +42,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function PricingPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const priceSurface = sitePriceSurface();
+  const checkoutCurrency = await visitorCheckoutCurrency();
+  const currency = checkoutCurrency ?? 'CAD';
   return (
     <RedesignPricing
+      regionBlocked={checkoutCurrency === null}
       locale={locale}
       smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
       prefill={intakePrefill(locale)}
       source={await pageSource(searchParams)}
+      promo={await requestHolidayPromo(locale, searchParams)}
+      priceSurface={priceSurface}
+      currency={currency}
     />
   );
 }

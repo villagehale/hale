@@ -3,17 +3,47 @@ import {
   createSharedGroupReader,
   parseSharedGroupReading,
   reactionAsVote,
+  sharedGroupReadingCommonTimeJsonSchema,
+  sharedGroupReadingJsonSchema,
   sharedGroupUserMessage,
 } from './shared-group-reading';
 
 describe('shared group reading', () => {
+  it('the recorded reader schema does not ask for a calendar withdrawal', () => {
+    expect(sharedGroupReadingJsonSchema.properties.intent.enum).not.toContain('withdraw_calendar');
+    expect(sharedGroupReadingCommonTimeJsonSchema.properties.intent.enum).toContain(
+      'withdraw_calendar',
+    );
+  });
+
+  it('a calendar-only withdrawal is a high-confidence state change, and not a stop', () => {
+    expect(
+      parseSharedGroupReading({
+        intent: 'withdraw_calendar',
+        role: 'unclear',
+        familyLabel: null,
+        kidNames: [],
+        confidence: 'high',
+      }).intent,
+    ).toBe('withdraw_calendar');
+    expect(
+      parseSharedGroupReading({
+        intent: 'withdraw_calendar',
+        role: 'unclear',
+        familyLabel: null,
+        kidNames: [],
+        confidence: 'low',
+      }).intent,
+    ).toBe('unclear');
+  });
+
   it('accepts a high-confidence state change and drops a low-confidence one', () => {
     expect(
       parseSharedGroupReading({
         intent: 'stop_me',
         role: 'unclear',
         familyLabel: null,
-        kidName: null,
+        kidNames: [],
         confidence: 'high',
       }).intent,
     ).toBe('stop_me');
@@ -22,10 +52,41 @@ describe('shared group reading', () => {
         intent: 'stop_me',
         role: 'unclear',
         familyLabel: null,
-        kidName: null,
+        kidNames: [],
         confidence: 'low',
       }).intent,
     ).toBe('unclear');
+  });
+
+  it('keeps every child a who-I-am names, trimmed and once each, and the first as kidName', () => {
+    const read = parseSharedGroupReading({
+      intent: 'who_i_am',
+      role: 'parent',
+      familyLabel: null,
+      kidNames: [' Mia ', 'Leo', '', 'Mia'],
+      confidence: 'high',
+    });
+    expect(read.kidNames).toEqual(['Mia', 'Leo']);
+    expect(read.kidName).toBe('Mia');
+    const none = parseSharedGroupReading({
+      intent: 'who_i_am',
+      role: 'parent',
+      familyLabel: null,
+      kidNames: [],
+      confidence: 'high',
+    });
+    expect([none.intent, none.kidName, none.kidNames]).toEqual(['who_i_am', null, []]);
+  });
+
+  it('a reading that names more children than a person has, or a name past bounds, is unclear', () => {
+    const base = { intent: 'who_i_am', role: 'parent', familyLabel: null, confidence: 'high' };
+    const many = Array.from({ length: 11 }, (_, i) => `Kid${i}`);
+    expect(parseSharedGroupReading({ ...base, kidNames: many }).intent).toBe('unclear');
+    expect(parseSharedGroupReading({ ...base, kidNames: ['x'.repeat(101)] }).intent).toBe(
+      'unclear',
+    );
+    // The old single-name field is no longer the contract.
+    expect(parseSharedGroupReading({ ...base, kidName: 'Mia' }).intent).toBe('unclear');
   });
 
   it('a parent string is not a reading — only the model object is', () => {
@@ -48,7 +109,7 @@ describe('shared group reading', () => {
       intent: 'find_time',
       role: 'unclear',
       familyLabel: null,
-      kidName: null,
+      kidNames: [],
       confidence: 'high',
       ruledOut: [
         { start: '2026-10-31T08:00:00-04:00', end: '2026-10-31T12:00:00-04:00' },
@@ -67,7 +128,7 @@ describe('shared group reading', () => {
       intent: 'question',
       role: 'unclear',
       familyLabel: null,
-      kidName: null,
+      kidNames: [],
       confidence: 'high',
       ruledOut: [{ start: '2026-10-31T08:00:00-04:00', end: '2026-10-31T12:00:00-04:00' }],
     });
@@ -96,7 +157,7 @@ describe('shared group reading', () => {
           intent: 'pick_time',
           role: 'unclear',
           familyLabel: null,
-          kidName: null,
+          kidNames: [],
           confidence: 'high',
           ruledOut: [],
           picked,
@@ -118,7 +179,7 @@ describe('shared group reading', () => {
           intent: 'pick_time',
           role: 'unclear',
           familyLabel: null,
-          kidName: null,
+          kidNames: [],
           confidence: 'low',
           picked: offered[0],
         },
@@ -130,7 +191,7 @@ describe('shared group reading', () => {
         intent: 'pick_time',
         role: 'unclear',
         familyLabel: null,
-        kidName: null,
+        kidNames: [],
         confidence: 'high',
         picked: offered[0],
       }).intent,
@@ -138,7 +199,7 @@ describe('shared group reading', () => {
   });
 
   it('keeps a plan title only on a find-time or a pick, and never a pick on another intent', () => {
-    const base = { role: 'unclear', familyLabel: null, kidName: null, confidence: 'high' };
+    const base = { role: 'unclear', familyLabel: null, kidNames: [], confidence: 'high' };
     const find = parseSharedGroupReading({ ...base, intent: 'find_time', planTitle: 'Zoo' });
     expect(find.planTitle).toBe('Zoo');
     const question = parseSharedGroupReading(

@@ -331,7 +331,7 @@ describe('VIL-457 private aside', () => {
     await runPrivateAside(db.database, r, turn());
     expect(r.wire.map((w) => w.body)).toEqual(['Leo has OT at 10 on Saturday']);
     const rows = await db.database
-      .select({ after: schema.auditLog.after })
+      .select({ after: schema.auditLog.after, audience: schema.auditLog.audience })
       .from(schema.auditLog)
       .where(
         and(
@@ -339,7 +339,9 @@ describe('VIL-457 private aside', () => {
           eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
         ),
       );
-    expect(rows).toEqual([{ after: { chatKey: linqChatBlindIndex(CHAT), delivered: 'sent' } }]);
+    expect(rows).toEqual([
+      { after: { chatKey: linqChatBlindIndex(CHAT), delivered: 'sent' }, audience: bao.userId },
+    ]);
   });
 
   it("one parent's aside is in their own copy and not in the other parent's", async () => {
@@ -475,6 +477,69 @@ describe('VIL-457 private aside', () => {
       'Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic',
     ]);
     expect(JSON.stringify(r.drafts[0])).not.toMatch(/Maya|speech/);
+  });
+
+  it('keeps a present household without join consent out of the prompt and sends it nothing', async () => {
+    const ada = await seedFamily('+14165550111', 'Ada', 'Maya', 'Maya has swim Tuesdays at 4pm');
+    const bao = await seedFamily('+14165550222', 'Bao', 'Leo', 'Leo has OT Saturday at 10am');
+    // Ada is seated first. Presence alone would put Maya in the prompt ahead of Leo.
+    await join(ada, NOW);
+    await join(bao, new Date(NOW.getTime() + 1000));
+    const [adaJoin] = await db.database
+      .select({ consentRecordId: schema.linqMultiFamilyJoins.consentRecordId })
+      .from(schema.linqMultiFamilyJoins)
+      .where(eq(schema.linqMultiFamilyJoins.familyId, ada.familyId));
+    const consentRecordId = adaJoin?.consentRecordId;
+    if (!consentRecordId) throw new Error('expected Ada join consent');
+    await db.database
+      .update(schema.consentRecords)
+      .set({ revokedAt: NOW })
+      .where(eq(schema.consentRecords.id, consentRecordId));
+
+    const r = recorder({ read: ['f1'] });
+    const out = await runPrivateAside(db.database, r, turn({ senderFamilyId: bao.familyId }));
+
+    expect(out).toEqual({
+      outcome: 'ran',
+      families: [{ familyId: bao.familyId, outcome: 'sent' }],
+    });
+    expect(r.reads).toHaveLength(1);
+    expect(r.reads[0]?.families).toEqual([
+      { ref: 'f1', kids: ['Leo'], times: ['Leo has OT Saturday at 10am'] },
+    ]);
+    expect(JSON.stringify(r.reads[0])).not.toMatch(/Maya|4pm/);
+    expect(r.drafts).toHaveLength(1);
+    expect(JSON.stringify(r.drafts[0])).not.toMatch(/Maya|4pm/);
+    expect(r.sent.map((s) => s.familyId)).toEqual([bao.familyId]);
+    expect(await asideRows()).toHaveLength(1);
+  });
+
+  it('sends nothing and does not call the model when the consent read throws', async () => {
+    await twoFamilies();
+    const real = db.client.query.bind(db.client);
+    const spy = vi.spyOn(db.client, 'query').mockImplementation(((
+      sql: string,
+      params?: unknown[],
+      options?: unknown,
+    ) => {
+      if (typeof sql === 'string' && sql.includes('consent_records')) {
+        throw new Error('consent read failed');
+      }
+      return real(sql, params as never, options as never);
+    }) as typeof db.client.query);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const r = recorder({ read: ['f1', 'f2'] });
+      const out = await runPrivateAside(db.database, r, turn());
+      expect(out).toEqual({ outcome: 'read_failed' });
+      expect(r.reads).toHaveLength(0);
+      expect(r.drafts).toHaveLength(0);
+      expect(r.sent).toHaveLength(0);
+      expect(await asideRows()).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+      warn.mockRestore();
+    }
   });
 });
 

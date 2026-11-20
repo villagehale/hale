@@ -2,6 +2,11 @@
 // doesn't require real infrastructure. Tests inject their own db handle.
 process.env.DATABASE_URL ??= 'postgres://test:test@localhost:5432/test';
 
+// The claim reader enforces by default in production, and it is a real model call
+// (rule #8: no mock). A test that is about it hands a scripted reader or sets the mode;
+// gate.pglite.test.ts deletes this to pin the production default.
+process.env.CLAIM_READER_MODE ??= 'off';
+
 // #868: keywords.ts is gone; stop/start is a model read. Every test gets the scripted
 // reader unless it hands its own (deps.optOutReader) or installs another.
 import { setSharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
@@ -10,10 +15,13 @@ import { setSharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { unreadMeaningScreen } from '~/lib/channel/meaning-screen/scripted-reader.fixture';
 import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
 import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
+import { scriptedRecMorningTopicPicker } from '~/lib/channel/rec-morning/scripted-topic-picker.fixture';
+import { setSharedRecMorningTopicPicker } from '~/lib/channel/rec-morning/topic';
 import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 
 setSharedOptOutReader(scriptedOptOutReader);
 setSharedSpokenLineWriter(scriptedSpokenLineWriter);
 setSharedRecMorningReader(scriptedRecMorningReader);
+setSharedRecMorningTopicPicker(scriptedRecMorningTopicPicker);
 setSharedMeaningScreen(unreadMeaningScreen);

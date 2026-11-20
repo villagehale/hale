@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the Tuesday swim is booked, which matches calendar row e1 (Swim lesson, Tue Nov 10). The registration-opening part reports a fact about the world and does not say Hale is watching it, so it makes no claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3077
+}

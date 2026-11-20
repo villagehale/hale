@@ -245,10 +245,9 @@ export default async function TermsPage({
 
       <LegalSectionBlock id="paid-plans" title="Price and paid plans">
         <p>
-          Hale is free to use today. We may introduce paid plans in the future. If we do, we will
-          tell you before anything costs money, show the price and terms, and charge you only if you
-          choose a paid plan. Free features you already use will not start costing money without
-          notice.
+          Hale has a Free tier. Paid plans are Plus and Max. We show the price before you choose a
+          paid plan, and we charge you only if you choose one. Full refund anytime if it’s not for
+          you. Free features you already use will not start costing money without notice.
         </p>
       </LegalSectionBlock>
 

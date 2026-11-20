@@ -115,6 +115,18 @@ export interface FounderReplyDeps {
   ask?: ConsentAskWriter;
 }
 
+/** The founder's welcome offer standing for this family, undue, or null: the only time a
+ * text can answer it. */
+export async function standingFounderWelcomeOffer(
+  database: Database,
+  deps: Pick<FounderReplyDeps, 'loadOpenOffer'>,
+  familyId: string,
+  now: Date,
+) {
+  const offer = await deps.loadOpenOffer(database, familyId, 'founder_welcome_offer');
+  return offer && offer.dueAt.getTime() >= now.getTime() ? offer : null;
+}
+
 export async function handleFounderWelcomeReply(
   database: Database,
   input: {
@@ -133,10 +145,8 @@ export async function handleFounderWelcomeReply(
 ): Promise<FounderReplyOutcome> {
   // The offer first. This handler runs on every inbound text, and a family with
   // nothing standing must not cost a model read.
-  const offer = await deps.loadOpenOffer(database, input.familyId, 'founder_welcome_offer');
-  if (!offer || offer.dueAt.getTime() < input.now.getTime()) {
-    return { status: 'declined_to_claim' };
-  }
+  const offer = await standingFounderWelcomeOffer(database, deps, input.familyId, input.now);
+  if (!offer) return { status: 'declined_to_claim' };
 
   const reading = input.resolved
     ? { verdict: input.resolved }

@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgzTH81U36W1gGgHTCvU3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuAgKEAgTGAI4AUIIdGhpbmtpbmcSDH5MX/pLn9bWpv6uOxoMmPfXh8XFbSEI/w0TIjDP7G4hQxumoyLJjyBpMTL6niyqZB92knIGcmHN5eOuk1f4p+ifFQBbau4PCvvJb60q1QcZi46Cnqoj4LxL1ydjFMFxg6XZTOqBkZvTkGWw182x9FUnjPozsLCuGp66iThXd3t98S3uGVirdASneDU5zsu7mpZnoOw8dMpH1pXPsVW/b//YHh8EuPkqrkjRdcJODdhaxrf+bbLCNN9IghmpQA8TxwsNoBeZKm0W4HOwYoQA91wvPQKT4SKfI5dDhciXiayCKWflZNWa25CwlcI8P7sLZzwrxDOLlEDNUkUAoG+2l+G4zwqnhHJM/SsokpGV7EPJUHGMAJgzCimgnya14G6eL9JyK/9NLTPYYkiDKQyOwIEibTdkzRbrjSZ4x6VQlagx7TQUe1xo5w2RDG+qkbHI3UErSm2oijtAFZtW7piK9/m9PMXiT75ck69R8tS/xYjjCoBDCVo4mUY2TNhcIcQ7TobIQVRa3cdnEyFc4MTXT/7B4u3ChluRf6TmDKJ3xsC5rEPhtwFx9ARf83qYwvfFRsdTBFds8vBnQZgZC3DSiiblBpolm15gYYWB8vUMrs1eA4XSMI5/Uyx2iRm/Y3asxaAlsYG1gKfP/hRLe0MVknJVSoOE99u1MnKHUaRRTn9BqLAd1s8WCjuR5dTVW2zRqrS3VqoPUNNMn6raQukNoPxJzL0QFAmcKc8FuEbQ3emGyt2B5YnkNoroNQIvw38EXNezv27oq8z1UmlfsMEda0x3zclFqJmyheJajGkihLu4wvlImgRQFjKHUuVvmqCOKHr+T7+mQg+VfKmCy+m44u11zkSnQ+IsLd/SQ7wIm8LNIs/4AqzQiXJ18YLTfn/IaaYHtpuI2wRdMQZXxJlA40AGkgk0cHgm4itwtgOFGPQ4XQZtUZ1ZsfPHSrQHR/pxc5GSGkA359Yx566bP4M9qpAJjfvHILpLvYM0mCaKg7ptSKNdHR3LTYqFVuitU5oGlhcIU0QVtcfX9kzMggBUh3imAAHojtIFJ9ouM9DPY3t1eSoh+UtIYsQ2WnRgSP3Fy2GCm22YwFZUBxmQkans/KdqJsrDdyT1DPAeK4d6OYeaLaqnCu+E84IH+gOsTaUXFP1qxGVlb0pOcKXufP4xunqimh20BiuOLXbUKPmzDmYx7Uh6VhiIFAbD6dgC4K0074qzjqnQ6mCKcaAE+ZPIsaWWgbKTvzmBNnxTrkcqolOVnvIsd94jN9JXTwKbEeZ09XHJE4FUxO8+i9uDPVTFfCbIY6WBGFDOknz8tK/KbycsNdkd7D/x3PWXkoenXQaMNhKldX6NZzBPptovvbLhKT4o1Lb7kmbf28wrcBfQLL4hnPfJ1Y3mt6IsgTkXE+sj0Yhk4bgYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WjYh9NctzCiqmoyCHHpzL7",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for Ada's night waking?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1249,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1249,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 291,
+      "output_tokens_details": {
+        "thinking_tokens": 171
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3168
+}

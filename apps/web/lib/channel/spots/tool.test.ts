@@ -46,8 +46,19 @@ const FULL_PAGE_READ: ClassAvailabilityReading = {
   spotsLeft: null,
   waitlistRoom: false,
   schedule: 'Tuesdays 4:30 PM',
+  sessionStartsAt: null,
   digest: 'digest-1',
 };
+
+/** The parent's message in every test that is not about where the link came from: it
+ * carries each link the tests below ask to watch. */
+const PASTED = [
+  courseUrl(FULL_COURSE),
+  courseUrl(OPEN_COURSE),
+  courseUrl(CLOSED_COURSE),
+  courseUrl(FULL_COURSE, '&redirectedFromEmbededMode=False&sessionId=SECRET'),
+  PAGE_URL,
+].join(' ');
 
 function ports(overrides: Partial<Parameters<typeof watchForOpeningTool>[0]> = {}) {
   const armed: SpotWatchIntent[] = [];
@@ -60,6 +71,8 @@ function ports(overrides: Partial<Parameters<typeof watchForOpeningTool>[0]> = {
     reader: { householdNames: async () => [] },
     watchConsentGranted: async () => true,
     readClassAvailability,
+    parentWords: `can you watch these? ${PASTED}`,
+    linksThisTurn: () => [],
     onWatch: (watch) => armed.push(watch),
     ...overrides,
   });
@@ -111,6 +124,62 @@ describe('watch_for_opening — the dark gate', () => {
     ).rejects.toThrow(/cannot watch class pages/i);
     expect(fetchBody).not.toHaveBeenCalled();
     expect(armed).toEqual([]);
+  });
+
+  it('refuses a ninth live watch for Plus when MAX_ENTITLEMENTS_ENABLED is on, before it reads the page', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 8,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/already watching 8 classes, which is their cap of 8/);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('still arms a class this Plus household already watches when the cap is full', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 8,
+      hasLiveSpotWatch: async () => true,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
+  it('still arms a Max household under its higher cap when MAX_ENTITLEMENTS_ENABLED is on', async () => {
+    vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'family',
+      countLiveWatches: async () => 8,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
+  });
+
+  it('does not cap watches while MAX_ENTITLEMENTS_ENABLED is off', async () => {
+    const { tool, fetchBody, armed } = ports({
+      planTier: 'plus',
+      countLiveWatches: async () => 100,
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
   });
 
   it('arms for a family named on the allowlist while the F14 flag is off', async () => {
@@ -248,6 +317,50 @@ describe('watch_for_opening — arms only on a full course page, for a consentin
     await tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX);
 
     expect(armed[0]?.instant).toBe(false);
+  });
+});
+
+/**
+ * The link is the parent's, never the model's. A watch polls a page and texts a
+ * household for weeks, so a URL only the model typed — or only a photo or PDF carried —
+ * is refused before anything reads it.
+ */
+describe('watch_for_opening — only a link this turn carried', () => {
+  it.each([
+    ['the parent sent no link', 'can you tell me if a spot opens in Tuesday swim?'],
+    ['the parent sent a longer link', `watch this ${courseUrl(FULL_COURSE)}&level=2`],
+  ])('refuses when %s, before it reads the page', async (_name, parentWords) => {
+    const { tool, fetchBody, armed } = ports({ parentWords });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).rejects.toThrow(/did not send that link/);
+    expect(fetchBody).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('refuses a page outside the registry the same way, before the reader runs', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+    const { tool, readClassAvailability, armed } = ports({ parentWords: 'watch the swim class' });
+
+    await expect(
+      tool.handler({ url: PAGE_URL, label: 'Tuesday preschool swim' }, CTX),
+    ).rejects.toThrow(/did not send that link/);
+    expect(readClassAvailability).not.toHaveBeenCalled();
+    expect(armed).toEqual([]);
+  });
+
+  it('arms on a link a tool put in front of the parent this turn', async () => {
+    const { tool, fetchBody, armed } = ports({
+      parentWords: 'yes watch that one',
+      linksThisTurn: () => [{ title: 'Preschool swim', url: courseUrl(FULL_COURSE) }],
+    });
+
+    await expect(
+      tool.handler({ url: courseUrl(FULL_COURSE), label: 'Preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(fetchBody).toHaveBeenCalledTimes(1);
+    expect(armed).toHaveLength(1);
   });
 });
 
@@ -404,9 +517,9 @@ describe('watch_for_opening — through the guarded invoker', () => {
     ).rejects.toThrow(/child_content/);
     expect(fetchBody).not.toHaveBeenCalled();
     expect(armed).toEqual([]);
-    // The rail refuses BEFORE the audit write, so a blocked call is not recorded as an
-    // authorized one (tool.ts invokeTool).
-    expect(audit).toEqual([]);
+    // The rail refuses BEFORE the tool:<name> audit write, so a blocked call is not
+    // recorded as an authorized one. VIL-635 leaves a content-free tool_refused row.
+    expect(audit.map((a) => a.actionTaken)).toEqual(['tool_refused']);
   });
 
   it('records the pre-gate input in the audit row and passes NONE of it on when refused', async () => {
@@ -531,6 +644,24 @@ describe('watch_for_opening — a program page outside the registry', () => {
         sessionStartsAt: null,
         sessionAnchor: 'Preschool Swim - Tuesdays 4:30 PM',
       },
+    ]);
+  });
+
+  it('arms with the listing session start when the reader stood behind one', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+    const start = new Date('2026-09-15T04:00:00.000Z');
+    const { tool, armed } = ports({
+      readClassAvailability: async () => ({ ...FULL_PAGE_READ, sessionStartsAt: start }),
+    });
+
+    await expect(
+      tool.handler({ url: PAGE_URL, label: 'Tuesday preschool swim' }, CTX),
+    ).resolves.toEqual({ watching: true });
+    expect(armed).toEqual([
+      expect.objectContaining({
+        sessionStartsAt: start,
+        sessionAnchor: 'Preschool Swim - Tuesdays 4:30 PM',
+      }),
     ]);
   });
 

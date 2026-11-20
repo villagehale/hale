@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "C'est tiré au sort ! 🎅 Chacun de vous reçoit son tirage en privé, directement de ma part. Pour une personne, il faudra d'abord m'envoyer un petit message pour que le sien puisse arriver. Et surtout, gardez bien le secret !"
+  },
+  "latencyMs": 2350,
+  "usage": {
+    "input_tokens": 49,
+    "output_tokens": 103,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

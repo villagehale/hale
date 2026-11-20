@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgxMAdwt8VhZzcvArbY2j",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8gYKEAgTGAI4AUIIdGhpbmtpbmcSDHNCnNPQ8DaTSzmeyRoM3ANRNuSP7G09kPZEIjAD+zWz80lE5SStsqvlDUNlHIfQHUVh1YCJ03L0Mw7mEoRU47lFRfsdRU2LIsa0WAIqjwbjy6DsWUiYYyizpSYbQL+CgUaM+0h2N50zCkOl9KWfq27u/bfleU/aeGzeYeEswsv0qpnEoZ+4+YXItaInpYxEykHN4ATfGnGVu/aM0Ku+sLbTfxk4dhn3q3UlmDwRyuPW/z9JR6hik/T1/4WxDI4rYlsb7/mfsa0lpIECMeu1Q0gadBjexCdnCWFSDAaJBvS+WiqkwInSPHN2Xwa0nwUmV2RXM7chGed0k5wo7iyZZqdSJatAYOfbfnQh9AKwmYS9cprL4shRNtFy1PVMWF+dJeW+Z90KEX6hqNuEnPvKiDrB7mZmb7ImzqjZR6qlH1WulJz6+BmUwpGx/03o0IAnZUAwfHAc9tmMX0yVXjvOIDPrjnrfBw1CW7yGj355ypSsIewKOJmybW2yKx/4+j/PGCeGOp3Hn2G3AFdvsuP+wp2CUokpuqzwF9c+Rex5bawLCxVMlUvCYjiUG7lL9+cAuPQy+SMq33oAMZ2ZGpuMIQHTNg8r8lRAS4o+J3fI9073YppSaIThXkY3lo1uKJ8nkpamC+nZUGx1T8w0hCCjq1SBoFGW1Ngdty/kkeW+eTvwaIisG8l8CNDPvKMP/8FkZ4lZXWNj387p6nEbzmg0q6os7584ESsk0kDh9pCzOxOQZMzVPlfenKQIXj98uImFl0Cc7jhGf3m8x5ZeZX+ox56sfO9tKKfLGdGkqsLNlD/jaN6hZYvUssNgF70QGEsXmllWFDSBzfLlOXR2NGw/ErDMOFnH+eKpEUQFgMSgWyMAx68RBZPtSB8kKGJRM3zU2H+zOl9JXyTR7RFxB1XPbzAtAjAJfidAEdZJucF0JsaAZDAskb6rAQ8cNVgvP3ejdEoqocwhHW7mYHaaGQZaTo+cAEqNL1r/Sc5XIp/zpl2RUOJGPDmjI2YivlM2x9KOPrgfAEO62VcZ3RGbyAVVfeWd8gonNS6MzcqcaIxAVUr3rKDb+PwPE5QDtynrLX1y1//0vdu230iJBOXk432WM5/YonjHRbVomSM7aTl41PY3NT38Ud+k0Vk+vNa8rq4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QFX191ugPBX2rgFH1ZuSjR",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "toddler gymnastics this winter",
+          "childId": "child-toddler"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 132,
+      "cache_read_input_tokens": 22411,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 132,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 142,
+      "output_tokens_details": {
+        "thinking_tokens": 52
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

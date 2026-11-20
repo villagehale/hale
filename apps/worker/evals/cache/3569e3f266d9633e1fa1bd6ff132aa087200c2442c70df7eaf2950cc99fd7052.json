@@ -1,0 +1,24 @@
+{
+  "value": {
+    "intent": "chatter",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high",
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollChoice": null
+  },
+  "latencyMs": 1847,
+  "usage": {
+    "input_tokens": 223,
+    "output_tokens": 103,
+    "cache_read_input_tokens": 2453,
+    "cache_creation_input_tokens": 0
+  }
+}

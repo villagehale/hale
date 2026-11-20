@@ -594,7 +594,9 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
  * Wednesday ticks. That is correct behaviour and it will be mistaken for a bug.
  */
 export function decideWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDropInNudge> {
-  if (input.weekdayCare === 'disarmed') return { nudge: null, skips: [] };
+  if (input.weekdayCare === 'disarmed' || input.weekdayCare.breakOnly) {
+    return { nudge: null, skips: [] };
+  }
 
   // Only a fact about a child this channel may speak about at all. A 13+ child's
   // fact could only exist through a direct call, and it must not unlock a find.
@@ -657,7 +659,10 @@ function upcomingBreak(
 ): { ask: WeekdayFinderAsk } | { skip: 'break_label_unusable' | 'break_not_upcoming' } | null {
   if (verified == null) return null;
   if (verified.date < today) return { skip: 'break_not_upcoming' };
-  if (!BREAK_EVENT_KEY.test(verified.eventKey) || !breakAskFits(verified.label)) {
+  if (
+    !BREAK_EVENT_KEY.test(verified.eventKey) ||
+    (verified.label !== null && !breakAskFits(verified.label))
+  ) {
     return { skip: 'break_label_unusable' };
   }
   if (!verified.eventKey.endsWith(verified.date)) return { skip: 'break_label_unusable' };
@@ -690,6 +695,8 @@ export function decideWeekdayCareAsk(input: DecideNudgeInput): LegOutcome<Weekda
   } else if (breakOutcome && 'skip' in breakOutcome) {
     skips.push(breakOutcome.skip);
   }
+  // Only the break question is armed (VIL-685): the other weekday prompts stay dark.
+  if (context.breakOnly) return { nudge: null, skips };
 
   if (input.healthChildren.length === 0) {
     return { nudge: null, skips: [...skips, 'no_children'] };

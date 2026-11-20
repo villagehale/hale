@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { and, count, eq, gte, inArray, isNull, like, lt } from 'drizzle-orm';
 import { TOPICS } from '~/lib/coach/topic';
@@ -37,13 +38,11 @@ export interface DigestMode {
 
 /** Strict `true`, and an allowlist is required. A trailing newline stays off. */
 export function resolveDigestMode(env: NodeJS.ProcessEnv): DigestMode {
-  const flagged = env[MEMORY_DIGEST_APPLY_ENV] === 'true';
   const ids = (env[MEMORY_DIGEST_ALLOWLIST_ENV] ?? '')
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
-  if (!flagged || ids.length === 0) return { apply: false, allowlist: new Set(ids) };
-  return { apply: true, allowlist: new Set(ids) };
+  return { apply: isEnabled('memory-digest-apply', undefined, env), allowlist: new Set(ids) };
 }
 
 export interface DigestSummary {

@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgzUgEeqCwvEDb46wEzUL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That's a big one! Face in the water is often the hardest step, so she should be proud. Great way to end the day."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 540,
+      "cache_read_input_tokens": 19210,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 540,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 36,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

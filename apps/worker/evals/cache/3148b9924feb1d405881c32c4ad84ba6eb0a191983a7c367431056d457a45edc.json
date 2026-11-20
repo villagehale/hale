@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzTXpgbMNNnJzNkLGwUf",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjggKEAgTGAI4AUIIdGhpbmtpbmcSDEiHT/eAOX0+DSYTYhoMtdu1a4N6YgiBp1tZIjC+VvnO1rDG9W1pCfraMEhmRvHnj30T4gGZZuYh5ty7lv/ReTkNR8VvP+c3Rs7fTAQqqwcbyXLnb8UapX1sOtgHMj1WGUAVlO4dTtxEb2AHZ4ZftvbHBTxaV/TtchK2Ief0q9575mHeNz2HxMEDbn2rFInQ4n+W3H/uXKOVogXeJgy6H6ddIfc4Ow4sM9LwqGKgF4Pyoli2AdSMmvUdxINfkrQ9dOjkQmlWVYPkWZ2NVom8SZqoW53dyoXzsmyhyxlDvyKRtKbafrHMNnV2w6ZqTcqNiHlkokrRHe1a3ZTkaLjh70iAsNzFpAUAaHzDh2FownWbGNPj0Bs5yl2SgEH8cMzYwjsDuzh0c4W4D0eqSQSwKGaqudeNlQqwCm2nYWIoxD1U4RTiBqQsWKN5TNz44nHEQtw8A4eTSjvoow8UhJNYcntLX6FoiwmOk12Ka6WC95BffGk411Tt3TnZGO6nequcutfjtd3ceFnLlzzo6SqD1uL4XPdbcRFJuBXFzNBdkpKM42mCrm/rK+U0B8w5jx1BetkBV/S3b4ixz01aWVM3rMuGVQBwsmVjxnDaWlgpmjMrx8hgGgY4CugHzDx70L9Lzwbnui39KMS+XaPMZV00eg7fLJ8kT7rRJDaE49r4q+afUjlV8JNjlwq8/wlz13VTTFZv7T8Sx/tNth2uZTDBHzrw0YdnMmKKyq295EIxxDwaWUTrh1eh0I9ZJJ4Efu8d70OfpxzUmThELaycn1CNOuMUCD+0+R2+/vICpZqCWgf6aTUSIFfPibyblHhTHBeR/cVWhvfSVNmgdqANmTrKeRQPJpXqUAdVBjv3JeJUu++/N4CwIXWsDiwAG1KC1M4k5moGPOCC5d9mNt6Q7Z0wsjwAYUCJjQzoPs3Zf1AB42710PMgD+0BLSxMQtc2Yj+FlMKB5Z99oWjwPlnj0ci8t4gqMPC/qwMkOqoT0H7TYOfT4EEZrkCznKmx2jAtIGwdXi1s43nrHDsH9a6reHcSW/nFALC4hzmxyoWNyMXPH4ky5Tr9KsQ4EchFk8+KhamVtJCbvkAM1oWg4feCaN2PEUke3h75Sn+tONSed+tbtm1+YS1opKY420K4vrqIIPTMakEpZXHd1ncgAY2xfZuYis+osbE3sQfV9gYJnT6Q7pv7KP95jRq2tNy692IRoO0kmiJZavSgYj91+NeJQupzqYsoiAoZtoAKBUxIAJGpNk8/e5VMTEjyATDLwkp04vW+DL1gqpn8yN0wGMVycf+k5ip+d5BWo6I4hDMQOB7SIHvxd5Mjz/chCovWA5xSUMlDgMcG9emkXXcot4sYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym. Remy is 19 months, so they're well under 3.5 and it's the one with a parent along. Mini Gym is for later, once they're 3.5 and ready to go solo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1736,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 220,
+      "output_tokens_details": {
+        "thinking_tokens": 154
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3069
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi Priya! The names are drawn, and you're the Secret Santa for Ana 🎁 Keep it just between us!"
+  },
+  "latencyMs": 1839,
+  "usage": {
+    "input_tokens": 85,
+    "output_tokens": 49,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

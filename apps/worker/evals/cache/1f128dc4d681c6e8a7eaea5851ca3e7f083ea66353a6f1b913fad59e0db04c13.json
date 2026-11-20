@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "这次付款没有通过,所以什么都没扣,周六上午9:30这个班也还没报上。我在报名网站上开着一个浏览器窗口,不过它不占位,大约只保留5分钟。你可以在这里接着付款:https://live.browser-use.com/s/fixture-live-view-token"
+  },
+  "latencyMs": 1870,
+  "usage": {
+    "input_tokens": 142,
+    "output_tokens": 111,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

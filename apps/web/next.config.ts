@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
+import { posthogProxyRewrites } from './lib/analytics/posthog-proxy';
 import { MARKETING_SITE_URL, TERMS_URL } from './lib/legal-links';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -9,6 +10,10 @@ const repoRoot = join(here, '..', '..');
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // PostHog /ingest/e/ and /ingest/flags/ end with a slash. Without this, Next 308s
+  // each of those onto the no-slash URL and every event pays an extra round trip.
+  // /signin/ still has its own explicit redirect below.
+  skipTrailingSlashRedirect: true,
   // Browser source maps exist only on a build that will upload them to PostHog and then
   // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
   // every build today — this is false and nothing changes.
@@ -21,6 +26,9 @@ const config: NextConfig = {
   // the middleware so a policy link never costs an Edge invocation, and so the
   // forward survives independently of the auth middleware's matcher. The app's
   // /privacy is the signed-in data-rights page (VIL-432), which links the policy.
+  async rewrites() {
+    return posthogProxyRewrites();
+  },
   async redirects() {
     return [
       { source: '/terms', destination: TERMS_URL, permanent: true },
@@ -70,6 +78,10 @@ const config: NextConfig = {
     '@hale/worker',
   ],
   serverExternalPackages: [
+    // posthog-node local eval for @hale/flags. @hale/flags itself is BUNDLED, not
+    // external: its dist is ESM, and an external is loaded with require(), which
+    // threw ERR_REQUIRE_ESM on every route in Prod (VIL-674).
+    'posthog-node',
     'postgres',
     'pg-boss',
     // Authorized signup loads Playwright at runtime when the flag is on.
@@ -107,13 +119,36 @@ const config: NextConfig = {
       '../../node_modules/unpdf/**',
     ],
   },
-  webpack: (config) => {
+  webpack: (config, { isServer, nextRuntime }) => {
     // Workspace packages use ESM '.js' import specifiers against .ts sources;
     // webpack needs the alias tsc applies implicitly.
     config.resolve.extensionAlias = {
       '.js': ['.ts', '.tsx', '.js'],
       '.mjs': ['.mts', '.mjs'],
     };
+    if (isServer && nextRuntime === 'nodejs') {
+      // Keep node:crypto / posthog-node out of webpack. @hale/flags is bundled (its
+      // ESM dist cannot be require()d by the server runtime; VIL-674).
+      const previous = config.externals;
+      config.externals = [
+        ...(Array.isArray(previous) ? previous : previous ? [previous] : []),
+        ({ request }: { request?: string }, callback: (err?: null, result?: string) => void) => {
+          if (
+            request === 'posthog-node' ||
+            (typeof request === 'string' && request.startsWith('node:'))
+          ) {
+            callback(null, `commonjs ${request}`);
+            return;
+          }
+          callback();
+        },
+      ];
+    } else if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@hale/flags': join(repoRoot, 'packages/flags/dist/browser.js'),
+      };
+    }
     return config;
   },
 };

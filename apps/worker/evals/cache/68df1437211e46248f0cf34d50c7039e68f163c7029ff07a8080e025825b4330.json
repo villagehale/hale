@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "ARRÊT",
+    "language": "fr",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "D'accord, Hale ne vous enverra plus de SMS. Si vous voulez revenir, dites-le simplement dans vos propres mots."
+  },
+  "latencyMs": 1163
+}

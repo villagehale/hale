@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mostly matches the facts (opening time, sessions, prices, single ranked ask), but it adds an invented claim that queueing on other devices would 'hold two places in line,' which is not in the facts and implies a held spot; it also gives the parent a second action, violating the one-ask-at-a-time expectation.",
+    "score": 2
+  }
+}

@@ -44,6 +44,12 @@ export interface CalendarPlacementPayload {
   privacySensitive?: boolean;
   /** For calendar_move / calendar_cancel: the family_events row to mutate/remove. */
   reversalHandle?: string;
+  /**
+   * VIL-662 · calendar_move only. The executor writes `location` onto the row
+   * when this is true. Coach moves never set it (VIL-270: a move is re-time
+   * only; payload.location on a coach draft is a projected/redacted place).
+   */
+  updateLocation?: boolean;
   /** Action-level dedup hash the reviewer's idempotency check reads. */
   action_hash?: string;
 }

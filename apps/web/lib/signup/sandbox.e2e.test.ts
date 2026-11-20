@@ -2,10 +2,11 @@ import { type IncomingMessage, type ServerResponse, createServer } from 'node:ht
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sentSignupText } from '~/lib/signup/sent-text.fixture';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { playwrightSignupBrowser } from './browser';
 import { runAuthorizedSignup } from './run';
-import { recordSignupOffer } from './store';
+import { askStamp, recordSignupOffer } from './store';
 
 // The consent read and the reply are model calls. Tests stand in for both (no live calls).
 vi.mock('./consent-reader', async (importOriginal) => {
@@ -325,7 +326,14 @@ describe('authorized signup sandbox', () => {
       approvedPriceCents: input.approvedPriceCents,
       now: NOW,
     });
-    expect(stored.ok).toBe(true);
+    if (!stored.ok) throw new Error(stored.reason);
+    // The coach's reply carrying the offer went out, so the parent's next yes is its.
+    const keep = await askStamp(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      offerIds: [stored.id],
+    })();
+    await keep(await sentSignupText(db.database, seeded));
     return seeded;
   }
 

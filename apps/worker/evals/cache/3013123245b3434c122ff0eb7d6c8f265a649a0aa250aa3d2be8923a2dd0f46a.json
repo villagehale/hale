@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text invents a maximum of $86.22 that is not in the facts (maxPriceCents is null), which is a fabricated limit. It also asks about the max in the same text as asking which day first, breaking the one-ask rule, and omits the alsoQueueing note that watchFor says should be included.",
+    "score": 1
+  }
+}

@@ -472,7 +472,9 @@ async function answerDoneStep(
 }
 
 function productionSaidLine(): SaidLineWriter {
-  return createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  return createSaidLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  );
 }
 
 /**

@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "msg_011CgxBXUQ5FqLEExpPCgsGr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9QUKEAgTGAI4AUIIdGhpbmtpbmcSDK9NAFBmdcfnViSJyBoM2Q8zKfUpo/+MH/BCIjCQwAoIMniphV/ainaowMLcPUPOXQ0WGOA3UBOIYwNeRevYNjnvZtePmtbBgJOwBhgqkgVl7uenhWEL7oPwB2LiOCZLUXKcnfy+dGx8efnPEi3FJxcg3iiFkgcVuqfWxGUQCqgMaXz12k7AEGSfs9sOLK2VUkaoS+phevLGH7xboI9t8jR1UgiwR7/VsgIldOCjmEK29SNE/hyHJNL41YSQ4+A4QBRWoAF0v4CJYTfFX89IZP3yEaU1qm3F2zgR7ucMvG9Xl88CsQRcJ6bEZBRxnCBU2gr7fg9oCcHSoUo3ikjEuibRJTWaxy6YxjLtDnQY/il6FQ1d1pIQvNVKvigehq66WxN6JzadYawBVm8TTOodSYt+Dbb0QNDa35D1cNs8p1ylHIFvo0nxOTP19d4r5ht9PzguMXHtMFxY8x13nB6HNqDXPbgKqkoV3wmIkffVFtKIU3VgbQpMaJi8eoodPaORWl/iHwpd4BRQcRKprV0bQ3poBTcXoqYN7Jydsj+q81Ck7NNEff7TWhtvF3/S4z/ZgNhZ/nVK7YG+scHEeQw/Nun7PDA6GBYxV1te1mgqWBD55ztNk04UBy0pJF7UwHwkO/s5mWqruoyan6bSXgk79TgGjenhW/GsNwlb+ujrWnVJIxtT+lFWECX0UqrX4jcL5x4vz19OMoOaAaA+gsv9hGv/K7oeH+gTD9DzE0BzCp3AJwxRGhg9CLfT0KxhsP+Y7xx/qlmk3ykSwZdQmqAMDxsr8whgeNhq5OrdZ+lHN3L4CZj2eC1UxjJSAsY0sfXD7tgRtNl6GOMARvOTzHkIs6bkrdRkMCg7O+cFmEtktb2saKhZz78f7vlR7aQGE6cHwVAGFtFDhxSgjVnL9zjcpylFIaJ3FwjwDc7mddva3vmjn0V2v74XmxF2ghjY71kw9pQL1vQI9MXbPXzU1o0pEhLyGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017xUFCN3KP6mEKFdSx68X6P",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 788,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 23382,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 74,
+      "output_tokens_details": {
+        "thinking_tokens": 45
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2749
+}

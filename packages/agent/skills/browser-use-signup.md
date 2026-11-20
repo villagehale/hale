@@ -24,11 +24,15 @@ The facts for this registration are in the JSON block at the end, under "This re
 ## Hard limits
 
 - Never type, choose, or confirm any card number, expiry date, security code, bank details, gift card, or saved payment method. Never press pay, place order, submit payment, or complete purchase.
-- Never type a password, a one-time code, or a security answer. Never create an account and never change account settings.
+- Never type a password, a one-time code, or a security answer by hand. If `credentials` lists aliases, type only those aliases into the matching fields. Never write the secret itself.
+- Create an account only when `account_create` is true, and only with those aliases. If the site rejects the password, stop with `needs_login` and detail `password_rejected`. Copy the site's rejection message and the password rule shown on the page into `password_rejection_message` and `password_rule`, exactly as shown.
 - Never accept a waiver, medical form, allergy form, photo release, or terms on the parent's behalf. Stop with `needs_human` instead.
 - Never solve or try to bypass a captcha, queue, or waiting room.
-- Never add more than one session or more than one child.
-- Never type a value that is not in the facts. If a required field asks for something you do not have, stop.
+- Never add more than one session or more than one child. Never join a waitlist unless `join_waitlist` is true.
+- Never submit a start or session the parent did not ask for. If the site's real options do not include what they asked for, stop with `options_mismatch` and fill `site_choices` from the page. Do not pick for them.
+- Read the live seat count, and read it again immediately before adding to the cart. If it is then 0, do not add it.
+- Include the session price and any admin or membership fee the page shows, plus when they bill, in the fee fields.
+- Never type a value that is not in the facts or a secret alias. If a required field asks for something you do not have, stop.
 - Do not leave this provider's site.
 
 ## What to return
@@ -38,12 +42,17 @@ Return the structured output, and nothing else matters.
 - `outcome`:
   - `reached_checkout` — the one session is in the cart and you stopped on the payment page.
   - `rush` — a queue, waiting room, or a registration that opens later.
-  - `waitlist` — the session is full and the site only offers a waitlist. Do not join it.
+  - `waitlist` — the session is full and the site only offers a waitlist. Do not join it unless `join_waitlist` is true.
   - `sold_out` — the session is full or closed with no waitlist.
-  - `needs_login` — the site will not let you continue without a password, code or security answer.
+  - `options_mismatch` — the site's real starts or sessions are not what the parent asked for. Nothing was submitted.
+  - `needs_login` — the site will not let you continue without a password, code or security answer. Use detail `password_rejected` when an account-create password was refused.
   - `needs_human` — a captcha, verification code, waiver, medical or allergy form, an unknown required field, more than one matching session, no matching session, or a total higher than `approved_price_cents`.
   - `error` — the site failed or you could not continue for another reason.
-- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
+- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `password_rejected`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
+- `password_rejection_message`, `password_rule`: the site's own words when `detail` is `password_rejected`. Otherwise null.
+- `site_choices`: when `outcome` is `options_mismatch`, every real option on the page. Empty otherwise.
+- `seats_open`: the live seat count you last read, or null.
+- `fees`: session, admin, membership, total, and billing note as the page shows them, or nulls.
 - `checkout_url`: the address of the page you stopped on when `outcome` is `reached_checkout`, otherwise null.
 - `cart_total_cents`: the total shown in the cart in cents, or null when none is shown.
 - `cart_currency`: the three-letter currency of the total (for example `cad` or `usd`), or null if the page does not make it clear.

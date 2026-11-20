@@ -1,0 +1,19 @@
+{
+  "value": {
+    "santaTurn": true,
+    "start": true,
+    "joinSelf": null,
+    "leaveSelf": false,
+    "draw": false,
+    "cancel": false,
+    "language": "zh-CN",
+    "reply": "好主意！想参加的话在群里说一声，再告诉我们你想用什么名字～"
+  },
+  "latencyMs": 2009,
+  "usage": {
+    "input_tokens": 149,
+    "output_tokens": 94,
+    "cache_read_input_tokens": 1296,
+    "cache_creation_input_tokens": 0
+  }
+}

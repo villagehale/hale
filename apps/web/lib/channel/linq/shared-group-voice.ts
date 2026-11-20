@@ -1,8 +1,9 @@
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -97,7 +98,10 @@ export function sharedLineUsable(
 ): boolean {
   const text = line.trim();
   if (!text) return false;
-  if (hasLinkShape(text)) return false;
+  if (hasLinkShape(text)) {
+    noteLinkGate('shared-group-voice', 'refused');
+    return false;
+  }
   if (/\+\d[\d\s-]{7,}/.test(text)) return false;
   const questions = (text.match(/\?/g) ?? []).length;
   if (input.questions === 1 && questions !== 1) return false;
@@ -127,11 +131,11 @@ async function pageUnsent(
 function productionComposer(
   scope: { familyId: string; database: Database } | undefined,
 ): SharedGroupComposer | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
       const skill = await loadCronSkill('shared-group-voice');
-      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+      const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       if (scope) {
         const composed = await composeVoice({
           skill,

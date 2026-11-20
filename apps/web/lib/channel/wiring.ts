@@ -1,11 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { bindDispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
 import { dedupeActive, recordChannelMessage } from './ledger';
+import { chatServiceSaid } from './messaging-door';
 import { threadIfParent } from './thread';
 import type { Channel, ChannelKind, TemplateRenderer } from './types';
 
@@ -41,6 +43,7 @@ export function buildDispatchPorts(
     // ledger, not the live state).
     smsConsentLive: async (userId) => (await loadSmsChannelState(database, userId)).enrolled,
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
+    chatService: (parentUserId, chatId) => chatServiceSaid(database, parentUserId, chatId),
     record: (write) => recordChannelMessage(write, database),
     capture: captureServerEvent,
     audit: async (r) => {
@@ -56,5 +59,6 @@ export function buildDispatchPorts(
     renderer: opts.renderer,
     // VIL-581 · bound to this handle; a no-op while CLAIM_READER_MODE is unset.
     claimShadow: { dispatch: (input) => defaultClaimShadow().dispatch(database, input) },
+    claimEnforce: bindDispatchClaimEnforce(database),
   };
 }

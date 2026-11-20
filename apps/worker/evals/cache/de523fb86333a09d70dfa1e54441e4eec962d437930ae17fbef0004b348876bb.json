@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgzUCucb1fwP1PqJQm1V2",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9AkKEAgTGAI4AUIIdGhpbmtpbmcSDLHbb+9L8dBpS4tFeRoMPhhudTaaVZyb28Y/IjBuGRKRjT0Q/z7L7jvpw62E/5HPm76bYAAYLH90jeZBIX1Stm9+2PoibDggQCqkOEEqkQlTuA0mFlIzp+aiYa2KXLd7+MdcIfhg+MkISuSLfeXEDO4Ww78KUXcdiPLCzXqUPX4dgnQ2RgNsqMt/knSwLxwtsaJvhZa3nOUYX8vFAvYRwUqRYf6V2tHza1dlNJCjKMQ7UVtIdS2KbP+w0/aBVJAV9j8JEJvICozolFFJmToZdQmtZTkMFJ6nSUpNiEWa91elxye/3lVEv9O+e1EehTMwHjsEmY5td3qUR1rQftg4eBCBY5h92bO3rkG7nYnyMPJKFelmzTVLURBV1T1eyMrygGMgEtpruJ+93AVUwjSJnyk7QJyPx3WPn8j/6Z7ueut2TRCOgsmC03aYFzPaCtQcf89jf71WDrXpvAvNJDPvRZ8O+xjEgNuW5oqOmbQ0BpdDP7a1M2lQSJJQ1S+Pct8hGTgHvflwcJc2hL4c7MvKgf5llzVbDtqtz2hXdnGCSwVF4+3psb6NEy4rFODUayUHxcCllj6noN0FPCdMHIkqA7T7m2UGCk5jeVK8/ldr8vJ9ERu24wVkXcrt7aN7STK6rVtFpq9QMINY39EHqY/5z9P3i8ir78wRQp8BTS/OsJAio4caqDGmy48vY8ASyZ+/TYtTOwsNVynixbNAvtd6VX4Jt4nU5W/+KD62BeWJCO1UBp73fc70jhFtHyeAbbYWVriqn2oEda+c1EaLvs8eG7J1QDN528jo42i5W8jtc5j3D0DAS4c0MIrebru+IShg00XJ/n2bt687583gqABnyHe/338F6gOkj9hIuoys0tHMUlQE+vzBYg3RlvVPlp/SxowhldZ66RDev3m5hVQwnv6xacza+sEkB8zBY0fosI3OTvmuwfEQmMC0+wEO9DmgGNzL+u//X0czXszzslhzRQ1Ilbun92cLrD9rYflIhWyOeMOdtbERHmvWsqltmZlfUbrPD3mbHdCx8bqHC4MFa2imbvsADTqboP1vk7XQGVEgp+k9Ff7Vi/yUMXUhyTjTAem9i9/h8/O+T7hUvdOkWdnl6IfAvh+khMjYvukPFX8yUKEbI4AphkM6vCGhSPjwZWL7sE0T1+YyGUrLpTSdDU5oz3CLMdz4rmz5LNaVdRs/bkE/xi8Wck7LyLDXjJQdAMOp0gf+Bf2BzyGhh6anszZ7jNdhlcJ3dvpjGxXUwv3tqxUzElvZdX7mvTuccSQQ/rEK5qDg1lLnwoatD5ilLdHw3tmzbtJ9rZdHAqelWxYuM39I5QI11MqS08zvwqxG1gnbLSW2fTJKmoLCa3Rmc1bqYJr9wgIrKl9g+q2+W98/rLRPx8VK7c7uLuWzp3SU4p91LMZMezbWth8RK5z3NSGryGwH1bgtSRRxzWm2AXh0ttlsce5DMc+YFgh7GI2fm3rrBAQJ4VCWAt9IBQPDwNea4tr/2eC0a6XW9uVR3xzHy/oZJ41gDDDGn9rr+zunvxZozIb2eFiOGE3AT8zuHRSNtVOHX/Nzn4vSzct4aw7NCejPN0ZFOro05/COqKb8LnGoKgGKhDihjV6yijRcsrJDmSize+pA4xgMtEzLlxypCI1AISvYeXQ+NUbbMMGV6BgB"
+      },
+      {
+        "type": "text",
+        "text": "I only have the heads-up that an appointment email came in for one of the kids. I can't open the email itself from here, so I don't know the day, time or who it's for. I don't want to guess at it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 480,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19259,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 277,
+      "output_tokens_details": {
+        "thinking_tokens": 216
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -524,8 +524,18 @@ export async function resolveVerifiedChannelByPhone(
 ): Promise<ResolvedChannel | null> {
   const canonical = normalizePhoneE164(fromPhone);
   if (!canonical) return null;
+  return resolveVerifiedChannelByHash(database, phoneBlindIndex(canonical));
+}
 
-  const hash = phoneBlindIndex(canonical);
+/**
+ * The same ACTIVE + verified + non-revoked predicate, for a caller that holds only the
+ * number's blind index (a shared-chat presence row keeps the hash). One predicate, so the
+ * phone form above delegates here.
+ */
+export async function resolveVerifiedChannelByHash(
+  database: Database,
+  hash: string,
+): Promise<ResolvedChannel | null> {
   const rows = await database
     .select({
       userId: schema.parentChannels.userId,

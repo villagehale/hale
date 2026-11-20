@@ -24,6 +24,20 @@ afterAll(async () => {
   await t.close();
 });
 
+/** The shadow-mode tests name their mode: unset is `enforce` (flag.ts). */
+function inMode(mode: string) {
+  const key = 'CLAIM_READER_MODE';
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env[key];
+    process.env[key] = mode;
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env[key];
+    else process.env[key] = saved;
+  });
+}
+
 type SweepCall = Parameters<ClaimShadow['sweep']>;
 function fakeShadow(answer: ClaimShadowStart) {
   const calls: SweepCall[] = [];
@@ -53,6 +67,7 @@ const NO_QUERIES = new Proxy(
 ) as unknown as Database;
 
 describe('refuseUnbackedSend — the decision is unchanged', () => {
+  inMode('shadow');
   it('an unbacked body is refused the same way whatever the shadow answers', async () => {
     for (const answer of ['started', 'busy', 'off'] as const) {
       const { shadow } = fakeShadow(answer);
@@ -93,6 +108,7 @@ describe('refuseUnbackedSend — the decision is unchanged', () => {
 });
 
 describe('refuseUnbackedSend — lane and recipient', () => {
+  inMode('shadow');
   it('a named lane and recipient pass through', async () => {
     const { shadow, calls } = fakeShadow('started');
     await refuseUnbackedSend(
@@ -110,7 +126,7 @@ describe('refuseUnbackedSend — lane and recipient', () => {
   });
 });
 
-describe('refuseUnbackedSend — the production default shadow, with no env', () => {
+describe('refuseUnbackedSend — the production default, with no env', () => {
   const saved: Record<string, string | undefined> = {};
   beforeEach(() => {
     for (const key of ['DATABASE_URL', 'CLAIM_READER_MODE']) {
@@ -125,7 +141,18 @@ describe('refuseUnbackedSend — the production default shadow, with no env', ()
     }
   });
 
-  it('decides exactly as before with no third argument', async () => {
+  it('the reader enforces, and a body it could not read is not sent (fails closed)', async () => {
+    // No such family, so no recipient zone: the read fails as no_time_zone before any call.
+    expect(
+      await refuseUnbackedSend(t.database, { familyId: FAMILY, body: UNBACKED, now: NOW }),
+    ).toEqual(['self_referential', 'claim_read_failed']);
+    expect(
+      await refuseUnbackedSend(t.database, { familyId: FAMILY, body: PLAIN, now: NOW }),
+    ).toEqual(['claim_read_failed']);
+  });
+
+  it('CLAIM_READER_MODE=off is the kill switch: the regex decides alone, as before', async () => {
+    process.env.CLAIM_READER_MODE = 'off';
     expect(
       await refuseUnbackedSend(t.database, { familyId: FAMILY, body: UNBACKED, now: NOW }),
     ).toEqual(['self_referential']);

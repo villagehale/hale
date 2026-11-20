@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Reply is in Chinese matching the parent's text, answers the one question, gives the Sunday pick with its 2:00 time, and the page link sits at the end of the last bubble. Bubble 1 is a whole answer, bubble 2 is a separate thought about the free calendar, which is a fact from weekRead. No question is asked, no lead-in or count bubble, nothing invented. Splitting into two bubbles is reasonable since the calendar note is a distinct thought.",
+    "score": 5
+  }
+}

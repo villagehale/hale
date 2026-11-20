@@ -129,7 +129,8 @@ export type Span = { start: number; end: number };
 
 /** What is left of a body once spans are cut from it. */
 export type Subtraction =
-  /** Every seam is a sentence boundary; `text` is whitespace-collapsed, '' if all was cut. */
+  /** Every seam is a sentence boundary; `text` is whitespace-collapsed (a line break
+   * stays one line break), '' if all was cut. */
   | { status: 'cut'; text: string }
   /** A seam falls inside a sentence, or leaves a clause pointing at what was cut. */
   | { status: 'fragment' };
@@ -174,5 +175,12 @@ export function subtractSpans(body: string, spans: readonly Span[]): Subtraction
     from = cut.end;
   }
   text += body.slice(from);
-  return { status: 'cut', text: text.replace(/\s+/g, ' ').trim() };
+  // A line break is a bubble boundary (coach/reply.ts REPLY_BUBBLE_BREAK), so one
+  // survives the cut; every other run of whitespace is one space, as before.
+  const collapsed = text
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n+/g, '\n')
+    .trim();
+  return { status: 'cut', text: collapsed };
 }

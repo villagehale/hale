@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and Hale turned off autonomy for sending and replying to email this turn. The reply confirms in one plain sentence, in the parent's language, that it will ask before each send. It is accurate, has no greeting, sign-off or machinery, and stops there.",
+    "score": 5
+  }
+}

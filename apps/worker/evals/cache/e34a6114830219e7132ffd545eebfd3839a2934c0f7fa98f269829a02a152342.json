@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The group_done line announces the full draw in the group chat, naming every giver and receiver pairing (Priya → Ana, Ben → Hélène, Ana → Priya, Hélène → Ben). This directly reveals exactly what the secrets forbid: who each participant drew. It is a total secrecy failure, and it also names people after the draw. Tone and French are fine, but that cannot offset the reveal.",
+    "score": 1
+  }
+}

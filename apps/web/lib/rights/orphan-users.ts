@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { POLICY_VERSION } from '../consent.js';
 
@@ -121,7 +122,7 @@ export const ORPHAN_USER_SWEEP_ENABLED_ENV = 'ORPHAN_USER_SWEEP_ENABLED';
  * and a truthiness check reads that as ON.
  */
 export function orphanUserSweepEnabled(): boolean {
-  return process.env[ORPHAN_USER_SWEEP_ENABLED_ENV] === 'true';
+  return isEnabled('orphan-user-sweep');
 }
 
 export interface OrphanedUser {

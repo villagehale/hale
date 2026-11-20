@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "plain greeting, no request to act on; default to coach",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1211
+}

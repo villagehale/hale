@@ -13,6 +13,7 @@ import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   PROACTIVE_CATEGORY,
   type ProactiveHoldReason,
@@ -79,7 +80,7 @@ import { groupPlanChatKey } from './stamp';
 export const GROUP_PLAN_TEMPLATE_KEY = 'group_plan_calendar';
 
 /** `send_failed`: a message did not land, so neither did the last, the one with the link. */
-export type GroupLineSendOutcome = 'sent' | 'already_sent' | 'send_failed';
+export type GroupLineSendOutcome = 'sent' | 'already_sent' | 'queued' | 'send_failed';
 
 export type GroupPlanReportOutcome =
   | GroupLineSendOutcome
@@ -553,7 +554,8 @@ export function productionGroupPlanReportPorts(
         { ...buildOutboundGatePorts(database), watchConsentGranted: async () => true },
       ),
     mintLink: (familyId, familyEventId) => mintEventInviteLink(database, familyId, familyEventId),
-    compose: (input) => composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), input),
+    compose: (input) =>
+      composeGroupPlanReport(budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'plan' }), input),
     /**
      * Every message is claimed before anything goes, in one transaction: the revision on
      * the last message's row, each other message keyed off it. A setup that fails claims
@@ -564,6 +566,38 @@ export function productionGroupPlanReportPorts(
      */
     async send(plan, messages, optOut) {
       const inChat = await inChatUserIds(database, plan);
+      if (await isQueuedForDecider(database, plan.familyId, plan.dedupeKey)) return 'queued';
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId: plan.familyId,
+            parentUserId: plan.gateUserId,
+            kind: 'calendar_alert',
+            category: PROACTIVE_CATEGORY.calendar_alert,
+            templateKey: GROUP_PLAN_TEMPLATE_KEY,
+            what: messages.join('\n\n'),
+            why: 'calendar_alert',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey: plan.dedupeKey,
+            payload: { auditVerb: 'calendar_alert_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId: plan.familyId,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: plan.familyId,
+          after: { kind: 'calendar_alert' },
+        });
+        return 'queued';
+      }
       const last = messages.length - 1;
       const claimed = await database.transaction(async (rawTx) => {
         const tx = rawTx as unknown as Database;

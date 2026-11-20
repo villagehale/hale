@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Les inscriptions pour sam. 9 h 30 ouvrent le lundi 12 janvier à 7 h 00. Ce n'est pas encore ouvert, donc rien n'est réservé. C'est à toi de t'inscrire à ce moment-là, ici : https://register.example-rec.test/activity/42 Tiens ça prêt pour remplir le formulaire : prénom de l'enfant Lena, nom Ferreira, ton prénom Sam, ton e-mail sam@example.test."
+  },
+  "latencyMs": 3772,
+  "usage": {
+    "input_tokens": 315,
+    "output_tokens": 178,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

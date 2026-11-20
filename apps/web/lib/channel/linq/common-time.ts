@@ -41,6 +41,11 @@ export interface CommonTimeInput {
   count?: number;
   durationMinutes?: number;
   days?: number;
+  /**
+   * VIL-643: this is the first proposal in this chat that used a family's busy
+   * times. The model says so in its own words from this fact; omitted otherwise.
+   */
+  firstFromBusy?: boolean;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -164,6 +169,9 @@ export function commonTimeFacts(
   if (slots.length === 0) {
     // What Hale can truly do next. Hale never texts first, so it cannot promise to watch.
     facts.whenNoneWorks = 'someone names another day or week and Hale looks again';
+  }
+  if (input.firstFromBusy) {
+    facts.fromBusyTimes = 'first time using the busy times those families shared';
   }
   slots.forEach((slot, index) => {
     facts[`option${index + 1}`] = zones

@@ -91,6 +91,27 @@ describe('buildEvent privacy gate', () => {
     expect(JSON.stringify(built)).not.toContain('sam@example.com');
   });
 
+  it('keeps a login_failed reason category and drops a phone number', () => {
+    const built = buildEvent('login_failed', {
+      reason: 'code_rejected',
+      phone: '+15195551234',
+    });
+    expect(built.event).toBe('login_failed');
+    expect(built.properties).toEqual({ reason: 'code_rejected' });
+    expect(JSON.stringify(built)).not.toContain('5195551234');
+  });
+
+  it('fires the phone-code funnel names with only coarse props', () => {
+    expect(buildEvent('login_phone_submitted').event).toBe('login_phone_submitted');
+    expect(buildEvent('login_code_sent').event).toBe('login_code_sent');
+    expect(buildEvent('login_code_verified', { surface: 'web' }).properties).toEqual({
+      surface: 'web',
+    });
+    expect(buildEvent('signup_started', { surface: 'sign_in' }).properties).toEqual({
+      surface: 'sign_in',
+    });
+  });
+
   it('fires the first-activation funnel events with no properties', () => {
     expect(buildEvent('first_activity_added').properties).toEqual({});
     expect(buildEvent('first_ask').properties).toEqual({});
@@ -101,6 +122,52 @@ describe('buildEvent privacy gate', () => {
     const built = buildEvent('plan_notify_requested', { tier: 'plus' });
     expect(built.event).toBe('plan_notify_requested');
     expect(built.properties).toEqual({ tier: 'plus' });
+  });
+
+  it('keeps launch message properties and drops a body or name', () => {
+    const built = buildEvent('message_inbound', {
+      channel: 'group',
+      is_group: true,
+      family_count: 2,
+      media_type: 'image',
+      reply_ms: 1200,
+      parentName: 'Sam',
+      message: 'hi',
+    });
+    expect(built.properties).toEqual({
+      channel: 'group',
+      is_group: true,
+      family_count: 2,
+      media_type: 'image',
+      reply_ms: 1200,
+    });
+  });
+
+  it('keeps advertising attribution keys, including utm_content', () => {
+    const built = buildEvent('purchase', {
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'holiday',
+      utm_term: 'hale',
+      utm_content: 'hero',
+      gclid: 'Gw',
+      fbclid: 'Fb',
+      currency: 'CAD',
+      value: 79,
+      email: 'sam@example.com',
+    });
+    expect(built.event).toBe('purchase');
+    expect(built.properties).toEqual({
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'holiday',
+      utm_term: 'hale',
+      utm_content: 'hero',
+      gclid: 'Gw',
+      fbclid: 'Fb',
+      currency: 'CAD',
+      value: 79,
+    });
   });
 
   it('never lets a name/email/content field through under any casing', () => {

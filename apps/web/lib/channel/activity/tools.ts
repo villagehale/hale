@@ -1,5 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import type { PlanTier } from '@hale/types';
 import { z } from 'zod';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import {
   type AreaRefusal,
@@ -7,10 +9,11 @@ import {
   resolveNamedArea,
   sharedNamedAreaReader,
 } from '~/lib/channel/named-area';
+import { optionalArea } from '~/lib/coach/optional-area';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
 import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
-import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
+import type { ActivityFinder } from './lane';
 import type { BoundActivityReader } from './reader';
 
 /**
@@ -62,6 +65,8 @@ export interface ActivityToolArgs {
   onPromise(promise: ActivityPromise): void;
   /** Pages the turn may append after the reply names the pick. */
   onLinks?(links: readonly { title: string; url: string }[]): void;
+  /** The family row's plan. Absent treats the household as Plus (today's budgets). */
+  planTier?: PlanTier;
 }
 
 /** The sentence the model reads when a named place cannot be searched. Never echoes the
@@ -84,14 +89,14 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
   return defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code. The child's age band and the family's home town are attached from their record. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of home. Omit `area` to search around home. Age and that place are the only location and age that leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area (where they live; the search used `area` when you passed one), and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. `family` is the record and it is current: where the children's ages or the home area in it differ from an earlier message in this thread (an older town, a younger age), the record wins — rank, choose the town, and say who a pick suits from `family`, not from the old mention, unless the parent asks in THIS message about somewhere else. Never tell the parent about a record, profile, memory or mismatch, and never say what you hold on file: just use the right place and age, as a friend who knows them would. Each preference says where it came from (`source`: the parent said it, a calendar or receipt, or `inferred` — your own guess) and when (`seenOn`); lean on what the parent said over what was inferred. `family.preferences` are the only remembered interests in this result. A stale guess is not included, so it must not choose the subject you search, the town, or the pick you hand over, and you must not state an interest or a town you were not given. `recheck` is empty. There is no set sentence. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the home town are attached from their record; a different place is the `area` you pass.",
     inputSchema: z.object({
       subject: z.string().min(1),
       /** The season or window the parent asked about, in their own general terms. */
       window: z.string().optional(),
       childId: z.string().min(1).optional(),
       /** A town, city, or area the parent named. Omit to search around home. */
-      area: z.string().min(1).optional(),
+      area: optionalArea,
     }),
     // Invented placeholder only — examples are compiled into a cached tool grammar that
     // sits outside the protections message content gets (rule #1; see EXAMPLE_CHILD_ID).
@@ -106,12 +111,13 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
     // on a parent's behalf (rule #1/#5). A household-wide search names nobody and passes.
     touchesChildContent: true,
     handler: async (input, ctx) => {
+      const limits = entitlementsForFamily(args.planTier ?? 'plus');
       // The per-turn ceiling, refused as a sentence the model reads mid-turn rather than
       // as a silent empty result: a model that has looked twice and wants a third go is
       // told to answer with what it has (rule #11 — never a no-op dressed as an outcome).
-      if (callsThisTurn >= MAX_ACTIVITY_CALLS_PER_TURN) {
+      if (callsThisTurn >= limits.activityCallsPerTurn) {
         throw new Error(
-          `You have already searched the web ${MAX_ACTIVITY_CALLS_PER_TURN} times this turn. Answer with what those searches found.`,
+          `You have already searched the web ${limits.activityCallsPerTurn} times this turn. Answer with what those searches found.`,
         );
       }
       callsThisTurn += 1;
@@ -161,7 +167,9 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         throw new Error(refusalSentence(deidentified.refusal));
       }
 
-      const result = await args.finder.find(deidentified.query);
+      const result = await args.finder.find(deidentified.query, {
+        maxSearches: limits.activitySearchesPerCall,
+      });
       if (!result.found) {
         // A SEARCH THAT RAN OUT OF THE CALLER'S TIME REGISTERS ITS OWN FOLLOW-UP.
         //
@@ -196,7 +204,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       //
       // `recordActivityPromise` supersedes, so a turn that ALSO says the sentence and
       // calls the verb writes one row rather than two — the newest promise is the promise.
-      if (result.picks.some((pick) => pick.when === null || pick.price === null)) {
+      if (result.picks.some((pick) => pick.when === null || pick.price === null || !pick.url)) {
         args.onPromise({ subject: deidentified.query.subject, childId });
       }
       const linked = result.picks.flatMap((pick) =>

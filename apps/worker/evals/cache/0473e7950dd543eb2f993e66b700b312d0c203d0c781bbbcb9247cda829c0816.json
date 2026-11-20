@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada's spot is held and that the parent is finishing registration, but run.confirmed is false and the watchFor notes say only that the session is in the cart; saying a spot is held is an explicit low-score violation. It also omits the about-9-minute window and the request to finish in the open browser, and uses 'pop in' loosely rather than clearly directing the parent to the link.",
+    "score": 1
+  }
+}

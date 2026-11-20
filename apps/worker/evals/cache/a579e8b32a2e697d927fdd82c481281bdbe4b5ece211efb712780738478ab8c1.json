@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Travel brief should go before the trip starts; it's Thursday evening local, outside quiet hours, the last send was answered, no pace preference, and home free windows don't apply to a travel brief.",
+    "action": "send_now",
+    "item_ids": [
+      "trip"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

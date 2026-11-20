@@ -33,7 +33,14 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
-import { PRICE, installEvalSpendCap, liveStructuredCall, priceRates } from './lib/harness.mjs';
+import {
+  PRICE,
+  installEvalSpendCap,
+  liveStructuredCall,
+  priceRates,
+  reportEvalGeneration,
+  wrapEvalAnthropic,
+} from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -194,6 +201,12 @@ function makeRealClassifier(lane, basePrompt, cachedOnly) {
 
     const cached = await cacheGet(key);
     if (cached) {
+      reportEvalGeneration({
+        suite: 'classifier',
+        caseName: fixture.id,
+        model,
+        cached: true,
+      });
       return { ...cached.parsed, _usage: { input: 0, output: 0 }, _cached: true };
     }
 
@@ -204,10 +217,16 @@ function makeRealClassifier(lane, basePrompt, cachedOnly) {
       process.exit(1);
     }
 
-    client ??= capSdkClient(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
-      rates: priceRates,
-      tag: 'classifier',
-    });
+    client ??= capSdkClient(
+      wrapEvalAnthropic(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), {
+        suite: 'classifier',
+        stage: 'classify_event',
+      }),
+      {
+        rates: priceRates,
+        tag: 'classifier',
+      },
+    );
     const response = await liveStructuredCall({
       client,
       lane,

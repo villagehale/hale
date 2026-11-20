@@ -11,10 +11,12 @@
  * stays a separate exact-`on` gate. Both have to be on before a remote
  * runtime is asked to open a page.
  */
+import { isEnabled } from '@hale/flags';
+
 export const SIGNUP_SANDBOX_RUNTIME_ENABLED_ENV = 'SIGNUP_SANDBOX_RUNTIME_ENABLED';
 
 export function signupSandboxRuntimeEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env[SIGNUP_SANDBOX_RUNTIME_ENABLED_ENV] === 'true';
+  return isEnabled('signup-sandbox-runtime', undefined, env);
 }

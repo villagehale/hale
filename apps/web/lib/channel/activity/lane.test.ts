@@ -162,6 +162,26 @@ describe('the payloads', () => {
     for (const system of plain) expect(system).not.toContain(addendum);
   });
 
+  it('keeps the ground tools+system prefix identical across two family-local days', async () => {
+    const prefix = async (today: string) => {
+      const seen: Seen[] = [];
+      await createActivityFinder(
+        makeClient(
+          { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find({ ...QUERY, today });
+      const ground = seen[0];
+      return JSON.stringify({ tools: ground?.tools ?? null, system: ground?.system ?? null });
+    };
+    const a = await prefix('2026-10-12 (Monday)');
+    const b = await prefix('2026-03-01 (Sunday)');
+    expect(a).toBe(b);
+    expect(a).toContain('cache_control');
+    expect(a).not.toContain('2026-10-12');
+    expect(a).not.toContain('2026-03-01');
+  });
+
   it('omits a stage it does not have rather than sending a placeholder', () => {
     expect(
       groundUserMessage({ subject: 'story time', window: null, town: 'Toronto', stage: null }),
@@ -313,6 +333,22 @@ describe('an ungrounded find never ships', () => {
     expect(seen[0]?.tools?.[0]).toMatchObject({
       type: 'web_search_20250305',
       max_uses: MAX_SEARCHES,
+    });
+  });
+
+  it('honours a higher per-call search budget when the caller passes one', async () => {
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    await finder.find(QUERY, { maxSearches: 8 });
+
+    expect(seen[0]?.tools?.[0]).toMatchObject({
+      type: 'web_search_20250305',
+      max_uses: 8,
     });
   });
 });
@@ -640,6 +676,38 @@ describe('VIL-499 · source_url stamped from pages read this turn', () => {
   it('keeps the model url when compose supplied one', () => {
     const [pick] = toPicks([{ ...studio, source_url: 'https://other.test/x' }], [page]);
     expect(pick?.url).toBe('https://other.test/x');
+  });
+
+  it('stamps a registration platform URL from 27 search hits when compose omitted source_url', () => {
+    const gym = {
+      name: 'Winter Gymnastics',
+      age_fit: 'ages 3-5',
+      source_name: 'Halton Hills Recreation',
+    };
+    const hits = Array.from({ length: 26 }, (_, i) => ({
+      url: `https://directory.example/listing-${i}`,
+      title: 'Winter gymnastics Halton Hills',
+    }));
+    hits.push({
+      url: 'https://haltonhills.perfectmind.com/signup/winter-gymnastics',
+      title: 'Winter gymnastics registration',
+    });
+    const [pick] = toPicks([gym], [], hits);
+    expect(pick?.url).toBe('https://haltonhills.perfectmind.com/signup/winter-gymnastics');
+  });
+
+  it('does not stamp a registration platform URL onto a pick the hit does not name', () => {
+    const [pick] = toPicks(
+      [studio],
+      [],
+      [
+        {
+          url: 'https://haltonhills.perfectmind.com/signup/winter-gymnastics',
+          title: 'Winter gymnastics registration',
+        },
+      ],
+    );
+    expect(pick?.url).toBeUndefined();
   });
 
   it('no page read, no https, or no page naming the pick: still no url', () => {

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it sent the school pickup time to the parent's partner, which is a send to another adult. Row m1 is a text to the co-parent, so it backs the send_done claim. The sentence does not say the partner received it, so there is no send_received claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "m1"
+      }
+    ]
+  },
+  "latencyMs": 1693
+}

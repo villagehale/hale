@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text opens with the correct time and sessions, asks only which session they want first, and invents nothing. However, it asks three questions at once (which session first, max price, and waiver), violating the one-ask-at-a-time rule, and it omits the alsoQueueing note that watchFor says should be included. It also refers to the waiver ask even though the mode is auto and waiverAccepted is null, adding an unsupported ask.",
+    "score": 2
+  }
+}

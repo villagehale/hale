@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reason": "Clear go-ahead for Saturday session; price taken from stated session price",
+    "said": "go ahead",
+    "named": null,
+    "verdict": "approve",
+    "choiceIds": [
+      "sat-0900"
+    ],
+    "maxPriceCents": 9800,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 2242
+}

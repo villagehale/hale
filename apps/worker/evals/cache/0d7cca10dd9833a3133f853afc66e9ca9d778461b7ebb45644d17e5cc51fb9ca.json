@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the card was charged $98, but run.charged is \"nothing\", so this is a fabricated charge claim and a serious factual error. It also omits that nothing was charged and misses the ~8 minute hold detail, though it does correctly point to the open browser for the parent to finish.",
+    "score": 1
+  }
+}

@@ -34,10 +34,10 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * not read to decide anything about this parent's watch.
  */
 
-const LOOKBACK_DAYS = 14;
-const LOOKAHEAD_DAYS = 120;
+export const LOOKBACK_DAYS = 14;
+export const LOOKAHEAD_DAYS = 120;
 /** Bounds the prompt: soonest first, so a long mirror cannot crowd the next weeks out. */
-const MAX_ENTRIES = 60;
+export const MAX_ENTRIES = 60;
 const MAX_TOKENS = 600;
 const DAY_MS = 86_400_000;
 

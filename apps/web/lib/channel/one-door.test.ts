@@ -37,7 +37,9 @@ const PROVIDER_TOKENS = [
   'createLinqChat(',
   'createLinqPhoneTransport(',
   'sendLinqParts(',
+  'sendLinqEffect(',
   'reactToLinqMessage(',
+  'editLinqMessage(',
   'shareLinqContactCard(',
   'requestLinqLocation(',
   'retrieveLinqLocation(',
@@ -62,8 +64,12 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':
     'Hale Name and Photo share at most once per Toronto day per chat after the first outbound; the claim and the linq_contact_card_shared audit sit beside the share',
+  'apps/web/lib/channel/linq/edit.ts':
+    'VIL-479 edits one text part of a bubble Hale already sent; editLinqMessage runs only after the model writes the replacement, the original channel_messages row is the audit target (linq_message_edited), a linq:edit receipt is inserted after Linq accepts, and a refusal sends the follow-up instead',
   'apps/web/lib/channel/linq/tapback.ts':
-    'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+    "a tapback that replaces a throwaway ack, or (VIL-680, LINQ_REACTIONS_ENABLED) the tapback the coach chose; reactToParentMessage reacts only on the parent's inbound message id, and moments.ts writes the linq:tapback row and linq_tapback audit when the reaction is accepted",
+  'apps/web/lib/channel/linq/effect.ts':
+    "Hale's reply sent with an iMessage effect when the model chooses one; the router's sendReply writes its channel_messages row and sms_reply_sent audit as for any reply",
   'apps/web/lib/channel/linq/link-preview.ts':
     'a link part after a text that does not carry the URL; writes its own channel_messages row and linq_link_preview audit when a family id is passed, and sendLinkOnce ledgers its URL-as-text fallback (linq:link_text, sms_reply_sent)',
   'apps/web/lib/channel/linq/group.ts':
@@ -81,7 +87,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/multi-family.ts':
     'shared-group notices and thread-only replies; sendOnce inserts the channel_messages row (reply, template linq:multi_family_joined, linq:multi_family_left, linq:multi_family_join_needed, linq:multi_family_reply, or linq:multi_family_ask, dedupe key) on the speaking family before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
   'apps/web/lib/channel/linq/household-calendar.ts':
-    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send',
+    'group notices for kid events, conflicts, handoffs, and how-it-went; sendGroupNotice inserts the channel_messages row before the Linq send. VIL-609 cross-parent clash 1:1: sendCrossParentOneToOne inserts the channel_messages row (template linq:cross_parent_clash, per-parent dedupe) before sendLinqChatMessage / sendResolvingNewChat, never the group, and a refusal stamps the row failed',
   'apps/web/lib/channel/linq/carpool.ts':
     'VIL-445 night-before and one-ask group lines; deliverLinqGroupNotice inserts the channel_messages row (template linq:carpool_ask_driver or linq:carpool_night_before) before sendLinqChatMessage, and a failed compose is group_line_unsent with nothing sent',
   'apps/web/lib/channel/coparent/duty/asks.ts':
@@ -96,6 +102,10 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'iMessage arm of the router reply transport; every send ledgered in router route.ts sendReply',
   'apps/web/lib/channel/connect/connected-notice.ts':
     'records its own row BEFORE the send and claims the dedupe key with it (reply category, connector:connected) — the connect callback awaits this inside the redirect Google hands back',
+  'apps/web/lib/integrations/team-schedule/apply.ts':
+    'VIL-662 coach schedule change ask: claims a channel_messages row (category email_alert, template team_schedule:parent, dedupe key) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after; a gate hold writes its held row',
+  'apps/web/lib/integrations/team-schedule/driver.ts':
+    'VIL-662 driver heads-up: inserts a channel_messages row (category plan_check_in, template team_schedule:driver) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/calendar-write/send.ts':
     'VIL-454 calendar write notice: claims a channel_messages row (templateKey calendar_write_notice) before sendLinqChatMessage / sendResolvingNewChat and stamps it sent or failed after',
   'apps/web/lib/channel/group-plan/send.ts':
@@ -105,7 +115,9 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/connect/fresh-link.ts':
     'records its own channel_messages row BEFORE the send (reply category, template connector:fresh_link) and writes providerMessageId after the Linq or SMS send lands; a refused send patches that same row with failedSendPatch',
   'apps/web/lib/channel/linq/group-plan-rsvp/send.ts':
-    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
+    'VIL-442 group-plan RSVP tally and follow-up: sendGroupPlanRsvpLine inserts the channel_messages row (reply, template linq:group_plan_rsvp, linq:group_plan_rsvp_followup, or VIL-471 linq:group_poll) on the covering family primary parent (or the live plan host in a shared chat) before sendLinqChatMessage, stamps the provider id and audits sms_reply_sent after it lands, and a refusal marks that same row failed',
+  'apps/web/lib/channel/linq/group-experience/send.ts':
+    'VIL-399 group experience lines: sendGroupExperienceLine inserts the channel_messages row (reply, template linq:group_experience) on the covering family primary parent before sendLinqChatMessage, stamps the provider id after it lands, and a refusal marks that same row failed',
 };
 
 /** The trees a send could hide in. Worker is scanned even though it has no phone

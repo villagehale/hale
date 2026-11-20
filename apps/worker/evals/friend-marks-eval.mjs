@@ -126,7 +126,7 @@ async function estimate() {
     const draws = fixture.throughCode ? 2 : 1;
     usd +=
       draws *
-      ((input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output);
+      ((input / 1e6) * price.input + (voice.onboardingReplyMaxTokens() / 1e6) * price.output);
     if (fixture.watchFor) {
       const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
       if (!judgePrice) throw new Error('no list price for the judge model');
@@ -180,7 +180,7 @@ async function record() {
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(turn),
-      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens: voice.onboardingReplyMaxTokens(),
       cachedOnly,
       getClient,
       cost,
@@ -245,8 +245,16 @@ async function record() {
         ).filter((bubble) => bubble.length > 0).length
       : 0;
     // A reply code would send: the same judge speakFriend runs, for this step.
+    // Lit, that judge reads the draw's own fields. Passing them does not change a
+    // dark turn: the flag-off judge never looks at them.
     const judged = fixture.sendable
-      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input, {
+          asksCount: result.value?.asksCount,
+          asksName: result.value?.asksName,
+          speaksAsParent: result.value?.speaksAsParent,
+          questionBeforeList: result.value?.questionBeforeList,
+          connectorsOffered: result.value?.connectorsOffered,
+        })
       : null;
     const context = voice.friendVoiceContext(input);
     const meaning = fixture.watchFor

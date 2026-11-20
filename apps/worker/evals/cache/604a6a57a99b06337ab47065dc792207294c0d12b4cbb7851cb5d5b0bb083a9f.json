@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states total 98$ over max 90$, nothing charged, and does not claim registration or a held spot. However it says the browser was left open and 'peut-être déjà expiré' which is acceptable, but 'Le navigateur est resté ouvert' plus 'dans le panier' is fine. Minor issue: it uses 'Les inscriptions ont ouvert' and one ask ('vérifie vite'), keeping a single ask. Facts and tone are sound; the link-follows note is consistent with watchFor. Deduct slightly because 'Ada est dans le panier' edges toward implying progress, and the text does not clearly signal that nothing is secured.",
+    "score": 4
+  }
+}

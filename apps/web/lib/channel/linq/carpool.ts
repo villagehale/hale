@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import {
@@ -7,6 +8,7 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
   createOutboundTransport,
   failedSendPatch,
@@ -26,7 +28,7 @@ import {
   carpoolPlanKey,
   markAsked,
   markReminder,
-  parsePickupAt,
+  resolveCarpoolPickup,
 } from './carpool-apply';
 import { decideCarpoolReminder, decideCarpoolTurn, localMinutesIn } from './carpool-cadence';
 import { type CarpoolReader, readingFromTapback, sharedCarpoolReader } from './carpool-reading';
@@ -120,6 +122,50 @@ function rowToPlan(row: typeof schema.linqGroupCarpools.$inferSelect): CarpoolPl
   };
 }
 
+async function driverReminderZone(
+  database: Database,
+  plan: Pick<CarpoolPlanState, 'driverUserId' | 'driverTimezone'>,
+): Promise<string> {
+  const fallback = plan.driverTimezone || 'America/Toronto';
+  if (!plan.driverUserId) return fallback;
+  const [user] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, plan.driverUserId))
+    .limit(1);
+  return user?.timezone || fallback;
+}
+
+/**
+ * Devin #984 (group quiet hours) — the group reminder reaches the household's
+ * parents, so it is quiet-gated in the household's zone (the covering parent's
+ * timezone, ride zone as fallback), independently of the driver's zone.
+ */
+async function householdQuietZone(
+  database: Database,
+  familyId: string,
+  plan: Pick<CarpoolPlanState, 'driverTimezone'>,
+): Promise<string> {
+  const fallback = plan.driverTimezone || 'America/Toronto';
+  const parentId = await coveringParentUserId(database, familyId);
+  if (!parentId) return fallback;
+  const [user] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, parentId))
+    .limit(1);
+  return user?.timezone || fallback;
+}
+
+function quietIn(now: Date, timeZone: string): boolean {
+  return isWithinQuietHours(
+    now,
+    timeZone,
+    DEFAULT_LOOP_PREFS.quietHoursStart,
+    DEFAULT_LOOP_PREFS.quietHoursEnd,
+  );
+}
+
 type LivePlan = CarpoolPlanState & { id: string; familyId: string; askMessageId: string | null };
 
 async function livePlans(database: Database, chatId: string): Promise<LivePlan[]> {
@@ -150,7 +196,7 @@ export function pickCarpoolPlan<P extends CarpoolPlanState>(
   reading: CarpoolReading,
   timeZone: string,
 ): P | null | 'ambiguous' {
-  const pickupAt = parsePickupAt(reading.pickupAtIso);
+  const pickupAt = resolveCarpoolPickup(reading, timeZone);
   const event = reading.eventLabel?.trim() || null;
   if (!pickupAt && !event) {
     if (plans.length === 0) return null;
@@ -271,6 +317,7 @@ async function persistPlan(
     .values(values)
     .returning({ id: schema.linqGroupCarpools.id });
   if (!inserted) throw new Error('linq carpool: insert returned no row');
+  noteTaskCompleted({ familyId: input.familyId, type: 'carpool', source: 'group' });
   return inserted.id;
 }
 
@@ -401,7 +448,7 @@ export async function considerCarpoolTurn(
     senderName: sender.name,
     memberNames: (membership?.members ?? []).map((member) => member.userId),
     currentDriver: plans.length === 1 ? (plans[0]?.driverName ?? null) : null,
-    nowIso: input.now.toISOString(),
+    now: input.now,
     timeZone: sender.timezone,
     recent,
   });
@@ -592,14 +639,15 @@ export async function runCarpoolReminders(
   for (const row of due) {
     summary.considered += 1;
     const plan = rowToPlan(row);
-    const timeZone = plan.driverTimezone;
+    // Devin #984 — the ride's zone is the pickup's wall clock; the reminder fires
+    // and is quiet-gated in the assigned driver's own zone (ride zone as fallback).
+    const timeZone = await driverReminderZone(database, plan);
+    // Devin #984 (group quiet hours) — the group leg also reaches the household,
+    // so a held reminder goes out only when both the driver's and the
+    // household's quiet windows permit sending.
+    const householdZone = await householdQuietZone(database, row.familyId, plan);
     const quietStart = DEFAULT_LOOP_PREFS.quietHoursStart;
-    const quiet = isWithinQuietHours(
-      input.now,
-      timeZone,
-      quietStart,
-      DEFAULT_LOOP_PREFS.quietHoursEnd,
-    );
+    const quiet = quietIn(input.now, timeZone) || quietIn(input.now, householdZone);
     const quietStartMin = Number(quietStart.slice(0, 2)) * 60 + Number(quietStart.slice(3, 5) || 0);
     const decision = decideCarpoolReminder({
       plan,
@@ -792,6 +840,8 @@ export async function runCarpoolReminders(
   for (const row of driverDue) {
     if (triedDriverThisRun.has(row.id)) continue;
     const plan = rowToPlan(row);
+    // The driver's private 1:1 retry is gated on the driver's own zone only.
+    if (quietIn(input.now, await driverReminderZone(database, plan))) continue;
     const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
     if (!row.reminderGroupSentAt) continue;
     const driverSkipped = await deliverDriverLeg(database, {
@@ -1004,6 +1054,44 @@ export function createCarpoolDriverSend(
   }
 
   return async ({ userId, text }) => {
+    const familyIdForQueue = await familyOfUser(database, userId);
+    if (familyIdForQueue) {
+      const dedupeKey = `linq:carpool_night_before_driver:${familyIdForQueue}:${userId}`;
+      if (await isQueuedForDecider(database, familyIdForQueue, dedupeKey)) {
+        return { sent: false, skipped: 'queued' };
+      }
+      const handedOff = await handOffProactive(
+        database,
+        [
+          {
+            familyId: familyIdForQueue,
+            parentUserId: userId,
+            kind: 'plan_check_in',
+            category: PROACTIVE_CATEGORY.plan_check_in,
+            templateKey: 'linq:carpool_night_before_driver',
+            what: text,
+            why: 'plan_check_in',
+            sourceUrl: null,
+            worthlessAfter: null,
+            parentRequested: false,
+            dedupeKey,
+            payload: { auditVerb: 'coach_plan_check_in_sent' },
+          },
+        ],
+        'candidate',
+      );
+      if (handedOff === 'queued') {
+        await database.insert(schema.auditLog).values({
+          familyId: familyIdForQueue,
+          actor: 'system',
+          actionTaken: 'proactive_cadence_queued',
+          targetTable: 'families',
+          targetId: familyIdForQueue,
+          after: { kind: 'plan_check_in' },
+        });
+        return { sent: false, skipped: 'queued' };
+      }
+    }
     // Devin #975 r3 — everything before the provider call is a definite
     // non-send when it fails, so the caller may release and retry.
     let prepared: { familyId: string; phone: string; chatId: string | null; claimedId: string };

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Reply answers the single question with one clear pick, in Chinese, with the time and venue as given. Bubble 2 adds an invented fact: the family's 4:30 swim lesson is not in the facts (weekRead has no events), so it is fabricated and also an unsupported claim about both fitting. The page link is correctly placed last. The invented swim lesson breaks point 5.",
+    "score": 2
+  }
+}

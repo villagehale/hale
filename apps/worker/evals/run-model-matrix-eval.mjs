@@ -45,8 +45,8 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
-import { expandMatrixCases } from './lib/model-matrix-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expandMatrixCases } from './lib/model-matrix-fixtures.mjs';
 
 const PROMPTS = join(WORKER_ROOT, 'prompts');
 const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');

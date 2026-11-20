@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts used are accurate: child's first name, session label, open time with timezone, and English language. No card is present, which matches loginCard null. No link, price, invented detail, or registration claim appears. The bubbles are short and in English.",
+    "score": 5
+  }
+}

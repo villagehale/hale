@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Parent cancels the swim plan; changed mind",
+    "said": "laisse tomber pour la natation, on ne s'inscrit pas",
+    "named": "la natation",
+    "verdict": "take_back",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1522
+}

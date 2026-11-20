@@ -19,6 +19,11 @@ import { handleParentMemory } from './store';
 export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHandler {
   return {
     name: 'family_memory_kinds',
+    async detects(_database, ctx) {
+      return (
+        familyMemoryKindsEnabled(env ?? process.env) && parseMemoryParentIntent(ctx.body) !== null
+      );
+    },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const flags = env ?? process.env;
       if (!familyMemoryKindsEnabled(flags)) return { claimed: false };

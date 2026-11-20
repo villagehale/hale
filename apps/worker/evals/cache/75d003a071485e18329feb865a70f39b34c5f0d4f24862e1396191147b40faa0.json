@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks about weekend family activities to find for the family, which is Hale's job",
+    "language": "zh",
+    "language_request": null
+  },
+  "latencyMs": 2675
+}

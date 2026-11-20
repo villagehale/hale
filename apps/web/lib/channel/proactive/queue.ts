@@ -82,6 +82,11 @@ export interface CandidateDraft {
   parentRequested: boolean;
   /** The ledger dedupe key the sweep would have written. */
   dedupeKey: string;
+  /**
+   * VIL-612 · sweep after-send the decider must run after a verbatim send.
+   * Omitted on kinds that need none.
+   */
+  payload?: Record<string, unknown> | null;
 }
 
 export type HandOff = 'send' | 'queued' | 'send_shadow_unqueued';
@@ -99,7 +104,7 @@ export async function queueCheckInForDecider(
 ): Promise<'queued' | 'duplicate'> {
   const inserted = await database
     .insert(schema.proactiveCandidates)
-    .values({ ...draft, status: 'queued' })
+    .values({ ...draft, payload: draft.payload ?? null, status: 'queued' })
     .onConflictDoNothing({
       target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
     })
@@ -117,7 +122,13 @@ export async function handOffProactive(
   const store = () =>
     database
       .insert(schema.proactiveCandidates)
-      .values(drafts.map((draft) => ({ ...draft, status: 'queued' as const })))
+      .values(
+        drafts.map((draft) => ({
+          ...draft,
+          payload: draft.payload ?? null,
+          status: 'queued' as const,
+        })),
+      )
       .onConflictDoNothing({
         target: [schema.proactiveCandidates.familyId, schema.proactiveCandidates.dedupeKey],
       });

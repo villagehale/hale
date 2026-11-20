@@ -25,7 +25,8 @@ export type DutyAskMode =
   | 'parent_initiated'
   | 'which_kid'
   | 'both_claimed'
-  | 'silent_parent';
+  | 'silent_parent'
+  | 'split_duty';
 
 export interface DutyOccasion {
   eventKey: string;
@@ -54,6 +55,8 @@ export interface DutyOccasion {
   /** User ids that have already answered this duty. */
   spokenUserIds?: readonly string[];
   childFirstNames?: readonly string[];
+  /** The child this occasion is for, when the calendar row named one. */
+  childId?: string | null;
 }
 
 export interface OpenDutyQuestion {
@@ -62,6 +65,9 @@ export interface OpenDutyQuestion {
   unanswered: number;
   silentNamed: boolean;
   status: 'open' | 'stepped_down';
+  /** VIL-661 · the other kid's event when this open ask is a split. */
+  peerEventKey?: string | null;
+  split?: boolean;
 }
 
 export interface CadenceContext {
@@ -85,6 +91,11 @@ export interface CadenceContext {
    */
   stopAsking?: boolean;
   timeZone: string;
+  /**
+   * VIL-661 · two different kids whose events a single parent cannot cover.
+   * Null when the flag is off or nothing overlaps.
+   */
+  splitPair?: { first: DutyOccasion; second: DutyOccasion } | null;
 }
 
 export interface CadenceLine {
@@ -94,6 +105,8 @@ export interface CadenceLine {
   opensQuestion: boolean;
   namesSilentParent: boolean;
   discretionary: boolean;
+  /** VIL-661 · the other event when this line is a split-duty ask. */
+  peerEventKey?: string | null;
 }
 
 export interface CadencePlan {
@@ -187,7 +200,8 @@ function speakable(occasion: DutyOccasion): boolean {
 }
 
 function sameSlot(open: OpenDutyQuestion, occasion: DutyOccasion): boolean {
-  return open.eventKey === occasion.eventKey && open.role === occasion.role;
+  if (open.eventKey === occasion.eventKey && open.role === occasion.role) return true;
+  return Boolean(open.peerEventKey && open.peerEventKey === occasion.eventKey);
 }
 
 function byStart(a: DutyOccasion, b: DutyOccasion): number {
@@ -195,7 +209,13 @@ function byStart(a: DutyOccasion, b: DutyOccasion): number {
 }
 
 /** Questions. An overview, a direct answer, and the silent line are not. */
-const ASK_BUDGET = new Set<DutyAskMode>(['which_kid', 'both_claimed', 'reask_48h', 'night_before']);
+const ASK_BUDGET = new Set<DutyAskMode>([
+  'which_kid',
+  'both_claimed',
+  'reask_48h',
+  'night_before',
+  'split_duty',
+]);
 
 /** Suppressed for 30 days after "stop asking". Overview and parent_initiated stay. */
 const STOP_ASKING_HOLDS = new Set<DutyAskMode>([
@@ -204,6 +224,7 @@ const STOP_ASKING_HOLDS = new Set<DutyAskMode>([
   'reask_48h',
   'night_before',
   'silent_parent',
+  'split_duty',
 ]);
 
 export function dutyModeCountsAgainstAskBudget(mode: DutyAskMode): boolean {
@@ -217,7 +238,7 @@ function heldByStopAsking(ctx: CadenceContext, mode: DutyAskMode): boolean {
 function line(
   mode: DutyAskMode,
   occasion: DutyOccasion | null,
-  extra: { opensQuestion: boolean; namesSilentParent?: boolean },
+  extra: { opensQuestion: boolean; namesSilentParent?: boolean; peerEventKey?: string | null },
 ): CadenceLine {
   return {
     mode,
@@ -226,6 +247,7 @@ function line(
     opensQuestion: extra.opensQuestion,
     namesSilentParent: extra.namesSilentParent === true,
     discretionary: ASK_BUDGET.has(mode),
+    peerEventKey: extra.peerEventKey ?? null,
   };
 }
 
@@ -307,13 +329,26 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
       }
     }
   } else {
-    const pool = open ? live.filter((row) => sameSlot(open, row)) : live;
-    for (const occasion of pool) {
-      const next = questionLine(occasion, ctx);
-      if (!next) continue;
-      if (next.opensQuestion && open && !sameSlot(open, occasion)) continue;
-      question = next;
-      break;
+    const split = ctx.splitPair;
+    if (
+      split &&
+      !heldByStopAsking(ctx, 'split_duty') &&
+      !(open && !open.split && open.eventKey !== split.first.eventKey)
+    ) {
+      question = line('split_duty', split.first, {
+        opensQuestion: true,
+        peerEventKey: split.second.eventKey,
+      });
+    }
+    if (!question) {
+      const pool = open ? live.filter((row) => sameSlot(open, row)) : live;
+      for (const occasion of pool) {
+        const next = questionLine(occasion, ctx);
+        if (!next) continue;
+        if (next.opensQuestion && open && !sameSlot(open, occasion)) continue;
+        question = next;
+        break;
+      }
     }
     if (!question && !open) {
       const soonest = live.find((row) => !row.hasOwner || row.conflict || row.needsWhichKid);
@@ -334,13 +369,14 @@ export function planDutyCadence(ctx: CadenceContext): CadencePlan {
   if (sundayOverview) foldLines.push(sundayOverview);
 
   if (question) {
-    const foldable = question.mode !== 'parent_initiated' && question.mode !== 'night_before';
+    const ownBubble =
+      question.mode === 'night_before' ||
+      question.mode === 'parent_initiated' ||
+      question.mode === 'split_duty';
+    const foldable = !ownBubble || question.mode === 'split_duty';
     if (ctx.bubbleLeaving && !ctx.quiet && foldable) {
       foldLines.push(question);
-    } else if (
-      !ctx.bubbleLeaving &&
-      (question.mode === 'night_before' || question.mode === 'parent_initiated')
-    ) {
+    } else if (!ctx.bubbleLeaving && ownBubble) {
       if (ctx.quiet) held = held ?? 'quiet_hours';
       else sendLines.push(question);
     }

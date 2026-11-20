@@ -17,6 +17,8 @@ import { CONSENT_STORAGE_KEY } from '~/lib/site/consent';
 
 const KEY_ENV = 'NEXT_PUBLIC_POSTHOG_KEY';
 const HOST_ENV = 'NEXT_PUBLIC_POSTHOG_HOST';
+const WEB_ENV = 'NEXT_PUBLIC_POSTHOG_WEB_ENABLED';
+const REPLAY_ENV = 'NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED';
 const API_HOST = 'https://ph.test';
 const LANDING = '/en';
 
@@ -32,11 +34,14 @@ interface Boot {
   persistence: unknown;
 }
 
-async function bootLanding(): Promise<Boot> {
+async function bootLanding(opts: { replay?: boolean } = {}): Promise<Boot> {
   window.history.replaceState(null, '', LANDING);
   requests.length = 0;
   process.env[KEY_ENV] = 'phc_test_key';
   process.env[HOST_ENV] = API_HOST;
+  process.env[WEB_ENV] = 'true';
+  if (opts.replay === false) delete process.env[REPLAY_ENV];
+  else process.env[REPLAY_ENV] = 'true';
   const { PostHogProvider } = await import('./posthog-provider');
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -67,6 +72,8 @@ async function bootLanding(): Promise<Boot> {
 describe('the landing page records, masked, after consent (VIL-483)', () => {
   const originalKey = process.env[KEY_ENV];
   const originalHost = process.env[HOST_ENV];
+  const originalWeb = process.env[WEB_ENV];
+  const originalReplay = process.env[REPLAY_ENV];
 
   beforeAll(() => {
     vi.stubGlobal(
@@ -115,6 +122,10 @@ describe('the landing page records, masked, after consent (VIL-483)', () => {
     else process.env[KEY_ENV] = originalKey;
     if (originalHost === undefined) delete process.env[HOST_ENV];
     else process.env[HOST_ENV] = originalHost;
+    if (originalWeb === undefined) delete process.env[WEB_ENV];
+    else process.env[WEB_ENV] = originalWeb;
+    if (originalReplay === undefined) delete process.env[REPLAY_ENV];
+    else process.env[REPLAY_ENV] = originalReplay;
   });
 
   it('starts the recorder once the visitor has accepted, with inputs masked', async () => {
@@ -137,5 +148,13 @@ describe('the landing page records, masked, after consent (VIL-483)', () => {
     const boot = await bootLanding();
     expect(boot.posthogRequests).toBe(0);
     expect(boot.recorderRequested).toBe(false);
+  });
+
+  it('does not start the recorder when the web flag is on but replay is unset', async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, 'granted');
+    const boot = await bootLanding({ replay: false });
+    expect(boot.posthogRequests).toBeGreaterThan(0);
+    expect(boot.recorderRequested).toBe(false);
+    expect(boot.recordingStatus).toBe('disabled');
   });
 });

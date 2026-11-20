@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in Spanish, answers the single question, and names both Saturday picks with their own times, with no trailing question. Bubble 1 is a complete item, and bubble 2 is the second item with its details. The times are on the family's Toronto clock as given, and the page addresses at the end are code-placed. The reply is well split with no lead-in or count bubble. Minor issues: the second bubble opens with a bare \"Y\" fragment and carries two URLs, which is slightly awkward, but nothing breaks the rubric.",
+    "score": 4
+  }
+}

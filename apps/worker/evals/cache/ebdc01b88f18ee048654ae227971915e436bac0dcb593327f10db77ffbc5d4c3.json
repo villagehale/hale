@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says Hale could not finish, that it cannot tell whether the card was charged or Ada registered, and asks the parent to check email and the open browser before paying again. It avoids claiming a spot, a charge, or registration, and makes no promise to retry. Minor issue: it says the browser stays open about 15 minutes, which matches holdMinutes, so that is fine. It uses a single ask and is in English. The tone is plain and warm, though it is slightly long for one or two short sentences.",
+    "score": 4
+  }
+}

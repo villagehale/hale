@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011CgyNTQUrnjL6jihMMj5F7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStQcKEAgTGAI4AUIIdGhpbmtpbmcSDCgDxxxH6n3NUzumzBoM7257hxRsoXrWBWZ0IjB0nhvyxBARcznZcj9EURmunNcMPurMd8ekEB2Mx9d+s9+P6QRI7pCBLVxij/MCdiwq0gbCC4X/VfKfRM25P83+mOu5b/fnz7ANynkxSloK3cicRY09HI7nAXQAkoI1FEPuxCWknyF3fVQ4+/4LHXYY/gNriY/Ust0vxfGt+6UeitO8PZCD7+cfoI8TN5QjPelutO1qyg17b0mlQXic1+TO4lvtEkdVPVrSLDzl/P2KkDIpc2LzCK1xuLb4AbPpGMdw8kTSkierRhuF3VwzZqoNEIb0+brgHVRDIpAM87x3wwrszFP1x+VpQjUFcHYErqUIX5nwfHlFK2hfmYHgXTQxaSRvFTh3pdG/DskAH3/JKJfywGOZ0z9YR/vr6M+DoqpR/X9nSwEuenW/8py3qeUAiU2Ryma11zDJ/d69g97RVpFyx5WEs9PL66nCbqFz3cpECzKbhNjLK5u3gdNA4aV9MuCIJ/+Q3QjmDoKTmrapj4f/dNE8fF0GfQhJi38CQoUM8LaDq9w77T+X0DOhva7UWeJ+4nDXW9QtbLY9aYj+8fqUkBledryA0kdbkeqYld0Y93FTfXdJ4SAKfJd6IBRI3D4rZUWzTU8OXGiivqE3mMrNSo7hK16uwOC0KCaOGM7zJZ3mEVRVFSjljOjnJEloKNyVkDSaFc3KR/56UHWzSsP4U9kADpEcoY/Qj16ZXRsbrwznrKc7qZ/mtSrRJ1gZEdmoYwjFxIzUOJlJsVfYKHf4W5EJ69+VUeZWV5bc3wweHD+UMjW8wZRZ8dLYtEb1TTZ1E9oay8YprNDFr/26fBZ747IEXtTxTI01mzeHP6SAHGoT2yTVysQFNmF6DEcbhqRxGSQJqDa0CbiccP+/BezKlSZEkaozSUdeleDuhNV+dOrBJOFj7mAdc7ldaDDJZfJ8/6KnMjLp+1VGOu1tNrJ5GmUsEQb93OVJS2F6hiAmHaM8UAmiTjp1tdVQM2sXnKRiz47mzLN6PVAB7iglKYcb0wrbELhd6XaVssbvPK3TaVuSJ/nB12Jk9MJiFUyVCHGk0CmYJfvURotYLHh3eGFEE8wKfdKsTAtFDGYO5CU4bDrdi+dNosc23DVNYoVrRahOsZIPbj7FoPWDsjST5Lh8C9g3Q1retGhMVlXyJq5JEMB9cBrBlOMqgOu5hILlH68Xv/NNS6PpqpnL+D8luqSDDjYvGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QtS8f91JZT18HNQcHyfXqN",
+        "name": "get_framework_guidance",
+        "input": {
+          "topic": "eating around swim lessons for a 4-year-old",
+          "childId": "child-preschool"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1582,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 214,
+      "output_tokens_details": {
+        "thinking_tokens": 119
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

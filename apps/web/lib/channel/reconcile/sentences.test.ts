@@ -251,6 +251,30 @@ describe('subtractSpans — a cut never ships a fragment (VIL-575)', () => {
     ).toEqual({ status: 'cut', text: 'Swim is Saturday.' });
   });
 
+  it('keeps the line break between two bubbles when a sentence inside one is cut', () => {
+    const body = 'Swim is Saturday.\nBring a towel. Your visit is booked.';
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'cut',
+      text: 'Swim is Saturday.\nBring a towel.',
+    });
+  });
+
+  it('cutting a whole middle bubble leaves one line break, not a blank line', () => {
+    const body = 'Swim is Saturday.\nYour visit is booked.\nBring a towel.';
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'cut',
+      text: 'Swim is Saturday.\nBring a towel.',
+    });
+  });
+
+  it('trims the spaces around a kept line break', () => {
+    const body = 'Swim is Saturday.  \n  Bring a towel. Your visit is booked.';
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'cut',
+      text: 'Swim is Saturday.\nBring a towel.',
+    });
+  });
+
   it('cutting everything leaves nothing, which is not a fragment', () => {
     const body = 'Your visit is booked.';
     expect(subtractSpans(body, [spanOf(body, body)])).toEqual({ status: 'cut', text: '' });

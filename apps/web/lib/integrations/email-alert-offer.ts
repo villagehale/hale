@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import {
   calendarInstantsClose,
@@ -144,9 +145,11 @@ export interface OpenEmailAlertOffer {
   messageId: string;
   /** The event this offer already placed, or null — see the column's own note. */
   eventId: string | null;
-  /** When the alert that carried the offer went out. The open-question reader's recency
-   * fact, and it is the ledger row's own mint time because the row is written at send. */
+  /** When the offer row was minted, after the alert that carried it was sent. */
   askedAt: Date;
+  /** The outbound row that carried the alert: the router dates the ask by its recorded
+   * send (VIL-302, channel/ledger.ts `sendRecordedAt`). */
+  askedVia: string;
 }
 
 /**
@@ -191,6 +194,7 @@ export async function loadOpenEmailAlertOffers(
     messageId: row.messageId,
     eventId: row.eventId,
     askedAt: row.createdAt,
+    askedVia: row.channelMessageId,
   }));
 }
 
@@ -514,6 +518,7 @@ async function placeOfferedEvent(
       // never redacted (the alert's own audit row keeps the same rule).
       after: { kind: offer.kind },
     });
+    noteTaskCompleted({ familyId: input.familyId, type: 'email_action', source: 'email' });
   }
 
   // THE BOOKING THIS EMAIL ALSO WROTE, now on the calendar. Two rows from one email, so

@@ -4,6 +4,7 @@ import type { AgentClient } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import type { LoopMessage } from '~/lib/channel/types';
+import { inviteLinkHash } from '~/lib/loop/calendar-invite-link-hash';
 import {
   calendarInviteSmsRenderer,
   splitInviteSms,
@@ -295,6 +296,34 @@ describe('splitInviteSms', () => {
     expect(parts.some((part) => part.includes(LINK))).toBe(true);
   });
 
+  it('asks the dispatch to store the event-id hash on the part that carries the link', () => {
+    const familyEventId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const url = `https://app.villagehale.com/api/ics/event/${familyEventId}.sig`;
+    const line = `Swim class on Thu, Jul 23 at 10:30 AM. ${url}`;
+    const rendered = calendarInviteSmsRenderer.render(
+      {
+        templateKey: 'calendar_invite_sms',
+        familyId: 'fam',
+        parentUserId: 'parent',
+        category: 'approval',
+        urgency: 'time_sensitive',
+        channel: 'sms',
+        payload: {
+          familyEventId,
+          summary: 'Swim class',
+          when: 'Thu, Jul 23 at 10:30 AM',
+          url,
+          line,
+        },
+      } satisfies LoopMessage,
+      'sms',
+      'generic',
+    );
+    expect(rendered.recordBody).toBeFalsy();
+    expect(rendered.linkHashFor).toBe(url);
+    expect(rendered.linkHash).toBe(inviteLinkHash(familyEventId));
+  });
+
   it('does not fold the model line on the way out', () => {
     const line = `Swim class on Thu, Jul 23 at 10:30 AM \u2014 Chlo\u00e9 \u5468 ${LINK}`;
     const rendered = calendarInviteSmsRenderer.render(
@@ -306,6 +335,7 @@ describe('splitInviteSms', () => {
         urgency: 'time_sensitive',
         channel: 'sms',
         payload: {
+          familyEventId: 'a'.repeat(36),
           summary: 'Swim class',
           when: 'Thu, Jul 23 at 10:30 AM',
           url: LINK,

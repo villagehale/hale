@@ -1,0 +1,19 @@
+{
+  "value": {
+    "board_on_page": null,
+    "name": "Winter Break",
+    "year_evidence": "Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027.",
+    "first_day": {
+      "quote": "Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027.",
+      "date_text": "Monday, December 21, 2026",
+      "date": "2026-12-21"
+    },
+    "last_day": {
+      "quote": "Winter Break runs from Monday, December 21, 2026 to Friday, January 1, 2027.",
+      "date_text": "Friday, January 1, 2027",
+      "date": "2027-01-01"
+    },
+    "found": true
+  },
+  "latencyMs": 2040
+}

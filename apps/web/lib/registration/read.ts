@@ -23,7 +23,12 @@ import {
   registrationPageUrl,
 } from './page';
 import { type RegistrationPdfRead, registrationPdfText } from './pdf';
-import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
+import {
+  type CycleIdentity,
+  type ExtractedWindow,
+  type SeasonRegistrationWindow,
+  extractPublishedWindow,
+} from './verify-window';
 
 /**
  * VIL-423 — read a registration page live, when a date is needed, and return only what
@@ -86,9 +91,19 @@ function logReading(target: RegistrationTarget, reading: LiveRegistrationReading
   );
 }
 
+/** How a reader reads. `yearFromWeekday` is the own-city lane's (VIL-684): a yearless
+ * date's year pinned by its printed weekday, inside the days the season being read
+ * registers in as of the read (`pinYearByWeekday`). Absent for every other reader. */
+export interface RegistrationReaderOptions {
+  yearFromWeekday?: (now: Date) => SeasonRegistrationWindow;
+}
+
 /** A reader whose cache (bytes and PDF text by URL, readings by target) lives only as
  * long as this reader: one operation. A later send builds a new one. */
-export function createRegistrationReader(ports: RegistrationReaderPorts): RegistrationReader {
+export function createRegistrationReader(
+  ports: RegistrationReaderPorts,
+  options: RegistrationReaderOptions = {},
+): RegistrationReader {
   const bodies = new Map<string, Promise<RegistrationPageFetch>>();
   const pdfTexts = new Map<string, Promise<RegistrationPdfRead>>();
   const readings = new Map<string, Promise<LiveRegistrationReading>>();
@@ -126,6 +141,15 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
     const fetched = await cached(bodies, url, () => ports.fetchBody(url));
     if (fetched.outcome === 'busy') return busy(fetched.reason);
     if (fetched.outcome === 'redirected') return unreadable('redirected');
+    // A 5xx is the server's trouble, not the page's answer: named apart from a refusal so
+    // a caller can ask again instead of reading it as "this page says nothing".
+    if (
+      fetched.outcome === 'refused' &&
+      fetched.reason === 'http_status' &&
+      fetched.status >= 500
+    ) {
+      return unreadable('http_server_error');
+    }
     if (fetched.outcome !== 'fetched') return unreadable(fetched.reason);
     const body = fetched.body;
 
@@ -147,6 +171,9 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
       }
       pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
     }
+    // A page with no words on it (a bot challenge served as a 200) says nothing, and a
+    // model asked about it answers "not published": it is unreadable, and never asked.
+    if (!/\p{L}/u.test(pageText)) return unreadable('empty_page');
 
     let extracted: ExtractedWindow;
     try {
@@ -163,7 +190,12 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
       if (isModelFailure(error)) return unreadable('extract_failed');
       throw error;
     }
-    return normalizeExtractedRegistration(extracted, pageText, source);
+    return normalizeExtractedRegistration(
+      extracted,
+      pageText,
+      source,
+      options.yearFromWeekday?.(now),
+    );
   }
 
   return (target, now) => {
@@ -184,11 +216,17 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
 /** The one production reader. The fetch port is the DNS-pinned fetcher that never
  * follows a redirect, built here so no caller can hand in another; the URL check inside
  * the reader is then never the only SSRF guard. The model client is the caller's. */
-export function createLiveRegistrationReader(client: AgentClient): RegistrationReader {
-  return createRegistrationReader({
-    fetchBody: createRegistrationPageBytesFetch(),
-    extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
-  });
+export function createLiveRegistrationReader(
+  client: AgentClient,
+  options?: RegistrationReaderOptions,
+): RegistrationReader {
+  return createRegistrationReader(
+    {
+      fetchBody: createRegistrationPageBytesFetch(),
+      extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
+    },
+    options,
+  );
 }
 
 /** What a catalog window asks the reader. A district row names its district in the

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says a captcha step needs the parent, states the browser is open at the session page with no spot held (confirmed false), gives the exact link, and omits holdMinutes since none was given. Language is zh and audience direct; the wording uses no 'you' pronoun issue since Chinese has none. Minor flaw: it says 'the page' stopped at the class without saying it isn't booked yet clearly, but it does say no spot yet. No invented facts, no promises of follow-up, no personal details.",
+    "score": 5
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale wrote to the swim coach about Saturday, which is a send_done claim. There are no rows on record, so it cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "send_done",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1733
+}

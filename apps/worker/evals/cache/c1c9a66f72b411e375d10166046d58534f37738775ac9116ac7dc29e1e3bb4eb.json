@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The French sentence says Hale is watching the Tuesday gymnastics class for an open spot, which is a spot_watch claim. The only spot_watch row is for Saturday swimming, a different class, so it cannot back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2319
+}

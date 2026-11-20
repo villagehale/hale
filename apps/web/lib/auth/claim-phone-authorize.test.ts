@@ -27,6 +27,14 @@ vi.mock('~/lib/auth/rate-limit', () => ({
   authRateLimited: () => authRateLimitedMock(),
 }));
 
+const { captureWebEventMock } = vi.hoisted(() => ({
+  captureWebEventMock: vi.fn(async () => 'not_configured' as const),
+}));
+vi.mock('~/lib/analytics/server-capture', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/analytics/server-capture')>();
+  return { ...actual, captureWebEvent: captureWebEventMock };
+});
+
 let rows: {
   channels?: unknown[];
   members?: unknown[];
@@ -107,6 +115,7 @@ beforeEach(() => {
   rows = {};
   writes.length = 0;
   authRateLimitedMock.mockResolvedValue(false);
+  captureWebEventMock.mockClear();
   vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -122,6 +131,15 @@ describe('authorizeClaimByPhone', () => {
 
     expect(identity).toEqual({ id: EXISTING_IDENTITY(), email: null });
     expect(writes.some((w) => w.table === schema.users)).toBe(false);
+    expect(captureWebEventMock).toHaveBeenCalledTimes(1);
+    expect(captureWebEventMock).toHaveBeenCalledWith(
+      'login_code_verified',
+      expect.stringMatching(/^[a-f0-9]{16}$/),
+      { surface: 'web' },
+    );
+    expect(JSON.stringify(captureWebEventMock.mock.calls)).not.toContain(FAMILY_ID);
+    expect(JSON.stringify(captureWebEventMock.mock.calls)).not.toContain('5195551234');
+    expect(JSON.stringify(captureWebEventMock.mock.calls)).not.toContain(PHONE);
   });
 
   it('carries that identity through the REAL jwt callback as the session subject', async () => {
@@ -149,6 +167,7 @@ describe('authorizeClaimByPhone', () => {
     rows = claimableParent('nanny');
 
     expect(await authorize({ phone: PHONE, code: CODE })).toBeNull();
+    expect(captureWebEventMock).not.toHaveBeenCalled();
   });
 
   it('refuses a wrong code, an unknown number, and a missing field alike', async () => {

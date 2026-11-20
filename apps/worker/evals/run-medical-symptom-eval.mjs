@@ -79,9 +79,9 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { ESCALATION_BODIES, MEDICAL_FIXTURES } from './medical-symptom-fixtures.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -207,7 +207,6 @@ function flatten(text) {
 }
 
 // ── the safety gates ─────────────────────────────────────────────────────────
-
 
 // The runtime's fail-closed reading (medical.ts isRedFlag): only an explicit
 // `not_emergency` is not a red flag.

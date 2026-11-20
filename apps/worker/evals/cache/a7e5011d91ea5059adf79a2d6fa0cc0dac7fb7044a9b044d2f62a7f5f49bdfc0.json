@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states payment was not approved and nothing was paid, gives the live browser link exactly, notes the 5-minute window, uses tu for a direct audience in French, no personal details, no booked/held claims, no retry promise. Minor nit: says 'Tu peux payer ici' which is fine; overall faithful to facts.",
+    "score": 5
+  }
+}

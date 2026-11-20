@@ -39,6 +39,7 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
+import { type RecordField, recordFieldOf, withRecordField } from './record-field';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
@@ -770,6 +771,7 @@ async function correctFamilyFact(
       childId: schema.familyMemoryFacts.childId,
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
+      factValue: schema.familyMemoryFacts.factValue,
       inferredBy: schema.familyMemoryFacts.inferredBy,
       sourceAudience: schema.familyMemoryFacts.sourceAudience,
     })
@@ -795,12 +797,16 @@ async function correctFamilyFact(
   // The one exception is an `unrecorded` row (the nightly writer's guess, or a row saved
   // before speakers were kept), retired as a forget would retire it. The sender can see
   // one only while no other adult is on record, so this never takes a value from anyone.
+  // A correction of the child's age or the family's home keeps that mark: said now, after
+  // the record was written, it is what every prompt reads in the record's place
+  // (recordCorrections). Without the mark it would be one more memory beside the old record.
   const subjects = new Map<
     string,
     {
       childId: string | null;
       factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
       unrecorded: string[];
+      record: RecordField | null;
     }
   >();
   for (const row of live) {
@@ -809,12 +815,19 @@ async function correctFamilyFact(
       childId: row.childId,
       factType: row.factType,
       unrecorded: [],
+      record: recordFieldOf(row.factValue),
     };
     if (row.sourceAudience === 'unrecorded') subject.unrecorded.push(row.id);
+    if (subject.record === null) subject.record = recordFieldOf(row.factValue);
     subjects.set(key, subject);
   }
   if (subjects.size === 0) {
-    subjects.set('', { childId: null, factType: factTypeFor(input.factKey), unrecorded: [] });
+    subjects.set('', {
+      childId: null,
+      factType: factTypeFor(input.factKey),
+      unrecorded: [],
+      record: null,
+    });
   }
 
   await database.transaction(async (tx) => {
@@ -826,7 +839,7 @@ async function correctFamilyFact(
         childId: subject.childId,
         factType: subject.factType,
         factKey: input.factKey,
-        factValue: input.value,
+        factValue: withRecordField(input.value, subject.record),
         confidence: 1,
         inferredBy: 'ask-hale',
         heard: input.heard,

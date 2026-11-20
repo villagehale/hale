@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will send an invitation to a phone number, which is a co-parent or caregiver invite. Invite claims are never tied to a row, and there are no rows.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1627
+}

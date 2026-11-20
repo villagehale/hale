@@ -8,11 +8,21 @@ import {
   deriveStage,
   familyCountryOf,
 } from '@hale/types';
-import { type FactReader, episodesForContext, factsForContext } from '@hale/worker/memory-context';
-import { and, eq } from 'drizzle-orm';
-import type { HouseholdGroupFact } from '../channel/intake/household-group';
-import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { labelDay, readerTimeZone } from '@hale/worker/fact-sources';
+import {
+  type FactReader,
+  type RecordCorrections,
+  correctedAgeMonths,
+  episodesForContext,
+  factsForContext,
+  recordCorrections,
+} from '@hale/worker/memory-context';
+import { and, eq } from 'drizzle-orm';
+import { withoutFallenSchoolBreak } from '../care/weekday';
+import type { HouseholdGroupFact } from '../channel/intake/household-group';
+import { readPlaceRow } from '../channel/off-domain/place';
+import { townFromStoredArea } from '../channel/town-from-area';
+import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -306,20 +316,19 @@ export async function loadAgentContext(
   database: Database,
   now: Date = new Date(),
 ): Promise<AgentContext> {
-  // Four independent reads, all keyed on familyId alone — issued together rather
-  // than as four sequential round trips. Only the fact select genuinely depends on
+  // Five independent reads, all keyed on familyId alone — issued together rather
+  // than as sequential round trips. Only the fact select genuinely depends on
   // an earlier one (it narrows to the RESOLVED focused child), so it stays behind.
-  const [familyRows, parentRows, childRows, episodeRows] = await Promise.all([
+  const [familyRows, place, corrections, parentRows, childRows, episodeRows] = await Promise.all([
     database
-      .select({
-        planTier: schema.families.planTier,
-        city: schema.families.city,
-        province: schema.families.province,
-        country: schema.families.country,
-      })
+      .select({ planTier: schema.families.planTier, country: schema.families.country })
       .from(schema.families)
       .where(eq(schema.families.id, input.familyId))
       .limit(1),
+    // The row the find searches from (activity/place.ts), so the coach names the town
+    // the find looked in: the active saved area, else the home row.
+    readPlaceRow(database, input.familyId, now),
+    recordCorrections(database, input.familyId, now),
     database
       .select({ name: schema.users.name })
       .from(schema.familyMembers)
@@ -347,13 +356,16 @@ export async function loadAgentContext(
     throw new Error(`loadAgentContext: no family row for ${input.familyId}`);
   }
 
-  const children = childRows.map((row) => toChildContext(row, now));
+  const children = childRows.map((row) =>
+    withCorrectedAge(toChildContext(row, now), corrections, now),
+  );
   const presentStages = new Set(children.map((c) => c.stage));
   const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
-  const focusedChild = input.focusedChildId
+  const focused = input.focusedChildId
     ? toFocusedChild(input.focusedChildId, childRows, family.country, now)
     : null;
+  const focusedChild = focused ? withCorrectedAge(focused, corrections, now) : null;
 
   const thread = compactTranscript(input.transcript);
 
@@ -368,7 +380,7 @@ export async function loadAgentContext(
       reader,
       limit: RELEVANT_FACT_LIMIT,
       scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
-    }),
+    }).then((rows) => withoutFallenSchoolBreak(database, rows)),
     readerTimeZone(database, input.readerUserId),
   ]);
 
@@ -379,7 +391,14 @@ export async function loadAgentContext(
 
   return {
     parentName: parentRows[0]?.name ?? null,
-    location: { city: family.city, province: family.province, country: family.country },
+    // The postal code is the current home, read in the find's order (postal code, then
+    // coarse area). A stored city loses when the code names one town, even if the city
+    // column still names an older one.
+    location: {
+      city: townFromStoredArea(place.postalCode || place.areaCoarse) ?? place.city,
+      province: place.province,
+      country: place.country,
+    },
     planTier: family.planTier,
     children,
     focusedChild,
@@ -419,6 +438,20 @@ export async function loadAgentContext(
     intent: input.intent,
     sourceNote: input.sourceNote,
   };
+}
+
+/**
+ * The parent's age correction, said after the date of birth was last written, stands in
+ * for the age the date of birth gives (VIL-519). In words, the age is left unknown and the
+ * correction rides in `memoryFacts`. The stage stays the date of birth's: the teen gate
+ * reads nothing else (rule #1).
+ */
+function withCorrectedAge<
+  T extends { id: string; ageMonths: number | null; teenRedacted?: boolean },
+>(child: T, corrections: RecordCorrections, now: Date): T {
+  const fact = corrections.age.get(child.id);
+  if (!fact || child.teenRedacted) return child;
+  return { ...child, ageMonths: correctedAgeMonths(fact, now) };
 }
 
 /**

@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgxM1bJdiRy4Nbj7xUung",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkAYKEAgTGAI4AUIIdGhpbmtpbmcSDN9DpiFj/zbMoBK2YRoMrr0o/NhML8tIw/EBIjDJH9iY3LzAdRk8lbV8xn8bndWemS76lsp7n5rkcdw7Fr5hcH+7knU1jzFMj5AACJUqrQWFSpNDNaBh7pUK/eyxMQgcNoi5XvMe8SzYOw0vJwRUDdoN5mxM1gc+fDxURtJHE3tFFWq4K4TQzR+Dl14TNbleI8f2EVGap13agULUe5HIbUY7a4OX1wOSdijL/00dzN8CfFhwDsjN72fZy7EZ7jDk7neMbv5my/0/0a/fPcDOD0YTkiP7jRjS5FBjo3OCyNV6cmHLNCEC0uOG1fweCeJt3A3C2qS0Cc106VbAb+J/LGoIsaNh78nyWc+le0xNMmu1diBRhFNYKTCKEdtkhPoFext3bXRDhNG2VR/npVXuumfqv+vOkkf6ZR8q2lFuQe561NdvJU0q1EeVxDojGBUa0CLT51bwGp9iTe7Niquyim6nQwEQTmVGlvXdFSpSxrQkZSOjJ0errMLjpQ4jITcj2ZUACmf8MKnwCktdgNksBUaVwgb9395TJ74l1E5uBJNvv4FNis+CJufeFTZm06BDLaqxpnZYk8XhxWU2CGhw7EaxyGsHzglBUmjoA2l4YeLs6SfwkU0Wy7xbKKtgS0gg8ZPSkVKQNbp666rJlkUJAvPLiCh6aNfTPK/pbtqw9Fwv3KeDcj2qHEdxNqQKyPigE8xElK/Stx3UaRDjkJp3vlApsPZwAWSXjcraWb2VOheuVL3VlwRSEutTAX3F+r5QM4fpvSoI6+mvHssnLCUN6kGXe6BCItFg3KezQFSl5c4ziTEoOKZlsk3zwFYFjiRepZX6qnYlX5jjhO1NjNE5DnEIjYnLXM0Jx4CbbLojWH9aOJo8plnWnSzQLjEXoLXdIgIAeJHIJsM7JhSRdDJkf7se6FPP03+/bdY7OyJgd1cYwrA04yZnuau0/yCCGyDpzvmyiyJcuugtiG1W1Fjve2kaEELNVwvlfwdM4PFdo7iGwHvoVDAXj5w+mj5lGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EA4P44BFS6eu2yr6PR1qg3",
+        "name": "search_village",
+        "input": {
+          "subject": "toddler swim lessons winter"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1818,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 107,
+      "output_tokens_details": {
+        "thinking_tokens": 49
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

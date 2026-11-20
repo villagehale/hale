@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "You're all set — the provider confirmed the sign-up for Sat 9:30 AM."
+  },
+  "latencyMs": 1608,
+  "usage": {
+    "input_tokens": 114,
+    "output_tokens": 36,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

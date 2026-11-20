@@ -3,6 +3,7 @@ import { liveScopeSql } from '@hale/worker/memory-context';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withdrawFreeBusyConsent } from '~/lib/channel/linq/free-busy-consent';
 import { renameDepartedMember } from '~/lib/channel/linq/group-plan-rsvp/departed-member';
+import { nameKeysOf } from '~/lib/channel/linq/group-plan-rsvp/member-key';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -309,18 +310,14 @@ export async function departCoParent(
       );
     const hashes = retainedChannels.map((row) => row.phoneE164Hash);
 
-    // Their name and words off the household's group plans and polls; their answers stay
-    // counted. The member key of a seated number is its blind index, the same hash.
-    const groupNamesCleared = await renameDepartedMember(tx, {
-      familyId,
-      userId: actorUserId,
-      memberKeys: hashes,
-    });
     const retainedInvites =
       hashes.length === 0
         ? []
         : await tx
-            .select({ id: schema.caregiverInvites.id })
+            .select({
+              id: schema.caregiverInvites.id,
+              displayName: schema.caregiverInvites.displayName,
+            })
             .from(schema.caregiverInvites)
             .where(
               and(
@@ -328,6 +325,23 @@ export async function departCoParent(
                 inArray(schema.caregiverInvites.phoneE164Hash, hashes),
               ),
             );
+    const [leaver] = await tx
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, actorUserId));
+
+    // Their name and words off the household's group plans and polls; their answers stay
+    // counted. A seated number's member key is its blind index, the same hash. Someone the
+    // group knew only by name sits under `name:` keys: the name on their account and the
+    // one the inviting parent gave them.
+    const groupCleared = await renameDepartedMember(tx, {
+      familyId,
+      userId: actorUserId,
+      memberKeys: [
+        ...hashes,
+        ...nameKeysOf([leaver?.name ?? null, ...retainedInvites.map((row) => row.displayName)]),
+      ],
+    });
     const retainedThreads = await tx
       .select({ id: schema.conversations.id })
       .from(schema.conversations)
@@ -393,7 +407,8 @@ export async function departCoParent(
           threadRetained: retainedThreads.length,
           openQuestionsDeleted,
           freeBusyWithdrawn,
-          groupNamesCleared,
+          groupNamesCleared: groupCleared.namesCleared,
+          groupKeysCleared: groupCleared.keysCleared,
           privateFactsDeleted: privateFacts.length,
         },
       },

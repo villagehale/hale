@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says the swimming class is booked for Saturday at 10 am, which is a scheduled placement. Row r1 is the same class at the same day and time, confirmed by a confirmation email, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "r1"
+      }
+    ]
+  },
+  "latencyMs": 3380
+}

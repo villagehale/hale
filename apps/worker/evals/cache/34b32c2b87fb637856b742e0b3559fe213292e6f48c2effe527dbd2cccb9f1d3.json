@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgzT7Qvv5cbMiuKemkzxb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkggKEAgTGAI4AUIIdGhpbmtpbmcSDO2GlGkFb0+1N0+POxoMo/dX/2FmrEcnVPiIIjDw93dtXe6ivvu9UiPh+iebSuUTdzmBUFyi1kfVDzt62ze7eVeheQWzMgxfKGzzzy8qrwc5OSjTwY5PtSEX9l+7r0BrRyHlRv6Zj/94fmwVHMGOcYNnyMLTFS9QvpYLfpQUB7qr38lCDPkPlmZy16v9NQa5miBdCu5P0OQRzl6vkOTH80DxYu8M6l4rqF9x1teHjIR+oqTR8K5gJWSJBwNc8/gXFRJMIrOadT3TlsvFv61ytE87mnn+1FAhCR0qASEDdg43jYmaxPiYtNF072g4g5pcsRzW6ZP1vbwK/HjhsKq/u51eF0TnczijrzgZ/Y3jfoWNIYUAB3XDlZZUpK4cn/czVyorRLd2PCCdwCqUWvqrLI5fr5JCV6VYTyChI+SOLJbNWPRUS5Ec6XRKFqE2Ga3Uhqdp/hxbwAsExK/h1FSJYQRgqAb9MkhTEObMtS1vNgPogyzw5ZjH/BceV7UFXHVL6KwnI131O8BTtR1/vM9OizWHpMcbO91F+YO9/+eD5h0TozHB7bODVveh30Vi5VrFyny8l41qg+ocpKSsz0U4Hi+TOK8v9crq7hnqqXp0MjixRmsD85IGHMcyj5R7dB4GLv547UiJyl5BD3a1IgQ7ETV2bK60u1zfvEGx56ZRVo+raK1CwLFDm963iwfauad3RjR8XdEF97Z3vNHCH2AsbunsPhY+XU6b31JQJNvcNg0x5sJYuLk0p/Zo44PJZRHUUqdb4M5+vosimBRozXetQ3oO4izs+kX0m4LYPJmiY/1NPmfra3k9/bBYJvVuDzxhKKYLdHC26xxi0RxFFGCFZsDNmu6bIs6skIctF1VNnBx+DsJbCpZ/fj16HicZGEI80fOkNRH3LMVhbpvp39uOotuDNPABUmLrfRiRXv+xNJ7R2k0RE+5dMSsgnY6PvxyMzvWuiKYSXnNXTACzDP/akLpjoQ31oxLVi5BWfLJ+CXbTLHQdsGDCGTjFEe3cqyLTR2e/r/gT2hKTYVx0FDFMFC8n6jBP1kGh7fb/lfmYD1vFO1RokyZLaLz6jqamcwFJeam7GJScan0HAmXCz6PrSJI1g4O+82kyCqPcaqP/wA0BJXVE+zDrBKpE+9NFeqmvji5cuJQQ3E61e/VDGxdwJpvfplWKIqXjCmn97FfKvj/p25mLFTUzKx4ofHS6XWeMG1kywO17pB4QRhPDSBdeqVt8NsKrGQ9y4H13ArtODdZmpUzdu4HpS7skeeiWL7ny5gpL8WMSGrP93SMWDjCGIvGsUmxakj+tS2s+ZrBuxNij5mKSFFupSGv7GDudVEYfQ1Lv3eGaVgnhwlwfB+HPGAE="
+      },
+      {
+        "type": "text",
+        "text": "Saturday, Aug 8: Swim Kids 3 at the West pool at 11:00 a.m. [link-0aed70], Central Library story time at the Bloor/Gladstone branch, free and indoors [link-c9bfa2], and the free Jamie Bell Adventure Playground at High Park [link-b7e8a1]. It's forecast dry and warm that day, so the playground works.\n\nSunday, Aug 9: Riverdale Farm, free and outdoors [link-b8b9f6].\n\nSwim Kids 3 is described as a swim class for school-age kids, so it's more likely Ada's than Milo's."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1405,
+      "cache_read_input_tokens": 23770,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1405,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 344,
+      "output_tokens_details": {
+        "thinking_tokens": 135
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3395
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the child is not signed up (confirmed false), states a captcha only the parent can pass, gives the live browser link, and explicitly says the window holds no spot. No invented time limit, no personal details, no retry promise, French with tu for a direct audience. Minor issue: the text does not clearly say how the parent finishes (the captcha is the step), but it is adequate.",
+    "score": 5
+  }
+}

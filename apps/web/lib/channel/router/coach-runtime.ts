@@ -1,9 +1,12 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
+import type { ReactionChoice } from '~/lib/channel/coach/reaction-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
+import type { TurnPhotoFacts } from '~/lib/channel/inbound-photo-facts';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
 
 /**
  * VIL-220 · C1 → VIL-221 · C2 — the seam between the router and the agent.
@@ -73,6 +76,40 @@ export interface ChannelTurn {
   inboundMedia?: readonly InboundMediaPart[];
   /** VIL-477 — the Linq group this turn is in; absent/null on a 1:1 or SMS turn. */
   groupChatId?: string | null;
+  /**
+   * The router lit this turn's answer to go out as several short bubbles: a 1:1 iMessage
+   * chat while COACH_BUBBLES_ENABLED is lit for the family. Decided in code (route.ts),
+   * never by the model. When set, a line break in `ChannelTurnResult.reply` is a bubble
+   * boundary and appears nowhere else (coach/reply.ts REPLY_BUBBLE_BREAK). Absent on
+   * every other turn, whose reply never carries one from the coach.
+   */
+  replyBubbles?: boolean;
+  /**
+   * VIL-680 — the router lit this turn for a tapback on the parent's message: a 1:1 chat
+   * Linq said is iMessage, with the parent's message id, while LINQ_REACTIONS_ENABLED is lit
+   * for the family (router/reaction-plan.ts). Decided in code, never by the model. Absent on
+   * every other turn.
+   */
+  reactions?: boolean;
+  /**
+   * VIL-413 — facts Hale already read from this turn's photo or PDF. Set by the
+   * coach runtime, never by the router, and only on a 1:1 turn while
+   * INBOUND_PHOTO_FACTS_ENABLED is lit. Absent on a text-only turn, a group turn, and
+   * when the extract found nothing.
+   */
+  photoFacts?: TurnPhotoFacts;
+  /**
+   * How many texts the parent sent back to back that this turn reads as one (burst.ts).
+   * Absent unless two or more, so a lone turn keeps its prompt bytes and cache keys.
+   */
+  burstSize?: number;
+  /**
+   * The door's opt-out read could not read this turn's text, or one of the texts it reads
+   * as one, so it may be a stop (inbound-route.ts). Decided in code (route.ts), never by
+   * the model. No sign-up ask moves on such a turn, whether or not a hold row stands for
+   * the number. Absent on every other turn.
+   */
+  optOutUnread?: true;
 }
 
 /**
@@ -120,11 +157,25 @@ export interface ChannelTurnResult {
    */
   capabilityNotes?: CapabilityNotes | null;
   /**
+   * The sign-up offers this turn's `offer_signup` recorded, each with the text the coach was
+   * handed to send. The router stamps each with the send of the bubble that carries its text
+   * (`askStamp`), and from a cut reply only if that text survived the cut, so an offer whose
+   * text never reached the parent never takes their bare yes. Absent means none.
+   */
+  signupOffers?: readonly RecordedSignupOffer[];
+  /**
    * VIL-495 — the model chose to say this reply as a voice memo. Only ever true while
    * `LINQ_VOICE_MEMOS_ENABLED` is lit on a 1:1 turn. The router sends the SAME reply as a
    * memo when every send-time gate holds (linq/voice-reply.ts), and as text otherwise.
    */
   voiceMemo?: boolean;
+  /**
+   * VIL-680 — the tapback the model chose for the parent's message, with how many other
+   * tools this turn ran: a turn whose tools ran keeps its words (router/reaction-plan.ts).
+   * Only on a turn lit for reactions (`ChannelTurn.reactions`); null there when the model
+   * chose none.
+   */
+  reaction?: (ReactionChoice & { otherToolCalls: number }) | null;
   /**
    * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
    * coach returned (the claim read) can still send the drafts receipt. The production

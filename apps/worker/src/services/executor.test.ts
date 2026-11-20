@@ -467,6 +467,37 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
     expect(result.reversible).toBe(false);
   });
 
+  it('calendar_move writes location only when updateLocation is set', async () => {
+    const { deps } = makeClaimStore();
+    deps.moveCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-9',
+    }));
+
+    await runExecutor(
+      {
+        familyId,
+        approved: approvedPlacement('calendar_move', {
+          ...ADD_PAYLOAD,
+          reversalHandle: 'fe-9',
+          location: 'Rink 2',
+          updateLocation: true,
+        }),
+      },
+      deps,
+    );
+
+    expect(deps.moveCalendarEvent).toHaveBeenCalledWith({
+      familyId,
+      actionId,
+      reversalHandle: 'fe-9',
+      startsAt: new Date(ADD_PAYLOAD.startsAt),
+      endsAt: new Date(ADD_PAYLOAD.endsAt),
+      updateLocation: true,
+      location: 'Rink 2',
+    });
+  });
+
   it('calendar_cancel soft-deletes the handle row', async () => {
     const { deps } = makeClaimStore();
     deps.cancelCalendarEvent = vi.fn(async () => ({

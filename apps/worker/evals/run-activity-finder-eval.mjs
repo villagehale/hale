@@ -69,6 +69,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
 import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
@@ -88,13 +89,13 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   pageCarriesSchedule,
   preparePage,
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
-import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -522,7 +523,9 @@ function topPickLeads(body, picks) {
   return words.filter((word) => head.includes(word)).length >= Math.min(2, words.length);
 }
 
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 /** Hale saying it could not get at something — never the page saying it has nothing. */
 const SELF_LIMITED =
@@ -582,7 +585,7 @@ function waitsOnAPageItCouldNotRead(body) {
 function followUpViolations(body, picks, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
-  if (LINK_SHAPE.test(body)) {
+  if (hasLinkShape(body)) {
     violations.push({
       tag: 'links_a_url',
       reason: 'The message contains a link or a web address. Never send one.',
@@ -862,6 +865,7 @@ async function cachedGround(opts) {
 }
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const only = process.argv.find((arg) => arg.startsWith('--only='))?.split('=')[1];

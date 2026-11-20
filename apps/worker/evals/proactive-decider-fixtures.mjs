@@ -1,7 +1,8 @@
 /**
  * VIL-226 · snapshots the proactive decider is graded on. Invented households, places
- * and links only. Every fixture reads at Thursday 6:00 PM in the family's own zone,
- * which the runner renders into `localNow` exactly as the runtime does.
+ * and links only. Every fixture reads at Thursday 6:00 PM in the family's own zone
+ * unless it names another clock (the VIL-681 check-backs read in the morning and at
+ * midday), which the runner renders into `localNow` exactly as the runtime does.
  *
  * The keys follow loadFamilySnapshot's order (apps/web/lib/channel/proactive/snapshot.ts)
  * so the model reads the same JSON shape production sends. A candidate is its kind and a
@@ -12,6 +13,18 @@ const TZ = 'America/New_York';
 const THURSDAY_EVENING = '2026-10-08T22:00:00.000Z';
 const HOUSE = { areaCoarse: null, childAgesYears: [8] };
 const LIBRARY = 'https://library.example.test/programs';
+/** VIL-681 · Thursday 8:23 AM and 11:00 AM local: the review after the sweep queued it. */
+const THURSDAY_FIRST_THING = '2026-10-08T12:23:00.000Z';
+const THURSDAY_MIDDAY = '2026-10-08T15:00:00.000Z';
+/** VIL-685 · Thursday Dec 17, 11:00 AM local: the break starts Monday. */
+const THURSDAY_BEFORE_BREAK = '2026-12-17T16:00:00.000Z';
+/** The check-back's one day closes Friday 8:00 AM local. */
+const CHECKBACK = {
+  id: 'checkback',
+  kind: 'next_day_checkback',
+  why: 'next_day_checkback asked=2026-10-08T01:40:00.000Z',
+  worthlessAfter: '2026-10-09T12:00:00.000Z',
+};
 /** A week of home calendar with no free window in it. */
 const FULL_WEEK = [
   { day: '2026-10-08', label: 'piano', allDay: false, start: '16:00', end: '18:30' },
@@ -41,7 +54,7 @@ function candidate(over) {
 function snapshot(over) {
   return {
     timeZone: TZ,
-    now: THURSDAY_EVENING,
+    now: over.now ?? THURSDAY_EVENING,
     household: HOUSE,
     calendar: over.calendar ?? [],
     freeWindows: over.freeWindows ?? [],
@@ -253,4 +266,163 @@ export const PROACTIVE_DECIDER_FIXTURES = [
       ],
     }),
   },
+  // VIL-681 · a parent started something yesterday and went quiet. The `why` is the
+  // sweep's names-free label, never the thread's title.
+  {
+    id: 'checkback-first-thing',
+    // The sweep queues it as the day opens; the decider waits for later in their day.
+    expect: { action: 'hold', includes: ['checkback'], frequency: null },
+    snapshot: snapshot({ now: THURSDAY_FIRST_THING, candidates: [candidate(CHECKBACK)] }),
+  },
+  {
+    id: 'checkback-midday',
+    expect: { action: 'send_now', includes: ['checkback'], frequency: null },
+    snapshot: snapshot({ now: THURSDAY_MIDDAY, candidates: [candidate(CHECKBACK)] }),
+  },
+  {
+    // VIL-684 · their own city's winter registration opens Tuesday morning: the one tell
+    // may go now or wait for a better moment before then, but never be thrown away.
+    id: 'registration-opening',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['opening'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'opening',
+          kind: 'registration_opening',
+          why: 'registration_opening read=2026-10-08T14:38:00.000Z',
+          sourceUrl: 'https://rec.example.test/winter-registration',
+          worthlessAfter: '2026-10-13T11:30:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    // VIL-685 · no page has this family's winter break, so the one question: it may go now
+    // or wait for a better moment before mid-December, but never be thrown away.
+    id: 'school-break-ask',
+    expect: { actionIn: ['send_now', 'hold'], includes: ['break-ask'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_MIDDAY,
+      candidates: [
+        candidate({
+          id: 'break-ask',
+          kind: 'school_break_ask',
+          why: 'school_break_ask year=2026-27',
+          worthlessAfter: '2026-12-15T17:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    // VIL-685 · the break question, as the nudge sweep hands it off (kind `nudge`, why
+    // `weekday_care`, worthless once the break begins), on the Thursday before a Monday
+    // break: there is no later moment left to wait for, so it goes now.
+    id: 'winter-break-question',
+    expect: { action: 'send_now', includes: ['winter-break'], frequency: null },
+    snapshot: snapshot({
+      now: THURSDAY_BEFORE_BREAK,
+      candidates: [
+        candidate({
+          id: 'winter-break',
+          why: 'weekday_care',
+          worthlessAfter: '2026-12-22T05:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  // VIL-691 · news and time-critical classes. Thursday 6:00 PM is evening, not quiet
+  // hours. A full week and an unanswered streak do not hold these.
+  {
+    id: 'email-alert-soon',
+    expect: { action: 'send_now', includes: ['mail'], frequency: null },
+    snapshot: snapshot({
+      candidates: [
+        candidate({
+          id: 'mail',
+          kind: 'email_alert',
+          why: 'email_alert occasion soon',
+          worthlessAfter: '2026-10-09T16:00:00.000Z',
+        }),
+      ],
+      recentSends: UNANSWERED,
+      unansweredStreak: 3,
+    }),
+  },
+  {
+    id: 'calendar-alert-moved',
+    expect: { action: 'send_now', includes: ['moved'], frequency: null },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [candidate({ id: 'moved', kind: 'calendar_alert', why: 'calendar_alert' })],
+    }),
+  },
+  {
+    id: 'spot-open-seat',
+    expect: { action: 'send_now', includes: ['seat'], frequency: null },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [
+        candidate({
+          id: 'seat',
+          kind: 'spot_open',
+          why: 'spot_open',
+          worthlessAfter: '2026-10-08T23:30:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    id: 'village-intro-ask',
+    expect: { action: 'send_now', includes: ['intro'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'intro', kind: 'village_intro', why: 'village_intro' })],
+    }),
+  },
+  {
+    id: 'followup-due',
+    expect: { action: 'send_now', includes: ['back'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'back', kind: 'followup', why: 'followup' })],
+    }),
+  },
+  {
+    id: 'plan-check-in-due',
+    expect: { action: 'send_now', includes: ['plan'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'plan', kind: 'plan_check_in', why: 'plan_check_in' })],
+    }),
+  },
+  {
+    id: 'activity-followup-due',
+    expect: { action: 'send_now', includes: ['activity'], frequency: null },
+    snapshot: snapshot({
+      candidates: [
+        candidate({ id: 'activity', kind: 'activity_followup', why: 'activity_followup' }),
+      ],
+    }),
+  },
+  {
+    id: 'duty-ask-evening',
+    expect: { action: 'send_now', includes: ['duty'], frequency: null },
+    snapshot: snapshot({
+      candidates: [candidate({ id: 'duty', kind: 'duty_ask', why: 'duty_ask' })],
+    }),
+  },
+];
+
+/**
+ * VIL-691 · news and time-critical classes the decider must send at Thursday 6:00 PM,
+ * even when the week is full or several texts went unanswered. Recorded once; the
+ * cached-only runner grades them.
+ */
+export const PROACTIVE_DECIDER_LIVE_KINDS = [
+  'email_alert',
+  'calendar_alert',
+  'spot_open',
+  'village_intro',
+  'followup',
+  'plan_check_in',
+  'activity_followup',
+  'duty_ask',
 ];

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Bubble 1 is a lead-in that only introduces the schedule ('The next stretch looks like this:'), which breaks point 3. The rest is sound: times are converted correctly to America/Toronto (EST, UTC-5: 21:30Z→4:30pm, 22:00Z→5:00pm, 14:15Z→9:15am, 23:00Z→6:00pm, 18:00Z→1:00pm), facts are not invented, and there is one question in the last bubble. Bubble 1 should have been the first item itself, so this fails the rubric and scores 2.",
+    "score": 2
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "嗨小明,我是Hale,来自你们的群聊。这次你是Hélène的神秘圣诞老人,记得保密哦!之后如果不想再收到我的消息,随时告诉我就行。"
+  },
+  "latencyMs": 2055,
+  "usage": {
+    "input_tokens": 87,
+    "output_tokens": 78,
+    "cache_read_input_tokens": 1139,
+    "cache_creation_input_tokens": 0
+  }
+}

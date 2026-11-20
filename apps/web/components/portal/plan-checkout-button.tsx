@@ -1,0 +1,74 @@
+'use client';
+
+import type { BillingPeriod } from '@hale/types';
+import { useState } from 'react';
+import stage from '~/components/hale/connect/connect.module.css';
+import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import styles from './signin.module.css';
+
+export function PlanCheckoutButton({
+  period = 'annual',
+  label = 'Continue to checkout',
+  tier = 'plus',
+}: {
+  period?: BillingPeriod;
+  label?: string;
+  tier?: PaidTier;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function start() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ period, tier }),
+      });
+      if (res.status === 409) {
+        const denied = (await res.json().catch(() => null)) as { error?: unknown } | null;
+        setError(
+          denied?.error === 'already_paid'
+            ? 'This family already has a paid plan.'
+            : 'Checkout is not available right now.',
+        );
+        return;
+      }
+      if (!res.ok) {
+        setError('Checkout is not available right now.');
+        return;
+      }
+      const body = (await res.json()) as { url?: string };
+      if (typeof body.url !== 'string' || body.url.length === 0) {
+        setError('Checkout is not available right now.');
+        return;
+      }
+      window.location.assign(body.url);
+    } catch {
+      setError('Checkout is not available right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        className={`${stage.btn} ${styles.full}`}
+        disabled={busy}
+        onClick={start}
+      >
+        {busy ? 'Opening checkout' : label}
+      </button>
+      {error ? (
+        <p className={styles.alert} role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}

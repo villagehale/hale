@@ -2347,12 +2347,12 @@
       "diagnostics": null
     }
   },
-  "eed117847c14936aab6fdcfd389344b4706346439d29bcc2f1ddc337e9921f60": {
-    "key": "eed117847c14936aab6fdcfd389344b4706346439d29bcc2f1ddc337e9921f60",
+  "f7aab1c3de8fef8e3625d404a76221153b02fe76fd9166341376a9b125d0b028": {
+    "key": "f7aab1c3de8fef8e3625d404a76221153b02fe76fd9166341376a9b125d0b028",
     "recordedAt": "2026-11-09T23:07:11.438Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Halton Hills Gymnastics Centre runs Parent & Tot Gymnastics for 18 months - 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\"}"
+      "userMessage": "{\"draft\":\"Riverside Gymnastics Centre runs Parent & Tot Gymnastics for 18 months - 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -2470,12 +2470,12 @@
       "diagnostics": null
     }
   },
-  "42fe38d43c2e746f9f7c2458c861c068aedeecdd14a0581faf6c3e568180871a": {
-    "key": "42fe38d43c2e746f9f7c2458c861c068aedeecdd14a0581faf6c3e568180871a",
+  "052ff737be644c3b69506b6cc44389a33f71e1a290e8c5a03b432145b9590e04": {
+    "key": "052ff737be644c3b69506b6cc44389a33f71e1a290e8c5a03b432145b9590e04",
     "recordedAt": "2026-11-10T01:37:11.532Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots and other toddler fall programs\",\"language\":\"en\",\"page_evidence\":\"no_page_read\",\"watch\":false,\"picks\":[{\"name\":\"Parent & Tot Gymnastics, Halton Hills Gymnastics Centre\",\"age_fit\":\"18 months - 3 years\",\"when\":\"Saturdays 9:15am, fall session from Sept 13\",\"price\":\"$142 for 12 weeks\",\"registration\":null,\"source_name\":\"Halton Hills Gymnastics Centre\",\"source\":\"web\"}]}"
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots and other toddler fall programs\",\"language\":\"en\",\"page_evidence\":\"no_page_read\",\"watch\":false,\"picks\":[{\"name\":\"Parent & Tot Gymnastics, Riverside Gymnastics Centre\",\"age_fit\":\"18 months - 3 years\",\"when\":\"Saturdays 9:15am, fall session from Sept 13\",\"price\":\"$142 for 12 weeks\",\"registration\":null,\"source_name\":\"Riverside Gymnastics Centre\",\"source\":\"web\"}]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
@@ -2490,7 +2490,7 @@
         },
         {
           "type": "text",
-          "text": "{\"message\":\"Halton Hills Gymnastics Centre runs Parent & Tot Gymnastics for 18 months to 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\",\"commits_to_return\":false}"
+          "text": "{\"message\":\"Riverside Gymnastics Centre runs Parent & Tot Gymnastics for 18 months to 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\",\"commits_to_return\":false}"
         }
       ],
       "container": null,
@@ -2516,12 +2516,12 @@
       "diagnostics": null
     }
   },
-  "c2031de7162ffb0056fcf609be2e72a9109010044a94a6079552cd0390394320": {
-    "key": "c2031de7162ffb0056fcf609be2e72a9109010044a94a6079552cd0390394320",
+  "56a6c9446c7247f1f4c52f9f1b89577162deb799aca70bf605253acd76b98ede": {
+    "key": "56a6c9446c7247f1f4c52f9f1b89577162deb799aca70bf605253acd76b98ede",
     "recordedAt": "2026-11-10T01:37:12.563Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"Halton Hills Gymnastics Centre runs Parent & Tot Gymnastics for 18 months to 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\"}"
+      "userMessage": "{\"draft\":\"Riverside Gymnastics Centre runs Parent & Tot Gymnastics for 18 months to 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",
@@ -2557,12 +2557,12 @@
       "diagnostics": null
     }
   },
-  "a756bf5fcbff5894b7e8eb62d993a7629938b2cc8e29c6772e7af7d5b826e6be": {
-    "key": "a756bf5fcbff5894b7e8eb62d993a7629938b2cc8e29c6772e7af7d5b826e6be",
+  "a49b1861d00ca44d7a3788b46652f996e07e1dc9872f44e8eb0c32219e7bea46": {
+    "key": "a49b1861d00ca44d7a3788b46652f996e07e1dc9872f44e8eb0c32219e7bea46",
     "recordedAt": "2026-11-10T01:37:22.900Z",
     "request": {
       "model": "claude-sonnet-5-5",
-      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots\",\"language\":\"en\",\"picks_empty\":true,\"searched\":{\"town\":\"Halton Hills\",\"notes\":\"Read the fall schedule and registration pages.\"},\"watch\":true,\"picks\":[]}"
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots\",\"language\":\"en\",\"picks_empty\":true,\"searched\":{\"town\":\"Kingston, Ontario, Canada\",\"notes\":\"Read the fall schedule and registration pages.\"},\"watch\":true,\"picks\":[]}"
     },
     "response": {
       "model": "claude-sonnet-5-5",
@@ -2577,7 +2577,7 @@
         },
         {
           "type": "text",
-          "text": "{\"message\":\"I went through the fall schedule and registration listings for Cartwheel Gym in Halton Hills and found no fall spots available. I'll keep watching and text you if that changes.\",\"commits_to_return\":true}"
+          "text": "{\"message\":\"I went through the fall schedule and registration listings for Cartwheel Gym in Kingston and found no fall spots available. I'll keep watching and text you if that changes.\",\"commits_to_return\":true}"
         }
       ],
       "container": null,
@@ -2603,12 +2603,12 @@
       "diagnostics": null
     }
   },
-  "16adc4cdd4fb6e44726ba2a660a0fe56f5cefddce7aaaf5e5d5c2388eca0cb49": {
-    "key": "16adc4cdd4fb6e44726ba2a660a0fe56f5cefddce7aaaf5e5d5c2388eca0cb49",
+  "7514ae774d690f22bfc129aae4c821aaeba8da466a131e9038eaf3bb6c313394": {
+    "key": "7514ae774d690f22bfc129aae4c821aaeba8da466a131e9038eaf3bb6c313394",
     "recordedAt": "2026-11-10T01:37:24.328Z",
     "request": {
       "model": "claude-haiku-5-5",
-      "userMessage": "{\"draft\":\"I went through the fall schedule and registration listings for Cartwheel Gym in Halton Hills and found no fall spots available. I'll keep watching and text you if that changes.\"}"
+      "userMessage": "{\"draft\":\"I went through the fall schedule and registration listings for Cartwheel Gym in Kingston and found no fall spots available. I'll keep watching and text you if that changes.\"}"
     },
     "response": {
       "model": "claude-haiku-5-5",

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "effect": {
+      "type": "screen",
+      "name": "celebration"
+    }
+  },
+  "latencyMs": 2372
+}

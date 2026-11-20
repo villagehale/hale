@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reasoning": "m1 asks whether Ada's ballet recital is still on the 14th; m2 asks for a Sunday morning swim class for Milo. These are different activities and different children, so they are separate asks.",
+    "groups": [
+      [
+        "m1"
+      ],
+      [
+        "m2"
+      ]
+    ]
+  },
+  "latencyMs": 1174
+}

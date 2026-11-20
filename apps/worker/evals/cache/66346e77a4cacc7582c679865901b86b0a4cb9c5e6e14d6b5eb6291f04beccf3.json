@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly confirms Hale will join at the open in Chinese, using only facts (12月1日晚上7点 matches opensAt, and it does not claim registration or a spot). However, it adds a parenthetical-style warning about the parent queuing themselves, which is not in watchFor and is advice rather than a confirmation; it is two sentences and warm, but the second sentence is an unrequested extra. Minor deduction only.",
+    "score": 4
+  }
+}

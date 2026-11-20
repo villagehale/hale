@@ -19,8 +19,12 @@ const NOT_A_GATE: Readonly<Record<string, number>> = {
   'channel/activity/refute.ts': 3,
   'channel/activity/venue-pages.ts': 2,
   'format/http-url.ts': 1,
+  // Spoken "dot com" / "point ca". A real host is hasLinkShape; this is the word list.
+  'format/contact-shape.ts': 1,
   'signup/browser-use/outcome.ts': 1,
   'signup/browser-use/proxy.ts': 1,
+  // Parses an otpauth:// TOTP seed. Never a parent-text gate.
+  'signup/credentials/totp.ts': 1,
   'social/extract.ts': 2,
   'social/forward.ts': 1,
   // Sets the code-appended link aside before another check reads the prose.
@@ -41,23 +45,37 @@ const NOT_A_GATE: Readonly<Record<string, number>> = {
   'channel/linq/transport.ts': 2,
   // Holds the reply's hosts to the pages search returned, by host.
   'channel/off-domain/answer.ts': 5,
+  // Strips an email address out of a page or a symptom note. Not a draft gate.
+  'channel/off-domain/answer-request.ts': 1,
+  'channel/off-domain/medical.ts': 1,
   // A link the parent pasted, claimed by the router.
   'channel/router/handlers.ts': 1,
   // The Browser Use live-view credential, redacted wherever it is written.
   'signup/browser-use/live-view.ts': 1,
-  // Follow-up: the coach-channel eval loads this file raw through tsx, and with the shared
-  // module imported the loader stalls once the eval's other modules are loaded.
-  'channel/coach/experience-card-tool.ts': 1,
   // A test helper that reads a recorded bubble.
   'testing/onboarding-live-rules.ts': 1,
 };
 
 const LIB = fileURLToPath(new URL('..', import.meta.url));
+const EVALS = fileURLToPath(new URL('../../../worker/evals', import.meta.url));
 const SHARED = 'format/link-shape.ts';
-// A scheme or `www.` written into a regex or RegExp string, punycode, a TLD list
-// ("com|ca"), or a constant named for a link.
-const LINK_PATTERN =
-  /https\?:\\\/\\\/|https:\\\/\\\/|www\\\.|:\\\/\\\/|https\?:\/\/|xn--|\b(?:com\|ca|ca\|com)\b|const [A-Z_]*LINK[A-Z_]* *= *\//;
+const TLD = 'com|ca|org|net|io|co|tv|app';
+// A scheme or `www.` written into a regex, punycode, a bare-domain shape
+// (`.[a-z]{2`, `.\p{L}{2`), a TLD alternation in any order, or a link constant.
+const LINK_PATTERN = new RegExp(
+  [
+    String.raw`https\?:\\/\\/`,
+    String.raw`https:\\/\\/`,
+    String.raw`www\\.`,
+    String.raw`:\\/\\/`,
+    String.raw`https\?:\/\/`,
+    'xn--',
+    String.raw`\\\.\[a-z\]\{2`,
+    String.raw`\\\.\\p\{L\}\{2`,
+    `(?:${TLD})(?![a-z])(?:\\|(?:${TLD})(?![a-z]))+`,
+    String.raw`const [A-Z_]*LINK[A-Z_]* *= */`,
+  ].join('|'),
+);
 const COMMENT = /^\s*(?:\*|\/\/|\/\*)/;
 
 function sources(dir: string): string[] {
@@ -93,9 +111,22 @@ describe('one shared link check', () => {
 
   it('positive control: the scan sees a hand-written gate and the shared module', () => {
     expect(LINK_PATTERN.test('const LINK_SHAPE = /https?:\\/\\/|www\\./i;')).toBe(true);
-    expect(LINK_PATTERN.test("if (/https?:\\/\\//i.test(body)) return null;")).toBe(true);
+    expect(LINK_PATTERN.test('if (/https?:\\/\\//i.test(body)) return null;')).toBe(true);
     expect(LINK_PATTERN.test('const BARE = /\\b[a-z0-9-]+\\.(?:com|ca|org)\\b/i;')).toBe(true);
+    expect(LINK_PATTERN.test('const HOST = /\\.[a-z]{2,}/;')).toBe(true);
+    expect(LINK_PATTERN.test('const HAN = /\\.\\p{L}{2,}/u;')).toBe(true);
+    expect(LINK_PATTERN.test('const ANY = /(?:net|app|io)/;')).toBe(true);
     const shared = readFileSync(join(LIB, SHARED), 'utf8');
     expect(shared.split('\n').some((line) => LINK_PATTERN.test(line))).toBe(true);
+  });
+
+  it('no worker eval grades a draft with its own link regex', () => {
+    const hits = readdirSync(EVALS)
+      .filter((name) => name.endsWith('.mjs') && !name.endsWith('.test.mjs'))
+      .filter((name) => /const LINK_SHAPE\s*=\s*\//.test(readFileSync(join(EVALS, name), 'utf8')));
+    expect(hits).toEqual([]);
+    expect(/const LINK_SHAPE\s*=\s*\//.test('const LINK_SHAPE = /https?:\\/\\/|www\\./i;')).toBe(
+      true,
+    );
   });
 });

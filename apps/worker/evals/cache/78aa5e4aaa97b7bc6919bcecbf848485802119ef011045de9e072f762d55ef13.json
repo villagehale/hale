@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I couldn't finish the sign-up for the Sat 9:30 AM session. You can do it yourself here: https://register.example-rec.test/activity/42\n\nHere's what the form will want: Lena (first name), Ferreira (last name), Sam (parent first name), sam@example.test (parent email)."
+  },
+  "latencyMs": 1696,
+  "usage": {
+    "input_tokens": 226,
+    "output_tokens": 107,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

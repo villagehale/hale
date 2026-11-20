@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "好的,水果有小雨负责啦 🍉"
+  },
+  "latencyMs": 1466
+}

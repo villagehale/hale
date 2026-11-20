@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately says the sign-up wasn't completed, gives the correct registration link and the pack values (child first/last name, parent name, email), with no promise of retry, no technical detail, and correct Chinese audience register. Nothing invented.",
+    "score": 5
+  }
+}

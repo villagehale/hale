@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a Google Calendar connect ask phrased in words the deterministic branch did not catch. The reply does the job: it says the link is a text away and quotes the plain ask verbatim. It writes out no URL, never points the parent to the app, and adds no machinery. The \"Yep, I can.\" opener is slightly chatty but harmless.",
+    "score": 5
+  }
+}

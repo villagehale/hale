@@ -1,0 +1,14 @@
+{
+  "value": {
+    "bubbles": [
+      "Registration for Ada's Preschool Swim Sat 9:00 opens Tuesday, December 1, 2026 at 7:00 a.m. Toronto time.",
+      "To be ready for it, I need you to log in to the city site once.",
+      "Here's the link."
+    ],
+    "card": {
+      "title": "Log in to register.example-rec.test",
+      "description": "Preschool Swim Sat 9:00. Registration opens Tuesday, December 1, 2026 at 7:00 a.m."
+    }
+  },
+  "latencyMs": 2912
+}

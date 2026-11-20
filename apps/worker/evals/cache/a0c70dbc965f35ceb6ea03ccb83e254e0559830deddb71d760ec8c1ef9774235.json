@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "No problem, I'll leave the name for now. Want me to ask about Gmail next, or is there something else you'd rather do first?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1389
+}

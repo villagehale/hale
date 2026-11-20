@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for kids' activities this week, which is Hale's family-week search",
+    "language": "ar",
+    "language_request": null
+  },
+  "latencyMs": 1047
+}

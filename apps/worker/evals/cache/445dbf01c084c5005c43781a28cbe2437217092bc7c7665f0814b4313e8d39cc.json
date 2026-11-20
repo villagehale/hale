@@ -1,0 +1,21 @@
+{
+  "value": {
+    "listTurn": true,
+    "list": null,
+    "add": [],
+    "claim": [
+      {
+        "item": "i1",
+        "text": null
+      }
+    ],
+    "release": [],
+    "gift": {
+      "forKid": null,
+      "keepFromKidFamily": false,
+      "kidFamily": []
+    },
+    "reply": "Priya already has the cupcakes covered, Jordan! The fruit tray is still open if you'd like to take that instead."
+  },
+  "latencyMs": 1904
+}

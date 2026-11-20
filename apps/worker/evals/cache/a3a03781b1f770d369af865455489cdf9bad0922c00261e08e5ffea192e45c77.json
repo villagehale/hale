@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgxHzaWdtA86vMKvRYHHc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAoKEAgTGAI4AUIIdGhpbmtpbmcSDPvw64E/9m9d7II+ixoMLZs+Pn69XMvOyOjyIjADIlOMEyhKK9Cjsp/VEL0iczzI37QA5MxTeZelCzadMumA9a0C567ai4bT4p9yD4Eq2Qlcw3+iVUTPMmzaHDZsNMBkZnurZeR2RbI4Zab/Pfg76kQIIn+2SqdIwJCqxcz2DYS+AzdMDpBViu9dK6qRzsPwUJQNhOWkjSEM6bNc3fPtQdjq4dQk6uPsB8/FMw7Rgszi/sJyhc1IzUnRW/S4i5HJEWNp6Z3Ymsy4YJXSFTa/hYu07dLDOYcf/ALAi7krBO1zMOtUI0CBP5X7a7Da4bpVQMlxuTSaS74Py2bKbXVLSE02vGy9Zq9UbKrKRdqb0+Qn7G+kb/96+eotN7s7wrbwBHG2m3E9ZOkD8E6FH4f2y4o/nwp/0JMv9INs1mvjfczWa+NLdh6MEBjzVdyLfcoYn5N5Edby6Ciy540e2oHHuwKHQ4oUjPhJbK+fKieU1kTnigdAGtGu5L5Fla3Dkea5RXuaziC36QYQyT9v68Fnh3jAgAZbmiYyVVQINLNV3GZsd6yNO9HL+8A7WWW8paSFhbEPYNP3jJjq4+nYXsmE/3iyzwvQw4IdOD/0kYOXTYxAapRoUwgmfSm7tMTt3naCDekKPxu1F+tCJOaOZDaFuOA9EIAjNSixD8HSmumstG9l9HFn1759OyLWazQaMZtP7cLA5iuNTITuFWuqQGlNByTmtbLWo2dw4kg++eOG7Nt6CWaDs5wOEJwwtd/ntkwCwn+SWq0c8qsrbbfqucxZG7+fJIgiukoYpMO+eBuWeZGSzE7ee9k6Tp8l1ydwL8ywLOIG8kan/3VWG4tOshVMjunIRVGcGURdssHuhqHKMiXxXR3lsbH3GPgOmA9TLpLM7n4Z7/dvHdEWboI3/iKKBTMhNwjgQUEWhq25IBiscYJXhXY9sOKHwpiD37UF+jHDcKLEOJDVrJdlLjMWHwo57wC9LYcAjOqR3GzbCJwZW80fCckjqpdqvBHKQ4TNpKlgmuD7sJvS+T9wPD63Q61CTDsAm2XPV6eKcZY9BI79v1MWSju4SEKZPzhQSIZyBkqVnnLHCJvpFKA6UUuvREvLbeHhB76+rBmgC7ssjs7bGvNQ4v8+Oq3iQQyKvz6YdbdHRbC+ZDftIj/rbRqQ+REZlS8YZqkE/BUqo+KaU5scIPkjg1He29c+C9six2Woj+oU6g+qwFg8nyZ/DsHjCeedDHKyOkZUyKr6Uq0VY2z0DPDygY1MXC8mm6xIUockBVpkQPNALu3sOgZS0MNZD4GMV3uH7gh6DoJnmaJ1XnLYm9hU3YVEc7dAzHnZpclUIWytaReyNNK72RcQ5Qx73E81Di3Zw0nZgy5z2quC+9F//H+wf0tixG9q0sw6feIf4MfKhAmApSnNadQTRbSpDi5tTk2ewJoDM8v1itHXSXFcAICGa48xZko+VG4mcoaf9vhW94bkx86EgSLPipgvalpf+xhVO4PDaR8qhhnwQh62ZZiRQlZemkB+qI9Us83mMtVwDHvRkg/DxP9scexa7I8EeYyUT/2fp61giEUOj/aEijPLVf6o3BYQUB8Gf743dbCxyfoz89VqdyW8ldtmT21sSXEuOShjAzOE6gWGxuHKRPHAsZLQCcTkTfIMZFuJtcPIEhA52zE5mwkxN8lC20HnJ052AqgGhFW1tPIaZ2/eCrDk+kGHQNl1eS3j4E1lxSAg0TdxDOcsycKbRIBpvkCzidB409KFK+dUeRgB"
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on for the rest of this week. The next stretch looks like this:\n\nMon 4:30pm daycare pickup. Tue 5:00pm swim lesson. Wed has the pediatrician checkup at 9:15am, then daycare pickup at 4:30pm.\n\nThu 6:00pm music class. Sat 1:00pm birthday party.\n\nWednesday is the tightest for work, with a morning appointment and an afternoon pickup. Want me to move anything?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 2039,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2039,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 529,
+      "output_tokens_details": {
+        "thinking_tokens": 370
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { deriveStage } from '@hale/types';
 import { liveScopeSql } from '@hale/worker/memory-context';
 import { and, count, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
@@ -42,7 +43,7 @@ export const MEMORY_SYNTHESIS_APPLY_ENV = 'MEMORY_SYNTHESIS_APPLY';
  * families, readable in the trail, before a single row moves.
  */
 export function memorySynthesisApplies(): boolean {
-  return process.env[MEMORY_SYNTHESIS_APPLY_ENV] === 'true';
+  return isEnabled('memory-synthesis-apply');
 }
 
 /**

@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import type { OfferedCandidate } from '~/lib/coach/tools';
 import { matchAreaKey, normalizeFsa } from '~/lib/village/intros/matcher';
@@ -24,7 +25,7 @@ export const ACTIVITY_REVIEWS_SURFACE_ENV = 'ACTIVITY_REVIEWS_SURFACE';
  * this product now states.
  */
 export function activityReviewsSurfaceEnabled(): boolean {
-  return process.env[ACTIVITY_REVIEWS_SURFACE_ENV] === 'true';
+  return isEnabled('activity-reviews-surface');
 }
 
 export interface ReviewSubjectRef {

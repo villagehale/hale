@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the Thursday dentist visit was cancelled. The only matching row, e1, is still open rather than cancelled, so no row backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "cancelled",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1898
+}

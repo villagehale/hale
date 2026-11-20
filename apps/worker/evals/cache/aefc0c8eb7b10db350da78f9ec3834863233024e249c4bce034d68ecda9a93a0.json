@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the card was charged, but run.charged is \"unknown\", so this asserts a charge the facts do not confirm. It also omits that Hale does not know whether Ada is registered and gives no hedge, violating the watchFor requirement to say so plainly. The rest (no link, English, one ask-free message, no promise of retry) is fine, but the charge claim is a serious factual error.",
+    "score": 2
+  }
+}

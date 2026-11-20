@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgwW1QLNEJREUkEWv1M6W",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That sounds brutal, and two hours of screaming would flatten anyone. Long middle-of-the-night screaming at this age is common, and tonight's one thing to try is a steady, boring response. Go in, keep the lights off and your voice low, and stay close with a hand on him. Skip the big rescue, the snacks, and the talking. If he seems asleep or foggy while he screams, that can be a night terror. Waking him usually makes it last longer. If he's truly awake and upset, a quiet cuddle is fine. If the screaming comes with fever, pain, or anything that worries you, call 811 any time, or 911 if it's an emergency."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 140,
+      "cache_read_input_tokens": 21526,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 140,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 211,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

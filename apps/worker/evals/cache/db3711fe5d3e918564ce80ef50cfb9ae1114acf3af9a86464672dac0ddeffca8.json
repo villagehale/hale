@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu, states the opening time correctly, lists sessions at 98 $ each per facts, and asks one question. However, it asks two asks (which sessions and in what order is one ask, but it also adds an unrequested side note about family registering twice and places counting), it is not two short sentences, and it invents a claim that the city counts duplicate family registrations as multiple places, which is not in the facts. It also states Hale will wait in the queue, which is consistent with auto mode but adds a promise beyond the facts. No registered or spot claim, no link, no privacy issue.",
+    "score": 2
+  }
+}

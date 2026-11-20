@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CgxHyYUa46AzFggFasWKx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSsAgKEAgTGAI4AUIIdGhpbmtpbmcSDN7dDh+EAhNygSfB0RoMkbjJVWzzYjrC1dVWIjDY6H14mJazx/Yb7lx5bkm61MfrkEY2XQBNLkqaa+ENC1+i6goctNlswGJezngSFmcqzQc+V8PHu8xbQqsw6+JQ8zKIv/broxs19QX0irTbdRqb0h4i+buNezt20z73iy660Mu8eSJA5KbmgqepgmWAtITyky4khdQtL0OHmi38OZVmzpCbrRV+CXQ/4VuQfviYVXY87U6lwgzI7tkjRiDH1CcnzdA0tsvox8wHNThL7GNUWoo0yE3MvQRKif7ialbMEv10JF8pESXQ2INoRhBqVenEdDx4bwEfhtBGG/9iieGpc6p6W6c2q0Xg4lXBbR4b/K+kbUg3/hlmM/p5I/bz5D7ndpH66yhehy4ePoIyRZtBA//WTLTY+Xk5LgoT/9C+rXIioxwBgqrad8oKbvfovCpcoiXqlhLkcmKvxSGzr79+3JghfrKOgbj3Vdquvtz3DSBPxU+MWAXGexs5Sk10f3UpT3Gdg+vARtQO0FTr1m6Yd+GK/mUPmD3QpqgOGogPfAi7OUUEt+O+IpUMBaQau9vJXf/m4HLx0eH67Hzjyu8/+EehvkroOFsotYylmhoDCtvik+72XqNEUp5WLz9KtPDHNBYh6qA4B36Zax1dNDrdLQvLwDscrEDHFhy3IhiLNdY/wZFfDWZ1DkPMV8tIdO0wVb0pGXD+fb0Nq6dxJadPixhN9YQ17HiCin1hOCkuCUlgHiCQmmjM75VxzP+/i/e1SZI4Wrc4BA/OIzoA+EGyK0bvbpQEzudbLwHH8SSiPo3OzmVh3Ij8J471S9XN0qHupemK33CoXKnajq1vfEdddXYu9GAFtE74i/vuoEyzbgmJmvqcJyFd8WIz8h25STDFMFD4q4nNLUQYpeLlYrkonlZF1OOjgtvXaF0PPb+N3+obAsjuTsCHt4JkDpgXBlcTCFjs5yEwqs9ao2eV7VrworYGk0jtqRZAhdn4ztg0UV+5TpY9UsUw60Ali7KZ3xDuFXLYA9pCaph1MbpMS5aXZuj28KqH9BuKWL/Bx08rNfEt+/Sdw8LyLlMS+DEbeCD9Q32IQmv39VnojRGjmwQFmVf/G1BsXm8GVjdCAAW7wWUznXLPKaQjugJl/VHxgy/uEGEF26xtZCsCXQbGezGKFJhvQAZEh7dbPw9zBshbQJNS0fnI20w6zUmucWq0UcL0MgeeVUfyN84t9svUMAbn1YUY7HXQKsYJswTeDqEXM9fC5S6O3SqxDciOGC48/avrWvt1n6CRTuAEFTC+wmis6vUt9+EATULCPj2zTa33Ze997fQmCyKGBKfHYU7eoBzMCscwfNTkvi96n5ZD0U5nud1Z93PpBXuVzEhddxUkTdqXcX5zYnOu5UKPGTbJGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AR4ac7AyopxhYivgUKLB1A",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Shift at the rink",
+          "date": "2026-11-14",
+          "weekday": "Saturday",
+          "startTime": "16:00",
+          "endTime": "20:00",
+          "childId": "child-teen"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1744,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20435,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 354,
+      "output_tokens_details": {
+        "thinking_tokens": 168
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

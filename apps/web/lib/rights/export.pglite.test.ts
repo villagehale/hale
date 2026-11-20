@@ -1,9 +1,13 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ACTIVITY_HELD_TOPIC } from '~/lib/channel/activity/venue-pages';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
+import { ACCESS_EXPORT_ROUND_2_ENABLED_ENV } from './export-round-2';
 
 /**
  * The access copy against real Postgres, for the one block nothing else can see.
@@ -29,6 +33,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -441,6 +446,7 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
         parentUserId,
         activityKey: 'rec.example.org|swim|2026-11-20',
         registrationUrl: 'https://rec.example.org/register/swim?code=q7',
+        providerHost: 'rec.example.org',
         sessions: [],
         status: 'planned',
         planChoiceIds: ['s-2', 's-1'],
@@ -455,6 +461,7 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
         parentUserId,
         activityKey: 'rec.example.org|art|2026-11-21',
         registrationUrl: 'https://rec.example.org/register/art',
+        providerHost: 'rec.example.org',
         sessions: [],
         status: 'pending',
       },
@@ -500,5 +507,191 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
         planApprovedAt: null,
       },
     ]);
+  });
+});
+
+describe('access export round 2 on the requester thread and bookings', () => {
+  const INTEGRATION = '99999999-9999-4999-8999-999999999991';
+  const HELD = '{"unsent_activity_options":[{"name":"held-only-class"}]}';
+
+  it('leaves a coach-only held note out of the requester thread when lit', async () => {
+    vi.stubEnv(ACCESS_EXPORT_ROUND_2_ENABLED_ENV, 'true');
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Held Note Export');
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId, noteKey: channelSmsNoteKey(parentUserId) })
+      .returning({ id: schema.conversations.id });
+    await db.database.insert(schema.messages).values([
+      {
+        conversationId: conversation?.id as string,
+        role: 'assistant',
+        content: 'the text that went out',
+        createdAt: new Date('2026-11-01T14:00:00.000Z'),
+      },
+      {
+        conversationId: conversation?.id as string,
+        role: 'assistant',
+        content: HELD,
+        topic: ACTIVITY_HELD_TOPIC,
+        createdAt: new Date('2026-11-01T14:00:05.000Z'),
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(doc.requesterOnly.textThread.map((turn) => turn.content)).toEqual([
+      'the text that went out',
+    ]);
+    expect(JSON.stringify(doc.requesterOnly)).not.toContain('held-only-class');
+    expect(JSON.stringify(doc.requesterOnly)).not.toContain(ACTIVITY_HELD_TOPIC);
+  });
+
+  it('keeps a held note in the requester thread when unlit', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Held Note Unlit');
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId, noteKey: channelSmsNoteKey(parentUserId) })
+      .returning({ id: schema.conversations.id });
+    await db.database.insert(schema.messages).values({
+      conversationId: conversation?.id as string,
+      role: 'assistant',
+      content: HELD,
+      topic: ACTIVITY_HELD_TOPIC,
+      createdAt: new Date('2026-11-01T14:00:05.000Z'),
+    });
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(doc.requesterOnly.textThread.map((turn) => turn.content)).toEqual([HELD]);
+  });
+
+  it("gives a parent their own bookings and never the co-parent's when lit", async () => {
+    vi.stubEnv(ACCESS_EXPORT_ROUND_2_ENABLED_ENV, 'true');
+    const { familyId, parentUserId: parentA } = await seedFamily(db.database, 'Booking Scope');
+    const parentB = await seedParent(familyId, 'coparent', 'co_parent');
+    await db.database.insert(schema.activityBookings).values([
+      {
+        familyId,
+        parentUserId: parentA,
+        integrationId: INTEGRATION,
+        messageId: 'gmail-a',
+        providerHost: 'rec.example.org',
+        title: 'A swim',
+        firstSessionAt: new Date('2026-11-14T15:00:00.000Z'),
+        location: 'Northside Pool',
+        address: '100 Example Ave',
+      },
+      {
+        familyId,
+        parentUserId: parentB,
+        integrationId: INTEGRATION,
+        messageId: 'gmail-b',
+        providerHost: 'rec.example.org',
+        title: 'B private art',
+        firstSessionAt: new Date('2026-11-15T15:00:00.000Z'),
+        address: 'B private street',
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+    });
+    expect(doc.activityBookings).toEqual([
+      expect.objectContaining({
+        title: 'A swim',
+        location: 'Northside Pool',
+        address: '100 Example Ave',
+      }),
+    ]);
+    expect(JSON.stringify(doc.activityBookings)).not.toContain('B private');
+  });
+
+  it("redacts a 13+ child's name in a booking title when lit", async () => {
+    vi.stubEnv(ACCESS_EXPORT_ROUND_2_ENABLED_ENV, 'true');
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Teen Booking');
+    await db.database.insert(schema.children).values({
+      familyId,
+      name: 'Tamsin',
+      dateOfBirth: '2012-02-01',
+    });
+    await db.database.insert(schema.activityBookings).values({
+      familyId,
+      parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'gmail-teen',
+      providerHost: 'rec.example.org',
+      title: "Tamsin's swim",
+      firstSessionAt: new Date('2026-11-14T15:00:00.000Z'),
+    });
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+      now: new Date('2026-11-08T15:00:00.000Z'),
+    });
+    expect(doc.activityBookings.map((row) => row.title)).toEqual([TEEN_REDACTED_PLACEHOLDER]);
+    expect(JSON.stringify(doc.activityBookings)).not.toContain('Tamsin');
+  });
+});
+
+describe("one adult's deep-pass dispatch in a right-to-access copy", () => {
+  const DISPATCHED = 'Hale started a closer look at an activity question';
+  const ANSWERED = 'Hale came back to you about an activity search';
+
+  async function seedDispatch() {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Ana + Sam', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const anaId = await seedParent(familyId, 'ana', 'primary_parent');
+    const samId = await seedParent(familyId, 'sam', 'co_parent');
+    await db.database.insert(schema.auditLog).values([
+      {
+        familyId,
+        actor: 'system',
+        actionTaken: 'activity_deep_dispatched',
+        targetTable: 'agent_commitments',
+        targetId: '33333333-3333-4333-8333-333333333333',
+        after: { status: 'enqueued' },
+        audience: anaId,
+        occurredAt: new Date('2026-11-10T15:00:00.000Z'),
+      },
+      {
+        familyId,
+        actor: 'system',
+        actionTaken: 'activity_followup_sent',
+        targetTable: 'agent_commitments',
+        targetId: '33333333-3333-4333-8333-333333333333',
+        occurredAt: new Date('2026-11-10T15:04:00.000Z'),
+      },
+    ]);
+    const summaries = async (actorUserId: string) =>
+      (await assembleFamilyExport(db.database, familyId, { actorUserId })).trail.map(
+        (row) => row.summary,
+      );
+    return { anaId, samId, summaries };
+  }
+
+  it('is never in the family-wide copy another parent seat gets (audience read unlit)', async () => {
+    const { samId, summaries } = await seedDispatch();
+    const sams = await summaries(samId);
+    // Positive control: the family-visible answer the dispatch led to is in the copy.
+    expect(sams).toContain(ANSWERED);
+    expect(sams).not.toContain(DISPATCHED);
+  });
+
+  it("is in the asking parent's own copy and nobody else's once the audience read is lit", async () => {
+    vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+    const { anaId, samId, summaries } = await seedDispatch();
+    expect(await summaries(anaId)).toEqual(expect.arrayContaining([DISPATCHED, ANSWERED]));
+    const sams = await summaries(samId);
+    expect(sams).toContain(ANSWERED);
+    expect(sams).not.toContain(DISPATCHED);
   });
 });

@@ -38,6 +38,7 @@ import {
   lazyAnthropic,
   makeCost,
   totalUsd,
+  withoutCacheTtl,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
@@ -58,7 +59,9 @@ const TEEN_MONTHS = 156;
 // --- content-addressed cache ------------------------------------------------
 
 function cacheKey(tag, payload) {
-  return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
+  return createHash('sha256')
+    .update(`${tag}\n${withoutCacheTtl(payload)}`)
+    .digest('hex');
 }
 async function cacheGet(key) {
   const path = join(CACHE_DIR, `${key}.json`);

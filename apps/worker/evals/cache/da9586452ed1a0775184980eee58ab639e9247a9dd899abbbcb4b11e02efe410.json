@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "The payment wasn't approved, so nothing was paid and the Sat 9:30 AM spot isn't booked. I left a browser open on their site, and you can pay there: https://live.browser-use.com/s/fixture-live-view-token. It stays open for about 5 minutes."
+  },
+  "latencyMs": 1439,
+  "usage": {
+    "input_tokens": 144,
+    "output_tokens": 97,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

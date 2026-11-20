@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "flyer",
+    "title": "Toddler Paint Club",
+    "venue": "Maple Arts Studio",
+    "when_text": "Wednesdays 10 am",
+    "registration_url": null,
+    "child_name": null,
+    "notes": "Sign-up link is cut off at the edge of the image, so the full address isn't readable",
+    "confidence": 0.8
+  },
+  "latencyMs": 2786
+}

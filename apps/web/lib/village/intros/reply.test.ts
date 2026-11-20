@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsentReadingResult } from '~/lib/channel/consent-reply';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import {
@@ -21,8 +21,18 @@ import {
  * The readings the old keyword fixtures would have produced. The handler no longer
  * parses them. This map is the injected model.
  */
-function fixtureIntro(text: string): ConsentReadingResult | null {
+function fixtureIntro(
+  text: string,
+  lastHaleMessage?: string | null,
+): ConsentReadingResult | null {
   const folded = text.trim().toLowerCase().replace(/[!.,]/g, '').replace(/\s+/g, ' ');
+  // A "go find it" after Hale asked for a link is not an intro answer.
+  if (
+    (folded === '你找一下啊' || folded === 'go find it') &&
+    (lastHaleMessage ?? '').trim() !== ''
+  ) {
+    return { verdict: 'neither', target: 'none' };
+  }
   const table: Record<string, ConsentReadingResult> = {
     'yes intros': { verdict: 'yes', target: 'discoverability' },
     'no intros': { verdict: 'no', target: 'discoverability' },
@@ -34,6 +44,8 @@ function fixtureIntro(text: string): ConsentReadingResult | null {
     'no intro': { verdict: 'no', target: 'proposal' },
     我想认识附近的家庭: { verdict: 'yes', target: 'discoverability' },
     'لا أريد تعارف': { verdict: 'no', target: 'discoverability' },
+    你找一下啊: { verdict: 'yes', target: 'discoverability' },
+    'go find it': { verdict: 'yes', target: 'discoverability' },
   };
   return table[folded] ?? null;
 }
@@ -76,7 +88,7 @@ function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 
     async (input: SaidLineInput): Promise<string | null> => stubLine(input),
   );
   const spies: VillageIntroReplyDeps = {
-    consent: { read: async ({ text }) => fixtureIntro(text) },
+    consent: { read: async ({ text, lastHaleMessage }) => fixtureIntro(text, lastHaleMessage) },
     recordDiscoverability,
     discoverabilityStanding: async () => standing,
     answerableProposal: async () => open,
@@ -87,7 +99,21 @@ function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 
   return { spies, recordDiscoverability, recordDecision, cancelOpenProposals, saidLineWrite };
 }
 
+beforeEach(() => {
+  vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('handleVillageIntroReply', () => {
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('does not claim anything that is not an intro keyword', async () => {
     const { spies, recordDiscoverability, recordDecision } = deps();
     const outcome = await handleVillageIntroReply(
@@ -98,6 +124,61 @@ describe('handleVillageIntroReply', () => {
     expect(outcome).toEqual({ status: 'declined_to_claim' });
     expect(recordDiscoverability).not.toHaveBeenCalled();
     expect(recordDecision).not.toHaveBeenCalled();
+  });
+
+  it('does not grant when village intros are dark; a revocation still lands', async () => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'false');
+    const darkGrant = deps();
+    expect(
+      await handleVillageIntroReply(
+        DB,
+        { familyId: FAMILY_A, parentUserId: 'u-a', body: 'Yes intros!', now: NOW },
+        darkGrant.spies,
+      ),
+    ).toEqual({ status: 'declined_to_claim' });
+    expect(darkGrant.recordDiscoverability).not.toHaveBeenCalled();
+
+    const darkRevoke = deps(null, 'granted');
+    expect(
+      await handleVillageIntroReply(
+        DB,
+        { familyId: FAMILY_A, parentUserId: 'u-a', body: 'NO INTROS', now: NOW },
+        darkRevoke.spies,
+      ),
+    ).toMatchObject({ status: 'discoverability_revoked' });
+    expect(darkRevoke.recordDiscoverability).toHaveBeenCalled();
+  });
+
+  it('does not read "go find it" after a link ask as intro consent', async () => {
+    const { spies, recordDiscoverability } = deps();
+    const lastHale = 'Want me to register him? Send the registration page.';
+    expect(
+      await handleVillageIntroReply(
+        DB,
+        {
+          familyId: FAMILY_A,
+          parentUserId: 'u-a',
+          body: '你找一下啊',
+          now: NOW,
+          lastHaleMessage: lastHale,
+        },
+        spies,
+      ),
+    ).toEqual({ status: 'declined_to_claim' });
+    expect(
+      await handleVillageIntroReply(
+        DB,
+        {
+          familyId: FAMILY_A,
+          parentUserId: 'u-a',
+          body: 'go find it',
+          now: NOW,
+          lastHaleMessage: lastHale,
+        },
+        spies,
+      ),
+    ).toEqual({ status: 'declined_to_claim' });
+    expect(recordDiscoverability).not.toHaveBeenCalled();
   });
 
   it('records the opt-in verbatim and cancels nothing', async () => {
@@ -117,7 +198,7 @@ describe('handleVillageIntroReply', () => {
       granted: true,
       verbatimReply: 'Yes intros!',
       channelMessageId: null,
-      reading: { readBy: 'consent-reply', confidence: 'high' },
+      reading: { readBy: 'consent-reply', confidence: null },
     });
     expect(cancelOpenProposals).not.toHaveBeenCalled();
   });
@@ -219,6 +300,13 @@ describe('handleVillageIntroReply', () => {
  * texts twice because they think the first one did not land is not making a second choice.
  */
 describe('a second affirmation of an answer already given', () => {
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('does not write a second consent row', async () => {
     const { spies, recordDiscoverability } = deps(null, 'granted');
 

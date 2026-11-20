@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgzSijkMpcbVD1CoTmTFJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8AYKEAgTGAI4AUIIdGhpbmtpbmcSDAqMsd56PFXAfivA6BoMDQxYZ5V7vjAi9Qz/IjCWElKisRH7fSfT+1lxcLpjpDBbjSEg/gKkX2EEtwGB4aQRKkvvTCCu1WtssMiWeaYqjQbvYG0GTF8t5mXpYJvupEc9eRublkP3Wzq0/6teNmZcOMOhtDqNlJnsZ3xBBY3z3GePWf/aOoaMJzSWR7pXRTVGmCxXYbuXB/iwzOpze55/4awZeYCJh5PTjlymGNi8fDOImk0WUBNReFZX5OOjF/6OFb+ZWf5le20r9tMYkXZnrbBHsuBgXDSG44CDozzD3eLl3WfvUJDOEnnxwdz1neHu7A+PL3iQrktpAW2noxHxonaFogFIDD8U1Tpv7k0bkXoQpMFy/Jiwq90EIgFufA03DC/ilXP2Is0kNFKUnOQYq34PEg5oaeLBwn/dxiTNjM5VZpewVJR26noe3I7K4bhLPYRY7yX7vJR2BK3Yqom4HOjIWCtYhU5vYRksKmn41XTamBT11rOcgubpEWB9X2cYmetxUzoHc/+cJ5EZyCOYRZZh2v020slsB8m4n1wd5kVtcAADJb4GtvmPJQ7O/qqeEaEAbiDH6gFuOvc56WUisSaNPlf7J6ex9vbsWixAus3xZXPqs9DdVb1J6lOC5FubOlmTHU6LtvGcE0QYrYkL1aeWX/0GKhGyXtbWomAQf5D2Hy7s8DGzN5bBa39oMZF2nqpl98NhHk4syCbJYnnRoxI7Cf9vxG8RRcPT65bi1vtys7FNUFdQduLEAl3P9l2uDpbSr1xCjLBxX3KsKH7eLlre/5UVRW511NHtn30pTSELVlPYVtErGAGHxrqSLdeYbt/b25Tf/UlT6vdI6DKjf1H7Yx/0VCeZUqdmnEJQR+depHjJpigfCqckF6sX7lLF/xq18x2lAwOPOGQfNuoAqU05SM9wdKMDMFZGmrV2k/ahOfSu4XrNt3+B2yp+nU6vQ3gSmkIZMizhYFfE6t1gtsCVA0TUZ7KY4IF6krTnAy8k09biYcZEzyYUWf7AEWlKlmpFZyTSSiWgLokWZiWzDuT0qa93ygSIPYOqA/LSU1we575LUx5RmS3vn+kbMgxTJfwLupmfstLkBIPOcwmZvVvxZd7aHyqhfH/yVEBXq4HzBBJyoFCLXV+EJk35GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01N92nYRUPdzDDCZ9XUPZvw7",
+        "name": "search_village",
+        "input": {
+          "subject": "toddler swim lessons winter"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1857,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20788,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 140,
+      "output_tokens_details": {
+        "thinking_tokens": 82
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

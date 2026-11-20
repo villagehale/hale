@@ -7,10 +7,13 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { readFamilyToday } from '~/lib/channel/activity/reader';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { activityClient } from '~/lib/pipeline/client';
+import { signupOfferToolEnabled } from '~/lib/signup/offer-tool';
+import { registrationTopUpSubject } from '~/lib/signup/plan/towns';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -20,6 +23,7 @@ import {
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
+import { optionalArea } from './optional-area';
 
 /**
  * The Village read shared by every surface that offers it (VIL-221 · C2).
@@ -160,6 +164,16 @@ async function withoutPooledNegatives(
  * never be offered, and counting it would have Hale promise to come back about a find it
  * must never mention (rule #1).
  */
+function liveTopUpQuery(
+  query: ActivityQuery,
+  picks: readonly ActivityPick[],
+  needPage: boolean,
+): ActivityQuery {
+  if (!needPage) return query;
+  const venue = picks.find((pick) => !pick.url && !pick.sourceUrl)?.sourceName ?? query.subject;
+  return { ...query, subject: registrationTopUpSubject(venue) };
+}
+
 export function searchVillageTool(
   database: Database,
   /**
@@ -175,11 +189,15 @@ export function searchVillageTool(
   return defineTool({
     name: 'search_village',
     description:
-      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the ask is for one day, pass that day as `date` (YYYY-MM-DD, worked out from `localNow`); a full date written in query or window is removed before the search. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
     inputSchema: z.object({
       query: z.string().optional(),
       window: z.string().optional(),
-      area: z.string().min(1).optional(),
+      area: optionalArea,
+      // Last on purpose. A strict tool's arguments come out in schema order, so with
+      // `area` after it, a coach that wrote the day first could add only `area`, and put
+      // the day's words ("today") there.
+      date: z.string().optional(),
     }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
@@ -203,19 +221,23 @@ export function searchVillageTool(
       const found = await findFamilyActivities(database, ctx.familyId, {
         subject: input.query,
         window: input.window,
+        date: input.date,
         area: input.area,
         areaReader,
         finder: radarRead,
         now,
+        today: await readFamilyToday(database, ctx.familyId, now),
       });
       const query = searched;
+      const needPage = signupOfferToolEnabled();
       const picks =
         found.reason === null && query
           ? (
               await topUpShortRadar({
                 radar: found.picks,
+                needPage,
                 liveSearch: async () => {
-                  const extra = await resolved.find(query);
+                  const extra = await resolved.find(liveTopUpQuery(query, found.picks, needPage));
                   if (!extra.found) {
                     console.info(
                       { reason: extra.reason },

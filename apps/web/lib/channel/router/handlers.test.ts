@@ -12,6 +12,7 @@ import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
 import type { OpenCheckupOffer } from '~/lib/health/offer';
 import type { HealthReplyDeps } from '~/lib/health/reply';
+import { OWN_CITY_REGISTRATION_ENABLED_ENV } from '~/lib/registration/city/flag';
 import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import type {
   BindReadClaimResult,
@@ -178,6 +179,7 @@ function offerFrom(ref: string | null): OpenCheckupOffer | null {
     childId: parsed?.childId ?? null,
     summary: 'Whether to put booking this on your week',
     askedAt: new Date('2026-08-20T14:00:00.000Z'),
+    askedVia: 'msg-1',
   };
 }
 
@@ -510,11 +512,18 @@ describe('handler order — registration last', () => {
  * pinned in both directions — the same treatment "yes" gets above.
  */
 describe('the village intro lane and the lanes behind it', () => {
+  beforeEach(() => {
+    vi.stubEnv('VILLAGE_INTROS_ENABLED', 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const introDeps: VillageIntroReplyDeps = {
     consent: {
       read: async ({ text }) =>
-        text === 'YES INTRO'
-          ? { verdict: 'yes', target: 'proposal' }
+        text === 'YES INTRO' || text === '你找一下啊'
+          ? { verdict: 'yes', target: text === 'YES INTRO' ? 'proposal' : 'discoverability' }
           : { verdict: 'neither', target: 'none' },
     },
     recordDiscoverability: async () => {},
@@ -522,6 +531,16 @@ describe('the village intro lane and the lanes behind it', () => {
     answerableProposal: async () => null,
     recordDecision: async () => {},
     cancelOpenProposals: async () => {},
+  };
+
+  const introOptIn: OpenQuestion = {
+    id: 'opt-in',
+    kind: 'intro_optin',
+    description: 'Whether Hale may look for a match',
+    subject: 'being introduced to nearby families',
+    answerable: { yes: true, no: true },
+    askedAt: new Date('2026-11-12T03:40:00.000Z'),
+    solicited: false,
   };
 
   it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
@@ -548,6 +567,55 @@ describe('the village intro lane and the lanes behind it', () => {
     expect(pending.approved).toEqual([]);
     expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
   });
+
+  it('does not read intro consent when Hale is not waiting on an intro from this parent', async () => {
+    const reads: string[] = [];
+    const silent: VillageIntroReplyDeps = {
+      ...introDeps,
+      consent: {
+        read: async ({ text }) => {
+          reads.push(text);
+          return { verdict: 'yes', target: 'discoverability' };
+        },
+      },
+    };
+    expect(await villageIntroHandler(silent).detects(DB, turn('你找一下啊'))).toBe(false);
+    expect(reads).toEqual([]);
+  });
+
+  it('reads intro consent only when an intro ask is outstanding for this parent', async () => {
+    expect(
+      await villageIntroHandler(introDeps).detects(DB, turn('YES INTRO', { open: [introOptIn] })),
+    ).toBe(true);
+  });
+
+  it('does not claim after the resolver declined to place the reply on an open intro', async () => {
+    expect(
+      (await villageIntroHandler(introDeps).handle(DB, turn('你找一下啊', { open: [introOptIn] })))
+        .claimed,
+    ).toBe(false);
+  });
+
+  it('still honours a revocation after the resolver declined to place it', async () => {
+    const recorded: Array<{ granted: boolean }> = [];
+    const deps: VillageIntroReplyDeps = {
+      ...introDeps,
+      consent: {
+        read: async ({ text }) =>
+          text === 'no intros'
+            ? { verdict: 'no', target: 'discoverability' }
+            : { verdict: 'neither', target: 'none' },
+      },
+      discoverabilityStanding: async () => 'granted' as const,
+      recordDiscoverability: async (_database, input) => {
+        recorded.push({ granted: input.granted });
+      },
+    };
+    expect(
+      (await villageIntroHandler(deps).handle(DB, turn('no intros', { open: [introOptIn] }))).claimed,
+    ).toBe(true);
+    expect(recorded).toEqual([{ granted: false }]);
+  });
 });
 
 describe('recMorningHandler', () => {
@@ -565,9 +633,11 @@ describe('recMorningHandler', () => {
     } as unknown as Database;
   }
   const TORONTO_FAMILY = familyRow({ primaryLanguage: null, city: 'Toronto' });
+  /** The stub database holds no own-city reading (the GTA block below reads the real one). */
+  const noOwnCity = async () => [];
 
   it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
-    const verdict = await recMorningHandler().handle(
+    const verdict = await recMorningHandler(noOwnCity).handle(
       TORONTO_FAMILY,
       turn('When does Toronto swim registration open?'),
     );
@@ -585,7 +655,7 @@ describe('recMorningHandler', () => {
   });
 
   it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(
+    const verdict = await recMorningHandler(noOwnCity).handle(
       TORONTO_FAMILY,
       turn('Markham fall rec dates?'),
     );
@@ -608,7 +678,7 @@ describe('recMorningHandler', () => {
     });
     const database = familyRow({ primaryLanguage: 'zh', city: 'Toronto' });
     try {
-      const verdict = await recMorningHandler().handle(
+      const verdict = await recMorningHandler(noOwnCity).handle(
         database,
         turn('When does Toronto swim registration open?'),
       );
@@ -627,7 +697,7 @@ describe('recMorningHandler', () => {
       return 'other';
     });
     try {
-      expect(await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).toEqual({
+      expect(await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn(pickup))).toEqual({
         claimed: false,
       });
       expect(texts).toEqual([pickup]);
@@ -635,16 +705,18 @@ describe('recMorningHandler', () => {
       setSharedRecMorningReader(scriptedRecMorningReader);
     }
     // Positive control: the same text, read as answered, is claimed by the lane.
-    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(true);
+    expect((await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(
+      true,
+    );
   });
 
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
-    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed).toBe(
-      false,
-    );
+    expect(
+      (await recMorningHandler(noOwnCity).handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed,
+    ).toBe(false);
     expect(
       (
-        await recMorningHandler().handle(
+        await recMorningHandler(noOwnCity).handle(
           TORONTO_FAMILY,
           turn('can you watch swim registration for Milo this fall?'),
         )
@@ -667,6 +739,10 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
 
   afterAll(async () => {
     await placeDb.close();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   async function familyAt(place: {
@@ -802,6 +878,69 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     });
   });
 
+  it("leaves a date question to the coach once the family's own city has a reading", async () => {
+    vi.stubEnv(OWN_CITY_REGISTRATION_ENABLED_ENV, 'true');
+    const markham = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Markham',
+      postalCode: 'L3R 1A1',
+      areaCoarse: 'L3R',
+    });
+    await primaryParentIn(markham, 'America/Toronto');
+    const asks = [
+      'when does winter rec registration open?',
+      'Markham recreation registration for winter?',
+      'when does swim registration open for winter?',
+      'skate lessons this winter, when can we register?',
+      'when do winter camps open for registration',
+    ];
+    // Positive control: with no reading, the hand dataset's lane claims every wording.
+    for (const ask of asks) {
+      expect({ ask, claimed: (await handleFor(markham, ask)).claimed }).toEqual({
+        ask,
+        claimed: true,
+      });
+    }
+    await placeDb.database.insert(schema.cityRegistrationReadings).values({
+      placeKey: 'markham|ontario|canada|',
+      city: 'Markham',
+      provinceOrState: 'Ontario',
+      country: 'Canada',
+      district: null,
+      cycleLabel: 'Winter 2027',
+      status: 'verified',
+      municipality: 'City of Markham',
+      sourceUrl: 'https://www.markham.ca/registration',
+      reading: {
+        sourceUrl: 'https://www.markham.ca/registration',
+        checkedAt: TURN_NOW.toISOString(),
+        reader: 'ai',
+        status: 'verified',
+        timeZone: 'America/Toronto',
+        dates: [
+          {
+            kind: 'resident_open',
+            date: '2026-12-01',
+            time: '06:30',
+            evidence: ['December 1, 2026, at 6:30 AM'],
+          },
+        ],
+        partialDates: [],
+      },
+      readAt: TURN_NOW,
+      reverifyAt: new Date(TURN_NOW.getTime() + 86_400_000),
+    });
+    for (const ask of asks) {
+      expect({ ask, verdict: await handleFor(markham, ask) }).toEqual({
+        ask,
+        verdict: { claimed: false },
+      });
+    }
+    // Another town's question is still this lane's: the reading is Markham's only.
+    expect((await handleFor(markham, 'Vaughan swim registration?')).claimed).toBe(true);
+  });
+
   it('still answers a family with a Toronto FSA texting "waitlist" (positive control)', async () => {
     const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
     const verdict = await handleFor(toronto, 'waitlist');
@@ -816,9 +955,29 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', async () => {
+  // The production chain is one dynamic import of the whole handler graph. On a
+  // cold CI worker that import exceeds Vitest's 5s test budget (the suite's
+  // hookTimeout is 30s for the same reason). Load it once, then assert.
+  let names: string[] = [];
+  let offList: string[] = [];
+
+  beforeAll(async () => {
     const { defaultHandlers } = await import('./wiring');
-    expect(defaultHandlers().map((h) => h.name)).toEqual([
+    const chain = defaultHandlers();
+    names = chain.map((handler) => handler.name);
+    offList = chain.filter((handler) => handler.offListAsks).map((handler) => handler.name);
+  });
+
+  // VIL-302 · the router ranks Hale's last text about the sign-up lane's asks with the open
+  // questions before it narrows a bare answer to the newest of them. If the lane stopped
+  // reporting it, the newest open question would capture a yes meant for the sign-up offer
+  // Hale texted last.
+  it('marks the sign-up lane, and only it, as ranking its asks off the open-question list', () => {
+    expect(offList).toEqual(['authorized_signup']);
+  });
+
+  it('is village_intro, approval, connector_link, connector_disconnect, founder_welcome, co_parent_assent, co_parent_number, weekday_care, empty_saturday, daycare_followup, health, email_alert_add, coach_plan, authorized_signup, family_memory_kinds, registration, rec_morning, parent_call_name, name_capture, evening_check_in, inbound_canary', () => {
+    expect(names).toEqual([
       'village_intro',
       'approval',
       // Claims only an explicit connect-verb + provider-noun pair — a shape no other
@@ -899,9 +1058,7 @@ describe('the shipped order', () => {
    * health outcome and "we got in" is a registration result, and a family with an open
    * name ask must be able to answer one without being renamed for it.
    */
-  it('puts the name capture behind every handler that matches a specific word', async () => {
-    const { defaultHandlers } = await import('./wiring');
-    const names = defaultHandlers().map((h) => h.name);
+  it('puts the name capture behind every handler that matches a specific word', () => {
     expect(names.at(-1)).toBe('inbound_canary');
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
     expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('rec_morning'));
@@ -917,10 +1074,7 @@ describe('the shipped order', () => {
    * plan is three texts of advice. So the plan lane is last of the three, and a parent
    * with a draft pending still means the draft when they type YES.
    */
-  it('puts the plan lane behind both of the other yes-claimers', async () => {
-    const { defaultHandlers } = await import('./wiring');
-    const names = defaultHandlers().map((h) => h.name);
-
+  it('puts the plan lane behind both of the other yes-claimers', () => {
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('approval'));
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('health'));
   });

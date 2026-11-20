@@ -47,6 +47,10 @@ import { pageSource } from '~/lib/page-source';
  * where the code or a confirmed fact supports them (message retention, consent records,
  * Google Drive read-only, PostHog replay).
  *
+ * 2026-11-16: Meta Pixel (dataset 1460101092968766) PageView on villagehale.com
+ * after Accept and on app.villagehale.com when conversions are on. Purchase is
+ * CAPI from the Stripe webhook, event_id = Checkout Session id.
+ *
  * 2026-11-08: Drive is no longer a connector (no consent door; zero Drive rows in
  * prod), and Calendar asks for calendar.events.owned.readonly, so the scope list
  * matches the Google verification submission (VIL-556).
@@ -124,7 +128,7 @@ export default async function PrivacyPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Privacy Policy"
-      lastUpdatedIso="2026-11-08"
+      lastUpdatedIso="2026-11-16"
       intro={
         <p>
           Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
@@ -275,11 +279,12 @@ export default async function PrivacyPage({
           <a href="#sub-processors" className="link">
             Sub-processors
           </a>
-          . On the public website, Google Ads measures a visit only after the visitor taps Accept in
-          the cookie banner, so we can tell whether an advertisement led them there. If they choose
-          No thanks, or make no choice, that measurement does not run. It does not include family
-          data. We do not buy personal information about your family from data brokers, and we do
-          not collect it from social media or other public sources.
+          . On the public website, Google Ads and the Meta Pixel measure a visit only after the
+          visitor taps Accept in the cookie banner, so we can tell whether an advertisement led them
+          there. If they choose No thanks, or make no choice, that measurement does not run. It does
+          not include family data or children&rsquo;s information. We do not buy personal information
+          about your family from data brokers, and we do not collect it from social media or other
+          public sources.
         </p>
       </LegalSectionBlock>
 
@@ -551,6 +556,21 @@ export default async function PrivacyPage({
             United States.
           </li>
           <li>
+            <strong>Meta</strong> — advertising measurement. The Meta Pixel (dataset
+            1460101092968766) records a PageView on the marketing site (villagehale.com) after the
+            visitor taps Accept in the cookie banner, and on the product app (app.villagehale.com)
+            when conversions measurement is on. A paid founding-family checkout sends a Purchase
+            event to Meta&rsquo;s Conversions API from Hale&rsquo;s servers, using the Stripe
+            Checkout Session id so a matching browser Purchase can be deduplicated. That event may
+            include a hashed email, a hashed phone number, Meta click cookies, and the IP address
+            and browser type saved at checkout. It does not include family data, message content, or
+            children&rsquo;s information. No child data is sent. Hale still shows no advertising. If
+            they choose No thanks on the public website, or make no choice, the Pixel does not load
+            there.
+            Visitors can change that choice at any time with Cookie settings in the site footer.
+            Processed in the United States.
+          </li>
+          <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
             passes through Linq; see{' '}
             <a href="#sms" className="link">
@@ -773,16 +793,18 @@ export default async function PrivacyPage({
             Hale gets less useful without them, and none of Hale stops working.
           </li>
           <li>
-            <strong>Cookies on the public website.</strong> On villagehale.com, Google Ads and
-            PostHog (analytics and session replay) load only after the visitor taps Accept in the
-            cookie banner. If they choose No thanks, or make no choice, neither loads. Visitors can
-            change their choice at any time with Cookie settings in the site footer. Vercel Speed
-            Insights runs without that choice. Vercel documents it as anonymous performance data: it
-            is not tied to a visitor or an IP address, and it does not store information that would
-            reconstruct a browsing session or identify someone. Strictly necessary storage, such as
-            the theme and language choice, needs no consent. Google Ads may set advertising cookies
-            only after Accept. Blocking third-party scripts in your browser also stops that
-            measurement and does not affect Hale over text. The product app does not load this tag.
+            <strong>Cookies on the public website.</strong> On villagehale.com, Google Ads, the Meta
+            Pixel, and PostHog (analytics and session replay) load only after the visitor taps Accept
+            in the cookie banner. If they choose No thanks, or make no choice, none of them load.
+            Visitors can change their choice at any time with Cookie settings in the site footer.
+            Vercel Speed Insights runs without that choice. Vercel documents it as anonymous
+            performance data: it is not tied to a visitor or an IP address, and it does not store
+            information that would reconstruct a browsing session or identify someone. Strictly
+            necessary storage, such as the theme and language choice, needs no consent. Google Ads
+            and the Meta Pixel may set advertising cookies only after Accept. Blocking third-party
+            scripts in your browser also stops that measurement and does not affect Hale over text.
+            The product app does not load the Google Ads tag. The Meta Pixel may load on the product
+            app when conversions measurement is on.
           </li>
         </ul>
       </LegalSectionBlock>

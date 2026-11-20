@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in Chinese, accurately says the site placed the order, states uncertainty about charge and registration without claiming either, does not claim a spot is held, tells parent to check email and open browser before paying again, and makes one clear ask with no promise of follow-up. Minor issue: it says the browser is still open ~15 minutes, which matches holdMinutes, so acceptable; no invented facts found.",
+    "score": 5
+  }
+}

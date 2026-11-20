@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je n'ai pas pu finir cette inscription, le samedi 9 h 30. Tu peux la faire toi-même ici : https://register.example-rec.test/activity/42 Voilà de quoi remplir le formulaire : Lena Ferreira pour l'enfant, Sam pour le parent, sam@example.test pour l'e-mail."
+  },
+  "latencyMs": 1679,
+  "usage": {
+    "input_tokens": 225,
+    "output_tokens": 124,
+    "cache_read_input_tokens": 1688,
+    "cache_creation_input_tokens": 0
+  }
+}

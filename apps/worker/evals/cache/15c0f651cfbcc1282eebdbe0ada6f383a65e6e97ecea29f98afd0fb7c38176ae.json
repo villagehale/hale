@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Question about pickup time, not about this plan",
+    "said": null,
+    "named": null,
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverSaid": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1936
+}

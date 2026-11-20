@@ -24,7 +24,13 @@
     "db:generate": "pnpm --filter @hale/db generate",
     "db:migrate": "pnpm --filter @hale/db migrate",
     "db:check-migrations": "pnpm --filter @hale/db check-migrations",
-    "db:studio": "pnpm --filter @hale/db studio"
+    "db:next-migration": "node packages/db/scripts/next-migration.mjs",
+    "db:studio": "pnpm --filter @hale/db studio",
+    "posthog:sync-flags": "pnpm --filter @hale/flags sync",
+    "stripe:create-founding-prices": "pnpm --filter @hale/web exec tsx scripts/stripe-create-founding-prices.ts",
+    "stripe:promo-lockdown": "pnpm --filter @hale/web exec tsx scripts/stripe-promo-lockdown.ts",
+    "stripe:refund-family": "pnpm --filter @hale/web exec tsx scripts/stripe-refund-family.ts",
+    "meta:test-purchase": "pnpm --filter @hale/web exec tsx scripts/meta-test-purchase.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -35,7 +41,8 @@
   "pnpm": {
     "overrides": {
       "react": "19.2.3",
-      "react-dom": "19.2.3"
+      "react-dom": "19.2.3",
+      "tldts-core": "7.4.19"
     },
     "patchedDependencies": {
       "vitest@3.2.6": "patches/vitest@3.2.6.patch"

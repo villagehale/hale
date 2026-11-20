@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { promptCacheHitFromRead } from '@hale/agent';
 import type { AgentName } from '@hale/types';
 import { estimateCostUsd } from '../anthropic/cost.js';
 
@@ -16,6 +17,8 @@ export interface AgentRunMetrics {
   /** Undefined is stored as NULL: this call did not measure the cache. */
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Undefined is stored as NULL: this call did not measure the cache. */
+  promptCacheHit?: boolean;
   costUsd: number;
   latencyMs: number;
 }
@@ -34,6 +37,7 @@ export function metricsFromUsage(
     completionTokens: usage.output_tokens,
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
     cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
+    promptCacheHit: promptCacheHitFromRead(usage.cache_read_input_tokens ?? 0),
     costUsd: estimateCostUsd(model, usage),
     latencyMs,
   };

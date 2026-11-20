@@ -239,6 +239,22 @@ describe('planBookingStep', () => {
     expect(result).toMatchObject({ action: 'stop', reason: 'allergy' });
   });
 
+  it('stops when the form needs a DOB and Hale only has a derived one', () => {
+    const session = control({
+      name: 'session',
+      type: 'select',
+      label: 'Session',
+      options: [{ value: 'sat-1100', label: 'Sat 11:00', disabled: false }],
+    });
+    const dob = control({ name: 'dob', label: 'Date of birth' });
+    const result = plan([session, dob], {}, { identity: { ...IDENTITY, childDob: null } });
+    expect(result).toMatchObject({ action: 'stop', reason: 'missing_detail' });
+    const exact = plan([session, dob]);
+    expect(exact.action).toBe('submit');
+    if (exact.action !== 'submit') return;
+    expect(exact.fills.find((fill) => fill.slot === 'child_dob')?.value).toBe('2022-04-02');
+  });
+
   it('hands back when a required field is not one the adapters know', () => {
     const result = plan([
       control({ name: 'school_name', label: 'School name' }),

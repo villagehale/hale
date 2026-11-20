@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on their behalf. turnedOffThisTurn lists send_email and reply_to_email, so 'C'est fait' is true and matches what happened this turn. The reply answers in the parent's language, in one plain sentence, with no greeting, no machinery and no question.",
+    "score": 5
+  }
+}
