@@ -41,7 +41,29 @@ function scriptedLine(request: SpokenLineRequest): string | null {
   const { purpose, language } = request;
   const facts = request.facts ?? {};
   const text = render(purpose, language ?? null, facts);
-  return text === undefined ? null : acceptSpokenLine(text, request.verbatim);
+  // The production acceptance, addendum lines included (VIL-706).
+  return text === undefined
+    ? null
+    : acceptSpokenLine(text, request.verbatim, {
+        refuseOptOutKeyword: request.addendum !== undefined,
+      });
+}
+
+/** Test stand-in: the scripted model restates a caregiver reminder's facts, in order. */
+function caregiverReminder(
+  language: string | null,
+  facts: Readonly<Record<string, string>>,
+): string {
+  const count = Number(facts.count ?? '0');
+  const items: string[] = [];
+  for (let n = 1; n <= count; n += 1) {
+    const day = facts[`day_${n}`] ?? facts[`date_${n}`] ?? '';
+    const time = facts[`all_day_${n}`] === 'true' ? '' : (facts[`start_${n}`] ?? '');
+    const place = facts[`place_${n}`];
+    const when = [day, time].filter(Boolean).join(fr(language) ? ' a ' : ' at ');
+    items.push(`${facts[`event_${n}`] ?? ''} ${when}${place ? `, ${place}` : ''}`.trim());
+  }
+  return `${items.join('; ')}.`;
 }
 
 function render(
@@ -278,6 +300,8 @@ function render(
         "A co-parent sees everything I show you, so I won't add one from a number you typed. Text me add my partner and I'll send you a link to forward to them.",
         'Un co-parent voit tout ce que je vous montre, donc je n’en ajoute pas à partir d’un numéro que vous avez tapé. Écrivez-moi add my partner et je vous envoie un lien à transférer.',
       );
+    case 'caregiver_reminder':
+      return caregiverReminder(language, facts);
     case 'caregiver_scoped_reply': {
       const who = facts.parentName?.trim() || (fr(language) ? 'les parents' : 'the parents');
       return fr(language)

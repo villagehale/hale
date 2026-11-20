@@ -42,7 +42,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
-import { composeDoorLine } from '~/lib/channel/door-line';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
@@ -941,6 +941,12 @@ export interface RouterResult {
   /** Which lane deflected it, when one did. Null for every other status — including an
    * in-domain turn, which is not an unmet intent and is counted as nothing. */
   lane: UnmetIntentLane | null;
+  /**
+   * VIL-706 · on `not_a_parent` for a caregiver Hale may answer: null when the scoped
+   * line went out, or why it did not (`flag_off`, or `unwritten` after #ops was paged).
+   * Absent on every other result.
+   */
+  lineHeld?: DoorLineHold | null;
 }
 
 /**
@@ -1194,13 +1200,16 @@ async function routeChannelMessageInner(
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
   // never appear in the parents' Ask history.
   if (context.role === null || !PARENT_ROLES.has(context.role)) {
+    let scopedHeld: DoorLineHold | null | undefined;
     if (context.reply && isOutsiderWeMayAnswer(context.role)) {
       // Ledgered and audited like every other outbound (rule #6) — but with NO
       // conversation, because a caregiver's exchange must never appear in the parents'
       // Ask history. That is the one difference between this send and a parent's.
-      const line = await composeDoorLine(deps.database, {
+      // The model writes it from the parent's name alone (VIL-706): what the caregiver
+      // asked is never in the facts, so it cannot be repeated back.
+      const line = await composeDoorLine({
         purpose: 'caregiver_scoped_reply',
-        language: null,
+        language: await familySpeechLanguage(deps.database, job.family_id),
         facts: { parentName: context.primaryParentName ?? '' },
       });
       if (line.sent) {
@@ -1213,14 +1222,18 @@ async function routeChannelMessageInner(
           openAsks: { leaves: null },
         });
       } else {
+        // Nothing goes out, and the composer logged why. The answer is still claimed,
+        // so a re-driven turn does not try again and text the caregiver twice.
         await claimAnswer();
       }
+      scopedHeld = lineHeld(line);
     }
     return done(deps, job, {
       status: 'not_a_parent',
       handler: null,
       conversationId: null,
       lane: null,
+      ...(scopedHeld === undefined ? {} : { lineHeld: scopedHeld }),
     });
   }
 

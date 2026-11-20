@@ -86,6 +86,7 @@ export const FLAGS = [
   exact('browser-use-signup', 'BROWSER_USE_SIGNUP_ENABLED'),
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
+  exact('caregiver-reminder-model-copy', 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
     parser: 'trimmed-not-false',

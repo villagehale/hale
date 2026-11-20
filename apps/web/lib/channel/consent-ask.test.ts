@@ -1,6 +1,9 @@
+import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  type ConsentAsk,
   acceptConsentAsk,
+  consentAskKeywordless,
   createConsentAskWriter,
   instructsConsentKeyword,
   writeConsentAsk,
@@ -56,5 +59,83 @@ describe('writeConsentAsk', () => {
     ).resolves.toBeNull();
     expect(JSON.stringify(logged.mock.calls)).toContain('not_configured');
     logged.mockRestore();
+  });
+});
+
+describe('VIL-706 · the door asks, lit, name no opt-out keyword', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  const STRANGER: ConsentAsk[] = [
+    { kind: 'caregiver_invite', who: 'Ana', role: 'nanny' },
+    { kind: 'caregiver_nudge' },
+    { kind: 'coparent_invite', inviterName: 'Ana', language: 'fr' },
+    { kind: 'coparent_nudge', language: 'en' },
+  ];
+
+  it('is keywordless only for the four stranger kinds, and only with the door flag lit', () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+    for (const ask of STRANGER) expect(consentAskKeywordless(ask), ask.kind).toBe(false);
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    for (const ask of STRANGER) expect(consentAskKeywordless(ask), ask.kind).toBe(true);
+    expect(consentAskKeywordless({ kind: 'caregiver_scope', name: 'Ana', role: 'nanny' })).toBe(
+      false,
+    );
+    expect(consentAskKeywordless({ kind: 'founder_retry' })).toBe(false);
+  });
+
+  it('refuses a keywordless draft that names a keyword, and keeps the dark acceptance', () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const strict = { refuseOptOutKeyword: true };
+    expect(acceptConsentAsk('Ana added you. Text STOP anytime.', strict)).toBeNull();
+    expect(acceptConsentAsk('Ana vous a ajouté. Répondez ARRET en tout temps.', strict)).toBeNull();
+    const plain = "Ana added you as their nanny. If you'd rather not hear from me, just say so.";
+    expect(acceptConsentAsk(plain, strict)).toBe(plain);
+    // Dark, the carrier opt-out is still allowed on a first text, as before.
+    expect(acceptConsentAsk('Ana added you. Text STOP anytime.')).toBe(
+      'Ana added you. Text STOP anytime.',
+    );
+  });
+
+  /**
+   * A client that records the request and then fails, as a down provider would. Request
+   * mechanics only: no model output is stood in for.
+   */
+  function recordingDownClient(seen: unknown[]) {
+    return (): AgentClient =>
+      ({
+        messages: {
+          create: async (params: { system?: unknown }) => {
+            seen.push(params.system);
+            throw new Error('provider down');
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  const systemText = (system: unknown) =>
+    (system as Array<{ text: string }>).map((block) => block.text).join('');
+
+  it('lit, a stranger kind carries the no-keyword addendum after the skill', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const seen: unknown[] = [];
+    await createConsentAskWriter(recordingDownClient(seen)).write(STRANGER[0] as ConsentAsk);
+    expect(systemText(seen[0])).toContain('# How to stop, in their own words');
+  });
+
+  it('dark, and lit on any other kind, the request keeps its bytes', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const seen: unknown[] = [];
+    await createConsentAskWriter(recordingDownClient(seen)).write(STRANGER[0] as ConsentAsk);
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    await createConsentAskWriter(recordingDownClient(seen)).write({ kind: 'founder_retry' });
+    expect(seen).toHaveLength(2);
+    for (const system of seen) {
+      expect(systemText(system)).not.toContain('# How to stop, in their own words');
+    }
   });
 });

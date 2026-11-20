@@ -4,11 +4,11 @@ vi.mock('~/lib/channel/linq/family-outbound', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/family-outbound')>()),
   familySpeechLanguage: async () => 'en',
 }));
+import { OPT_OUT_LINE as NUDGE_OPT_OUT } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import type { Nudge } from './nudge-decide.js';
 import {
   MAX_NUDGE_SEGMENTS,
-  NUDGE_OPT_OUT,
   type VoicedNudge,
   composeNudgeMessage,
   nudgeFactSlots,

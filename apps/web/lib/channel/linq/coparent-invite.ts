@@ -200,7 +200,7 @@ export async function deliverCoParentNumberInvite(
 
   const parentPhone = await resolveSendablePhone(database, input.parentUserId);
   const redirect = async () =>
-    composeDoorLine(database, {
+    composeDoorLine({
       purpose: 'caregiver_co_parent_redirect',
       language,
     });

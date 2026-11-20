@@ -4217,9 +4217,10 @@ export async function handleStop(
   // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
   // path, so a STOP never does less than it did before the roster existed.
 
-  // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
+  // VIL-241 · the invite tells a stranger they can opt out, so a STOP has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation
-  // itself. Otherwise the only promise we made them would cover nothing.
+  // itself. Otherwise the only promise we made them would cover nothing. (VIL-706: lit,
+  // the invite says it in plain words and names no keyword; any wording still counts.)
   await declineOpenInviteOnStop(database, phoneE164, now);
 
   // VIL-245 · the same promise, printed on every party-guest text. A guest is not a

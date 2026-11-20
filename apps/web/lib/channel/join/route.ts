@@ -9,7 +9,6 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { joinLink } from './code';
 import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
 
@@ -35,8 +34,6 @@ export interface JoinDeps {
    * an offer the parent may ask about ("did they get it?"), and the welcome is the
    * partner's FIRST sentence from Hale, which their reply will be read against. */
   threadMessage: typeof threadProactiveMessage;
-  /** Pages #ops when the model writes nothing. Tests pass their own. */
-  doorPager?: OpsPager;
 }
 
 /**
@@ -248,16 +245,12 @@ export async function handleJoinRequest(
   });
 
   const link = joinLink(code);
-  const forward = await composeDoorLine(
-    database,
-    {
-      purpose: 'join_invite_forward',
-      language: await familySpeechLanguage(database, owner.familyId),
-      facts: { link },
-      verbatim: [link],
-    },
-    deps.doorPager,
-  );
+  const forward = await composeDoorLine({
+    purpose: 'join_invite_forward',
+    language: await familySpeechLanguage(database, owner.familyId),
+    facts: { link },
+    verbatim: [link],
+  });
   if (forward.sent) {
     await sendThreaded(database, deps, {
       to: args.phoneE164,
@@ -383,15 +376,11 @@ export async function handleJoinArrival(
     now,
   });
 
-  const welcome = await composeDoorLine(
-    database,
-    {
-      purpose: 'join_welcome',
-      language: await familySpeechLanguage(database, invite.familyId),
-      facts: { inviterName: inviter.name?.trim() ?? '' },
-    },
-    deps.doorPager,
-  );
+  const welcome = await composeDoorLine({
+    purpose: 'join_welcome',
+    language: await familySpeechLanguage(database, invite.familyId),
+    facts: { inviterName: inviter.name?.trim() ?? '' },
+  });
   if (welcome.sent) {
     await sendThreaded(database, deps, {
       to: args.phoneE164,
@@ -416,14 +405,10 @@ export async function handleJoinArrival(
     );
   }
   if (inviterPhone && inviterHeld === null) {
-    const ack = await composeDoorLine(
-      database,
-      {
-        purpose: 'join_accepted_ack',
-        language: await familySpeechLanguage(database, invite.familyId),
-      },
-      deps.doorPager,
-    );
+    const ack = await composeDoorLine({
+      purpose: 'join_accepted_ack',
+      language: await familySpeechLanguage(database, invite.familyId),
+    });
     if (ack.sent) {
       await sendThreaded(database, deps, {
         to: inviterPhone,

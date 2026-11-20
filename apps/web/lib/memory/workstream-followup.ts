@@ -12,7 +12,7 @@ import {
   deliverFamilyOutbound,
   familyOutboundTarget,
 } from '~/lib/channel/linq/family-outbound';
-import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
+import { writesOptOutLine } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
@@ -673,11 +673,7 @@ function prepareBody(
   if (lower.includes('http://') || lower.includes('https://') || lower.includes('www.')) {
     return { ok: false, reason: 'link' };
   }
-  if (
-    lower.includes(OPT_OUT_LINE.toLowerCase()) ||
-    lower.includes(OPT_OUT_SHORT.toLowerCase()) ||
-    lower.includes('reply yes')
-  ) {
+  if (writesOptOutLine(folded) || lower.includes('reply yes')) {
     return { ok: false, reason: 'keyword_ask' };
   }
   if (stockOpener(folded)) return { ok: false, reason: 'stock_opener' };

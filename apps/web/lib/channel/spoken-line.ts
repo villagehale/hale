@@ -6,6 +6,7 @@ import {
   pickLane,
 } from '@hale/agent';
 import { z } from 'zod';
+import { namesOptOutKeyword } from '~/lib/channel/opt-out';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { contactsOutside } from '~/lib/format/contact-shape';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
@@ -21,12 +22,28 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 
 const MAX_TOKENS = 400;
 
+/**
+ * VIL-706 · the skills a line may carry after spoken-line's own instructions, each
+ * loaded by name (CLAUDE.md rule 2) and only by a caller whose flag is lit: the join and
+ * caregiver door lines, and the caregiver reminder.
+ */
+export const SPOKEN_LINE_ADDENDA = ['door-line', 'caregiver-reminder'] as const;
+export type SpokenLineAddendum = (typeof SPOKEN_LINE_ADDENDA)[number];
+
 export interface SpokenLineRequest {
   purpose: string;
   language: string | null;
   facts?: Readonly<Record<string, string>>;
   /** Strings that must survive unchanged: a url, a phone line, a claim phrase. */
   verbatim?: readonly string[];
+  /**
+   * A skill appended after spoken-line for this line. It rides as a system extra after
+   * the cache breakpoint, and it is not part of the user message, so a line without one
+   * sends exactly the bytes it sent before (its prompt cache and every recorded eval key
+   * over it stand). A line with one is also refused when it names an opt-out keyword
+   * ({@link acceptSpokenLine}).
+   */
+  addendum?: SpokenLineAddendum;
 }
 
 export interface SpokenLineWriter {
@@ -46,15 +63,22 @@ const outputJsonSchema = {
  * link, phone number or email address beyond the ones those pieces carry (VIL-633). The
  * facts can be a third party's words (a calendar title), so a contact in a fact is not
  * grounds to say it: a caller that needs one said hands it as verbatim.
+ *
+ * `refuseOptOutKeyword` (VIL-706) is set for a line that carries an addendum. Such a line
+ * is also refused when it names STOP, HELP, ARRET or AIDE as a keyword, or writes an
+ * opt-out line ({@link namesOptOutKeyword}). Lines without an addendum keep the
+ * acceptance they had.
  */
 export function acceptSpokenLine(
   text: string,
   verbatim: readonly string[] | undefined,
+  options: { refuseOptOutKeyword?: boolean } = {},
 ): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
   if (verbatim?.some((piece) => piece.length > 0 && !body.includes(piece))) return null;
   if (contactsOutside(body, verbatim ?? []).length > 0) return null;
+  if (options.refuseOptOutKeyword && namesOptOutKeyword(body) !== null) return null;
   return body;
 }
 
@@ -74,8 +98,10 @@ export function createSpokenLineWriter(
   return {
     async write(request) {
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let extras: string[];
       try {
         skill = await loadCronSkill('spoken-line');
+        extras = request.addendum ? [(await loadCronSkill(request.addendum)).instructions] : [];
       } catch (err) {
         console.error(
           { purpose: request.purpose, err: err instanceof Error ? err.name : 'unknown' },
@@ -95,6 +121,7 @@ export function createSpokenLineWriter(
             client: client(),
             lane: lanes[attempt] ?? first,
             system: skill.instructions,
+            ...(extras.length > 0 ? { systemExtras: extras } : {}),
             cacheTtl: SPARSE_CACHE_TTL,
             userMessage: JSON.stringify({
               purpose: request.purpose,
@@ -108,7 +135,9 @@ export function createSpokenLineWriter(
             schema: outputSchema,
             maxTokens: MAX_TOKENS,
           });
-          const accepted = acceptSpokenLine(value.text, request.verbatim);
+          const accepted = acceptSpokenLine(value.text, request.verbatim, {
+            refuseOptOutKeyword: request.addendum !== undefined,
+          });
           if (accepted) return accepted;
         } catch (err) {
           console.error(

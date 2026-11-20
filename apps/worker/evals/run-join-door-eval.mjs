@@ -1,64 +1,73 @@
-// VIL-706 join and caregiver door lines.
+// VIL-706 · the join and caregiver doors, the caregiver reminder, and the door's consent
+// asks with JOIN_DOOR_MODEL_COPY_ENABLED lit.
 //
-// SUBJECT: packages/agent/skills/spoken-line.md, called with the same tool,
-// schema, token ceiling and request shape apps/web/lib/channel/spoken-line.ts
-// (and door-line.ts) use. The model writes the whole parent-visible line. A
-// line that names STOP, HELP, ARRET or AIDE, or that drops a verbatim link,
-// is a miss. JOIN_DOOR_MODEL_COPY_ENABLED is pinned on: dark, production
-// sends nothing, so these fixtures only mean something while the flag is lit.
+// SUBJECTS, called the way production calls them, through the real skill loader:
+//   door lines         packages/agent/skills/spoken-line.md + door-line.md (system extra)
+//                      apps/web/lib/channel/door-line.ts -> spoken-line.ts
+//   caregiver reminder packages/agent/skills/spoken-line.md + caregiver-reminder.md
+//                      apps/web/lib/loop/templates/caregiver/compose.ts -> spoken-line.ts
+//   consent asks       packages/agent/skills/consent-ask.md + consent-ask-no-keyword.md
+//                      apps/web/lib/channel/consent-ask.ts (the four stranger kinds, lit)
+//
+// The model writes the whole text. A text is a miss when production would refuse it
+// (empty, a missing verbatim piece, a stray link or number, an opt-out keyword) or when
+// the friend-voice judge's compliance check refuses it. Nothing here reads a flag: each
+// request is built as the lit path builds it.
+//
+// RECORDING PENDING. The addenda moved these requests' bytes (VIL-706 moved the door
+// guidance out of spoken-line.md so the calendar-kid-notice and common-time recordings
+// keep their keys), so nothing here is recorded yet. While RECORDING_PENDING is true,
+// --cached-only runs the --dry projection: it scores every case that IS recorded, lists
+// the ones that are not, and exits 0 unless a recorded case fails (the convention of
+// run-team-schedule-eval.mjs). After the one paid record run, set it to false and commit
+// the cache: --cached-only then replays, and a miss fails the sweep.
 //
 //   node evals/run-join-door-eval.mjs --dry
 //   HALE_SPEND_LEDGER=... node evals/run-join-door-eval.mjs --live --max-usd 1
 //   node evals/run-join-door-eval.mjs --cached-only
 
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { JOIN_DOOR_FIXTURES } from './join-door-fixtures.mjs';
 import {
-  PRICE,
+  CAREGIVER_REMINDER_FIXTURES,
+  CONSENT_KEYWORDLESS_FIXTURES,
+  JOIN_DOOR_FIXTURES,
+} from './join-door-fixtures.mjs';
+import {
   REPO_ROOT,
   assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
   lazyAnthropic,
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
 
-const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'spoken-line.md');
+const RECORDING_PENDING = true;
+
+const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
-const SPOKEN_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spoken-line.ts');
-const MAX_TOKENS = 400;
-const TOOL_SCHEMA = {
-  type: 'object',
-  properties: { text: { type: 'string' } },
-  required: ['text'],
+const WEB = join(REPO_ROOT, 'apps', 'web', 'lib');
+const SPOKEN_SRC = join(WEB, 'channel', 'spoken-line.ts');
+const CONSENT_SRC = join(WEB, 'channel', 'consent-ask.ts');
+const CAREGIVER_SRC = join(WEB, 'loop', 'templates', 'caregiver', 'compose.ts');
+const VOICE_SRC = join(WEB, 'channel', 'intake', 'friend-voice.ts');
+
+/** The spoken-line writer's tool, ceiling and description (spoken-line.ts). */
+const SPOKEN = {
+  toolName: 'spoken_line',
+  toolDescription: 'Write the one text Hale will send.',
+  toolSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+  maxTokens: 400,
 };
-const FORBIDDEN = /\b(STOP|HELP|ARRET|ARRÊT|AIDE)\b/i;
 
 register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-function estimateTokens(value) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  let latin = 0;
-  let other = 0;
-  for (const ch of text) {
-    if (ch.charCodeAt(0) < 0x80) latin += 1;
-    else other += 1;
-  }
-  return Math.ceil(latin / 4) + other;
-}
-
-function priced(model, input, output) {
-  const rate = PRICE[model];
-  if (!rate) throw new Error(`join-door --dry: no price for ${model}`);
-  return (input * rate.input + output * rate.output) / 1_000_000;
-}
-
-function userMessage(request) {
+/** The user turn spoken-line.ts sends. The addendum is a system extra, never in here. */
+function spokenUserMessage(request) {
   return JSON.stringify({
     purpose: request.purpose,
     language: request.language,
@@ -67,115 +76,167 @@ function userMessage(request) {
   });
 }
 
-async function dryRun() {
+async function loadSubjects() {
   const agent = await importTs(AGENT_SRC);
-  const raw = await readFile(SKILL, 'utf8');
-  const skill = await agent.loadSkill(SKILL);
-  const lane = agent.pickLane(skill.meta.task);
-  const smaller =
-    lane.model === agent.HAIKU_MODEL
-      ? lane
-      : { model: agent.HAIKU_MODEL, thinking: 'adaptive', effort: 'medium' };
-  const tool = {
-    name: 'spoken_line',
-    description: 'Write the one text Hale will send.',
-    input_schema: TOOL_SCHEMA,
+  const [spoken, consent, caregiver, voice] = await Promise.all([
+    importTs(SPOKEN_SRC),
+    importTs(CONSENT_SRC),
+    importTs(CAREGIVER_SRC),
+    importTs(VOICE_SRC),
+  ]);
+  const skill = (name) => agent.loadSkill(join(SKILLS, `${name}.md`));
+  const [spokenLine, doorLine, caregiverReminder, consentAsk, noKeyword] = await Promise.all([
+    skill('spoken-line'),
+    skill('door-line'),
+    skill('caregiver-reminder'),
+    skill('consent-ask'),
+    skill('consent-ask-no-keyword'),
+  ]);
+  const spokenLane = agent.pickLane(spokenLine.meta.task);
+  return {
+    agent,
+    spoken,
+    consent,
+    caregiver,
+    voice,
+    skills: { spokenLine, doorLine, caregiverReminder, consentAsk, noKeyword },
+    lanes: {
+      spoken: spokenLane,
+      spokenRetry: spoken.smallerLane(spokenLane),
+      consent: agent.pickLane(consentAsk.meta.task),
+    },
   };
-  let usd = 0;
-  const lines = [];
-  for (const fixture of JOIN_DOOR_FIXTURES) {
-    const user = userMessage(fixture.request);
-    const input = estimateTokens(skill.instructions) + estimateTokens(user) + estimateTokens(tool);
-    const first = priced(lane.model, input, MAX_TOKENS);
-    const second = priced(smaller.model, input, MAX_TOKENS);
-    const row = first + second;
-    usd += row;
-    lines.push(`  ${fixture.id.padEnd(28)} $${row.toFixed(4)}`);
-  }
-  return [
-    `join-door | --dry | compose + one retry, output at max_tokens | fixtures=${JOIN_DOOR_FIXTURES.length}`,
-    `compose=${lane.model} retry=${smaller.model}`,
-    ...lines,
-    `live API calls: 0 | worst-case cost of a full live run: $${usd.toFixed(4)} USD`,
-    `skill bytes: ${raw.length}`,
-  ].join('\n');
 }
 
-async function liveOrCached(cachedOnly) {
-  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
-  if (!cachedOnly) installEvalSpendCap();
+/** Every case as one draw plan: how to call it, and how production accepts the answer. */
+function cases(s) {
+  const spokenCase = (id, request, addendum, watchFor) => ({
+    id,
+    watchFor,
+    attempts: [
+      { lane: s.lanes.spoken, tag: `join-door:${id}` },
+      { lane: s.lanes.spokenRetry, tag: `join-door:${id}:retry` },
+    ],
+    call: {
+      system: s.skills.spokenLine.instructions,
+      systemExtras: [addendum.instructions],
+      cacheTtl: s.agent.SPARSE_CACHE_TTL,
+      userMessage: spokenUserMessage(request),
+      ...SPOKEN,
+    },
+    accept: (value) =>
+      s.spoken.acceptSpokenLine(String(value?.text ?? ''), request.verbatim, {
+        refuseOptOutKeyword: true,
+      }),
+  });
+  return [
+    ...JOIN_DOOR_FIXTURES.map((f) => spokenCase(f.id, f.request, s.skills.doorLine, f.watchFor)),
+    ...CAREGIVER_REMINDER_FIXTURES.map((f) =>
+      spokenCase(
+        f.id,
+        s.caregiver.caregiverReminderRequest({
+          ...f.input,
+          now: new Date(f.input.now),
+          events: f.input.events.map((e) => ({
+            ...e,
+            startsAt: new Date(e.startsAt),
+            endsAt: e.endsAt ? new Date(e.endsAt) : null,
+          })),
+        }),
+        s.skills.caregiverReminder,
+        f.watchFor,
+      ),
+    ),
+    ...CONSENT_KEYWORDLESS_FIXTURES.map((f) => ({
+      id: f.id,
+      watchFor: f.watchFor,
+      // consent-ask.ts makes one attempt; a refused draft is unwritten.
+      attempts: [{ lane: s.lanes.consent, tag: `join-door:${f.id}` }],
+      call: {
+        system: s.skills.consentAsk.instructions,
+        systemExtras: [s.skills.noKeyword.instructions],
+        userMessage: s.consent.consentAskUserMessage(f.ask),
+        toolName: s.consent.CONSENT_ASK_TOOL,
+        toolDescription: 'Write the one text this person will see.',
+        toolSchema: s.consent.CONSENT_ASK_TOOL_SCHEMA,
+        maxTokens: s.consent.CONSENT_ASK_MAX_TOKENS,
+      },
+      accept: (value) => {
+        const text = s.consent.toConsentAskText(value ?? {});
+        return text ? s.consent.acceptConsentAsk(text, { refuseOptOutKeyword: true }) : null;
+      },
+    })),
+  ];
+}
+
+async function run(mode) {
+  const live = mode === 'live';
+  if (live) installEvalSpendCap();
+  // Pending recordings: --cached-only is the --dry projection (see the header).
+  if (mode === 'dry') process.env.HALE_EVAL_DRY = '1';
   const getClient = lazyAnthropic('join-door');
   const cost = makeCost();
-  const agent = await importTs(AGENT_SRC);
-  const spoken = await importTs(SPOKEN_SRC);
-  const skill = await agent.loadSkill(SKILL);
-  const firstLane = agent.pickLane(skill.meta.task);
-  const retryLane = spoken.smallerLane(firstLane);
-
+  const s = await loadSubjects();
+  const all = cases(s);
   console.info(
-    `join-door | ${cachedOnly ? 'cached-only' : 'live'} | flag on | compose=${firstLane.model} retry=${retryLane.model} | fixtures=${JOIN_DOOR_FIXTURES.length}`,
+    `join-door | ${mode}${RECORDING_PENDING ? ' | recording pending' : ''} | spoken=${s.lanes.spoken.model} retry=${s.lanes.spokenRetry.model} consent=${s.lanes.consent.model} | cases=${all.length}`,
   );
 
   const results = [];
-  for (const fixture of JOIN_DOOR_FIXTURES) {
-    const message = userMessage(fixture.request);
-    const draw = (lane, tag) =>
-      cachedToolCall({
-        tag,
-        lane,
-        system: skill.instructions,
-        userMessage: message,
-        toolName: 'spoken_line',
-        toolDescription: 'Write the one text Hale will send.',
-        toolSchema: TOOL_SCHEMA,
-        maxTokens: MAX_TOKENS,
-        cachedOnly,
+  for (const c of all) {
+    let body = null;
+    let unrecorded = false;
+    let retried = false;
+    for (const [i, attempt] of c.attempts.entries()) {
+      const answer = await cachedToolCall({
+        ...c.call,
+        tag: attempt.tag,
+        lane: attempt.lane,
+        cachedOnly: mode === 'cached-only',
         getClient,
         cost,
       });
-    const firstText = (await draw(firstLane, `join-door:${fixture.id}`)).value?.text ?? '';
-    let body = spoken.acceptSpokenLine(firstText, fixture.request.verbatim);
-    let retried = false;
-    if (!body) {
-      retried = true;
-      const retryText = (await draw(retryLane, `join-door:${fixture.id}:retry`)).value?.text ?? '';
-      body = spoken.acceptSpokenLine(retryText, fixture.request.verbatim);
+      if (answer.dry) {
+        unrecorded = true;
+        break;
+      }
+      retried = i > 0;
+      body = c.accept(answer.value);
+      if (body) break;
     }
     const failures = [];
-    if (!body) failures.push('unwritten');
-    else {
-      if (FORBIDDEN.test(body)) failures.push(`teaches_opt_out:${body.match(FORBIDDEN)?.[0]}`);
-      for (const piece of fixture.request.verbatim ?? []) {
-        if (piece && !body.includes(piece)) failures.push('missing_verbatim');
-      }
+    if (!unrecorded) {
+      if (!body) failures.push('unwritten');
+      else if (s.voice.friendVoiceTeachesOptOut(body)) failures.push('friend_voice:compliance');
     }
-    results.push({ fixture, body: body ?? '', retried, failures });
+    results.push({ c, body, unrecorded, retried, failures });
   }
 
   for (const r of results) {
-    const preview = r.body ? `"${r.body.slice(0, 140)}"` : '(unwritten)';
-    console.info(
-      `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(28)} ${r.retried ? 'retry ' : ''}${preview}`,
-    );
-    for (const f of r.failures) console.info(`      · ${f}`);
+    const state = r.unrecorded ? 'UNRECORDED' : r.failures.length === 0 ? 'PASS' : 'FAIL';
+    const preview = r.unrecorded ? '' : r.body ? `"${r.body.slice(0, 160)}"` : '(unwritten)';
+    console.info(`${state.padEnd(10)} ${r.c.id.padEnd(44)} ${r.retried ? 'retry ' : ''}${preview}`);
+    for (const f of r.failures) console.info(`           · ${f}`);
   }
+  const unrecorded = results.filter((r) => r.unrecorded).length;
+  const failed = results.filter((r) => r.failures.length > 0).length;
+  if (mode === 'dry') console.info(dryReportLine('join-door'));
   console.info(
-    `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
+    `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD | unrecorded ${unrecorded} | failed ${failed}`,
   );
-  const allPass = results.every((r) => r.failures.length === 0);
-  console.info(`overall: ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
-  process.exit(allPass ? 0 : 1);
+  const ok = failed === 0 && (live || mode === 'dry' || unrecorded === 0);
+  console.info(`overall: ${ok ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
+  process.exit(ok ? 0 : 1);
 }
 
 async function main() {
   const raw = process.argv.slice(2);
-  if (raw.includes('--dry')) {
-    console.info(await dryRun());
-    return;
-  }
   assertRunFlags(['--max-usd'], raw);
-  const cachedOnly = raw.includes('--cached-only');
-  await liveOrCached(cachedOnly);
+  if (raw.includes('--live')) return run('live');
+  if (raw.includes('--dry') || (raw.includes('--cached-only') && RECORDING_PENDING)) {
+    return run('dry');
+  }
+  return run('cached-only');
 }
 
 main().catch((err) => {

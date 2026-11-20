@@ -1,3 +1,5 @@
+import { smsSegments } from '~/lib/channel/sms-segments';
+
 /**
  * Outbound texts do not end with an opt-out line.
  *
@@ -9,9 +11,10 @@
  * reminders.
  *
  * A parent who asks to stop, in any wording, is opted out by the opt-out
- * reader (#868) in the intake machine, above the router. The
- * two strings stay exported because composers still refuse a message that writes
- * one, and several segment budgets were sized against the longer line.
+ * reader (#868) in the intake machine, above the router. The two strings stay in
+ * this module: composers refuse a message that writes one through
+ * {@link writesOptOutLine}, and the segment budgets sized against the longer line read
+ * {@link OPT_OUT_LINE_CHARS}.
  *
  * {@link withOptOut} remains the single function a send uses to finish a body. It
  * returns that body unchanged. The outbound gate still names a form (`full` |
@@ -26,6 +29,48 @@ export const OPT_OUT_LINE = 'Reply STOP to opt out.';
 
 /** Compact form. Same rule as {@link OPT_OUT_LINE}: ban-list only, never appended. */
 export const OPT_OUT_SHORT = 'STOP to opt out.';
+
+/**
+ * The longer line's length. Several segment budgets were sized against it, and they read
+ * this number rather than the line: no module outside this one imports a string that holds
+ * STOP (VIL-706, `stop-help-imports.guard.test.ts`).
+ */
+export const OPT_OUT_LINE_CHARS = OPT_OUT_LINE.length;
+
+/**
+ * How many SMS segments `body` takes with the longer opt-out line reserved after it. The
+ * nudge budget was sized against a body that carried the line; it reads this count, and
+ * the line itself is never appended.
+ */
+export function segmentsWithOptOutReserved(body: string): number {
+  return smsSegments(`${body}\n\n${OPT_OUT_LINE}`);
+}
+
+/** Whether a draft writes either opt-out line, in any case. Composers refuse one that does. */
+export function writesOptOutLine(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes(OPT_OUT_LINE.toLowerCase()) || lower.includes(OPT_OUT_SHORT.toLowerCase());
+}
+
+/**
+ * The carrier keywords as Hale must never write them, in English and French. This reads
+ * Hale's OWN outgoing text only. What a person writes is read for meaning by the opt-out
+ * reader (#868), never matched against words (REVIEW.md).
+ */
+const OPT_OUT_KEYWORDS: ReadonlySet<string> = new Set(['STOP', 'HELP', 'ARRET', 'ARRÊT', 'AIDE']);
+
+/**
+ * VIL-706 · the keyword a draft would teach, or null. A keyword counts when it is written
+ * as one: a whole uppercase word, or either opt-out line. "Tell me to stop" in a sentence
+ * is a word, not a keyword. A line that names one is refused before it is sent, the way a
+ * stray link is.
+ */
+export function namesOptOutKeyword(text: string): string | null {
+  for (const word of text.split(/[^\p{L}\p{N}]+/u)) {
+    if (OPT_OUT_KEYWORDS.has(word)) return word;
+  }
+  return writesOptOutLine(text) ? 'opt_out_line' : null;
+}
 
 /** Which form the gate would have chosen. Neither is written onto the text. */
 export type OptOutForm = 'full' | 'short';

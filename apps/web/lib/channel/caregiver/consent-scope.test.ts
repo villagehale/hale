@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { looksLikeJoinRequest } from '~/lib/channel/join/parse';
 import { CONTENT_CLASSES, type ContentClass, roleAllows } from '~/lib/channel/role-scope';
-import { speak } from '~/lib/channel/spoken-line';
 
 /**
  * The scope a caregiver agrees to lives in the consent-ask skill, which is what
@@ -11,10 +10,10 @@ import { speak } from '~/lib/channel/spoken-line';
  * fails here.
  */
 
-const SKILL = readFileSync(
-  join(process.cwd(), '../../packages/agent/skills/consent-ask.md'),
-  'utf8',
-);
+const skill = (name: string) =>
+  readFileSync(join(process.cwd(), `../../packages/agent/skills/${name}.md`), 'utf8');
+
+const SKILL = skill('consent-ask');
 
 const NAMED: Partial<Record<ContentClass, string>> = {
   schedule: "the week's schedule",
@@ -45,17 +44,32 @@ describe('caregiver scope · the skill matches the matrix', () => {
     }
   });
 
-  it('tells the model to name STOP on a first text, and never a consent token', () => {
-    expect(SKILL).toContain('STOP');
-    expect(SKILL).toContain('ARRET');
+  it('never tells the model to ask for a consent token', () => {
     expect(SKILL).toMatch(/Do not tell them to reply YES/i);
   });
 
-  it('points the refused co-parent add at the command that does work', async () => {
-    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
-    const line = await speak({ purpose: 'caregiver_co_parent_redirect', language: 'en' });
+  /**
+   * VIL-706. Dark, the skill keeps its bytes, and with them its STOP line on a first text
+   * to a stranger. Lit, the `consent-ask-no-keyword` addendum rides on exactly those
+   * kinds and withdraws it (consent-ask.ts `consentAskKeywordless`).
+   */
+  it('dark keeps the STOP line; the lit addendum withdraws it and names no keyword to type', () => {
+    expect(SKILL).toContain('STOP');
+    const addendum = skill('consent-ask-no-keyword');
+    expect(addendum).toContain('This replaces every line above that lets you name STOP or ARRET');
+    expect(addendum).toContain(
+      'never name STOP, ARRET, HELP, AIDE, or any other word to reply with',
+    );
+    expect(addendum).toContain('in their own words');
+  });
+
+  it('points the refused co-parent add at a command the join door actually reads', () => {
+    // The door-line skill tells the model to point at "add my partner". That only helps
+    // if the parser takes those exact words as a join request.
+    const doors = skill('door-line');
+    const redirect = doors.slice(doors.indexOf('`caregiver_co_parent_redirect`'));
+    expect(redirect).toContain('"add my partner"');
     expect(looksLikeJoinRequest('add my partner')).toBe(true);
-    expect(line).toContain('add my partner');
-    expect(line).not.toMatch(/sign in|the app|https?:/i);
+    expect(redirect.split('\n')[0]).not.toMatch(/sign in|the app|https?:/i);
   });
 });

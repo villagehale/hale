@@ -1,10 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { DOOR_LINE_PURPOSES, joinDoorModelCopyEnabled } from './door-line';
-import { speak } from './spoken-line';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
+import { DOOR_LINE_PURPOSES, composeDoorLine, joinDoorModelCopyEnabled } from './door-line';
+import { type SpokenLineRequest, setSharedSpokenLineWriter } from './spoken-line';
+
+const SKILL = readFileSync(join(process.cwd(), '../../packages/agent/skills/door-line.md'), 'utf8');
 
 afterEach(() => {
-  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
-  process.env.POSTHOG_FLAGS_ENABLED = '';
+  setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('joinDoorModelCopyEnabled', () => {
@@ -17,27 +23,75 @@ describe('joinDoorModelCopyEnabled', () => {
   });
 });
 
-describe('door line fixtures', () => {
-  it('writes every door purpose without teaching STOP or HELP', async () => {
-    const samples: Record<string, Record<string, string>> = {
-      join_invite_forward: { link: 'https://www.villagehale.com/text?s=join-abc' },
-      join_welcome: { inviterName: 'Ana' },
-      caregiver_welcome: { role: 'grandparent' },
-      caregiver_invite_sent: { name: 'grandma' },
-      caregiver_invite_dropped: { name: 'grandma' },
-      caregiver_scoped_reply: { parentName: 'Sam' },
-    };
-    for (const purpose of DOOR_LINE_PURPOSES) {
-      const verbatim =
-        purpose === 'join_invite_forward' ? [samples[purpose]?.link ?? ''] : undefined;
-      const line = await speak({
-        purpose,
+describe('composeDoorLine', () => {
+  function recording(answer: string | null) {
+    const calls: SpokenLineRequest[] = [];
+    setSharedSpokenLineWriter({
+      async write(request) {
+        calls.push(request);
+        return answer;
+      },
+    });
+    return calls;
+  }
+
+  it('lit: asks the writer with the door-line addendum and returns its line', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    const calls = recording('Ana added you.');
+    const line = await composeDoorLine({
+      purpose: 'join_welcome',
+      language: 'en',
+      facts: { inviterName: 'Ana' },
+    });
+    expect(line).toEqual({ sent: true, body: 'Ana added you.' });
+    expect(calls).toEqual([
+      {
+        purpose: 'join_welcome',
         language: 'en',
-        facts: samples[purpose],
-        verbatim,
-      });
-      expect(line, purpose).toEqual(expect.any(String));
-      expect(line, purpose).not.toMatch(/\b(STOP|HELP|ARRET|AIDE)\b/);
-    }
+        facts: { inviterName: 'Ana' },
+        addendum: 'door-line',
+      },
+    ]);
+  });
+
+  it('lit: a writer that wrote nothing is a held line, named unwritten', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    recording(null);
+    expect(await composeDoorLine({ purpose: 'caregiver_welcome', language: 'en' })).toEqual({
+      sent: false,
+      held: 'unwritten',
+    });
+  });
+
+  it('dark: never asks the writer, and names the hold flag_off', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const calls = recording('should not send');
+    expect(await composeDoorLine({ purpose: 'join_accepted_ack', language: 'en' })).toEqual({
+      sent: false,
+      held: 'flag_off',
+    });
+    expect(calls).toEqual([]);
+  });
+});
+
+describe('every door purpose', () => {
+  it.each(DOOR_LINE_PURPOSES)('%s is said in the door-line skill', (purpose) => {
+    expect(SKILL).toContain(`\`${purpose}\``);
+  });
+
+  it('each has an eval fixture in the join-door suite', async () => {
+    // The eval cannot reach `~/`, so it keeps its own fixtures; this keeps them complete.
+    const path = '../../../worker/evals/join-door-fixtures.mjs';
+    const { JOIN_DOOR_FIXTURES } = (await import(/* @vite-ignore */ path)) as {
+      JOIN_DOOR_FIXTURES: Array<{ request: { purpose: string } }>;
+    };
+    const covered = new Set(JOIN_DOOR_FIXTURES.map((f) => f.request.purpose));
+    expect(DOOR_LINE_PURPOSES.filter((p) => !covered.has(p))).toEqual([]);
+  });
+
+  it('the skill tells the model never to name an opt-out keyword', () => {
+    expect(SKILL).toContain('Never name STOP, HELP, ARRET, AIDE, or any other word to reply with');
   });
 });

@@ -7,13 +7,13 @@ import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-name';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { OPT_OUT_LINE as NUDGE_OPT_OUT } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
-import { NUDGE_OPT_OUT } from './nudge-voice.js';
 import {
   type NudgeChildRow,
   type NudgeFamily,

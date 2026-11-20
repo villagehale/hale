@@ -18,6 +18,7 @@ import {
 import {
   type ComposedDoorLine,
   type DoorLineHold,
+  type DoorLinePurpose,
   composeDoorLine,
   lineHeld,
 } from '~/lib/channel/door-line';
@@ -35,7 +36,6 @@ import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-quest
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import type { OpsPager } from '~/lib/monitoring/failure-page';
 import {
   type CaregiverInvite,
   type CaregiverLaneInvite,
@@ -100,8 +100,6 @@ export interface CaregiverDeps {
   consent?: ConsentReader;
   /** Writes the ask. Absence is named and sends no keyword sentence. */
   ask?: ConsentAskWriter;
-  /** Pages #ops when the model writes nothing. Tests pass their own. */
-  doorPager?: OpsPager;
 }
 
 /**
@@ -250,7 +248,7 @@ async function record(
       providerMessageId: input.providerId,
       status: input.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
       // Verbatim for INBOUND only — the same rule the loop ledger keeps: an outbound
-      // is reconstructable from copy.ts, and storing rendered household detail is a
+      // is model-written and not stored, and storing rendered household detail is a
       // liability (rule #1).
       body: input.direction === 'in' ? input.body : null,
       sentAt: input.now,
@@ -292,9 +290,11 @@ async function reply(
   },
 ): Promise<void> {
   if (!input.body) {
+    // The composer already logged why (a dark flag, or a model that wrote nothing and
+    // paged #ops), and the caller names the hold on its outcome. Nothing goes out.
     console.info(
-      { familyId: input.familyId, lane: input.lane, reason: 'model_unreachable' },
-      'caregiver reply: spoken line unreachable',
+      { familyId: input.familyId, lane: input.lane, reason: 'no_line' },
+      'caregiver reply: no line to send - nothing sent',
     );
     return;
   }
@@ -409,25 +409,24 @@ async function inviterContact(database: Database, userId: string): Promise<Invit
   };
 }
 
-/** Why the inviter's confirmation is being withheld, or null when it may go. */
+/**
+ * One door line for this family, in the family's language (VIL-706). Held lines come back
+ * named, and every caller carries the hold onto its outcome instead of reporting a send.
+ */
 async function doorLine(
   database: Database,
-  deps: CaregiverDeps,
   familyId: string,
-  purpose: string,
+  purpose: DoorLinePurpose,
   facts?: Record<string, string>,
 ): Promise<ComposedDoorLine> {
-  return composeDoorLine(
-    database,
-    {
-      purpose,
-      language: await familySpeechLanguage(database, familyId),
-      facts,
-    },
-    deps.doorPager,
-  );
+  return composeDoorLine({
+    purpose,
+    language: await familySpeechLanguage(database, familyId),
+    facts,
+  });
 }
 
+/** Why the inviter's confirmation is being withheld, or null when it may go. */
 function heldReason(inviter: InviterContact, now: Date): 'no_channel' | 'quiet_hours' | null {
   if (inviter.phoneE164 === null) return 'no_channel';
   return inProactiveQuietHours(now, inviter.timeZone) ? 'quiet_hours' : null;
@@ -527,7 +526,7 @@ async function handleCaregiverInviteReply(
       verbatimReply: inbound.body,
       now,
     });
-    const welcome = await doorLine(database, deps, invite.familyId, 'caregiver_welcome', {
+    const welcome = await doorLine(database, invite.familyId, 'caregiver_welcome', {
       role: invite.role,
     });
     await reply(database, deps, {
@@ -543,7 +542,7 @@ async function handleCaregiverInviteReply(
 
   if (answer === 'no') {
     await declineInvite(database, { invite, by: 'caregiver', now });
-    const decline = await doorLine(database, deps, invite.familyId, 'caregiver_decline_ack');
+    const decline = await doorLine(database, invite.familyId, 'caregiver_decline_ack');
     await reply(database, deps, {
       to: args.phoneE164,
       body: decline.sent ? decline.body : null,
@@ -657,7 +656,7 @@ async function handleCoParentInviteReply(
       );
     }
     if (inviter.phoneE164 !== null && inviterHeld === null) {
-      const ack = await doorLine(database, deps, invite.familyId, 'join_accepted_ack');
+      const ack = await doorLine(database, invite.familyId, 'join_accepted_ack');
       if (ack.sent) {
         await replyToParent(database, deps, {
           to: inviter.phoneE164,
@@ -745,7 +744,7 @@ export async function handleKnownNumberInbound(
       body: inbound.body,
       now,
     });
-    const scoped = await doorLine(database, deps, owner.familyId, 'caregiver_scoped_reply', {
+    const scoped = await doorLine(database, owner.familyId, 'caregiver_scoped_reply', {
       parentName: (await primaryParentName(database, owner.familyId)) ?? '',
     });
     await reply(database, deps, {
@@ -855,7 +854,7 @@ async function sendCoParentInvite(
   // texted them, and refusing to read their yes or their STOP would punish them for a
   // switch somebody else threw.
   if (!f14EnabledFor(owner.familyId)) {
-    const redirect = await doorLine(database, deps, owner.familyId, 'caregiver_co_parent_redirect');
+    const redirect = await doorLine(database, owner.familyId, 'caregiver_co_parent_redirect');
     return refuseAfterAssent(
       database,
       {
@@ -1054,7 +1053,7 @@ async function sendInvite(
     lane: 'caregiver',
     now,
   });
-  const ack = await doorLine(database, deps, owner.familyId, 'caregiver_invite_sent', {
+  const ack = await doorLine(database, owner.familyId, 'caregiver_invite_sent', {
     name: pending.displayName,
   });
   await replyToParent(database, deps, {
@@ -1090,7 +1089,7 @@ async function dropInvite(
     now,
   });
   await declineInvite(database, { invite: pending, by: 'parent', now });
-  const dropped = await doorLine(database, deps, owner.familyId, 'caregiver_invite_dropped', {
+  const dropped = await doorLine(database, owner.familyId, 'caregiver_invite_dropped', {
     name: pending.displayName,
   });
   await replyToParent(database, deps, {
@@ -1151,10 +1150,10 @@ async function startFromCommand(
   };
 
   const explain = async (
-    purpose: string,
+    purpose: DoorLinePurpose,
     outcome: { status: 'caregiver_add_refused'; reason: CaregiverAddRefusal },
   ) => {
-    const line = await doorLine(database, deps, owner.familyId, purpose);
+    const line = await doorLine(database, owner.familyId, purpose);
     return answer(line.sent ? line.body : null, { ...outcome, lineHeld: lineHeld(line) });
   };
 
@@ -1175,12 +1174,7 @@ async function startFromCommand(
     // refused here rather than read as a caregiver role. The words are model-written
     // when the door-copy flag is on.
     if (!f14EnabledFor(owner.familyId)) {
-      const redirect = await doorLine(
-        database,
-        deps,
-        owner.familyId,
-        'caregiver_co_parent_redirect',
-      );
+      const redirect = await doorLine(database, owner.familyId, 'caregiver_co_parent_redirect');
       return answer(redirect.sent ? redirect.body : null, {
         status: 'co_parent_add_refused',
         reason: 'dark',

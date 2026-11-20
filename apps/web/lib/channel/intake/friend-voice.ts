@@ -791,6 +791,11 @@ const BANNED_PHRASE =
 const COMPLIANCE =
   /unsubscribe|d[ée]sabonner|reply stop|r[ée]pondez arret|r[ée]pondez stop|\bSTOP\b/;
 
+/** The judge's `compliance` check on its own. VIL-706's door and caregiver evals score with it. */
+export function friendVoiceTeachesOptOut(text: string): boolean {
+  return COMPLIANCE.test(text);
+}
+
 /** Adding to the calendar is a reminder. These words claim a registration Hale did not make. */
 const REGISTRATION_CLAIM =
   /\b(booked|enrolled|signed[- ]up|signed (?:you|them|her|him|\w+) up|registered|registration (?:is )?done|inscrit[es]?\b|réservé)\b/i;

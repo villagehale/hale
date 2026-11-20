@@ -7,13 +7,12 @@
  * dependent. They are the shell, not the voice — so they live outside both.
  */
 
-/**
- * The opt-out sentence. Not the model's to write, and no longer appended to any nudge
- * (founder decision, 2026-10-01; lib/channel/opt-out.ts). Re-exported here under its
- * old name because composers reject a message that writes it, and the segment budget
- * below was sized against a body that included it.
+/*
+ * The opt-out sentence is no longer appended to any nudge (founder decision, 2026-10-01).
+ * It stays inside lib/channel/opt-out.ts: composers refuse a message that writes it
+ * through `writesOptOutLine`, and the segment budget below, sized against a body that
+ * included it, reads `segmentsWithOptOutReserved` (VIL-706: no send path imports it).
  */
-export { OPT_OUT_LINE as NUDGE_OPT_OUT } from '../opt-out';
 
 /** A composed nudge must fit two SMS segments. Every renderer holds itself to this
  * before its words reach a transport. The budget still reserves the old opt-out line,

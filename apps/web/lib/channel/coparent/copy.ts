@@ -73,8 +73,9 @@ export function inviterNameIsAffordable(inviterName: string | null): inviterName
  */
 /**
  * The first text a co-parent receives is written per send (consent-ask, kind
- * coparent_invite). It names who asked, what agreeing gets them, and the carrier
- * opt-out (STOP, or ARRET in French). There is no fixed sentence.
+ * coparent_invite). It names who asked, what agreeing gets them, and how to opt out:
+ * dark, the carrier keyword (STOP, or ARRET in French); with JOIN_DOOR_MODEL_COPY_ENABLED
+ * lit, in plain words with no keyword (VIL-706). There is no fixed sentence.
  */
 
 /** Said to the parent once the invite is on its way. */

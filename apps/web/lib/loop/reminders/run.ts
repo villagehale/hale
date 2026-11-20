@@ -23,6 +23,7 @@ import {
   isParentRole,
   roleAllows,
 } from '~/lib/channel/role-scope';
+import { type SpokenLineRequest, speak } from '~/lib/channel/spoken-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { unsubscribeUrl } from '~/lib/cron/email-compliance';
@@ -34,6 +35,10 @@ import {
   loadLoopPrefsView,
 } from '~/lib/loop/prefs';
 import { loopSendEnabled } from '~/lib/loop/send';
+import {
+  caregiverReminderModelCopyEnabled,
+  caregiverReminderRequest,
+} from '~/lib/loop/templates/caregiver/compose';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import type { CaregiverReminderPayload } from '~/lib/loop/templates/caregiver/payload';
 import type {
@@ -281,6 +286,13 @@ export interface ReminderRunDeps {
   /** VIL-562 · the recipient's sendable number, read only while proactive cadence is
    * armed (the Florida and Oklahoma 20:00 start), exactly as the outbound gate reads it. */
   parentPhone: (db: Database, userId: string) => Promise<string | null>;
+  /**
+   * VIL-706 · writes a caregiver's reminder from facts while
+   * CAREGIVER_REMINDER_MODEL_COPY_ENABLED is lit (templates/caregiver/compose.ts). Null is
+   * a line the model did not write: nothing is sent, and the writer has paged #ops.
+   * Defaults to the shared spoken-line writer; a test hands its own.
+   */
+  composeCaregiverLine?: (request: SpokenLineRequest) => Promise<string | null>;
 }
 
 function sqlExcluded(column: string) {
@@ -982,9 +994,8 @@ async function fireDueReminders(
     // parents' payload so the renderer can apply that PARENT's name dial; a caregiver's
     // payload carries no child roster at all (templates/caregiver/payload.ts), so loading
     // one would put a teenager's name and date of birth on a queue for nothing. And the
-    // voice stage is a real model call composed in the recipient's own register — a
-    // caregiver's reminder is deterministic logistics, and paying for a sentence in
-    // somebody else's voice is the wrong spend twice over (rule #8).
+    // parent's writer composes in that parent's own register: a caregiver's reminder,
+    // when its flag is lit, has its own writer and its own facts (VIL-706, below).
     // The parent's name dial and language, read ONCE per recipient and only when a
     // reminder can actually be written and sent. Neither for a caregiver: their payload
     // carries no child roster and their reminder is a separate template.
@@ -994,6 +1005,10 @@ async function fireDueReminders(
       !caregiver && sendEnabled && deps.client
         ? await deps.loadLanguage(db, group.familyId, parentUserId)
         : null;
+    // VIL-706 · a caregiver's reminder is model-written only with its own flag lit. Off,
+    // it stays the code-built line (templates/caregiver/reminder-sms.ts), as before.
+    const caregiverWritten = caregiver && caregiverReminderModelCopyEnabled();
+    let caregiverLanguage: ReplyLanguage | undefined;
     // VIL-562 · read once per recipient, and only once a batch could be sent.
     let prefs: LoopPrefsView | undefined;
     let floorClosed: boolean | undefined;
@@ -1144,6 +1159,41 @@ async function fireDueReminders(
         bold = composed.draft.bold;
       }
 
+      // VIL-706 · lit, the caregiver's reminder is written whole by the model from the
+      // facts this caregiver was cleared to see, before anything is enqueued. A line the
+      // model did not write is NOTHING SENT and a logged, audited drop, like a parent's.
+      let caregiverTexts: string[] | null = null;
+      if (caregiverWritten) {
+        caregiverLanguage ??= await deps.loadLanguage(db, group.familyId, parentUserId);
+        const line = await (deps.composeCaregiverLine ?? speak)(
+          caregiverReminderRequest({
+            offset: batch.offset,
+            timeZone: group.timezone,
+            now,
+            language: caregiverLanguage,
+            events: batch.eventRefs.flatMap((ref) => {
+              const r = rowByRef.get(ref);
+              return r
+                ? [{ title: r.title, startsAt: r.startsAt, endsAt: r.endsAt, location: r.location }]
+                : [];
+            }),
+          }),
+        );
+        if (!line) {
+          console.error(
+            { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
+            'reminder: caregiver line not written, nothing sent',
+          );
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (!r) continue;
+            await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'unwritten');
+          }
+          continue;
+        }
+        caregiverTexts = [line];
+      }
+
       const caregiverPayload: CaregiverReminderPayload = {
         offset: batch.offset,
         timeZone: group.timezone,
@@ -1160,6 +1210,7 @@ async function fireDueReminders(
               ]
             : [];
         }),
+        ...(caregiverTexts ? { texts: caregiverTexts } : {}),
       };
       const parentPayload: ReminderPayload = {
         offset: batch.offset,
