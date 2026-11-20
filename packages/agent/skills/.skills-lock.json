@@ -1,4 +1,20 @@
 {
+  "ack-eta-judge.md": {
+    "file": "ack-eta-judge.md",
+    "sha256": "be89832cfa6f8c9f3149083e52f9f9241e61937554396bf117dd0c17f1bbb298"
+  },
+  "ack-eta-miss.md": {
+    "file": "ack-eta-miss.md",
+    "sha256": "c2f87a4a491c7e801f3aa413cbd0db8c72f499bbb6c2621f4b485708354899c1"
+  },
+  "ack-eta-read.md": {
+    "file": "ack-eta-read.md",
+    "sha256": "3b874fb7c1034fc50471fe7c04273237d16954af629f66204296da2ca55493a1"
+  },
+  "ack-eta.md": {
+    "file": "ack-eta.md",
+    "sha256": "702674db6941985480a3763785d37a290f63abd7d486ff469369069346b7bcc7"
+  },
   "activity-deep.md": {
     "file": "activity-deep.md",
     "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"

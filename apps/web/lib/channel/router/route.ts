@@ -90,6 +90,10 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
+import { type AckEtaRouterPorts, armAckEta } from '~/lib/channel/ack-eta/arm';
+import { ackEtaEnabled } from '~/lib/channel/ack-eta/flag';
+import { ACK_ETA_TEMPLATE_KEY } from '~/lib/channel/ack-eta/promise';
+import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
@@ -193,9 +197,9 @@ import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { FLOOD_LINE_TEMPLATE_KEY, type FloodLineComposer } from './flood-line';
 import {
   HOLDING_LINE_AFTER_MS,
-  type HoldingLine,
   type HoldingLineComposer,
   armHoldingTapback,
+  holdingLineEnabled,
   holdingLineNotArmed,
   holdingLineRead,
   recordHoldingTapback,
@@ -595,6 +599,13 @@ export interface ChannelRouterDeps {
   /** The tapback a slow 1:1 iMessage turn gets first (holding-tapback.ts). Non-nullable
    * (rule #11): a composer that cannot pick one says so by name, and nothing is sent. */
   holdingTapback: HoldingTapbackComposer;
+  /**
+   * VIL-717 · the ack a slow 1:1 ask gets: what Hale is doing and when the parent will hear
+   * back, written from facts, and the promise it makes written down for the deadline sweep
+   * (channel/ack-eta). Non-nullable (rule #11): dark is ACK_ETA_ENABLED's own answer, and a
+   * reader or writer that cannot answer says so by name. Nothing preset sits underneath.
+   */
+  ackEta: AckEtaRouterPorts;
   /** The one sender of a parent-message tapback. Non-nullable (rule #11): every way it
    * did not land is named, never a silent skip. */
   sendParentReaction(input: {
@@ -1349,7 +1360,9 @@ async function routeChannelMessageInner(
   let typingTimer: ReturnType<typeof setInterval> | null = null;
   let typingDelay: ReturnType<typeof setTimeout> | null = null;
   let typingStarting: Promise<void> | null = null;
-  let holding: HoldingLine | null = null;
+  // The holding tapback's, or (VIL-717, lit) the ack's: either way the one thing that may
+  // go out before the answer, settled before every send.
+  let holding: { settle(): Promise<unknown> } | null = null;
   const startTyping = async () => {
     if (typingDelay) {
       clearTimeout(typingDelay);
@@ -1869,50 +1882,120 @@ async function routeChannelMessageInner(
   // read when the tapback is due, so a crisis never gets a like while Hale is still
   // composing 911.
   let screened: LaneReading | null = null;
-  const holdingSkip = redriven
+  // Not in a group thread, never on a re-drive: neither the tapback nor the ack covers one.
+  const turnSkip = redriven
     ? 're_driven'
     : job.in_group === undefined
       ? 'group_unknown'
       : job.in_group
         ? 'group_thread'
-        : route.channel !== 'imessage'
-          ? 'sms'
-          : !reactionsLitFor(route, job)
-            ? 'no_tapback'
-            : null;
-  if (holdingSkip) {
+        : null;
+  const holdingSkip =
+    turnSkip ??
+    (route.channel !== 'imessage' ? 'sms' : !reactionsLitFor(route, job) ? 'no_tapback' : null);
+  const holdingAfterMs = Math.max(
+    0,
+    (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs,
+  );
+  const holdingRead = () =>
+    holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id));
+  const sendHoldingTapback = async (
+    tapbackRoute: Extract<ReplyRoute, { channel: 'imessage' }>,
+    reaction: ParentReaction,
+  ) => {
+    const sent = await deps.sendParentReaction({ route: tapbackRoute, reaction });
+    if (sent.status !== 'sent') {
+      throw new Error(sent.reason);
+    }
+    // The reaction already landed. A ledger miss is named, never retried (rule #6
+    // and #11): asking Linq again would double-tap the parent's bubble.
+    try {
+      await recordHoldingTapback(deps.database, {
+        familyId: job.family_id,
+        parentUserId: job.parent_user_id,
+        chatId: tapbackRoute.chatId,
+        providerMessageId: tapbackRoute.replyToMessageId,
+        now: deps.now(),
+        reaction,
+      });
+    } catch (err) {
+      deps.log.error(
+        { err: err instanceof Error ? err.name : 'unknown' },
+        'holding line: tapback sent, the ledger row did not land',
+      );
+    }
+  };
+  if (!turnSkip && ackEtaEnabled(job.family_id)) {
+    // VIL-717, lit: a slow 1:1 ASK (a registration, research, a find) gets an ack instead,
+    // on SMS and on iMessage alike: what Hale is doing and when they will hear back, written
+    // from facts (ack-eta/arm.ts). Same clock and same screen read as the tapback, and the
+    // tapback still answers every slow turn the ack does not cover.
+    const ackMinutes = ackWindowMinutes();
+    holding = armAckEta({
+      afterMs: holdingAfterMs,
+      parentText: context.body,
+      withinMinutes: ackMinutes,
+      read: holdingRead,
+      reader: deps.ackEta.reader,
+      writer: deps.ackEta.writer,
+      sendLine: async (line) => {
+        if (typingLive) {
+          if (typingStarting) await typingStarting;
+          await signalImessageTyping(route, 'stop', deps.log);
+          typingLive = false;
+        }
+        if (typingTimer) {
+          clearInterval(typingTimer);
+          typingTimer = null;
+        }
+        // Not the answer: no claim, and the question this turn is about to read stays open.
+        const sent = await sendReply(deps, {
+          route,
+          body: line,
+          job,
+          conversationId: null,
+          templateKey: ACK_ETA_TEMPLATE_KEY,
+          openAsks: 'untouched',
+        });
+        // The send cleared the bubble; the answer is still being written.
+        await startTyping();
+        return { channelMessageId: sent.channelMessageId };
+      },
+      recordPromise: (input) =>
+        deps.ackEta.record(deps.database, {
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+          inboundChannelMessageId: job.channel_message_id,
+          ackChannelMessageId: input.ackChannelMessageId,
+          task: input.task,
+          channel: route.channel,
+          providerChatId: route.channel === 'imessage' ? route.chatId : null,
+          replyToMessageId: route.channel === 'imessage' ? route.replyToMessageId : null,
+          language: input.language,
+          askedAt: new Date(job.received_at),
+          promisedMinutes: ackMinutes,
+          now: deps.now(),
+        }),
+      page: (page) => deps.ackEta.page(deps.database, page),
+      tapback:
+        route.channel === 'imessage' && holdingSkip === null && holdingLineEnabled(job.family_id)
+          ? {
+              composer: deps.holdingTapback,
+              send: (reaction) => sendHoldingTapback(route, reaction),
+            }
+          : null,
+      log: deps.log,
+    });
+  } else if (holdingSkip) {
     holding = holdingLineNotArmed(holdingSkip, deps.log);
   } else if (route.channel === 'imessage') {
     holding = armHoldingTapback({
-      afterMs: Math.max(0, (deps.holdingLineAfterMs ?? HOLDING_LINE_AFTER_MS) - burst.waitedMs),
+      afterMs: holdingAfterMs,
       familyId: job.family_id,
       composer: deps.holdingTapback,
       log: deps.log,
-      read: () =>
-        holdingLineRead(screened, () => familySpeechLanguage(deps.database, job.family_id)),
-      send: async (reaction) => {
-        const sent = await deps.sendParentReaction({ route, reaction });
-        if (sent.status !== 'sent') {
-          throw new Error(sent.reason);
-        }
-        // The reaction already landed. A ledger miss is named, never retried (rule #6
-        // and #11): asking Linq again would double-tap the parent's bubble.
-        try {
-          await recordHoldingTapback(deps.database, {
-            familyId: job.family_id,
-            parentUserId: job.parent_user_id,
-            chatId: route.chatId,
-            providerMessageId: route.replyToMessageId,
-            now: deps.now(),
-            reaction,
-          });
-        } catch (err) {
-          deps.log.error(
-            { err: err instanceof Error ? err.name : 'unknown' },
-            'holding line: tapback sent, the ledger row did not land',
-          );
-        }
-      },
+      read: holdingRead,
+      send: (reaction) => sendHoldingTapback(route, reaction),
     });
   } else {
     holding = holdingLineNotArmed('sms', deps.log);

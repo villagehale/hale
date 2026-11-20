@@ -17,6 +17,7 @@ const providerPreflightMock = vi.fn();
 const runGroupReminderTickMock = vi.fn();
 const recoverHeldOptOutReadsMock = vi.fn();
 const recheckHeldRemindersMock = vi.fn();
+const runAckDeadlineSweepMock = vi.fn();
 
 vi.mock('~/lib/cron/drain', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/cron/drain')>()),
@@ -40,6 +41,11 @@ vi.mock('~/lib/monitoring/provider-health', async (importActual) => ({
 vi.mock('~/lib/loop/reminders/run', () => ({
   recheckHeldReminders: (...args: unknown[]) => recheckHeldRemindersMock(...args),
 }));
+// VIL-717. The sweep and its production ports are the leg's; the route only orders and names.
+vi.mock('~/lib/channel/ack-eta/sweep', () => ({
+  runAckDeadlineSweep: (...args: unknown[]) => runAckDeadlineSweepMock(...args),
+}));
+vi.mock('~/lib/channel/ack-eta/production', () => ({ ackDeadlinePorts: () => ({}) }));
 vi.mock('~/lib/loop/reminders/group/fire', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/loop/reminders/group/fire')>()),
   runGroupReminderTick: (...args: unknown[]) => runGroupReminderTickMock(...args),
@@ -90,6 +96,11 @@ describe('GET /api/cron/drain', () => {
       retrying: 0,
     });
     recheckHeldRemindersMock.mockReset().mockResolvedValue({ held: 0 });
+    runAckDeadlineSweepMock
+      .mockReset()
+      .mockResolvedValue({ due: 0, claimed: 0, settled: {}, pruned: 0 });
+    // Pinned off: the all-flags-on job sets it before the process starts.
+    vi.stubEnv('ACK_ETA_ENABLED', '');
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -174,10 +185,58 @@ describe('GET /api/cron/drain', () => {
       firstReply: expect.any(Object),
       groupReminders: { skipped: 'flag_off' },
       heldReminders: { held: 0 },
+      ackDeadlines: { skipped: 'flag_off' },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
       anthropicCredit: { skipped: 'flag_off' },
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: lit, sweeps the promised times every scheduled minute, before the queues', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
+    const order: string[] = [];
+    const summary = { due: 1, claimed: 1, settled: { answered: 1 }, pruned: 0 };
+    runAckDeadlineSweepMock.mockImplementation(async () => {
+      order.push('ack_deadlines');
+      return summary;
+    });
+    runDrainCronMock.mockImplementation(async () => {
+      order.push('queues');
+      return { processed: 0, failed: 0, dropped: 0 };
+    });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ ackDeadlines: summary });
+    expect(order).toEqual(['ack_deadlines', 'queues']);
+  });
+
+  it('VIL-717: only exact `true` lights the sweep', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true\n');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ ackDeadlines: { skipped: 'flag_off' } });
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: names a failed deadline leg and still drains', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
+    runAckDeadlineSweepMock.mockRejectedValue(new Error('leg blew up'));
+    runDrainCronMock.mockResolvedValue({ processed: 1, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      processed: 1,
+      ackDeadlines: { skipped: 'tick_failed' },
+    });
   });
 
   it('VIL-586: asks again for held T-1h reminders every scheduled minute, before the queues', async () => {
@@ -399,10 +458,12 @@ describe('GET /api/cron/drain', () => {
     expect(await response.json()).toMatchObject({
       optOutRecovery: { skipped: 'preview' },
       heldReminders: { skipped: 'preview' },
+      ackDeadlines: { skipped: 'preview' },
       anthropicCredit: { skipped: 'preview' },
     });
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();
     expect(recheckHeldRemindersMock).not.toHaveBeenCalled();
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
   });
 
   it('leaves the first-reply leg out of a kicked run', async () => {

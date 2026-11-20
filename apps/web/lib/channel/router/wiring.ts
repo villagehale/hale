@@ -113,6 +113,7 @@ import {
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
+import { ackEtaRouterPorts } from '~/lib/channel/ack-eta/production';
 import { createHoldingLine } from './holding-line';
 import { createHoldingTapback } from './holding-tapback';
 import {
@@ -874,6 +875,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
     holdingTapback: createHoldingTapback(screenClient),
+    // VIL-717 · the ack a slow 1:1 ask gets, and its promise. Dark unless ACK_ETA_ENABLED is
+    // exactly `true`; the same lazy client, built only when an ack is due.
+    ackEta: ackEtaRouterPorts(screenClient),
     sendParentReaction: reactToParentMessage,
     floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
