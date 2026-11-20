@@ -415,6 +415,9 @@ async function drivePlan(
   try {
     if (!runId && input.takeoverResume) {
       const resume = input.takeoverResume;
+      // Tracked before anything can throw, so a throw still stops the parent's browser.
+      tracker.sessionId = resume.sessionId;
+      tracker.browserId = resume.browserId;
       const text = takeoverResumeText({
         resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
         runSkill: await deps.loadTask(PLAN_SIGNUP_SKILL),

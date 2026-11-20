@@ -153,8 +153,11 @@ async function driveAssisted(
   let runId: string | null = null;
   try {
     if (input.takeoverResume) {
-      // VIL-718 · the parent finished a takeover: the next turn of the same session.
+      // VIL-718 · the parent finished a takeover: the next turn of the same session. Tracked
+      // before anything can throw, so a throw still stops the parent's browser.
       const resume = input.takeoverResume;
+      tracker.sessionId = resume.sessionId;
+      tracker.browserId = resume.browserId;
       const text = takeoverResumeText({
         resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
         runSkill: await deps.loadTask(ASSISTED_SIGNUP_SKILL),

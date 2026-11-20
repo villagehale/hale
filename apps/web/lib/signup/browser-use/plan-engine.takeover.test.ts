@@ -309,6 +309,21 @@ describe('VIL-718 · picking the session back up after the parent is done', () =
     expect(stopsBrowser(log)).toBe(true);
   });
 
+  it('a throw before the turn is queued still stops the parent’s browser', async () => {
+    const { deps, log } = setup({});
+    const broken = {
+      ...deps,
+      loadTask: async () => {
+        throw new Error('skill unavailable');
+      },
+    };
+    await expect(
+      runBrowserUsePlanSignup(plan({ takeover: true, takeoverResume: resume }).input, broken),
+    ).rejects.toThrow(PlanEngineThrew);
+    expect(stopsBrowser(log)).toBe(true);
+    expect(log.some((r) => r.path === '/sessions/bu-session-1/queue')).toBe(false);
+  });
+
   it('never waits on a takeover token as if its run were still going', async () => {
     const { deps } = setup({});
     const token: PlanResumeToken = {

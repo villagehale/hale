@@ -476,7 +476,9 @@ async function runOnePlan(
     });
 
   // VIL-718 · the takeover's facts, its door, and the honest close.
-  const factsHost = host ?? new URL(plan.registrationUrl).hostname;
+  // Read only by a takeover, which follows a run on an allowed URL; never throws here, so a
+  // malformed URL still ends as `url_refused` below.
+  const factsHost = host ?? hostnameOr(plan.registrationUrl);
   const takeoverMode: 'auto' | 'assisted' = mode === 'assisted' ? 'assisted' : 'auto';
   const takeoverDeps = () => deps.takeover ?? takeoverDepsFromEnv(database);
   /** Stops a browser the engine kept for the parent. Its session's cost, when read. */
@@ -844,6 +846,15 @@ async function runOnePlan(
       },
     }),
   );
+}
+
+/** The URL's host, or the text itself when it does not parse. Never throws. */
+function hostnameOr(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 function askedStartFromAvailability(availability: Record<string, unknown> | null): string | null {
