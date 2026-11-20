@@ -94,6 +94,11 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    // VIL-730 · an enqueued row is pending, never 'sent', until the drain settles it.
+    markSendPending: async (_db, id) => {
+      marked.push({ id, status: 'scheduled', reason: 'send_pending' });
+    },
+    clearSendPending: async () => {},
     holdForCompose: async () => {
       throw new Error('a caregiver reminder is never written by the model, so never held');
     },
@@ -289,7 +294,7 @@ describe('fire — what actually reaches a caregiver', () => {
     });
     await runReminderCron(db, deps, NOW);
     expect(enqueued.map((j) => j.parentUserId)).toEqual(['g1']);
-    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'send_pending' }]);
   });
 
   it('logs and audits an out_of_scope drop the same way as any other dropped reminder', async () => {
@@ -566,8 +571,8 @@ describe('one recipient, two households', () => {
     // household's idempotency and drop its text at the dispatch.
     expect(new Set(enqueued.map((j) => j.dedupeKey)).size).toBe(2);
     expect(marked).toEqual([
-      { id: 'r-a', status: 'sent', reason: null },
-      { id: 'r-b', status: 'sent', reason: null },
+      { id: 'r-a', status: 'scheduled', reason: 'send_pending' },
+      { id: 'r-b', status: 'scheduled', reason: 'send_pending' },
     ]);
   });
 
