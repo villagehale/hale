@@ -82,7 +82,7 @@ export function matchHealthReply(body: string): HealthReplyIntent | null {
 }
 
 /** Production matcher. Off, the word list. On, a Haiku read; unread is a miss. */
-async function healthReplyIntent(body: string): Promise<HealthReplyIntent | null> {
+export async function healthReplyIntent(body: string): Promise<HealthReplyIntent | null> {
   if (!modelReadSweepEnabled()) return matchHealthReply(body);
   const reading = await sharedMeaningScreen().read({ screen: 'health_done', text: body });
   if (!reading) return null;

@@ -12,12 +12,9 @@ describe('modelReadSweepEnabled', () => {
     expect(modelReadSweepEnabled({ [MODEL_READ_SWEEP_ENABLED_ENV]: undefined })).toBe(false);
   });
 
-  it.each(['true\n', 'TRUE', 'on', '1', ' true', 'true ', ''])(
-    'stays off for %j',
-    (value) => {
-      expect(modelReadSweepEnabled({ [MODEL_READ_SWEEP_ENABLED_ENV]: value })).toBe(false);
-    },
-  );
+  it.each(['true\n', 'TRUE', 'on', '1', ' true', 'true ', ''])('stays off for %j', (value) => {
+    expect(modelReadSweepEnabled({ [MODEL_READ_SWEEP_ENABLED_ENV]: value })).toBe(false);
+  });
 
   it('reads process.env when no bag is passed', () => {
     vi.stubEnv(MODEL_READ_SWEEP_ENABLED_ENV, 'true');

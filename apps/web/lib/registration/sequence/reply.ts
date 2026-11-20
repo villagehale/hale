@@ -126,13 +126,14 @@ export function matchCheckInReply(body: string): CheckInIntent | null {
 }
 
 /** Production matcher. Off, the word list. On, a Haiku read; unread is a miss. */
-async function checkInIntent(body: string): Promise<CheckInIntent | null> {
+export async function checkInIntent(body: string): Promise<CheckInIntent | null> {
   if (!modelReadSweepEnabled()) return matchCheckInReply(body);
   const reading = await sharedMeaningScreen().read({ screen: 'registration_outcome', text: body });
   if (!reading) return null;
   if (reading.outcome === 'registered') return { outcome: 'registered' };
   if (reading.outcome === 'missed') return { outcome: 'missed' };
-  if (reading.outcome === 'waitlisted') return { outcome: 'waitlisted', position: reading.position };
+  if (reading.outcome === 'waitlisted')
+    return { outcome: 'waitlisted', position: reading.position };
   return null;
 }
 

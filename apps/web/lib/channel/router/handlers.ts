@@ -56,7 +56,7 @@ import { readFamilyTimezone, readStoredFamilyTimezone } from '~/lib/dashboard/tr
 import {
   type HealthReplyDeps,
   handleHealthCheckpointReply,
-  matchHealthReply,
+  healthReplyIntent,
 } from '~/lib/health/reply';
 import {
   handleEmailAlertOfferReply,
@@ -76,8 +76,8 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import {
   type SequenceReplyDeps,
+  checkInIntent,
   handleSequenceReply,
-  matchCheckInReply,
 } from '~/lib/registration/sequence/reply';
 import {
   type ResolvedIntroAnswer,
@@ -338,7 +338,10 @@ export function connectorLinkHandler(
   return {
     name: 'connector_link',
     async detects(_database, ctx) {
-      return matchConnectorRequest(ctx.body) !== null || matchFreshConnectorFollowUp(ctx.body);
+      return (
+        (await matchConnectorRequestSweep(ctx.body)) !== null ||
+        (await matchFreshConnectorFollowUpSweep(ctx.body))
+      );
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const named = await matchConnectorRequestSweep(ctx.body);
@@ -504,7 +507,7 @@ export function connectorDisconnectHandler(
   return {
     name: 'connector_disconnect',
     async detects(_database, ctx) {
-      return matchConnectorDisconnectRequest(ctx.body) !== null;
+      return (await matchConnectorDisconnectRequestSweep(ctx.body)) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const provider = await matchConnectorDisconnectRequestSweep(ctx.body);
@@ -725,7 +728,7 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
     // answer (see the OpenQuestionKind note in open-questions.ts).
     resolves: new Set<OpenQuestionKind>(['checkup_offer']),
     async detects(_database, ctx) {
-      return matchHealthReply(ctx.body) !== null;
+      return (await healthReplyIntent(ctx.body)) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const resolved = ctx.resolved?.kind === 'checkup_offer' ? ctx.resolved : null;
@@ -945,7 +948,7 @@ export function sequenceReplyHandler(
     // A link while a sign-up is being prepared, or a check-in outcome. The already-approved
     // yes is the resolver's.
     async detects(database, ctx) {
-      if (matchCheckInReply(ctx.body) !== null) return true;
+      if ((await checkInIntent(ctx.body)) !== null) return true;
       if (!LINK_TOKEN.test(ctx.body) || !f14EnabledFor(ctx.familyId)) return false;
       return (await prepare.loadPreparingSequence(database, ctx.familyId, ctx.now)) !== null;
     },
