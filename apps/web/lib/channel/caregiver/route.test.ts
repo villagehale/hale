@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentInviteExpired } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -188,6 +188,7 @@ beforeEach(() => {
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  vi.unstubAllEnvs();
 });
 
 describe('caregiver invite · the double opt-in', () => {
@@ -360,6 +361,8 @@ describe('caregiver invite · the ways it does not happen', () => {
    * FLAG, and an operator counting `unsupported_role` must not be shown a dark launch.
    */
   it('answers a co-parent add with the forwardable link while the flag is off', async () => {
+    // Pinned dark, so a run with every default-off flag lit still reads this as written.
+    vi.stubEnv('F14_ENABLED', '');
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
