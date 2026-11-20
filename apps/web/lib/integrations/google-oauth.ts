@@ -160,6 +160,75 @@ export function buildGoogleAuthUrl(opts: {
   return `${GOOGLE_AUTH_ENDPOINT}?${params.toString()}`;
 }
 
+/**
+ * VIL-721. The connectors the one texted link asks Google for, in one consent.
+ *
+ * WHY ONE CONSENT IS STILL RULE #1. buildGoogleAuthUrl keeps each connector's grant
+ * self-scoped so that "disconnecting Gmail" could never leave Gmail readable through
+ * a calendar token. Since VIL-156 that guarantee lives in the disconnect itself:
+ * Google revokes per project, so every disconnect path ends EVERY Google connector of
+ * that parent and revokes its tokens (google-disconnect.ts, store.ts
+ * endGoogleConnections). A token that carries both read scopes therefore leaves Hale
+ * nothing a disconnect does not end, while the parent meets Google's unverified-app
+ * screen once instead of twice. The bundle still asks for exactly what each connector
+ * asks for alone (read-only, plus that connector's write scope only for an armed
+ * user) and still never sets include_granted_scopes.
+ */
+export const GOOGLE_BUNDLE_CONNECTORS = [
+  'gmail',
+  'gcal',
+] as const satisfies readonly ConsentConnector[];
+
+/** The one-link consent's scopes: each connector's own request, together. */
+export function requestedBundleScopes(
+  env: WriteScopeEnv = process.env,
+  userId?: string | null,
+): readonly string[] {
+  return GOOGLE_BUNDLE_CONNECTORS.flatMap((provider) =>
+    requestedConnectorScopes(provider, env, userId),
+  );
+}
+
+/** The Google consent URL for the one link. Same parameters as one connector's. */
+export function buildGoogleBundleAuthUrl(opts: {
+  state: string;
+  redirectUri: string;
+  userId?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    client_id: clientId(),
+    redirect_uri: opts.redirectUri,
+    response_type: 'code',
+    scope: [...requestedBundleScopes(process.env, opts.userId), GOOGLE_PROFILE_SCOPE].join(' '),
+    access_type: 'offline',
+    prompt: 'consent',
+    // Still NOT include_granted_scopes: the token carries what THIS consent asked for.
+    state: opts.state,
+  });
+  return `${GOOGLE_AUTH_ENDPOINT}?${params.toString()}`;
+}
+
+/**
+ * VIL-721. What one bundle grant covers. Granular consent lets the parent untick a box:
+ * a connector is granted only when every scope it needs is in the token. Anything
+ * outside what the consent asked for is `unexpected`, and the caller stores nothing.
+ */
+export function splitBundleGrant(
+  scopes: readonly string[],
+  env: WriteScopeEnv = process.env,
+  userId?: string | null,
+): { granted: ConsentConnector[]; missing: string[]; unexpected: string[] } {
+  const allowed = new Set<string>([...requestedBundleScopes(env, userId), GOOGLE_PROFILE_SCOPE]);
+  const granted = GOOGLE_BUNDLE_CONNECTORS.filter((provider) =>
+    CONNECTOR_SCOPES[provider].every((scope) => scopes.includes(scope)),
+  );
+  const missing = GOOGLE_BUNDLE_CONNECTORS.flatMap((provider) =>
+    CONNECTOR_SCOPES[provider].filter((scope) => !scopes.includes(scope)),
+  );
+  const unexpected = scopes.filter((scope) => !allowed.has(scope));
+  return { granted, missing, unexpected };
+}
+
 /** Minimal fetch shape so the token exchange is injectable/mockable in tests. */
 export type FetchLike = (
   url: string,

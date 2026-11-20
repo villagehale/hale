@@ -1,7 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
-import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import {
+  offerConnectorLink,
+  offerConnectorLinks,
+  offerGoogleBundleLink,
+} from '~/lib/channel/connect/offer';
+import type { GoogleBundleLink, TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -22,6 +26,7 @@ import {
   createSaidLineWriter,
   writeConnectorLink,
   writeConnectorLinks,
+  writeGoogleBundleLink,
 } from '~/lib/channel/voice/said-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -73,8 +78,11 @@ export async function textFreshConnectorLink(
   args: {
     familyId: string;
     parentUserId: string;
-    /** `both` is one text carrying both links, minted together so neither spends the other. */
-    provider: TextConnectProvider | 'both';
+    /**
+     * `both` is one text carrying both links, minted together so neither spends the other.
+     * `google` is VIL-721's one link that connects both in one consent.
+     */
+    provider: TextConnectProvider | 'both' | GoogleBundleLink;
     now: Date;
   },
   ports: FreshLinkPorts = defaultFreshLinkPorts(),
@@ -99,7 +107,7 @@ async function sendFresh(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider | 'both';
+    provider: TextConnectProvider | 'both' | GoogleBundleLink;
     now: Date;
   },
   ports: FreshLinkPorts,
@@ -213,13 +221,21 @@ async function mintBody(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider | 'both';
+    provider: TextConnectProvider | 'both' | GoogleBundleLink;
     now: Date;
   },
   language: ReplyLanguage,
   saidLine: SaidLineWriter | undefined,
 ): Promise<{ status: 'minted'; body: string } | { status: 'not_enrolled' | 'mint_failed' }> {
   const owner = { familyId: args.familyId, parentUserId: args.parentUserId, now: args.now };
+  if (args.provider === 'google') {
+    // VIL-721. A failed one-link connect gets a fresh ONE link, never the two.
+    const minted = await offerGoogleBundleLink(database, owner);
+    if (minted.status !== 'minted') return minted;
+    const body = await writeGoogleBundleLink(saidLine, { language, url: minted.url });
+    // A failed write sends nothing; the minted link simply expires unused.
+    return body ? { status: 'minted', body } : { status: 'mint_failed' };
+  }
   if (args.provider === 'both') {
     const minted = await offerConnectorLinks(database, { ...owner, providers: ['gcal', 'gmail'] });
     if (minted.status !== 'minted') return minted;

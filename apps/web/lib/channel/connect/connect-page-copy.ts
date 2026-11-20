@@ -1,4 +1,4 @@
-import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import type { GoogleBundleLink, TextConnectProvider } from '~/lib/channel/connect/text-connect';
 
 /**
  * Outward copy for /connect and /connected. Strings match connect-design-final
@@ -43,7 +43,8 @@ export function connectPreviewEnabled(nodeEnv = process.env.NODE_ENV): boolean {
 const NBSP = '\u00A0';
 
 export interface LandingCopy {
-  provider: TextConnectProvider;
+  /** `google` is VIL-721's one link: Gmail and Google Calendar in one consent. */
+  provider: TextConnectProvider | GoogleBundleLink;
   aria: string;
   eyebrow: string;
   title: CopyPart[];
@@ -75,12 +76,38 @@ const BOX: Record<TextConnectProvider, string> = {
   gcal: 'Google Calendar',
 };
 
+/** VIL-721. The one link names both boxes, the way the two pages name one each. */
+const BUNDLE_BOXES = `${BOX.gmail} and ${BOX.gcal}`;
+
 const NEVER_SHARED: CopyPart[][] = [
   ['See ', { nw: 'your password.' }],
   ['Sell your data, use it for ads, or use it to ', { nw: 'train AI.' }],
 ];
 
-export function landingCopy(provider: TextConnectProvider): LandingCopy {
+export function landingCopy(provider: TextConnectProvider | GoogleBundleLink): LandingCopy {
+  if (provider === 'google') {
+    // VIL-721. The Gmail and Calendar pages, together: the same reads, the same nevers,
+    // the same unverified-app note, naming both boxes.
+    const gmail = landingCopy('gmail');
+    const gcal = landingCopy('gcal');
+    return {
+      provider,
+      aria: 'Connect Gmail and your calendar',
+      eyebrow: BUNDLE_BOXES,
+      title: ['Connect Gmail and ', { nw: 'your calendar' }],
+      lede: [
+        'So Hale can flag daycare and school notices and catch class invites for ',
+        { nw: 'the kids.' },
+      ],
+      note: `Google may show an “unverified app” screen. Tap Advanced, then continue. Make sure the boxes for ${BUNDLE_BOXES} are${NBSP}ticked.`,
+      reads: [...gmail.reads, ...gcal.reads],
+      never: [gmail.never[0] ?? [], gcal.never[0] ?? [], ...NEVER_SHARED],
+      disconnect: [
+        `You can disconnect any time. Tell Hale in your texts, and it deletes its keys to your ${BUNDLE_BOXES} `,
+        { nw: 'right away.' },
+      ],
+    };
+  }
   if (provider === 'gmail') {
     return {
       provider,
@@ -137,10 +164,16 @@ export const FOOTER_LEAD = 'Never sold.';
 export const FOOTER_PRIVACY = 'Privacy policy';
 export const PRONUNCIATION = 'Hale /HAH-leh/ — Hawaiian for home.';
 
-export function connectPageMeta(provider: TextConnectProvider | null): {
+export function connectPageMeta(provider: TextConnectProvider | GoogleBundleLink | null): {
   tabTitle: string;
   description: string;
 } {
+  if (provider === 'google') {
+    return {
+      tabTitle: 'Connect Gmail and your calendar',
+      description: 'So Hale can flag school notices and catch class invites for the kids.',
+    };
+  }
   if (provider === 'gmail') {
     return {
       tabTitle: 'Connect Gmail',
@@ -174,7 +207,24 @@ function freshLine(sentence: string, fresh: boolean | undefined): CopyPart[] {
   return [sentence, { br: true }, 'A fresh link is in ', { nw: 'your texts.' }];
 }
 
-function success(provider: TextConnectProvider): StatusCopy {
+function success(provider: TextConnectProvider | GoogleBundleLink): StatusCopy {
+  if (provider === 'google') {
+    // VIL-721. No bubble: the receipt is the model's text, not a line set in type here.
+    return {
+      aria: 'Connected',
+      tabTitle: 'Gmail and calendar connected',
+      icon: 'check',
+      heading: ['Connected'],
+      lede: [
+        `${BUNDLE_BOXES} are connected. You can close this page, and Hale will text `,
+        { nw: `you to${NBSP}confirm.` },
+      ],
+      detail: [
+        'Changed your mind? Tell Hale in your texts and it disconnects ',
+        { nw: 'them both.' },
+      ],
+    };
+  }
   if (provider === 'gmail') {
     return {
       aria: 'Connected',
@@ -210,22 +260,59 @@ function success(provider: TextConnectProvider): StatusCopy {
   };
 }
 
-function denied(provider: TextConnectProvider | null, fresh: boolean | undefined): StatusCopy {
+function denied(
+  provider: TextConnectProvider | GoogleBundleLink | null,
+  fresh: boolean | undefined,
+): StatusCopy {
   return {
     aria: 'Nothing changed',
     tabTitle: 'Nothing changed',
     icon: 'x',
     heading: ['Nothing changed'],
     lede: freshLine('No changes made.', fresh),
-    help: provider
-      ? {
-          title: 'Trying again?',
-          body: [
-            `On Google’s screen, make sure the box for ${BOX[provider]} is ticked, then `,
-            { nw: 'tap Continue.' },
-          ],
-        }
-      : undefined,
+    help:
+      provider === 'google'
+        ? {
+            title: 'Trying again?',
+            body: [
+              `On Google’s screen, make sure the boxes for ${BUNDLE_BOXES} are ticked, then `,
+              { nw: 'tap Continue.' },
+            ],
+          }
+        : provider
+          ? {
+              title: 'Trying again?',
+              body: [
+                `On Google’s screen, make sure the box for ${BOX[provider]} is ticked, then `,
+                { nw: 'tap Continue.' },
+              ],
+            }
+          : undefined,
+    sms: true,
+  };
+}
+
+/** VIL-721. Neither box of the one link was ticked, so nothing was stored. */
+function bundlePartial(fresh: boolean | undefined): StatusCopy {
+  const lede: CopyPart[] = fresh
+    ? [
+        'Hale needs at least one of those boxes to connect, so nothing changed. A fresh link is in ',
+        { nw: 'your texts.' },
+      ]
+    : ['Hale needs at least one of those boxes to connect, so nothing changed.'];
+  return {
+    aria: `The boxes for ${BUNDLE_BOXES} weren’t ticked`,
+    tabTitle: 'Boxes not ticked',
+    icon: 'check',
+    heading: [`The boxes for ${BUNDLE_BOXES} weren’t ticked`],
+    lede,
+    help: {
+      title: 'Next time',
+      body: [
+        `On Google’s screen, tick the boxes for ${BUNDLE_BOXES}. The box for your name `,
+        { nw: 'is optional.' },
+      ],
+    },
     sms: true,
   };
 }
@@ -361,9 +448,12 @@ export function connectedStatus(
   options?: { name?: string; language?: 'en' | 'fr'; freshLink?: boolean },
 ): StatusCopy {
   const connected = provider === 'gmail' || provider === 'gcal' ? provider : null;
+  // VIL-721. The one link's done page. Display only: no flag decides what it says.
+  const bundle = provider === 'google' ? provider : null;
   const fresh = options?.freshLink;
-  if (status === 'ok' && connected) return success(connected);
-  if (status === 'denied') return denied(connected, fresh);
+  if (status === 'ok' && (connected ?? bundle)) return success(connected ?? 'google');
+  if (status === 'denied') return denied(connected ?? bundle, fresh);
+  if (status === 'partial' && bundle) return bundlePartial(fresh);
   if (status === 'partial' && connected) return partial(connected, fresh);
   if (status === 'own_link') return already(options);
   if (status === 'invalid') return expired(fresh);

@@ -9,6 +9,21 @@ import type { ExtractedChild } from './extract';
 import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place';
 import { type IntakeSession, placeSettled } from './session';
 import { acceptStatedCountry } from './stated-place';
+import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+
+/**
+ * VIL-721. One thing a kid already does, as the model read it from the parent's own
+ * words. Code checks the shape and keeps it; it never reads the parent's message to
+ * find one.
+ */
+export interface KidActivity {
+  /** The kid it is for, as the model named them. Null when the parent did not say. */
+  child: string | null;
+  /** What they do, in the parent's words ("swim lessons", "soccer"). */
+  activity: string;
+  /** When, as the parent said it ("Tuesdays after school"). Null when they did not say. */
+  when: string | null;
+}
 
 /**
  * One activity the parent agreed to put on the calendar. The model settles
@@ -91,6 +106,17 @@ export interface OnboardingCapture {
   country?: 'CA' | 'US' | 'other' | null;
   /** Province or state they named. The table accepts it; a sentence does not match. */
   region?: string | null;
+  /**
+   * VIL-721, THREAD_ONBOARDING_V2_ENABLED only (absent while dark, so a dark capture
+   * keeps its shape). What the kids already do, from this message.
+   */
+  activities?: KidActivity[];
+  /** VIL-721, lit only. The kids do nothing yet, or the parent would rather not say. */
+  activitiesNone?: boolean;
+  /** VIL-721, lit only. Their answer to the one Google link: Gmail and Calendar together. */
+  connectGoogle?: boolean | null;
+  /** VIL-721, lit only. Not now for the Google link. Not asked again in this onboarding. */
+  googleLater?: boolean;
 }
 
 export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
@@ -133,9 +159,39 @@ export const ONBOARDING_ORDER = [
   'coparent',
 ] as const;
 
-export type OnboardingItem = (typeof ONBOARDING_ORDER)[number];
+/**
+ * VIL-721. The walk while THREAD_ONBOARDING_V2_ENABLED is on: the kids' activities
+ * right after their ages (so the map, the first useful thing, still follows the
+ * ages), and one Google item in place of Gmail and the calendar, because one link
+ * connects both.
+ */
+export const THREAD_V2_ORDER = [
+  'postal',
+  'kids',
+  'ages',
+  'activities',
+  'name',
+  'google',
+  'schedule',
+  'coparent',
+] as const;
 
-export type OnboardingChecklist = Record<OnboardingItem, boolean>;
+type BaseItem = (typeof ONBOARDING_ORDER)[number];
+type ThreadV2Item = 'activities' | 'google';
+
+export type OnboardingItem = BaseItem | ThreadV2Item;
+
+/**
+ * What is stored, item by item. The two VIL-721 items are optional: a dark checklist
+ * never carries them, so the `known` the model reads keeps its bytes.
+ */
+export type OnboardingChecklist = Record<BaseItem, boolean> &
+  Partial<Record<ThreadV2Item, boolean>>;
+
+/** The walk's order for this deployment: today's, or VIL-721's when the flag is on. */
+export function onboardingOrder(): readonly OnboardingItem[] {
+  return threadOnboardingV2Enabled() ? THREAD_V2_ORDER : ONBOARDING_ORDER;
+}
 
 export const EMPTY_CHECKLIST: OnboardingChecklist = {
   postal: false,
@@ -208,7 +264,72 @@ export const DEFAULT_SCHEDULE_WEEKS = 8;
 const MAX_SCHEDULE_DAYS_AHEAD = 366;
 
 export function onboardingMissing(list: OnboardingChecklist): OnboardingItem[] {
-  return ONBOARDING_ORDER.filter((item) => !list[item]);
+  return onboardingOrder().filter((item) => !list[item]);
+}
+
+/** The longest activity or "when" phrase kept. A sentence is not an activity. */
+const MAX_ACTIVITY_CHARS = 80;
+/** The most activities one message may add. A pasted schedule is not an answer. */
+const MAX_ACTIVITIES = 12;
+
+function acceptActivityText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().replace(/\s+/gu, ' ');
+  if (trimmed.length < 1 || trimmed.length > MAX_ACTIVITY_CHARS) return null;
+  if (!/\p{L}/u.test(trimmed)) return null;
+  return trimmed;
+}
+
+/**
+ * VIL-721. Keep an activity only when it is the shape of one: a short phrase with a
+ * letter in it, an optional kid name, an optional "when". Code does not decide
+ * whether the words ARE an activity; the model did.
+ */
+export function acceptKidActivity(raw: unknown): KidActivity | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const activity = acceptActivityText(row.activity);
+  if (!activity) return null;
+  return {
+    child: acceptName(row.child),
+    activity,
+    when: acceptActivityText(row.when),
+  };
+}
+
+/** One activity per kid and phrase: the same thing said twice is one fact. */
+export function activityKey(item: Pick<KidActivity, 'child' | 'activity'>): string {
+  return `${(item.child ?? '').toLowerCase()}\u0000${item.activity.toLowerCase()}`;
+}
+
+/** The activities in `next` that are not already in `prior`, by kid and phrase. */
+export function newActivities(
+  prior: readonly KidActivity[],
+  next: readonly KidActivity[],
+): KidActivity[] {
+  const seen = new Set(prior.map(activityKey));
+  const fresh: KidActivity[] = [];
+  for (const item of next) {
+    const key = activityKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    fresh.push(item);
+  }
+  return fresh;
+}
+
+/** VIL-721. The activities item is answered: something was kept, or they said none. */
+export function activitiesAnswered(
+  given: { activities?: readonly KidActivity[]; activitiesNone?: boolean } | null | undefined,
+): boolean {
+  return (given?.activities?.length ?? 0) > 0 || given?.activitiesNone === true;
+}
+
+/** VIL-721. The Google item is answered: a yes, a no, or a not-now to the one link. */
+export function googleAnswered(
+  given: { connectGoogle?: boolean | null; googleLater?: boolean } | null | undefined,
+): boolean {
+  return given?.connectGoogle != null || given?.googleLater === true;
 }
 
 function acceptName(value: unknown): string | null {
@@ -513,6 +634,29 @@ export function acceptOnboardingCapture(
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
     language: acceptReplyLanguage(typeof row.language === 'string' ? row.language : null),
+    ...threadV2CaptureFields(row),
+  };
+}
+
+/**
+ * VIL-721. The lit fields, shape-checked. Dark returns nothing, so a dark capture is
+ * the object it was before this flag existed.
+ */
+function threadV2CaptureFields(row: Record<string, unknown>): Partial<OnboardingCapture> {
+  if (!threadOnboardingV2Enabled()) return {};
+  const raw = Array.isArray(row.activities) ? row.activities.slice(0, MAX_ACTIVITIES) : [];
+  const activities = newActivities(
+    [],
+    raw.flatMap((item) => {
+      const accepted = acceptKidActivity(item);
+      return accepted ? [accepted] : [];
+    }),
+  );
+  return {
+    activities,
+    activitiesNone: row.activitiesNone === true && activities.length === 0,
+    connectGoogle: acceptBool(row.connectGoogle),
+    googleLater: row.googleLater === true,
   };
 }
 
@@ -531,7 +675,8 @@ export function linesOfFind(message: string): string[] {
  */
 export function storedChecklist(
   session: IntakeSession,
-  connected: 'gmail' | 'gcal' | null,
+  /** The connector that just landed. `google` is VIL-721's one link: both at once. */
+  connected: 'gmail' | 'gcal' | 'google' | null,
   nameStored: boolean,
 ): OnboardingChecklist {
   const given = session.firstTouch?.given ?? null;
@@ -539,17 +684,33 @@ export function storedChecklist(
   const lines = session.firstTouch?.coldStart
     ? linesOfFind(session.firstTouch.coldStart.findBody)
     : [];
+  const gmailIn = connected === 'gmail' || connected === 'google';
+  const calendarIn = connected === 'gcal' || connected === 'google';
   return {
     postal: placeSettled(session.firstTouch),
     kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
     ages: agesAreComplete(children),
     name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
-    gmail: connected === 'gmail' || given?.connectGmail != null || given?.gmailLater === true,
-    calendar:
-      connected === 'gcal' || given?.connectCalendar != null || given?.calendarLater === true,
+    gmail: gmailIn || given?.connectGmail != null || given?.gmailLater === true,
+    calendar: calendarIn || given?.connectCalendar != null || given?.calendarLater === true,
     schedule: lines.length === 0 || given?.scheduleDone === true,
     coparent: given?.coparentGroup != null,
+    ...threadV2Checklist({
+      activities: activitiesAnswered(given),
+      google: connected != null || googleAnswered(given),
+    }),
   };
+}
+
+/**
+ * VIL-721. The two lit items, or nothing while dark: a dark checklist never carries
+ * them, so the `known` the model reads keeps its bytes.
+ */
+export function threadV2Checklist(items: {
+  activities: boolean;
+  google: boolean;
+}): Partial<Record<ThreadV2Item, boolean>> {
+  return threadOnboardingV2Enabled() ? { activities: items.activities, google: items.google } : {};
 }
 
 export function checklistAfter(
@@ -568,6 +729,10 @@ export function checklistAfter(
     calendar: prior.calendar || capture.connectCalendar != null || capture.calendarLater,
     schedule: prior.schedule || capture.scheduleDone,
     coparent: prior.coparent || capture.coparentGroup != null,
+    ...threadV2Checklist({
+      activities: prior.activities === true || activitiesAnswered(capture),
+      google: prior.google === true || googleAnswered(capture),
+    }),
   };
 }
 
@@ -605,6 +770,29 @@ export function mergeCaptures(
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
     language: next.language ?? prior.language,
+    ...mergeThreadV2(prior, next),
+  };
+}
+
+/** VIL-721. The lit fields, merged only when either capture carries them. */
+function mergeThreadV2(
+  prior: OnboardingCapture,
+  next: OnboardingCapture,
+): Partial<OnboardingCapture> {
+  const carries = (capture: OnboardingCapture) =>
+    capture.activities !== undefined ||
+    capture.activitiesNone !== undefined ||
+    capture.connectGoogle !== undefined ||
+    capture.googleLater !== undefined;
+  if (!carries(prior) && !carries(next)) return {};
+  const priorActivities = prior.activities ?? [];
+  const activities = [...priorActivities, ...newActivities(priorActivities, next.activities ?? [])];
+  return {
+    activities,
+    activitiesNone:
+      activities.length === 0 && (next.activitiesNone || prior.activitiesNone) === true,
+    connectGoogle: next.connectGoogle ?? prior.connectGoogle ?? null,
+    googleLater: next.googleLater === true || prior.googleLater === true,
   };
 }
 

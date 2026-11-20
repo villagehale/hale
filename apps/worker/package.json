@@ -51,6 +51,7 @@
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
     "eval:name-takeback": "node evals/name-takeback-eval.mjs --cached-only",
     "eval:friend-marks": "node evals/friend-marks-eval.mjs --cached-only",
+    "eval:thread-onboarding-v2": "node evals/thread-onboarding-v2-eval.mjs --cached-only",
     "eval:household-group": "node evals/run-household-group-eval.mjs --cached-only",
     "eval:household-group:broken": "node evals/run-household-group-eval.mjs --broken --cached-only",
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",

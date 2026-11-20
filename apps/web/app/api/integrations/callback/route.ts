@@ -5,7 +5,12 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { capturePortalEventAfter } from '~/lib/analytics/server-capture';
 import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
-import { type AhaSnapshot, failedAha, loadConnectedAha } from '~/lib/channel/connect/aha-read';
+import {
+  type AhaSnapshot,
+  failedAha,
+  loadConnectedAha,
+  mergeAhaSnapshots,
+} from '~/lib/channel/connect/aha-read';
 import {
   connectedNoticeLabel,
   defaultConnectedNoticePorts,
@@ -27,10 +32,12 @@ import { type ConnectState, verifyConnectState } from '~/lib/integrations/connec
 import { settleSupersededGoogleRevoke } from '~/lib/integrations/google-disconnect';
 import {
   CONNECTOR_SCOPES,
+  type ConsentConnector,
   GOOGLE_PROFILE_SCOPE,
   connectorRedirectUri,
   exchangeCodeForTokens,
   requestedConnectorScopes,
+  splitBundleGrant,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
 import {
@@ -150,6 +157,11 @@ export async function GET(req: NextRequest) {
     // stale or replayed — fail closed rather than complete an unbindable consent.
     return back('invalid', 'mobile');
   }
+  // VIL-721. The one link: one consent for Gmail and the calendar together. Its own
+  // path end to end, so the single-connector path below is the code it was.
+  if (bound.provider === 'google') {
+    return completeGoogleBundle({ ...bound, provider: 'google' }, { code, declined, back });
+  }
   // A text surface names a provider Hale has a receipt for, or this deployment did not
   // mint it: fail closed rather than complete a connect whose promised text is a blank.
   const textProvider = bound.surface === 'text' ? asTextConnectProvider(bound.provider) : null;
@@ -261,27 +273,7 @@ export async function GET(req: NextRequest) {
             'google account: held by the other parent',
           );
           // Nothing is stored. The page tells them the co-parent opens the link.
-          let who = '';
-          let lang = 'en';
-          try {
-            const [named] = await database
-              .select({ name: schema.users.name })
-              .from(schema.users)
-              .where(eq(schema.users.id, bound.userId))
-              .limit(1);
-            const [home] = await database
-              .select({ primaryLanguage: schema.families.primaryLanguage })
-              .from(schema.families)
-              .where(eq(schema.families.id, bound.familyId))
-              .limit(1);
-            who = named?.name?.trim() ?? '';
-            if (home?.primaryLanguage?.toLowerCase().startsWith('fr')) lang = 'fr';
-          } catch (err) {
-            console.info(
-              { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
-              'google account: own-link name unread',
-            );
-          }
+          const { who, lang } = await ownLinkWho(database, bound);
           return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
         }
         googleAccountKey = accountKey;
@@ -530,4 +522,296 @@ async function rememberGoogleGivenName(
       'google profile: hold failed',
     );
   }
+}
+
+/** The parent's name and language for the own-link page. A miss is named, never thrown. */
+async function ownLinkWho(
+  database: Database,
+  bound: { familyId: string; userId: string },
+): Promise<{ who: string; lang: string }> {
+  let who = '';
+  let lang = 'en';
+  try {
+    const [named] = await database
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, bound.userId))
+      .limit(1);
+    const [home] = await database
+      .select({ primaryLanguage: schema.families.primaryLanguage })
+      .from(schema.families)
+      .where(eq(schema.families.id, bound.familyId))
+      .limit(1);
+    who = named?.name?.trim() ?? '';
+    if (home?.primaryLanguage?.toLowerCase().startsWith('fr')) lang = 'fr';
+  } catch (err) {
+    console.info(
+      { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+      'google account: own-link name unread',
+    );
+  }
+  return { who, lang };
+}
+
+type Back = (
+  status: string,
+  surface?: ConnectState['surface'],
+  provider?: string,
+  extra?: { who?: string; lang?: string; fresh?: string },
+) => NextResponse;
+
+/**
+ * VIL-721 · the one texted link's return leg: ONE Google consent that asked for Gmail
+ * and the calendar together (api/integrations/google/connect).
+ *
+ * The same guards as one connector's, in the same order: a text surface only (the
+ * bundle exists for a texted link and nowhere else), the completer bound to the
+ * minter (consent fixation, rule #1), a grant that holds nothing the consent did not
+ * ask for (anything broader is stored nowhere), the other parent's Google account
+ * refused. Granular consent lets the parent untick a box: each connector whose scopes
+ * all arrived is stored as itself, the other is not, and the receipt names only what
+ * landed. Neither box ticked is `partial`, and a fresh ONE link goes out, never two.
+ *
+ * One token, one row per granted connector, one burn of the texted link, one aha read
+ * per source merged into one snapshot, and ONE receipt. Every way this ends is named in
+ * a log line and on the done page (rule #11).
+ */
+async function completeGoogleBundle(
+  bound: ConnectState & { provider: 'google' },
+  leg: { code: string | null; declined: boolean; back: Back },
+): Promise<NextResponse> {
+  const { back } = leg;
+  if (bound.surface !== 'text') {
+    console.info(
+      { familyId: bound.familyId, outcome: 'bundle_off_text' },
+      'google bundle: not from a text - nothing exchanged, nothing stored',
+    );
+    return back('invalid', bound.surface, 'google');
+  }
+  const who = { familyId: bound.familyId, parentUserId: bound.userId };
+  const freshAfter = async (status: 'denied' | 'partial' | 'invalid' | 'error') => {
+    let fresh: string | undefined;
+    try {
+      const outcome = await textFreshConnectorLink(db(), {
+        ...who,
+        provider: 'google',
+        now: new Date(),
+      });
+      if (outcome === 'sent') fresh = 'sent';
+      console.info(
+        { familyId: bound.familyId, provider: 'google', outcome, status },
+        'connector link: fresh link after a failed connect',
+      );
+    } catch (err) {
+      console.error(
+        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'connector link: fresh link after a failed connect threw',
+      );
+    }
+    return back(status, 'text', 'google', fresh ? { fresh } : undefined);
+  };
+
+  if (leg.declined || !leg.code) return freshAfter('denied');
+
+  const database = db();
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  const sessionUserId = externalAuthId
+    ? await resolveUserIdForUser(externalAuthId, database)
+    : null;
+  if (!sessionUserId || sessionUserId !== bound.userId) return freshAfter('invalid');
+
+  const connectIds: string[] = [];
+  let granted: ConsentConnector[] = [];
+  let grantedAccessToken = '';
+  try {
+    const tokens = await exchangeCodeForTokens({
+      code: leg.code,
+      redirectUri: connectorRedirectUri(),
+    });
+    grantedAccessToken = tokens.accessToken;
+    const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
+    const split = splitBundleGrant(scopes, process.env, bound.userId);
+    if (split.unexpected.length > 0 || split.granted.length === 0) {
+      const grantStatus = split.unexpected.length > 0 ? 'denied' : 'partial';
+      console.info(
+        {
+          familyId: bound.familyId,
+          provider: 'google',
+          grantStatus,
+          unexpected: split.unexpected.slice(0, LOGGED_SCOPES_MAX),
+          missing: split.missing.slice(0, LOGGED_SCOPES_MAX),
+        },
+        'connector grant: refused - nothing stored',
+      );
+      return freshAfter(grantStatus);
+    }
+    granted = split.granted;
+    let googleAccountKey: string | undefined;
+    if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
+      const sub = await readGoogleAccountSub(tokens.accessToken);
+      if (!sub) {
+        console.info({ familyId: bound.familyId }, 'google account: identity unread');
+      } else {
+        const accountKey = googleAccountBlindIndex(sub);
+        const held = await otherParentHoldsGoogleAccount(database, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accountKey,
+        });
+        if (held) {
+          console.info(
+            { familyId: bound.familyId, provider: 'google' },
+            'google account: held by the other parent',
+          );
+          const named = await ownLinkWho(database, bound);
+          return back(
+            'own_link',
+            'text',
+            'google',
+            named.who ? { who: named.who, lang: named.lang } : undefined,
+          );
+        }
+        googleAccountKey = accountKey;
+      }
+    }
+    // One row per granted connector, each holding the token as granted: the row's
+    // scopes are the token's scopes, so no row claims less power than its token has.
+    for (const provider of granted) {
+      const saved = await saveConnection(database, {
+        familyId: bound.familyId,
+        userId: bound.userId,
+        provider,
+        scopes,
+        tokens,
+        googleAccountKey,
+      });
+      connectIds.push(saved.connectId);
+      if (saved.superseded) await settleSupersededGoogleRevoke(database, saved.superseded);
+      capturePortalEventAfter(
+        provider === 'gmail' ? 'portal_gmail_connected' : 'portal_calendar_connected',
+        bound.familyId,
+        'connected',
+      );
+    }
+    await rememberGoogleGivenName(database, {
+      familyId: bound.familyId,
+      userId: bound.userId,
+      scopes,
+      accessToken: tokens.accessToken,
+    });
+    for (const provider of granted) {
+      try {
+        const watch = await ensurePushWatchAfterConnect(database, {
+          familyId: bound.familyId,
+          userId: bound.userId,
+          provider,
+          tokens,
+        });
+        console.info(
+          { familyId: bound.familyId, provider, push: watch.outcome },
+          'google push: connect',
+        );
+      } catch (err) {
+        console.info(
+          { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+          'google push: connect watch failed',
+        );
+      }
+    }
+    const gmailAt = granted.indexOf('gmail');
+    const gmailRow = gmailAt >= 0 ? connectIds[gmailAt] : undefined;
+    if (gmailRow && tokens.accessToken) {
+      try {
+        const kick = await kickGmailBookedBackfill(database, {
+          id: gmailRow,
+          familyId: bound.familyId,
+          userId: bound.userId,
+          accessToken: tokens.accessToken,
+          providerMetadata: {},
+        });
+        console.info(
+          { familyId: bound.familyId, kick: kick.outcome },
+          'gmail backfill: connect kick',
+        );
+      } catch (err) {
+        console.info(
+          { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+          'gmail backfill: connect kick failed',
+        );
+      }
+    }
+  } catch {
+    // Rows already written stay: the connection IS stored for what landed, and the
+    // fresh link lets the parent finish the rest. Nothing here is a partial claim.
+    if (connectIds.length === 0) return freshAfter('error');
+    console.error(
+      { familyId: bound.familyId, stored: connectIds.length },
+      'google bundle: connect threw after a row was stored - receipt still goes',
+    );
+  }
+
+  if (bound.channelSigninTokenId) {
+    try {
+      const burned = await consumeChannelSigninTokenById(database, {
+        tokenId: bound.channelSigninTokenId,
+        userId: bound.userId,
+      });
+      console.info(
+        {
+          familyId: bound.familyId,
+          provider: 'google',
+          burned: burned.ok ? 'burned' : burned.reason,
+        },
+        'channel sign-in: token burned after consent',
+      );
+    } catch (err) {
+      console.info(
+        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
+        'channel sign-in: token burn failed after consent',
+      );
+    }
+  }
+
+  // What landed: both (the one-link receipt), or the one box they left ticked.
+  const landed = granted.slice(0, connectIds.length);
+  const connectId = connectIds[0];
+  const now = new Date();
+  const snapshots = await Promise.all(
+    landed.map(async (provider) => {
+      const read = await ahaForTextConnect(database, {
+        familyId: bound.familyId,
+        provider,
+        accessToken: grantedAccessToken,
+        now,
+      });
+      return read ?? failedAha(provider);
+    }),
+  );
+  const receiptFor = landed.length === 2 ? 'google' : landed[0];
+  if (!connectId || !receiptFor) return freshAfter('error');
+  const aha = landed.length === 2 ? mergeAhaSnapshots(snapshots) : snapshots[0];
+  const receipt = await sendConnectorConnectedText(
+    database,
+    {
+      familyId: bound.familyId,
+      parentUserId: bound.userId,
+      provider: receiptFor,
+      connectId,
+      now,
+      fromBundle: true,
+      ...(aha ? { aha } : {}),
+    },
+    defaultConnectedNoticePorts(),
+  );
+  console.info(
+    {
+      familyId: bound.familyId,
+      provider: 'google',
+      landed,
+      receipt: connectedNoticeLabel(receipt),
+    },
+    'connector connected from a text - the done page is up; this is what the receipt did',
+  );
+  return back('ok', 'text', receiptFor);
 }

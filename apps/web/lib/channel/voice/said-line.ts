@@ -608,6 +608,33 @@ const LINK_MINUTES = CHANNEL_SIGNIN_TTL_MS / 60_000;
  * fixed connector offer is gone). The links are the required facts. Null when the
  * write failed or no writer is wired: the caller sends nothing.
  */
+/**
+ * VIL-721. The one link for Gmail and the calendar together, in the model's words:
+ * what it connects (Google's own product names, as data), how long it works, and the
+ * unverified-app caution as a fact. Code puts the URL in the slot. Null: the caller
+ * sends nothing.
+ */
+export async function writeGoogleBundleLink(
+  writer: SaidLineWriter | null | undefined,
+  input: { language: ReplyLanguage | null; url: string },
+): Promise<string | null> {
+  if (!writer) {
+    console.error('google link: no line writer - nothing sent');
+    return null;
+  }
+  return writer.write({
+    purpose: 'connector_link',
+    language: input.language,
+    facts: {
+      service: ['Gmail', 'Google Calendar'],
+      link: linkSlot('link'),
+      minutesValid: LINK_MINUTES,
+      googleCaution: GOOGLE_UNVERIFIED_APP_FACT,
+    },
+    links: { link: input.url },
+  });
+}
+
 export async function writeConnectorLinks(
   writer: SaidLineWriter | null | undefined,
   input: { language: ReplyLanguage | null; calendarUrl: string; gmailUrl: string },

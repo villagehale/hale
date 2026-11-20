@@ -1,4 +1,5 @@
 import type { Route } from 'next';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -47,7 +48,32 @@ export const TEXT_LINK_PAGES = ['privacy'] as const;
 
 export type TextLinkPage = (typeof TEXT_LINK_PAGES)[number];
 
-export type TextLinkTarget = TextConnectProvider | TextLinkPage;
+/**
+ * VIL-721. The one link that connects Gmail and the calendar together, in one Google
+ * consent asking for both read scopes. A link target, never a connector: each grant it
+ * yields is stored as the connector it is (gmail, gcal), and every receipt and fresh
+ * link names the bundle by this word.
+ */
+export const GOOGLE_BUNDLE_LINK = 'google' as const;
+
+export type GoogleBundleLink = typeof GOOGLE_BUNDLE_LINK;
+
+/** The connectors one bundle link asks Google for, in the order the consent lists them. */
+export const GOOGLE_BUNDLE_PROVIDERS = [
+  'gmail',
+  'gcal',
+] as const satisfies readonly TextConnectProvider[];
+
+/**
+ * Exact match, and only while THREAD_ONBOARDING_V2_ENABLED is on. Dark, `to=google`
+ * names nothing this deployment mints, so it lands like any unknown target (the
+ * family page), and no Google consent starts from it.
+ */
+export function asGoogleBundleLink(value: string | undefined | null): GoogleBundleLink | null {
+  return value === GOOGLE_BUNDLE_LINK && threadOnboardingV2Enabled() ? GOOGLE_BUNDLE_LINK : null;
+}
+
+export type TextLinkTarget = TextConnectProvider | TextLinkPage | GoogleBundleLink;
 
 export const TEXT_LINK_PAGE_PATH: Record<TextLinkPage, Route> = { privacy: '/privacy' };
 
@@ -56,7 +82,7 @@ export const TEXT_LINK_DEFAULT_PATH: Route = '/family';
 /** The whole link allowlist, as an exact-match narrowing (same contract as
  * asTextConnectProvider). */
 export function asTextLinkTarget(value: string | undefined | null): TextLinkTarget | null {
-  return asTextConnectProvider(value) ?? asTextLinkPage(value);
+  return asTextConnectProvider(value) ?? asTextLinkPage(value) ?? asGoogleBundleLink(value);
 }
 
 export function asTextLinkPage(value: string | undefined | null): TextLinkPage | null {

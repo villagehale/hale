@@ -10,6 +10,7 @@ import {
   TEXT_LINK_DEFAULT_PATH,
   TEXT_LINK_PAGE_PATH,
   type TextConnectProvider,
+  asGoogleBundleLink,
   asTextConnectProvider,
   asTextLinkPage,
 } from '~/lib/channel/connect/text-connect';
@@ -45,6 +46,12 @@ function destination(to: string | null, provider: TextConnectProvider | null, to
     const path = `/api/integrations/${provider}/connect?from=text`;
     return tokenId ? `${path}&link=${tokenId}` : path;
   }
+  // VIL-721. The one link: one Google consent for Gmail and the calendar together.
+  // Dark, asGoogleBundleLink names nothing and this falls through to the family page.
+  if (asGoogleBundleLink(to)) {
+    const path = '/api/integrations/google/connect?from=text';
+    return tokenId ? `${path}&link=${tokenId}` : path;
+  }
   const page = asTextLinkPage(to);
   return page ? TEXT_LINK_PAGE_PATH[page] : TEXT_LINK_DEFAULT_PATH;
 }
@@ -60,14 +67,17 @@ export async function redeemChannelLinkAction(
   }
 
   const named = asTextConnectProvider(to);
+  const bundle = asGoogleBundleLink(to);
   const recalled = await recallChannelSigninParent(token, db());
   // A dead link still names its parent. Text a new one for the provider they
-  // tapped, and do not open Google on a token that can no longer sign them in.
-  if (recalled && !recalled.usable && named) {
+  // tapped (the one link for the one link), and do not open Google on a token that
+  // can no longer sign them in.
+  if (recalled && !recalled.usable && (named || bundle)) {
     const outcome = await textFreshConnectorLink(db(), {
       familyId: recalled.familyId,
       parentUserId: recalled.userId,
-      provider: named,
+      // No provider named means the guard above saw the one link.
+      provider: named ?? 'google',
       now: new Date(),
     });
     return { status: 'error', message: outcome === 'sent' ? FRESH_SENT : EXPIRED };

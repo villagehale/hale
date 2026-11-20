@@ -45,7 +45,7 @@ import {
   loadKidContext,
 } from './aha-kids';
 import { type AhaSnapshot, failedAha } from './aha-read';
-import type { TextConnectProvider } from './text-connect';
+import type { GoogleBundleLink, TextConnectProvider } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -154,7 +154,8 @@ export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
  * A failed compose returns an empty string and the caller does not send it. */
 export async function connectedReceiptBody(
   language: ReplyLanguage,
-  provider: TextConnectProvider,
+  /** What landed: one connector, or `google` for both from VIL-721's one link. */
+  provider: TextConnectProvider | GoogleBundleLink,
   composer: FriendVoiceComposer | undefined,
   aha?: AhaSnapshot | null,
   options?: {
@@ -193,7 +194,13 @@ export async function connectedReceiptBody(
 export interface ConnectedNoticeArgs {
   familyId: string;
   parentUserId: string;
-  provider: TextConnectProvider;
+  /** What landed: one connector, or `google` for both from VIL-721's one link. */
+  provider: TextConnectProvider | GoogleBundleLink;
+  /**
+   * VIL-721. This connect came from the one link (both, or the one box the parent left
+   * ticked). The next beat is the schedule or co-parent ask, never a second card.
+   */
+  fromBundle?: boolean;
   /** This connect, as `saveConnection` recorded it — the audit row's id. */
   connectId: string;
   now: Date;
@@ -333,6 +340,7 @@ async function sendReceipt(
     familyId,
     parentUserId,
     provider,
+    fromBundle: args.fromBundle === true,
     now,
     chatId: door.channel === 'imessage' ? receiptChatId : null,
     phone,
@@ -413,7 +421,8 @@ async function continueAfterReceipt(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider;
+    provider: TextConnectProvider | GoogleBundleLink;
+    fromBundle: boolean;
     now: Date;
     chatId: string | null;
     phone: string;
@@ -421,6 +430,16 @@ async function continueAfterReceipt(
   },
   ports: ConnectedNoticePorts,
 ): Promise<void> {
+  // VIL-721. The one link has no second card: its receipt carries the schedule ask
+  // (or the co-parent ask), as the calendar receipt does.
+  if (args.fromBundle || args.provider === 'google') {
+    await askAfterCalendarReceipt(
+      database,
+      { ...args, connected: args.provider, fromBundle: true },
+      ports,
+    );
+    return;
+  }
   if (args.provider === 'gmail') {
     await sendCalendarCardAfterGmailReceipt(database, args, ports);
     return;
@@ -570,9 +589,15 @@ async function askAfterCalendarReceipt(
     now: Date;
     chatId: string | null;
     phone: string;
+    /** What landed. Absent is the calendar, as before VIL-721. */
+    connected?: TextConnectProvider | GoogleBundleLink;
+    /** VIL-721: the connect came from the one link. */
+    fromBundle?: boolean;
   },
   ports: ConnectedNoticePorts,
 ): Promise<void> {
+  const landed = args.connected ?? 'gcal';
+  const remember = { provider: landed, bundle: args.fromBundle === true } as const;
   try {
     const session = await openOnboarding(database, args.familyId);
     if (!session) return;
@@ -583,7 +608,7 @@ async function askAfterCalendarReceipt(
     const coparentOpen = given?.coparentGroup == null;
     const step = scheduleOpen ? 'schedule' : coparentOpen ? 'coparent' : null;
     if (!step) {
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     // One ask per session off this receipt. A reconnect does not ask again;
@@ -607,7 +632,7 @@ async function askAfterCalendarReceipt(
       .returning({ id: schema.channelMessages.id });
     if (!claimed) {
       console.info({ familyId: args.familyId, step }, 'connector connected: ask already went out');
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     const language = await familyReceiptLanguage(database, args.familyId, args.parentUserId);
@@ -618,7 +643,7 @@ async function askAfterCalendarReceipt(
         ...receiptVoiceBase(
           language,
           session,
-          'gcal',
+          landed,
           await parentNameStored(database, args.parentUserId),
         ),
         step,
@@ -634,7 +659,7 @@ async function askAfterCalendarReceipt(
       await database
         .delete(schema.channelMessages)
         .where(eq(schema.channelMessages.id, claimed.id));
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
@@ -658,7 +683,7 @@ async function askAfterCalendarReceipt(
       body: spoken.body,
     });
     await rememberConnected(database, session, {
-      provider: 'gcal',
+      ...remember,
       now: args.now,
       said: spoken.body,
     });
@@ -685,7 +710,7 @@ async function parentNameStored(database: Database, userId: string | null): Prom
 function receiptVoiceBase(
   language: ReplyLanguage,
   session: IntakeSession | null,
-  connected: TextConnectProvider | null = null,
+  connected: TextConnectProvider | GoogleBundleLink | null = null,
   nameStored = false,
 ) {
   const given = session?.firstTouch?.given ?? null;
@@ -728,7 +753,10 @@ async function rememberConnected(
   database: Database,
   session: IntakeSession | null,
   patch: {
-    provider: 'gcal' | 'gmail';
+    /** What landed. `google` is both, from VIL-721's one link. */
+    provider: 'gcal' | 'gmail' | 'google';
+    /** VIL-721: it came from the one link, so the one Google item is answered. */
+    bundle?: boolean;
     now: Date;
     calendarOffered?: boolean;
     said?: string | null;
@@ -742,6 +770,9 @@ async function rememberConnected(
     connectGmail: null,
   };
   const coldStart = session.firstTouch.coldStart;
+  const bundle = patch.bundle === true || patch.provider === 'google';
+  const gmailIn = patch.provider === 'gmail' || patch.provider === 'google';
+  const calendarIn = patch.provider === 'gcal' || patch.provider === 'google';
   const transcript = patch.said
     ? [
         ...session.transcript,
@@ -762,23 +793,20 @@ async function rememberConnected(
         ...session.firstTouch,
         given: {
           ...given,
-          connectGmail: patch.provider === 'gmail' ? true : given.connectGmail,
-          connectCalendar: patch.provider === 'gcal' ? true : given.connectCalendar,
+          connectGmail: gmailIn ? true : given.connectGmail,
+          connectCalendar: calendarIn ? true : given.connectCalendar,
+          ...(bundle ? { connectGoogle: true } : {}),
         },
         ...(coldStart
           ? {
               coldStart: {
                 ...coldStart,
-                emailAsked: patch.provider === 'gmail' ? true : coldStart.emailAsked,
-                emailOffered: patch.provider === 'gmail' ? true : coldStart.emailOffered,
-                calendarAsked:
-                  patch.provider === 'gcal' || patch.calendarOffered
-                    ? true
-                    : coldStart.calendarAsked,
+                emailAsked: gmailIn ? true : coldStart.emailAsked,
+                emailOffered: gmailIn ? true : coldStart.emailOffered,
+                calendarAsked: calendarIn || patch.calendarOffered ? true : coldStart.calendarAsked,
                 calendarOffered:
-                  patch.provider === 'gcal' || patch.calendarOffered
-                    ? true
-                    : coldStart.calendarOffered,
+                  calendarIn || patch.calendarOffered ? true : coldStart.calendarOffered,
+                ...(bundle ? { googleOffered: true } : {}),
               },
             }
           : {}),

@@ -106,7 +106,11 @@ import {
 import { coldStartLadderEnabled } from './cold-start/flags';
 import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
-import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
+import {
+  type ConnectorOfferLabel,
+  sendGoogleConnectorCard,
+  sendYearConnectorCards,
+} from './connector-offer';
 import {
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
@@ -141,18 +145,24 @@ import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
 import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
+import { keepKidActivities } from './kid-activity-facts';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
   type CoparentGroupMode,
+  type KidActivity,
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
+  activitiesAnswered,
   agesAreComplete,
   coldStartQuestionIsStale,
+  googleAnswered,
   kidsAreNamed,
   lastTranscriptAt,
+  newActivities,
   onboardingMissing,
   storedFromCapture,
+  threadV2Checklist,
 } from './onboarding-turn';
 import { holdSender, releaseHeldMessage } from './opt-out-hold';
 import {
@@ -193,6 +203,7 @@ import {
   intakeStatedPlaceEnabled,
   resolveStatedPlace,
 } from './stated-place';
+import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -1818,6 +1829,10 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
       return 'email';
     case 'calendar':
       return 'calendar';
+    case 'activities':
+      return 'activities';
+    case 'google':
+      return 'google';
     case 'schedule':
       return 'schedule';
     case 'coparent':
@@ -1827,6 +1842,22 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
     default:
       return card ? 'place_card' : 'place';
   }
+}
+
+/**
+ * VIL-721. What the kids already do, as the model is handed it. Lit only, so a dark
+ * turn's input (and its prompt bytes) is what it was.
+ */
+function kidActivitiesFor(given: FirstTouchGiven | null): { kidActivities?: KidActivity[] } {
+  return threadOnboardingV2Enabled() ? { kidActivities: given?.activities ?? [] } : {};
+}
+
+/** VIL-721. The two lit checklist items from what the session holds. Dark adds nothing. */
+function threadV2Known(given: FirstTouchGiven | null): ReturnType<typeof threadV2Checklist> {
+  return threadV2Checklist({
+    activities: activitiesAnswered(given),
+    google: googleAnswered(given),
+  });
 }
 
 /** Hale's iMessage line and the group phrase, when the chat is iMessage and the line is configured. */
@@ -1926,10 +1957,24 @@ function givenFromStored(
     scheduleDone: boolean;
     coparentGroup: boolean | null;
     coparentGroupMode: CoparentGroupMode | null;
+    activities?: KidActivity[];
+    activitiesNone?: boolean;
+    connectGoogle?: boolean | null;
+    googleLater?: boolean;
   },
   extra: { scheduled?: FirstTouchScheduled[]; coarseCodeAsked?: boolean } = {},
 ): FirstTouchGiven | null {
   const scheduled = [...(prior?.scheduled ?? []), ...(extra.scheduled ?? [])];
+  // VIL-721. Kept from earlier turns plus what this message added, by kid and phrase.
+  const priorActivities = prior?.activities ?? [];
+  const activities = [
+    ...priorActivities,
+    ...newActivities(priorActivities, capture.activities ?? []),
+  ];
+  const activitiesNone =
+    activities.length === 0 && (prior?.activitiesNone === true || capture.activitiesNone === true);
+  const connectGoogle = capture.connectGoogle ?? prior?.connectGoogle ?? null;
+  const googleLater = prior?.googleLater === true || capture.googleLater === true;
   const given: FirstTouchGiven = {
     parentName: stored.parentName,
     activityPick: prior?.activityPick ?? null,
@@ -1946,6 +1991,11 @@ function givenFromStored(
     scheduled,
     coparentGroup: capture.coparentGroup ?? prior?.coparentGroup ?? null,
     coparentGroupMode: capture.coparentGroupMode ?? prior?.coparentGroupMode ?? null,
+    // Absent unless set, so a dark session stores what it stored before.
+    ...(activities.length > 0 ? { activities } : {}),
+    ...(activitiesNone ? { activitiesNone } : {}),
+    ...(connectGoogle != null ? { connectGoogle } : {}),
+    ...(googleLater ? { googleLater } : {}),
   };
   if (
     !given.parentName &&
@@ -1961,7 +2011,11 @@ function givenFromStored(
     !given.gmailLater &&
     !given.scheduleDone &&
     scheduled.length === 0 &&
-    given.coparentGroup == null
+    given.coparentGroup == null &&
+    activities.length === 0 &&
+    !activitiesNone &&
+    connectGoogle == null &&
+    !googleLater
   ) {
     return null;
   }
@@ -2113,6 +2167,7 @@ async function friendOnboardingTurn(
     calendar: calendarAnswered(priorGiven),
     schedule: false,
     coparent: false,
+    ...threadV2Known(priorGiven),
   };
   const prior = {
     children: session.collected.children,
@@ -2154,6 +2209,7 @@ async function friendOnboardingTurn(
         checklist,
         ...(priorGiven?.coarseCodeAsked ? { coarseCodeAsked: true } : {}),
         ...(priorGiven?.placeDeclined ? { placeDeclined: true } : {}),
+        ...kidActivitiesFor(priorGiven),
       },
     ),
     {
@@ -2476,10 +2532,19 @@ async function recordOnboardingChoices(
       scheduleDone?: boolean;
       scheduleAdds?: readonly unknown[];
       coparentGroup?: boolean | null;
+      connectGoogle?: boolean | null;
+      googleLater?: boolean;
     };
   },
 ): Promise<void> {
   const choices: { ask: string; choice: 'no' | 'later' }[] = [];
+  // VIL-721. The one Google link: a no or a later, recorded like the two it replaces.
+  if (args.capture.connectGoogle === false && args.prior?.connectGoogle !== false) {
+    choices.push({ ask: 'google', choice: 'no' });
+  }
+  if (args.capture.googleLater && args.prior?.googleLater !== true) {
+    choices.push({ ask: 'google', choice: 'later' });
+  }
   if (
     args.capture.scheduleDone &&
     (args.capture.scheduleAdds ?? []).length === 0 &&
@@ -2632,6 +2697,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(given),
     schedule: scheduleKnown(given, lines.length),
     coparent: coparentKnown(given),
+    ...threadV2Known(given),
   };
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
@@ -2666,15 +2732,18 @@ async function friendColdTurn(
       coparentJoin: join,
       checklist,
       householdGroup,
+      ...kidActivitiesFor(given),
     }),
     {
       // A card rides only the ask for its own connector, and only the first time.
       linkFollows: (judged) =>
         (judged === 'email' && !progress.emailOffered) ||
-        (judged === 'calendar' && !progress.calendarOffered),
+        (judged === 'calendar' && !progress.calendarOffered) ||
+        (judged === 'google' && !progress.googleOffered),
       linkAbove:
         (gap === 'gmail' && progress.emailOffered === true) ||
-        (gap === 'calendar' && progress.calendarOffered === true),
+        (gap === 'calendar' && progress.calendarOffered === true) ||
+        (gap === 'google' && progress.googleOffered === true),
       pageScope: familyId,
     },
   );
@@ -2741,6 +2810,21 @@ async function friendColdTurn(
     });
   }
   await keepParentRole(database, { familyId, userId, guess: stored.parentRole });
+  // VIL-721. What the kids do is a fact the parent stated: kept whether or not this
+  // reply goes out, like their names. Only what this message added is written.
+  const freshActivities = threadOnboardingV2Enabled()
+    ? newActivities(given?.activities ?? [], spoken.capture.activities ?? [])
+    : [];
+  if (freshActivities.length > 0) {
+    await keepKidActivities(database, {
+      familyId,
+      parentUserId: userId,
+      sessionId: session.id,
+      activities: freshActivities,
+      heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+      now,
+    });
+  }
   // A reminder is written only when the reply that confirms it goes out.
   const written =
     lines.length > 0 && spoken.capture.scheduleAdds.length > 0 && friendOutbound(spoken)
@@ -2779,6 +2863,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(nextGiven),
     schedule: scheduleKnown(nextGiven, lines.length) || everyLineScheduled,
     coparent: coparentKnown(nextGiven),
+    ...threadV2Known(nextGiven),
   };
   const next = onboardingMissing(after)[0];
   const nextProgress: ColdStartProgress = {
@@ -2833,9 +2918,49 @@ async function friendColdTurn(
       ? 'gmail'
       : spoken.step === 'calendar' && next === 'calendar' && !progress.calendarOffered
         ? 'gcal'
-        : null;
+        : spoken.step === 'google' && next === 'google' && !progress.googleOffered
+          ? 'google'
+          : null;
   const pending = pendingConnector(nextGiven, progress) ?? askCard;
-  if (pending) {
+  if (pending === 'google') {
+    // VIL-721. The one card: this reply, then one link for Gmail and the calendar.
+    const gate = await gateOptionalAsk(database, {
+      familyId,
+      now,
+      sendClass: 'google',
+      askKey: 'google',
+    });
+    let carried = false;
+    if (gate.allow) {
+      const label = await sendGoogleConnectorCard(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164: session.phoneE164,
+          now,
+          ridesReply: true,
+          voice: spoken.prose,
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      if (label === 'sent') {
+        await recordOptionalAsk(database, {
+          familyId,
+          now,
+          sendClass: 'google',
+          askKey: 'google',
+        });
+        nextProgress.googleOffered = true;
+        carried = true;
+      } else {
+        console.info({ google: label }, 'onboarding-friend: google card not sent');
+      }
+    } else {
+      console.info({ reason: gate.reason, ask: 'google' }, 'onboarding-friend: connector held');
+    }
+    if (!carried) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+  } else if (pending) {
     const provider = pending;
     const ask = provider === 'gmail' ? 'email' : 'calendar';
     const gate = await gateOptionalAsk(database, {
@@ -2904,8 +3029,13 @@ async function friendColdTurn(
  */
 function pendingConnector(
   given: FirstTouchGiven | null,
-  progress: Pick<ColdStartProgress, 'emailOffered' | 'calendarOffered'> | null,
-): 'gmail' | 'gcal' | null {
+  progress: Pick<ColdStartProgress, 'emailOffered' | 'calendarOffered' | 'googleOffered'> | null,
+): 'gmail' | 'gcal' | 'google' | null {
+  // VIL-721. Lit, the walk has ONE link: no per-provider card goes from here, even if
+  // a capture carried a per-provider yes.
+  if (threadOnboardingV2Enabled()) {
+    return given?.connectGoogle === true && !progress?.googleOffered ? 'google' : null;
+  }
   if (given?.connectGmail === true && !progress?.emailOffered) return 'gmail';
   if (given?.connectCalendar === true && !progress?.calendarOffered) return 'gcal';
   return null;
@@ -3360,6 +3490,8 @@ async function provision(
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
+  // VIL-721. The one Google card reached the parent with its link (or already had).
+  let googleCardOut = false;
   let mapOwed: 'unsent' | 'send_failed' | null = null;
   {
     const given = session.firstTouch?.given ?? null;
@@ -3371,6 +3503,18 @@ async function provision(
       });
     }
     await keepParentRole(database, { familyId, userId, guess: given?.parentRole });
+    // VIL-721. Anything the kids do that the parent said before the family existed is
+    // kept now that there is a family to keep it on. A miss is named and logged there.
+    if (threadOnboardingV2Enabled() && (given?.activities?.length ?? 0) > 0) {
+      await keepKidActivities(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        activities: given?.activities ?? [],
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
     const empty = findLines.length === 0;
     const nameKnown = Boolean(given?.parentName) || given?.nameDeclined === true;
     const checklist: OnboardingChecklist = {
@@ -3382,6 +3526,7 @@ async function provision(
       calendar: calendarAnswered(given),
       schedule: empty,
       coparent: false,
+      ...threadV2Known(given),
     };
     const gap = onboardingMissing(checklist)[0];
     const common = {
@@ -3394,6 +3539,7 @@ async function provision(
       checklist,
       // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
       ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
+      ...kidActivitiesFor(given),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3431,7 +3577,8 @@ async function provision(
           listKind: 'none',
         }),
         {
-          linkFollows: (judged) => judged === 'email' || judged === 'calendar',
+          linkFollows: (judged) =>
+            judged === 'email' || judged === 'calendar' || judged === 'google',
           pageScope: familyId,
         },
       ),
@@ -3454,7 +3601,27 @@ async function provision(
     }
     if (!discoveryOn) outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     const cardStep = spoken.step;
-    if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
+    if (cardStep === 'google' && outboundBody) {
+      // VIL-721. The one card: the ask, then one link for Gmail and the calendar.
+      const google = await sendGoogleConnectorCard(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164,
+          now,
+          ridesReply: true,
+          voice: spoken.prose,
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      console.info({ google }, 'onboarding-friend: google card after the map');
+      // The ask rides its card or does not go: prose pointing at a link that never
+      // went is a promise nothing backs. A card that did not go leaves the ask open,
+      // so the next turn writes it again with its link.
+      connectorSent = true;
+      googleCardOut = google === 'sent' || google === 'already_sent';
+    } else if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
       const provider = cardStep === 'calendar' ? 'gcal' : 'gmail';
       await sendYearConnectorCards(
         database,
@@ -3487,6 +3654,7 @@ async function provision(
         emailAsked: gmailAnswered(given),
         ...(connectorSent && cardStep === 'calendar' ? { calendarOffered: true } : {}),
         ...(connectorSent && cardStep === 'email' ? { emailOffered: true } : {}),
+        ...(googleCardOut ? { googleOffered: true } : {}),
         schoolMentioned: false,
       };
     }
@@ -4047,6 +4215,7 @@ async function helpBody(
       linesOfFind(session?.firstTouch?.coldStart?.findBody ?? '').length,
     ),
     coparent: coparentKnown(given),
+    ...threadV2Known(given),
   };
   const spoken = await friendSpeak(
     deps,
@@ -4059,6 +4228,7 @@ async function helpBody(
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,
+      ...kidActivitiesFor(given),
     }),
   );
   return friendOutbound(spoken);
