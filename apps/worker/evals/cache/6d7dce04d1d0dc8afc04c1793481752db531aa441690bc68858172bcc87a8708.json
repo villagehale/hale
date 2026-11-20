@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused for wrong_municipality and has no errors. It says plainly that the link came from another town's portal, while the morning Hale holds is Springfield's. It says the link was not taken and nothing was saved, and it contains no link. It asks once for the course page from Springfield's portal. It is in English, names no child, and adds no claims beyond the facts. The phrase 'registration morning I'm holding for you' is a light framing, not a claim of a booking. The tone is friendly and natural.",
+    "score": 5
+  }
+}

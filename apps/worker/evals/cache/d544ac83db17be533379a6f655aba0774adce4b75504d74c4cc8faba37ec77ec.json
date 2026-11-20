@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is check_in_ask. The message asks how it went, offering the three outcomes: got in, waitlisted (with the number), or missed. It is in French, as handed, and names the window correctly. It names no child and invents no claims. The tone is a bit formal for a friend texting, with 'avez-vous raté la fenêtre' reading slightly stiff, but it is acceptable.",
+    "score": 5
+  }
+}

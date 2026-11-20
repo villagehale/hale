@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a yes readiness_answer in English for Max. It names the correct portal and account and asks nothing. \"Thanks for letting me know\" does attribute the readiness to the parent. But it then flatly asserts that the setup \"is done\" and \"you're set,\" which reads close to a verified status rather than plainly the parent's report. It also lists only some of the four items (account, child added, card) and leaves out the address and birthday, which makes it sound like a summary of what was checked. Nothing invented or wrong outright.",
+    "score": 4
+  }
+}

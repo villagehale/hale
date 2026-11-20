@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for letting me know, Max's setup on Springfield's portal is done, a Springfield recreation account with him added and the card saved, so you're set on that side."
+  },
+  "latencyMs": 949,
+  "usage": {
+    "input_tokens": 94,
+    "output_tokens": 59,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_bound asks. It notes the page replaced the earlier one and says the null course details and age range could not be read rather than inventing them. The date, time, clock name and 'your teen' are kept correctly, and it warns about the prerequisite. It carries no link, no question and no price. One small issue: 'leave some time to meet it before then' reads the prerequisite warning as a deadline to meet the prerequisite before opening, which the facts don't quite state. Tone is natural.",
+    "score": 4
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Got it, you're not set up on Springfield's portal yet. Before the morning, you'll need a Springfield recreation account, Max and your teen added with their birthdays, the address filled in, and a card saved. I'll check in with you again the evening before it opens."
+  },
+  "latencyMs": 1293,
+  "usage": {
+    "input_tokens": 98,
+    "output_tokens": 89,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

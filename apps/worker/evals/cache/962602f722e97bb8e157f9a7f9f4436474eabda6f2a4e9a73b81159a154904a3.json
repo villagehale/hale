@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits the course_bound kind. It notes the page replaces the earlier one and correctly says the course name, day and time couldn't be read and no age range was listed. It keeps Tuesday, September 15 at 7:00 a.m. and the residents date right, warns about the prerequisite, and carries no link and no question. Two small issues keep it from a 5: \"on the residents date\" reads awkwardly, and \"leave some time to meet it before then\" slightly reframes the leave-time warning as completing the prerequisite before opening.",
+    "score": 4
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Springfield Fall 2026 swim lessons open Tuesday, September 15 at 7:00 a.m. for residents, and the general public opens 7 days later. Max fits the published age band and Mia is just outside it, so check that Mia's class is right for her before you sign up. Once you pick a course, send me the link to its page and I'll carry it into the morning text. Here is the registration page: https://rec.example.org/springfield/fall-2026. Here is what I'll send you: a week-ahead note 7 days before, a checklist 3 days before, a reminder the evening before, and a last nudge 15 minutes before it opens. I never register for you, so you'll still need to log in and sign up yourself. Approve below if you want me to run this."
+  },
+  "latencyMs": 1582,
+  "usage": {
+    "input_tokens": 293,
+    "output_tokens": 245,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

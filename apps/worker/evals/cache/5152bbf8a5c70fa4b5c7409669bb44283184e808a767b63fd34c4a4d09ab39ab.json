@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The outcome_registered message acknowledges what the parent reported, that they got in. It names the window correctly, invents nothing, asks nothing and is in friendly English. It names no child.",
+    "score": 5
+  }
+}

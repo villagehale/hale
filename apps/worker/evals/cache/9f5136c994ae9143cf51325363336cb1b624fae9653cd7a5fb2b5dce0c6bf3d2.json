@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and answers the waitlisted report for Riverton. It handles the null position without inventing a number, and correctly says the town publishes no response window, so there is no clock to set. It asks nothing, and the tip to watch email for an offer is handed. Nothing in it is invented. The tone is friendly, if slightly formal.",
+    "score": 5
+  }
+}

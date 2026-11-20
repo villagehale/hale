@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "That course page says registration opens Tuesday, October 27 at 7:00 a.m., but the Springfield morning I'm holding is set for Tuesday, September 15 at 7:00 a.m., so it looks like a different season and I left things as they were. I'm keeping the September 15 morning I already have and can't move it."
+  },
+  "latencyMs": 1501,
+  "usage": {
+    "input_tokens": 162,
+    "output_tokens": 109,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}
