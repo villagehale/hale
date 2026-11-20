@@ -1,4 +1,6 @@
-import { smsSegments } from '~/lib/channel/sms-segments';
+// Relative, not `~/`: run-intro-voice-eval.mjs imports this file through tsx's bare
+// tsImport, which does not read the web tsconfig's path alias.
+import { smsSegments } from './sms-segments';
 
 /**
  * Outbound texts do not end with an opt-out line.
@@ -66,10 +68,19 @@ const OPT_OUT_KEYWORDS: ReadonlySet<string> = new Set(['STOP', 'HELP', 'ARRET', 
  * stray link is.
  */
 export function namesOptOutKeyword(text: string): string | null {
-  for (const word of text.split(/[^\p{L}\p{N}]+/u)) {
-    if (OPT_OUT_KEYWORDS.has(word)) return word;
+  for (const keyword of OPT_OUT_KEYWORDS) {
+    for (let at = text.indexOf(keyword); at !== -1; at = text.indexOf(keyword, at + 1)) {
+      if (!wordCharAt(text, at - 1) && !wordCharAt(text, at + keyword.length)) return keyword;
+    }
   }
   return writesOptOutLine(text) ? 'opt_out_line' : null;
+}
+
+/** Whether the character at `index` is a letter or digit (so a keyword there is part of a
+ * longer word, as in "STOPPED" or "HELPER"). */
+function wordCharAt(text: string, index: number): boolean {
+  const char = text[index];
+  return char !== undefined && /[\p{L}\p{N}]/u.test(char);
 }
 
 /** Which form the gate would have chosen. Neither is written onto the text. */

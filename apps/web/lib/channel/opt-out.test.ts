@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import {
   OPT_OUT_LINE,
+  OPT_OUT_LINE_CHARS,
   OPT_OUT_PERIOD_DAYS,
   OPT_OUT_SHORT,
+  namesOptOutKeyword,
   optOutPeriodStart,
+  segmentsWithOptOutReserved,
   withOptOut,
+  writesOptOutLine,
 } from './opt-out';
 
 /**
@@ -55,5 +59,40 @@ describe('optOutPeriodStart', () => {
     const start = optOutPeriodStart(new Date('2026-07-15T18:00:00.000Z'));
     const later = new Date(start.getTime() + OPT_OUT_PERIOD_DAYS * 24 * 3_600_000);
     expect(optOutPeriodStart(later).getTime()).toBeGreaterThan(start.getTime());
+  });
+});
+
+describe("VIL-706 · reading Hale's own draft for an opt-out keyword", () => {
+  it.each([
+    ['STOP', 'Reply STOP anytime.'],
+    ['STOP', 'STOP.'],
+    ['HELP', 'Text HELP for help.'],
+    ['AIDE', 'Besoin? (AIDE)'],
+    ['ARRÊT', 'Répondez ARRÊT pour arrêter.'],
+    ['ARRET', 'Écrivez ARRET.'],
+  ])('names %s when it is written as a keyword', (keyword, text) => {
+    expect(namesOptOutKeyword(text)).toBe(keyword);
+  });
+
+  it('names the opt-out line in any case', () => {
+    expect(namesOptOutKeyword('see you then. reply stop to opt out.')).toBe('opt_out_line');
+    expect(writesOptOutLine('STOP TO OPT OUT.')).toBe(true);
+  });
+
+  it.each([
+    "If you'd rather I stop, just tell me.",
+    'The bus STOPPED early and the HELPER waited.',
+    'AIDES and STOPS are not keywords.',
+    'Writing help and aide in lowercase is just words.',
+  ])('passes plain words: %s', (text) => {
+    expect(namesOptOutKeyword(text)).toBeNull();
+  });
+
+  it('reserves the longer line for budgets without handing it out', () => {
+    expect(OPT_OUT_LINE_CHARS).toBe(OPT_OUT_LINE.length);
+    expect(segmentsWithOptOutReserved('Swim is at 10.')).toBe(1);
+    expect(segmentsWithOptOutReserved('x'.repeat(160 - OPT_OUT_LINE.length - 2))).toBe(1);
+    expect(segmentsWithOptOutReserved('x'.repeat(161 - OPT_OUT_LINE.length - 2))).toBe(2);
+    expect(OPT_OUT_SHORT.length).toBeLessThan(OPT_OUT_LINE.length);
   });
 });
