@@ -108,6 +108,11 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    // VIL-730 · an enqueued row is pending, never 'sent', until the drain settles it.
+    markSendPending: async (_db, id) => {
+      marked.push({ id, status: 'scheduled', reason: 'send_pending' });
+    },
+    clearSendPending: async () => {},
     holdForCompose: async (_db, id, hold) => {
       held.push({ id, attempts: hold.attempts, nextTryAt: hold.nextTryAt });
     },
@@ -334,8 +339,8 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect((payload.events as { eventRef: string }[]).map((e) => e.eventRef)).toEqual(['e1', 'e2']);
     // Both merged rows are marked sent; telemetry is coarse (offset + count).
     expect(marked).toEqual([
-      { id: 'r1', status: 'sent', reason: null },
-      { id: 'r2', status: 'sent', reason: null },
+      { id: 'r1', status: 'scheduled', reason: 'send_pending' },
+      { id: 'r2', status: 'scheduled', reason: 'send_pending' },
     ]);
     expect(captured).toEqual([
       {
@@ -365,7 +370,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.deepLink).toBeNull();
     expect((payload.events as unknown[]).length).toBe(1);
-    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'send_pending' }]);
     expect(captured).toEqual([
       {
         event: 'reminder_sent',
@@ -440,7 +445,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
 
     expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-PT1H:fam-1:p1:e1']);
     // The held row is not marked, cancelled or re-anchored: it is still 'scheduled'.
-    expect(marked).toEqual([{ id: 'r-placement', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r-placement', status: 'scheduled', reason: 'send_pending' }]);
     expect(reanchored).toEqual([]);
     expect(result).toMatchObject({ due: 2, fired: 1, heldLaneOff: 1, cancelled: 0 });
   });
@@ -459,8 +464,8 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
       'reminder:-PT1H:fam-1:p1:gcal-1',
     ]);
     expect(marked.map((m) => [m.id, m.status]).sort()).toEqual([
-      ['r-mirror', 'sent'],
-      ['r-placement', 'sent'],
+      ['r-mirror', 'scheduled'],
+      ['r-placement', 'scheduled'],
     ]);
     expect(result).toMatchObject({ due: 2, fired: 2, heldLaneOff: 0 });
   });
@@ -517,7 +522,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     const result = await runReminderCron({} as never, deps, relightAt);
 
     expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-P1D:fam-1:p1:2026-07-24']);
-    expect(marked).toEqual([{ id: 'r-day-before', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r-day-before', status: 'scheduled', reason: 'send_pending' }]);
     expect(audited).toEqual([]);
     expect(result).toMatchObject({ fired: 1, firedLate: 1, suppressed: 0, heldLaneOff: 0 });
     // The writer gets the facts to phrase the day from: the event's own date and the
@@ -562,7 +567,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     const result = await runReminderCron({} as never, deps, relightAt);
 
     expect(enqueued.map((job) => job.dedupeKey)).toEqual(['reminder:-P1D:fam-1:p1:2026-07-24']);
-    expect(marked).toEqual([{ id: 'r-held', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r-held', status: 'scheduled', reason: 'send_pending' }]);
     expect(audited).toEqual([]);
     expect(result).toMatchObject({ fired: 1, firedLate: 1, suppressed: 0, heldLaneOff: 0 });
     info.mockRestore();
@@ -800,7 +805,7 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
     const result = await runReminderCron({} as never, deps, new Date('2026-11-11T03:00:00Z'));
 
     expect(enqueued).toHaveLength(1);
-    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'send_pending' }]);
     expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
   });
 
@@ -810,7 +815,7 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
     const result = await runReminderCron({} as never, deps, new Date('2026-11-11T03:12:00Z'));
 
     expect(enqueued).toHaveLength(1);
-    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'send_pending' }]);
     expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
   });
 

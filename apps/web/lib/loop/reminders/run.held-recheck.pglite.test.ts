@@ -122,6 +122,18 @@ function deps(agent: AgentClient, health: ProviderHealth = UP): HeldReminderRech
     capture: (async () => 'sent') as unknown as HeldReminderRecheckDeps['capture'],
     enqueue: async (job) => {
       enqueued.push(job);
+      // VIL-730 · the drain settles a job's rows from the dispatch; these tests are about
+      // the run, so the send stands in as delivered at once (held-at-send.settle tests the
+      // settle itself).
+      await db.database
+        .update(schema.eventReminders)
+        .set({ status: 'sent', suppressReason: null, composeNextTryAt: null })
+        .where(
+          and(
+            eq(schema.eventReminders.familyId, job.familyId),
+            eq(schema.eventReminders.suppressReason, 'send_pending'),
+          ),
+        );
     },
   };
 }
