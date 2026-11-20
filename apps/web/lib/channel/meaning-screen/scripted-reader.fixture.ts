@@ -21,6 +21,12 @@ const BLANK: MeaningScreenReading = {
   time: '',
   name: '',
   position: null,
+  memory: 'none',
+  target: '',
+  value: '',
+  key: '',
+  language: null,
+  refs: [],
 };
 
 export function blankMeaningReading(

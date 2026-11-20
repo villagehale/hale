@@ -93,6 +93,8 @@
     "eval:connector-disconnect-read": "node evals/run-connector-disconnect-read-eval.mjs --cached-only",
     "eval:meaning-screen": "node evals/run-meaning-screen-eval.mjs --cached-only",
     "eval:meaning-screen:dry": "node evals/run-meaning-screen-eval.mjs --dry",
+    "eval:memory-reply": "node evals/run-memory-reply-eval.mjs --cached-only",
+    "eval:memory-reply:dry": "node evals/run-memory-reply-eval.mjs --dry",
     "eval:rec-morning-read": "node evals/run-rec-morning-read-eval.mjs --cached-only",
     "eval:rec-morning-topic": "node evals/rec-morning-topic-eval.mjs --cached-only",
     "eval:rec-morning-topic:estimate": "node evals/rec-morning-topic-eval.mjs --estimate",

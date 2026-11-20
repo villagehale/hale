@@ -9,10 +9,9 @@ import type { ReplyCopyLanguage } from './validate';
  * No client, or a miss from the model: nothing is sent. The locked sentence
  * is the shape the validator compares against. It is not a reply.
  *
- * Not this layer: compliance replies, group sync, and the recall list lines.
- * Group sync stays the fixed sentence so a remembered value never rides into
- * the group. The recall list lines stay fixed; the model writes only the
- * opening and the closing around them.
+ * Not this layer: compliance replies and group sync. A family-memory list is
+ * written whole by the model from the facts (VIL-723): there are no code-built
+ * list lines for it to frame.
  *
  * The ask budget is the locked line's. A line that is not already a question
  * may not grow one.
@@ -26,6 +25,8 @@ export interface ReplyLayerDeps {
   audience: 'direct' | 'group';
   surface: ReplyCopySurface;
   skill?: Skill;
+  /** A skill other than `reply-copy`, loaded by name inside the composer (rule #2). */
+  skillName?: string;
 }
 
 export async function replyProse(
@@ -39,6 +40,8 @@ export async function replyProse(
     purpose?: string;
     facts: readonly string[];
     sealedValues?: readonly string[];
+    /** Output budget for a long reply (a family-memory list). Absent: the short default. */
+    maxTokens?: number;
   },
 ): Promise<string | null> {
   if (!deps.client) {
@@ -58,39 +61,9 @@ export async function replyProse(
     questionAllowed: input.questionAllowed ?? (input.fallback ?? '').includes('?'),
     purpose: input.purpose,
     skill: deps.skill,
+    skillName: deps.skillName,
+    maxTokens: input.maxTokens,
   });
   if (result.source !== 'model' || result.text.length === 0) return null;
   return result.text;
-}
-
-export async function replyFrame(
-  deps: ReplyLayerDeps,
-  input: {
-    header: string;
-    footer: string;
-    facts: readonly string[];
-    sealedValues?: readonly string[];
-  },
-): Promise<{ header: string; footer: string } | null> {
-  if (!deps.client) {
-    console.info({ reason: 'not_configured', surface: deps.surface }, 'reply-copy: model unread');
-    return null;
-  }
-  const result = await composeReplyCopy({
-    client: deps.client,
-    database: deps.database,
-    familyId: deps.familyId,
-    language: deps.language,
-    audience: deps.audience,
-    surface: deps.surface,
-    shape: 'frame',
-    facts: input.facts,
-    sealedValues: input.sealedValues,
-    questionAllowed: input.footer.includes('?'),
-    fallback: input.header,
-    fallbackClosing: input.footer,
-    skill: deps.skill,
-  });
-  if (result.source !== 'model' || !result.closing) return null;
-  return { header: result.text, footer: result.closing };
 }

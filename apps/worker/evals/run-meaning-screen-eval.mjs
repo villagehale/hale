@@ -39,8 +39,9 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 function grade(reading, expect) {
   if (!reading) return false;
   for (const [key, wanted] of Object.entries(expect)) {
-    if (key === 'violations') {
-      const got = [...(reading.violations ?? [])].sort();
+    // A list (violations, memory_target refs) is graded as a set.
+    if (Array.isArray(wanted)) {
+      const got = [...(reading[key] ?? [])].sort();
       const gold = [...wanted].sort();
       if (got.join(',') !== gold.join(',')) return false;
       continue;

@@ -396,6 +396,20 @@ async function decisionSyncChatId(database: Database, familyId: string): Promise
 }
 
 /**
+ * Whether a 1:1 decision could be queued at all: the family has a claimed chat to sync
+ * into, and the text did not arrive in it. Reads only. A caller that pays for a model
+ * read of the parent's words asks this first, so a family with no group costs nothing.
+ */
+export async function groupDecisionSyncOpen(
+  database: Database,
+  input: { familyId: string; originChatId: string | null },
+): Promise<boolean> {
+  const groupChatId = await decisionSyncChatId(database, input.familyId);
+  if (!groupChatId) return false;
+  return input.originChatId === null || input.originChatId !== groupChatId;
+}
+
+/**
  * Queue one picked or passed activity from a 1:1 thread. The group hears it
  * only after the thread has been quiet. A question, a piece of advice, or a
  * decision this template does not cover is not queued, and neither is one about a

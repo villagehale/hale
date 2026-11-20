@@ -21,9 +21,9 @@ describe('meaningScreenUserMessage', () => {
     ) as { screen: string; text: string };
     expect(payload).toEqual({ screen: 'stated_state', text: 'Yes we booked already' });
     const long = 'x'.repeat(2000);
-    const cut = JSON.parse(
-      meaningScreenUserMessage({ screen: 'stated_state', text: long }),
-    ) as { text: string };
+    const cut = JSON.parse(meaningScreenUserMessage({ screen: 'stated_state', text: long })) as {
+      text: string;
+    };
     expect(cut.text.length).toBe(1600);
   });
 

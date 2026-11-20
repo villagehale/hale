@@ -3,8 +3,7 @@ import type { AgentClient, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { loadReplyCopySkill } from '~/lib/cron/skill';
-import { memoryRecallParts, paginateMemoryRecall } from '~/lib/memory/kinds';
-import { replyFrame, replyProse } from './apply';
+import { replyProse } from './apply';
 
 /**
  * Injected model. A clean answer sends. A failed check or a thrown call holds
@@ -126,61 +125,53 @@ describe('reply prose fallback', () => {
   });
 });
 
-describe('reply frame', () => {
-  const parts = memoryRecallParts('en', [
-    { key: 'soccer', value: 'soccer', source: 'inferred', kind: 'one_off', seenIn: null },
-  ]);
-  const opening =
-    "Here's what I have: Maya is 4, you're near L3R, and I think soccer is her thing for now.";
-  const closing = 'Wrong or old? Say "correct" or "forget" and the key.';
-
-  it('writes only the opening and closing around the locked list line', async () => {
+describe('a memory reply written by a named skill', () => {
+  it('loads that skill by name, raises the output budget, and sends only the model text', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
     };
-    const client = fakeClient(JSON.stringify({ opening, closing, lines: ['HACKED'] }));
-    const frame = await replyFrame(
+    const list = '- swimming: saturday class, you told me\n- district: midtown, from your calendar';
+    const client = fakeClient(JSON.stringify({ text: list }));
+    const text = await replyProse(
       {
         ...deps(client, fakeDb(capture)),
+        skill: undefined,
+        skillName: 'memory-reply',
         audience: 'direct',
         surface: 'memory',
       },
       {
-        header: parts.header,
-        footer: parts.footer,
-        facts: [...parts.lines, 'Maya', '4', 'L3R', 'soccer'],
+        purpose: 'memory_list',
+        facts: [
+          'swimming: saturday class (source: the parent told Hale)',
+          'district: midtown (source: their calendar)',
+        ],
+        maxTokens: 1600,
       },
     );
-    expect(frame).not.toBeNull();
-    if (!frame) return;
-    const body = paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n');
-    expect(frame.header).toBe(opening);
-    expect(frame.footer).toBe(closing);
-    expect(body).toContain(parts.lines[0]);
-    expect(body).not.toContain('HACKED');
+    expect(text).toBe(list);
+    const request = client.messages.create.mock.calls[0]?.[0] as {
+      max_tokens: number;
+      system: unknown;
+    };
+    expect(request.max_tokens).toBe(1600);
+    expect(JSON.stringify(request.system)).toContain('What Hale remembers');
+    expect(capture.audits[0]?.actionTaken).toBe('reply_copy_composed');
   });
 
-  it('holds the frame when the closing fails a check', async () => {
+  it('clamps an output budget past the ceiling', async () => {
     const capture = {
       audits: [] as Record<string, unknown>[],
       runs: [] as Record<string, unknown>[],
     };
-    const client = fakeClient(JSON.stringify({ opening, closing: 'You are booked.' }));
-    const frame = await replyFrame(
-      {
-        ...deps(client, fakeDb(capture)),
-        audience: 'direct',
-        surface: 'memory',
-      },
-      {
-        header: parts.header,
-        footer: parts.footer,
-        facts: [...parts.lines, 'Maya', '4', 'L3R', 'soccer'],
-      },
+    const client = fakeClient(JSON.stringify({ text: 'Nothing saved yet.' }));
+    await replyProse(
+      { ...deps(client, fakeDb(capture)), audience: 'direct', surface: 'memory' },
+      { facts: [], maxTokens: 50_000 },
     );
-    expect(frame).toBeNull();
-    expect(capture.audits[0]?.actionTaken).toBe('reply_copy_fallback');
+    const request = client.messages.create.mock.calls[0]?.[0] as { max_tokens: number };
+    expect(request.max_tokens).toBe(2048);
   });
 });
 

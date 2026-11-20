@@ -9,9 +9,10 @@ import {
 } from '@hale/worker/fact-sources';
 import { type FactReader, audiencePredicate, newestPerIdentity } from '@hale/worker/memory-context';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
-import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
+import { type MeaningScreen, sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
+import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { promptKind, readDisposition } from './classify-write';
 import { type FactHeard, closeFacts, writeFact } from './facts';
@@ -19,8 +20,6 @@ import { forgetFamilyFact } from './forget';
 import { renderMemoryGroupSync } from './group-sync';
 import {
   type MemoryKindEnv,
-  type MemoryRecallItem,
-  type MemoryRecallSeenIn,
   type MemorySource,
   type PromotionSignal,
   applyPromotionSignal,
@@ -29,21 +28,21 @@ import {
   familyMemoryKindsEnabled,
   includeInRecommendations,
   isLastingFactKey,
-  memoryKindCopy,
-  memoryRecallParts,
   memoryTextOverlaps,
-  paginateMemoryRecall,
-  parseMemoryParentIntent,
-  renderMemoryCorrected,
-  renderMemoryForgotten,
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
 import { type RecordField, recordFieldOf, withRecordField } from './record-field';
+import { type MemoryRequest, readMemoryRequest, readMemoryTargets } from './request';
 import { SYNTHESIS_WRITERS } from './synthesis';
+
+/** The skill that writes every family-memory reply (rule #2: loaded by name). */
+export const MEMORY_REPLY_SKILL = 'memory-reply';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
 const RECOMMENDATION_LIMIT = 40;
+/** The newest beliefs a "what do you know" list is written from. */
+const RECALL_LIMIT = 40;
 type MemoryFactType = schema.NewFamilyMemoryFact['factType'];
 
 export interface MemoryTypingFields {
@@ -320,11 +319,14 @@ export async function recallFamilyMemory(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        // Beliefs only, before the limit: a family's duty and logistics rows must not
+        // crowd the newest beliefs out of what a parent is told Hale remembers.
+        inArray(schema.familyMemoryFacts.inferredBy, [...SYNTHESIS_WRITERS]),
         audience,
       ),
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt))
-    .limit(40);
+    .limit(RECALL_LIMIT);
 
   return newestPerIdentity(rows)
     .filter((row) => !row.childId || !teens.has(row.childId))
@@ -349,8 +351,10 @@ export async function recallFamilyMemory(
 export interface ParentMemoryResult {
   claimed: boolean;
   outcome: string;
-  /** Null unless both copy gates are exactly true. */
+  /** Null unless the model wrote it and the copy gate passed. Nothing else is ever sent. */
   reply: string | null;
+  /** A group turn: the reply is for the asker alone, never the group (router `onlyToAsker`). */
+  onlyToAsker: boolean;
   forgotten: number;
   corrected: number;
   groupSync: { synced: boolean; skipped: string };
@@ -450,45 +454,88 @@ function displayFactValue(value: unknown): string | null {
   return null;
 }
 
-function recallSeenIn(
-  label: FactSourceLabel,
-  language: ReplyLanguage,
-  timeZone: string,
-): MemoryRecallSeenIn {
-  const on = new Intl.DateTimeFormat(language, {
-    month: 'short',
-    day: 'numeric',
-    timeZone,
-  }).format(label.on);
+/** The reader's day, in the language the reply is written in, so the model can copy it. */
+function readerDay(on: Date, language: ReplyLanguage, timeZone: string): string {
+  const options = { month: 'short', day: 'numeric', timeZone } as const;
+  try {
+    return new Intl.DateTimeFormat(language, options).format(on);
+  } catch {
+    return new Intl.DateTimeFormat('en', options).format(on);
+  }
+}
+
+/** Where a connector fact was seen, as data for the model: who or what, and the reader's day. */
+function seenWords(label: FactSourceLabel, language: ReplyLanguage, timeZone: string): string {
+  const on = readerDay(label.on, language, timeZone);
   return label.kind === 'email'
-    ? { kind: 'email', from: label.from, on }
-    : { kind: 'calendar', title: label.title, on };
+    ? `an email from ${label.from}, ${on}`
+    : `${label.title} on their calendar, ${on}`;
+}
+
+/** Provenance as data for the model. The model words it in the parent's language. */
+const SOURCE_WORDS: Record<string, string> = {
+  parent_message: 'the parent told Hale',
+  calendar: 'their calendar',
+  inferred: "Hale's own guess",
+  legacy: 'saved earlier, source not noted',
+};
+
+const KIND_WORDS: Record<string, string> = {
+  lasting: 'kept until they change it',
+  temporary: 'for now',
+  one_off: 'seen once',
+};
+
+/** One remembered fact as the memory reads and the reply see it. Never parent copy. */
+interface MemoryLine {
+  factId: string;
+  factKey: string;
+  value: string;
+  /** A belief Hale may drop at a parent's word (forget.ts). */
+  forgettable: boolean;
+  /**
+   * A belief, or a row saved before writers were kept, that a parent's correction may
+   * replace. Never a receipt and never another writer's record (a duty, a logistics
+   * decision, weekday care): those have their own paths and a text must not overwrite them.
+   */
+  correctable: boolean;
+  /** `key: value (source; seen; how long)`, the data line handed to the model. */
+  line: string;
 }
 
 /**
- * A fact Hale took from Gmail or Calendar is listed with where it was seen, or not at
- * all: a connector fact whose source this reader may not hear is left out (VIL-429).
+ * The facts a parent may be told about, each with where it came from. A fact Hale took
+ * from Gmail or Calendar carries where it was seen, or is left out: a connector fact whose
+ * source this reader may not hear is not listed (VIL-429).
  */
-function recallItems(
+function memoryLines(
   facts: readonly RecallFact[],
   sources: ReadonlyMap<string, FactSource>,
   language: ReplyLanguage,
   timeZone: string,
-): MemoryRecallItem[] {
-  const items: MemoryRecallItem[] = [];
+): MemoryLine[] {
+  const lines: MemoryLine[] = [];
   for (const fact of facts) {
     if (fact.source === 'receipt') continue;
     const value = displayFactValue(fact.factValue);
     if (!value) continue;
     const found = fact.sourceEventId ? sources.get(fact.sourceEventId) : undefined;
     if (found?.connector && !found.label) continue;
-    const source = fact.source as MemoryRecallItem['source'];
-    const kind = fact.kind as MemoryRecallItem['kind'];
-    const seenIn =
-      found?.connector && found.label ? recallSeenIn(found.label, language, timeZone) : null;
-    items.push({ key: fact.factKey, value, source, kind, seenIn });
+    const parts = [`source: ${SOURCE_WORDS[fact.source] ?? SOURCE_WORDS.legacy}`];
+    if (found?.connector && found.label) {
+      parts.push(`seen: ${seenWords(found.label, language, timeZone)}`);
+    }
+    parts.push(KIND_WORDS[fact.kind] ?? KIND_WORDS.lasting ?? '');
+    lines.push({
+      factId: fact.id,
+      factKey: fact.factKey,
+      value: value.replace(/\s+/g, ' '),
+      forgettable: true,
+      correctable: true,
+      line: `${fact.factKey}: ${value.replace(/\s+/g, ' ')} (${parts.join('; ')})`,
+    });
   }
-  return items;
+  return lines;
 }
 
 async function parentSpokenName(database: Database, userId: string): Promise<string | null> {
@@ -504,10 +551,39 @@ async function parentSpokenName(database: Database, userId: string): Promise<str
   return first;
 }
 
+/** A memory reply's purpose, read by the `memory-reply` skill. There is no sentence behind it. */
+type MemoryPurpose =
+  | 'memory_list'
+  | 'memory_list_empty'
+  | 'memory_list_private'
+  | 'memory_forgotten'
+  | 'memory_forget_unmatched'
+  | 'memory_forget_kept'
+  | 'memory_corrected'
+  | 'memory_correct_unmatched'
+  | 'memory_correct_kept';
+
+/** A family-memory list can be long; every other memory reply is a line or two. */
+const MEMORY_LIST_MAX_TOKENS = 1600;
+
+/**
+ * Where this turn arrived. Only an explicit `in_group = false` row is one-to-one; an
+ * explicit `true` is a group. The router refuses an iMessage turn it cannot place before
+ * any handler runs, so `unplaced` is a spoken or legacy turn with no row.
+ */
+type MemoryPlacement = 'one_to_one' | 'group' | 'unplaced';
+
 /**
  * A parent asked what Hale knows, or asked it to forget or correct a fact.
- * Flag off is a no-op before any read. The reply is whatever the model wrote.
- * A miss holds it. A 1:1 decision is mirrored to the claimed group and
+ *
+ * Flag off is a no-op before any read. The request is the model's meaning read
+ * (`memory_request`); which fact a forget or a correction means is a second read over
+ * only the facts this parent may hear (`memory_target`). Every word of the reply is
+ * written by the model (`memory-reply`) from what happened; a miss holds it.
+ *
+ * On a group turn every reply is for the asker alone (`onlyToAsker`): the router sends it
+ * to their own phone or not at all, so the group never hears the list or a value. A 1:1
+ * forget or correction is mirrored to the claimed group as who-and-what-kind only, and
  * nowhere else — this function never opens a 1:1.
  */
 export async function handleParentMemory(
@@ -522,6 +598,10 @@ export async function handleParentMemory(
     sendGroup?: (chatId: string, body: string) => Promise<unknown>;
     /** Injected model. Absent: nothing is sent, and the model is not called. */
     replyClient?: AgentClient | null;
+    /** The meaning screen for the request and its target. Absent: the shared screen. */
+    screen?: MeaningScreen;
+    /** The request, when the caller already read it. Absent: read here. */
+    request?: MemoryRequest;
   },
 ): Promise<ParentMemoryResult> {
   const env = input.env ?? process.env;
@@ -529,128 +609,197 @@ export async function handleParentMemory(
     claimed: false,
     outcome: 'flag_off',
     reply: null,
+    onlyToAsker: false,
     forgotten: 0,
     corrected: 0,
     groupSync: { synced: false, skipped: 'not_run' },
   };
   if (!familyMemoryKindsEnabled(env)) return idle;
 
-  const intent = parseMemoryParentIntent(input.body);
-  if (!intent) return { ...idle, outcome: 'not_memory' };
+  const screen = input.screen ?? sharedMeaningScreen();
+  const read = input.request ?? (await readMemoryRequest(screen, input.body));
+  if (read === 'unread') return { ...idle, outcome: 'unread' };
+  if (!read) return { ...idle, outcome: 'not_memory' };
+  const request = read;
 
   const door = await familyDoor(database, input.familyId);
   const inbound = await inboundOrigin(database, input.inboundChannelMessageId);
   const origin = inbound.chatId;
-  const language = door.language;
-  const templates = copyLanguage(language);
+  const placement: MemoryPlacement = inbound.oneToOne
+    ? 'one_to_one'
+    : inbound.inGroup
+      ? 'group'
+      : 'unplaced';
+  // The language the parent wrote in decides the reply; the family's stored one only
+  // when the screen read none.
+  const language = request.language ?? door.language ?? 'en';
+  // A group turn's reply goes to the asker alone, so it is written for them. A turn
+  // nobody can place hears only what every adult may hear, and no value is said.
+  const audience: 'direct' | 'group' = placement === 'unplaced' ? 'group' : 'direct';
+  const onlyToAsker = placement === 'group';
+  const reader: FactReader =
+    placement === 'unplaced' ? 'every_adult' : { adult: input.parentUserId };
 
   const layer = {
     client: await resolveReplyClient(input.replyClient),
     database,
     familyId: input.familyId,
-    language: language ?? 'en',
-    audience: 'direct' as const,
+    language,
+    audience,
     surface: 'memory' as const,
+    skillName: MEMORY_REPLY_SKILL,
   };
-
-  const reader: FactReader = inbound.oneToOne ? { adult: input.parentUserId } : 'every_adult';
-
-  if (intent.kind === 'recall') {
-    const facts = await recallFamilyMemory(database, {
-      familyId: input.familyId,
-      now: input.now,
-      reader,
-    });
-    const [sources, timeZone] = await Promise.all([
-      loadFactSources(database, {
-        familyId: input.familyId,
-        readerUserId: input.parentUserId,
-        inGroup: !inbound.oneToOne,
-        now: input.now,
-        sourceEventIds: facts.map((fact) => fact.sourceEventId),
-      }),
-      readerTimeZone(database, input.parentUserId),
-    ]);
-    const items = recallItems(facts, sources, language ?? 'en', timeZone);
-    let reply: string | null = null;
+  const write = async (
+    purpose: MemoryPurpose,
+    facts: readonly string[],
+    options: { questionAllowed?: boolean; sealedValues?: readonly string[] } = {},
+  ): Promise<string | null> => {
     try {
-      const parts = templates ? memoryRecallParts(templates, items) : null;
-      let body: string | null;
-      if (!parts) {
-        body = await replyProse(layer, {
-          fallback: '',
-          facts: items.map((item) => {
-            const seen = item.seenIn;
-            if (!seen) return `${item.key}: ${item.value}`;
-            const where =
-              seen.kind === 'email' ? `email from ${seen.from}` : `calendar: ${seen.title}`;
-            return `${item.key}: ${item.value} (seen in ${where}, ${seen.on})`;
-          }),
-        });
-      } else if (parts.empty) {
-        body = await replyProse(layer, { fallback: parts.empty, facts: [] });
-      } else {
-        const frame = await replyFrame(layer, {
-          header: parts.header,
-          footer: parts.footer,
-          facts: parts.lines,
-        });
-        body = frame
-          ? paginateMemoryRecall(frame.header, parts.lines, frame.footer).join('\n\n')
-          : null;
-      }
-      reply = body ? gatedReply(body, env) : null;
-    } catch {
-      reply = null;
+      const body = await replyProse(layer, {
+        purpose,
+        facts,
+        questionAllowed: options.questionAllowed ?? false,
+        sealedValues: audience === 'group' ? options.sealedValues : undefined,
+        ...(purpose === 'memory_list' ? { maxTokens: MEMORY_LIST_MAX_TOKENS } : {}),
+      });
+      return body ? gatedReply(body, env) : null;
+    } catch (err) {
+      console.error(
+        { purpose, err: err instanceof Error ? err.name : 'unknown' },
+        'family memory: reply not written',
+      );
+      return null;
+    }
+  };
+  const claimed = (
+    outcome: string,
+    reply: string | null,
+    rest: Partial<Pick<ParentMemoryResult, 'forgotten' | 'corrected' | 'groupSync'>> = {},
+  ): ParentMemoryResult => {
+    if (reply === null) {
+      console.warn({ outcome, placement }, 'family memory: claimed, nothing to send');
     }
     return {
       claimed: true,
-      outcome: 'recalled',
+      outcome,
       reply,
-      forgotten: 0,
-      corrected: 0,
-      groupSync: { synced: false, skipped: 'not_a_decision' },
+      onlyToAsker,
+      forgotten: rest.forgotten ?? 0,
+      corrected: rest.corrected ?? 0,
+      groupSync: rest.groupSync ?? { synced: false, skipped: 'not_a_decision' },
     };
+  };
+
+  // Where nobody can tell who is reading, the list is not said at all, and not read.
+  if (request.kind === 'list' && placement === 'unplaced') {
+    return claimed('recall_withheld', await write('memory_list_private', []));
   }
 
-  if (intent.kind === 'forget') {
-    const forgotten = await forgetMatchingFacts(database, {
-      familyId: input.familyId,
-      actor: input.parentUserId,
-      reader,
-      now: input.now,
-      needle: intent.needle,
-    });
-    const refusedOnly = forgotten.forgotten === 0 && forgotten.refused > 0;
-    const lockedForget = templates
-      ? forgotten.forgotten > 0
-        ? renderMemoryForgotten(templates, forgotten.keys)
-        : memoryKindCopy(templates, refusedOnly ? 'refused' : 'nothing')
-      : '';
-    const body = await replyProse(layer, { fallback: lockedForget, facts: forgotten.keys });
+  const lines = await readableMemory(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    reader,
+    placement,
+    now: input.now,
+    language,
+  });
+
+  if (request.kind === 'list') {
+    const listed = lines.filter((line) => line.forgettable);
+    const reply =
+      listed.length === 0
+        ? await write('memory_list_empty', [])
+        : await write(
+            'memory_list',
+            listed.map((line) => line.line),
+            { sealedValues: listed.map((line) => line.value) },
+          );
+    return claimed('recalled', reply);
+  }
+
+  // Which fact the parent means is the model's read over the facts they may hear, by ref.
+  // An unread target acts on nothing: the turn is claimed and held.
+  const targets = await readMemoryTargets(screen, input.body, lines);
+  if (targets === 'unread') return claimed('target_unread', null);
+
+  if (request.kind === 'forget') {
+    const forgotten: MemoryLine[] = [];
+    const kept: MemoryLine[] = [];
+    for (const line of targets.chosen) {
+      if (!line.forgettable) {
+        kept.push(line);
+        continue;
+      }
+      const result = await forgetFamilyFact(database, {
+        familyId: input.familyId,
+        factId: line.factId,
+        actor: input.parentUserId,
+        now: input.now,
+      });
+      if (result.forgotten > 0) forgotten.push(line);
+      else if (result.refusedControlPlane > 0 || result.refusedWriter > 0) kept.push(line);
+    }
     const groupSync =
-      forgotten.forgotten > 0
+      forgotten.length > 0
         ? await syncMemoryDecisionToGroup(database, {
             familyId: input.familyId,
             originChatId: origin,
-            language,
+            language: door.language,
             actorUserId: input.parentUserId,
             change: 'forget',
             env,
             sendGroup: input.sendGroup,
           })
         : { synced: false, skipped: 'nothing_to_sync' };
-    return {
-      claimed: true,
-      outcome:
-        forgotten.forgotten > 0 ? 'forgotten' : forgotten.refused > 0 ? 'refused' : 'nothing',
-      reply: body ? gatedReply(body, env) : null,
-      forgotten: forgotten.forgotten,
-      corrected: 0,
-      groupSync,
-    };
+    const sealed = [...forgotten, ...kept].map((line) => line.value);
+    if (forgotten.length > 0) {
+      const reply = await write(
+        'memory_forgotten',
+        [
+          ...forgotten.map((line) => `forgotten: ${line.factKey}: ${line.value}`),
+          ...kept.map((line) => `kept as a record: ${line.factKey}: ${line.value}`),
+        ],
+        { sealedValues: sealed },
+      );
+      return claimed('forgotten', reply, { forgotten: forgotten.length, groupSync });
+    }
+    if (kept.length > 0) {
+      const reply = await write(
+        'memory_forget_kept',
+        kept.map((line) => `kept as a record: ${line.factKey}: ${line.value}`),
+        { sealedValues: sealed },
+      );
+      return claimed('refused', reply, { groupSync });
+    }
+    const reply = await write(
+      'memory_forget_unmatched',
+      request.target ? [`they asked to forget: ${request.target}`] : [],
+      { questionAllowed: true, sealedValues: request.target ? [request.target] : [] },
+    );
+    return claimed('nothing', reply, { groupSync });
   }
 
+  // A correction: the one fact the new value replaces, or a key for a fact nothing the
+  // parent may hear holds. Either way it is written as the sender's word, in their scope.
+  const chosen = targets.chosen[0] ?? null;
+  const value = (targets.value || request.value).trim();
+  const factKey = chosen ? chosen.factKey : targets.key;
+  if (!factKey || !value) {
+    const reply = await write(
+      'memory_correct_unmatched',
+      request.target ? [`they asked to change: ${request.target}`] : [],
+      { questionAllowed: true, sealedValues: request.target ? [request.target] : [] },
+    );
+    return claimed('nothing', reply);
+  }
+  if ((chosen && !chosen.correctable) || isReceiptKey(factKey)) {
+    const reply = await write(
+      'memory_correct_kept',
+      [`kept as a record: ${factKey}${chosen ? `: ${chosen.value}` : ''}`],
+      { sealedValues: [value, ...(chosen ? [chosen.value] : [])] },
+    );
+    return claimed('refused', reply);
+  }
   const corrected = await correctFamilyFact(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
@@ -660,44 +809,82 @@ export async function handleParentMemory(
     heard: inbound.inGroup
       ? { in: 'family', userId: input.parentUserId }
       : { in: 'one_to_one', userId: input.parentUserId },
-    factKey: intent.factKey ?? '',
-    value: intent.value ?? '',
+    factKey,
+    value,
     now: input.now,
   });
-  const groupSync = corrected.corrected
-    ? await syncMemoryDecisionToGroup(database, {
-        familyId: input.familyId,
-        originChatId: origin,
-        language,
-        actorUserId: input.parentUserId,
-        change: 'correct',
-        env,
-        sendGroup: input.sendGroup,
-      })
-    : { synced: false, skipped: 'nothing_to_sync' };
-  const lockedCorrect = templates
-    ? corrected.corrected
-      ? renderMemoryCorrected(templates, intent.factKey ?? '', intent.value ?? '')
-      : memoryKindCopy(templates, 'refused')
-    : '';
-  const correctedBody = await replyProse(layer, {
-    fallback: lockedCorrect,
-    facts: [intent.factKey ?? '', intent.value ?? ''],
+  if (!corrected.corrected) {
+    const reply = await write('memory_correct_kept', [`kept as a record: ${factKey}`], {
+      sealedValues: [value],
+    });
+    return claimed('refused', reply);
+  }
+  const groupSync = await syncMemoryDecisionToGroup(database, {
+    familyId: input.familyId,
+    originChatId: origin,
+    language: door.language,
+    actorUserId: input.parentUserId,
+    change: 'correct',
+    env,
+    sendGroup: input.sendGroup,
   });
-  return {
-    claimed: true,
-    outcome: corrected.corrected ? 'corrected' : 'refused',
-    reply: correctedBody ? gatedReply(correctedBody, env) : null,
-    forgotten: 0,
-    corrected: corrected.corrected ? 1 : 0,
-    groupSync,
-  };
+  const reply = await write(
+    'memory_corrected',
+    [`corrected: ${factKey}: ${value}`, ...(chosen ? [`was: ${chosen.value}`] : [])],
+    { sealedValues: [value, ...(chosen ? [chosen.value] : [])] },
+  );
+  return claimed('corrected', reply, { corrected: 1, groupSync });
 }
 
-async function forgetMatchingFacts(
+/**
+ * What this parent may be told Hale remembers, newest first, as data lines: the beliefs
+ * the list shows, and (for a forget or a correction to point at) the records Hale keeps,
+ * marked kept. Teen-attributed rows, a source this reader may not hear, and what another
+ * adult said in their own 1:1 stay out (VIL-599).
+ */
+async function readableMemory(
   database: Database,
-  input: { familyId: string; actor: string; reader: FactReader; now: Date; needle: string | null },
-): Promise<{ forgotten: number; refused: number; keys: string[] }> {
+  input: {
+    familyId: string;
+    parentUserId: string;
+    reader: FactReader;
+    placement: MemoryPlacement;
+    now: Date;
+    language: ReplyLanguage;
+  },
+): Promise<MemoryLine[]> {
+  const facts = await recallFamilyMemory(database, {
+    familyId: input.familyId,
+    now: input.now,
+    reader: input.reader,
+  });
+  const [sources, timeZone, records] = await Promise.all([
+    loadFactSources(database, {
+      familyId: input.familyId,
+      readerUserId: input.parentUserId,
+      inGroup: input.placement === 'unplaced',
+      now: input.now,
+      sourceEventIds: facts.map((fact) => fact.sourceEventId),
+    }),
+    readerTimeZone(database, input.parentUserId),
+    keptRecords(database, input),
+  ]);
+  const listed = memoryLines(facts, sources, input.language, timeZone);
+  const seen = new Set(listed.map((line) => line.factId));
+  return [...listed, ...records.filter((record) => !seen.has(record.factId))];
+}
+
+/**
+ * The live rows this reader may hear that a parent's text may not drop: control-plane
+ * receipts, rows another writer owns, and rows saved before writers were kept. Shown to
+ * the target read only, so "forget that we registered" is answered as a record Hale keeps
+ * rather than as nothing found, and a correction can still replace an old unattributed
+ * guess.
+ */
+async function keptRecords(
+  database: Database,
+  input: { familyId: string; reader: FactReader; now: Date },
+): Promise<MemoryLine[]> {
   const [teens, audience] = await Promise.all([
     teenIds(database, input.familyId, input.now),
     audiencePredicate(database, input.familyId, input.reader),
@@ -706,9 +893,12 @@ async function forgetMatchingFacts(
     .select({
       id: schema.familyMemoryFacts.id,
       childId: schema.familyMemoryFacts.childId,
+      factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
       factValue: schema.familyMemoryFacts.factValue,
       inferredBy: schema.familyMemoryFacts.inferredBy,
+      validFrom: schema.familyMemoryFacts.validFrom,
+      createdAt: schema.familyMemoryFacts.createdAt,
       sourcedAt: schema.familyMemoryFacts.sourcedAt,
     })
     .from(schema.familyMemoryFacts)
@@ -719,33 +909,28 @@ async function forgetMatchingFacts(
         audience,
       ),
     )
-    .orderBy(desc(schema.familyMemoryFacts.sourcedAt));
-
-  const beliefs = rows.filter((row) => (!row.childId || !teens.has(row.childId)) && beliefRow(row));
-  const targets =
-    input.needle === null
-      ? beliefs.slice(0, 1)
-      : beliefs.filter((row) => memoryTextOverlaps(row.factKey, row.factValue, input.needle ?? ''));
-
-  let forgotten = 0;
-  let refused = 0;
-  const keys: string[] = [];
-  for (const row of targets) {
-    const result = await forgetFamilyFact(database, {
-      familyId: input.familyId,
+    .orderBy(desc(schema.familyMemoryFacts.sourcedAt))
+    .limit(40);
+  const kept: MemoryLine[] = [];
+  for (const row of newestPerIdentity(rows)) {
+    if (row.childId && teens.has(row.childId)) continue;
+    if (beliefRow(row)) continue;
+    const value = displayFactValue(row.factValue);
+    if (!value) continue;
+    // A row saved with no writer predates writers being kept: a correction may replace it.
+    const correctable = row.inferredBy === null && !isReceiptKey(row.factKey);
+    kept.push({
       factId: row.id,
-      actor: input.actor,
-      now: input.now,
+      factKey: row.factKey,
+      value: value.replace(/\s+/g, ' '),
+      forgettable: false,
+      correctable,
+      line: `${row.factKey}: ${value.replace(/\s+/g, ' ')} (${
+        correctable ? 'saved earlier, source not noted' : 'a record Hale keeps'
+      })`,
     });
-    forgotten += result.forgotten;
-    if (result.forgotten > 0) keys.push(row.factKey);
-    refused += result.refusedControlPlane + result.refusedWriter;
   }
-  if (targets.length === 0 && input.needle === null) {
-    const receipts = rows.filter((row) => isReceiptKey(row.factKey));
-    if (receipts.length > 0) refused += 1;
-  }
-  return { forgotten, refused, keys };
+  return kept;
 }
 
 async function correctFamilyFact(
@@ -790,6 +975,11 @@ async function correctFamilyFact(
   // as their own fact, in their own scope, and the other adult's row is not touched
   // (VIL-599). So the outcome can never say whether a fact the sender cannot hear exists.
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
+  // Another writer's record on this key (a duty, a logistics decision, weekday care) is not
+  // a parent's text to overwrite: the write below would supersede it in its own identity.
+  if (live.some((row) => row.inferredBy !== null && !BELIEF_WRITERS.has(row.inferredBy))) {
+    return { corrected: false };
+  }
   // The correction is written in the sender's scope and, like every write, supersedes only
   // within it. A household row it corrects from a 1:1 stays live for the other adult; the
   // sender's 1:1 reads the newer row, so they hear their correction (R7). Retiring the

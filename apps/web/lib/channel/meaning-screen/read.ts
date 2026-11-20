@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { acceptReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -27,6 +28,8 @@ export const MEANING_SCREENS = [
   'duty_undo',
   'duty_stop_asking',
   'both_free',
+  'memory_request',
+  'memory_target',
 ] as const;
 
 export type MeaningScreenName = (typeof MEANING_SCREENS)[number];
@@ -54,6 +57,13 @@ export type RegistrationOutcomeKind = 'registered' | 'waitlisted' | 'missed' | '
 export type ConnectAction = 'connect' | 'disconnect' | 'fresh_link' | 'none';
 export type ConnectProvider = 'gcal' | 'gmail' | 'gdrive' | 'none';
 export type DutyUndoKind = 'clear' | 'reassign' | 'none';
+export const MEMORY_REQUEST_KINDS = ['list', 'forget', 'correct', 'none'] as const;
+/** What a parent asked of what Hale remembers about the family (VIL-723). */
+export type MemoryRequestKind = (typeof MEMORY_REQUEST_KINDS)[number];
+
+/** A `memory_target` fact ref is `f` and its 1-based place in `facts`. A shape, not a meaning. */
+const FACT_REF = /^f[1-9][0-9]{0,2}$/;
+const MAX_REFS = 40;
 
 export interface MeaningScreenInput {
   screen: MeaningScreenName;
@@ -76,6 +86,18 @@ export interface MeaningScreenReading {
   time: string;
   name: string;
   position: number | null;
+  /** `memory_request`: list, forget, correct, or none. */
+  memory: MemoryRequestKind;
+  /** `memory_request`: the parent's own words for what to forget or correct. Empty when none. */
+  target: string;
+  /** `memory_request` / `memory_target`: the corrected value, as the parent said it. */
+  value: string;
+  /** `memory_target`: a short snake_case label for a corrected fact nothing on file holds. */
+  key: string;
+  /** `memory_request`: the BCP-47 tag of the language the text is written in, or null. */
+  language: string | null;
+  /** `memory_target`: refs (`f1`, `f2`, ...) into `facts`. Only refs, deduplicated. */
+  refs: string[];
 }
 
 export interface MeaningScreen {
@@ -115,6 +137,12 @@ export const MEANING_SCREEN_SCHEMA: Anthropic.Tool.InputSchema = {
     time: { type: 'string' },
     name: { type: 'string' },
     position: { type: ['integer', 'null'] },
+    memory: { type: 'string', enum: [...MEMORY_REQUEST_KINDS] },
+    target: { type: 'string' },
+    value: { type: 'string' },
+    key: { type: 'string' },
+    language: { type: 'string' },
+    refs: { type: 'array', items: { type: 'string' } },
   },
   required: ['reason', 'hit'],
 };
@@ -135,6 +163,12 @@ const rawSchema = z.object({
   time: z.string().optional(),
   name: z.string().optional(),
   position: z.number().nullable().optional(),
+  memory: z.string().optional(),
+  target: z.string().optional(),
+  value: z.string().optional(),
+  key: z.string().optional(),
+  language: z.string().optional(),
+  refs: z.array(z.string()).optional(),
 });
 
 /** The user-turn payload. Shared with the eval, which replays this request. */
@@ -164,7 +198,9 @@ export async function meaningScreenRequest(input: MeaningScreenInput) {
 }
 
 function oneOf<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
-  return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+  return value !== undefined && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
 }
 
 export function toMeaningReading(
@@ -182,7 +218,10 @@ export function toMeaningReading(
     return false;
   });
   const position =
-    typeof raw.position === 'number' && Number.isInteger(raw.position) && raw.position > 0 && raw.position <= 9999
+    typeof raw.position === 'number' &&
+    Number.isInteger(raw.position) &&
+    raw.position > 0 &&
+    raw.position <= 9999
       ? raw.position
       : null;
   return {
@@ -200,7 +239,31 @@ export function toMeaningReading(
     time: (raw.time ?? '').trim(),
     name: (raw.name ?? '').trim(),
     position,
+    memory: screen === 'memory_request' ? oneOf(raw.memory, MEMORY_REQUEST_KINDS, 'none') : 'none',
+    target: screen === 'memory_request' ? (raw.target ?? '').trim() : '',
+    value:
+      screen === 'memory_request' || screen === 'memory_target' ? (raw.value ?? '').trim() : '',
+    key: screen === 'memory_target' ? memoryKeyShape(raw.key) : '',
+    language: screen === 'memory_request' ? acceptReplyLanguage(raw.language) : null,
+    refs: screen === 'memory_target' ? factRefs(raw.refs) : [],
   };
+}
+
+/** The refs a `memory_target` read named, kept only when they are ref-shaped. */
+function factRefs(raw: readonly string[] | undefined): string[] {
+  const kept: string[] = [];
+  for (const ref of raw ?? []) {
+    const trimmed = ref.trim().toLowerCase();
+    if (FACT_REF.test(trimmed) && !kept.includes(trimmed)) kept.push(trimmed);
+    if (kept.length >= MAX_REFS) break;
+  }
+  return kept;
+}
+
+/** A fact key the model proposed: lowercase snake_case, or nothing. A shape, not a meaning. */
+function memoryKeyShape(raw: string | undefined): string {
+  const key = (raw ?? '').trim().toLowerCase();
+  return /^[a-z][a-z0-9_]{0,59}$/.test(key) ? key : '';
 }
 
 function unread(reason: string): null {

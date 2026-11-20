@@ -21,6 +21,7 @@ import {
 import { distillFactNeedsEvidence, guardChatDistilledFact } from '~/lib/memory/distill-guard';
 import type { DistillGuardDecision } from '~/lib/memory/distill-guard';
 import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
+import { parentForgotRecently } from '~/lib/memory/forget';
 
 /**
  * The memory-inferencer agent's tools — family-scoped (rule #1) and run through
@@ -316,6 +317,9 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       ) {
         return { saved: false as const, reason: 'unknown_source_event' };
       }
+      if (await forgottenByParent(database, ctx.familyId, input.childId, input.factKey, now)) {
+        return { saved: false as const, reason: 'parent_forgot' };
+      }
 
       const decision = await decideDistilledFact(
         database,
@@ -563,6 +567,33 @@ function flattenFactValue(factValue: unknown): string {
   return JSON.stringify(factValue) ?? '';
 }
 
+/**
+ * VIL-723 · a fact a parent asked Hale to forget is not saved again from the same
+ * messages the next night. Logged by key, never by value; the refusal is named on the
+ * tool result. A no-op (no read) while FAMILY_MEMORY_KINDS_ENABLED is off.
+ */
+async function forgottenByParent(
+  database: Database,
+  familyId: string,
+  childId: string | null | undefined,
+  factKey: string,
+  now: Date,
+): Promise<boolean> {
+  const forgotten = await parentForgotRecently(database, {
+    familyId,
+    childId: childId ?? null,
+    factKey,
+    now,
+  });
+  if (forgotten) {
+    console.info(
+      { familyId, factKey },
+      'memory writer: the parent asked to forget this; not saved',
+    );
+  }
+  return forgotten;
+}
+
 function logDistillRefusal(
   familyId: string,
   factKey: string,
@@ -700,6 +731,9 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
     handler: async (input, ctx) => {
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
+      }
+      if (await forgottenByParent(database, ctx.familyId, input.childId, input.factKey, now)) {
+        return { saved: false as const, reason: 'parent_forgot' };
       }
 
       const decision = await decideDistilledFact(

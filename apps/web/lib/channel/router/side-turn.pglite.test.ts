@@ -34,6 +34,7 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
+import { asked, scriptedMemoryScreen } from '~/lib/memory/scripted-memory-screen.fixture';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { defaultPrepareReplyDeps } from '~/lib/registration/sequence/prepare-reply';
@@ -1509,7 +1510,16 @@ describe('a text a deterministic handler takes is handed back before the side re
     ['connector disconnect', () => connectorDisconnectHandler(), 'disconnect my calendar'],
     [
       'family memory kinds',
-      () => familyMemoryKindsHandler({ FAMILY_MEMORY_KINDS_ENABLED: 'true' }),
+      // The memory request is the model's read; scripted here (the eval reads real words).
+      () =>
+        familyMemoryKindsHandler(
+          { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
+          {
+            screen: scriptedMemoryScreen({
+              request: () => asked('forget', { target: "Ada's teacher" }),
+            }),
+          },
+        ),
       "forget that Ada's teacher is Ms. Okafor",
     ],
     ['health', () => healthReplyHandler(defaultHealthReplyDeps()), 'done'],

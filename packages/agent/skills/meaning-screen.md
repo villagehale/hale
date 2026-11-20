@@ -67,7 +67,7 @@ Call `meaning_screen` once.
 
 `text` is a 1:1 message that might be a complete kid-logistics decision for the household group.
 
-`decision` is `picked` when they chose an activity for a named kid at a day and time, `passed` when they declined an activity for a named kid, `none` otherwise. A question, an email, or a registration outcome (got in, waitlisted, missed, booked) is `none`. Fill `activity`, `kid`, and for `picked` also `day` and `time`, from what they said. `hit` is `yes` for picked or passed.
+`decision` is `picked` when they chose an activity for a named kid at a day and time, `passed` when they declined an activity for a named kid, `none` otherwise. Any wording and any language counts the same: "we'll do swim for Maya Tuesdays at 4", "on prend la natation pour Maya, mardi 16 h" and "玛雅周二四点上游泳课，就这个了" are all `picked`. A question, a maybe, a plan still being weighed, an email, or a registration outcome (got in, waitlisted, missed, booked) is `none`. A pick with no day or no time is `none`. A pass that also names a day or time is still `passed`; leave `day` and `time` empty. Fill `activity`, `kid`, and for `picked` also `day` and `time`, copied from what they said in their own words and script (do not translate them). `kid` is the child's name as written, never a pronoun. `hit` is `yes` for picked or passed.
 
 ### `health_done`
 
@@ -104,3 +104,35 @@ Call `meaning_screen` once.
 `text` is a parent message in the household group.
 
 `hit` is `yes` only when they ask when both parents are free together. A logistics decision, a connect ask, a contents question, or anything else is `no`.
+
+### `memory_request`
+
+`text` is a parent's message to Hale. Decide whether they are asking about what Hale remembers about their family, in any wording and any language or script.
+
+`memory` is:
+
+- `list` when they want to know what Hale knows, remembers, has saved or keeps about them, their family or their kids ("what do you know about us?", "what have you got on me", "que sais-tu sur nous ?", "tu te souviens de quoi pour notre famille", "你都记得我们家哪些事？").
+- `forget` when they want Hale to stop remembering, drop or delete something it remembers about them ("forget that Maya does swim", "please don't keep our address", "oublie ce que je t'ai dit sur le hockey", "把游泳课那条忘掉吧").
+- `correct` when they say something Hale remembers about them is wrong and give what it is now ("no, her swim class is Thursdays now", "c'est faux, on habite à Laval maintenant", "老师换了，现在是王老师"). A correction says the new value.
+- `none` for everything else. A "forget it" or "never mind" that drops a request, an offer, a plan, a booking, a reminder or a calendar event is `none`: that is not memory. So is a question about an activity, the week or a place, a new fact told for the first time, a carrier opt-out, and small talk.
+
+`target` is the thing to forget or correct, in the parent's own words and script ("Maya's swim day", "notre adresse", "游泳课"). Empty for `list` and `none`, and empty when they named nothing ("forget that").
+
+`value` is the corrected value as they said it ("Thursdays", "Laval", "王老师"). Empty unless `memory` is `correct`.
+
+`language` is the BCP-47 tag of the language `text` is written in (`en`, `fr`, `zh`, `es`, ...).
+
+`hit` is `yes` when `memory` is not `none`.
+
+### `memory_target`
+
+`text` is a parent's message asking Hale to forget or correct something it remembers. `facts` is what Hale remembers that this parent may hear, newest first. Each fact starts with its ref (`f1:`, `f2:`, ...).
+
+`refs` lists the refs of the facts the parent means, and only those. Match on meaning, in any language: "the swim thing" means a fact about swimming even when the fact is written in English and the message is not. When they ask to forget, list every fact they mean. When they correct, give the one fact the new value replaces. When the message names nothing you can tie to a fact ("forget that", "change it"), or nothing in `facts` is what they mean, `refs` is empty. Never guess between two different facts: leave `refs` empty instead.
+
+`value`, when they correct, is the new value, short, as they said it. Empty when they forget.
+
+`key`, when they correct and `refs` is empty, is a short lowercase English snake_case label for the thing they corrected (`swim_day`, `home_city`, `teacher_name`). Empty otherwise.
+
+`hit` is `yes` when `refs` is not empty.
+

@@ -125,8 +125,9 @@ const SHAPE_BANNED: RegExp[] = [/[{}]/];
 
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
 
+/** The bare word: a sentence's closing period and a possessive are not part of a name. */
 function stem(raw: string): string {
-  return raw.replace(/'(s)?$/i, '');
+  return raw.replace(/\.+$/, '').replace(/'(s)?$/i, '');
 }
 
 function grounded(token: string, facts: readonly string[]): boolean {

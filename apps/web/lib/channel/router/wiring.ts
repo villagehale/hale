@@ -521,8 +521,9 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // A reply to a pending sign-up offer, read by the consent model (no word list). Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
-    // Exact "what do you know" / "forget …" / "correct …" only, and only when
-    // FAMILY_MEMORY_KINDS_ENABLED is exactly true. Flag off claims nothing.
+    // "What do you know about us" / "forget …" / "correct …" in any wording or language,
+    // read by the model (VIL-723), and only when FAMILY_MEMORY_KINDS_ENABLED is exactly
+    // true. Flag off claims nothing and reads nothing.
     familyMemoryKindsHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
     recMorningHandler(),
