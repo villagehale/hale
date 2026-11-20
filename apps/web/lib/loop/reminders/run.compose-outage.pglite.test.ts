@@ -152,7 +152,7 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
     );
     expect(back).toMatchObject({ fired: 1, heldComposeUnavailable: 0 });
     expect(enqueued).toHaveLength(1);
-    expect(await eveningBefore()).toEqual({ status: 'sent', suppressReason: null });
+    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
     expect((await runs()).filter((run) => run.status === 'completed')).toHaveLength(1);
   });
 
