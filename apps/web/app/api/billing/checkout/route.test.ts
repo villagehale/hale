@@ -3,11 +3,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const createMock = vi.fn();
 const resolveFamilyMock = vi.fn();
 const clientMock = { createCheckoutSession: vi.fn() };
+const dbState = vi.hoisted(() => ({ events: [] as Array<{ id: string }> }));
 
 vi.mock('~/auth', () => ({
   auth: async () => ({ user: { id: 'auth-1', email: 'p@example.com' } }),
 }));
-vi.mock('~/lib/db', () => ({ db: () => ({}) }));
+vi.mock('~/lib/db', () => ({
+  db: () => ({
+    select: () => ({
+      from: () => ({
+        limit: async () => dbState.events,
+        where: () => ({
+          limit: async () => dbState.events,
+        }),
+      }),
+    }),
+  }),
+}));
 vi.mock('~/lib/family', () => ({
   resolveFamilyForUser: (...args: unknown[]) => resolveFamilyMock(...args),
 }));
@@ -35,6 +47,7 @@ describe('POST /api/billing/checkout', () => {
     vi.unstubAllEnvs();
     createMock.mockReset();
     resolveFamilyMock.mockReset();
+    dbState.events = [];
   });
 
   it('404s when HOLIDAY_PROMO_ENABLED is off (the dormant default)', async () => {
@@ -262,6 +275,117 @@ describe('POST /api/billing/checkout', () => {
     expect(arg.sku).toBe('promo_plus_annual');
   });
 
+  it('sends a missing header to CAD, refuses MX, and charges the USD price the server derived', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD', 'price_plus_usd');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const missing = await post({ period: 'annual', tier: 'plus', expectedCurrency: 'CAD' });
+    expect(missing.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({ priceId: 'price_plus_cad', currency: 'CAD' });
+    createMock.mockClear();
+
+    const mexico = await post(
+      { period: 'annual', tier: 'plus', expectedCurrency: 'USD' },
+      { 'x-vercel-ip-country': 'MX' },
+    );
+    expect(mexico.status).toBe(403);
+    expect(await mexico.json()).toEqual({ error: 'region_unsupported' });
+    expect(createMock).not.toHaveBeenCalled();
+
+    const us = await post({ period: 'annual', tier: 'plus' }, { 'x-vercel-ip-country': 'US' });
+    expect(us.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      priceId: 'price_plus_usd',
+      currency: 'USD',
+    });
+
+    createMock.mockClear();
+    const overridden = await post(
+      { period: 'annual', tier: 'plus', expectedCurrency: 'CAD' },
+      { 'x-vercel-ip-country': 'US' },
+    );
+    expect(overridden.status).toBe(409);
+    expect(await overridden.json()).toEqual({ error: 'currency_changed' });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('maps tier Max to family and rejects gold', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_PROMO_MAX_ANNUAL_USD', 'price_max_usd');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+
+    const max = await post({ period: 'annual', tier: 'Max' }, { 'x-vercel-ip-country': 'US' });
+    expect(max.status).toBe(200);
+    expect(createMock.mock.calls[0]?.[0]).toMatchObject({
+      priceId: 'price_max_usd',
+      tier: 'family',
+      currency: 'USD',
+    });
+
+    const gold = await post({ period: 'annual', tier: 'gold' }, { 'x-vercel-ip-country': 'US' });
+    expect(gold.status).toBe(400);
+    expect(await gold.json()).toEqual({ error: 'invalid_tier' });
+  });
+
+  it('returns no_price for post-window US Plus when the USD list id is unset', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+    vi.stubEnv('PROMO_FOUNDING_ENDS_AT', '2020-01-01T00:00:00Z');
+    vi.stubEnv('STRIPE_PRICE_PLUS_ANNUAL', 'price_cad_yr');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+
+    const res = await post({ period: 'annual', tier: 'plus' }, { 'x-vercel-ip-country': 'US' });
+    expect(res.status).toBe(501);
+    expect(await res.json()).toEqual({ error: 'stripe_billing_not_live', reason: 'no_price' });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses checkout while no applied billing event exists', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('STRIPE_BILLING_REVOKE_ENABLED', 'true');
+    vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+
+    const closed = await post({ period: 'annual', tier: 'plus' });
+    expect(closed.status).toBe(501);
+    expect(await closed.json()).toEqual({
+      error: 'stripe_billing_not_live',
+      reason: 'secret_unset',
+    });
+
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+    const unapplied = await post({ period: 'annual', tier: 'plus' });
+    expect(unapplied.status).toBe(501);
+    expect(await unapplied.json()).toEqual({
+      error: 'stripe_billing_not_live',
+      reason: 'no_applied_event',
+    });
+
+    dbState.events = [{ id: 'evt_applied' }];
+    createMock.mockResolvedValue({
+      status: 'created',
+      url: 'https://checkout.stripe.com/c/pay/cs_1',
+    });
+    const open = await post({ period: 'annual', tier: 'plus' });
+    expect(open.status).toBe(200);
+  });
+
   it('409s when the family already has a subscription', async () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
@@ -272,5 +396,59 @@ describe('POST /api/billing/checkout', () => {
     const res = await post({ period: 'annual' });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'already_paid' });
+  });
+
+  describe.each([true, false])('geo matrix with CHECKOUT_SERVER_CURRENCY_ENABLED=%s', (flagOn) => {
+    function setup() {
+      vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+      if (flagOn) vi.stubEnv('CHECKOUT_SERVER_CURRENCY_ENABLED', 'true');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_USD', 'price_plus_usd');
+      vi.stubEnv('STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD', 'price_plus_cad');
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test');
+      vi.stubEnv('APP_URL', 'https://app.example.com');
+      createMock.mockResolvedValue({
+        status: 'created',
+        url: 'https://checkout.stripe.com/c/pay/cs_1',
+      });
+    }
+
+    it('allows US as USD', async () => {
+      setup();
+      const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'US' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'USD' });
+    });
+
+    it('allows CA as CAD', async () => {
+      setup();
+      const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'CA' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it('sends a missing geo header to CAD', async () => {
+      setup();
+      const res = await post({ period: 'annual' });
+      expect(res.status).toBe(200);
+      expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+    });
+
+    it(
+      flagOn
+        ? 'refuses another country with no Stripe session'
+        : 'still charges CAD for another country (flag off, unchanged)',
+      async () => {
+        setup();
+        const res = await post({ period: 'annual' }, { 'x-vercel-ip-country': 'GB' });
+        if (flagOn) {
+          expect(res.status).toBe(403);
+          expect(await res.json()).toEqual({ error: 'region_unsupported' });
+          expect(createMock).not.toHaveBeenCalled();
+        } else {
+          expect(res.status).toBe(200);
+          expect(createMock.mock.calls[0]?.[0]).toMatchObject({ currency: 'CAD' });
+        }
+      },
+    );
   });
 });

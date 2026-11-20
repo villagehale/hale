@@ -57,7 +57,7 @@ describe('resolveHolidayPromo', () => {
       plus: { regular: 119, sale: 39, regularLabel: '$119/yr', saleLabel: '$39/yr' },
       max: { regular: 259, sale: 79, regularLabel: '$259/yr', saleLabel: '$79/yr' },
     });
-    for (const country of ['CA', 'GB', null]) {
+    for (const country of ['CA', 'GB', null] as const) {
       const ca = resolveHolidayPromo({ now, country, env: ON });
       expect(ca).toMatchObject({
         currency: 'CAD',
@@ -66,6 +66,18 @@ describe('resolveHolidayPromo', () => {
         max: { regular: 329, sale: 99, regularLabel: '$329/yr', saleLabel: '$99/yr' },
       });
     }
+  });
+
+  it('keeps the bare $ and hides the sale for an explicit non-US/CA country', () => {
+    const strict = { ...ON, CHECKOUT_SERVER_CURRENCY_ENABLED: 'true' };
+    const us = resolveHolidayPromo({ now, country: 'US', env: strict });
+    expect(us?.plus.saleLabel).toBe('$39/yr');
+    expect(us?.max.saleLabel).toBe('$79/yr');
+    expect(us?.plus.saleLabel).not.toMatch(/USD|CAD/);
+    expect(resolveHolidayPromo({ now, country: 'CA', env: strict })?.plus.saleLabel).toBe('$59/yr');
+    expect(resolveHolidayPromo({ now, country: 'MX', env: strict })).toBeNull();
+    expect(resolveHolidayPromo({ now, country: null, env: strict })?.currency).toBe('CAD');
+    expect(resolveHolidayPromo({ now, country: 'GB', env: strict })).toBeNull();
   });
 });
 

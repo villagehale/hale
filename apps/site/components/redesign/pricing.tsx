@@ -1,4 +1,13 @@
-import { PLUS_LIST_PRICE_DISPLAY, type BillingCurrency } from '@hale/types';
+import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE } from '@hale/types';
+import {
+  FREE_TIER_LINE,
+  maxAnnualLabel,
+  orAnnualLabel,
+  paidPlansCostAnswer,
+  plusCloseSentence,
+  plusMonthlyLabel,
+  plusPriceSentence,
+} from '~/lib/billing/plain-price';
 import type { Locale } from '~/i18n/routing';
 import { FaqDeepLink } from './faq-deeplink';
 import { FaqItem } from './faq-item';
@@ -20,6 +29,7 @@ export function RedesignPricing({
   promo = null,
   priceSurface = 'legacy',
   currency = 'CAD',
+  regionBlocked = false,
 }: {
   locale: Locale;
   smsNumber: string;
@@ -30,11 +40,12 @@ export function RedesignPricing({
   promo?: HolidayPromo | null;
   priceSurface?: SitePriceSurface;
   currency?: BillingCurrency;
+  /** Checkout is refused for this visitor's country; show the line instead of buy buttons. */
+  regionBlocked?: boolean;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
   const list = priceSurface === 'list';
-  const plusList = PLUS_LIST_PRICE_DISPLAY[currency];
   
   return (
     <>
@@ -53,7 +64,8 @@ export function RedesignPricing({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
-    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and Free stays free with unlimited chat. Join by Dec 31 and your price is locked in for as long as you’re a member. ${FOUNDING_REFUND_LINE}` : list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Everything Hale does today is free: the finding, the watching, the reminders, the group chats and the answers. Plus and Max are on the way.")}</p>
+    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and Free stays free with unlimited chat. Join by Dec 31 and your price is locked in for as long as you’re a member. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(FREE_TIER_LINE)}</p>
+    {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
     
    </div>
    
@@ -67,7 +79,7 @@ export function RedesignPricing({
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
     <div className="hs-tier-head"><span className="hs-tier-name">{t("Free")}</span><span className="hs-tier-num">01</span></div>
-    <h3>{promo ? "$0" : t("$0 CAD/mo")}</h3>
+    <h3>{promo ? "$0" : t("$0/mo")}</h3>
     <p className="hs-tier-meta">{t("Free for every family")}</p>
     <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats. Hale finds what’s on, watches for spots and reminds you before sign-ups.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A text when a spot opens")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
@@ -78,12 +90,9 @@ export function RedesignPricing({
     {promo ? (<>
     <TierSalePrice price={promo.plus} />
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
-    </>) : list ? (<>
-    <h3>{plusList.monthlyLabel}</h3>
-    <p className="hs-tier-meta">{t(currency === 'USD' ? 'or $119/yr USD' : 'or $159/yr CAD')}</p>
     </>) : (<>
-    <h3>{t("$19 CAD/mo")}<span className="hs-tier-usd">{t("$14 USD/mo")}</span></h3>
-    <p className="hs-tier-meta">{t("or $159 CAD / $119 USD a year, about three months free")}</p>
+    <h3>{t(plusMonthlyLabel(currency))}</h3>
+    <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     </>)}
     {promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{promo.saleName}: locked in. Join by Dec 31.</p> : null}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
@@ -97,20 +106,19 @@ export function RedesignPricing({
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
     <p className="promo-tier-tag" data-promo-phase={promo.phase}>{promo.saleName}: locked in. Join by Dec 31.</p>
     </>) : (<>
-    <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
-    <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>
+    <h3>{t(maxAnnualLabel(currency))}</h3>
     </>)}
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary promo-max-btn" placement="pricing_max" phase={promo.phase} currency={promo.currency} plan="max">Lock in {promo.max.saleLabel}</FoundingCheckoutLink> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
   </ol>
-  <p className="hs-meta hs-foot-note">{promo ? "Plus and Max are billed yearly. Sale prices are for families who join by Dec 31 and stay locked in while you’re a member." : list ? t("Plus is available today.") : t("Only Free is available today.")}</p>
+  <p className="hs-meta hs-foot-note">{promo ? "Plus and Max are billed yearly. Sale prices are for families who join by Dec 31 and stay locked in while you’re a member." : list ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
  </div>
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">
   <div className="hs-faq-l"><p className="hs-eyebrow">{t("About pricing")}</p><h2 className="hs-h2">{t("Fair questions.")}</h2></div>
-  <div className="hs-faq-r">{promo ? <PromoFaqItems promo={promo} /> : <FaqItem id="when-do-plus-and-max-open" question={list ? t("What does Plus cost?") : t("When do Plus and Max open?")}>{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US. Text Hale to start.") : t("When the parts they add are ready. Until then, everything Hale does is free.")}</FaqItem>}<FaqItem id="whats-the-difference-between-plus-and-max" question={t("What’s the difference between Plus and Max?")}>{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and help with sign-ups.")}</FaqItem></div>
+  <div className="hs-faq-r">{promo ? <PromoFaqItems promo={promo} /> : <FaqItem id="when-do-plus-and-max-open" question={t("What do Plus and Max cost?")}>{t(paidPlansCostAnswer(currency))}</FaqItem>}<FaqItem id="whats-the-difference-between-plus-and-max" question={t("What’s the difference between Plus and Max?")}>{t("Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and help with sign-ups.")}</FaqItem></div>
  </div>
 </section><section className="hs hs-close-sec" id="start">
  <div className="hs-wrap">
@@ -123,11 +131,11 @@ export function RedesignPricing({
     <h2>{closeHeading(`Max for ${promo.max.saleLabel}, locked in.`)}</h2>
     <p className="hs-close-sub">{promo.saleName}. Plus is {promo.plus.saleLabel}. Join by Dec 31. Refund anytime.</p>
     </>) : (<>
-    <h2>{list ? t("Start with a text.") : closeHeading(t("Founding families join free."))}</h2>
-    <p className="hs-close-sub">{list ? t("Plus is $19/mo CAD or $159/yr CAD in Canada, $14/mo USD or $119/yr USD in the US.") : t("Founding families get everything free until paid plans start.")}</p>
+    <h2>{t("Start with a text.")}</h2>
+    <p className="hs-close-sub">{list ? t(plusCloseSentence(currency)) : t(FREE_TIER_LINE)}</p>
     </>)}
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
-    <p className="hs-close-terms">{promo ? "You text first; standard message rates apply, reply STOP any time." : list ? t("You text first; standard message rates apply, reply STOP any time.") : t("Free. You text first; standard message rates apply, reply STOP any time.")}</p>
+    <p className="hs-close-terms">{t("You text first.")}</p>
    </div>
   </div>
  </div>

@@ -7,7 +7,7 @@ import type { RecordAgentRunInput } from '~/lib/agent-run';
 import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond } from '~/lib/format/link-shape';
+import { hasLinkBeyond, noteLinkGate } from '~/lib/format/link-shape';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
@@ -278,7 +278,10 @@ export function reminderRefusals(texts: readonly string[], facts: ReminderFacts)
   const found: string[] = [];
   if (trimmed.some((t) => t === '')) found.push('empty_text');
   const handed = facts.planLink === null ? [] : [facts.planLink];
-  if (trimmed.some((t) => hasLinkBeyond(t, handed))) found.push('other_link');
+  if (trimmed.some((t) => hasLinkBeyond(t, handed))) {
+    noteLinkGate('reminders', 'redraft');
+    found.push('other_link');
+  }
   return found;
 }
 

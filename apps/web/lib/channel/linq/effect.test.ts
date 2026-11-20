@@ -238,6 +238,7 @@ describe('VIL-473 Linq message effects', () => {
     expect(String(f.mock.calls[0]?.[0])).toContain(`/chats/${CHAT}/messages`);
     expect(JSON.parse(String(f.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: READ.reply }],
         reply_to: { message_id: 'in-1' },
         effect: { type: 'screen', name: 'confetti' },
@@ -389,6 +390,7 @@ describe('VIL-473 Linq message effects', () => {
     });
     expect(JSON.parse(String(f.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: READ.reply, mention: '+14165550199' }],
         reply_to: { message_id: 'in-1' },
         effect: { type: 'screen', name: 'confetti' },

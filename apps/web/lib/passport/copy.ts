@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { activityKeyOf } from './signals';
 import { EMPTY_INTENT, type ParentIntent } from './store';
@@ -84,7 +84,10 @@ export function lineViolations(
   const tidy = text.replace(/\s+/g, ' ').trim();
   if (!tidy) out.push('the line was empty');
   if (tidy.length > 320) out.push('the line is too long');
-  if (hasLinkShape(tidy)) out.push('the line contains a link');
+  if (hasLinkShape(tidy)) {
+    noteLinkGate('passport', 'redraft');
+    out.push('the line contains a link');
+  }
   if (HALE_DID_IT.test(tidy) || DID_FOR_THEM.test(tidy)) {
     out.push('the line says Hale booked, registered, or enrolled the child');
   }

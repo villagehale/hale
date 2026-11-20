@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { recordSignupOffer } from '../store';
-import { PROVIDER_CREDENTIALS_ENABLED_ENV } from './flag';
+import { PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, PROVIDER_CREDENTIALS_ENABLED_ENV } from './flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from './kms';
 import {
   CREDENTIAL_RETENTION_MS,
@@ -95,6 +95,45 @@ describe('encrypted provider credentials', () => {
       totp: totpCode(TOTP_SEED, NOW),
     });
     expect(loaded?.totp).toMatch(/^\d{6}$/);
+  });
+
+  it('does not decrypt another parent when the owner flag is exactly true', async () => {
+    const f = await family();
+    const other = '00000000-0000-4000-8000-000000000099';
+    await saveProviderCredentials(db.database, {
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      providerHost: HOST,
+      username: 'ada',
+      password: 'city-pass',
+      now: NOW,
+    });
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true\n');
+    expect(
+      await loadCredentialsForRun(db.database, {
+        familyId: f.familyId,
+        providerHost: HOST,
+        parentUserId: other,
+        now: NOW,
+      }),
+    ).toMatchObject({ password: 'city-pass' });
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
+    expect(
+      await loadCredentialsForRun(db.database, {
+        familyId: f.familyId,
+        providerHost: HOST,
+        parentUserId: other,
+        now: NOW,
+      }),
+    ).toBeNull();
+    expect(
+      await loadCredentialsForRun(db.database, {
+        familyId: f.familyId,
+        providerHost: HOST,
+        parentUserId: f.parentUserId,
+        now: NOW,
+      }),
+    ).toMatchObject({ username: 'ada', password: 'city-pass' });
   });
 
   it('skips a stale row until a new save clears it', async () => {

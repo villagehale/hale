@@ -1,4 +1,4 @@
-import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 
 /**
  * VIL-662 · email content is untrusted (VIL-615 / VIL-560 / VIL-628).
@@ -21,7 +21,11 @@ function holdsPhone(text: string): boolean {
 function trustedField(value: string | null | undefined): string | null {
   const trimmed = value?.trim() ?? '';
   if (trimmed === '') return null;
-  if (hasLinkShape(trimmed) || holdsPhone(trimmed)) return null;
+  if (hasLinkShape(trimmed)) {
+    noteLinkGate('team-schedule-scrub', 'refused');
+    return null;
+  }
+  if (holdsPhone(trimmed)) return null;
   const unlinked = withoutLinks(trimmed).trim();
   if (unlinked === '') return null;
   return unlinked;

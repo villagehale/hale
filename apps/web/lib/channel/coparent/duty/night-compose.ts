@@ -2,7 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -56,7 +56,10 @@ export function dutyNightUserMessage(facts: DutyNightFacts): string {
 export function dutyNightRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  if (hasLinkShape(text)) return ['other_link'];
+  if (hasLinkShape(text)) {
+    noteLinkGate('night-compose', 'redraft');
+    return ['other_link'];
+  }
   return [];
 }
 

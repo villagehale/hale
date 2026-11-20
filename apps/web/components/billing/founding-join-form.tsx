@@ -98,7 +98,12 @@ export function FoundingJoinForm({
         body: JSON.stringify({ tier }),
       });
       if (checkout.status === 409) {
-        setStep('paid');
+        const denied = (await checkout.json().catch(() => null)) as { error?: unknown } | null;
+        if (denied?.error === 'already_paid') {
+          setStep('paid');
+          return;
+        }
+        setError(CLAIM_CONNECTION_ERROR);
         return;
       }
       if (checkout.status === 401) {

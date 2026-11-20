@@ -1,7 +1,8 @@
-import { invokeTool } from '@hale/agent';
+import { compileToolSchema, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
@@ -110,6 +111,50 @@ describe('search_village uses this operation’s live evidence', () => {
     );
     expect(result).toMatchObject({ candidates: [], liveRead: 'area_unusable' });
     expect(find).not.toHaveBeenCalled();
+  });
+
+  it('takes a blank area as no place named, and searches home instead of refusing', async () => {
+    const familyId = await household(false, 'Toronto');
+    // Two suitable finds, so the short-radar top-up does not search again.
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({
+      found: true,
+      picks: [pick, { ...pick, name: 'Current art', sourceUrl: 'https://example.org/art' }],
+    });
+    const read: string[] = [];
+    const areaReader: NamedAreaReader = {
+      read: async (text) => {
+        read.push(text);
+        return { locality: 'Nowhere', region: 'Ontario', granularity: 'locality' };
+      },
+    };
+
+    await search(familyId, { find }, undefined, { query: 'story time', area: '' }, areaReader);
+    await search(
+      familyId,
+      { find },
+      undefined,
+      { query: 'swim lessons', area: ' \t ' },
+      areaReader,
+    );
+
+    expect(read).toEqual([]);
+    expect(find.mock.calls.map((call) => call[0])).toMatchObject([
+      { subject: 'story time', town: 'Toronto' },
+      { subject: 'swim lessons', town: 'Toronto' },
+    ]);
+  });
+
+  it('keeps the model-facing schema byte-identical to a plain optional area', () => {
+    const tool = searchVillageTool(db.database);
+    const plain = compileToolSchema(
+      z.object({
+        query: z.string().optional(),
+        window: z.string().optional(),
+        area: z.string().min(1).optional(),
+        date: z.string().optional(),
+      }),
+    );
+    expect(compileToolSchema(tool.inputSchema)).toEqual(plain);
   });
 
   it('offers fresh facts and records exactly the offered receipt, never an old schedule', async () => {

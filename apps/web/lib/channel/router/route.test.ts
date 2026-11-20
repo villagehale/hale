@@ -7959,6 +7959,7 @@ describe('the reply row, written to a real database', () => {
         expect(sent).toEqual([
           {
             message: {
+              idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
               parts: [{ type: 'text', value: 'You are in for swim.' }],
               reply_to: { message_id: 'in-1' },
               effect: { type: 'screen', name: 'confetti' },

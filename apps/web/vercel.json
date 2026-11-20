@@ -31,6 +31,7 @@
     { "path": "/api/cron/inbound-canary", "schedule": "9-59/10 * * * *" },
     { "path": "/api/cron/browser-use-watch", "schedule": "44 * * * *" },
     { "path": "/api/cron/claim-read-warm", "schedule": "34 * * * *" },
+    { "path": "/api/cron/billing-reconcile", "schedule": "46 * * * *" },
     { "path": "/api/cron/signup-plans", "schedule": "* * * * *" }
   ]
 }

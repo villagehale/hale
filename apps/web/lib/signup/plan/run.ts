@@ -23,8 +23,12 @@ import {
 import { browserUseProxyFor } from '../browser-use/proxy';
 import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vault';
 import { signupProviderHost, typedOutsideGrant } from '../consent';
-import { providerAccountCreateEnabled, providerCredentialsEnabled } from '../credentials/flag';
-import { loadCredentialsForRun, markCredentialsStale } from '../credentials/store';
+import {
+  planCityLoginOwnerEnabled,
+  providerAccountCreateEnabled,
+  providerCredentialsEnabled,
+} from '../credentials/flag';
+import { markCredentialsStale, readCredentialsForRun } from '../credentials/store';
 import { loginLinkExpiresAt } from '../login-link/code';
 import { mintFreshLoginLink } from '../login-link/store';
 import { BROWSER_USE_REGISTRATION_RESERVE_USD, signupSpendingCap } from '../run';
@@ -36,7 +40,7 @@ import {
 } from '../store';
 import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
-import { registrationPlanRunEnabled } from './flag';
+import { registrationPlanAtOpenEnabled, registrationPlanRunEnabled } from './flag';
 import { signupPlanPrepDepsFromEnv } from './notice';
 import {
   type PlanNoticeKind,
@@ -53,14 +57,24 @@ import {
   planFieldsToType,
   planLapse,
   planTakenBack,
+  releaseUnstartedPlansBeforeOpen,
   savePlanResume,
   writePlanAudit,
 } from './store';
 import { planModeFor } from './towns';
 import { planOpensAtLocal } from './writer';
 
-/** Hale joins the open this long before it, the way a punctual parent would. */
+/**
+ * How long before the open a sweep may claim a plan while
+ * REGISTRATION_PLAN_AT_OPEN_ENABLED is off. While that flag is exactly `true`,
+ * {@link planJoinLeadMs} is 0 and a plan is claimed only once the open has arrived.
+ */
 export const PLAN_JOIN_LEAD_MS = 3 * 60_000;
+
+/** Lead passed to {@link claimDuePlan}. Zero once the at-open flag is exactly `true`. */
+export function planJoinLeadMs(env: Record<string, string | undefined> = process.env): number {
+  return registrationPlanAtOpenEnabled(env) ? 0 : PLAN_JOIN_LEAD_MS;
+}
 /**
  * The opening window. Past this, the open is long gone: a plan that has not started goes
  * back to the parent instead of running late, and a queue still waiting is let go.
@@ -122,7 +136,9 @@ export type PlanRunDetail =
   | 'spend_reserve_reached'
   | 'engine_threw'
   /** A run was still waiting in the town's queue when the opening window closed. */
-  | 'open_window_passed';
+  | 'open_window_passed'
+  /** Registration is still ahead. The plan was not started and the parent is not texted. */
+  | 'before_open';
 
 /** Told nothing: a parent whose yes no longer stands (an opt-out, a departure) is not texted. */
 export type PlanNotice = 'sent' | 'failed' | 'withheld';
@@ -183,6 +199,26 @@ export async function runDueSignupPlans(
     console.warn({ skipped: 'not_configured' }, 'signup plans: browser use engine not configured');
     return { skipped: 'not_configured', plans: [] };
   }
+  if (registrationPlanAtOpenEnabled()) {
+    const released = await releaseUnstartedPlansBeforeOpen(database, { now: input.now });
+    for (const row of released) {
+      await writePlanAudit(database, {
+        familyId: row.familyId,
+        actor: row.parentUserId,
+        offerId: row.id,
+        after: {
+          step: 'plan_before_open',
+          opensAt: row.opensAt?.toISOString() ?? null,
+        },
+      });
+    }
+    if (released.length > 0) {
+      console.info(
+        { released: released.length },
+        'signup plans: returned to planned before the open',
+      );
+    }
+  }
   const claimed: ClaimedPlan[] = [];
   for (
     let attempt = 0;
@@ -193,7 +229,7 @@ export async function runDueSignupPlans(
       (await claimResumablePlan(database, { now: input.now, leaseMs: PLAN_LEASE_MS })) ??
       (await claimDuePlan(database, {
         now: input.now,
-        leadMs: PLAN_JOIN_LEAD_MS,
+        leadMs: planJoinLeadMs(),
         leaseMs: PLAN_LEASE_MS,
       }));
     if (plan === 'contended') continue;
@@ -230,6 +266,34 @@ async function runOnePlan(
 ): Promise<PlanRunSummary> {
   const now = sweep.now;
   const held = holdsRun(plan.resume) ? plan.resume : null;
+  if (
+    registrationPlanAtOpenEnabled() &&
+    !plan.alreadyOpen &&
+    now.getTime() < plan.opensAt.getTime() &&
+    !held
+  ) {
+    const released = await releaseUnstartedPlansBeforeOpen(database, {
+      now,
+      offerId: plan.offerId,
+    });
+    await writePlanAudit(database, {
+      familyId: plan.familyId,
+      actor: plan.parentUserId,
+      offerId: plan.offerId,
+      after: {
+        step: 'plan_before_open',
+        released: released.length > 0,
+        opensAt: plan.opensAt.toISOString(),
+      },
+    });
+    console.info({ offerId: plan.offerId }, 'signup plans: open is still ahead');
+    return {
+      offerId: plan.offerId,
+      outcome: 'not_open',
+      detail: 'before_open',
+      notice: 'withheld',
+    };
+  }
   const audit = (after: Record<string, unknown>) =>
     writePlanAudit(database, {
       familyId: plan.familyId,
@@ -480,18 +544,40 @@ async function runOnePlan(
   if (typedOutsideGrant(planFieldsToType(identity, choices), granted)) {
     return handBack('consent_wider');
   }
-  const stored = await loadProviderSession(database, {
+  const storedAll = await loadProviderSession(database, {
     familyId: plan.familyId,
     providerHost,
     now,
   });
-  const credentials = providerCredentialsEnabled()
-    ? await loadCredentialsForRun(database, {
+  const ownerGate = planCityLoginOwnerEnabled();
+  const sessionForeign = Boolean(
+    ownerGate && storedAll && storedAll.parentUserId !== plan.parentUserId,
+  );
+  const stored = sessionForeign ? null : storedAll;
+  const credentialRead = providerCredentialsEnabled()
+    ? await readCredentialsForRun(database, {
         familyId: plan.familyId,
         providerHost,
+        parentUserId: plan.parentUserId,
         now,
       })
-    : null;
+    : { status: 'absent' as const };
+  const credentials = credentialRead.status === 'ready' ? credentialRead.credentials : null;
+  const credentialsForeign = credentialRead.status === 'other_parent';
+  if (sessionForeign || credentialsForeign) {
+    const refused =
+      sessionForeign && credentialsForeign ? 'both' : sessionForeign ? 'session' : 'credentials';
+    await audit({
+      step: 'plan_city_login_refused',
+      reason: 'other_parent',
+      refused,
+      host: providerHost,
+    });
+    console.info(
+      { offerId: plan.offerId, refused },
+      'signup plans: city login belongs to the other parent',
+    );
+  }
   if (!stored && !credentials) return handBack('no_provider_session', 'needs_login');
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {

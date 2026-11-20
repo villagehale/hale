@@ -15,6 +15,12 @@ export const MAX_FAMILIES_PER_RUN = {
   inference: 100,
   /** Memory digests are deterministic, but a bad rule still has to be bounded. */
   memoryDigest: 50,
+  /**
+   * Hourly proactive review, once `PROACTIVE_REVIEW_GUARDS_ENABLED` is exactly `true`.
+   * One model decision per family, inside a 300s cron: fifty is the slice one tick
+   * can finish. The rest wait for the next hour, oldest due first.
+   */
+  proactiveReview: 50,
 } as const;
 
 /** Each bounded sweep keeps its own rotation in `family_sweep_marks`. */

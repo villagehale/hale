@@ -1667,6 +1667,13 @@
       "when": 1794365810000,
       "tag": "0257_family_signup_help_seasons",
       "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1794365900000,
+      "tag": "0258_family_timezone_resolved",
+      "breakpoints": true
     }
   ]
 }
