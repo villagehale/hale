@@ -447,6 +447,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // Held because the turn-on text has not been delivered yet.
   'action.gated.autonomy_notice_pending',
+  // VIL-719. The ask policy puts this kind in ask first: it runs only on the parent's yes.
+  'action.gated.ask_first',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
   'autonomy_notice_covered',
@@ -1749,6 +1751,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  // VIL-719. Same reused sentence: an ask-first action is a draft brought to the parent.
+  'action.gated.ask_first': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_notice_pending': {
     sentence: 'held until Hale had told you it would handle this on its own',
     family: 'awaiting',

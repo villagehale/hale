@@ -16,6 +16,20 @@ export {
   createQueueWithPolicy,
 } from './queue-policy';
 
+export {
+  ACTION_CLASSES,
+  ACTION_CLASSES_BY_KIND,
+  ASK_TIERS,
+  ASK_TIER_BY_CLASS,
+  type ActionClass,
+  type AskFacts,
+  type AskTier,
+  actionClassesFor,
+  askTierFor,
+  isAskPolicyKind,
+  strictestAskTier,
+} from './ask-policy';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // events.ingested — the pg-boss payload contract between apps/web (producer)
 // and apps/worker (consumer). Defined once here so a field rename on either

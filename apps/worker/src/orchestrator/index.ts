@@ -1,6 +1,9 @@
 import { isEnabled } from '@hale/flags';
 import {
+  type AskFacts,
   type IngestedEventPayload,
+  actionClassesFor,
+  askTierFor,
   coverageSatisfiedWithResults,
   isCrossParentActionType,
 } from '@hale/tools-contracts';
@@ -52,14 +55,28 @@ import {
 } from '../services/memory-writer.js';
 import { invokeReviewerTool } from '../tools/registry.js';
 import {
+  askPolicyTiersEnabled,
   autonomyDeniedForKind,
   commitsParentToEnrollmentBookingOrPayment,
+  storedAskFacts,
   teenRedactionCapApplies,
   withinObservationWindow,
 } from './autonomy-gate.js';
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
 const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
+
+/**
+ * VIL-719 · what an `action.gated.ask_first` row records: the classes that put the action in
+ * ask first, and the fact that raised it when one did, so the audit names why.
+ */
+function askFirstDetail(actionType: ActionType, facts: AskFacts): Record<string, unknown> {
+  return {
+    askTier: 'ask_first',
+    classes: actionClassesFor(actionType, facts),
+    ...(facts.commitsFamily === true ? { commitsFamily: true } : {}),
+  };
+}
 
 /**
  * Kill switch for AUTONOMOUS execution only (a human approval is not braked). Off
@@ -607,6 +624,30 @@ export async function runOrchestrator(
     return;
   }
 
+  // VIL-719 — the three-tier ask policy. An ask-first action (money, a registration or a
+  // booking, a third party, another person's information, or the drafter's commitment
+  // reading) never runs on its own, whatever the streak and the opt-in say: it waits as a
+  // draft for the parent's recorded yes. Pure tightening. After the teen cap, so a teenager's
+  // private content keeps its own reason and trail line.
+  if (askPolicyTiersEnabled(familyId)) {
+    const facts = storedAskFacts(draft);
+    if (askTierFor(draft.actionType, facts) === 'ask_first') {
+      await markEventStage(familyId, eventId, 'reviewed');
+      logger.info(
+        { familyId, actionId, actionType: draft.actionType },
+        'orchestrator: ask policy puts this action in ask first — drafted for approval',
+      );
+      await recordActionGate({
+        familyId,
+        actionId,
+        actionType: draft.actionType,
+        reason: 'ask_first',
+        detail: askFirstDetail(draft.actionType, facts),
+      });
+      return;
+    }
+  }
+
   // Rule #4 — the 7-day observe window. A family younger than the window NEVER
   // auto-executes; everything is drafted for approval.
   const familyCreatedAt = await loadFamilyCreatedAt(familyId);
@@ -780,9 +821,32 @@ async function executeAndRecord(
   actorUserId?: string | null,
   sendEmail?: EmailSender,
 ): Promise<void> {
+  const facts = storedAskFacts(approved);
+  const askTier = askPolicyTiersEnabled(familyId) ? askTierFor(approved.actionType, facts) : null;
+  // VIL-719 — the door. Whatever path got here (the autonomous pass, a resume, a parent's
+  // tap that landed on an autonomous checkpoint, a lane calling executeApprovedAction), an
+  // ask-first action runs only on a recorded yes: the `action.approved_by_human` row that
+  // recordHumanApproval writes. An actor id alone is not that row. Refused, it goes back to
+  // the parent as a draft (`reviewed`), never into the failed bucket.
+  if (askTier === 'ask_first' && (await loadHumanApprover(actionId)) === null) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.error(
+      { familyId, actionId, actionType: approved.actionType },
+      'orchestrator: ask-first action reached the executor with no recorded yes — held for approval, not executed',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: approved.actionType,
+      reason: 'ask_first',
+      detail: { ...askFirstDetail(approved.actionType, facts), backstop: true },
+    });
+    return;
+  }
   const decision = {
     source: actorUserId ? ('human' as const) : ('autonomous' as const),
     reason: approved.verdict.rationale,
+    ...(askTier !== null ? { askTier } : {}),
   };
   try {
     const execution = await runExecutor(
@@ -863,6 +927,27 @@ async function resumeIntoExecutor(
       detail: { resumed: true },
     });
     return;
+  }
+
+  // VIL-719 — an ask-first action checkpointed by an autonomous pass (before the policy was
+  // on, or across the flip) goes back to the parent rather than to the executor.
+  if (humanApprover === null && askPolicyTiersEnabled(familyId)) {
+    const facts = storedAskFacts(existing);
+    if (askTierFor(existing.actionType, facts) === 'ask_first') {
+      await markEventStage(familyId, eventId, 'reviewed');
+      logger.info(
+        { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+        'orchestrator: ask-first action at approved_pending_execute with no recorded yes — re-gated on resume (executor not reached)',
+      );
+      await recordActionGate({
+        familyId,
+        actionId: existing.actionId,
+        actionType: existing.actionType,
+        reason: 'ask_first',
+        detail: { ...askFirstDetail(existing.actionType, facts), resumed: true },
+      });
+      return;
+    }
   }
 
   if (humanApprover === null && !(await autonomyTurnOnDelivered(familyId, existing.actionType))) {

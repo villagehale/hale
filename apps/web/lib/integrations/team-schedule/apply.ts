@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askTierFor } from '@hale/tools-contracts';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
 import {
   autonomyTurnOnDelivered,
@@ -6,7 +7,7 @@ import {
   loadFamilyCreatedAt,
 } from '@hale/worker/memory-writer';
 import { defaultExecuteApprovedDeps, executeApprovedAction } from '@hale/worker/orchestrator';
-import { withinObservationWindow } from '@hale/worker/autonomy-gate';
+import { askPolicyTiersEnabled, withinObservationWindow } from '@hale/worker/autonomy-gate';
 import { and, eq, isNull } from 'drizzle-orm';
 import { mintChannelCalendarDraft } from '~/lib/channel/coach/draft';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -31,6 +32,7 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
 import {
@@ -132,6 +134,12 @@ export interface TeamScheduleApplyPorts {
   threadMessage: typeof threadProactiveMessage;
   parentLanguage(parentUserId: string): Promise<string>;
   driver: DriverNotifyPorts;
+  /**
+   * VIL-719 · tells #ops when the text after an applied change (this lane's tell-after)
+   * could not be written. Required (rule #11); read only while ASK_POLICY_TIERS_ENABLED is
+   * on for the family.
+   */
+  pager: OpsPager;
 }
 
 function asSpoken(change: MatchChange): SpokenChange | null {
@@ -159,6 +167,12 @@ export async function calendarKindAutonomous(
   now: Date,
 ): Promise<{ autonomous: boolean; parentUserId: string | null }> {
   if (process.env.AUTONOMOUS_EXECUTE_ENABLED !== 'true') {
+    return { autonomous: false, parentUserId: null };
+  }
+  // VIL-719 · this lane applies a change through executeApprovedAction with the grant
+  // holder standing in as the approver, which is not that parent's yes to this change. So
+  // it may never carry an ask-first kind; one would wait for the parent instead.
+  if (askPolicyTiersEnabled(familyId) && askTierFor(actionType) === 'ask_first') {
     return { autonomous: false, parentUserId: null };
   }
   const createdAt = await loadFamilyCreatedAt(familyId, database);
@@ -329,8 +343,19 @@ export async function applyTeamScheduleChange(
   }
 
   if (text === null) {
+    // VIL-719 · the change was applied and its text could not be written: nothing is sent,
+    // the change stands, and ops hears of it while the ask policy is on for this family.
+    const applied = standing.autonomous && standing.parentUserId !== null;
+    const page =
+      applied && askPolicyTiersEnabled(input.familyId)
+        ? await ports.pager.page({
+            site: 'team_schedule_unwritten',
+            facts: { change: spoken },
+            ref: drafted.actionId,
+          })
+        : null;
     console.info(
-      { familyId: input.familyId, outcome: 'schedule_change_unwritten' },
+      { familyId: input.familyId, outcome: 'schedule_change_unwritten', ...(page ? { page } : {}) },
       'team schedule: parent text unwritten after apply',
     );
     return { handled: true, outcome: 'schedule_change_unwritten' };
@@ -607,6 +632,7 @@ export function teamSchedulePortsFor(
     transport,
     threadMessage: threadProactiveMessage,
     parentLanguage: (parentUserId) => readParentLanguage(database, { familyId, parentUserId }),
+    pager: failurePageOpsPager(() => database),
     driver: productionDriverNotifyPorts(database, transport, async (input) => {
       const [parent] = await database
         .select({

@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
 import type { GoogleCalendarPlacementRequest } from '@hale/worker/google-calendar-placement';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type CalendarWriteNoticePorts,
   noticeAfterSync,
@@ -25,6 +25,7 @@ function ports(overrides: Partial<CalendarWriteNoticePorts> = {}): CalendarWrite
     connectLink: vi.fn(async () => LINK),
     compose: vi.fn(async () => 'Swim is on your calendar.'),
     send: vi.fn(async () => 'sent' as const),
+    pager: { page: vi.fn(async () => 'paged' as const) },
     ...overrides,
   };
 }
@@ -122,6 +123,42 @@ describe('VIL-454 withCalendarWriteNotice', () => {
     );
     expect(await wrapped.sync(REQUEST)).toEqual(WRITTEN);
     expect(inner.sync).toHaveBeenCalledWith(REQUEST);
+  });
+});
+
+describe('VIL-719 a notice the model could not write', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('policy on: sends nothing, leaves the placement alone, and pages #ops once', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const inner = { sync: vi.fn(async () => WRITTEN) };
+    const p = ports({ compose: vi.fn(async () => null) });
+    expect(await withCalendarWriteNotice(inner, p).sync(REQUEST)).toEqual(WRITTEN);
+    expect(p.send).not.toHaveBeenCalled();
+    expect(p.pager.page).toHaveBeenCalledTimes(1);
+    expect(p.pager.page).toHaveBeenCalledWith({
+      site: 'calendar_write_notice_unwritten',
+      facts: { op: 'create' },
+      ref: 'e1',
+    });
+  });
+
+  it('policy off: sends nothing and pages no one, as before', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const p = ports({ compose: vi.fn(async () => null) });
+    await withCalendarWriteNotice({ sync: vi.fn(async () => WRITTEN) }, p).sync(REQUEST);
+    expect(p.send).not.toHaveBeenCalled();
+    expect(p.pager.page).not.toHaveBeenCalled();
+  });
+
+  it('policy on: a written notice pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const p = ports();
+    await withCalendarWriteNotice({ sync: vi.fn(async () => WRITTEN) }, p).sync(REQUEST);
+    expect(p.send).toHaveBeenCalledTimes(1);
+    expect(p.pager.page).not.toHaveBeenCalled();
   });
 });
 
