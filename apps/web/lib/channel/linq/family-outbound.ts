@@ -824,6 +824,7 @@ export async function sendClaimedGroupLine(
       channel: 'imessage',
       ...groupLineLabels(input.chatId),
       database,
+      parentUserId: input.parentUserId,
     });
     return 'sent';
   } catch (err) {

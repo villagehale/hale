@@ -6,6 +6,7 @@ import {
   proactiveCadence,
   proactiveReviewGuardsEnabled,
   proactiveSendsPaused,
+  proactiveWeeklyCapEnabled,
   requestedCadence,
   unroutedKinds,
 } from './flag';
@@ -82,6 +83,27 @@ describe('proactive cadence flag', () => {
     expect(proactiveReviewGuardsEnabled()).toBe(true);
     expect(familyDecisionCapEnabled()).toBe(true);
     expect(proactiveSendsPaused()).toBe(true);
+  });
+
+  it('VIL-722 · arms the weekly cap flag only on exact true, for any family', () => {
+    vi.stubEnv('PROACTIVE_WEEKLY_CAP_ENABLED', undefined);
+    expect(proactiveWeeklyCapEnabled()).toBe(false);
+    expect(proactiveWeeklyCapEnabled('fam-1')).toBe(false);
+    for (const near of ['TRUE', 'true\n', ' true', '1', 'on']) {
+      vi.stubEnv('PROACTIVE_WEEKLY_CAP_ENABLED', near);
+      expect({ near, on: proactiveWeeklyCapEnabled('fam-1') }).toEqual({ near, on: false });
+    }
+    vi.stubEnv('PROACTIVE_WEEKLY_CAP_ENABLED', 'true');
+    expect(proactiveWeeklyCapEnabled()).toBe(true);
+    expect(proactiveWeeklyCapEnabled('fam-1')).toBe(true);
+  });
+
+  it('VIL-722 · lets an explicit env false kill the weekly cap even when PostHog says on', () => {
+    setFlagEvaluatorForTests(() => true);
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    vi.stubEnv('POSTHOG_ID_SALT', 'test-salt');
+    vi.stubEnv('PROACTIVE_WEEKLY_CAP_ENABLED', 'false');
+    expect(proactiveWeeklyCapEnabled('fam-1')).toBe(false);
   });
 
   it('keeps an exact env pause when PostHog has the flag loaded as false', () => {

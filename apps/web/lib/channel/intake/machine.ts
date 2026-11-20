@@ -1236,6 +1236,7 @@ export async function writeChannelMessage(
     isGroup: entry.inGroup,
     chatId: entry.chatId,
     database,
+    parentUserId,
   });
   return id;
 }
@@ -3288,6 +3289,7 @@ async function provision(
       now,
       language,
       linqContactCardClaim: session.linqContactCardClaim,
+      service: messagingPipe(inbound).service,
     });
     familyId = provisioned.familyId;
     userId = provisioned.userId;

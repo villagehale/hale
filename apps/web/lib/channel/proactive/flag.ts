@@ -96,6 +96,16 @@ export function familyDecisionCapEnabled(): boolean {
 }
 
 /**
+ * VIL-722 · the family-wide weekly budget on what the hourly decider sends. Off unless the
+ * env is exactly `true`. On is not a cap by itself: the number is
+ * `PROACTIVE_WEEKLY_CAP_SENDS` (weekly-cap.ts), and unset is no cap. Read per family, so
+ * PostHog can target one household once the PostHog path is on.
+ */
+export function proactiveWeeklyCapEnabled(familyId?: string): boolean {
+  return isEnabled('proactive-weekly-cap', familyId);
+}
+
+/**
  * VIL-705 · refuses every proactive kind, immediate ones included. Replies to an
  * inbound text do not read this. Off unless the env is exactly `true`.
  *

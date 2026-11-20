@@ -5,6 +5,7 @@ import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
 import { linqChatAuditKey } from '~/lib/channel/linq/family-audit';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -98,6 +99,14 @@ export interface ProvisionInput {
    * still share. Null when the first outbound has not tried.
    */
   linqContactCardClaim?: LinqContactCardClaim | null;
+  /**
+   * VIL-722 · the service Linq said carried the turn that finished intake. Analytics only:
+   * the replayed transcript is the family's first `message_inbound`, which is where
+   * retention per channel starts, and the intake rows do not store a service. One chat
+   * carried the whole intake, so its imessage-pipe entries take this. Null or absent:
+   * Linq did not say, and the events say `unknown`.
+   */
+  service?: LinqChatService | null;
 }
 
 export interface ProvisionResult {
@@ -421,6 +430,7 @@ export async function provisionFromIntake(
         channel: entry.channel === 'imessage' ? 'imessage' : CHANNEL_KIND,
         isGroup: entry.inGroup,
         chatId: entry.chatId,
+        service: entry.channel === 'imessage' ? (input.service ?? null) : null,
       });
     }
 

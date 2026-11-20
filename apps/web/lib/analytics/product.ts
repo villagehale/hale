@@ -1,4 +1,5 @@
 import type { PostHog } from 'posthog-node';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
 import { errorTrackingEnabled, productEventsEnabled } from './flags';
@@ -62,6 +63,37 @@ export function productChannel(args: {
   if (args.isGroup === true) return 'group';
   if (args.channel === 'imessage') return 'imessage';
   return 'sms';
+}
+
+/**
+ * VIL-722 · the service that carried the chat, for retention per channel. `channel` above
+ * is the pipe: Linq is recorded as `imessage` whatever the handset took, green-bubble SMS
+ * and RCS included. This is what Linq said (`InboundMessage.service`). `unknown` is a
+ * named answer, never a guess: Linq did not say, or the writer had nothing to read it from.
+ */
+export type ProductTransport = 'imessage' | 'sms' | 'rcs' | 'email' | 'unknown';
+
+/** VIL-722 · a 1:1 thread, a group of one household, or a group of two or more. */
+export type ChatKind = 'one_to_one' | 'family_group' | 'multi_family_group';
+
+const LINQ_TRANSPORT: Record<LinqChatService, ProductTransport> = {
+  iMessage: 'imessage',
+  SMS: 'sms',
+  RCS: 'rcs',
+  other: 'unknown',
+};
+
+export function productTransport(args: {
+  channel: string;
+  service?: LinqChatService | null;
+}): ProductTransport {
+  if (args.channel === 'email') return 'email';
+  // The non-Linq phone pipe is SMS by construction.
+  if (args.channel === 'sms') return 'sms';
+  if (args.channel === 'imessage' && args.service) {
+    return LINQ_TRANSPORT[args.service] ?? 'unknown';
+  }
+  return 'unknown';
 }
 
 export function mediaKindOf(parts: ReadonlyArray<{ kind: string }> | null | undefined): string {

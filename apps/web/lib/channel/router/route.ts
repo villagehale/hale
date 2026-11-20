@@ -4201,6 +4201,9 @@ async function writeReplyReceipts(
     channel: carriedBy,
     isGroup: args.job.in_group,
     chatId: sent.chatId ?? (args.route.channel === 'imessage' ? args.route.chatId : null),
+    // VIL-722 · the service of the text this answers is the chat's (the route read it).
+    service: args.route.channel === 'imessage' ? (args.route.service ?? null) : null,
+    parentUserId: args.job.parent_user_id,
     mediaKind: how.voiced ? 'audio' : 'none',
     // The parent's wait is the first bubble's, so later bubbles do not move the p95.
     ...(how.firstOfAnswer

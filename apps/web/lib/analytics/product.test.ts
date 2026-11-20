@@ -6,6 +6,7 @@ import {
   captureProductEventAsync,
   mediaKindOf,
   productChannel,
+  productTransport,
   resetProductCaptureLogsForTests,
 } from './product';
 
@@ -30,6 +31,27 @@ describe('productChannel', () => {
     expect(productChannel({ channel: 'imessage', isGroup: false })).toBe('imessage');
     expect(productChannel({ channel: 'sms' })).toBe('sms');
     expect(productChannel({ channel: 'email' })).toBe('email');
+  });
+});
+
+describe('productTransport (VIL-722)', () => {
+  it('names the service Linq said carried the chat, not the pipe', () => {
+    expect(productTransport({ channel: 'imessage', service: 'iMessage' })).toBe('imessage');
+    expect(productTransport({ channel: 'imessage', service: 'SMS' })).toBe('sms');
+    expect(productTransport({ channel: 'imessage', service: 'RCS' })).toBe('rcs');
+    expect(productTransport({ channel: 'imessage', service: 'other' })).toBe('unknown');
+  });
+
+  it('says unknown when Linq did not say: a Linq row is never assumed to be iMessage', () => {
+    expect(productTransport({ channel: 'imessage' })).toBe('unknown');
+    expect(productTransport({ channel: 'imessage', service: null })).toBe('unknown');
+  });
+
+  it('maps the other pipes by what they are', () => {
+    expect(productTransport({ channel: 'sms' })).toBe('sms');
+    expect(productTransport({ channel: 'sms', service: 'iMessage' })).toBe('sms');
+    expect(productTransport({ channel: 'email' })).toBe('email');
+    expect(productTransport({ channel: 'voice' })).toBe('unknown');
   });
 });
 
@@ -70,6 +92,8 @@ describe('captureProductEventAsync', () => {
           channel: 'group',
           is_group: true,
           family_count: 2,
+          chat_kind: 'multi_family_group',
+          transport: 'imessage',
           media_type: 'image',
           parentName: 'Sam',
           message: 'hi Maya',
@@ -86,6 +110,8 @@ describe('captureProductEventAsync', () => {
       channel: 'group',
       is_group: true,
       family_count: 2,
+      chat_kind: 'multi_family_group',
+      transport: 'imessage',
       media_type: 'image',
     });
     expect(events[0]?.properties.$groups).toEqual({

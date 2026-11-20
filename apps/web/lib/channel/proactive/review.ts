@@ -99,6 +99,7 @@ import {
   familyDecisionCapEnabled,
   proactiveCadence,
   proactiveReviewGuardsEnabled,
+  proactiveWeeklyCapEnabled,
   requestedCadence,
   unroutedKinds,
 } from './flag';
@@ -116,6 +117,12 @@ import {
 import { type ToolCandidate, boundedLine } from './tools';
 import { isVerbatimKind } from './verbatim';
 import { volumeIsUnusual } from './volume';
+import {
+  countsTowardWeeklyCap,
+  weeklyCapSends,
+  weeklyCapSetting,
+  weeklyCapVerdict,
+} from './weekly-cap';
 
 /**
  * VIL-226 · the hourly review. Off reads no family and sends nothing (VIL-705): the
@@ -132,6 +139,11 @@ import { volumeIsUnusual } from './volume';
  * Live decider failures page #ops once per run. When
  * `PROACTIVE_FAMILY_DECISION_CAP_ENABLED` is exactly `true`, a family past its local
  * day's decision cap is not sent to the model.
+ *
+ * VIL-722 · when `PROACTIVE_WEEKLY_CAP_ENABLED` is exactly `true` and
+ * `PROACTIVE_WEEKLY_CAP_SENDS` holds a number, a family that has already had that many
+ * sends in the last seven days has the counted part of a chosen text held, by name, until
+ * the budget frees (weekly-cap.ts). Unset, there is no weekly cap.
  */
 
 export interface ProactiveReviewSummary {
@@ -164,6 +176,13 @@ export interface ProactiveReviewSummary {
   familiesDeferred: number;
   /** Families the daily decision cap kept off the model. */
   decisionsCapped: number;
+  /** Chosen texts the weekly cap held (VIL-722), counted once per family send. */
+  weeklyCapHeld: number;
+  /**
+   * Families whose weekly cap flag was on while `PROACTIVE_WEEKLY_CAP_SENDS` was unset or
+   * not a positive whole number, so nothing was capped. Logged once per run.
+   */
+  weeklyCapUnarmed: number;
   /**
    * Set when the run stopped short. `preflight` paged the provider incident.
    * `mid_run` is a billing-class decider failure; the one #ops page for those
@@ -429,6 +448,8 @@ export async function runProactiveReview(
     waitingCut: 0,
     familiesDeferred: 0,
     decisionsCapped: 0,
+    weeklyCapHeld: 0,
+    weeklyCapUnarmed: 0,
     skipped: 0,
     failed: 0,
   };
@@ -1536,13 +1557,17 @@ async function sendChosen(
   }
   if (gated.length === 0) return;
 
+  // VIL-722 · after the red lines and before the writer, so a held text costs no compose.
+  const budgeted = await holdOverWeeklyCap(database, familyId, gated, now, summary);
+  if (budgeted.length === 0) return;
+
   // One text per distinct set of items: parents who share the same items share one
   // composition, and a parent is never texted about an item that is not theirs.
   // VIL-612 · a class that queued its own CTA is sent as that sentence. The writer
   // must not rewrite it.
   const writtenFor = new Map<string, WriterResult>();
-  const voiced: Array<(typeof gated)[number] & { message: string }> = [];
-  for (const copy of gated) {
+  const voiced: Array<(typeof budgeted)[number] & { message: string }> = [];
+  for (const copy of budgeted) {
     const verbatim = copy.items.filter((item) => isVerbatimKind(item.kind));
     const rest = copy.items.filter((item) => !isVerbatimKind(item.kind));
     if (verbatim.length > 0) {
@@ -1653,6 +1678,51 @@ async function sendChosen(
     });
   }
   await alertVolume(database, familyId, now);
+}
+
+/**
+ * VIL-722 · the weekly cap at send time. Off, or on with no number, every copy goes on
+ * unchanged and nothing is read. Armed, a family already at its number of sends in the
+ * last seven days has every counted item held by name (`weekly_cap`) until the budget
+ * frees; an exempt item in the same text still goes, and a copy left empty is not sent.
+ * The hold keeps the decider's `send_now`, and its clock passing hands the rows back to
+ * the decider (hold.ts), which may send, hold or drop them then. The check is read before
+ * the send and not claimed, so two reviews running at once could each send one more:
+ * the bound is best effort by that much.
+ */
+async function holdOverWeeklyCap<T extends { items: QueuedItem[] }>(
+  database: Database,
+  familyId: string,
+  copies: readonly T[],
+  now: Date,
+  summary: ProactiveReviewSummary,
+): Promise<T[]> {
+  if (!proactiveWeeklyCapEnabled(familyId)) return [...copies];
+  const setting = weeklyCapSetting();
+  if (setting.limit === null) {
+    if (summary.weeklyCapUnarmed === 0) {
+      console.warn(
+        { reason: setting.reason },
+        'proactive review: PROACTIVE_WEEKLY_CAP_ENABLED is on but PROACTIVE_WEEKLY_CAP_SENDS has no number - nothing is capped',
+      );
+    }
+    summary.weeklyCapUnarmed += 1;
+    return [...copies];
+  }
+  const counted = new Map<string, QueuedItem>();
+  for (const copy of copies) {
+    for (const item of copy.items) if (countsTowardWeeklyCap(item)) counted.set(item.id, item);
+  }
+  if (counted.size === 0) return [...copies];
+  const verdict = weeklyCapVerdict(await weeklyCapSends(database, familyId, now), setting.limit);
+  if (!verdict.over) return [...copies];
+  await holdByName(database, familyId, [...counted.values()], 'weekly_cap', now, {
+    holdUntil: verdict.reopensAt,
+  });
+  summary.weeklyCapHeld += 1;
+  return copies
+    .map((copy) => ({ ...copy, items: copy.items.filter((item) => !counted.has(item.id)) }))
+    .filter((copy) => copy.items.length > 0);
 }
 
 /**

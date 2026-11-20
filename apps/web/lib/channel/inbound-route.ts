@@ -565,6 +565,8 @@ async function queueRecordedInbound(
     chatId: inbound.chatId,
     mediaKind: mediaKindOf(inbound.media),
     database: deps.database,
+    service: inbound.service ?? null,
+    parentUserId: owner.userId,
   });
 
   try {

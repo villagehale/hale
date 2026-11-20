@@ -251,6 +251,9 @@ export const FLAGS = [
   },
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
+  // VIL-722 · the weekly proactive cap. Its number is config (`PROACTIVE_WEEKLY_CAP_SENDS`,
+  // apps/web/lib/channel/proactive/weekly-cap.ts), and unset is no cap even while this is on.
+  exact('proactive-weekly-cap', 'PROACTIVE_WEEKLY_CAP_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   {
     key: 'proactive-cadence',

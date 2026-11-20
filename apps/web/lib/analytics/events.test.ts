@@ -129,6 +129,9 @@ describe('buildEvent privacy gate', () => {
       channel: 'group',
       is_group: true,
       family_count: 2,
+      // VIL-722 · retention per channel splits on these two.
+      chat_kind: 'multi_family_group',
+      transport: 'sms',
       media_type: 'image',
       reply_ms: 1200,
       parentName: 'Sam',
@@ -138,6 +141,8 @@ describe('buildEvent privacy gate', () => {
       channel: 'group',
       is_group: true,
       family_count: 2,
+      chat_kind: 'multi_family_group',
+      transport: 'sms',
       media_type: 'image',
       reply_ms: 1200,
     });

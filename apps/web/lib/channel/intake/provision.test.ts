@@ -1,5 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetPosthogClientsForTests } from '~/lib/analytics/posthog-node';
+import { decodeBatch, ours } from '~/lib/analytics/posthog-wire.testkit';
+import { resetProductCaptureLogsForTests } from '~/lib/analytics/product';
 import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import { makeFakeDb } from './fakes';
 import { provisionFromIntake } from './provision';
@@ -188,6 +191,90 @@ describe('provisionFromIntake — replayed transcript status', () => {
     const inbound = channelMessageRows(inserts).filter((row) => row.direction === 'in');
     expect(inbound).toHaveLength(1);
     expect(inbound[0]?.status).toBe('delivered');
+  });
+});
+
+/**
+ * VIL-722 · the replayed transcript is the family's first `message_inbound`, which is
+ * where retention per channel starts. The intake rows store no service, so the replay
+ * carries the one Linq said for the turn that finished intake.
+ */
+describe('provisionFromIntake — the replay carries the transport (VIL-722)', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_product_test');
+    vi.stubEnv('POSTHOG_HOST', 'https://ph.example.com');
+    vi.stubEnv('POSTHOG_ID_SALT', 'test-salt');
+    vi.stubEnv('POSTHOG_PRODUCT_EVENTS_ENABLED', 'true');
+    resetPosthogClientsForTests();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    resetPosthogClientsForTests();
+    resetProductCaptureLogsForTests();
+  });
+
+  const linqTranscript = [
+    {
+      direction: 'out' as const,
+      body: 'greeting',
+      providerId: 'linq_out_1',
+      at: NOW.toISOString(),
+      channel: 'imessage' as const,
+      chatId: 'chat-intake',
+    },
+    {
+      direction: 'in' as const,
+      body: 'Maya is 2',
+      providerId: 'linq_in_1',
+      at: NOW.toISOString(),
+      channel: 'imessage' as const,
+      chatId: 'chat-intake',
+    },
+  ];
+
+  function sentEvents(fetchMock: ReturnType<typeof vi.fn>, name: string) {
+    return fetchMock.mock.calls.flatMap(
+      (call) =>
+        decodeBatch((call as unknown[])[1] as RequestInit).events.filter(
+          (event) => event.event === name,
+        ),
+    );
+  }
+
+  it.each([
+    ['SMS', 'sms'],
+    ['iMessage', 'imessage'],
+    ['RCS', 'rcs'],
+    [null, 'unknown'],
+  ] as const)('labels the first inbound with the service Linq said: %s', async (service, transport) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { database } = fakeDatabase();
+
+    await provisionFromIntake(database, { ...input(), transcript: linqTranscript, service });
+
+    await vi.waitFor(() => expect(sentEvents(fetchMock, 'message_inbound')).toHaveLength(1));
+    const [first] = sentEvents(fetchMock, 'message_inbound');
+    expect(ours(first?.properties ?? {})).toMatchObject({
+      channel: 'imessage',
+      is_group: false,
+      chat_kind: 'one_to_one',
+      transport,
+    });
+  });
+
+  it('keeps the non-Linq pipe as SMS whatever the service says', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { database } = fakeDatabase();
+
+    await provisionFromIntake(database, { ...input(), service: 'iMessage' });
+
+    await vi.waitFor(() => expect(sentEvents(fetchMock, 'message_inbound')).toHaveLength(1));
+    const [first] = sentEvents(fetchMock, 'message_inbound');
+    expect(ours(first?.properties ?? {})).toMatchObject({ channel: 'sms', transport: 'sms' });
   });
 });
 

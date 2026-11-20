@@ -1,6 +1,17 @@
 import type { Database } from '@hale/db';
-import { groupFamilyCount } from './groups';
-import { type TaskType, captureErrorEvent, captureProductEvent, productChannel } from './product';
+import type { LinqChatService } from '~/lib/channel/linq/transport';
+import { chatServiceSaid } from '~/lib/channel/messaging-door';
+import { productEventsEnabled } from './flags';
+import { groupChatKind, groupFamilyCount } from './groups';
+import {
+  type ChatKind,
+  type ProductTransport,
+  type TaskType,
+  captureErrorEvent,
+  captureProductEvent,
+  productChannel,
+  productTransport,
+} from './product';
 
 /**
  * Fire-and-forget launch events at DB-write seams. A throw here must never reach the
@@ -23,7 +34,7 @@ export function groupLineLabels(chatId: string): { isGroup: true; chatId: string
   return { isGroup: true, chatId };
 }
 
-export function noteMessage(args: {
+export interface MessageNote {
   direction: 'in' | 'out';
   familyId: string;
   channel: string;
@@ -32,23 +43,65 @@ export function noteMessage(args: {
   mediaKind?: string;
   latencyMs?: number;
   database?: Database;
-}): void {
+  /**
+   * VIL-722 · the service Linq said carried this text, when the caller holds it (the
+   * inbound itself, or the route a reply answers). Absent on a Linq send, it is read from
+   * the parent's newest inbound in the chat that named one (`chatServiceSaid`), which
+   * needs `database`, `parentUserId` and `chatId`.
+   */
+  service?: LinqChatService | null;
+  /** Whose chat this is. Read only to find the chat's service when `service` is absent. */
+  parentUserId?: string | null;
+}
+
+/**
+ * The properties one message event carries. Exported for the tests; production calls
+ * {@link noteMessage}. Counts and enums only: never a body, a name, a phone or an id.
+ */
+export async function messageEventProperties(args: MessageNote): Promise<{
+  channel: string;
+  is_group: boolean;
+  family_count: number;
+  chat_kind: ChatKind;
+  transport: ProductTransport;
+  media_type: string;
+  reply_ms?: number;
+}> {
+  const isGroup = args.isGroup === true;
+  const familyCount =
+    isGroup && args.database ? await groupFamilyCount(args.database, args.chatId) : 1;
+  const chatKind: ChatKind = !isGroup
+    ? 'one_to_one'
+    : args.database
+      ? await groupChatKind(args.database, args.chatId)
+      : // No reader to tell: the same household default `family_count` already takes.
+        'family_group';
+  const service =
+    args.service ??
+    (args.channel === 'imessage' && args.database && args.parentUserId && args.chatId
+      ? await chatServiceSaid(args.database, args.parentUserId, args.chatId)
+      : null);
+  return {
+    channel: productChannel({ channel: args.channel, isGroup }),
+    is_group: isGroup,
+    family_count: familyCount,
+    chat_kind: chatKind,
+    transport: productTransport({ channel: args.channel, service }),
+    media_type: args.mediaKind ?? 'none',
+    // `reply_ms`, not `latency_ms`: buildEvent drops any key containing `lat`.
+    ...(typeof args.latencyMs === 'number' ? { reply_ms: args.latencyMs } : {}),
+  };
+}
+
+export function noteMessage(args: MessageNote): void {
   fire(async () => {
     const isGroup = args.isGroup === true;
-    const familyCount =
-      isGroup && args.database ? await groupFamilyCount(args.database, args.chatId) : 1;
     captureProductEvent({
       event: args.direction === 'in' ? 'message_inbound' : 'message_outbound',
       familyId: args.familyId,
       chatId: isGroup ? args.chatId : undefined,
-      properties: {
-        channel: productChannel({ channel: args.channel, isGroup }),
-        is_group: isGroup,
-        family_count: familyCount,
-        media_type: args.mediaKind ?? 'none',
-        // `reply_ms`, not `latency_ms`: buildEvent drops any key containing `lat`.
-        ...(typeof args.latencyMs === 'number' ? { reply_ms: args.latencyMs } : {}),
-      },
+      // Dark analytics reads nothing: the capture names the flag and sends nothing.
+      properties: productEventsEnabled() ? await messageEventProperties(args) : {},
     });
   });
 }
