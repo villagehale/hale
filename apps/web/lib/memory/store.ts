@@ -14,6 +14,7 @@ import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { type MeaningScreen, sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { promptKind, readDisposition } from './classify-write';
 import { type FactHeard, closeFacts, writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
@@ -563,6 +564,15 @@ type MemoryPurpose =
   | 'memory_correct_unmatched'
   | 'memory_correct_kept';
 
+/**
+ * A memory reply nobody wrote: nothing is sent, and #ops hears it once an hour (hard rule:
+ * if the model cannot write it, send nothing and page #ops). Never throws; body-free.
+ */
+async function pageUnwritten(database: Database, purpose: MemoryPurpose): Promise<void> {
+  const outcome = await pageOps(database, { site: 'memory_reply_unwritten', facts: { purpose } });
+  console.warn({ purpose, page: outcome }, 'family memory: reply not written, nothing sent');
+}
+
 /** A family-memory list can be long; every other memory reply is a line or two. */
 const MEMORY_LIST_MAX_TOKENS = 1600;
 
@@ -662,12 +672,15 @@ export async function handleParentMemory(
         sealedValues: audience === 'group' ? options.sealedValues : undefined,
         ...(purpose === 'memory_list' ? { maxTokens: MEMORY_LIST_MAX_TOKENS } : {}),
       });
-      return body ? gatedReply(body, env) : null;
+      const reply = body ? gatedReply(body, env) : null;
+      if (reply === null) await pageUnwritten(database, purpose);
+      return reply;
     } catch (err) {
       console.error(
         { purpose, err: err instanceof Error ? err.name : 'unknown' },
         'family memory: reply not written',
       );
+      await pageUnwritten(database, purpose);
       return null;
     }
   };

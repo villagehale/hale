@@ -392,6 +392,38 @@ describe('forget retires the fact from what Hale uses, and audits it', () => {
   });
 });
 
+describe('a reply the model did not write is held, never replaced', () => {
+  it('sends nothing, names the outcome, and pages #ops once', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await belief(familyId, 'swimming', 'saturday class');
+    // A model answer the production validator refuses: a digit no fact holds.
+    const client = writer('I remember 3 things about your family.');
+    const urgent = vi.spyOn(console, 'error');
+    const result = await handleParentMemory(db.database, {
+      familyId,
+      parentUserId,
+      body: 'what do you know about us?',
+      now: NOW,
+      inboundChannelMessageId: await inbound(familyId, parentUserId, false),
+      env: ON,
+      replyClient: client,
+      screen: scriptedMemoryScreen({ request: () => asked('list') }),
+    });
+    expect(result).toMatchObject({ claimed: true, outcome: 'recalled', reply: null });
+    expect(client.contexts).toHaveLength(1);
+    const audits = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    expect(audits.map((row) => row.actionTaken)).toContain('reply_copy_fallback');
+    // pageOps' own body-free URGENT line: #ops is paged (Slack is not configured in tests,
+    // so the post is named skipped and the hour's claim is released for the next one).
+    const lines = urgent.mock.calls.map((call) => String(call[1] ?? call[0]));
+    urgent.mockRestore();
+    expect(lines).toContain('URGENT: memory_reply_unwritten - paging #ops');
+  });
+});
+
 describe('a correction never overwrites another writer’s record', () => {
   it('refuses a key a duty row holds, and leaves the row alone', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);

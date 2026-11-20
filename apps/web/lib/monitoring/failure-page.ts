@@ -178,6 +178,20 @@ export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
+  /** VIL-723 · a family-memory reply the model did not write (or the gate refused): held. */
+  memory_reply_unwritten: {
+    purpose: [
+      'memory_list',
+      'memory_list_empty',
+      'memory_list_private',
+      'memory_forgotten',
+      'memory_forget_unmatched',
+      'memory_forget_kept',
+      'memory_corrected',
+      'memory_correct_unmatched',
+      'memory_correct_kept',
+    ],
+  },
   shared_group_unwritten: {
     kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],
     fallback: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'declined'],
