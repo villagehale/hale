@@ -335,6 +335,8 @@ export const AUDIT_VERBS = [
   'calendar_mirror_removed',
   'reminder_suppressed',
   'reminder_held_at_send',
+  // VIL-730 · a reminder send that did not reach the parent, back to the run to retry.
+  'reminder_send_failed',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -1358,6 +1360,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // VIL-562. The row's `after` is the offset and the hold reason only — no title, no time.
   reminder_held_at_send: {
     sentence: 'Hale held a reminder back for quiet hours',
+    family: 'note',
+  },
+  // VIL-730. The send did not reach the parent; Hale tries again. The row's `after` is the
+  // failure code, the offset and the try count only — no title, no time, no text.
+  reminder_send_failed: {
+    sentence: 'Hale held a reminder back to try sending it again',
     family: 'note',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
