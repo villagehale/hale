@@ -29,6 +29,11 @@ export const BROWSER_USE_SIGNUP_DETAILS = [
   'captcha',
   'verification_code',
   'login_wall',
+  /**
+   * VIL-718 · the site wants a passkey (Face ID, a security key). Read as `login_wall`
+   * unless TAKEOVER_LINK_ENABLED is exactly `true` ({@link detailForLane}).
+   */
+  'passkey',
   'password_rejected',
   'waiting_room',
   'timed_open',
@@ -41,6 +46,17 @@ export const BROWSER_USE_SIGNUP_DETAILS = [
 ] as const;
 
 export type BrowserUseSignupDetail = (typeof BROWSER_USE_SIGNUP_DETAILS)[number];
+
+/**
+ * VIL-718 · `passkey` is new. A lane without the takeover link reads it as the sign-in wall
+ * it was reported as before the detail existed, so what happens after the stop is unchanged.
+ */
+export function detailForLane(
+  detail: BrowserUseSignupDetail,
+  takeover: boolean,
+): BrowserUseSignupDetail {
+  return detail === 'passkey' && !takeover ? 'login_wall' : detail;
+}
 
 const signupOutput = z.object({
   outcome: z.enum(BROWSER_USE_SIGNUP_OUTCOMES),

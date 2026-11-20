@@ -35,7 +35,8 @@ export async function POST(
   }
   const now = new Date();
   const looked = await lookupLoginLink(db(), code, now);
-  if (!looked.ok) {
+  // VIL-718 · a takeover card opens Hale's browser and never takes a password.
+  if (!looked.ok || looked.purpose?.kind === 'takeover') {
     return NextResponse.json({ error: 'gone' }, { status: 404 });
   }
   const saved = await saveProviderCredentials(db(), {

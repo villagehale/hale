@@ -14,7 +14,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
 ## Steps
 
 1. Open `registration_url`. The saved browser profile carries the parent's sign-in. Do not sign out.
-2. If the site will not let you continue without signing in, press its sign-in button once: the saved session often signs you straight in. If it then asks for a password, a code or a security answer, stop with `needs_login`.
+2. If the site will not let you continue without signing in, press its sign-in button once: the saved session often signs you straight in. If it then asks for a password, a code or a security answer, stop with `needs_login`. If it asks for a passkey (Face ID, Touch ID, a security key, or "use your passkey"), stop with `needs_login` and detail `passkey`.
 3. If registration has not opened yet, wait on the page the way a parent would. Reload at most once a minute, and only when the page does not update itself. If a waiting room or queue appears, stay in it and wait for your turn. Use this one tab only.
 4. When registration is open, go through `choices` in rank order. For each, find the session whose dates and times match `starts_at` and `ends_at`; match the dates and times, not just the name. Take the first one that has a spot. If a choice is full, move to the next. If more than one session matches a choice, skip that choice.
 5. Enroll the child named in `child`. If the account already lists the child as a participant, pick them. Otherwise add them using only the fields given. Fill only fields you have a value for in the facts, exactly as given.
@@ -27,6 +27,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
 - Never queue in more than one tab or window, and never try to skip or move up in a queue.
 - Never type, choose, or confirm any card number, expiry date, security code, saved payment method, bank details or gift card. Never press pay, place order, submit payment or complete purchase.
 - Never type a password, a one-time code or a security answer by hand. If `credentials` lists aliases, type only those aliases into the matching fields (Browser Use fills the secret). Never write the secret itself.
+- When `takeover` is true and you stop with `needs_login` or `needs_human`, first clear any password field you typed into, then leave the page as it is: the parent carries on from this same page.
 - Create an account only when `account_create` is true, and only with those aliases. If the site rejects the password, stop with `needs_login` and detail `password_rejected`. Copy the site's rejection message and the password rule shown on the page into `password_rejection_message` and `password_rule`, exactly as shown. Do not invent a rule.
 - Never accept a medical form, allergy form or photo release. Stop with `needs_human` instead.
 - Never add more than one session or more than one child. Never join a waitlist unless `join_waitlist` is true, in which case join only the named choice.
@@ -44,10 +45,10 @@ The facts for this plan are in the JSON block at the end, under "This registrati
   - `waitlist` — every choice is full and the site only offers a waitlist.
   - `sold_out` — every choice is full or closed with no waitlist.
   - `options_mismatch` — the site's real starts or sessions are not what the parent asked for. Nothing was submitted.
-  - `needs_login` — the site will not let you continue without a password, code or security answer. Use detail `password_rejected` when an account-create password was refused.
+  - `needs_login` — the site will not let you continue without a password, code, passkey or security answer. Use detail `password_rejected` when an account-create password was refused, and `passkey` when the site wants a passkey.
   - `needs_human` — a captcha, a verification code, a waiver you may not tick, a medical or allergy form, an unknown required field, no session matching any choice, or a total higher than `max_price_cents`.
   - `error` — the site failed or you could not continue for another reason.
-- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `password_rejected`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
+- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `passkey`, `password_rejected`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
 - `choice_index`: for `reached_checkout`, the position in `choices` of the session in the cart, counting from 0 (rank 1 is 0). Otherwise null.
 - `checkout_url`: the address of the page you stopped on when `outcome` is `reached_checkout`, otherwise null.
 - `cart_total_cents`: the total shown in the cart in cents, including admin and membership fees, or null when none is shown.

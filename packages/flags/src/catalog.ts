@@ -176,6 +176,9 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
+  // VIL-718. One takeover link for a registration run's sign-in wall, code, passkey or
+  // captcha, and the run resumes when the parent is done. Exact `true`.
+  exact('takeover-link', 'TAKEOVER_LINK_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),

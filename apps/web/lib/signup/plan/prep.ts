@@ -5,6 +5,7 @@ import { signupProviderHost } from '../consent';
 import { planCityLoginOwnerEnabled, providerCredentialsEnabled } from '../credentials/flag';
 import { type LoginCardText, hasOpenLoginLink, loginLinkForNotice } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
+import type { TakeoverPurpose } from '../takeover/purpose';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
 import { parentTimeZone } from './conversation';
@@ -26,7 +27,11 @@ export type PlanNoticeKind =
   | 'waitlist'
   | 'ask_dob'
   /** Recorded by the text that asks the parent whether Hale may tick the plan's waiver. */
-  | 'ask_waiver';
+  | 'ask_waiver'
+  /** VIL-718 · the one takeover link for a step only the parent can do. */
+  | 'takeover'
+  /** VIL-718 · the takeover ended without the step done: Hale says so and stops. */
+  | 'takeover_unfinished';
 
 /**
  * The login card that follows the first bubble: what it is for, as its page and preview
@@ -35,6 +40,21 @@ export type PlanNoticeKind =
 export interface LoginCardFacts {
   sessionLabel: string | null;
   opensAt: { local: string; timeZone: string } | null;
+  /** VIL-718 · a takeover card: the step the link opens Hale's browser for. */
+  takeover?: TakeoverPurpose;
+}
+
+/**
+ * VIL-718 · what a takeover text says. `minutes`: how long the link stays open. `ended`, on
+ * `takeover_unfinished` only: the link ran out before a done (`ran_out`), the site still asked
+ * for the step the parent said they finished (`still_there`), or it asked for yet another
+ * step after the plan had asked as often as it may (`again`).
+ */
+export interface TakeoverNoticeFacts {
+  purpose: TakeoverPurpose;
+  mode: 'auto' | 'assisted';
+  minutes: number | null;
+  ended: 'ran_out' | 'still_there' | 'again' | null;
 }
 
 export interface PlanPrepFacts {
@@ -54,6 +74,8 @@ export interface PlanPrepFacts {
   joined?: boolean;
   /** Set when a login card goes with this notice; the writer then writes its preview too. */
   loginCard?: LoginCardFacts | null;
+  /** VIL-718 · set on `takeover` and `takeover_unfinished` only. */
+  takeover?: TakeoverNoticeFacts | null;
 }
 
 /** The bubbles, and the card preview's words when one was asked for and passed its gate. */

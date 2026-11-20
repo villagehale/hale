@@ -21,6 +21,7 @@ import {
   type BrowserUseSignupDetail,
   type BrowserUseSignupOutcome,
   cardAllowedDomains,
+  detailForLane,
   parseConfirmationOutput,
   parsePaymentOutput,
   parseSignupOutput,
@@ -502,8 +503,10 @@ async function driveSignup(
     if (waited.status === 'failed') return failure('error', 'run_failed', ids);
     if (waited.status === 'cancelled') return failure('error', 'run_cancelled', ids);
 
-    const output = parseSignupOutput(summary.output);
-    if (!output) return failure('error', 'unreadable_output', ids);
+    const parsed = parseSignupOutput(summary.output);
+    if (!parsed) return failure('error', 'unreadable_output', ids);
+    // VIL-718 · this lane has no takeover link: a passkey is the sign-in wall it always was.
+    const output = { ...parsed, detail: detailForLane(parsed.detail, false) };
     // Code limit: stop before any payment > $0, even if a payment flag were on.
     if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
 
@@ -780,12 +783,23 @@ async function placeOrder(
   }
 }
 
-function confirmationText(skillBody: string): string {
-  return `${skillBody.trim()}\n\n## Answer format\n\nReply with only one JSON object matching this JSON Schema, and nothing else:\n\n\`\`\`json\n${JSON.stringify(BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA)}\n\`\`\`\n`;
+/**
+ * A queued turn takes no `outputSchema`, so the schema goes in the text. Shared by every
+ * queued turn (the confirmation read, VIL-718's takeover resume), byte for byte.
+ */
+export function withAnswerFormat(text: string, schema: Record<string, unknown>): string {
+  return `${text.trim()}\n\n## Answer format\n\nReply with only one JSON object matching this JSON Schema, and nothing else:\n\n\`\`\`json\n${JSON.stringify(schema)}\n\`\`\`\n`;
 }
 
-/** A queued turn has no outputSchema, so its answer may come back as JSON text. */
-function structuredOutput(raw: unknown): unknown {
+function confirmationText(skillBody: string): string {
+  return withAnswerFormat(skillBody, BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA);
+}
+
+/**
+ * A queued turn has no outputSchema, so its answer may come back as JSON text. Anything that
+ * is not a string (a run created with an outputSchema) comes back as it was.
+ */
+export function structuredOutput(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
   const text = raw
     .trim()
@@ -798,7 +812,11 @@ function structuredOutput(raw: unknown): unknown {
   }
 }
 
-const DEAD_QUEUE_STATUSES = new Set(['cancelled', 'superseded', 'failed']);
+export const DEAD_QUEUE_STATUSES: ReadonlySet<string> = new Set([
+  'cancelled',
+  'superseded',
+  'failed',
+]);
 
 /**
  * After the parent took over and paid on the live browser: the same session

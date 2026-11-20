@@ -29,6 +29,25 @@ export const LOGIN_PAGE_COPY = {
   backToHale: 'back to Hale',
 } as const;
 
+/**
+ * VIL-718 · static web UI chrome for a takeover card's page (buttons and states), like the
+ * login page above. The heading and the line under it are the card's own words, which the
+ * model wrote in the parent's language; with none, the heading is the bare host. Nothing here
+ * is a text to the parent, and nothing claims what happens to what they type.
+ */
+export const TAKEOVER_PAGE_COPY = {
+  open: (host: string) => `Open ${host}`,
+  opening: 'Opening…',
+  openError: "Couldn't open it. Try again.",
+  frameTitle: (host: string) => `${host} in Hale's browser`,
+  fullScreen: 'Open full screen',
+  done: "I'm done",
+  doneError: "Couldn't reach Hale. Try again.",
+  doneHeading: 'thanks',
+  doneLine: 'Hale is picking it back up.',
+  backToHale: 'back to Hale',
+} as const;
+
 /** The line under the page heading: the session and the open. Page chrome, never the preview. */
 export function loginPurposeLine(purpose: LoginLinkPurpose | null): string | null {
   if (!purpose) return null;

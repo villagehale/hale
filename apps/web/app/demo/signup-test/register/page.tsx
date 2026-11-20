@@ -2,9 +2,11 @@ import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import {
   SIGNUP_TEST_ACTIVITY,
+  SIGNUP_TEST_CHALLENGE_COOKIE,
   SIGNUP_TEST_FORM_PATH,
   SIGNUP_TEST_SESSIONS,
   SIGNUP_TEST_SESSION_COOKIE,
+  signupTestChallenge,
   signupTestFormEnabled,
 } from '~/lib/signup/test-form';
 import { HarborButton, HarborField, HarborShell } from '../harbor';
@@ -17,6 +19,9 @@ export default async function SignupTestRegisterPage() {
   if (jar.get(SIGNUP_TEST_SESSION_COOKIE)?.value !== 'signed-in') {
     redirect(`${SIGNUP_TEST_FORM_PATH}/login`);
   }
+  // VIL-718 · a step only the parent can do stands between the session and the form.
+  const challenge = signupTestChallenge(jar.get(SIGNUP_TEST_CHALLENGE_COOKIE)?.value);
+  if (challenge) redirect(`${SIGNUP_TEST_FORM_PATH}/challenge?kind=${challenge}`);
   return (
     <HarborShell title={SIGNUP_TEST_ACTIVITY}>
       <p data-price-cents="4000">40.00 CAD</p>

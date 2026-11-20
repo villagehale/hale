@@ -117,9 +117,18 @@ export function keptCard(raw: unknown, facts: PlanPrepFacts): LoginCardText | nu
   return card;
 }
 
+/**
+ * VIL-718 · the takeover texts: the same bubbles, card and gates as every registration
+ * notice, from their own skill, so the takeover moments are described in full without
+ * re-keying the notices that already ship.
+ */
+export const SIGNUP_TAKEOVER_NOTICE_SKILL = 'signup-takeover-notice';
+
 export function createProviderNoticeWriter(
   client: () => AgentClient | null | Promise<AgentClient | null>,
+  options: { skill?: string } = {},
 ): PlanPrepWriter {
+  const skillName = options.skill ?? SIGNUP_PROVIDER_NOTICE_SKILL;
   return {
     async write(facts: PlanPrepFacts): Promise<PlanPrepDraft | null> {
       let resolved: AgentClient | null;
@@ -131,7 +140,7 @@ export function createProviderNoticeWriter(
       if (!resolved) return null;
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
       try {
-        skill = await loadCronSkill(SIGNUP_PROVIDER_NOTICE_SKILL);
+        skill = await loadCronSkill(skillName);
       } catch {
         return null;
       }
