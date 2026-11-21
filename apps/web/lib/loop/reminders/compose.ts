@@ -64,6 +64,11 @@ export interface ReminderEventFacts {
   parking?: string;
   /** VIL-468. What to bring as the source stated it. Absent when unstated or private. */
   bring?: string;
+  /** VIL-720 · what the organizer's own email or flyer asked this parent's family to bring,
+   * each item copied from it (bring/read.ts). Absent when none, when the event is private,
+   * and whenever BRING_ITEMS_REMINDER_ENABLED is off, so every other request is
+   * byte-identical to before. Only ever the recipient's own list (bring/store.ts). */
+  bringItems?: string[];
   /** VIL-551 · the `what` of each other event in this reminder whose time runs into this
    * one's. Absent when none, so a reminder with no clash sends the same request as before. */
   overlaps?: string[];
@@ -88,6 +93,8 @@ export interface ReminderFactEvent extends ReminderEventView {
   /** VIL-474 · a source-data change (reminders/change.ts), or absent. */
   change?: SourceChange | null;
   notes?: FamilyEventNotes | null;
+  /** VIL-720 · the recipient's own list for this event, or absent. */
+  bringItems?: readonly string[] | null;
 }
 
 /** The change as a fact, in the same form as the new value. A private event's old
@@ -196,6 +203,14 @@ function logisticsFacts(
   return { ...(parking ? { parking } : {}), ...(bring ? { bring } : {}) };
 }
 
+/** VIL-720 · the list as a fact, only when it has an item. A private event carries none. */
+function bringItemsFact(
+  items: readonly string[] | null | undefined,
+): Pick<ReminderEventFacts, 'bringItems'> {
+  const kept = (items ?? []).map((item) => item.trim()).filter((item) => item !== '');
+  return kept.length > 0 ? { bringItems: kept } : {};
+}
+
 interface TimedSpan {
   start: number;
   end: number;
@@ -241,6 +256,7 @@ export function reminderFacts(args: {
       location: hidden ? null : event.location?.trim() || null,
       changed: changedFact(event.change, timeZone, hidden),
       ...logisticsFacts(hidden ? null : event.notes),
+      ...bringItemsFact(hidden ? null : event.bringItems),
     };
   });
   const spans = args.events.map((event) => timedSpan(event, timeZone));
@@ -265,6 +281,23 @@ export function reminderFacts(args: {
 /** The user turn. Shared with the eval, which replays this request shape. */
 export function reminderUserMessage(facts: ReminderFacts): string {
   return JSON.stringify(facts);
+}
+
+/** VIL-720 · the addendum that tells the writer what `bringItems` is (skill `reminder-bring`). */
+export const REMINDER_BRING_SKILL = 'reminder-bring';
+
+/** Whether any event in this reminder carries a list (only possible with the flag on). */
+export function factsCarryBringItems(facts: ReminderFacts): boolean {
+  return facts.events.some((event) => (event.bringItems?.length ?? 0) > 0);
+}
+
+/**
+ * The writer's system prompt. The addendum rides last and only when an event carries a
+ * list, so every other reminder keeps today's prompt bytes and its recordings their keys
+ * (the coach's photo-facts addendum is the same shape). Shared with the eval.
+ */
+export function reminderInstructions(base: string, addendum: string | null): string {
+  return addendum === null ? base : `${base}\n\n${addendum}`;
 }
 
 /**
@@ -399,8 +432,15 @@ export async function composeReminderTexts(
   recordRun: (run: RecordAgentRunInput) => Promise<void>,
 ): Promise<ReminderCompose> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  let system: string;
   try {
     skill = await loadCronSkill(REMINDER_SKILL);
+    // VIL-720 · a list the writer is not told about is a list it may drop, so a missing
+    // addendum is the same held outcome as a missing skill, never a reminder without it.
+    const addendum = factsCarryBringItems(facts)
+      ? (await loadCronSkill(REMINDER_BRING_SKILL)).instructions
+      : null;
+    system = reminderInstructions(skill.instructions, addendum);
   } catch (err) {
     console.error(
       { familyId, err: err instanceof Error ? err.name : 'unknown' },
@@ -422,7 +462,7 @@ export async function composeReminderTexts(
           forceToolJson({
             client,
             lane,
-            system: skill.instructions,
+            system,
             cacheTtl: SPARSE_CACHE_TTL,
             userMessage: reminderUserMessage(facts),
             toolName: 'reminder_texts',

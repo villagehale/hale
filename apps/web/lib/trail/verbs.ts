@@ -338,6 +338,9 @@ export const AUDIT_VERBS = [
   'calendar_mirror_added',
   'calendar_mirror_moved',
   'calendar_mirror_notes_updated',
+  // VIL-720 · what an email or flyer said to bring, kept for that parent's reminder.
+  'bring_items_recorded',
+  'bring_items_attached',
   'calendar_mirror_removed',
   'reminder_suppressed',
   'reminder_held_at_send',
@@ -1377,6 +1380,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   // `{ source: 'parent' }` only — never the facts.
   calendar_mirror_notes_updated: {
     sentence: 'Hale updated the parking or what-to-bring for something on your calendar',
+    family: 'note',
+  },
+  // VIL-720. The list read from one parent's email or flyer; `after` is
+  // `{ source, count, onEvent }` only, never the items. `audience` is that parent.
+  bring_items_recorded: {
+    sentence: 'Hale noted what to bring from an email or flyer you got',
+    family: 'note',
+  },
+  // VIL-720. That list joined the event the parent said yes to. `after` is
+  // `{ source, count }` only.
+  bring_items_attached: {
+    sentence: 'Hale added what to bring to something on your calendar',
     family: 'note',
   },
   calendar_mirror_removed: {

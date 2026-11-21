@@ -47,6 +47,7 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
   type ProviderErrorShape,
   type ProviderFailureClass,
@@ -55,9 +56,11 @@ import {
 } from '~/lib/monitoring/provider-health';
 import { scopeFamilies } from '~/lib/preview/family-scope';
 import { getQueue } from '~/lib/queue';
+import { bringItemsReminderEnabled } from './bring/flag';
+import { loadBringItemsFor } from './bring/store';
 import type { SourceChange } from './change';
 import { changeFromColumns } from './change';
-import { composeReminderTexts, reminderFacts } from './compose';
+import { composeReminderTexts, factsCarryBringItems, reminderFacts } from './compose';
 import {
   COMPOSE_HELD,
   type DropReason,
@@ -306,6 +309,19 @@ export interface ReminderRunDeps {
    * Defaults to the shared spoken-line writer; a test hands its own.
    */
   composeCaregiverLine?: (request: SpokenLineRequest) => Promise<string | null>;
+  /**
+   * VIL-720 · this parent's OWN bring lists for these events (bring/store.ts), read only
+   * while BRING_ITEMS_REMINDER_ENABLED is on and only for a parent's reminder that can be
+   * written. Never for a caregiver. Absent is logged as `not_configured` and the reminder
+   * goes as it would with no list (rule #11).
+   */
+  loadBringItems?: (
+    db: Database,
+    input: { familyId: string; ownerUserId: string; eventIds: readonly string[] },
+  ) => Promise<Map<string, string[]>>;
+  /** VIL-720 · pages #ops when a reminder that carried a list could not be written.
+   * Defaults to the #ops Slack page; its own `skipped_not_configured` is logged. */
+  pageOps?: (text: string) => Promise<OpsPageOutcome>;
 }
 
 function sqlExcluded(column: string) {
@@ -610,6 +626,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
     loadPrefs: (db, userId) => loadLoopPrefsView(userId, db),
     parentPhone: resolveSendablePhone,
+    loadBringItems: loadBringItemsFor,
+    pageOps: (text) => postOpsSlack(text),
   };
 }
 
@@ -1014,6 +1032,8 @@ async function fireDueReminders(
   let firedLate = 0;
   let heldQuietHours = 0;
   let heldComposeUnavailable = 0;
+  // VIL-720 · due reminders that carried a bring list and were dropped unwritten.
+  let unwrittenBring = 0;
 
   for (const group of byRecipient.values()) {
     const parentUserId = group.parentUserId;
@@ -1047,6 +1067,16 @@ async function fireDueReminders(
     // VIL-562 · read once per recipient, and only once a batch could be sent.
     let prefs: LoopPrefsView | undefined;
     let floorClosed: boolean | undefined;
+    // VIL-720 · this parent's own lists, read once per recipient and only when a reminder
+    // can be written and sent with the flag on. A caregiver never reads one.
+    const bringLists =
+      !caregiver &&
+      isParentRole(group.role) &&
+      sendEnabled &&
+      deps.client &&
+      bringItemsReminderEnabled()
+        ? await bringListsFor(db, deps, group)
+        : NO_BRING_LISTS;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;
@@ -1065,12 +1095,14 @@ async function fireDueReminders(
             sensitive: r.sensitive,
           };
           events.push(view);
+          const bringItems = bringLists.get(r.eventRef);
           factEvents.push({
             ...view,
             endsAt: r.endsAt ? r.endsAt.toISOString() : null,
             location: r.location,
             change: r.change,
             notes: r.notes,
+            ...(bringItems ? { bringItems } : {}),
           });
         }
       }
@@ -1109,22 +1141,26 @@ async function fireDueReminders(
       let texts: string[] | null = null;
       let bold: string | null = null;
       if (!caregiver) {
+        const facts =
+          nameLevel && language
+            ? reminderFacts({
+                events: factEvents,
+                children,
+                level: nameLevel,
+                timeZone: group.timezone,
+                offset: batch.offset,
+                now,
+                planLink: null,
+                language,
+              })
+            : null;
+        // VIL-720 · a reminder that would have told the parent what to bring and was not
+        // written is paged, once per run, after the drops below (no content, counts only).
+        const carriedBring = facts !== null && factsCarryBringItems(facts);
         const composed =
-          deps.client && nameLevel && language
-            ? await deps.composeText(
-                deps.client,
-                reminderFacts({
-                  events: factEvents,
-                  children,
-                  level: nameLevel,
-                  timeZone: group.timezone,
-                  offset: batch.offset,
-                  now,
-                  planLink: null,
-                  language,
-                }),
-                group.familyId,
-                (run) => deps.recordAgentRun(db, run),
+          deps.client && facts
+            ? await deps.composeText(deps.client, facts, group.familyId, (run) =>
+                deps.recordAgentRun(db, run),
               )
             : null;
         if (composed?.status === 'unavailable') {
@@ -1149,6 +1185,7 @@ async function fireDueReminders(
                 { id: r.reminderId, familyId: r.familyId, offset: r.offset },
                 'compose_retries_exhausted',
               );
+              if (carriedBring) unwrittenBring += 1;
               continue;
             }
             await deps.holdForCompose(db, r.reminderId, step);
@@ -1175,6 +1212,7 @@ async function fireDueReminders(
               { id: r.reminderId, familyId: r.familyId, offset: r.offset },
               'compose_rejected',
             );
+            if (carriedBring) unwrittenBring += 1;
           }
           continue;
         }
@@ -1187,6 +1225,7 @@ async function fireDueReminders(
             const r = rowByRef.get(ref);
             if (!r) continue;
             await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'unwritten');
+            if (carriedBring) unwrittenBring += 1;
           }
           continue;
         }
@@ -1204,6 +1243,7 @@ async function fireDueReminders(
             const r = rowByRef.get(ref);
             if (!r) continue;
             await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'unwritten');
+            if (carriedBring) unwrittenBring += 1;
           }
           continue;
         }
@@ -1328,6 +1368,15 @@ async function fireDueReminders(
     console.info({ heldQuietHours }, 'reminder: held for quiet hours, checked again next slot');
   }
 
+  if (unwrittenBring > 0) {
+    // VIL-720 · the model could not write a reminder that carried what to bring: nothing
+    // went out, and #ops hears it (the handoff's hard rule #1). Counts only.
+    const page = await (deps.pageOps ?? postOpsSlack)(
+      `Hale reminder: ${unwrittenBring} due reminder(s) that carried what to bring could not be written. Nothing was sent.`,
+    );
+    console.error({ unwrittenBring, page }, 'reminder: bring reminder not written, #ops paged');
+  }
+
   return {
     due: due.length,
     fired,
@@ -1340,6 +1389,48 @@ async function fireDueReminders(
     heldComposeUnavailable,
     sendEnabled,
   };
+}
+
+const NO_BRING_LISTS: ReadonlyMap<string, string[]> = new Map();
+
+/**
+ * VIL-720 · one recipient's own lists for the events firing for them. A missing reader is
+ * `not_configured`, a read that throws is `unread`: both are logged and the reminder goes
+ * as it would with no list, which is what a parent with none gets.
+ */
+async function bringListsFor(
+  db: Database,
+  deps: Pick<ReminderRunDeps, 'loadBringItems'>,
+  group: RecipientFiring,
+): Promise<ReadonlyMap<string, string[]>> {
+  if (!deps.loadBringItems) {
+    console.warn({ familyId: group.familyId, outcome: 'not_configured' }, 'reminder: bring items');
+    return NO_BRING_LISTS;
+  }
+  try {
+    const lists = await deps.loadBringItems(db, {
+      familyId: group.familyId,
+      ownerUserId: group.parentUserId,
+      eventIds: group.rows.map((r) => r.eventRef),
+    });
+    if (lists.size > 0) {
+      console.info(
+        { familyId: group.familyId, events: lists.size },
+        'reminder: bring items in the facts',
+      );
+    }
+    return lists;
+  } catch (err) {
+    console.warn(
+      {
+        familyId: group.familyId,
+        outcome: 'unread',
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'reminder: bring items',
+    );
+    return NO_BRING_LISTS;
+  }
 }
 
 export interface HeldReminderRecheckDeps extends ReminderRunDeps {

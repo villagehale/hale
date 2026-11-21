@@ -21,6 +21,10 @@ export type {
   BillingNoticeStatus,
   NewBillingNotice,
 } from './schema/billing-notices.js';
+export type {
+  BringItemsSourceKind,
+  FamilyEventBringItems,
+} from './schema/family-event-bring-items.js';
 export {
   familyEventForParent,
   householdFamilyEvent,

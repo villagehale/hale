@@ -2,15 +2,19 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { GENERIC_DESCRIPTOR } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import {
+  REMINDER_BRING_SKILL,
   type ReminderFactEvent,
   composeReminderTexts,
+  factsCarryBringItems,
   isAllDay,
   localClockFact,
   relativeDay,
   reminderFacts,
+  reminderInstructions,
   reminderRefusals,
   reminderUserMessage,
 } from './compose';
@@ -590,5 +594,99 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
       completionTokens: 100,
     });
     expect(runs[0]?.costUsd).toBeCloseTo(0.003, 9);
+  });
+});
+
+/**
+ * VIL-720 · what an email or flyer said to bring. The list is the recipient's own (run.ts
+ * reads it per parent); here, only what the facts and the prompt do with it. A fake client
+ * stands at the AgentClient port to read back the request (mechanics only).
+ */
+describe('reminderFacts and the writer — what to bring from an email or flyer (VIL-720)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('passes the list through, trimmed, as a fact of its own', () => {
+    const [event] = facts([ev({ bringItems: [' a swimsuit ', 'towel', '', 'goggles'] })]).events;
+    expect(event?.bringItems).toEqual(['a swimsuit', 'towel', 'goggles']);
+  });
+
+  it('adds no key for no list, an empty one or a blank one, so the request is unchanged', () => {
+    const plain = reminderUserMessage(facts([ev()]));
+    expect(reminderUserMessage(facts([ev({ bringItems: null })]))).toBe(plain);
+    expect(reminderUserMessage(facts([ev({ bringItems: [] })]))).toBe(plain);
+    expect(reminderUserMessage(facts([ev({ bringItems: ['  '] })]))).toBe(plain);
+    expect(facts([ev()]).events[0]).not.toHaveProperty('bringItems');
+  });
+
+  it('a sensitive event and a teen event carry no list, like their place', () => {
+    const [sensitive] = facts([ev({ sensitive: true, bringItems: ['health card'] })]).events;
+    expect(sensitive).not.toHaveProperty('bringItems');
+    const [teen] = facts([ev({ childId: TEEN.id, bringItems: ['cleats'] })], [TEEN]).events;
+    expect(teen).not.toHaveProperty('bringItems');
+  });
+
+  it('only the event the list belongs to carries it', () => {
+    const both = facts([
+      ev({ eventRef: 'e1', bringItems: ['patins'] }),
+      ev({ eventRef: 'e2', title: 'Bricolage', startsAt: '2026-10-26T21:00:00Z', endsAt: null }),
+    ]);
+    expect(both.events[0]?.bringItems).toEqual(['patins']);
+    expect(both.events[1]).not.toHaveProperty('bringItems');
+    expect(factsCarryBringItems(both)).toBe(true);
+    expect(factsCarryBringItems(facts([ev()]))).toBe(false);
+  });
+
+  it('joins the addendum after the base skill only when one is handed', () => {
+    expect(reminderInstructions('BASE', null)).toBe('BASE');
+    expect(reminderInstructions('BASE', 'ADD')).toBe('BASE\n\nADD');
+  });
+
+  function recordingClient() {
+    const requests: { system: unknown; messages: unknown }[] = [];
+    const create = vi.fn(
+      async (request: { tools?: unknown[]; system: unknown; messages: unknown }) => {
+        requests.push({ system: request.system, messages: request.messages });
+        return {
+          id: 'msg_test',
+          type: 'message',
+          role: 'assistant',
+          model: 'test',
+          stop_reason: 'tool_use',
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 10 },
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu_0',
+              name: 'reminder_texts',
+              input: { texts: ['written'] },
+            },
+          ],
+        } as unknown as Anthropic.Message;
+      },
+    );
+    return { client: { messages: { create } } as unknown as AgentClient, requests };
+  }
+
+  function systemText(system: unknown): string {
+    if (typeof system === 'string') return system;
+    return (system as { text?: string }[]).map((block) => block.text ?? '').join('');
+  }
+
+  it('the writer is told what bringItems is only when an event carries a list', async () => {
+    const base = (await loadCronSkill('reminder')).instructions;
+    const addendum = (await loadCronSkill(REMINDER_BRING_SKILL)).instructions;
+    const withList = recordingClient();
+    await composeReminderTexts(
+      withList.client,
+      facts([ev({ bringItems: ['patins'] })]),
+      'fam-1',
+      async () => {},
+    );
+    expect(systemText(withList.requests[0]?.system)).toBe(reminderInstructions(base, addendum));
+
+    const withoutList = recordingClient();
+    await composeReminderTexts(withoutList.client, facts([ev()]), 'fam-1', async () => {});
+    expect(systemText(withoutList.requests[0]?.system)).toBe(base);
   });
 });

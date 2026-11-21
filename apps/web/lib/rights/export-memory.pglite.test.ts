@@ -94,6 +94,8 @@ function unreviewedAfterFreeze(entries: Record<string, string>): string[] {
 const NOT_IN_EXPORT: Record<string, string> = {
   ack_promises:
     "VIL-717 promised reply time per slow ask: a task category, ids and times, no words; each promise and how it ended is an audit row in the asking adult's own export",
+  family_event_bring_items:
+    "one parent's bring-items from their own email or flyer; a family-wide copy would show them to the other parent. The audit row is the count only, and a sent reminder that carried them is that parent's exported messages",
   family_sweep_marks: 'scheduling metadata, no family content',
   family_signup_help_seasons:
     'seasonal Browser Use attempt counts (season key and a number); no child, URL, or registration content',

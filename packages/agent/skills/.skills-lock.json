@@ -63,6 +63,10 @@
     "file": "billing-notice.md",
     "sha256": "dcc48ca50a67d85bdda79c00641649d613ff2a0e184ab9e07a40929db0b6a415"
   },
+  "bring-items-read.md": {
+    "file": "bring-items-read.md",
+    "sha256": "2ce90abad9340bef0c7ebe2f020492dc880a30d3b493b17b9078a27c73b2792e"
+  },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
     "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
@@ -682,6 +686,10 @@
   "registration-text-check.md": {
     "file": "registration-text-check.md",
     "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"
+  },
+  "reminder-bring.md": {
+    "file": "reminder-bring.md",
+    "sha256": "2514e9a5ddaefb05a3532cedfac9fe521fca7de6907884ab38131758f7dcb5d4"
   },
   "reminder.md": {
     "file": "reminder.md",

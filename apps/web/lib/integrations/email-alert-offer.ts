@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
+import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import {
   calendarInstantsClose,
   matchingCalendarAddId,
@@ -9,6 +9,8 @@ import {
 } from '~/lib/channel/calendar-ask';
 import { calendarDraftApprovalSurfaces } from '~/lib/channel/coach/draft';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
+import { bringItemsReminderEnabled } from '~/lib/loop/reminders/bring/flag';
+import { attachPendingBringItems, bringSourceRef } from '~/lib/loop/reminders/bring/store';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
 import type { OfferReceiptFacts } from './offer-receipt';
@@ -19,6 +21,11 @@ import type { OfferReceiptFacts } from './offer-receipt';
  * message is one coach offer, via `messageId`.
  */
 export const COACH_CALENDAR_INTEGRATION_ID = '00000000-0000-4000-8000-000000000410';
+
+/** The `message_id` a coach offer is written under: the outbound row that carried it. */
+export function coachOfferMessageId(channelMessageId: string): string {
+  return `coach:${channelMessageId}`;
+}
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT — the row it lands in, and what it does.
@@ -465,7 +472,7 @@ async function parentDeclinedCalendarAdd(
 async function placeOfferedEvent(
   database: Database,
   offer: OpenEmailAlertOffer,
-  input: { familyId: string; parentUserId: string },
+  input: { familyId: string; parentUserId: string; now: Date },
 ): Promise<void> {
   const claimed = await database
     .update(schema.emailAlertOffers)
@@ -519,6 +526,33 @@ async function placeOfferedEvent(
       after: { kind: offer.kind },
     });
     noteTaskCompleted({ familyId: input.familyId, type: 'email_action', source: 'email' });
+  }
+
+  // VIL-720 · WHAT THIS OFFER'S EMAIL OR FLYER SAID TO BRING, kept pending on the same
+  // (connection, message) pair, now joins the event the parent said yes to. Every pass,
+  // not only the one that placed: the update is guarded on a pending row, so a redrive
+  // attaches once. A failure here is logged and never undoes the yes (rule #11).
+  if (bringItemsReminderEnabled()) {
+    try {
+      const attached = await attachPendingBringItems(database, {
+        familyId: input.familyId,
+        ownerUserId: input.parentUserId,
+        sourceRef: bringSourceRef(offer.integrationId, offer.messageId),
+        eventId,
+        now: input.now,
+      });
+      if (attached > 0) {
+        console.info(
+          { familyId: input.familyId, attached },
+          'email alert offer: bring items attached',
+        );
+      }
+    } catch (err) {
+      console.error(
+        { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'email alert offer: bring items not attached',
+      );
+    }
   }
 
   // THE BOOKING THIS EMAIL ALSO WROTE, now on the calendar. Two rows from one email, so
@@ -772,7 +806,7 @@ export async function recordCoachCalendarOffer(
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     integrationId: COACH_CALENDAR_INTEGRATION_ID,
-    messageId: `coach:${input.channelMessageId}`,
+    messageId: coachOfferMessageId(input.channelMessageId),
     channelMessageId: input.channelMessageId,
     draft: { kind: 'new_event', title, startsAt: input.startsAt, location: input.location },
     now: input.now,
