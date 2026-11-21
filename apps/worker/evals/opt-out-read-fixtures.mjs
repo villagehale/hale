@@ -125,3 +125,43 @@ export const OPT_OUT_FIXTURES = [
     late: { receivedAt: '2026-10-18T15:00:00.000Z', readAt: '2026-10-20T15:00:00.000Z' },
   },
 ];
+
+// VIL-742: a party guest. The reminder is the only thing Hale sends this sender, so
+// asking to drop it, in any words or language, is a stop. Read with the guest fact and
+// the opt-out-read-party-guest addendum. The last row is the control that must not stop.
+export const OPT_OUT_GUEST_FIXTURES = [
+  { id: 'guest-no-reminder', text: 'no reminder please', language: 'en', expect: 'stop' },
+  {
+    id: 'guest-dont-send',
+    text: "please don't send me the reminder",
+    language: 'en',
+    expect: 'stop',
+  },
+  { id: 'guest-cancel', text: 'cancel my reminder', language: 'en', expect: 'stop' },
+  {
+    id: 'guest-dont-need',
+    text: "thanks but I don't need the reminder",
+    language: 'en',
+    expect: 'stop',
+  },
+  {
+    id: 'guest-this-party',
+    text: "don't text me about this party anymore",
+    language: 'en',
+    expect: 'stop',
+  },
+  {
+    id: 'guest-rather-not',
+    text: "I'd rather not get texts from Hale",
+    language: 'en',
+    expect: 'stop',
+  },
+  { id: 'guest-fr', text: 'Pas de rappel pour moi, merci', language: 'fr', expect: 'stop' },
+  {
+    id: 'guest-es',
+    text: 'No me mandes el recordatorio, por favor',
+    language: 'es',
+    expect: 'stop',
+  },
+  { id: 'guest-control-thanks', text: 'thanks, see you there', language: 'en', expect: 'none' },
+];
