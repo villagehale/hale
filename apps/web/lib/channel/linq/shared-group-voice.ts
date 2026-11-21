@@ -14,6 +14,7 @@ import {
   type SharedGroupThreadLine,
   type SharedGroupVoiceKind,
   type SharedGroupVoiceRequest,
+  factValues,
   sharedGroupFactStrings,
   sharedGroupLineInput,
 } from './shared-group-line-input';
@@ -109,8 +110,9 @@ export function sharedLineUsable(
   if (input.questions === 0 && questions !== 0) return false;
   if (text.includes('TODO-Design')) return false;
   if (BANNED.test(text) && !input.wayOut) return false;
-  if (input.wayOut && noStopKeywordCopyEnabled()) {
-    if (namesKeyword(text, sharedGroupFactStrings(input))) return false;
+  // Facts only: what the person just wrote may be the keyword the draft must not repeat.
+  if (input.wayOut && noStopKeywordCopyEnabled() && namesKeyword(text, factValues(input.facts))) {
+    return false;
   }
   const folded = text.toLowerCase();
   for (const token of deny) {

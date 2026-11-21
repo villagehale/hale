@@ -35,7 +35,10 @@ const NAMING_WORDS = wordSet('word keyword mot cle');
 /** Words that can stand between a send verb or naming word and the word it points at. */
 const SEND_LEADS = wordSet(
   'back with the a an this to of out is here me us just simply only in moi nous le un une ' +
-    'ce cet cette est ici texto sms avec par simplement seulement juste',
+    'ce cet cette est ici texto sms avec par simplement seulement juste ' +
+    'anytime any time at whenever always now later right away again ' +
+    'tout moment instant n importe quand quel toujours maintenant ' +
+    'quick simple single petit thread chat fil',
 );
 
 const QUOTE_PAIRS: Readonly<Record<string, string>> = {

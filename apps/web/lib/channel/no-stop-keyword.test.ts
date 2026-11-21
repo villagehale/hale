@@ -41,6 +41,17 @@ describe('namesKeyword', () => {
     ['Répondez AIDE.', 'AIDE'],
     ['Reply \uFF33\uFF34\uFF2F\uFF30 anytime.', 'STOP'],
     ['Reply S\u200BTOP anytime.', 'STOP'],
+    ['You can reply anytime with stop.', 'STOP'],
+    ['Reply at any time with stop.', 'STOP'],
+    ['Just reply whenever with stop.', 'STOP'],
+    ['Text me right now with stop.', 'STOP'],
+    ['Reply again with start.', 'START'],
+    ['Répondez à tout moment avec arrêt.', 'ARRET'],
+    ["Répondez n'importe quand avec arrêt.", 'ARRET'],
+    ['Just send a quick stop.', 'STOP'],
+    ['Reply with a simple stop.', 'STOP'],
+    ['Reply in this thread with stop.', 'STOP'],
+    ['Envoyez un petit arrêt.', 'ARRET'],
   ])('refuses %j', (draft, keyword) => {
     expect(namesKeyword(draft)).toBe(keyword);
   });
@@ -53,6 +64,16 @@ describe('namesKeyword', () => {
     'Start by telling me who you are.',
     "I can't help this group until one of the parents texts me directly.",
     'Dites-moi quand vous voulez que j’arrête, avec vos propres mots.',
+    'You can text me anytime and I will stop.',
+    'Text me anytime if you want me to stop.',
+    'Reply anytime to stop.',
+    'Text me anytime for help.',
+    'Just say you want help.',
+    'Écrivez-moi à tout moment si vous voulez que j’arrête.',
+    'You can tell me anytime, in your own words, that you would like me to stop.',
+    'Hale is an AI, and I stop whenever you ask, in any words.',
+    'Just say so and I will stop texting you.',
+    'Tu peux me dire d’arrêter quand tu veux.',
   ])('leaves a plain sentence alone: %j', (draft) => {
     expect(namesKeyword(draft)).toBeNull();
   });

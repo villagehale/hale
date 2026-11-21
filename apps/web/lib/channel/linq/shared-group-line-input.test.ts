@@ -23,6 +23,16 @@ describe('shared group line input', () => {
       vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
       expect(sharedLineUsable(teaches, stop)).toBe(false);
       expect(sharedLineUsable(plain, stop)).toBe(true);
+
+      const afterStop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en', {
+        parentWords: 'STOP',
+        threadSaid: [{ speaker: 'Jordan', text: 'STOP' }],
+      });
+      expect(
+        sharedLineUsable('Got it. "STOP" is noted, and I will leave you out.', afterStop),
+      ).toBe(false);
+      const shoutedName = sharedGroupLineInput({ kind: 'member_stop', name: 'HELP' }, 'en');
+      expect(sharedLineUsable('Got it HELP, I will leave you out.', shoutedName)).toBe(true);
     } finally {
       vi.unstubAllEnvs();
     }
