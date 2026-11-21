@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { GUEST_SOFT_CTA, GUEST_SOFT_LINE, guestCancellation, guestReminder } from './guest-copy';
+import { sharedPartyGuestLineWriter } from './guest-voice';
 import {
   GUEST_SEND_HOUR_LOCAL,
   type PartyReminderDeps,
@@ -230,8 +231,17 @@ describe('a guest message that cannot leave (VIL-267)', () => {
       recordSend: async () => {
         throw new Error('recordSend must not run for a message that never left');
       },
+      guestLine: {
+        write: async () => {
+          throw new Error('the writer must not run with the flag off');
+        },
+      },
     };
   }
+
+  beforeEach(() => {
+    vi.stubEnv('PARTY_GUEST_MODEL_COPY_ENABLED', 'false');
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -246,7 +256,7 @@ describe('a guest message that cannot leave (VIL-267)', () => {
 
     const result = await runPartyReminderCron(partyDb([party], [guest()]), deps(released), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 1 });
+    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 1, unwritten: 0 });
     // The claim comes back, so the guest's ONE reminder is not burned by an outage.
     expect(released).toEqual(['rsvp-1']);
     expect(error).toHaveBeenCalled();
@@ -265,7 +275,7 @@ describe('a guest message that cannot leave (VIL-267)', () => {
 
     // The path reports only sent/failed, so an invisible skip here would read as
     // "everybody was told" for a party that is off.
-    expect(result).toEqual({ sent: 0, failed: 1 });
+    expect(result).toEqual({ sent: 0, failed: 1, unwritten: 0 });
     expect(error).toHaveBeenCalled();
   });
 
@@ -280,6 +290,12 @@ describe('a guest message that cannot leave (VIL-267)', () => {
     await expect(transport.send({ to: '+14165550123', body: 'never leaves' })).rejects.toThrow(
       /not_configured/,
     );
+  });
+});
+
+describe('production wiring (VIL-745)', () => {
+  it('hands the sweep the real model writer', () => {
+    expect(defaultPartyReminderDeps().guestLine).toBe(sharedPartyGuestLineWriter());
   });
 });
 

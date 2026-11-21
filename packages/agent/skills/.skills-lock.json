@@ -551,6 +551,10 @@
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
   },
+  "party-guest-line.md": {
+    "file": "party-guest-line.md",
+    "sha256": "deaad9944eeafef44fa26c9dbd4d96d5bfdf95ecaa5a6aba728911360bace817"
+  },
   "proactive-decider.md": {
     "file": "proactive-decider.md",
     "sha256": "a1c011c3f0e5c4e906f731b36930516a18b60670f06026f465cad28ad98fbeab"
