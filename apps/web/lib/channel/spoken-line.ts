@@ -96,14 +96,14 @@ export function acceptSpokenLine(
 }
 
 /** What may touch a filled link on each side and leave it whole when a phone reads it. */
-const WORD_BEFORE_LINK = /[\p{L}\p{N}]$/u;
-const CLEAR_AFTER_LINK = /^(?:$|\s|[.,!?)"'\u00bb\u201d\u2019]+(?:\s|$))/u;
+const WORD_BEFORE_SLOT = /[\p{L}\p{N}]$/u;
+const CLEAR_AFTER_SLOT = /^(?:$|\s|[.,!?)"'\u00bb\u201d\u2019]+(?:\s|$))/u;
 
 function carriesSlotOnce(body: string, slot: string): boolean {
   const around = body.split(slot);
   if (around.length !== 2 || /\[\[|\]\]/.test(around.join(' '))) return false;
   const [before = '', after = ''] = around;
-  return !WORD_BEFORE_LINK.test(before) && CLEAR_AFTER_LINK.test(after);
+  return !WORD_BEFORE_SLOT.test(before) && CLEAR_AFTER_SLOT.test(after);
 }
 
 /** What the model must carry: the request's verbatim pieces and its slot. */
