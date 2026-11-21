@@ -158,6 +158,11 @@ export const FLAGS = [
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),
+  // VIL-715. Pre-flight and approval binding on top of the plan lane. Exact `true`.
+  exact('registration-preflight', 'REGISTRATION_PREFLIGHT_ENABLED', {
+    allowlistEnv: 'REGISTRATION_PREFLIGHT_FAMILIES',
+    allowlistMode: 'narrow',
+  }),
   exact('same-activity-meet', 'SAME_ACTIVITY_MEET_ENABLED'),
   exact('signup-sandbox-runtime', 'SIGNUP_SANDBOX_RUNTIME_ENABLED'),
   exact('travel-brief', 'TRAVEL_BRIEF_ENABLED', {
@@ -295,6 +300,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'REGISTRATION_FREE_CHECKOUT_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`, and only for the family ids in REGISTRATION_FREE_CHECKOUT_FAMILIES (an empty list is off); presses complete only on a $0 order bound as free; nothing in PostHog may turn this on',
   },
   {
     env: 'LINQ_APP_CLIP_PAY_ENABLED',

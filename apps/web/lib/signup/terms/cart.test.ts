@@ -1,0 +1,205 @@
+import { describe, expect, it } from 'vitest';
+import { type CartForCompare, compareCart } from './cart';
+import type { SignupTermsApprovedSession } from './types';
+
+const who = { childFirstName: 'Ada', timeZone: 'America/Toronto' };
+
+const bound = (over: Partial<SignupTermsApprovedSession> = {}): SignupTermsApprovedSession => ({
+  sessionId: 's-1',
+  program: { courseIds: ['283993', 'ev-1'], name: 'Get Ready Public Speaking' },
+  startsAt: '2026-03-28T09:30:00',
+  sharesDate: false,
+  amount: { kind: 'exact', cents: [8488], currency: 'cad', plusTax: null, limitCents: null },
+  ...over,
+});
+
+const cart = (over: Partial<CartForCompare> = {}): CartForCompare => ({
+  provider_course_id: '283993',
+  session_label: 'Get Ready Public Speaking',
+  session_date: '2026-03-28',
+  session_time: '09:30',
+  participant_first_name: 'Ada',
+  line_count: 1,
+  quantity: 1,
+  totalCents: 8488,
+  taxCents: 0,
+  feesCents: 0,
+  currency: 'cad',
+  ...over,
+});
+
+const plusTax = (basisPoints: number, kind: 'rate' | 'ceiling' = 'rate') =>
+  bound({
+    amount: {
+      kind: 'exact',
+      cents: [33627],
+      currency: 'cad',
+      plusTax: { kind, basisPoints },
+      limitCents: null,
+    },
+  });
+
+describe('compareCart', () => {
+  it('passes the exact cart at both stages (positive control)', () => {
+    expect(compareCart(bound(), cart(), who, 'cart')).toEqual([]);
+    expect(compareCart(bound(), cart(), who, 'final')).toEqual([]);
+  });
+
+  it('one cent over stops', () => {
+    expect(compareCart(bound(), cart({ totalCents: 8489 }), who, 'final')).toEqual(['price']);
+    expect(compareCart(bound(), cart({ totalCents: 8489 }), who, 'cart')).toEqual(['price']);
+  });
+
+  it('one cent under stops at the final stage', () => {
+    expect(compareCart(bound(), cart({ totalCents: 8487 }), who, 'final')).toEqual(['price']);
+  });
+
+  it('an extra fee stops as fees', () => {
+    expect(
+      compareCart(bound(), cart({ totalCents: 9488, feesCents: 1000 }), who, 'final'),
+    ).toEqual(['fees']);
+  });
+
+  it('a non-resident rate on a resident binding stops', () => {
+    expect(compareCart(bound(), cart({ totalCents: 9760 }), who, 'final')).toEqual(['price']);
+  });
+
+  it('another date with the same label stops', () => {
+    expect(compareCart(bound(), cart({ session_date: '2026-04-04' }), who, 'cart')).toEqual([
+      'session',
+    ]);
+  });
+
+  it('the same date, time and price with a different label stops', () => {
+    expect(
+      compareCart(
+        bound(),
+        cart({ provider_course_id: null, session_label: 'Chess: Preschool' }),
+        who,
+        'cart',
+      ),
+    ).toEqual(['session']);
+  });
+
+  it('a different course id stops', () => {
+    expect(compareCart(bound(), cart({ provider_course_id: '344301' }), who, 'cart')).toEqual([
+      'session',
+    ]);
+  });
+
+  it('a null time passes when no other session shares the date', () => {
+    expect(compareCart(bound(), cart({ session_time: null }), who, 'cart')).toEqual([]);
+  });
+
+  it('a null time stops when another session shares the date', () => {
+    expect(
+      compareCart(bound({ sharesDate: true }), cart({ session_time: null }), who, 'cart'),
+    ).toEqual(['session']);
+  });
+
+  it('an offset start compares in the portal zone', () => {
+    expect(
+      compareCart(bound({ startsAt: '2026-03-28T13:30:00Z' }), cart(), who, 'cart'),
+    ).toEqual([]);
+  });
+
+  it.each(['Addie', 'Ava'])('a different first name stops (%s)', (name) => {
+    expect(compareCart(bound(), cart({ participant_first_name: name }), who, 'cart')).toEqual([
+      'kid',
+    ]);
+  });
+
+  it('quantity 2 stops', () => {
+    expect(compareCart(bound(), cart({ quantity: 2 }), who, 'cart')).toEqual(['quantity']);
+  });
+
+  it('two lines stop', () => {
+    expect(compareCart(bound(), cart({ line_count: 2 }), who, 'cart')).toEqual(['quantity']);
+  });
+
+  it('another currency stops', () => {
+    expect(compareCart(bound(), cart({ currency: 'usd' }), who, 'final')).toEqual(['price']);
+  });
+
+  it('a null currency is unread', () => {
+    expect(compareCart(bound(), cart({ currency: null }), who, 'final')).toEqual(['unread']);
+  });
+
+  it.each([
+    ['provider_course_id and session_label', { provider_course_id: null, session_label: null }],
+    ['session_date', { session_date: null }],
+    ['participant_first_name', { participant_first_name: null }],
+    ['line_count', { line_count: null }],
+    ['quantity', { quantity: null }],
+    ['totalCents', { totalCents: null }],
+  ])('a null %s is unread', (_name, patch) => {
+    expect(compareCart(bound(), cart(patch), who, 'final')).toContain('unread');
+  });
+
+  it('13% tax on a registry portal passes, two cents off fails', () => {
+    const tax = 4372;
+    expect(
+      compareCart(plusTax(1300), cart({ totalCents: 33627 + tax, taxCents: tax }), who, 'final'),
+    ).toEqual([]);
+    expect(
+      compareCart(
+        plusTax(1300),
+        cart({ totalCents: 33627 + tax + 2, taxCents: tax + 2 }),
+        who,
+        'final',
+      ),
+    ).toEqual(['price']);
+  });
+
+  it('on another portal 15% passes and over it fails', () => {
+    const tax = 5044;
+    expect(
+      compareCart(
+        plusTax(1500, 'ceiling'),
+        cart({ totalCents: 33627 + tax, taxCents: tax }),
+        who,
+        'final',
+      ),
+    ).toEqual([]);
+    expect(
+      compareCart(
+        plusTax(1500, 'ceiling'),
+        cart({ totalCents: 33627 + tax + 1, taxCents: tax + 1 }),
+        who,
+        'final',
+      ),
+    ).toEqual(['price']);
+  });
+
+  it('a plus-tax cart with a null tax line is unread', () => {
+    expect(
+      compareCart(plusTax(1300), cart({ totalCents: 37999, taxCents: null }), who, 'final'),
+    ).toEqual(['unread']);
+  });
+
+  it('a parent limit under the bound rate never lets the rate pass', () => {
+    const limited = bound({
+      amount: { kind: 'exact', cents: [8488], currency: 'cad', plusTax: null, limitCents: 8000 },
+    });
+    expect(compareCart(limited, cart(), who, 'final')).toEqual(['price']);
+  });
+
+  it('a ceiling passes at or under the number and stops over it', () => {
+    const ceiling = bound({ amount: { kind: 'ceiling', cents: 10000, currency: 'cad' } });
+    expect(compareCart(ceiling, cart({ totalCents: 10000 }), who, 'final')).toEqual([]);
+    expect(compareCart(ceiling, cart({ totalCents: 10001 }), who, 'final')).toEqual(['price']);
+  });
+
+  it('a free binding passes on exactly zero, with no currency, and stops on one cent', () => {
+    const free = bound({ amount: { kind: 'free' } });
+    expect(
+      compareCart(free, cart({ totalCents: 0, currency: null, feesCents: null }), who, 'final'),
+    ).toEqual([]);
+    expect(compareCart(free, cart({ totalCents: 100, currency: null }), who, 'final')).toEqual([
+      'price',
+    ]);
+    expect(compareCart(free, cart({ totalCents: 100, currency: null }), who, 'cart')).toEqual([
+      'price',
+    ]);
+  });
+});
