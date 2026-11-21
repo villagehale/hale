@@ -4,7 +4,7 @@ import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transp
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { linqFromE164 } from './config';
+import { linqFromE164, linqGroupScenesEnabled } from './config';
 import { type ListChatHandles, isUndefinedTable } from './roster';
 import { LinqSendError } from './transport';
 
@@ -186,6 +186,40 @@ async function liveSharedGroup(database: Database, chatId: string): Promise<bool
   return Boolean(plan);
 }
 
+/**
+ * A `mixed_family` roster is a chat several families are in, so it never confirms as one
+ * household. With the scenes on it is a shared group once a family joined it with its own
+ * live consent. A chat one family claimed stays that household's, whatever else is in it.
+ */
+async function consentedSharedGroup(database: Database, chatId: string): Promise<boolean> {
+  const [holder] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (holder) return false;
+  const [join] = await database
+    .select({ id: schema.linqMultiFamilyJoins.id })
+    .from(schema.linqMultiFamilyJoins)
+    .innerJoin(
+      schema.consentRecords,
+      eq(schema.consentRecords.id, schema.linqMultiFamilyJoins.consentRecordId),
+    )
+    .where(
+      and(
+        eq(schema.linqMultiFamilyJoins.chatId, chatId),
+        isNull(schema.linqMultiFamilyJoins.leftAt),
+        eq(schema.consentRecords.familyId, schema.linqMultiFamilyJoins.familyId),
+        eq(schema.consentRecords.granted, true),
+        isNull(schema.consentRecords.revokedAt),
+        eq(schema.consentRecords.consentType, 'multi_family_group'),
+        eq(schema.consentRecords.consentScope, chatId),
+      ),
+    )
+    .limit(1);
+  return Boolean(join);
+}
+
 export async function groupAudienceAllows(
   database: Database,
   chatId: string,
@@ -213,6 +247,14 @@ export async function groupAudienceAllows(
   if (roster.status !== 'confirmed') {
     if (lineClass === 'reply' && ASKING.includes(roster.status)) {
       return { allowed: true, reason: 'in_scope' };
+    }
+    if (
+      roster.status === 'mixed_family' &&
+      lineClass === 'event_logistics' &&
+      linqGroupScenesEnabled() &&
+      (await consentedSharedGroup(database, chatId))
+    ) {
+      return { allowed: true, reason: 'not_household_group' };
     }
     if (roster.familyId) {
       await noteSendsHeld(database, { rosterId: roster.rosterId, familyId: roster.familyId });

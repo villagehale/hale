@@ -2280,12 +2280,16 @@ export async function noticeSharedGroupAdded(
   for (const handle of handles) {
     await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
   }
-  if (ports.listHandles) {
-    const listed = await ports.listHandles({ chatId: input.chatId });
-    if (listed.status === 'ok') {
-      for (const handle of listed.handles) {
-        await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
-      }
+  // Hale's own add event names no members, so with the scenes on the chat's real list decides
+  // whether this is a shared group (scene 01: Hale added to a group two families already have).
+  const listed = ports.listHandles
+    ? await ports.listHandles({ chatId: input.chatId })
+    : linqGroupScenesEnabled()
+      ? await participantsOf(input.chatId)
+      : null;
+  if (listed?.status === 'ok') {
+    for (const handle of listed.handles) {
+      await rememberHandle(database, { chatId: input.chatId, handle, now: input.now });
     }
   }
   const people = await peopleInChat(database, input.chatId);

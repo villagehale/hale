@@ -355,3 +355,78 @@ describe('groupAudienceAllows reads the live participant list', () => {
     expect(schedule).not.toHaveBeenCalled();
   });
 });
+
+describe('a mixed_family roster (VIL-689: a chat several families share)', () => {
+  const CONSENT_SCOPE = CHAT;
+
+  async function seedMixedChat(options: { consent?: boolean; holder?: boolean } = {}) {
+    const family = await seedFamily(options.holder ? CHAT : null);
+    await db.database
+      .insert(schema.linqGroupRosters)
+      .values({ chatId: CHAT, familyId: null, source: 'added_to_existing', status: 'mixed_family' });
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'floor:mixed', name: 'Mixed', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    const [consent] =
+      options.consent === false
+        ? [undefined]
+        : await db.database
+            .insert(schema.consentRecords)
+            .values({
+              userId: user?.id as string,
+              familyId: family,
+              consentType: 'multi_family_group',
+              granted: true,
+              consentScope: CONSENT_SCOPE,
+              policyVersion: 'test',
+            })
+            .returning({ id: schema.consentRecords.id });
+    await db.database.insert(schema.linqMultiFamilyJoins).values({
+      chatId: CHAT,
+      familyId: family,
+      joinedByUserId: user?.id as string,
+      consentRecordId: consent?.id ?? null,
+      joinedAt: new Date(),
+    });
+  }
+
+  it('with the scenes on and a live consented join, an event_logistics line may enter', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await seedMixedChat();
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'event_logistics', listOf([MOM])),
+    ).resolves.toEqual({ allowed: true, reason: 'not_household_group' });
+  });
+
+  it('with the scenes off it stays held, as it does today', async () => {
+    await seedMixedChat();
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'event_logistics', listOf([MOM])),
+    ).resolves.toEqual({ allowed: false, reason: 'group_roles_unconfirmed' });
+  });
+
+  it('a join with no consent record does not open it', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await seedMixedChat({ consent: false });
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'event_logistics', listOf([MOM])),
+    ).resolves.toEqual({ allowed: false, reason: 'group_roles_unconfirmed' });
+  });
+
+  it('a chat one family claimed stays that household chat', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await seedMixedChat({ holder: true });
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'event_logistics', listOf([MOM])),
+    ).resolves.toEqual({ allowed: false, reason: 'group_roles_unconfirmed' });
+  });
+
+  it('only event_logistics opens: a household schedule line stays held', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await seedMixedChat();
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', listOf([MOM])),
+    ).resolves.toEqual({ allowed: false, reason: 'group_roles_unconfirmed' });
+  });
+});
