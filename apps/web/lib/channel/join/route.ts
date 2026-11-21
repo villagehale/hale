@@ -98,9 +98,10 @@ export type JoinOutcome =
   | { status: 'join_link_minted' }
   /**
    * The forward line was not written, so no link was minted: no invite, no grant, no
-   * audit row. `flag_off` is the dark flag; `unwritten` is a model that wrote nothing.
+   * audit row. `flag_off` is the dark flag; `unwritten` is a model that wrote nothing;
+   * `group_chat` is an ask made in a chat other people may read.
    */
-  | { status: 'join_link_held'; lineHeld: DoorLineHold }
+  | { status: 'join_link_held'; lineHeld: DoorLineHold | 'group_chat' }
   | JoinSeatTaken
   /**
    * `supersededSessionId` is the other absence this path has to name: a link can arrive
@@ -254,6 +255,16 @@ export async function handleJoinRequest(
     body: inbound.body,
     now,
   });
+
+  // The link seats whoever opens it, and a turn's transport posts into its own chat
+  // whatever `to` says. A chat Linq did not call a 1:1 is treated as a group.
+  if (inbound.isGroup === true || (inbound.isGroup === undefined && Boolean(inbound.chatId))) {
+    console.info(
+      { familyId: owner.familyId, reason: 'group_chat' },
+      'join: asked for in a chat others may read - no link minted, nothing sent',
+    );
+    return { status: 'join_link_held', lineHeld: 'group_chat' };
+  }
 
   // Written BEFORE the link exists. The model never holds the token, and a line nobody
   // wrote leaves no invite, grant or audit row for a link nobody can ever receive.

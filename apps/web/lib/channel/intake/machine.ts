@@ -23,6 +23,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
+import { joinDoorModelCopyEnabled } from '~/lib/channel/door-line';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
@@ -194,7 +195,7 @@ import {
   resolveStatedPlace,
 } from './stated-place';
 import type { ChannelTransport } from './transport';
-import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
+import { claimIntakeTurn, completeIntakeTurn, intakeTurnClaimed } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
 
 /**
@@ -735,11 +736,20 @@ async function runIntakeTurn(
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
-      return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
+      const answer = () =>
+        handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
+      // With the door lines lit, the line an answer earns is a model write inside Linq's
+      // webhook window, and the answer has already closed the invite: an unclaimed resend
+      // finds nothing open and greets the person who just said no.
+      return joinDoorModelCopyEnabled() ? claimedTurn(database, inbound, now, answer) : answer();
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
     if (existing) {
+      // A yes above seated this number, so its resend arrives here rather than at the invite.
+      if (joinDoorModelCopyEnabled() && (await intakeTurnClaimed(database, inbound.providerId))) {
+        return { status: 'duplicate' };
+      }
       // Either a caregiver (who gets the one scoped line) or a parent adding one. Any
       // other message keeps the old silence.
       const outcome = await handleKnownNumberInbound(
@@ -840,10 +850,11 @@ async function runIntakeTurn(
  * Run one intake turn under the P1-4 provider-id claim (turn-claim.ts): the first
  * delivery to claim the sid runs; every later one — including a Linq resend racing
  * this very turn — is the same named 'duplicate' step 4 has always produced. Wraps
- * ONLY the branches where intake itself acts (greet, the model-bound session turns):
- * keywords stay unclaimed (a STOP resend must always be honoured), token-redeeming
- * turns ride their own consume-once claims, and the C1 fall-through claims nothing so
- * the hand-off's 0085 arbitration and its crash-heal retry stay untouched.
+ * ONLY the branches where intake itself acts (greet, an invite answer with the door
+ * flag lit, the model-bound session turns): keywords stay unclaimed (a STOP resend must
+ * always be honoured), token-redeeming turns ride their own consume-once claims, and the
+ * C1 fall-through claims nothing so the hand-off's 0085 arbitration and its crash-heal
+ * retry stay untouched.
  */
 async function claimedTurn(
   database: Database,
