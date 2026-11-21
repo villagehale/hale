@@ -431,25 +431,30 @@ describe('refund and dispute outcomes', () => {
       ).toEqual({ action: 'keep', reason: 'duplicate_subscription' });
     });
 
-    describe('the surviving tier, flag on', () => {
-      it('moves the family to the tier it still pays for', () => {
+    describe('the plan on file against what still pays, flag on', () => {
+      const DIFFERS = { action: 'unresolved', reason: 'surviving_plan_differs' };
+
+      it('never moves the tier: a survivor on another tier pages instead', () => {
         expect(
           refundOutcome({
             ...facts({ ...ON, planTier: 'family', other: PLUS_SIBLING }),
             partial: false,
           }),
-        ).toEqual({ action: 'keep', reason: 'duplicate_subscription', setTier: 'plus' });
+        ).toEqual(DIFFERS);
         expect(
           refundOutcome({
             ...facts({ ...ON, ...ENDED, planTier: 'plus', other: MAX_SIBLING }),
             partial: false,
           }),
-        ).toEqual({ action: 'keep', reason: 'active_subscription', setTier: 'family' });
+        ).toEqual(DIFFERS);
       });
 
-      it('writes nothing when the tier already matches or the family is on free', () => {
+      it('keeps with no page when the tier matches or the family is on free', () => {
         expect(refundOutcome({ ...facts({ ...ON, other: PLUS_SIBLING }), partial: false })).toEqual(
-          { action: 'keep', reason: 'duplicate_subscription' },
+          {
+            action: 'keep',
+            reason: 'duplicate_subscription',
+          },
         );
         expect(
           refundOutcome({
@@ -481,13 +486,10 @@ describe('refund and dispute outcomes', () => {
           { paid: [{ id: 'sub_b', priceId: 'p_plus' }], refundedIds: [], truncated: true },
         ],
       ])('pages instead of guessing on %s', (_name, other) => {
-        expect(refundOutcome({ ...facts({ ...ON, other }), partial: false })).toEqual({
-          action: 'unresolved',
-          reason: 'surviving_plan_unmapped',
-        });
+        expect(refundOutcome({ ...facts({ ...ON, other }), partial: false })).toEqual(DIFFERS);
       });
 
-      it('makes no tier write with the flag off', () => {
+      it('stays quiet with the flag off', () => {
         expect(
           refundOutcome({
             ...facts({ ...ENDED, planTier: 'family', other: PLUS_SIBLING }),

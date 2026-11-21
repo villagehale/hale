@@ -483,11 +483,11 @@ export type RevokeKeepReason =
 export type RevokeUnresolvedReason =
   | 'subscription_unresolved'
   | 'current_period_unproven'
-  | 'surviving_plan_unmapped'
+  | 'surviving_plan_differs'
   | 'dispute_plan_kept';
 
 export type RevokeOutcome =
-  | { action: 'keep'; reason: RevokeKeepReason; setTier?: PlanTier }
+  | { action: 'keep'; reason: RevokeKeepReason }
   | { action: 'drop'; cancelSubscriptionIds: readonly string[] }
   | { action: 'unresolved'; reason: RevokeUnresolvedReason }
   | { action: 'wait' }
@@ -511,8 +511,7 @@ export interface RevokeFacts {
   priceTierMap: PriceTierMap;
 }
 
-const keep = (reason: RevokeKeepReason, setTier?: PlanTier): RevokeOutcome =>
-  setTier ? { action: 'keep', reason, setTier } : { action: 'keep', reason };
+const keep = (reason: RevokeKeepReason): RevokeOutcome => ({ action: 'keep', reason });
 
 const unresolved = (reason: RevokeUnresolvedReason): RevokeOutcome => ({
   action: 'unresolved',
@@ -533,23 +532,25 @@ function storedNamesAnother(facts: RevokeFacts): boolean {
 }
 
 /**
- * The tier the family still pays for after a refunded duplicate. Grants are
- * last-writer-wins, so a refunded Max duplicate would otherwise leave a family on
- * Max while paying only for Plus.
+ * A refunded duplicate never moves the plan. The refunded subscription stays live, so its
+ * next update would write its own tier straight back, and a sibling can be one whose grant
+ * was refused. When the plan on file is not what the remaining subscription sells, a person
+ * decides.
  */
 function keepSurvivingPlan(
   facts: RevokeFacts,
   other: OtherSubscriptions,
   reason: RevokeKeepReason,
 ): RevokeOutcome {
-  if (!facts.flagOn) return keep(reason);
+  if (!facts.flagOn || facts.planTier === 'free') return keep(reason);
   const tiers = new Set(
     other.paid.map((row) => (row.priceId ? (facts.priceTierMap[row.priceId] ?? null) : null)),
   );
   const [tier] = tiers;
-  if (other.truncated || tiers.size !== 1 || !tier) return unresolved('surviving_plan_unmapped');
-  if (tier === facts.planTier || facts.planTier === 'free') return keep(reason);
-  return keep(reason, tier);
+  if (other.truncated || tiers.size !== 1 || tier !== facts.planTier) {
+    return unresolved('surviving_plan_differs');
+  }
+  return keep(reason);
 }
 
 /**

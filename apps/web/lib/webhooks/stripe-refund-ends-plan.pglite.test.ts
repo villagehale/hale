@@ -460,28 +460,50 @@ describe('both duplicates refunded', () => {
   });
 });
 
-describe('the surviving tier', () => {
-  it('flag on: refunding the Max duplicate moves the family to the Plus it still pays for', async () => {
+describe('a refunded duplicate never moves the plan', () => {
+  it('flag on: a survivor on another tier keeps the plan, writes no tier, and pages', async () => {
     const h = harness(FLAG_ON);
     const familyId = await paidFamily('family', 'cus_max', 'sub_max');
     buy(h.fake, 'max', familyId, { priceId: 'price_max' });
     buy(h.fake, 'plus', familyId, { priceId: 'price_plus' });
     const event = refundEvent(h.fake, 'ch_max');
 
-    await expect(h.apply(event)).resolves.toEqual({
+    await expect(h.apply(event)).resolves.toMatchObject({
+      status: 'unresolved',
+      reason: 'surviving_plan_differs',
+    });
+
+    expect(await planTier(familyId)).toBe('family');
+    expect(await auditRows(familyId, 'family_plan_updated')).toEqual([]);
+    expect(h.fake.deletes()).toEqual([]);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'surviving_plan_differs' }]);
+    expect(await claimed(event.id)).toBe(true);
+  });
+
+  it('flag on: the still-live refunded subscription cannot move the tier afterwards', async () => {
+    const h = harness(FLAG_ON);
+    const familyId = await paidFamily('family', 'cus_max', 'sub_max');
+    buy(h.fake, 'max', familyId, { priceId: 'price_max' });
+    buy(h.fake, 'plus', familyId, { priceId: 'price_plus' });
+    await h.apply(refundEvent(h.fake, 'ch_max'));
+
+    await h.apply(subscriptionUpdatedEvent(h.fake, 'sub_max'));
+
+    expect(await planTier(familyId)).toBe('family');
+  });
+
+  it('flag on: a survivor on the same tier keeps the plan with no page', async () => {
+    const h = harness(FLAG_ON);
+    const familyId = await paidFamily('plus', 'cus_one', 'sub_one');
+    buy(h.fake, 'one', familyId, { priceId: 'price_plus' });
+    buy(h.fake, 'two', familyId, { priceId: 'price_plus' });
+
+    await expect(h.apply(refundEvent(h.fake, 'ch_one'))).resolves.toEqual({
       status: 'kept',
       reason: 'duplicate_subscription',
     });
-
     expect(await planTier(familyId)).toBe('plus');
-    const [row] = await auditRows(familyId, 'family_plan_updated');
-    expect(row?.after).toMatchObject({
-      planTier: 'plus',
-      source: 'stripe',
-      stripeEventId: event.id,
-      reason: 'duplicate_refunded',
-    });
-    expect(h.fake.deletes()).toEqual([]);
+    expect(h.unresolved).toEqual([]);
   });
 
   it('flag on: an unmapped survivor keeps the plan and pages', async () => {
@@ -493,23 +515,27 @@ describe('the surviving tier', () => {
 
     await expect(h.apply(event)).resolves.toMatchObject({
       status: 'unresolved',
-      reason: 'surviving_plan_unmapped',
+      reason: 'surviving_plan_differs',
     });
     expect(await planTier(familyId)).toBe('family');
-    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'surviving_plan_unmapped' }]);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'surviving_plan_differs' }]);
     expect(await claimed(event.id)).toBe(true);
   });
 
-  it('flag off: no tier write', async () => {
+  it('flag off: no tier write and no page', async () => {
     const h = harness(FLAG_OFF);
     const familyId = await paidFamily('family', 'cus_max', 'sub_max');
     buy(h.fake, 'max', familyId, { priceId: 'price_max', status: 'canceled' });
     buy(h.fake, 'plus', familyId, { priceId: 'price_plus' });
 
-    await h.apply(refundEvent(h.fake, 'ch_max'));
+    await expect(h.apply(refundEvent(h.fake, 'ch_max'))).resolves.toEqual({
+      status: 'kept',
+      reason: 'active_subscription',
+    });
 
     expect(await planTier(familyId)).toBe('family');
     expect(await auditRows(familyId, 'family_plan_updated')).toEqual([]);
+    expect(h.unresolved).toEqual([]);
   });
 });
 
@@ -835,16 +861,23 @@ describe('customer.subscription.deleted, flag on', () => {
     expect(await planTier(familyId)).toBe('plus');
   });
 
-  it('positive control: a .deleted with nothing else live still drops', async () => {
+  it('positive control: a .deleted with nothing else live still drops, and is marked', async () => {
     const h = harness(FLAG_ON);
     const familyId = await paidFamily('plus', 'cus_only', 'sub_only');
     buy(h.fake, 'only', familyId);
+    const event = deletedEvent(h.fake, 'sub_only');
 
-    await expect(h.apply(deletedEvent(h.fake, 'sub_only'))).resolves.toEqual({
-      status: 'applied',
-      tier: 'free',
-    });
+    await expect(h.apply(event)).resolves.toEqual({ status: 'applied', tier: 'free' });
+
     expect(await planTier(familyId)).toBe('free');
+    const [marker] = await auditRows(familyId, 'billing_subscription_ended');
+    expect(marker?.after).toEqual({
+      source: 'stripe',
+      stripeEventId: event.id,
+      subscriptionId: 'sub_only',
+      reason: 'subscription_deleted',
+      tierChanged: true,
+    });
   });
 
   it('a .deleted with a refunded sibling cancels it and drops', async () => {
@@ -930,7 +963,37 @@ describe('races around the write', () => {
     expect(drops.length).toBe(1);
     const markers = await auditRows(familyId, 'billing_subscription_ended');
     expect(markers.length).toBe(1);
-    expect(markers[0]?.after).toMatchObject({ subscriptionId: 'sub_mid', tierChanged: false });
+    expect(markers[0]?.after).toMatchObject({
+      subscriptionId: 'sub_mid',
+      reason: 'subscription_deleted',
+      tierChanged: true,
+    });
+  });
+
+  it('a sibling whose .deleted lands before the refund commits can never re-grant', async () => {
+    const h = harness(FLAG_ON);
+    const familyId = await paidFamily('plus', 'cus_b', 'sub_b');
+    buy(h.fake, 'a', familyId, { customer: 'cus_a' });
+    buy(h.fake, 'b', familyId, { customer: 'cus_b' });
+    await h.apply(refundEvent(h.fake, 'ch_b'));
+    const last = refundEvent(h.fake, 'ch_a');
+    let delivered: unknown = null;
+    h.fake.duringDelete(async (id) => {
+      if (id === 'sub_b') delivered = await h.apply(deletedEvent(h.fake, 'sub_b'));
+    });
+
+    await expect(h.apply(last)).resolves.toEqual({ status: 'retry', reason: 'family_changed' });
+    expect(delivered).toEqual({ status: 'applied', tier: 'free' });
+    await expect(h.apply(last)).resolves.toEqual({ status: 'kept', reason: 'already_free' });
+    expect(statuses(h.fake)).toEqual(['canceled', 'canceled']);
+
+    await expect(h.apply(invoicePaidEvent(familyId, 'sub_b'))).resolves.toEqual({
+      status: 'blocked',
+    });
+    await expect(h.apply(invoicePaidEvent(familyId, 'sub_a'))).resolves.toEqual({
+      status: 'blocked',
+    });
+    expect(await planTier(familyId)).toBe('free');
   });
 
   it('a purchase committing between the read and the write stands', async () => {

@@ -160,6 +160,7 @@ export async function applyStripeBillingEvent(
   }
 
   const refs = stripeRefsFromStripeEvent(event);
+  let deletionGuarded = false;
   if (
     refs.subscriptionId &&
     isSubscriptionDeleted(event) &&
@@ -175,6 +176,7 @@ export async function applyStripeBillingEvent(
       deps,
     );
     if (guarded) return guarded;
+    deletionGuarded = true;
   }
   const blockedBy = refs.subscriptionId
     ? await subscriptionBlockedBy(database, familyId, refs.subscriptionId, deps)
@@ -232,6 +234,16 @@ export async function applyStripeBillingEvent(
       before: { planTier: existing[0]?.planTier ?? null },
       after: { planTier: tier, source: 'stripe', stripeEventId: eventId },
     });
+    if (deletionGuarded && refs.subscriptionId) {
+      await insertEndedMarker(
+        tx,
+        familyId,
+        eventId,
+        refs.subscriptionId,
+        'subscription_deleted',
+        existing[0]?.planTier !== 'free',
+      );
+    }
 
     return { status: 'applied', tier };
   });
@@ -353,6 +365,15 @@ async function decideChargeRevoke(
   }
 
   const settled = outcome;
+  // A refund that lost the race to `.deleted` still blocks late grants for S.
+  const markAlreadyEnded =
+    settled.action === 'keep' &&
+    settled.reason === 'already_free' &&
+    endsSubscription &&
+    linked.subscriptionId !== null &&
+    (await auditVerbNamingSubscription(database, familyId, linked.subscriptionId, [
+      'billing_subscription_ended',
+    ])) === null;
   return database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
     if (!(await claimEvent(tx, eventId))) return { status: 'duplicate' };
     if (settled.action === 'drop') {
@@ -367,23 +388,6 @@ async function decideChargeRevoke(
       return { status: 'applied', tier: 'free' };
     }
 
-    if (settled.setTier) {
-      await writePlanIfUnchanged(tx, familyId, family, settled.setTier);
-      await tx.insert(schema.auditLog).values({
-        familyId,
-        actor: 'system',
-        actionTaken: 'family_plan_updated',
-        targetTable: 'families',
-        targetId: familyId,
-        before: { planTier: family.planTier },
-        after: {
-          planTier: settled.setTier,
-          source: 'stripe',
-          stripeEventId: eventId,
-          reason: 'duplicate_refunded',
-        },
-      });
-    }
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: 'system',
@@ -391,15 +395,14 @@ async function decideChargeRevoke(
       targetTable: 'families',
       targetId: familyId,
       after: {
-        planTier: settled.setTier ?? family.planTier,
+        planTier: family.planTier,
         source: 'stripe',
         stripeEventId: eventId,
         reason: settled.reason,
-        tierChanged: settled.setTier !== undefined,
+        tierChanged: false,
       },
     });
-    // A refund that lost the race to `.deleted` still blocks late grants for S.
-    if (settled.reason === 'already_free' && endsSubscription && linked.subscriptionId) {
+    if (markAlreadyEnded && linked.subscriptionId) {
       await insertEndedMarker(tx, familyId, eventId, linked.subscriptionId, 'refund', false);
     }
     return { status: 'kept', reason: settled.reason };
@@ -725,7 +728,7 @@ async function insertEndedMarker(
   familyId: string,
   eventId: string,
   subscriptionId: string,
-  reason: 'refund' | 'other_subscription_live',
+  reason: 'refund' | 'other_subscription_live' | 'subscription_deleted',
   tierChanged: boolean,
 ): Promise<void> {
   await tx.insert(schema.auditLog).values({
