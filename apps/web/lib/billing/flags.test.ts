@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkoutServerCurrencyEnabled,
+  checkoutSuccessStatesEnabled,
   conversionsApiEnabled,
   holidayPromoEnabled,
   metaCapiEnabled,
@@ -35,5 +36,10 @@ describe('holiday/conversion flags', () => {
     expect(stripeBillingRevokeEnabled({})).toBe(false);
     expect(stripeBillingRevokeEnabled({ STRIPE_BILLING_REVOKE_ENABLED: 'on' })).toBe(false);
     expect(stripeBillingRevokeEnabled({ STRIPE_BILLING_REVOKE_ENABLED: 'true' })).toBe(true);
+    expect(checkoutSuccessStatesEnabled({})).toBe(false);
+    for (const value of ['TRUE', 'true\n', ' true', '1', 'on', '']) {
+      expect(checkoutSuccessStatesEnabled({ CHECKOUT_SUCCESS_STATES_ENABLED: value })).toBe(false);
+    }
+    expect(checkoutSuccessStatesEnabled({ CHECKOUT_SUCCESS_STATES_ENABLED: 'true' })).toBe(true);
   });
 });

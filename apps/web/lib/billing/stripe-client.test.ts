@@ -128,6 +128,27 @@ describe('stripeCheckoutClientFromEnv', () => {
     );
   });
 
+  it('asks Stripe to expand only what the caller names on a retrieve', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => new Response(JSON.stringify({ id: 'cs_test_1' })));
+    const client = stripeCheckoutClientFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchMock);
+    if (!client?.retrieveCheckoutSession) throw new Error('expected retrieve');
+
+    await client.retrieveCheckoutSession('cs_test_1');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://api.stripe.com/v1/checkout/sessions/cs_test_1',
+    );
+
+    await client.retrieveCheckoutSession('cs_test_1', { expand: ['subscription'] });
+    const url = new URL(String(fetchMock.mock.calls[1]?.[0]));
+    expect(`${url.origin}${url.pathname}`).toBe(
+      'https://api.stripe.com/v1/checkout/sessions/cs_test_1',
+    );
+    expect(url.searchParams.getAll('expand[]')).toEqual(['subscription']);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'GET' });
+  });
+
   it('throws (never returns a broken url) when Stripe responds non-2xx', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('nope', { status: 400 }));
     const client = stripeCheckoutClientFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchMock);

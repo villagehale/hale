@@ -197,6 +197,8 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** A family already on a paid plan paid again. Nothing refunds it on its own. */
+  checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
@@ -248,6 +250,7 @@ type OpsPageFacts<S extends OpsPageSite> = {
 const OPS_PAGE_PER_REF = [
   'registration_review_placed_order',
   'registration_review_unread',
+  'checkout_duplicate_payment',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

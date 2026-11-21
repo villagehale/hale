@@ -190,7 +190,7 @@ export function FoundingJoinForm({
           <div className={styles.stack}>
             <p className={styles.eyebrow}>Founding family</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
-            <p className={stage.lede}>Text Hale to start. Hale will not text first.</p>
+            <p className={stage.lede}>Text Hale to start.</p>
             <DeviceTextLink smsNumber={smsNumber} prefill={PORTAL_INTAKE_PREFILL} source={null}>
               Text Hale
             </DeviceTextLink>
@@ -213,7 +213,7 @@ export function FoundingJoinForm({
       ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
       : step === 'code' && !verified
         ? 'A code is on its way to this number.'
-        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime. Hale will not text first.`;
+        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime.`;
 
   return (
     <section className={`${stage.card} ${stage.door}`}>

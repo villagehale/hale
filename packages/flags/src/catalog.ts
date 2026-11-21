@@ -338,6 +338,12 @@ export const PAYMENT_ENV_ONLY = [
     type: 'boolean' as const,
     note: 'env-only; exact `true`; refund and dispute webhooks revoke the tier, checkout waits for an applied billing event, reconcile pages #ops; nothing in PostHog may turn this on',
   },
+  {
+    env: 'CHECKOUT_SUCCESS_STATES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; the checkout success page picks its state from Stripe and the DB. Read by apps/web and apps/site, so both Vercel projects carry it, hale-web first; nothing in PostHog may turn this on',
+  },
 ] as const;
 
 export function getFlag(key: string): FlagSpec {

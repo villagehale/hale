@@ -20,6 +20,12 @@ export const CHECKOUT_SERVER_CURRENCY_ENABLED_ENV = 'CHECKOUT_SERVER_CURRENCY_EN
  * follows STRIPE_WEBHOOK_SECRET and does not wait on this flag.
  */
 export const STRIPE_BILLING_REVOKE_ENABLED_ENV = 'STRIPE_BILLING_REVOKE_ENABLED';
+/**
+ * The checkout success page picks one state per buyer from Stripe and the DB.
+ * Read by this app and by apps/site; both Vercel projects carry it. Off unless
+ * the value is exactly `true`.
+ */
+export const CHECKOUT_SUCCESS_STATES_ENABLED_ENV = 'CHECKOUT_SUCCESS_STATES_ENABLED';
 
 export function holidayPromoEnabled(
   env: Record<string, string | undefined> = process.env,
@@ -53,4 +59,10 @@ export function stripeBillingRevokeEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[STRIPE_BILLING_REVOKE_ENABLED_ENV] === 'true';
+}
+
+export function checkoutSuccessStatesEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[CHECKOUT_SUCCESS_STATES_ENABLED_ENV] === 'true';
 }
