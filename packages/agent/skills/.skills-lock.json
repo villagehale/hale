@@ -203,6 +203,10 @@
     "file": "coach-signup-offer.md",
     "sha256": "0ff9df0dfc13a6f5c19c3f346d7aecbc4c39df6ed78c6e570b278ed9af199dd4"
   },
+  "coach-signup-terms.md": {
+    "file": "coach-signup-terms.md",
+    "sha256": "a0afd36df1ff2abf139951e069aefc1d33f6049d6629d4a9c91375841a0c97e3"
+  },
   "coach-voice-memo.md": {
     "file": "coach-voice-memo.md",
     "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"

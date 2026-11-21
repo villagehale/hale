@@ -134,7 +134,7 @@ export interface ChannelTransport {
    */
   sendImage?(input: { to: string; png: Uint8Array; filename: string }): Promise<{
     providerMessageId: string;
-    transport?: MessageTransport;
+    transport?: 'imessage';
     chatId?: string | null;
   }>;
 }

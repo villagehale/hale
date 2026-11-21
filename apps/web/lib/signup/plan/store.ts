@@ -18,10 +18,10 @@ import {
   loadPendingOffer,
   loadSignupIdentity,
 } from '../store';
+import { registrationPreflightEnabled } from '../terms/flag';
 import type { SignupTermsApproved } from '../terms/types';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
-import { registrationPreflightEnabled } from '../terms/flag';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;

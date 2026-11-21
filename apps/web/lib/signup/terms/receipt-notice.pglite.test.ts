@@ -7,11 +7,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import type { ReceiptResult } from '../browser-use/receipt';
-import {
-  MAX_RECEIPT_IMAGE_BYTES,
-  PLAN_RECEIPT_TEMPLATE,
-  createPlanNotifier,
-} from '../plan/notice';
+import { MAX_RECEIPT_IMAGE_BYTES, PLAN_RECEIPT_TEMPLATE, createPlanNotifier } from '../plan/notice';
 import type { PlanOutcomeNotice } from '../plan/run';
 import { recordSignupOffer } from '../store';
 

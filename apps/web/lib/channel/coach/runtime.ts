@@ -112,13 +112,13 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import { loadLiveAsks } from '~/lib/signup/asks';
 import {
   type ProviderWatchContext,
   loadProviderWatchContext,
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import { loadLiveAsks } from '~/lib/signup/asks';
 import {
   type RecordedSignupOffer,
   augmentCoachSkillForSignupOffer,
@@ -1187,6 +1187,14 @@ async function loadParentStatedFactValues(
     .map((row) => JSON.stringify({ factKey: row.factKey, factValue: row.factValue }));
 }
 
+/** The at-open addendum and, with pre-flight on for this family, what its refusals mean. */
+async function coachSignupAtOpen(preflight: boolean): Promise<Skill> {
+  const atOpen = await loadCronSkill('coach-signup-offer');
+  if (!preflight) return atOpen;
+  const terms = await loadCronSkill('coach-signup-terms');
+  return { ...atOpen, instructions: `${atOpen.instructions}\n\n${terms.instructions}` };
+}
+
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('household-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -1250,7 +1258,9 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             browserUseWatchEnabled(),
           ),
           signupOfferToolEnabled(),
-          signupAtOpenEnabled() ? await loadCronSkill('coach-signup-offer') : null,
+          signupAtOpenEnabled()
+            ? await coachSignupAtOpen(registrationPreflightEnabled(familyId))
+            : null,
         ),
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),

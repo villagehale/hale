@@ -49,7 +49,11 @@ const TERMS_UNREADABLE_FACTS: PlanReplyTerms = {
   unread: ['page'],
 };
 
-type ReceiptUnsent = Exclude<ReceiptResult, { ok: true }>['reason'] | 'transport_unsupported' | 'too_large' | 'send_failed';
+type ReceiptUnsent =
+  | Exclude<ReceiptResult, { ok: true }>['reason']
+  | 'transport_unsupported'
+  | 'too_large'
+  | 'send_failed';
 
 export const PLAN_RECEIPT_TEMPLATE = 'signup_plan_receipt';
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';

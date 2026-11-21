@@ -531,8 +531,10 @@ async function runOnePlan(
     offerId: plan.offerId,
     familyId: plan.familyId,
   });
-  if (termsRead.status === 'read') bound = termsRead.row;
   const approved = termsRead.status === 'read' ? termsRead.row.approved : null;
+  // Only a stored approval changes what this run does or says. Without one, flag off, the
+  // plan and its notice are today's.
+  if (termsRead.status === 'read' && approved) bound = termsRead.row;
   // The receipt follows the flag: an approval outliving the flag keeps its checks only.
   const onConfirmed =
     approved && registrationPreflightEnabled(plan.familyId)
