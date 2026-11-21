@@ -40,6 +40,8 @@
     "eval:activity-finder": "node evals/run-activity-finder-eval.mjs --cached-only",
     "eval:activity-deep": "node evals/run-activity-deep-eval.mjs --cached-only",
     "eval:turn-apology": "node evals/run-turn-apology-eval.mjs --cached-only",
+    "eval:ack-eta": "node evals/ack-eta-eval.mjs --cached-only",
+    "eval:ack-eta:dry": "node evals/ack-eta-eval.mjs --dry",
     "eval:holding-line": "node evals/run-holding-line-eval.mjs --cached-only",
     "eval:inbound-burst": "node evals/run-inbound-burst-eval.mjs --cached-only",
     "eval:inbound-side-turn": "node evals/run-inbound-side-turn-eval.mjs --cached-only",
