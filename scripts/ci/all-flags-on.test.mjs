@@ -1,11 +1,36 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FLAGS, PAYMENT_ENV_ONLY, envEnabled } from '../../packages/flags/src/catalog.ts';
-import { forcedOnEnv, formatEnv, isDefaultOff, onValue } from './all-flags-on.mjs';
+import { forcedOnEnv, formatEnv, isDefaultOff, launchSetEnv, onValue } from './all-flags-on.mjs';
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'all-flags-on.mjs');
+
+const HELD_OFF_AT_LAUNCH = [
+  'HOLIDAY_PROMO_ENABLED',
+  'PROMO_NEW_VISITOR_CHECKOUT_ENABLED',
+  'META_CAPI_ENABLED',
+  'CONVERSIONS_API_ENABLED',
+  'CHECKOUT_SERVER_CURRENCY_ENABLED',
+  'STRIPE_BILLING_REVOKE_ENABLED',
+  'LINQ_APP_CLIP_PAY_ENABLED',
+];
+
+function printedEnv(args) {
+  const printed = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+  expect(printed.status).toBe(0);
+  return Object.fromEntries(
+    printed.stdout
+      .trim()
+      .split('\n')
+      .map((line) => {
+        const at = line.indexOf('=');
+        return [line.slice(0, at), line.slice(at + 1)];
+      }),
+  );
+}
 
 describe('forcedOnEnv', () => {
   it('sets an on value per parser and leaves default-on flags unset', () => {
@@ -120,5 +145,67 @@ describe('all-flags-on CLI', () => {
     );
     expect(child.status).toBe(0);
     expect(child.stdout).toBe('true');
+  });
+});
+
+describe('--launch-set', () => {
+  it('holds promo and payment flags off and forces every other flag as before', () => {
+    const full = printedEnv([]);
+    const launch = printedEnv(['--launch-set']);
+    const expected = { ...full };
+    for (const name of HELD_OFF_AT_LAUNCH) {
+      expect(full[name]).toBe('true');
+      delete expected[name];
+    }
+    expect(launch).toEqual(expected);
+    expect(launch.BROWSER_USE_SIGNUP_PAYMENT_ENABLED).toBe('true');
+    expect(launch.LOOP_SEND_ENABLED).toBe('true');
+  });
+
+  it('holds off a payment flag added to the catalog later', () => {
+    const { env, unset } = launchSetEnv(
+      [],
+      [{ env: 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED' }, { env: 'NEW_PAYMENT_ENABLED' }],
+    );
+    expect(env).toEqual({ BROWSER_USE_SIGNUP_PAYMENT_ENABLED: 'true' });
+    expect(unset).toEqual(['NEW_PAYMENT_ENABLED']);
+  });
+
+  it('removes a held-off flag the caller exported and keeps the rest of the env', () => {
+    const read =
+      'process.stdout.write(JSON.stringify([process.env.HOLIDAY_PROMO_ENABLED ?? "unset", process.env.INHERITED_PROBE, process.env.LOOP_SEND_ENABLED]))';
+    const env = { ...process.env, HOLIDAY_PROMO_ENABLED: 'true', INHERITED_PROBE: 'kept' };
+
+    const launch = spawnSync(
+      process.execPath,
+      [script, '--launch-set', '--', process.execPath, '-e', read],
+      { encoding: 'utf8', env },
+    );
+    expect(launch.status).toBe(0);
+    expect(JSON.parse(launch.stdout)).toEqual(['unset', 'kept', 'true']);
+
+    const full = spawnSync(process.execPath, [script, '--', process.execPath, '-e', read], {
+      encoding: 'utf8',
+      env,
+    });
+    expect(full.status).toBe(0);
+    expect(JSON.parse(full.stdout)).toEqual(['true', 'kept', 'true']);
+  });
+});
+
+describe('flags-on CI job', () => {
+  const ci = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+  it('runs the launch set past a failed package and stays advisory', () => {
+    const job = ci.slice(ci.indexOf('\n  flags-on:\n'), ci.indexOf('\n  worker-evals:\n'));
+    expect(job).toContain('continue-on-error: true');
+    expect(job).toContain(
+      'run: node scripts/ci/all-flags-on.mjs --launch-set -- pnpm exec turbo run test --env-mode=loose --force --continue',
+    );
+
+    const required = ci.slice(ci.indexOf('\n  required:\n'));
+    const needs = required.match(/needs: \[(.+)\]/)[1].split(', ');
+    expect(needs).toContain('verify');
+    expect(needs).not.toContain('flags-on');
   });
 });
