@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import {
   groupLinkCardsEnabled,
   groupPollsEnabled,
@@ -314,7 +315,7 @@ async function speak(
   | { status: 'composed'; line: string; options: string[] }
   | { status: 'skipped'; reason: GroupExperienceVoiceSkip }
 > {
-  return composeGroupExperienceLine(
+  const spoken = await composeGroupExperienceLine(
     {
       skill: 'group-experience-voice',
       kind,
@@ -326,6 +327,13 @@ async function speak(
     ports.composer ?? productionGroupExperienceComposer(),
     deny,
   );
+  if (spoken.status === 'skipped') {
+    await sharedOpsPager.page({
+      site: 'group_moment_line_unwritten',
+      facts: { kind, reason: spoken.reason },
+    });
+  }
+  return spoken;
 }
 
 /** One group line per inbound message: a redelivered webhook claims the same key. */

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import type { FamilyPrivateSlice } from '../multi-family';
 import type { GroupExperienceReading } from './reading';
 import type { GroupExperienceStore } from './store';
@@ -341,6 +342,75 @@ describe('takeGroupExperienceTurn', () => {
       outcome: 'group_experience_1to1',
       notice: { skipped: 'not_sent' },
     });
+  });
+
+  it('a tied lock whose question the model cannot write pages #ops and sends nothing', async () => {
+    vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    const page = vi.spyOn(sharedOpsPager, 'page').mockResolvedValue('paged');
+    const group: string[] = [];
+    const twoOptions = [
+      { key: 'o1', text: 'Saturday', providerOptionId: null },
+      { key: 'o2', text: 'Sunday', providerOptionId: null },
+    ];
+    const result = await takeGroupExperienceTurn(
+      {
+        chatId: CHAT,
+        familyId: FAMILY,
+        senderHandle: '+15555550111',
+        senderUserId: 'user-1',
+        senderName: 'Priya',
+        senderFamilyId: FAMILY,
+        text: 'lock it',
+        messageId: 'm-tie',
+        language: 'en',
+        timeZone: 'America/Toronto',
+        now: NOW,
+        decided: 'time_lock',
+      },
+      {
+        database: {} as never,
+        composer: fakeGroupExperienceComposer({ fail: true }),
+        store: memoryStore(),
+        plans: {
+          ...(stubPlans() as object),
+          loadLivePoll: async () => ({
+            id: 'poll-1',
+            chatId: CHAT,
+            familyId: FAMILY,
+            question: 'which day?',
+            options: twoOptions,
+            expected: [],
+            providerMessageId: null,
+            origin: 'parent',
+          }),
+          loadPollTally: async () => ({
+            options: twoOptions.map((option) => ({
+              key: option.key,
+              text: option.text,
+              votes: 1,
+              voterNames: [],
+            })),
+            leaders: ['Saturday', 'Sunday'],
+            votedCount: 2,
+            waitingCount: 0,
+            waitingNames: [],
+            toGo: 0,
+          }),
+        } as never,
+        sendLine: async ({ text }) => {
+          group.push(text);
+          return { providerMessageId: 'g1' };
+        },
+        deny: async () => [],
+        households: async () => [FAMILY],
+      },
+    );
+    expect(group).toEqual([]);
+    expect(result).toMatchObject({ handled: true, outcome: 'group_experience_line_unsent' });
+    expect(page.mock.calls).toEqual([
+      [{ site: 'group_moment_line_unwritten', facts: { kind: 'time_tie', reason: 'unusable' } }],
+    ]);
+    page.mockRestore();
   });
 
   it('refuses a group line that repeats a deny-list term', async () => {

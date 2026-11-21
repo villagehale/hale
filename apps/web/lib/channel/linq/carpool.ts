@@ -3,6 +3,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte } from 'drizzle-
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor, textedHaleOneToOne } from '~/lib/channel/messaging-door';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import {
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
@@ -674,6 +675,13 @@ export async function considerSharedCarpoolTurn(
     const deny = (await input.deny()).filter((term) => !saidInChat(term, lines));
     const why = !line ? 'model' : groupLineLeaksPrivate(line, deny) ? 'private_leak' : null;
     if (!line || why) {
+      // A model miss already paged from the carpool voice; a refused line did not.
+      if (why === 'private_leak') {
+        await sharedOpsPager.page({
+          site: 'group_carpool_line_unwritten',
+          facts: { kind: 'ask_driver', reason: 'private_leak' },
+        });
+      }
       const id = await persistPlan(database, {
         chatId: input.chatId,
         familyId,

@@ -5,6 +5,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-destination';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqGroupScenesEnabled } from '../config';
@@ -21,7 +22,8 @@ import { GROUP_POLL_VOICE_SKILL, type GroupPollLineInput } from './poll-facts';
  * polls use the same composer with their own skill (`input.skill`).
  *
  * No fallback sentence. A line the model could not write is named
- * `voice_unavailable` / `model_failed` / `unusable` and nothing is sent.
+ * `voice_unavailable` / `model_failed` / `unusable` and nothing is sent. With the scenes on,
+ * #ops is paged for it (kept off the path a dark scenes flag leaves running as it always did).
  */
 
 export type GroupPlanRsvpVoiceSource = 'composed' | 'retry';
@@ -124,13 +126,28 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
   };
 }
 
+type GroupPlanLineResult =
+  | { status: 'composed'; source: GroupPlanRsvpVoiceSource; line: string }
+  | { status: 'skipped'; reason: GroupPlanRsvpVoiceSkip };
+
 export async function composeGroupPlanRsvpLine(
   input: GroupLineInput,
   composer: GroupPlanRsvpComposer | undefined,
-): Promise<
-  | { status: 'composed'; source: GroupPlanRsvpVoiceSource; line: string }
-  | { status: 'skipped'; reason: GroupPlanRsvpVoiceSkip }
-> {
+): Promise<GroupPlanLineResult> {
+  const result = await writeGroupPlanLine(input, composer);
+  if (result.status === 'skipped' && linqGroupScenesEnabled()) {
+    await sharedOpsPager.page({
+      site: 'group_plan_line_unwritten',
+      facts: { kind: input.kind, reason: result.reason },
+    });
+  }
+  return result;
+}
+
+async function writeGroupPlanLine(
+  input: GroupLineInput,
+  composer: GroupPlanRsvpComposer | undefined,
+): Promise<GroupPlanLineResult> {
   if (!composer) return { status: 'skipped', reason: 'voice_unavailable' };
   const attempt = async (prompt: 'full' | 'short'): Promise<{ line: string } | null> => {
     try {

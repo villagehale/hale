@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   loadAffectedDrivers,
@@ -226,6 +227,7 @@ describe('a ride in a shared chat', () => {
     await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
     await seedFamily(PARENT_B, 'Bao', 'Mia');
     const leaky = fakeCarpoolComposer('Who can drive Zephyrina to soccer Tuesday?');
+    const page = vi.spyOn(sharedOpsPager, 'page').mockResolvedValue('paged');
     const out = await say(
       'who can drive to soccer Tuesday 5:30?',
       PARENT_B,
@@ -239,6 +241,15 @@ describe('a ride in a shared chat', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'group_line_unsent'));
     expect(unsent.map((row) => (row.after as { why: string }).why)).toEqual(['private_leak']);
+    expect(page.mock.calls).toEqual([
+      [
+        {
+          site: 'group_carpool_line_unwritten',
+          facts: { kind: 'ask_driver', reason: 'private_leak' },
+        },
+      ],
+    ]);
+    page.mockRestore();
   });
 
   it('a kid the chat itself named may be in the ask (positive control)', async () => {

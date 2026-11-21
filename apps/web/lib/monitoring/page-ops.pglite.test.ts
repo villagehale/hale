@@ -475,6 +475,26 @@ describe('each site family pages through the primitive', () => {
     expect(audits.map((row) => row.action)).toEqual(['group_line_unsent', 'group_line_unsent']);
   }, 30_000);
 
+  it('a scene line no model could write pages once per kind per hour, naming the kind', async () => {
+    const moved = {
+      site: 'group_plan_line_unwritten',
+      facts: { kind: 'calendar_moved', reason: 'model_failed' },
+    } as const;
+    const which = {
+      site: 'group_plan_line_unwritten',
+      facts: { kind: 'which_plan', reason: 'model_failed' },
+    } as const;
+    expect(await pageOps(db.database, moved, { post, now: BASE })).toBe('paged');
+    expect(await pageOps(db.database, which, { post, now: BASE })).toBe('paged');
+    expect(await pageOps(db.database, moved, { post, now: BASE })).toBe('already_paged');
+    expect(posted).toEqual([
+      'Hale: ops page. site group_plan_line_unwritten. kind calendar_moved. reason model_failed.',
+      'Hale: ops page. site group_plan_line_unwritten. kind which_plan. reason model_failed.',
+    ]);
+    const next = new Date(BASE.getTime() + HOUR);
+    expect(await pageOps(db.database, moved, { post, now: next })).toBe('paged');
+  }, 30_000);
+
   it('a group plan text no model could write pages group_plan_unwritten and audits', async () => {
     stubWebhook();
     const { familyId } = await seedFamily(db.database, 'Birch Family');
