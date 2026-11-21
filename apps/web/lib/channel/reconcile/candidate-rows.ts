@@ -602,8 +602,10 @@ async function cancellationRows(
           sql`coalesce(${schema.authorizedSignupOffers.planResume}->>'phase', '') <> 'paying'`,
           // The phase is not evidence: the checkout review runs before the take-back is
           // read and can place the order. Only a recorded "nothing charged" backs it — a
-          // take-back before any run, or a run whose end says so.
-          sql`exists (select 1 from ${schema.auditLog} where ${schema.auditLog.familyId} = ${schema.authorizedSignupOffers.familyId} and ${schema.auditLog.targetId} = ${schema.authorizedSignupOffers.id}::text and ${schema.auditLog.actionTaken} = 'authorized_signup_step' and (${schema.auditLog.after}->>'step' = 'plan_cancelled' or (${schema.auditLog.after}->>'step' = 'plan_finished' and ${schema.auditLog.after}->>'charged' = 'nothing')))`,
+          // take-back before any run, or a run whose end says so. Not an ending an ops stop
+          // rewrote (stoppedFrom): its parent was told nothing, and the run's real ending may
+          // have left a registration or a waitlist place at the provider.
+          sql`exists (select 1 from ${schema.auditLog} where ${schema.auditLog.familyId} = ${schema.authorizedSignupOffers.familyId} and ${schema.auditLog.targetId} = ${schema.authorizedSignupOffers.id}::text and ${schema.auditLog.actionTaken} = 'authorized_signup_step' and (${schema.auditLog.after}->>'step' = 'plan_cancelled' or (${schema.auditLog.after}->>'step' = 'plan_finished' and ${schema.auditLog.after}->>'charged' = 'nothing' and ${schema.auditLog.after}->'stoppedFrom' is null)))`,
         ),
       )
       .orderBy(desc(schema.authorizedSignupOffers.planCancelRequestedAt))
