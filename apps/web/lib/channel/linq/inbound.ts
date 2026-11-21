@@ -643,6 +643,7 @@ async function privateCalendarReply(
       senderName: null,
       chatId: message.chatId,
       text: message.text,
+      sentAt: message.sentAt,
     },
   );
   if (!reply.handled) return null;

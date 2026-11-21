@@ -14,11 +14,16 @@ import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 export async function lastOneToOneLine(
   database: Database,
   input: { parentUserId: string; chatId: string },
-): Promise<{ providerMessageId: string | null; templateKey: string | null } | null> {
+): Promise<{
+  providerMessageId: string | null;
+  templateKey: string | null;
+  sentAt: Date | null;
+} | null> {
   const [row] = await database
     .select({
       providerMessageId: schema.channelMessages.providerMessageId,
       templateKey: schema.channelMessages.templateKey,
+      sentAt: schema.channelMessages.sentAt,
     })
     .from(schema.channelMessages)
     .where(

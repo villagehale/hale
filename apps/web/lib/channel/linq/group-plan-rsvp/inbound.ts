@@ -475,16 +475,22 @@ interface CalendarReplyScope {
  * After a which-plan line, only that line's plans: an ask it never mentioned is not reopened.
  * A line with no provider id, or one naming a plan that no longer exists, binds nothing.
  * Otherwise an open ask is answerable while Hale's last 1:1 line is one of the asks, and a
- * decline stays readable.
+ * decline stays readable. A reply written before Hale's last line went out crossed it, so it
+ * answers neither that ask nor that line.
  */
 async function calendarReplyScope(
   store: ReturnType<typeof createPostgresGroupPlanRsvpStore>,
   listed: PrivateCalendarCandidate[],
   lastLine: Awaited<ReturnType<typeof lastOneToOneLine>>,
+  replySentAt: Date | null | undefined,
 ): Promise<CalendarReplyScope> {
   const lastLineId = lastLine?.providerMessageId ?? null;
+  const crossedLastLine = Boolean(
+    replySentAt && lastLine?.sentAt && replySentAt.getTime() < lastLine.sentAt.getTime(),
+  );
   if (lastLine?.templateKey !== GROUP_PLAN_CALENDAR_WHICH_TEMPLATE) {
     const askIsLastLine =
+      !crossedLastLine &&
       lastLineId !== null &&
       listed.some(
         (item) =>
@@ -494,7 +500,7 @@ async function calendarReplyScope(
     return { open, linePlans: open.map((item) => ({ id: item.plan.id, title: item.plan.title })) };
   }
   const open =
-    lastLineId === null
+    lastLineId === null || crossedLastLine
       ? []
       : listed.filter((item) => item.consent.whichLine?.providerMessageId === lastLineId);
   const planIds = open[0]?.consent.whichLine?.planIds;
@@ -507,11 +513,14 @@ async function calendarReplyScope(
  * A line that put one plan to the parent is answered by a plain reply. Otherwise a reply binds
  * only a plan it names by a title word no other plan of that line, and no other open ask, has
  * (code-checked), and only when the reader also reads a decision on it. Naming a plan that is
- * no longer open binds nothing. A decision with no plan named is `ambiguous`, and Hale asks
- * which: the model alone never picks. No decision on any ask leaves the turn to the 1:1 door.
+ * no longer open binds nothing, and neither does a reply naming a plan this chat already
+ * closed, by a word no open ask has. A decision with no plan named is `ambiguous`, and Hale
+ * asks which: the model alone never picks. No decision on any ask leaves the turn to the 1:1
+ * door.
  */
 async function pickPrivateCalendarAsk(
   ports: GroupPlanRsvpInboundPorts,
+  store: ReturnType<typeof createPostgresGroupPlanRsvpStore>,
   input: { senderName: string | null; text: string },
   { open, linePlans }: CalendarReplyScope,
   listed: PrivateCalendarCandidate[],
@@ -527,6 +536,13 @@ async function pickPrivateCalendarAsk(
 > {
   const only = open[0];
   if (!only) return { kind: 'none' };
+  const closedTitles = await store.closedPlanTitles([
+    ...new Set(listed.map((item) => item.plan.chatId)),
+  ]);
+  const openTitles = listed.map((item) => item.plan.title);
+  if (closedTitles.some((title) => namesByOwnWord(input.text, title, openTitles))) {
+    return { kind: 'none' };
+  }
   if (open.length === 1 && linePlans.length === 1) {
     return { kind: 'one', plan: only.plan, consent: only.consent };
   }
@@ -650,7 +666,14 @@ async function askWhichCalendarPlan(
  */
 export async function considerPrivateCalendarReply(
   ports: GroupPlanRsvpInboundPorts,
-  input: { senderUserId: string; senderName: string | null; chatId: string; text: string },
+  input: {
+    senderUserId: string;
+    senderName: string | null;
+    chatId: string;
+    text: string;
+    /** When the parent wrote this reply, per Linq, or null when the provider gave none. */
+    sentAt?: Date | null;
+  },
 ): Promise<GroupPlanRsvpTurnOutcome | { handled: false }> {
   if (!linqGroupPlanRsvpCalendarEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
@@ -662,7 +685,7 @@ export async function considerPrivateCalendarReply(
           chatId: input.chatId,
         })
       : null;
-  const scope = await calendarReplyScope(store, listed, lastLine);
+  const scope = await calendarReplyScope(store, listed, lastLine, input.sentAt);
   if (scope.open.length < listed.length) {
     console.info(
       {
@@ -672,7 +695,7 @@ export async function considerPrivateCalendarReply(
       'group plan calendar: 1:1 reply left to the 1:1 door',
     );
   }
-  const picked = await pickPrivateCalendarAsk(ports, input, scope, listed);
+  const picked = await pickPrivateCalendarAsk(ports, store, input, scope, listed);
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {
     const which = await askWhichCalendarPlan(ports, store, input, picked.candidates);

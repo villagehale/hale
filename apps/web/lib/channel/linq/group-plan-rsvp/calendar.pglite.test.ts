@@ -1310,6 +1310,114 @@ describe('Hale never opens a 1:1 cold', () => {
   });
 });
 
+describe('a 1:1 reply that cannot be an answer to the open ask', () => {
+  const ASKED_AT = new Date(NOW.getTime() + 30_000);
+
+  async function openAsk(title: string) {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title,
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    await store.claimCalendarAsk({
+      planId: plan.id,
+      familyId: priya.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await askWasSent(store, { planId: plan.id, ...priya, messageId: 'ask-1', at: ASKED_AT });
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    const ports = {
+      database: db.database,
+      now: new Date(NOW.getTime() + 60_000),
+      composer: fakeGroupPlanRsvpComposer(),
+      consentReader: {
+        read: async () => ({ decision: 'ok' as const, confidence: 'high' as const }),
+      },
+      oneToOne: {
+        text: async () => ({ providerMessageId: 'priv-ok', chatId: PRIVATE_CHAT }),
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    };
+    const reply = (text: string, sentAt: Date | null) =>
+      considerPrivateCalendarReply(ports, {
+        senderUserId: priya.userId,
+        senderName: 'Priya',
+        chatId: PRIVATE_CHAT,
+        text,
+        sentAt,
+      });
+    const status = async () =>
+      (await store.loadCalendarConsent(plan.id, priya.familyId))?.status;
+    return { priya, store, reply, status };
+  }
+
+  it('a yes written before the ask went out does not answer it', async () => {
+    const { reply, status } = await openAsk('Saturday picnic');
+    const out = await reply('yes', new Date(ASKED_AT.getTime() - 5_000));
+    expect(out.handled).toBe(false);
+    expect(await status()).toBe('asked');
+    expect(await db.database.select().from(schema.familyEvents)).toHaveLength(0);
+  });
+
+  it('the same yes written after the ask answers it (positive control)', async () => {
+    const { reply, status } = await openAsk('Saturday picnic');
+    const out = await reply('yes', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(true);
+    expect(await status()).toBe('written');
+  });
+
+  it('a reply naming a closed plan by a word the open ask lacks does not answer it', async () => {
+    const { priya, reply, status } = await openAsk('Saturday picnic');
+    await db.database.insert(schema.linqGroupPlans).values({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'museum visit',
+      expectedCount: 0,
+      createdByUserId: priya.userId,
+      closedAt: NOW,
+    });
+    const out = await reply('yes the museum', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(false);
+    expect(await status()).toBe('asked');
+  });
+
+  it('a reply naming the open ask still answers it with a closed plan in the chat (positive control)', async () => {
+    const { priya, reply, status } = await openAsk('Saturday picnic');
+    await db.database.insert(schema.linqGroupPlans).values({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'museum visit',
+      expectedCount: 0,
+      createdByUserId: priya.userId,
+      closedAt: NOW,
+    });
+    const out = await reply('yes the picnic', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(true);
+    expect(await status()).toBe('written');
+  });
+});
+
 describe('a 1:1 yes after Hale asked something else', () => {
   it('is not read as calendar consent, and is once the ask is the last line again', async () => {
     const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });

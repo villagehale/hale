@@ -471,6 +471,12 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return null;
     },
 
+    async closedPlanTitles(chatIds) {
+      return plansById()
+        .filter((row) => chatIds.includes(row.chatId) && row.closedAt !== null)
+        .map((row) => row.title);
+    },
+
     async planTitles(planIds) {
       return planIds.flatMap((id) => {
         const plan = world.plans.get(id);

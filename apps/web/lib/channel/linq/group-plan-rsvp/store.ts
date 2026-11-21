@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gte, inArray, isNull, lt, notExists, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, notExists, sql } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { linqGroupScenesEnabled } from '../config';
@@ -118,6 +118,9 @@ export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded';
 
 const SINGLE_OPEN_PLAN_INDEX = 'linq_group_plans_live_chat_uniq';
 
+/** How many of a chat's closed plans a 1:1 reply is checked against. */
+const CLOSED_PLAN_RIVALS = 25;
+
 /**
  * The chat's one-open-plan unique index refused a second open plan. It stays until the
  * migration that ships with LINQ_GROUP_SCENES_ENABLED replaces it.
@@ -221,6 +224,8 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     asks: readonly { planId: string; familyId: string }[],
     providerMessageId: string,
   ): Promise<void>;
+  /** The titles of these chats' most recently closed plans, newest first. */
+  closedPlanTitles(chatIds: readonly string[]): Promise<string[]>;
   /** A parent's first name, to address a line to them. */
   parentFirstName(userId: string): Promise<string | null>;
   /** The titles of these plans, closed ones included. A plan that no longer exists is absent. */
@@ -929,6 +934,22 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             ),
           );
       }
+    },
+
+    async closedPlanTitles(chatIds) {
+      if (chatIds.length === 0) return [];
+      const rows = await database
+        .select({ title: schema.linqGroupPlans.title })
+        .from(schema.linqGroupPlans)
+        .where(
+          and(
+            inArray(schema.linqGroupPlans.chatId, [...chatIds]),
+            isNotNull(schema.linqGroupPlans.closedAt),
+          ),
+        )
+        .orderBy(desc(schema.linqGroupPlans.createdAt))
+        .limit(CLOSED_PLAN_RIVALS);
+      return rows.map((row) => row.title);
     },
 
     async parentFirstName(userId) {
