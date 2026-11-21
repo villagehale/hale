@@ -14,6 +14,10 @@ export type {
   FamilyEventNotes,
   NewFamilyEvent,
 } from './schema/family-events.js';
+export type {
+  BringItemsSourceKind,
+  FamilyEventBringItems,
+} from './schema/family-event-bring-items.js';
 export { householdFamilyEvent, householdRemovedFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {

@@ -35,6 +35,8 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
 import { deliverableNow, loadLoopPrefsView } from '~/lib/loop/prefs';
+import { type EmailBringPorts, captureEmailBringItems } from '~/lib/loop/reminders/bring/email';
+import type { BringItemsReader } from '~/lib/loop/reminders/bring/read';
 import type { SourceChange } from '~/lib/loop/reminders/change';
 import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
@@ -634,6 +636,10 @@ export interface EmailAlertPorts {
    * then dropped (VIL-619). Unset, or EMAIL_ALERT_BODY_ENABLED off, keeps the facts-only
    * writer. The classifier's own fetch is a different call and already gone. */
   readAlertBody?(messageId: string): Promise<string>;
+  /** VIL-720 · reads what this email asks the family to bring (loop/reminders/bring). Read
+   * only while BRING_ITEMS_REMINDER_ENABLED is on; unset is `not_configured`, logged. Its
+   * body comes from `readAlertBody`, a fetch of its own, dropped after the read. */
+  readBringItems?: BringItemsReader;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. `body` is this
    * message's text for this compose only, or null when the flag is off. */
@@ -762,6 +768,42 @@ export async function alertParentForEmail(
         'email alert: household group mail notice was not posted',
       );
     }
+  }
+
+  // VIL-720 · AN EMAIL ABOUT AN EVENT THE FAMILY HOLDS may say what to bring for it
+  // ("swim tomorrow, bring goggles"). Kept against that event for THIS parent's reminder,
+  // above the quiet return below, which is where such an email usually lands. Dark while
+  // BRING_ITEMS_REMINDER_ENABLED is off; never throws.
+  if (
+    extraction.matchedEventRef?.table === 'family_events' &&
+    extraction.matchedEventRef.id &&
+    extraction.matchedEventCount === 1
+  ) {
+    await captureEmailBringItems(
+      database,
+      {
+        familyId,
+        parentUserId,
+        integrationId,
+        messageId,
+        envelope: input.envelope,
+        kind,
+        event: {
+          title: extraction.event.title,
+          startsAt: extraction.event.newTime ?? extraction.event.originalTime,
+        },
+        eventId: extraction.matchedEventRef.id,
+        teen: async () =>
+          extraction.teenContent ||
+          extraction.teenAttributed ||
+          namesTeenChild(
+            [input.envelope.subject, input.envelope.snippet],
+            await ports.familyChildren(),
+          ),
+        now,
+      },
+      bringPortsOf(ports),
+    );
   }
 
   // VIL-662 · a matched team schedule change updates the calendar (ask, or
@@ -1002,6 +1044,30 @@ export async function alertParentForEmail(
     }
     console.warn({ familyId, reason: verdict.reason }, 'email alert: held by the outbound gate');
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
+  }
+
+  // VIL-720 · THE OCCASION THIS TEXT OFFERS TO ADD may come with what to bring. Kept
+  // pending on the offer's own (integration, message) pair, after the gate let the text
+  // through (a held text is read again when it is re-offered) and before the hand-off, so
+  // the live cadence's later send finds it too. The parent's yes attaches it to the event
+  // (email-alert-offer.ts). Dark while the flag is off; never throws.
+  if (offer !== null) {
+    await captureEmailBringItems(
+      database,
+      {
+        familyId,
+        parentUserId,
+        integrationId,
+        messageId,
+        envelope: input.envelope,
+        kind,
+        event: { title: offer.title, startsAt: offer.startsAt.toISOString() },
+        eventId: null,
+        teen: async () => extraction.teenContent || teenAttributed,
+        now,
+      },
+      bringPortsOf(ports),
+    );
   }
 
   // The notice is the whole text. sending:false stamps the receipt and composes no
@@ -1282,6 +1348,15 @@ export async function alertParentForEmail(
     alert: 'sent',
     booking,
     going: counted === null ? null : goingOutcome(counted),
+  };
+}
+
+/** VIL-720 · the alert's own body fetch and the bring reader, as the capture's ports. */
+function bringPortsOf(ports: EmailAlertPorts): EmailBringPorts {
+  const { readAlertBody, readBringItems } = ports;
+  return {
+    readBody: readAlertBody ? (messageId) => readAlertBody.call(ports, messageId) : undefined,
+    readBringItems,
   };
 }
 

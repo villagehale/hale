@@ -4,6 +4,9 @@ import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
+import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
   ActivityPromise,
@@ -90,13 +93,13 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
-import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
@@ -145,20 +148,21 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
-import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
-import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
-import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   expireEmailAlertOffer,
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
+import {
+  type CoachBringPorts,
+  captureCoachOfferBringItems,
+} from '~/lib/loop/reminders/bring/photo';
 import { noteCrisisReplySent, pageOps, reportTurnFailures } from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
@@ -549,6 +553,13 @@ export interface ChannelRouterDeps {
    * no model.
    */
   calendarOffers: CalendarOfferPorts;
+  /**
+   * VIL-720 · reads what a flyer the parent sent 1:1 asks them to bring, once the coach's
+   * answer offered to add its occasion (loop/reminders/bring/photo.ts). Read only while
+   * BRING_ITEMS_REMINDER_ENABLED is on. Absent is `not_configured`, logged; nothing else
+   * about the turn changes.
+   */
+  bringItems?: CoachBringPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
   /** Pages #ops when a crisis moment gets no reply. Absent: the real pager
@@ -2592,6 +2603,10 @@ async function recordCoachOfferFromReply(
     said: string;
     channelMessageId: string;
     now: Date;
+    /** VIL-720 · the parent's own words this turn, and the photos they sent with them. */
+    parentWords: string;
+    inboundMedia: readonly InboundMediaPart[];
+    audience: 'direct' | 'group';
   },
 ): Promise<void> {
   if (input.said.trim() === '') return;
@@ -2613,6 +2628,24 @@ async function recordCoachOfferFromReply(
       now: input.now,
     });
     deps.log.info({ outcome }, 'channel router: coach calendar offer');
+    // VIL-720 · the offer stands on this turn's flyer: what it says to bring waits on the
+    // parent's yes. Dark while the flag is off; never throws; the answer already went.
+    if (outcome === 'recorded') {
+      await captureCoachOfferBringItems(
+        deps.database,
+        {
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+          channelMessageId: input.channelMessageId,
+          parentWords: input.parentWords,
+          event: { title: extracted.title, startsAt: extracted.startsAt.toISOString() },
+          media: input.inboundMedia,
+          audience: input.audience,
+          now: input.now,
+        },
+        deps.bringItems,
+      );
+    }
   } catch (err) {
     deps.log.error(
       { detail: err instanceof Error ? err.constructor.name : 'unknown' },
@@ -2992,6 +3025,9 @@ async function runAgentTurn(
       said,
       channelMessageId,
       now: args.turn.now,
+      parentWords: args.turn.body,
+      inboundMedia: args.turn.inboundMedia ?? [],
+      audience: args.audience,
     });
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,

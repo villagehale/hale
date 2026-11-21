@@ -65,6 +65,7 @@ import {
   syncConnection,
 } from '~/lib/integrations/sync';
 import { decryptTokens } from '~/lib/integrations/token-vault';
+import { productionBringItemsReader } from '~/lib/loop/reminders/bring/reader';
 import { budgetedAnthropic, pipelineClient } from '~/lib/pipeline/client';
 import {
   type FamilyChildRef,
@@ -563,6 +564,8 @@ export function emailAlertPorts(
     parentLanguage: (parentUserId, _now) =>
       readParentLanguage(database, { familyId, parentUserId }),
     readAlertBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
+    // VIL-720 · read only while BRING_ITEMS_REMINDER_ENABLED is on (loop/reminders/bring).
+    readBringItems: productionBringItemsReader(pipelineClient),
     writeNotice: (facts, family, body) =>
       composeEmailAlertNotice(pipelineClient(), facts, family, body),
     rereadEnvelope: (messageId) => readGmailAlertEnvelope(googleGetFetch, accessToken, messageId),
