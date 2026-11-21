@@ -173,6 +173,9 @@ export const AUDIT_VERBS = [
   // An activity from the first find put on the family calendar as a reminder
   // (one-off or weekly). It is not a registration.
   'onboarding_schedule_added',
+  // VIL-721. What the kids already do, told in the onboarding thread and kept as
+  // family memory. `after` is counts only: no activity, no name.
+  'onboarding_activities_kept',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -829,6 +832,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   onboarding_schedule_added: {
     sentence: 'you put an activity from the find on your calendar as a reminder',
+    family: 'done',
+  },
+  onboarding_activities_kept: {
+    sentence: 'you told Hale what the kids already do, and it kept that',
     family: 'done',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },

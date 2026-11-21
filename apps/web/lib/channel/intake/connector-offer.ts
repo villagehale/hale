@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { offerConnectorLinks, offerGoogleBundleLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
@@ -54,6 +54,13 @@ export function calendarCardDedupeKey(familyId: string): string {
 
 export function gmailCardDedupeKey(familyId: string): string {
   return `${INTAKE_GMAIL_CARD_TEMPLATE_KEY}:${familyId}`;
+}
+
+/** VIL-721. The one card whose link connects Gmail and the calendar together. */
+export const INTAKE_GOOGLE_CARD_TEMPLATE_KEY = 'intake:google_card';
+
+export function googleCardDedupeKey(familyId: string): string {
+  return `${INTAKE_GOOGLE_CARD_TEMPLATE_KEY}:${familyId}`;
 }
 
 export interface ConnectorOfferPorts {
@@ -178,7 +185,7 @@ export async function sendYearConnectorCards(
     ...(gmailClaim ? [{ spec: gmailSpec, claimId: gmailClaim.id }] : []),
   ];
 
-  const urls = new Map<'gcal' | 'gmail', string>();
+  const urls = new Map<ConnectorCard['provider'], string>();
   if (needed.length > 0) {
     const minted = await offerConnectorLinks(database, {
       familyId: args.familyId,
@@ -229,6 +236,73 @@ export async function sendYearConnectorCards(
   return { calendar, gmail };
 }
 
+/**
+ * VIL-721. The one card: the model's prose, then ONE link that opens one Google consent
+ * asking for Gmail and the calendar together, so the parent taps once and meets
+ * Google's unverified-app screen once. The prose is the model's ask, written with that
+ * screen as a fact; there is no fixed line, so no prose means no card (`voice_unsent`).
+ *
+ * Same discipline as the per-provider cards: one claim per family on the dedupe key,
+ * quiet hours unless it rides the parent's own reply, every decline named, and a card
+ * whose link never went is not a sent card (its claim and key are released).
+ */
+export async function sendGoogleConnectorCard(
+  database: Database,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    phoneE164: string;
+    now: Date;
+    ridesReply?: boolean;
+    /** The model's prose for the ask. Absent or empty sends no card. */
+    voice: string | undefined;
+  },
+  ports: ConnectorOfferPorts,
+): Promise<ConnectorOfferLabel> {
+  if (
+    !args.ridesReply &&
+    inProactiveQuietHours(args.now, await parentTimeZone(database, args.parentUserId))
+  ) {
+    await database.insert(schema.channelMessages).values({
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'intake',
+      templateKey: INTAKE_GOOGLE_CARD_TEMPLATE_KEY,
+      dedupeKey: null,
+      status: 'suppressed_quiet_hours',
+    });
+    console.warn(
+      { familyId: args.familyId },
+      'intake google card: held for quiet hours - this family is not asked tonight',
+    );
+    return 'suppressed_quiet_hours';
+  }
+  const spec: ConnectorCard = {
+    provider: 'google',
+    templateKey: INTAKE_GOOGLE_CARD_TEMPLATE_KEY,
+    dedupeKey: googleCardDedupeKey(args.familyId),
+    prose: cardProse(args.voice),
+  };
+  const claim = await claimConnectorCard(database, args, spec);
+  if (!claim) return 'already_sent';
+  const minted = await offerGoogleBundleLink(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    now: args.now,
+  });
+  if (minted.status !== 'minted') {
+    await failClaim(database, claim.id, minted.status);
+    console.warn(
+      { familyId: args.familyId, reason: minted.status },
+      'intake google card: no link to send',
+    );
+    return minted.status;
+  }
+  return finishConnectorCard(database, args, ports, spec, claim.id, minted.url);
+}
+
 /** The model's prose with any URL it wrote dropped; the minted one is sent after it. */
 function cardProse(prose: string | undefined): string | null {
   const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
@@ -237,7 +311,8 @@ function cardProse(prose: string | undefined): string | null {
 }
 
 interface ConnectorCard {
-  provider: 'gcal' | 'gmail';
+  /** `google` is VIL-721's one card: one link for Gmail and the calendar together. */
+  provider: 'gcal' | 'gmail' | 'google';
   templateKey: string;
   dedupeKey: string;
   prose: string | null;

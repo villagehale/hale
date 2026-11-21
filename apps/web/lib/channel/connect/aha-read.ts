@@ -49,7 +49,8 @@ export interface AhaOverlap {
 }
 
 export interface AhaSnapshot {
-  provider: 'gcal' | 'gmail';
+  /** `google` is VIL-721's one link: a Gmail read and a calendar read, merged. */
+  provider: 'gcal' | 'gmail' | 'google';
   read: AhaRead;
   calendar: AhaCalendarFact[];
   email: AhaEmailFact[];
@@ -64,12 +65,40 @@ export interface AhaFetchResponse {
 
 export type AhaGoogleFetch = (url: string, accessToken: string) => Promise<AhaFetchResponse>;
 
-export function failedAha(provider: 'gcal' | 'gmail'): AhaSnapshot {
+export function failedAha(provider: AhaSnapshot['provider']): AhaSnapshot {
   return { provider, read: 'failed', calendar: [], email: [], overlaps: [] };
 }
 
 export function emptyAha(provider: 'gcal' | 'gmail'): AhaSnapshot {
   return { provider, read: 'empty', calendar: [], email: [], overlaps: [] };
+}
+
+/**
+ * VIL-721. The one-link connect reads each source on its own (each with its own teen
+ * rule) and hands the model ONE snapshot. `ok` when any part read items; otherwise
+ * `withheld` only when no part has an item to filter, then `empty`, then `failed`. A
+ * part's items are kept as read; the kid filter runs on the merged snapshot, because
+ * it runs on every `ok` read (aha-kids.ts) and a merged `withheld` would skip it.
+ */
+export function mergeAhaSnapshots(parts: readonly AhaSnapshot[]): AhaSnapshot {
+  const calendar = parts.flatMap((part) => part.calendar);
+  const email = parts.flatMap((part) => part.email);
+  const reads = parts.map((part) => part.read);
+  const hasItems = calendar.length > 0 || email.length > 0;
+  const read: AhaRead = reads.includes('ok')
+    ? 'ok'
+    : !hasItems && reads.includes('withheld')
+      ? 'withheld'
+      : reads.length === 0 || reads.includes('failed')
+        ? 'failed'
+        : 'empty';
+  return {
+    provider: 'google',
+    read,
+    calendar,
+    email,
+    overlaps: parts.flatMap((part) => part.overlaps),
+  };
 }
 
 /**

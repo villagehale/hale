@@ -159,6 +159,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `TEAM_SCHEDULE_CHANGES_ENABLED` | `apps/web/lib/integrations/team-schedule/flag.ts` (compared at `teamScheduleChangesEnabled`) | `true` | OFF | `false` | Barton |
 | `TEAM_SCHEDULE_CHANGES_FAMILY_ALLOWLIST` | `apps/web/lib/integrations/team-schedule/flag.ts` | comma-separated family ids | empty | empty | Barton |
 | `TEEN_NAME_SHARED_MATCHER_ENABLED` | `apps/web/lib/privacy/teen-name.ts:15` | `true` | OFF | `false` | Noah |
+| `THREAD_ONBOARDING_V2_ENABLED` | `apps/web/lib/channel/intake/thread-onboarding-v2.ts` (`threadOnboardingV2Enabled`; parsed `exact` in `packages/flags/src/catalog.ts`) | `true` | OFF | `false` | Sloane |
 | `TRAVEL_BRIEF_ENABLED` | `apps/web/lib/channel/lanes.ts:21` via `apps/web/lib/travel/flag.ts:35` (the lane helper, as `travel_brief`); a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows it (:48-53) | `true` | OFF | unset it — off is off for every household; while on, a non-empty `TRAVEL_BRIEF_FAMILY_ALLOWLIST` narrows the brief to the listed households | Sloane |
 | `VILLAGE_INTROS_ENABLED` | `apps/web/lib/village/intros/run.ts:103` (gate at :1211; an allowlist cannot arm it) | `true` | OFF | `false` | Noah |
 | `VOICE_DISABLED` | `apps/web/lib/channel/reply-copy/client.ts:12`; also `apps/web/lib/loop/voice/compose.ts:64`, `apps/web/lib/channel/linq/group-onboarding-voice.ts:116`, `apps/web/lib/channel/linq/group-plan-rsvp/voice.ts:64`, `apps/web/lib/channel/linq/shared-group-reading.ts:182`, `apps/web/lib/channel/linq/shared-group-voice.ts:125` | unset (inverted: `true` turns voice off) | voice runs | `true` | Sloane |
@@ -253,6 +254,7 @@ One extra signal is named on the row.
 Dependencies, as the code reads them:
 
 - `TRAVEL_BRIEF_ENABLED` and `CHECK_IN_ANCHOR_ENABLED` need `F14_ENABLED` for the family.
+- `THREAD_ONBOARDING_V2_ENABLED` needs `COLD_START_LADDER_ENABLED` (the friend walk it rides). With the ladder off it stays dark, so the older ladder keeps its own name ask and connector cards.
 - `TEAM_SCHEDULE_CHANGES_ENABLED` needs `EMAIL_ALERT_ENABLED` (it runs inside the Gmail alert join) and migration `0229_team_schedule_changes`.
 - `EMAIL_ALERT_BODY_ENABLED` needs `EMAIL_ALERT_ENABLED`.
 - `NEXT_DAY_CHECKBACK_ENABLED` needs `WORKSTREAMS_ENABLED` (its only signal is a `waiting_on_parent` workstream) and `F14_ENABLED` for the family.
