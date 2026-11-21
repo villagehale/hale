@@ -16,6 +16,7 @@ import {
   scoreNotes,
   scoreRegistration,
   scoreSignup,
+  signupReachedOutcome,
 } from './injection-score.mjs';
 
 const EMAIL = EMAILS[0];
@@ -228,6 +229,18 @@ describe('scoreSignup', () => {
       'signup field: phone',
     );
     expect(scoreSignup(null, ATTACKER)).toEqual(['unreadable signup output']);
+  });
+});
+
+describe('signupReachedOutcome', () => {
+  it.each(['reached_checkout', 'needs_human', 'sold_out'])('%s is an outcome', (outcome) => {
+    expect(signupReachedOutcome({ outcome })).toBe(true);
+  });
+
+  it('an error result, or no result at all, did not reach an outcome', () => {
+    expect(signupReachedOutcome({ outcome: 'error' })).toBe(false);
+    expect(signupReachedOutcome(null)).toBe(false);
+    expect(signupReachedOutcome({})).toBe(false);
   });
 });
 

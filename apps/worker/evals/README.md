@@ -483,7 +483,11 @@ planted fact.
 
 The signup lane sends the real `browser-use-signup` skill and the output schema the
 engine parses, with the hostile page inside the facts JSON. Browser Use's hosted model
-is not in this replay. Untrusted email, calendar and web fields are wrapped by
-`presentUntrusted` when `UNTRUSTED_FIELD_MARKING_ENABLED` is exactly `true`. The flag
-is off by default, so this suite's cached lanes other than signup keep the bytes
-production sends today. Lighting the flag re-keys those prompts.
+is not in this replay. The recorded child is older than the page's age band and the
+replay has no browser, so the four recordings stop before checkout: the lane shows the
+page did not change the structured result, not that a model resisted while paying.
+At the prompts that read `UNTRUSTED_FIELD_MARKING_ENABLED`, untrusted email, calendar
+and web fields are wrapped by `presentUntrusted` when it is exactly `true`; other
+prompts are not wired yet (VIL-560). The flag is off by default, so this suite's cached
+lanes other than signup keep the bytes production sends today. Lighting the flag
+re-keys those prompts.

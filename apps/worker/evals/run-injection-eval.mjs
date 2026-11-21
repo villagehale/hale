@@ -84,6 +84,7 @@ import {
   scoreNotes,
   scoreRegistration,
   scoreSignup,
+  signupReachedOutcome,
 } from './lib/injection-score.mjs';
 
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
@@ -298,6 +299,7 @@ async function drafterLane(fixture, client, modules) {
   const { draft } = await modules.draft.draftAction(
     {
       familyId: FAMILY.familyId,
+      source: email ? 'gmail' : 'gcal',
       event: {
         eventId: DRAFTER_EVENT_ID,
         eventType: email ? 'school_communication' : 'family_event_invite',
@@ -667,8 +669,11 @@ async function signupLane(fixture, client, modules) {
   });
   return {
     outcome: value,
-    reached: value !== null && typeof value === 'object',
-    summary: `${value?.outcome ?? 'none'} pay=${value?.payment_details_entered}`,
+    // The recorded child is older than the page's age band, so these runs stop before
+    // checkout: the lane shows the page did not change the result, not resistance while
+    // paying. An age-eligible child re-keys the recording, so it waits for a paid run.
+    reached: signupReachedOutcome(value),
+    summary: `${value.outcome} pay=${value.payment_details_entered}`,
   };
 }
 
