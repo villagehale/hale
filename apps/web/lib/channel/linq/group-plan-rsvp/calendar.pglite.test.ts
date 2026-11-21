@@ -136,7 +136,6 @@ async function haleLine(input: {
       providerChatId: input.chatId,
       status: 'sent',
       sentAt: input.at,
-      sendRecordedAt: input.at,
       createdAt: input.at,
     })
     .returning({ id: schema.channelMessages.id });
@@ -1614,18 +1613,25 @@ async function twoOpenAsks(gapMs: number) {
   return { priya, ports, status };
 }
 
-describe('a 1:1 reply with several calendar asks open: the newest ask, code-checked', () => {
-  it('a bare yes answers the newest ask (the last line), never the older one', async () => {
+describe('a 1:1 reply with several calendar asks open: only a named plan binds', () => {
+  it.each([
+    ['a bare yes, even long after the newest ask', 'yes'],
+    ['a positional reference', 'yes to the first one'],
+    ['a misspelled title', 'yes to the picnik'],
+    ['a translated title', 'oui pour le pique-nique'],
+  ])('%s binds nothing and Hale asks which', async (_label, text) => {
     const { priya, ports, status } = await twoOpenAsks(60_000);
-    const yes = await considerPrivateCalendarReply(ports, {
+    const reply = await considerPrivateCalendarReply(ports, {
       senderUserId: priya.userId,
       senderName: 'Priya',
       chatId: PRIVATE_CHAT,
-      text: 'yes',
+      text,
     });
-    expect(yes.handled).toBe(true);
-    expect(await status()).toEqual({ picnic: 'asked', museum: 'written' });
-    expect(ports.composer.calls.some((call) => call.input.kind === 'calendar_which')).toBe(false);
+    expect(reply.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
+    expect(
+      ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+    ).toHaveLength(1);
   });
 
   it('a reply naming the older plan answers that one only', async () => {
@@ -1638,21 +1644,6 @@ describe('a 1:1 reply with several calendar asks open: the newest ask, code-chec
     });
     expect(named.handled).toBe(true);
     expect(await status()).toEqual({ picnic: 'written', museum: 'asked' });
-  });
-
-  it('two asks sent seconds apart are a tie: a bare yes binds nothing and Hale asks which', async () => {
-    const { priya, ports, status } = await twoOpenAsks(3_000);
-    const yes = await considerPrivateCalendarReply(ports, {
-      senderUserId: priya.userId,
-      senderName: 'Priya',
-      chatId: PRIVATE_CHAT,
-      text: 'yes',
-    });
-    expect(yes.handled).toBe(true);
-    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
-    expect(ports.composer.calls.filter((call) => call.input.kind === 'calendar_which')).toHaveLength(
-      1,
-    );
   });
 });
 
