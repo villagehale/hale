@@ -1,0 +1,71 @@
+# The test suite with the default-off catalog flags on (scripts/ci/all-flags-on.mjs).
+# Advisory: continue-on-error, and not a required check, so a dark flag that breaks
+# the suite cannot block a PR. Own workflow, not a job in ci.yml, because it runs far
+# longer than the required jobs, and Deploy, ci-heal, merge-ready and main's
+# concurrency slot all wait for the CI workflow to finish.
+name: Flags-on tests
+
+on:
+  push:
+    branches: [main, production]
+  pull_request:
+    branches: [main, production]
+
+concurrency:
+  # Same rule as ci.yml: cancel a superseded pull-request run, and let main finish.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Read-only: this job runs the whole third-party dependency tree.
+permissions:
+  contents: read
+
+jobs:
+  flags-on:
+    name: Unit tests (default-off flags on)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          check-latest: true
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ms-playwright-
+
+      - name: Install Playwright chromium
+        run: |
+          # Web unit tests launch Chromium. Browser binaries come from the cache
+          # (or a download). --with-deps goes through apt; hosted-runner mirrors
+          # flake with exit 100.
+          pnpm --filter @hale/web exec playwright install chromium
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt || true
+          pnpm --filter @hale/web exec playwright install --with-deps chromium || echo 'playwright --with-deps skipped (apt flake)'
+
+      # --env-mode=loose lets the flag env through turbo's strict filter.
+      # --force skips a cache entry recorded when those flags were off.
+      # --continue keeps one package's failure from cancelling the web suite.
+      # --launch-set holds promo, payment, the proactive pause and the weekly cap flags off.
+      - name: Test
+        run: node scripts/ci/all-flags-on.mjs --launch-set -- pnpm exec turbo run test --env-mode=loose --force --continue
