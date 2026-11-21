@@ -575,6 +575,7 @@ export async function applyTeamScheduleEffects(
       database,
       {
         familyId: input.familyId,
+        actionId: input.actionId,
         drivers,
         change: row.changeKind,
         kid: child?.name ?? null,

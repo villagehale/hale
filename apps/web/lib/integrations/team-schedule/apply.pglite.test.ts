@@ -176,6 +176,12 @@ function ports(over: {
       resolvePhone: async () => '+14165550100',
       transport,
       threadMessage: async () => 'conv-1',
+      pager: {
+        page: async (page) => {
+          pages.push(page);
+          return 'paged';
+        },
+      },
     },
   };
 }
@@ -502,6 +508,56 @@ describe('applyTeamScheduleEffects', () => {
       .from(schema.eventReminders)
       .where(eq(schema.eventReminders.id, reminder.id));
     expect(moved?.fireAt.toISOString()).toBe(new Date(NEW_START.getTime() - 3600_000).toISOString());
+  });
+});
+
+describe('VIL-719 the driver text after an applied change', () => {
+  async function applyWithDriverText(text: string | null) {
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const drafted = await draftAction();
+    await db.database.insert(schema.teamScheduleChanges).values({
+      familyId: family.familyId,
+      actionId: drafted.actionId,
+      familyEventId: eventId,
+      gmailMessageId: 'gmail-1',
+      changeKind: 'time',
+      originalStartsAt: START,
+      timeZone: TZ,
+      newStartsAt: NEW_START,
+    });
+    const base = ports({}).driver;
+    const transport = new FakeTransport();
+    const composeDriver = vi.fn(async () => text);
+    await applyTeamScheduleEffects(
+      db.database,
+      { actionId: drafted.actionId, familyId: family.familyId, now: NOW },
+      { ...base, transport, composeDriver },
+    );
+    return { actionId: drafted.actionId, transport, composeDriver };
+  }
+
+  it('policy on: a text the model could not write sends nothing and pages #ops', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const { actionId, transport, composeDriver } = await applyWithDriverText(null);
+    expect(composeDriver).toHaveBeenCalledTimes(1);
+    expect(transport.sent).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'team_schedule_driver_unwritten', facts: { change: 'time' }, ref: actionId },
+    ]);
+  });
+
+  it('policy off: the same unwritten text pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const { transport } = await applyWithDriverText(null);
+    expect(transport.sent).toEqual([]);
+    expect(pages).toEqual([]);
+  });
+
+  it('positive control, policy on: a written text is sent and pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const { transport } = await applyWithDriverText('Pickup moved to 2.');
+    expect(transport.sent).toHaveLength(1);
+    expect(pages).toEqual([]);
   });
 });
 

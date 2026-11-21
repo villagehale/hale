@@ -10,13 +10,14 @@ import {
 
 vi.mock('~/lib/pipeline/structured', () => ({ forceToolJson: vi.fn() }));
 vi.mock('~/lib/cron/skill', () => ({
-  loadCronSkill: async () => ({
+  loadCronSkill: vi.fn(async () => ({
     meta: { name: 'calendar-write-notice', whenToUse: 'x', task: 'speak', tools: [] },
     instructions: 'speak',
-  }),
+  })),
 }));
 
 const { forceToolJson } = await import('~/lib/pipeline/structured');
+const { loadCronSkill } = await import('~/lib/cron/skill');
 const CLIENT = {} as AgentClient;
 const EVENT = { title: 'Swim lesson', when: 'Sat, Nov 7 at 10:00 AM', where: 'Y on Main' };
 const LINK = 'https://app.villagehale.com/c/abc123';
@@ -114,6 +115,12 @@ describe('VIL-454 composeCalendarWriteNotice', () => {
     vi.mocked(forceToolJson).mockResolvedValue({ value: { text: 'see https://x.test' } } as never);
     expect(await composeCalendarWriteNotice(CLIENT, input)).toBeNull();
     expect(forceToolJson).toHaveBeenCalledTimes(2);
+  });
+
+  it('VIL-719: a skill that will not load is unwritten, with no model call', async () => {
+    vi.mocked(loadCronSkill).mockRejectedValueOnce(new Error('skill file missing'));
+    expect(await composeCalendarWriteNotice(CLIENT, input)).toBeNull();
+    expect(forceToolJson).not.toHaveBeenCalled();
   });
 
   it('is off unless exactly true', () => {

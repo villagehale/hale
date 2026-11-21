@@ -162,7 +162,16 @@ export async function composeCalendarWriteNotice(
   client: AgentClient,
   input: CalendarWriteNoticeInput,
 ): Promise<string | null> {
-  const skill = await loadCronSkill(CALENDAR_WRITE_NOTICE_SKILL);
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill(CALENDAR_WRITE_NOTICE_SKILL);
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'calendar write notice: skill load failed, nothing sent',
+    );
+    return null;
+  }
   for (let attempt = 1; attempt <= CALENDAR_WRITE_NOTICE_MAX_ATTEMPTS; attempt += 1) {
     try {
       const { value } = await forceToolJson({

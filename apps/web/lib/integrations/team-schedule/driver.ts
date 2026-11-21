@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -20,6 +21,7 @@ import {
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { REMINDER_OFFSETS, reminderFireAt } from '~/lib/loop/reminders/schedule';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { dayKeyIn } from '~/lib/plan/spine';
 import type { SpokenChange } from './voice';
 
@@ -54,6 +56,12 @@ export interface DriverNotifyPorts {
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * VIL-719 · tells #ops when the driver's text after an applied change could not be
+   * written. Required (rule #11); read only while ASK_POLICY_TIERS_ENABLED is on for the
+   * family.
+   */
+  pager: OpsPager;
 }
 
 export async function loadAffectedDrivers(
@@ -239,6 +247,7 @@ export async function notifyDrivers(
   database: Database,
   input: {
     familyId: string;
+    actionId: string;
     drivers: readonly TeamScheduleDriver[];
     change: SpokenChange;
     kid: string | null;
@@ -261,8 +270,15 @@ export async function notifyDrivers(
       place: input.place,
     });
     if (text === null) {
+      const page = askPolicyTiersEnabled(input.familyId)
+        ? await ports.pager.page({
+            site: 'team_schedule_driver_unwritten',
+            facts: { change: input.change },
+            ref: input.actionId,
+          })
+        : null;
       console.info(
-        { familyId: input.familyId, outcome: 'driver_unwritten' },
+        { familyId: input.familyId, outcome: 'driver_unwritten', ...(page ? { page } : {}) },
         'team schedule: driver text unwritten',
       );
       continue;
@@ -369,6 +385,7 @@ export function productionDriverNotifyPorts(
     resolvePhone: resolveSendablePhone,
     transport,
     threadMessage: threadProactiveMessage,
+    pager: failurePageOpsPager(() => database),
   };
 }
 

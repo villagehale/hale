@@ -210,7 +210,9 @@ export const OPS_PAGE_VOCABULARY = {
   // could not write. Nothing was sent; the action stands. Paged only while
   // ASK_POLICY_TIERS_ENABLED is on for the family. One site per lane, so one lane's hour
   // does not hide another's.
-  autonomy_acted_unwritten: { reason: ['no_client', 'model_failed', 'unparsed', 'invented'] },
+  autonomy_acted_unwritten: {
+    reason: ['no_client', 'skill_unavailable', 'model_failed', 'unparsed', 'invented'],
+  },
   calendar_invite_unwritten: {
     method: ['REQUEST', 'CANCEL'],
     reason: [
@@ -223,6 +225,7 @@ export const OPS_PAGE_VOCABULARY = {
   },
   calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },
   team_schedule_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
   offer_receipt_unwritten: {},
   inbound_canary_failed: {
     stage: [
