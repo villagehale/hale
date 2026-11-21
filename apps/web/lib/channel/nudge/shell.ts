@@ -10,7 +10,7 @@
 /*
  * The opt-out sentence is no longer appended to any nudge (founder decision, 2026-10-01).
  * It stays inside lib/channel/opt-out.ts: composers refuse a message that writes it
- * through `writesOptOutLine`, and the segment budget below, sized against a body that
+ * through a predicate there, and the segment budget below, sized against a body that
  * included it, reads `segmentsWithOptOutReserved` (VIL-706: no send path imports it).
  */
 

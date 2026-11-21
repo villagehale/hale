@@ -7,7 +7,7 @@ import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { segmentsWithOptOutReserved, writesOptOutLine } from '../opt-out';
+import { carriesExactOptOutLine, segmentsWithOptOutReserved } from '../opt-out';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS } from './shell';
 import {
@@ -172,7 +172,7 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
  * that used to fit still fits; the line itself is not appended. */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
-  if (writesOptOutLine(message)) return false;
+  if (carriesExactOptOutLine(message)) return false;
   return segmentsWithOptOutReserved(message) <= MAX_NUDGE_SEGMENTS;
 }
 

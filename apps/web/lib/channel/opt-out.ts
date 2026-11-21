@@ -56,6 +56,15 @@ export function writesOptOutLine(text: string): boolean {
 }
 
 /**
+ * Whether a draft carries the longer line exactly as written. The nudge composer reads
+ * this and not {@link writesOptOutLine}: a draft it refuses falls back to a code-built
+ * line, so a wider check there would send more of that line and needs its own flag.
+ */
+export function carriesExactOptOutLine(text: string): boolean {
+  return text.includes(OPT_OUT_LINE);
+}
+
+/**
  * The carrier keywords, spelled plainly. All of this reads Hale's OWN outgoing text. What
  * a person writes is read for meaning by the opt-out reader (#868), never matched against
  * words (REVIEW.md).
@@ -75,10 +84,13 @@ const SEND_VERBS: ReadonlySet<string> = new Set([
   'type',
   'typing',
   'write',
+  'writing',
   'say',
   'saying',
+  'says',
   'message',
   'enter',
+  'opt',
   'repondez',
   'repondre',
   'reponds',
@@ -86,39 +98,63 @@ const SEND_VERBS: ReadonlySet<string> = new Set([
   'textez',
   'texte',
   'texter',
+  'textant',
   'envoyez',
   'envoie',
   'envoyer',
+  'envoyant',
   'ecrivez',
   'ecris',
   'ecrire',
+  'ecrivant',
   'tapez',
   'tape',
   'taper',
+  'tapant',
   'dites',
   'dis',
   'dire',
+  'disant',
 ]);
 
-/** Words that can stand between such a verb and the word it names ("reply back with the word stop"). */
+/** Words that present the next one as a word to use: "the word stop", "le mot arrêt". */
+const NAMING_WORDS: ReadonlySet<string> = new Set(['word', 'keyword', 'mot', 'cle']);
+
+/** Words that can stand between a send verb or naming word and the word it points at. */
 const SEND_LEADS: ReadonlySet<string> = new Set([
   'back',
   'with',
   'the',
-  'word',
-  'keyword',
+  'a',
+  'an',
+  'this',
+  'to',
+  'of',
+  'out',
+  'is',
+  'here',
   'me',
   'us',
   'just',
   'simply',
+  'only',
   'in',
   'moi',
   'nous',
   'le',
-  'mot',
+  'un',
+  'une',
+  'ce',
+  'cet',
+  'cette',
+  'est',
+  'ici',
+  'texto',
+  'sms',
   'avec',
   'par',
   'simplement',
+  'seulement',
   'juste',
 ]);
 
@@ -170,12 +206,17 @@ function isQuoted(line: string, { start, end }: DraftWord): boolean {
   return after !== '' && QUOTE_PAIRS[before] === after;
 }
 
-/** Whether a send verb governs this word in its own sentence, through lead-in words only. */
+/**
+ * Whether a send verb or a naming word points at this word in its own sentence, through
+ * lead-in words only. A bare "to" right before it is an infinitive ("text me to stop"),
+ * which is a sentence and not a keyword.
+ */
 function isSendInstruction(line: string, earlier: readonly DraftWord[], word: DraftWord): boolean {
   let next = word;
   for (const candidate of [...earlier].reverse()) {
     if (SENTENCE_END.test(line.slice(candidate.end, next.start))) return false;
-    if (SEND_VERBS.has(candidate.plain)) return true;
+    if (SEND_VERBS.has(candidate.plain) || NAMING_WORDS.has(candidate.plain)) return true;
+    if (candidate.plain === 'to' && next === word) return false;
     if (!SEND_LEADS.has(candidate.plain)) return false;
     next = candidate;
   }
@@ -184,17 +225,22 @@ function isSendInstruction(line: string, earlier: readonly DraftWord[], word: Dr
 
 /**
  * VIL-706 · the keyword a draft would teach, in capitals, or null. A keyword counts when
- * it is shouted, quoted, or the word a send verb tells the person to send ("reply stop",
- * "just text me the word help", "Répondez Arrêt"), in any case or width. "Tell me if you
- * want me to stop" is a sentence, not a keyword. A false positive costs one re-draft.
+ * it is shouted, quoted, or the word a send verb or naming word points at ("reply stop",
+ * "reply to this with a stop", "you can opt out with the word help", "Répondez Arrêt"),
+ * in any case or width. "Tell me if you want me to stop" is a sentence, not a keyword.
+ * A false positive costs one re-draft.
  *
- * `verbatim` pieces are facts the line must carry word for word, so a place called "BUS
- * STOP 14" is not the draft shouting a keyword. A piece can still BE an instruction: the
- * send-verb check reads the whole text, so "Text stop to 12345" as a place is refused.
+ * `factPieces` are the facts' own words: a place the line must carry, or a calendar title
+ * it may repeat. A "BUS STOP 14" there is not the draft shouting a keyword. A piece can
+ * still BE an instruction: the send-verb check reads the whole text, so "Text stop to
+ * 12345" as a place is refused.
  */
-export function namesOptOutKeyword(text: string, verbatim: readonly string[] = []): string | null {
+export function namesOptOutKeyword(
+  text: string,
+  factPieces: readonly string[] = [],
+): string | null {
   if (writesOptOutLine(text)) return 'opt_out_line';
-  const outside = verbatim.reduce(
+  const outside = factPieces.reduce(
     (rest, piece) => (piece.length > 0 ? rest.split(piece).join('\n') : rest),
     text,
   );

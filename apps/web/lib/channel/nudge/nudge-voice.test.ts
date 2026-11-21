@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('~/lib/channel/linq/family-outbound', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/family-outbound')>()),
@@ -187,6 +187,27 @@ describe('usableNudgeMessage', () => {
 
   it('rejects a message that writes the opt-out line the shell appends', () => {
     expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
+  });
+
+  // A refused nudge draft falls back to a code-built line, so widening this check would
+  // send more of that line. It stays the exact sentence until a flag covers a wider one.
+  describe.each([
+    ['off', ''],
+    ['on', 'true'],
+  ])('with JOIN_DOOR_MODEL_COPY_ENABLED %s', (_state, value) => {
+    beforeEach(() => {
+      vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', value);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('refuses the exact opt-out line and nothing wider', () => {
+      expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
+      expect(usableNudgeMessage('Saturday looks good. STOP to opt out.', SWAP)).toBe(true);
+      expect(usableNudgeMessage('Saturday looks good. reply stop to opt out.', SWAP)).toBe(true);
+      expect(usableNudgeMessage('Saturday looks good.', SWAP)).toBe(true);
+    });
   });
 
   it('rejects a message that blows the segment budget once the opt-out is appended', () => {

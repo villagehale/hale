@@ -97,6 +97,47 @@ describe("VIL-706 · reading Hale's own draft for an opt-out keyword", () => {
   });
 
   it.each([
+    ['STOP', 'Just reply to me with stop anytime.'],
+    ['STOP', 'Reply to this with the word stop.'],
+    ['HELP', 'Respond to this with help if you get stuck.'],
+    ['STOP', 'To opt out, reply with a stop.'],
+    ['STOP', 'You can opt out with the word stop.'],
+    ['ARRET', 'Pour arrêter, envoyez un arrêt.'],
+    ['STOP', 'Reply here with stop.'],
+    ['STOP', 'Reply with only stop.'],
+    ['STOP', 'You can opt out with stop.'],
+    ['HELP', 'Send us the keyword help.'],
+    ['STOP', 'The magic word is stop.'],
+    ['HELP', 'Send a text that says help.'],
+    ['STOP', 'Opt out by writing stop.'],
+    ['AIDE', 'Écrivez le mot aide.'],
+    ['ARRET', 'Le mot est arrêt.'],
+    ['ARRET', 'En écrivant arrêt, vous partez.'],
+    ['ARRET', 'Envoyez un texto avec arrêt.'],
+  ])('names %s in a longer teaching sentence: %s', (keyword, text) => {
+    expect(namesOptOutKeyword(text)).toBe(keyword);
+  });
+
+  it.each([
+    'Reply to this and I will stop.',
+    'You can reply anytime if you want me to stop.',
+    'Text me to stop the reminders.',
+    'I am here to help.',
+    'Reply here if you want to stop.',
+    'Send me a note if you want help.',
+    'Pickup is at the bus stop on King St.',
+    'Just say the word and I will stop.',
+    'Reply to Sam if he can help.',
+    'Text me on the way to the stop.',
+    'You can opt out anytime and I will stop.',
+    'You will get a reminder for what you help with.',
+    "Envoyez-moi un mot si vous voulez de l'aide.",
+    "Dites-moi si vous avez besoin d'aide.",
+  ])('still passes a plain sentence near those shapes: %s', (text) => {
+    expect(namesOptOutKeyword(text)).toBeNull();
+  });
+
+  it.each([
     'Tell me if you want me to stop.',
     'Tell me to stop and I will.',
     'Text me if you need help.',
