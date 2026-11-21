@@ -1,4 +1,9 @@
-import { type Database, schema } from '@hale/db';
+import {
+  type ClaimRefusalCandidates,
+  type ClaimRefusalClaim,
+  type Database,
+  schema,
+} from '@hale/db';
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import { ACTIVITY_HELD_TOPIC } from '~/lib/channel/activity/venue-pages';
 import { privateAsidesSentTo } from '~/lib/channel/linq/private-aside-ledger';
@@ -11,7 +16,8 @@ import { accessExportRound2Enabled } from './export-round-2';
  * The part of a right-to-access copy that is about the requesting adult alone: their 1:1
  * text thread with Hale, the language Hale writes to them in, each time that changed,
  * their consent records, the accounts they connected, and the events Hale mirrored from
- * their own Google Calendar, and the private texts Hale sent them from a shared group.
+ * their own Google Calendar, the private texts Hale sent them from a shared group, and why
+ * the claim gate held back a text to them.
  *
  * Every read here is keyed on the requester, so nothing in this block can be about the
  * co-parent: the thread by its per-parent note key (note-key.ts), the settings by the
@@ -88,6 +94,13 @@ export interface RequesterOnlyExport {
     text: string;
     sentAt: string;
     withheld: 'teen' | null;
+  }[];
+  /** The stored verdict on each text to this adult that the claim gate refused: what each
+   * claim cited and why, never the text. Absent when none is stored. */
+  refusedClaims?: {
+    refusedAt: string;
+    claims: ClaimRefusalClaim[];
+    candidates: ClaimRefusalCandidates;
   }[];
 }
 
@@ -221,6 +234,20 @@ export async function loadRequesterOnlyExport(
 
   const asides = await privateAsidesSentTo(database, { familyId, userId: requesterUserId });
 
+  const refusal = schema.claimRefusals;
+  const refusalRows = await database
+    .select({
+      refusedAt: refusal.createdAt,
+      claims: refusal.claims,
+      candidates: refusal.candidates,
+    })
+    .from(refusal)
+    .innerJoin(schema.channelMessages, eq(schema.channelMessages.id, refusal.channelMessageId))
+    .where(
+      and(eq(refusal.familyId, familyId), eq(schema.channelMessages.parentUserId, requesterUserId)),
+    )
+    .orderBy(asc(refusal.createdAt));
+
   const round2 = accessExportRound2Enabled();
   return {
     textThread: turns
@@ -286,5 +313,13 @@ export async function loadRequesterOnlyExport(
         withheld,
       };
     }),
+    ...(refusalRows.length > 0
+      ? {
+          refusedClaims: refusalRows.map((row) => ({
+            ...row,
+            refusedAt: row.refusedAt.toISOString(),
+          })),
+        }
+      : {}),
   };
 }
