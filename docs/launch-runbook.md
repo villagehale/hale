@@ -135,6 +135,23 @@ To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-we
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
 
+### Stop every running registration plan
+
+A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` applies a parent's take-back to every running plan at once: no payment starts after it, with no redeploy. It needs `DATABASE_URL`. Running it against Production needs Barton's go.
+
+Run it before you turn the flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off the sweep returns at once, so a checkpointed run is never let go and keeps its browser.
+
+1. `pnpm signup:stop-plans`. This is a dry run. It writes nothing and prints counts only: `wouldStop` is the running plans with no stop on them yet, and `stillRunning` is every running plan, by phase.
+2. With the flag still on, run `pnpm signup:stop-plans -- --apply`.
+3. Run the same `--apply` command once a minute until `stillRunning` is zero in both phases. While the flag is on, the sweep still claims plans as they come due, and each `--apply` stops those too. Running it again never changes an earlier stop. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
+4. Turn `REGISTRATION_PLAN_RUN_ENABLED` off with the redeploy steps above.
+5. When the new deployment is Production, run the dry run once more. If `stillRunning` is not zero, a sweep claimed a plan just before the redeploy. Run `--apply`, turn the flag back on until the count is zero, then turn it off again.
+
+**What a parent hears.** The stop itself sends nothing, and there is no fixed line for it, so a parent whose plan was stopped hears nothing until someone follows up. Each stopped plan has one `plan_ops_stop` row in `audit_log`. Two things can still reach a parent, and both come from the run rather than the stop:
+
+- A plan whose payment had started is still read, and the parent is told what it did. A plan whose checkout review had started may have placed the order, so the parent is told a charge may exist and #ops is paged.
+- A run already in progress when the stop lands can end on its own and send its usual notice, for example no saved card or a price change, with the live browser link. Hale does not pay in that case; the parent would finish it themselves.
+
 ## Rotating APP_ENCRYPTION_KEY
 
 There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.

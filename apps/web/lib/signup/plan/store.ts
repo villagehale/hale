@@ -507,6 +507,74 @@ export async function cancelSignupPlan(
   return phase === 'paying' ? 'paying' : 'cancel_requested';
 }
 
+/** Plans by run phase: all an ops stop reports, so it cannot print a family, offer or host. */
+export interface PlanPhaseCounts {
+  signup: number;
+  paying: number;
+}
+
+/** A one-shot signup is `submitting` too, but only a plan has a resume token. */
+const isRunningPlan = and(
+  eq(schema.authorizedSignupOffers.status, 'submitting'),
+  isNotNull(schema.authorizedSignupOffers.planResume),
+);
+const resumePhase = sql<
+  AuthorizedSignupPlanResume['phase']
+>`${schema.authorizedSignupOffers.planResume}->>'phase'`;
+
+function countByPhase(
+  rows: ReadonlyArray<{ phase: AuthorizedSignupPlanResume['phase'] }>,
+): PlanPhaseCounts {
+  const paying = rows.filter((row) => row.phase === 'paying').length;
+  return { signup: rows.length - paying, paying };
+}
+
+/**
+ * {@link cancelSignupPlan}'s mark on every running plan at once: an incident stop that needs
+ * no redeploy. No payment starts after it ({@link savePlanResume}) and a later sweep lets
+ * each run go. A plan in `paying` is marked too; the sweep still reads what its payment did
+ * and tells the parent. A plan already marked keeps its first time. Each mark and its one
+ * audit row land together. Returns the plans marked by this call.
+ */
+export async function requestStopForRunningPlans(
+  database: Database,
+  input: { now: Date },
+): Promise<PlanPhaseCounts> {
+  const offers = schema.authorizedSignupOffers;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const stopped = await tx
+      .update(offers)
+      .set({ planCancelRequestedAt: input.now, updatedAt: input.now })
+      .where(and(isRunningPlan, isNull(offers.planCancelRequestedAt)))
+      .returning({ id: offers.id, familyId: offers.familyId, phase: resumePhase });
+    for (const row of stopped) {
+      await writePlanAudit(tx, {
+        familyId: row.familyId,
+        actor: 'system',
+        offerId: row.id,
+        after: { step: 'plan_ops_stop', phase: row.phase },
+      });
+    }
+    return countByPhase(stopped);
+  });
+}
+
+/** Every running plan by phase, and those with no stop on them yet. Reads only. */
+export async function countRunningPlans(
+  database: Database,
+): Promise<{ running: PlanPhaseCounts; notStopped: PlanPhaseCounts }> {
+  const offers = schema.authorizedSignupOffers;
+  const rows = await database
+    .select({ phase: resumePhase, stoppedAt: offers.planCancelRequestedAt })
+    .from(offers)
+    .where(isRunningPlan);
+  return {
+    running: countByPhase(rows),
+    notStopped: countByPhase(rows.filter((row) => row.stoppedAt === null)),
+  };
+}
+
 /**
  * A family's offer the day-before conversation can still act on: before its open, or
  * `running` while its run is going and the parent has not taken it back yet.
