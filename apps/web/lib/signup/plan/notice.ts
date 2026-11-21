@@ -12,12 +12,14 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { markLoginLinkSent } from '../login-link/store';
 import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
+import { boundPriceCents, writerTerms } from '../terms/ask';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -25,11 +27,26 @@ import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
 import { planReplyMode } from './towns';
 import {
+  type PlanReplyTerms,
   type PlanReplyWriter,
   createPlanReplyWriter,
   planOpensAtLocal,
   planReplyBody,
 } from './writer';
+
+/** No readable approval: the writer still needs the addendum that explains that detail. */
+const TERMS_UNREADABLE_FACTS: PlanReplyTerms = {
+  free: false,
+  rates: [],
+  residency: 'unknown',
+  tax: 'unknown',
+  refund: null,
+  ageFit: 'unknown',
+  ageBand: null,
+  prerequisite: { required: 'unknown', quote: null },
+  priorChargeUnknown: false,
+  unread: ['page'],
+};
 
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
 export const PLAN_PREP_TEMPLATE = 'signup_plan_prep';
@@ -85,6 +102,12 @@ export function createPlanNotifier(
       live && notice.holdExpiresAt
         ? Math.max(0, Math.ceil((notice.holdExpiresAt.getTime() - now.getTime()) / 60_000))
         : null;
+    const approved = notice.terms?.approved ?? null;
+    const terms = notice.terms
+      ? writerTerms(notice.terms.shown, { hold: approved?.hold ?? null })
+      : notice.detail === 'terms_unreadable'
+        ? TERMS_UNREADABLE_FACTS
+        : undefined;
     const text = await deps.writer.write({
       moment: 'run_finished',
       mode: planReplyMode(offer.registrationUrl),
@@ -97,7 +120,9 @@ export function createPlanNotifier(
         await parentTimeZone(database, notice.parentUserId),
       ),
       sessions: replySessions(choices),
-      maxPriceCents: offer.planMaxPriceCents,
+      // With terms the bound price is the figure to say: the stored maximum carries a tax
+      // allowance that was never quoted.
+      maxPriceCents: approved ? boundPriceCents(approved) : offer.planMaxPriceCents,
       waiverAccepted: offer.planWaiverAccepted,
       question: null,
       refusal: null,
@@ -112,14 +137,23 @@ export function createPlanNotifier(
         charged: notice.charged,
         liveBrowser: live !== null,
         holdMinutes,
+        ...(notice.cartDifferences ? { cartDifferences: notice.cartDifferences } : {}),
       },
       language: await readParentLanguage(database, {
         familyId: notice.familyId,
         parentUserId: notice.parentUserId,
       }),
+      ...(terms ? { terms } : {}),
     });
     if (text === null) {
       console.warn({ offerId: notice.offerId, code: 'unwritten' }, 'signup plans: notice failed');
+      if (terms) {
+        await pageOps(database, {
+          site: 'registration_text_unwritten',
+          facts: { moment: 'run_notice' },
+          ref: notice.offerId,
+        });
+      }
       return 'failed';
     }
     const body = planReplyBody(text, live ?? (confirmed ? null : offer.registrationUrl));

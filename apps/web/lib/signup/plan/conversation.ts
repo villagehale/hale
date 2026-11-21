@@ -1,7 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
+import { parentSeasonClock } from '~/lib/channel/family-tz';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   type AskPlace,
   PICK_ASK_BACK_QUESTION,
@@ -11,8 +14,29 @@ import {
 import { signupProviderHost } from '../consent';
 import { namesFacts } from '../parent-quote';
 import type { SignupRunInput, SignupRunResult } from '../run';
-import { siteChoiceSchema } from '../site-choices';
-import { askStamp, loadSignupIdentity, markOffer } from '../store';
+import { claimSignupHelpAttempt, releaseSignupHelpAttempt } from '../signup-help-season';
+import { type SiteChoice, siteChoiceSchema } from '../site-choices';
+import { askStamp, loadSignupIdentity, markOffer, recordSignupOffer } from '../store';
+import {
+  boundPriceCents,
+  childFor,
+  planReadTerms,
+  taxBoundFor,
+  termsTimeZone,
+  writerTerms,
+} from '../terms/ask';
+import { bindApproval } from '../terms/bind';
+import { type DobReader, acceptDobReading, createDobReader } from '../terms/dob-reader';
+import { ageFitFromRule } from '../terms/evaluate';
+import { registrationPreflightEnabled } from '../terms/flag';
+import {
+  type SignupTermsRead,
+  type SignupTermsRow,
+  loadSignupTerms,
+  priorChargeUnknown,
+  termsAskStamp,
+} from '../terms/store';
+import type { SignupTermsShown } from '../terms/types';
 import type { SignupSession } from '../types';
 import { type MismatchReader, createMismatchReader } from './mismatch-reader';
 import { hasPlanNotice, recordPlanNotice } from './prep';
@@ -35,6 +59,7 @@ import {
   type PlanReplyFacts,
   type PlanReplyMoment,
   type PlanReplySession,
+  type PlanReplyTerms,
   type PlanReplyWriter,
   createPlanReplyWriter,
   planOpensAtLocal,
@@ -58,6 +83,8 @@ export interface PlanTurnDeps {
   }) => Promise<void>;
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
+  /** VIL-715 · reads a date of birth from a reply to Hale's ask for it. */
+  dobReader?: DobReader;
 }
 
 /**
@@ -109,6 +136,16 @@ export async function runPlanAsk(
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
     return runMismatchTurn(database, input, deps, plan, place);
   }
+  // VIL-715: a pending ask under pre-flight is read, and bound, against its stored terms.
+  const termsRead =
+    plan.status === 'pending' && registrationPreflightEnabled(input.familyId)
+      ? await loadSignupTerms(database, { offerId: plan.offerId, familyId: input.familyId })
+      : null;
+  const terms = termsRead?.status === 'read' ? termsRead.row : null;
+  if (terms && place.newest) {
+    const answered = await runDobTurn(database, input, deps, plan, terms);
+    if (answered) return answered;
+  }
   const reader = deps.planReader ?? createPlanReader(() => resolveReplyClient(undefined));
   const reading: PlanReading | null = await reader.read({
     text: input.body,
@@ -122,6 +159,7 @@ export async function runPlanAsk(
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
       asksWaiver: await hasPlanNotice(database, plan.offerId, 'ask_waiver'),
+      ...(terms ? { terms: planReadTerms(terms.shown) } : {}),
     },
   });
   if (!reading) return stopped('plan_unread', plan);
@@ -210,6 +248,9 @@ export async function runPlanAsk(
       }
     }
   }
+  if (termsRead !== null) {
+    return approveOnTerms(database, input, deps, plan, termsRead, reading, boundBy);
+  }
   const approved = await approveSignupPlan(database, {
     offerId: plan.offerId,
     familyId: input.familyId,
@@ -232,6 +273,349 @@ export async function runPlanAsk(
     boundBy,
   });
 }
+
+/** Asked once a date of birth is in: a date is not a yes. */
+const TERMS_CONFIRM_QUESTION = 'Now that Hale has the date of birth, should it go ahead?';
+const TERMS_LIMIT_QUESTION =
+  'The class costs more than the limit they gave. Should Hale go up to the class price?';
+const TERMS_AMOUNT_QUESTION = 'What is the most Hale may pay for this?';
+const termsPrerequisiteQuestion = (quote: string | null) =>
+  quote
+    ? `The class says: "${quote}". Has the child done that?`
+    : 'The class needs something first. Has the child done it?';
+
+async function childAgeRow(database: Database, familyId: string, childId: string) {
+  const [child] = await database
+    .select({
+      id: schema.children.id,
+      dateOfBirth: schema.children.dateOfBirth,
+      dobPrecision: schema.children.dobPrecision,
+    })
+    .from(schema.children)
+    .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
+    .limit(1);
+  return child ?? null;
+}
+
+async function termsZone(database: Database, plan: ConversablePlan, parentUserId: string) {
+  const host = new URL(plan.registrationUrl).hostname;
+  return termsTimeZone(host, await parentTimeZone(database, parentUserId));
+}
+
+/**
+ * VIL-715 · while Hale's ask for a date of birth stands, a reply that states one is stored
+ * as the exact date, in the parent's own words, and the age check runs again. A child now
+ * outside the band closes the offer. Otherwise Hale asks them to confirm. Null: no date in
+ * this message, and the turn goes on as usual.
+ */
+async function runDobTurn(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+  terms: SignupTermsRow,
+): Promise<SignupRunResult | null> {
+  if (!(await hasPlanNotice(database, plan.offerId, 'ask_dob'))) return null;
+  const child = await childAgeRow(database, input.familyId, plan.childId);
+  if (!child || child.dobPrecision === 'exact') return null;
+  const reader = deps.dobReader ?? createDobReader(() => resolveReplyClient(undefined));
+  const raw = await reader.read({ text: input.body });
+  const date = raw ? acceptDobReading(raw, input.body, input.now) : null;
+  if (date === null) return null;
+  await database
+    .update(schema.children)
+    .set({ dateOfBirth: date, dobPrecision: 'exact', updatedAt: input.now })
+    .where(and(eq(schema.children.id, child.id), eq(schema.children.familyId, input.familyId)));
+  await writePlanAudit(database, {
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    offerId: plan.offerId,
+    after: { step: 'plan_dob_recorded', host: plan.providerHost },
+  });
+  const rule = terms.shown.age.rule;
+  const fit = rule
+    ? ageFitFromRule(
+        rule,
+        { id: child.id, dateOfBirth: date, dobPrecision: 'exact' },
+        { now: input.now, timeZone: await termsZone(database, plan, input.parentUserId) },
+      )
+    : 'unknown';
+  if (fit === 'outside_band') {
+    await markOffer(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      from: 'pending',
+      status: 'handed_back',
+      messageId: input.inboundChannelMessageId,
+      now: input.now,
+    });
+    return reply(database, input, deps, plan, 'refused', {
+      refusal: 'age_outside_band',
+      terms: writerTerms(terms.shown),
+      noLink: true,
+      boundBy: 'newest',
+    });
+  }
+  return reply(database, input, deps, plan, 'clarify', {
+    question: TERMS_CONFIRM_QUESTION,
+    boundBy: 'newest',
+  });
+}
+
+/** A season slot for an ask that counts, claimed before the plan can run. */
+async function claimSeasonSlot(
+  database: Database,
+  input: SignupRunInput,
+): Promise<{ ok: true; seasonKey: string | null } | { ok: false }> {
+  const [family] = await database
+    .select({ planTier: schema.families.planTier })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId))
+    .limit(1);
+  const cap = entitlementsForFamily(family?.planTier ?? 'free').signupHelpPerSeason;
+  if (cap === null) return { ok: true, seasonKey: null };
+  const clock = await parentSeasonClock(database, input.parentUserId, input.now);
+  if (clock.outcome !== 'season') {
+    console.info({ outcome: 'timezone_unset' }, 'signup plans: season cap not claimed, zone unset');
+    return { ok: true, seasonKey: null };
+  }
+  const claim = await claimSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey: clock.key,
+    cap,
+    now: input.now,
+  });
+  return claim.ok ? { ok: true, seasonKey: clock.key } : { ok: false };
+}
+
+/**
+ * VIL-715 · the parent's yes to an ask that has terms. The yes binds only what Hale showed
+ * them, and only once it reached them. A plan is stored with its approval in one
+ * transaction; no run starts on this turn, so the reply is the ack and the sweep does the
+ * work. An ask with no stored terms (made before the flag) is never bound: it goes back
+ * with the link.
+ */
+async function approveOnTerms(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+  termsRead: SignupTermsRead,
+  reading: Extract<PlanReading, { verdict: 'approve' }>,
+  boundBy: PlanBinding,
+): Promise<SignupRunResult> {
+  const messageId = input.inboundChannelMessageId as string;
+  if (termsRead.status !== 'read') {
+    await markOffer(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      from: 'pending',
+      status: 'handed_back',
+      messageId,
+      now: input.now,
+    });
+    return reply(database, input, deps, plan, 'refused', { refusal: 'no_terms', boundBy });
+  }
+  const { shown, askedMessageId } = termsRead.row;
+  const child = await childAgeRow(database, input.familyId, plan.childId);
+  if (!child) {
+    return reply(database, input, deps, plan, 'refused', { refusal: 'missing_detail', boundBy });
+  }
+  const timeZone = await termsZone(database, plan, input.parentUserId);
+  const bound = bindApproval({
+    shown,
+    askedMessageId,
+    sessions: plan.sessions,
+    choiceIds: reading.choiceIds,
+    limitWrittenCents: reading.limitWrittenCents ?? null,
+    prerequisiteMet: reading.prerequisiteMet ?? null,
+    ageFit: shown.age.rule
+      ? ageFitFromRule(shown.age.rule, childFor(child), { now: input.now, timeZone })
+      : 'unknown',
+    taxBound: taxBoundFor(new URL(plan.registrationUrl).hostname),
+    timeZone,
+  });
+  if (bound.kind === 'terms_unsent') {
+    return reply(database, input, deps, plan, 'offer', { terms: writerTerms(shown), boundBy });
+  }
+  if (bound.kind === 'outside_band') {
+    await markOffer(database, {
+      offerId: plan.offerId,
+      familyId: input.familyId,
+      from: 'pending',
+      status: 'handed_back',
+      messageId,
+      now: input.now,
+    });
+    return reply(database, input, deps, plan, 'refused', {
+      refusal: 'age_outside_band',
+      terms: writerTerms(shown),
+      noLink: true,
+      boundBy,
+    });
+  }
+  if (bound.kind === 'clarify') {
+    const question =
+      bound.reason === 'prerequisite'
+        ? termsPrerequisiteQuestion(shown.prerequisite.quote)
+        : bound.reason === 'limit_below_rate'
+          ? TERMS_LIMIT_QUESTION
+          : TERMS_AMOUNT_QUESTION;
+    return reply(database, input, deps, plan, 'clarify', { question, boundBy });
+  }
+  let seasonKey: string | null = null;
+  if (bound.approved.countsAgainstSeason) {
+    const slot = await claimSeasonSlot(database, input);
+    if (!slot.ok) {
+      return reply(database, input, deps, plan, 'refused', {
+        refusal: 'season_cap',
+        terms: writerTerms(shown),
+        boundBy,
+      });
+    }
+    seasonKey = slot.seasonKey;
+  }
+  const approved = { ...bound.approved, seasonKey };
+  const alreadyOpen = plan.alreadyOpen || plan.opensAt.getTime() <= input.now.getTime();
+  const stored = await approveSignupPlan(database, {
+    offerId: plan.offerId,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    messageId,
+    choiceIds: reading.choiceIds,
+    maxPriceCents: approved.maxCents,
+    opensAt: alreadyOpen ? input.now : plan.opensAt,
+    waiverAccepted: reading.waiverAccepted,
+    alreadyOpen,
+    terms: { approved },
+    now: input.now,
+  });
+  if (!stored.ok) {
+    if (seasonKey) {
+      await releaseSignupHelpAttempt(database, {
+        familyId: input.familyId,
+        seasonKey,
+        now: input.now,
+      });
+    }
+    return reply(database, input, deps, plan, 'refused', { refusal: stored.reason, boundBy });
+  }
+  return reply(database, input, deps, plan, 'approved', {
+    choiceIds: reading.choiceIds,
+    maxPriceCents: boundPriceCents(approved),
+    waiverAccepted: reading.waiverAccepted,
+    terms: writerTerms(shown, { runsNow: alreadyOpen, hold: approved.hold }),
+    boundBy,
+  });
+}
+
+/**
+ * VIL-715 · with pre-flight on, a pick among the site's options is a new ask, never an edit
+ * of the old approval. The parked plan closes, the option becomes an offer holding only
+ * what the site listed, and a new yes binds it. Hale never pre-flighted that option, so it
+ * always stops at checkout for the parent. An option with no start cannot be a session.
+ */
+async function pickAsNewAsk(
+  database: Database,
+  input: SignupRunInput,
+  deps: PlanTurnDeps,
+  plan: ConversablePlan,
+  choice: SiteChoice | undefined,
+  boundBy: PlanBinding,
+): Promise<SignupRunResult> {
+  if (!choice?.starts_at) {
+    return reply(database, input, deps, plan, 'refused', { refusal: 'choices', boundBy });
+  }
+  const [row] = await database
+    .select({ activityKey: schema.authorizedSignupOffers.activityKey })
+    .from(schema.authorizedSignupOffers)
+    .where(
+      and(
+        eq(schema.authorizedSignupOffers.id, plan.offerId),
+        eq(schema.authorizedSignupOffers.familyId, input.familyId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
+  }
+  await markOffer(database, {
+    offerId: plan.offerId,
+    familyId: input.familyId,
+    from: 'planned',
+    status: 'handed_back',
+    now: input.now,
+  });
+  const session: SignupSession = {
+    id: SITE_OPTION_SESSION_ID,
+    label: choice.label,
+    startsAt: choice.starts_at,
+    endsAt: choice.starts_at,
+    full: false,
+    priceCents: choice.price_cents,
+  };
+  const prior = await loadSignupTerms(database, {
+    offerId: plan.offerId,
+    familyId: input.familyId,
+  });
+  const shown: SignupTermsShown = {
+    v: 1,
+    read: 'unread',
+    program: { courseIds: [], name: choice.label },
+    residency: 'unknown',
+    age: { fit: 'unknown', band: null, rule: null },
+    prerequisite: { required: 'unknown', quote: null },
+    refund: null,
+    currency: prior.status === 'read' ? prior.row.shown.currency : null,
+    countsAgainstSeason: false,
+    priorChargeUnknown: await priorChargeUnknown(database, {
+      familyId: input.familyId,
+      childId: plan.childId,
+      activityKey: row.activityKey,
+    }),
+    sessions: [
+      {
+        sessionId: session.id,
+        rates: choice.price_cents === null ? [] : [{ rate: 'flat', cents: choice.price_cents }],
+        tax: 'unknown',
+        source: 'site_option',
+      },
+    ],
+  };
+  const stored = await recordSignupOffer(database, {
+    familyId: input.familyId,
+    childId: plan.childId,
+    parentUserId: input.parentUserId,
+    activityKey: row.activityKey,
+    activityLabel: plan.activityLabel,
+    registrationUrl: plan.registrationUrl,
+    sessions: [session],
+    approvedPriceCents: null,
+    planOpensAt: input.now,
+    planAlreadyOpen: true,
+    terms: { shown },
+    now: input.now,
+  });
+  if (!stored.ok) {
+    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
+  }
+  const next: ConversablePlan = {
+    ...plan,
+    offerId: stored.id,
+    status: 'pending',
+    sessions: [session],
+    opensAt: input.now,
+    alreadyOpen: true,
+    plan: null,
+    availability: null,
+    lastAskedSeq: null,
+    createdAt: input.now,
+  };
+  return reply(database, input, deps, next, 'offer', { terms: writerTerms(shown), boundBy });
+}
+
+/** The one session of an offer recorded from a site's option. */
+const SITE_OPTION_SESSION_ID = 'site-option';
 
 /**
  * A pick among the site's options, for a plan whose options did not match. A pick parks or
@@ -286,6 +670,19 @@ async function runMismatchTurn(
       now: input.now,
     });
     return reply(database, input, deps, plan, 'approved', { boundBy });
+  }
+  if (registrationPreflightEnabled(input.familyId)) {
+    if (reading.verdict === 'option') {
+      const choice = parsed.find((item) => item.id === reading.choiceId);
+      return pickAsNewAsk(database, input, deps, plan, choice, boundBy);
+    }
+    // Hale sends no email: the parent gets the site's options in a model-written reply.
+    return reply(database, input, deps, plan, 'clarify', {
+      question: `Hale cannot email the provider. The site currently offers: ${parsed
+        .map((item) => item.label)
+        .join('; ')}. Which of these do they want, or should Hale join the waitlist?`,
+      boundBy,
+    });
   }
   if (reading.verdict === 'option') {
     const choice = parsed.find((item) => item.id === reading.choiceId);
@@ -342,7 +739,9 @@ function groupSeatDeclined(): SignupRunResult {
   };
 }
 
-const OUTCOME: Record<Exclude<PlanReplyMoment, 'offer' | 'run_finished'>, string> = {
+const OUTCOME: Record<Exclude<PlanReplyMoment, 'run_finished'>, string> = {
+  /** VIL-715 · the terms go out as the ask, because they never reached the parent. */
+  offer: 'plan_terms_sent',
   approved: 'plan_approved',
   cancelled: 'plan_cancelled',
   declined: 'plan_declined',
@@ -387,7 +786,7 @@ async function reply(
   input: SignupRunInput,
   deps: PlanTurnDeps,
   plan: ConversablePlan,
-  moment: Exclude<PlanReplyMoment, 'offer' | 'run_finished'>,
+  moment: Exclude<PlanReplyMoment, 'run_finished'>,
   extra: {
     question?: string;
     refusal?: string;
@@ -395,6 +794,10 @@ async function reply(
     maxPriceCents?: number;
     waiverAccepted?: boolean;
     boundBy?: PlanBinding;
+    /** VIL-715 · the terms this text states. Absent, the writer's request is what it was. */
+    terms?: PlanReplyTerms;
+    /** A refusal that sends the parent nowhere: the class does not fit this child. */
+    noLink?: boolean;
   },
 ): Promise<SignupRunResult> {
   const choices = extra.choiceIds
@@ -418,6 +821,7 @@ async function reply(
       familyId: input.familyId,
       parentUserId: input.parentUserId,
     }),
+    ...(extra.terms ? { terms: extra.terms } : {}),
   };
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write(facts);
@@ -436,6 +840,13 @@ async function reply(
   });
   if (text === null) {
     console.warn({ outcome }, 'signup plans: reply unwritten');
+    if (registrationPreflightEnabled(input.familyId)) {
+      await pageOps(database, {
+        site: 'registration_text_unwritten',
+        facts: { moment: moment === 'offer' ? 'offer' : 'reply' },
+        ref: plan.offerId,
+      });
+    }
     return {
       claimed: true,
       outcome,
@@ -444,16 +855,19 @@ async function reply(
       unsent: 'reply_unwritten',
     };
   }
-  const link = moment === 'refused' ? plan.registrationUrl : null;
+  const link =
+    (moment === 'refused' && !extra.noLink) || moment === 'offer' ? plan.registrationUrl : null;
+  const asked = {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    offerIds: [plan.offerId],
+  };
   return {
     claimed: true,
     outcome,
     reply: planReplyBody(text, link),
     deliverOnThread: true,
-    stamp: askStamp(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      offerIds: [plan.offerId],
-    }),
+    // Only the text that carries the terms records them as received.
+    stamp: moment === 'offer' ? termsAskStamp(database, asked) : askStamp(database, asked),
   };
 }

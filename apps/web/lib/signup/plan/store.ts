@@ -18,11 +18,16 @@ import {
   loadPendingOffer,
   loadSignupIdentity,
 } from '../store';
+import type { SignupTermsApproved } from '../terms/types';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
+import { registrationPreflightEnabled } from '../terms/flag';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;
+
+/** The terms row could not take this approval: the move to `planned` is undone with it. */
+class TermsNotBound extends Error {}
 
 export type ApprovePlanRefusal =
   | 'no_offer'
@@ -66,6 +71,8 @@ export async function approveSignupPlan(
     now: Date;
     /** Program is already open: a yes now is a register-now, not a day-before. */
     alreadyOpen?: boolean;
+    /** VIL-715 · what this yes bound, written in the same transaction as the move. */
+    terms?: { approved: SignupTermsApproved };
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   // The named ask, not the newest: a family can hold several, and a yes may name an older one.
@@ -84,9 +91,13 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'choices' };
   }
+  // A class bound as free has a $0 maximum. Nothing else may.
+  const freeOrder =
+    input.maxPriceCents === 0 &&
+    input.terms?.approved.sessions.every((session) => session.amount.kind === 'free') === true;
   if (
     !Number.isInteger(input.maxPriceCents) ||
-    input.maxPriceCents <= 0 ||
+    (input.maxPriceCents <= 0 && !freeOrder) ||
     input.maxPriceCents > LINK_SPEND_CEILING_CENTS
   ) {
     return { ok: false, reason: 'max_price' };
@@ -113,28 +124,62 @@ export async function approveSignupPlan(
     now: input.now,
   });
   if (!consent.ok) return { ok: false, reason: consent.reason };
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set({
-      status: 'planned',
-      planChoiceIds: ids,
-      planMaxPriceCents: input.maxPriceCents,
-      planOpensAt: input.opensAt,
-      planWaiverAccepted: input.waiverAccepted,
-      planApprovedAt: input.now,
-      authorizingMessageId: input.messageId,
-      planAlreadyOpen: input.alreadyOpen === true,
-      updatedAt: input.now,
-    })
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, offer.id),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, 'pending'),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  if (rows.length === 0) return { ok: false, reason: 'not_stored' };
+  const moveToPlanned = (tx: Database) =>
+    tx
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'planned',
+        planChoiceIds: ids,
+        planMaxPriceCents: input.maxPriceCents,
+        planOpensAt: input.opensAt,
+        planWaiverAccepted: input.waiverAccepted,
+        planApprovedAt: input.now,
+        authorizingMessageId: input.messageId,
+        planAlreadyOpen: input.alreadyOpen === true,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, offer.id),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, 'pending'),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+  const bound = input.terms;
+  const moved = bound
+    ? await database
+        .transaction(async (rawTx) => {
+          const tx = rawTx as unknown as Database;
+          const rows = await moveToPlanned(tx);
+          if (rows.length === 0) return rows;
+          const terms = schema.authorizedSignupTerms;
+          const written = await tx
+            .update(terms)
+            .set({
+              approved: bound.approved,
+              approvingMessageId: input.messageId,
+              approvedAt: input.now,
+            })
+            .where(
+              and(
+                eq(terms.offerId, offer.id),
+                eq(terms.familyId, input.familyId),
+                isNull(terms.approvedAt),
+                isNotNull(terms.askedMessageId),
+              ),
+            )
+            .returning({ id: terms.id });
+          // Rolls the move back: a plan may not exist without the approval it runs on.
+          if (written.length === 0) throw new TermsNotBound();
+          return rows;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof TermsNotBound) return [];
+          throw err;
+        })
+    : await moveToPlanned(database);
+  if (moved.length === 0) return { ok: false, reason: 'not_stored' };
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
@@ -554,6 +599,10 @@ export async function loadConversablePlans(
               gt(offers.planOpensAt, input.now),
               eq(offers.planAlreadyOpen, true),
               sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
+              // VIL-715: an ask with terms stays a plan past its open, never a one-shot.
+              registrationPreflightEnabled(input.familyId)
+                ? sql`${offers.status} = 'pending' and exists (select 1 from ${schema.authorizedSignupTerms} where ${schema.authorizedSignupTerms.offerId} = ${offers.id})`
+                : undefined,
             ),
           ),
           and(

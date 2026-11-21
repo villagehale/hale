@@ -16,6 +16,7 @@ import {
   type PlanCharged,
   type PlanEngineDetail,
   type PlanEngineOutcome,
+  type PlanBinding,
   PlanEngineThrew,
   type PlanPaymentInput,
   type PlanResumeToken,
@@ -38,6 +39,11 @@ import {
   recordBrowserUseCost,
   reserveBrowserUseAllowance,
 } from '../store';
+import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
+import { termsTimeZone } from '../terms/ask';
+import { registrationFreeCheckoutEnabled, registrationPreflightEnabled } from '../terms/flag';
+import { type SignupTermsRow, loadSignupTerms } from '../terms/store';
+import type { CartDifference } from '../terms/types';
 import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
 import { registrationPlanAtOpenEnabled, registrationPlanRunEnabled } from './flag';
@@ -119,6 +125,10 @@ export interface PlanOutcomeNotice {
   confirmationNumber: string | null;
   liveViewUrl: string | null;
   holdExpiresAt: Date | null;
+  /** VIL-715 · what differed from the approval, on a `cart_mismatch`. */
+  cartDifferences?: CartDifference[];
+  /** VIL-715 · the bound terms, so the notice can say them. Absent on an unbound plan. */
+  terms?: Pick<SignupTermsRow, 'shown' | 'approved'>;
 }
 
 export type PlanRunOutcome = PlanEngineOutcome;
@@ -138,7 +148,9 @@ export type PlanRunDetail =
   /** A run was still waiting in the town's queue when the opening window closed. */
   | 'open_window_passed'
   /** Registration is still ahead. The plan was not started and the parent is not texted. */
-  | 'before_open';
+  | 'before_open'
+  /** VIL-715 · no approval Hale can read stands behind this plan. Nothing was charged. */
+  | 'terms_unreadable';
 
 /** Told nothing: a parent whose yes no longer stands (an opt-out, a departure) is not texted. */
 export type PlanNotice = 'sent' | 'failed' | 'withheld';
@@ -340,6 +352,9 @@ async function runOnePlan(
       'signup plans: the checkout review may have placed the order',
     );
   };
+  // VIL-715: set once the plan's terms row is read. A slot the yes took comes back when no
+  // run reached the provider; the row is what the notice states the terms from.
+  let bound: Pick<SignupTermsRow, 'shown' | 'approved'> | null = null;
   const end = async (
     result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
@@ -368,12 +383,21 @@ async function runOnePlan(
         now,
       });
     }
+    const seasonKey = bound?.approved?.seasonKey ?? null;
+    if (
+      seasonKey !== null &&
+      (!started || result.outcome === 'not_open') &&
+      signupHelpSlotReleaseEnabled()
+    ) {
+      await releaseSignupHelpAttempt(database, { familyId: plan.familyId, seasonKey, now });
+    }
     const { costUsd, sessionCostUsd, started: _started, ...facts } = result;
     const noticeFacts: PlanOutcomeNotice = {
       ...facts,
       offerId: plan.offerId,
       familyId: plan.familyId,
       parentUserId: plan.parentUserId,
+      ...(bound ? { terms: bound } : {}),
     };
     const notice: PlanNotice =
       result.detail === 'authorization_lapsed'
@@ -399,6 +423,7 @@ async function runOnePlan(
       sessionCostUsd: sessionCostUsd ?? released,
       notice,
       host,
+      ...(result.cartDifferences ? { cartDifferences: result.cartDifferences } : {}),
     });
     if (result.outcome === 'error') {
       noteRegistrationRunFailed({
@@ -485,6 +510,7 @@ async function runOnePlan(
       confirmationNumber: result.confirmationNumber,
       liveViewUrl: result.liveViewUrl,
       holdExpiresAt: result.holdExpiresAt,
+      ...(result.cartDifferences ? { cartDifferences: result.cartDifferences } : {}),
       costUsd: result.costUsd,
       sessionCostUsd: result.sessionCostUsd,
       started: result.sessionId !== null || result.runId !== null,
@@ -512,6 +538,27 @@ async function runOnePlan(
       liveViewUrl: null,
       holdExpiresAt: null,
     });
+  }
+  // VIL-715. A stored approval is enforced whatever the flag says now, so turning the flag
+  // off in an incident cannot leave a bound plan payable on its maximum alone. A row code
+  // cannot trust, or a plan with none while the flag is on, is handed back unpaid.
+  const termsRead = await loadSignupTerms(database, {
+    offerId: plan.offerId,
+    familyId: plan.familyId,
+  });
+  if (termsRead.status === 'read') bound = termsRead.row;
+  const approved = termsRead.status === 'read' ? termsRead.row.approved : null;
+  if (
+    termsRead.status === 'unreadable' ||
+    (approved === null && registrationPreflightEnabled(plan.familyId))
+  ) {
+    const page = await pageOps(database, {
+      site: 'registration_terms_unreadable',
+      facts: {},
+      ref: plan.offerId,
+    });
+    console.warn({ offerId: plan.offerId, page }, 'signup plans: no readable approval');
+    return handBack('terms_unreadable');
   }
   const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
   if (lapse) {
@@ -593,6 +640,14 @@ async function runOnePlan(
 
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
   const pick = typeof plan.availability?.kind === 'string' ? plan.availability.kind : null;
+  const binding: PlanBinding | null = approved
+    ? {
+        approved,
+        childFirstName: identity.childFirstName,
+        timeZone: termsTimeZone(host, await parentTimeZone(database, plan.parentUserId)),
+        freeCheckoutEnabled: registrationFreeCheckoutEnabled(plan.familyId),
+      }
+    : null;
   return carry(() =>
     runner.run({
       mode,
@@ -604,6 +659,7 @@ async function runOnePlan(
       maxPriceCents: plan.maxPriceCents,
       waiverAccepted: plan.waiverAccepted,
       paymentEnabled: browserUseSignupPaymentEnabled(),
+      binding,
       credentials,
       accountCreate: providerAccountCreateEnabled(),
       joinWaitlist: pick === 'join_waitlist',

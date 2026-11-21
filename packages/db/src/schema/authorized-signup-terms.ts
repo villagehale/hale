@@ -103,6 +103,8 @@ export interface SignupTermsApproved {
   maxCents: number;
   prerequisiteConfirmed: boolean | null;
   countsAgainstSeason: boolean;
+  /** The season this yes took a sign-up from. Given back if no run reached the provider. */
+  seasonKey: string | null;
   hold: SignupTermsHold | null;
 }
 

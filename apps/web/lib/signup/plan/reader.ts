@@ -46,6 +46,18 @@ export interface PlanReadOffer {
    * model.
    */
   asksWaiver: boolean;
+  /** VIL-715 · the terms the ask stated. Absent on an ask without them. */
+  terms?: PlanReadTerms;
+}
+
+/** VIL-715 · what the ask told the parent, for reading their yes against it. */
+export interface PlanReadTerms {
+  /** Every price the text stated, in cents. A plain yes accepts these. */
+  boundCents: number[];
+  /** Sessions that cost nothing: a yes to only these has a $0 maximum. */
+  freeSessionIds: string[];
+  prerequisiteRequired: boolean;
+  prerequisiteQuote: string | null;
 }
 
 /**
@@ -62,6 +74,10 @@ export type PlanReading =
       maxPriceCents: number;
       waiverAccepted: boolean;
       named: PlanNaming | null;
+      /** VIL-715 · on an ask with terms: their own words on the prerequisite. */
+      prerequisiteMet?: boolean | null;
+      /** VIL-715 · on an ask with terms: the limit their own words set, if any. */
+      limitWrittenCents?: number | null;
     }
   | { verdict: 'take_back'; named: PlanNaming | null }
   | { verdict: 'unclear'; question: string; named: PlanNaming | null }
@@ -76,6 +92,8 @@ const MAX_QUESTION_CHARS = 320;
 /** A program's name, not a paragraph: the longest activity label a reader is shown. */
 export const MAX_ACTIVITY_LABEL_CHARS = 80;
 export const SIGNUP_PLAN_READ_SKILL = 'signup-plan-read';
+/** VIL-715 · the addendum for an ask with terms. Loaded only when they are present. */
+export const SIGNUP_PLAN_READ_TERMS_SKILL = 'signup-plan-read-terms';
 export const SIGNUP_PLAN_READ_TOOL = 'signup_plan_read';
 export const SIGNUP_PLAN_READ_TOOL_DESCRIPTION =
   'Decide whether the parent approved the registration plan, took it back, or neither.';
@@ -124,6 +142,29 @@ export const SIGNUP_PLAN_READ_TOOL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/** The read of an ask with terms: the two prerequisite fields are added, nothing changes. */
+export const signupPlanReadTermsSchema = signupPlanReadSchema
+  .extend({
+    prerequisiteSaid: z.string().nullable(),
+    prerequisiteMet: z.boolean().nullable(),
+  })
+  .strict();
+
+export const SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA = {
+  ...SIGNUP_PLAN_READ_TOOL_SCHEMA,
+  properties: {
+    ...SIGNUP_PLAN_READ_TOOL_SCHEMA.properties,
+    prerequisiteSaid: { type: ['string', 'null'] },
+    prerequisiteMet: { type: ['boolean', 'null'] },
+  },
+  required: [...SIGNUP_PLAN_READ_TOOL_SCHEMA.required, 'prerequisiteSaid', 'prerequisiteMet'],
+} as const;
+
+type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
+  prerequisiteSaid?: string | null;
+  prerequisiteMet?: boolean | null;
+};
+
 /**
  * An offer's activity name as a reader may see it. A page or the coach model wrote it, so
  * control and invisible characters go (an invisible one could hide a host from the link
@@ -158,6 +199,7 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
         priceCents: session.priceCents,
       })),
       plan: input.offer.plan,
+      ...(input.offer.terms ? { terms: input.offer.terms } : {}),
     },
     text: input.text.slice(0, MAX_TEXT_CHARS),
   });
@@ -209,6 +251,7 @@ function maxSupported(
     session.priceCents === null ? [] : [session.priceCents],
   );
   if (stated.length > 0 && maxPriceCents === Math.max(...stated)) return true;
+  if (offer.terms?.boundCents.includes(maxPriceCents)) return true;
   if (offer.approvedPriceCents !== null && maxPriceCents === offer.approvedPriceCents) return true;
   if (moneyWritten(text).includes(maxPriceCents)) return true;
   const offered = [
@@ -269,7 +312,7 @@ function planNaming(
  * unreadable otherwise. A waiver the parent's words do not grant is not ticked.
  */
 export function toPlanReading(
-  raw: z.infer<typeof signupPlanReadSchema>,
+  raw: RawPlanRead,
   offer: PlanReadOffer,
   text: string,
 ): PlanReading | null {
@@ -284,14 +327,17 @@ export function toPlanReading(
   const ids = raw.choiceIds;
   const chosen = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
   const max = raw.maxPriceCents;
+  const allFree =
+    offer.terms !== undefined &&
+    ids.length > 0 &&
+    ids.every((id) => offer.terms?.freeSessionIds.includes(id));
   const valid =
     ids.length > 0 &&
     ids.length <= MAX_PLAN_CHOICES &&
     new Set(ids).size === ids.length &&
     chosen.length === ids.length &&
     max !== null &&
-    max > 0 &&
-    maxSupported(max, chosen, offer, text) &&
+    (max === 0 ? allFree : max > 0 && maxSupported(max, chosen, offer, text)) &&
     raw.said !== null &&
     quotesParentWords(text, raw.said);
   if (valid && max !== null) {
@@ -301,10 +347,33 @@ export function toPlanReading(
       maxPriceCents: max,
       waiverAccepted: waiverGranted(raw, offer, text),
       named,
+      ...(offer.terms
+        ? {
+            prerequisiteMet: prerequisiteAnswer(raw, text),
+            limitWrittenCents: limitWritten(max, text),
+          }
+        : {}),
     };
   }
   const question = cleanQuestion(raw.question);
   return question ? { verdict: 'unclear', question, named } : null;
+}
+
+/** Their own words on the prerequisite, whole. A model's verdict without them is nothing. */
+function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
+  if (raw.prerequisiteSaid == null || !quotesParentWords(text, raw.prerequisiteSaid)) return null;
+  return raw.prerequisiteMet ?? null;
+}
+
+/**
+ * The limit the parent's own words set. A model that left out a number they wrote cannot
+ * widen what they said: with no match, the smallest amount they wrote is the limit, and a
+ * limit under the price makes Hale ask.
+ */
+function limitWritten(max: number, text: string): number | null {
+  const written = moneyWritten(text);
+  if (written.length === 0) return null;
+  return written.includes(max) ? max : Math.min(...written);
 }
 
 function className(err: unknown): string {
@@ -331,23 +400,40 @@ export function createPlanReader(
       }
       if (!resolved) return unreadable('client_unavailable');
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_READ_SKILL);
+        system = input.offer.terms
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_READ_TERMS_SKILL)).instructions}`
+          : skill.instructions;
       } catch (err) {
         return unreadable('skill_unavailable', className(err));
       }
       try {
-        const { value } = await forceToolJson({
+        const asked = {
           client: resolved,
           lane: pickLane(skill.meta.task),
-          system: skill.instructions,
+          system,
           userMessage: signupPlanReadUserMessage(input),
           toolName: SIGNUP_PLAN_READ_TOOL,
           toolDescription: SIGNUP_PLAN_READ_TOOL_DESCRIPTION,
-          inputJsonSchema: SIGNUP_PLAN_READ_TOOL_SCHEMA,
-          schema: signupPlanReadSchema,
           maxTokens: SIGNUP_PLAN_READ_MAX_TOKENS,
-        });
+        };
+        const value: RawPlanRead = input.offer.terms
+          ? (
+              await forceToolJson({
+                ...asked,
+                inputJsonSchema: SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA,
+                schema: signupPlanReadTermsSchema,
+              })
+            ).value
+          : (
+              await forceToolJson({
+                ...asked,
+                inputJsonSchema: SIGNUP_PLAN_READ_TOOL_SCHEMA,
+                schema: signupPlanReadSchema,
+              })
+            ).value;
         return toPlanReading(value, input.offer, input.text) ?? unreadable('unreadable');
       } catch (err) {
         return unreadable('model_failed', className(err));

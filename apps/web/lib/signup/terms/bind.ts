@@ -41,16 +41,16 @@ export type BindResult =
   /** One question, and the offer stays open. */
   | { kind: 'clarify'; reason: 'prerequisite' | 'limit_below_rate' | 'no_amount' };
 
-function ratesFor(
-  shown: SignupTermsShown,
+/** The rates this family can be charged: their own when residency is known, else all. */
+export function ratesFor(
+  residency: SignupTermsShown['residency'],
   rates: SignupTermsShown['sessions'][number]['rates'],
-): number[] {
-  const residency = shown.residency;
+): SignupTermsShown['sessions'][number]['rates'] {
   const usable =
     residency === 'unknown'
       ? rates
       : rates.filter((row) => row.rate === 'flat' || row.rate === residency);
-  return (usable.length > 0 ? usable : rates).map((row) => row.cents);
+  return usable.length > 0 ? usable : rates;
 }
 
 function amountFor(
@@ -59,7 +59,7 @@ function amountFor(
 ): SignupTermsAmount | { clarify: 'limit_below_rate' | 'no_amount' } {
   const currency = input.shown.currency;
   const limit = input.limitWrittenCents;
-  const cents = session ? ratesFor(input.shown, session.rates) : [];
+  const cents = session ? ratesFor(input.shown.residency, session.rates).map((row) => row.cents) : [];
   if (cents.length === 0) {
     return limit === null ? { clarify: 'no_amount' } : { kind: 'ceiling', cents: limit, currency };
   }
@@ -125,6 +125,7 @@ export function bindApproval(input: BindInput): BindResult {
       maxCents: Math.max(...sessions.map((session) => mostAllowedCents(session.amount))),
       prerequisiteConfirmed: needsPrerequisite ? true : null,
       countsAgainstSeason: input.shown.countsAgainstSeason,
+      seasonKey: null,
       hold: holdFor(input, picked),
     },
   };

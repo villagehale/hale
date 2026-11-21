@@ -126,7 +126,7 @@ function comparesAmount(
   if (amount.kind === 'free') return total === 0 ? null : 'price';
   if (cart.currency === null || amount.currency === null) return 'unread';
   if (cart.currency !== amount.currency) return 'price';
-  if (stage === 'cart') return total <= mostAllowedCents(amount) ? null : 'price';
+  if (stage === 'cart') return total > 0 && total <= mostAllowedCents(amount) ? null : 'price';
   if (amount.kind === 'ceiling') return total <= amount.cents ? null : 'price';
   return comparesFinalExact(amount, cart, total);
 }
