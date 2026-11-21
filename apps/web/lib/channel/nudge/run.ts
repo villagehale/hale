@@ -507,12 +507,34 @@ export function dedupeKeyFor(
 }
 
 /**
- * One nudge across the sweep's days, whichever parent it was for. A digest, because the
- * audit row it rides on is family-visible and immutable: no window, child or event id.
+ * One nudge across the sweep's days, whichever parent it was for: the send it would be
+ * and the activity it recommends. A weekly or Saturday send can pick a different activity
+ * on a later day, and that one has not failed yet. A digest, because the audit row it
+ * rides on is family-visible and immutable: no window, child or event id, no source link.
  */
 function nudgeAuditRef(nudge: Nudge, familyId: string, now: Date, timeZone: string): string {
   const key = dedupeKeyFor(nudge, familyId, HOUSEHOLD_REF_SEAT, now, timeZone);
-  return createHash('sha256').update(key).digest('hex').slice(0, 32);
+  return createHash('sha256')
+    .update(JSON.stringify([key, nudgeRecommendationId(nudge)]))
+    .digest('hex')
+    .slice(0, 32);
+}
+
+/** The activity a nudge recommends. A registration or a weekday-care ask has none: its
+ * dedupe key already names the window or the question. */
+function nudgeRecommendationId(nudge: Nudge): string | null {
+  switch (nudge.kind) {
+    case 'weather_swap':
+    case 'weekday_dropin':
+      return nudge.candidateRef.id;
+    case 'empty_saturday':
+      return nudge.candidateId;
+    case 'registration':
+    case 'weekday_care':
+      return null;
+    default:
+      return assertNever(nudge);
+  }
 }
 
 /**

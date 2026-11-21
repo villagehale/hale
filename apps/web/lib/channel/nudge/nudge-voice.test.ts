@@ -219,6 +219,20 @@ describe('composeNudgeMessage — weekday care', () => {
     }
   });
 
+  it('counts an answer that came back unreadable as a bad draft, not an outage', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const written = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      { familyId: 'fam-1', database: {} as never, client: answering('this is not json') },
+    );
+    const logged = errors.mock.calls.find(
+      ([, line]) => line === 'nudge: weekday ask model call failed - unvoiced',
+    );
+    errors.mockRestore();
+    expect(logged?.[0]).toEqual({ err: 'StructuredOutputError', familyId: 'fam-1' });
+    expect(written).toEqual({ unwritten: 'unusable' });
+  });
+
   it('logs a failed model call by its error class, never the message', async () => {
     class ProviderError extends Error {
       status = 400;

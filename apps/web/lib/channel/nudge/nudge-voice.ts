@@ -7,7 +7,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 import {
@@ -178,8 +178,8 @@ export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean
 
 /**
  * Why a nudge has no text: four problems with four different fixes. A missing key or the
- * voice kill switch, a deploy without its skill, a provider that did not answer, and a
- * draft that came back and failed its check. Only the last says anything about this
+ * voice kill switch, a deploy without its skill, a provider that did not answer, and an
+ * answer that came back but could not be used. Only the last says anything about this
  * nudge, so it is the only one the sweep counts against it (run.ts).
  */
 export type NudgeUnwrittenReason = 'no_client' | 'skill_load' | 'model_failed' | 'unusable';
@@ -273,7 +273,9 @@ async function composeWeekdayCareAsk(
       { err: err instanceof Error ? err.constructor.name : 'unknown', familyId: deps.familyId },
       'nudge: weekday ask model call failed - unvoiced',
     );
-    return { unwritten: 'model_failed' };
+    // An answer that came back with nothing usable is a bad draft and spends one of this
+    // ask's tries. Only a call that did not come back at all is an outage.
+    return { unwritten: err instanceof StructuredOutputError ? 'unusable' : 'model_failed' };
   }
   const read = readWeekdayAsk(value, nudge.ask);
   if ('skipped' in read) {

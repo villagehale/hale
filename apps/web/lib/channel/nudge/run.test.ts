@@ -325,6 +325,32 @@ function db() {
   return fake as never;
 }
 
+/**
+ * A recommendation that used up its draft tries stays settled, and a different one picked
+ * for the same send (the same week, or the same Saturday) still gets its own.
+ */
+async function expectOwnDraftBudget(
+  h: Harness,
+  composeMessage: ReturnType<typeof vi.fn>,
+  different: RadarCandidate,
+) {
+  for (let attempt = 1; attempt <= MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result).toMatchObject({ unwritten: 1, settled: 0 });
+  }
+  const same = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+  expect(same).toMatchObject({ unwritten: 0, settled: 1 });
+  expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS);
+
+  const other = await runNudgeCron(
+    db(),
+    { ...h.deps, loadCandidates: async () => [different] },
+    FRIDAY_10AM,
+  );
+  expect(other).toMatchObject({ unwritten: 1, settled: 0 });
+  expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS + 1);
+}
+
 function auditActions(writes: Harness['writes']): string[] {
   return writes
     .filter((w) => w.table === schema.auditLog)
@@ -700,6 +726,40 @@ describe('runNudgeCron — a nudge the model could not write', () => {
       expect(h.transport.bodies()).toEqual(['Written once the model was back.']);
     },
   );
+
+  it('a different weather swap in the same week gets its own tries', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const h = harness({
+      candidates: [candidate({ id: 'swap-a', title: 'Library story time' })],
+      weather: WET,
+      composeMessage,
+    });
+    await expectOwnDraftBudget(
+      h,
+      composeMessage,
+      candidate({ id: 'swap-b', title: 'Indoor climbing', venueName: 'Community Centre' }),
+    );
+  });
+
+  it('a different session for the same Saturday gets its own tries', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const saturdayPick = (id: string, title: string) =>
+      candidate({
+        id,
+        title,
+        source: 'web',
+        eventDate: SATURDAY,
+        sourceUrl: `https://tpl.example/${id}`,
+      });
+    const h = harness({
+      saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
+      candidates: [saturdayPick('sat-a', 'EarlyON Saturday')],
+      composeMessage,
+    });
+    await expectOwnDraftBudget(h, composeMessage, saturdayPick('sat-b', 'Family craft hour'));
+  });
 
   it('positive control: a written nudge sends those words and pages nobody', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
@@ -1236,6 +1296,26 @@ describe('runNudgeCron — the weekday drop-in', () => {
   /** No FSA, so the region-gated health checkpoints are off the table and these cases
    * decide between the weekend and the weekday rather than against a paperwork window. */
   const NO_REGION = [family({ areaCoarse: null })];
+
+  it('a different drop-in in the same week gets its own draft tries', async () => {
+    armed();
+    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const h = harness({
+      families: NO_REGION,
+      children: SIX_MONTH_OLD,
+      candidates: CIVIC,
+      weekdayCare: AT_HOME,
+      composeMessage,
+    });
+    await expectOwnDraftBudget(h, composeMessage, {
+      ...(CIVIC[0] as RadarCandidate),
+      id: 'civic-2',
+      title: 'Family library hour',
+      venueName: 'Leaside Library',
+      eventDate: '2026-08-05',
+      sourceUrl: 'https://venue.example/library-hour',
+    });
+  });
 
   it('sends the find and keys it apart from a weather swap', async () => {
     armed();
