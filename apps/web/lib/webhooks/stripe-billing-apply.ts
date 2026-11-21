@@ -1,29 +1,48 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
-import { stripeBillingRevokeEnabled } from '~/lib/billing/flags';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  stripeBillingRevokeEnabled,
+  stripeRefundEndsSubscriptionEnabled,
+} from '~/lib/billing/flags';
+import { stripeRefundApiFromEnv } from '~/lib/billing/refund-family';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
 import {
+  type OtherSubscriptions,
+  type PeriodStanding,
+  STRIPE_LOOKUP_TIMEOUT_MS,
   type StripeChargeLookup,
+  StripeLookupError,
   stripeChargeLookupFromEnv,
 } from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
 import { alertUnresolvedBillingRevoke } from '~/lib/monitoring/billing-tier-alert';
+import { type FailurePageDeps, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import {
   type ChargeRevokeDecision,
+  ENDED_SUBSCRIPTION,
   type PriceTierMap,
+  type RevokeFacts,
+  type RevokeKeepReason,
+  type RevokeUnresolvedReason,
   type StripeTierOptions,
   chargeLinkFromStripeEvent,
   chargeRevokeDecision,
+  disputeOutcome,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   paidEventOccurredAt,
   paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
+  refundOutcome,
+  renewalPaidAfter,
+  soleSurvivingTier,
   stripeRefsFromStripeEvent,
+  subscriptionCreatedFromStripeEvent,
+  withinSearchSettle,
 } from './stripe-billing.js';
 
 /**
@@ -39,8 +58,12 @@ import {
  * to write. Every applied transition writes an immutable audit_log row (rule #6).
  *
  * Every outcome is TERMINAL — the caller returns 200 so Stripe stops retrying — EXCEPT
- * a thrown DB error (a genuine transient failure), which the route lets 500 so Stripe
- * retries. `unknown_family` (the event names a family that isn't in our DB) is terminal
+ * `retry` and a thrown DB error (a genuine transient failure), which the route lets 500 so
+ * Stripe retries. `retry` means a refund or dispute could not be decided yet: Stripe could
+ * not be read or could not cancel, the search index may still hide a sibling, or the family
+ * changed under the decision. Nothing is claimed, the route answers 503, and the redelivery
+ * decides from fresh state, because a claimed refund can never be replayed.
+ * `unknown_family` (the event names a family that isn't in our DB) is terminal
  * too: the ledger still claims the event, we log, and we acknowledge rather than loop.
  * `refund_ready` is terminal as well: a paid session used a disallowed price (list
  * during the founding window, or a Payment Link with no founding price). Plan is not
@@ -58,12 +81,27 @@ export type ApplyStripeBillingResult =
   | { status: 'ignored' }
   | { status: 'refund_ready'; opsAlert: OpsPageOutcome }
   | { status: 'blocked' }
-  | { status: 'kept'; reason: 'partial_refund' | 'active_subscription' }
+  | { status: 'kept'; reason: RevokeKeepReason | 'subscription_already_ended' }
   | {
       status: 'unresolved';
-      reason: 'no_family' | 'subscription_unresolved';
+      reason: UnresolvedRevokeReason;
       opsAlert: OpsPageOutcome;
-    };
+    }
+  | RevokeRetry;
+
+type UnresolvedRevokeReason = 'no_family' | RevokeUnresolvedReason;
+
+interface RevokeRetry {
+  status: 'retry';
+  reason:
+    | 'stripe_unavailable'
+    | 'stripe_refused'
+    | 'stripe_not_configured'
+    | 'stripe_cancel_failed'
+    | 'search_settling'
+    | 'family_changed';
+  opsAlert?: OpsPagerOutcome;
+}
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -78,14 +116,18 @@ export interface ApplyStripeBillingDeps {
   subscriptionBlocked?: (familyId: string, subscriptionId: string) => Promise<boolean>;
   /**
    * Charge → subscription lookup. Omitted uses STRIPE_SECRET_KEY when set.
-   * Null skips the network (tests that already expanded the payload).
+   * Null means no client: a charge that needs a lookup is `retry`, never a guess.
    */
   chargeLookup?: StripeChargeLookup | null;
+  /** The one Stripe transport for both default clients: lookups and the cancel. */
+  stripeFetch?: typeof fetch;
   /** Test seam for the unresolved #ops page. */
   onUnresolvedRevoke?: (info: {
     eventId: string;
-    reason: 'no_family' | 'subscription_unresolved';
+    reason: UnresolvedRevokeReason;
   }) => Promise<OpsPageOutcome | undefined>;
+  /** Test seam for the refused-Stripe page. */
+  pageDeps?: FailurePageDeps;
 }
 
 export async function applyStripeBillingEvent(
@@ -108,7 +150,7 @@ export async function applyStripeBillingEvent(
   if (stripeBillingRevokeEnabled(env)) {
     const revoke = chargeRevokeDecision(event);
     if (revoke.action !== 'ignore') {
-      return applyChargeRevoke(event, eventId, revoke, database, deps);
+      return applyChargeRevoke(event, eventId, revoke, database, priceTierMap, deps);
     }
   }
   const tier = planTierFromStripeEvent(event, priceTierMap, tierOptions);
@@ -121,11 +163,35 @@ export async function applyStripeBillingEvent(
   }
 
   const refs = stripeRefsFromStripeEvent(event);
+  let deletionGuarded = false;
   if (
     refs.subscriptionId &&
-    (await isSubscriptionBlocked(database, familyId, refs.subscriptionId, deps))
+    isSubscriptionDeleted(event) &&
+    stripeBillingRevokeEnabled(env) &&
+    stripeRefundEndsSubscriptionEnabled(env)
   ) {
-    return claimBlockedGrant(eventId, familyId, refs.subscriptionId, database);
+    const guarded = await guardSubscriptionDeleted(
+      event,
+      eventId,
+      familyId,
+      { customerId: refs.customerId, subscriptionId: refs.subscriptionId },
+      database,
+      priceTierMap,
+      deps,
+    );
+    if (guarded) return guarded;
+    deletionGuarded = true;
+  }
+  const block = refs.subscriptionId
+    ? await grantBlock(database, familyId, refs.subscriptionId, deps)
+    : null;
+  const liftsHold =
+    block?.verb === 'billing_grant_held' && renewalPaidAfter(event, block.liftsOnRenewalAfter);
+  // A hold stops grants. The subscription ending is not a grant.
+  const passesHold =
+    block?.verb === 'billing_grant_held' && (liftsHold || isSubscriptionDeleted(event));
+  if (refs.subscriptionId && block && !passesHold) {
+    return claimBlockedGrant(eventId, familyId, refs.subscriptionId, block.verb, database);
   }
 
   return database.transaction(async (tx) => {
@@ -177,144 +243,484 @@ export async function applyStripeBillingEvent(
       before: { planTier: existing[0]?.planTier ?? null },
       after: { planTier: tier, source: 'stripe', stripeEventId: eventId },
     });
+    if (deletionGuarded && refs.subscriptionId) {
+      await insertEndedMarker(
+        tx,
+        familyId,
+        eventId,
+        refs.subscriptionId,
+        'subscription_deleted',
+        existing[0]?.planTier !== 'free',
+      );
+    }
+    if (liftsHold && refs.subscriptionId) {
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'billing_grant_released',
+        targetTable: 'families',
+        targetId: familyId,
+        after: { source: 'stripe', stripeEventId: eventId, subscriptionId: refs.subscriptionId },
+      });
+    }
 
     return { status: 'applied', tier };
   });
 }
-
-const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
 
 interface LinkedCharge {
   familyId: string | null;
   customerId: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
+  subscriptionCreated: number | null;
+  subscriptionCustomerId: string | null;
+  subscriptionFamilyId: string | null;
+  periodStanding: PeriodStanding | null;
+  invoiceCreated: number | null;
 }
 
+type BillingTx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+interface FamilyBillingRow {
+  planTier: PlanTier;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+}
+
+/** A required Stripe client is missing. Named, paged, and retried, never read as "nothing". */
+class StripeNotConfigured extends Error {}
+
+/** A grant or `.deleted` committed since the family row was read. Rolls the claim back. */
+class FamilyChangedDuringRevoke extends Error {}
+
+/**
+ * No transaction is held across a Stripe call: read, decide, end the subscription, then
+ * claim and write in one transaction. If the process dies after the cancel, the redelivery
+ * reads the subscription as ended and finishes the drop. The other order could commit a
+ * claimed drop while the subscription keeps billing, and nothing would ever retry it.
+ */
 async function applyChargeRevoke(
   event: unknown,
   eventId: string,
   decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
   database: Database,
+  priceTierMap: PriceTierMap,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
-  const linked = await linkCharge(event, deps);
+  if (await eventAlreadyClaimed(database, eventId)) return { status: 'duplicate' };
+  try {
+    return await decideChargeRevoke(event, eventId, decision, database, priceTierMap, deps);
+  } catch (err) {
+    const retry = await retryFromFailure(err, eventId, database, deps);
+    if (retry) return retry;
+    throw err;
+  }
+}
+
+async function decideChargeRevoke(
+  event: unknown,
+  eventId: string,
+  decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
+  database: Database,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const env = deps.env ?? process.env;
+  const endsSubscription = stripeRefundEndsSubscriptionEnabled(env);
+  const lookup = chargeLookupFor(deps);
+  const linked = await linkCharge(event, lookup);
   const familyId = await familyIdForLinkedCharge(linked, database);
   if (!familyId) return unresolvedRevoke(eventId, 'no_family', null, database, deps);
 
-  type ChargeTxResult =
-    | Exclude<ApplyStripeBillingResult, { status: 'unresolved' }>
-    | { status: 'leave_unresolved' };
+  const family = await readFamilyBilling(database, familyId);
+  if (!family) {
+    const claimed = await database.transaction((tx) => claimEvent(tx, eventId));
+    if (!claimed) return { status: 'duplicate' };
+    console.warn('stripe billing: event references an unknown family', { eventId });
+    return { status: 'unknown_family' };
+  }
 
-  return database
-    .transaction(async (tx): Promise<ChargeTxResult> => {
-      const existing = await tx
-        .select({
-          planTier: schema.families.planTier,
-          stripeSubscriptionId: schema.families.stripeSubscriptionId,
-        })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId))
-        .limit(1);
-      if (existing.length === 0) {
-        console.warn(
-          `stripe billing: event ${eventId} references unknown family ${familyId} — acknowledged, not applied`,
-        );
-        return { status: 'unknown_family' };
-      }
-      const current = existing[0];
-      if (!current) return { status: 'unknown_family' };
+  const facts: RevokeFacts = {
+    flagOn: endsSubscription,
+    subscriptionId: linked.subscriptionId,
+    subscriptionStatus: linked.subscriptionStatus,
+    subscriptionCreated: linked.subscriptionCreated,
+    namesAnotherFamily:
+      linked.subscriptionFamilyId !== null && linked.subscriptionFamilyId !== familyId,
+    periodStanding: linked.periodStanding,
+    planTier: family.planTier,
+    storedSubscriptionId: family.stripeSubscriptionId,
+    nowSeconds: wallClockSeconds(deps),
+    other: null,
+    priceTierMap,
+  };
+  const partial = decision.action === 'keep' && decision.reason === 'partial_refund';
+  const decide = (input: RevokeFacts) =>
+    decision.kind === 'refund' ? refundOutcome({ ...input, partial }) : disputeOutcome(input);
 
-      const partial = decision.action === 'keep' && decision.reason === 'partial_refund';
-      const live =
-        linked.subscriptionStatus !== null && LIVE_SUBSCRIPTION.has(linked.subscriptionStatus);
-      const otherSubscription = Boolean(
-        linked.subscriptionId &&
-          current.stripeSubscriptionId &&
-          linked.subscriptionId !== current.stripeSubscriptionId,
-      );
-      const tiedToCurrent =
-        linked.subscriptionId !== null &&
-        current.stripeSubscriptionId !== null &&
-        linked.subscriptionId === current.stripeSubscriptionId;
-      const nothingLiveOnFile = !current.stripeSubscriptionId;
-
-      if (partial || live || otherSubscription) {
-        const reason = partial ? 'partial_refund' : 'active_subscription';
-        const claimed = await claimEvent(tx, eventId);
-        if (!claimed) return { status: 'duplicate' };
-        await tx.insert(schema.auditLog).values({
-          familyId,
-          actor: 'system',
-          actionTaken: 'billing_refunded',
-          targetTable: 'families',
-          targetId: familyId,
-          after: {
-            planTier: current.planTier,
-            source: 'stripe',
-            stripeEventId: eventId,
-            reason,
-            tierChanged: false,
-          },
-        });
-        return { status: 'kept', reason };
-      }
-
-      if (!tiedToCurrent && !nothingLiveOnFile) {
-        return { status: 'leave_unresolved' };
-      }
-
-      const claimed = await claimEvent(tx, eventId);
-      if (!claimed) return { status: 'duplicate' };
-      await tx
-        .update(schema.families)
-        .set({ planTier: 'free', updatedAt: new Date() })
-        .where(eq(schema.families.id, familyId));
-      await tx.insert(schema.auditLog).values({
-        familyId,
-        actor: 'system',
-        actionTaken: 'family_plan_updated',
-        targetTable: 'families',
-        targetId: familyId,
-        before: { planTier: current.planTier },
-        after: {
-          planTier: 'free',
-          source: 'stripe',
-          stripeEventId: eventId,
-          reason: decision.kind,
-        },
-      });
-      return { status: 'applied', tier: 'free' };
-    })
-    .then(async (result): Promise<ApplyStripeBillingResult> => {
-      if (result.status === 'leave_unresolved') {
-        return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps);
-      }
-      return result;
+  let outcome = decide(facts);
+  if (outcome.action === 'needs_scan') {
+    const other = await requireLookup(lookup).otherSubscriptions({
+      familyId,
+      excludeSubscriptionId: linked.subscriptionId,
+      customerIds: [linked.customerId, linked.subscriptionCustomerId].filter(
+        (id): id is string => id !== null,
+      ),
+      storedCustomerId: family.stripeCustomerId,
+      storedSubscriptionId: family.stripeSubscriptionId,
     });
+    outcome = decide({ ...facts, other });
+  }
+  if (outcome.action === 'needs_scan') {
+    throw new Error('stripe billing: the revoke decision asked for a scan it already has');
+  }
+  if (outcome.action === 'wait') return { status: 'retry', reason: 'search_settling' };
+  const heldSubscriptionId =
+    (outcome.action === 'keep' || outcome.action === 'unresolved') && outcome.holdGrants
+      ? linked.subscriptionId
+      : null;
+  // A cancelled subscription never renews, so nothing may lift its hold.
+  const liftsOnRenewalAfter =
+    linked.subscriptionStatus !== null && ENDED_SUBSCRIPTION.has(linked.subscriptionStatus)
+      ? null
+      : linked.invoiceCreated;
+  const writeHold = async (tx: BillingTx) => {
+    if (heldSubscriptionId) {
+      await insertGrantHold(tx, familyId, eventId, heldSubscriptionId, liftsOnRenewalAfter);
+    }
+  };
+  if (outcome.action === 'unresolved') {
+    return unresolvedRevoke(eventId, outcome.reason, familyId, database, deps, writeHold);
+  }
+  if (outcome.action === 'drop') {
+    const ended = await endSubscriptions(outcome.cancelSubscriptionIds, lookup, deps);
+    if (!ended) return cancelFailedRetry(eventId, database, deps);
+  }
+
+  const settled = outcome;
+  // A refund that lost the race to `.deleted` still blocks late grants for S.
+  const markAlreadyEnded =
+    settled.action === 'keep' &&
+    settled.reason === 'already_free' &&
+    endsSubscription &&
+    linked.subscriptionId !== null &&
+    (await auditVerbNamingSubscription(database, familyId, linked.subscriptionId, [
+      'billing_subscription_ended',
+    ])) === null;
+  return database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
+    if (!(await claimEvent(tx, eventId))) return { status: 'duplicate' };
+    if (settled.action === 'drop') {
+      await moveTier(tx, familyId, family, 'free', eventId, decision.kind);
+      if (endsSubscription && decision.kind === 'refund') {
+        const endedIds = new Set(settled.cancelSubscriptionIds);
+        if (linked.subscriptionId) endedIds.add(linked.subscriptionId);
+        for (const id of endedIds) {
+          await insertEndedMarker(tx, familyId, eventId, id, 'refund', true);
+        }
+      }
+      return { status: 'applied', tier: 'free' };
+    }
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'billing_refunded',
+      targetTable: 'families',
+      targetId: familyId,
+      after: {
+        planTier: family.planTier,
+        source: 'stripe',
+        stripeEventId: eventId,
+        reason: settled.reason,
+        tierChanged: false,
+      },
+    });
+    await writeHold(tx);
+    if (markAlreadyEnded && linked.subscriptionId) {
+      await insertEndedMarker(tx, familyId, eventId, linked.subscriptionId, 'refund', false);
+    }
+    return { status: 'kept', reason: settled.reason };
+  });
 }
 
-async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise<LinkedCharge> {
+/**
+ * `customer.subscription.deleted` can wrongly drop a family: a duplicate cancelled by hand,
+ * or a late delivery after the family bought again. When something else is still paid the
+ * plan follows it. Returns null when nothing else is live, so today's path drops the plan.
+ */
+async function guardSubscriptionDeleted(
+  event: unknown,
+  eventId: string,
+  familyId: string,
+  refs: { customerId: string | null; subscriptionId: string },
+  database: Database,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult | null> {
+  if (await eventAlreadyClaimed(database, eventId)) return { status: 'duplicate' };
+  const { subscriptionId } = refs;
+  try {
+    const ourCancel = await auditVerbNamingSubscription(database, familyId, subscriptionId, [
+      'billing_subscription_ended',
+    ]);
+    if (ourCancel) {
+      const claimed = await database.transaction((tx) => claimEvent(tx, eventId));
+      return claimed
+        ? { status: 'kept', reason: 'subscription_already_ended' }
+        : { status: 'duplicate' };
+    }
+
+    const family = await readFamilyBilling(database, familyId);
+    if (!family) return null;
+    const lookup = requireLookup(chargeLookupFor(deps));
+    const other = await lookup.otherSubscriptions({
+      familyId,
+      excludeSubscriptionId: subscriptionId,
+      customerIds: refs.customerId ? [refs.customerId] : [],
+      storedCustomerId: family.stripeCustomerId,
+      storedSubscriptionId: family.stripeSubscriptionId,
+    });
+
+    if (other.paid.length > 0 || other.truncated) {
+      const markEnded = (tx: BillingTx, tierChanged: boolean) =>
+        insertEndedMarker(
+          tx,
+          familyId,
+          eventId,
+          subscriptionId,
+          'other_subscription_live',
+          tierChanged,
+        );
+      // A deletion never grants to a family on Free: it can only correct a paid tier.
+      const tier =
+        family.planTier === 'free'
+          ? 'free'
+          : await tierStillPaidFor(database, familyId, family.planTier, other, priceTierMap, deps);
+      if (tier === null) {
+        return await unresolvedRevoke(
+          eventId,
+          'surviving_plan_differs',
+          familyId,
+          database,
+          deps,
+          (tx) => markEnded(tx, false),
+        );
+      }
+      return await database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
+        if (!(await claimEvent(tx, eventId))) return { status: 'duplicate' };
+        if (tier === family.planTier) {
+          await markEnded(tx, false);
+          return { status: 'kept', reason: 'active_subscription' };
+        }
+        await moveTier(tx, familyId, family, tier, eventId, 'surviving_subscription');
+        await markEnded(tx, true);
+        return { status: 'applied', tier };
+      });
+    }
+    if (withinSearchSettle(subscriptionCreatedFromStripeEvent(event), wallClockSeconds(deps))) {
+      return { status: 'retry', reason: 'search_settling' };
+    }
+    if (other.refundedIds.length === 0) return null;
+
+    const ended = await endSubscriptions(other.refundedIds, lookup, deps);
+    if (!ended) return cancelFailedRetry(eventId, database, deps);
+    return await database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
+      if (!(await claimEvent(tx, eventId))) return { status: 'duplicate' };
+      await moveTier(tx, familyId, family, 'free', eventId, 'refund');
+      for (const id of [subscriptionId, ...other.refundedIds]) {
+        await insertEndedMarker(tx, familyId, eventId, id, 'refund', true);
+      }
+      return { status: 'applied', tier: 'free' };
+    });
+  } catch (err) {
+    const retry = await retryFromFailure(err, eventId, database, deps);
+    if (retry) return retry;
+    throw err;
+  }
+}
+
+/**
+ * The tier the remaining subscriptions vouch for, or null when a person must decide: a
+ * truncated scan, mixed or unknown prices, a survivor whose own grant is blocked, or a raise
+ * onto a subscription that is behind on payment.
+ */
+async function tierStillPaidFor(
+  database: Database,
+  familyId: string,
+  planTier: PlanTier,
+  other: OtherSubscriptions,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<PlanTier | null> {
+  const tier = soleSurvivingTier(other, priceTierMap);
+  if (tier === null) return null;
+  for (const row of other.paid) {
+    if (await grantBlock(database, familyId, row.id, deps)) return null;
+  }
+  const raises = planTier === 'plus' && tier === 'family';
+  if (raises && other.paid.some((row) => row.status === 'past_due')) return null;
+  return tier;
+}
+
+function isSubscriptionDeleted(event: unknown): boolean {
+  return (
+    typeof event === 'object' &&
+    event !== null &&
+    (event as { type?: unknown }).type === 'customer.subscription.deleted'
+  );
+}
+
+/** The wall clock, never the event's own `created`, which no redelivery advances. */
+function wallClockSeconds(deps: ApplyStripeBillingDeps): number {
+  return Math.floor((deps.now ?? new Date()).getTime() / 1000);
+}
+
+function chargeLookupFor(deps: ApplyStripeBillingDeps): StripeChargeLookup | null {
+  return deps.chargeLookup === undefined
+    ? stripeChargeLookupFromEnv(deps.env ?? process.env, deps.stripeFetch)
+    : deps.chargeLookup;
+}
+
+function requireLookup(lookup: StripeChargeLookup | null): StripeChargeLookup {
+  if (!lookup) throw new StripeNotConfigured();
+  return lookup;
+}
+
+async function endSubscriptions(
+  ids: readonly string[],
+  lookup: StripeChargeLookup | null,
+  deps: ApplyStripeBillingDeps,
+): Promise<boolean> {
+  if (ids.length === 0) return true;
+  const transport = deps.stripeFetch ?? fetch;
+  const stripe = stripeRefundApiFromEnv(deps.env ?? process.env, (input, init) =>
+    transport(input, { ...init, signal: AbortSignal.timeout(STRIPE_LOOKUP_TIMEOUT_MS) }),
+  );
+  if (!stripe) throw new StripeNotConfigured();
+  const reader = requireLookup(lookup);
+  for (const id of ids) {
+    if (!(await endSubscription(id, reader, stripe.cancelSubscription))) return false;
+  }
+  return true;
+}
+
+/** Stripe does not document a repeated cancel, so the status read is the proof. */
+async function endSubscription(
+  id: string,
+  lookup: StripeChargeLookup,
+  cancel: (subscriptionId: string) => Promise<void>,
+): Promise<boolean> {
+  if (ENDED_SUBSCRIPTION.has(await lookup.subscriptionStatus(id))) return true;
+  try {
+    await cancel(id);
+    return true;
+  } catch {
+    return ENDED_SUBSCRIPTION.has(await lookup.subscriptionStatus(id));
+  }
+}
+
+async function cancelFailedRetry(
+  eventId: string,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<RevokeRetry> {
+  console.warn('stripe billing: revoke retry', { eventId, reason: 'stripe_cancel_failed' });
+  const opsAlert = await pageOps(
+    database,
+    { site: 'billing_stripe_refused', facts: { call: 'cancel', status: 'unknown' } },
+    deps.pageDeps,
+  );
+  return { status: 'retry', reason: 'stripe_cancel_failed', opsAlert };
+}
+
+function refusedStatusFact(
+  statusCode: number | null,
+): '400' | '401' | '403' | '404' | 'other_4xx' | 'unknown' {
+  if (statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404) {
+    return String(statusCode) as '400' | '401' | '403' | '404';
+  }
+  return statusCode !== null && statusCode >= 400 && statusCode < 500 ? 'other_4xx' : 'unknown';
+}
+
+/**
+ * A transient failure retries quietly. A refusal also retries, because redelivery after the
+ * key is fixed recovers it, and it pages: otherwise it would run out Stripe's three days of
+ * retries with no row and no page while the family stays on a plan it was refunded for.
+ */
+async function retryFromFailure(
+  err: unknown,
+  eventId: string,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<RevokeRetry | null> {
+  if (err instanceof FamilyChangedDuringRevoke) {
+    console.warn('stripe billing: revoke retry', { eventId, reason: 'family_changed' });
+    return { status: 'retry', reason: 'family_changed' };
+  }
+  if (err instanceof StripeNotConfigured) {
+    console.warn('stripe billing: revoke retry', { eventId, reason: 'stripe_not_configured' });
+    const opsAlert = await pageOps(
+      database,
+      { site: 'billing_stripe_refused', facts: { call: 'lookup', status: 'no_key' } },
+      deps.pageDeps,
+    );
+    return { status: 'retry', reason: 'stripe_not_configured', opsAlert };
+  }
+  if (!(err instanceof StripeLookupError)) return null;
+  console.warn('stripe billing: revoke retry', {
+    eventId,
+    reason: err.kind === 'transient' ? 'stripe_unavailable' : 'stripe_refused',
+    httpStatus: err.statusCode,
+  });
+  if (err.kind === 'transient') return { status: 'retry', reason: 'stripe_unavailable' };
+  const opsAlert = await pageOps(
+    database,
+    {
+      site: 'billing_stripe_refused',
+      facts: { call: 'lookup', status: refusedStatusFact(err.statusCode) },
+    },
+    deps.pageDeps,
+  );
+  return { status: 'retry', reason: 'stripe_refused', opsAlert };
+}
+
+async function linkCharge(
+  event: unknown,
+  lookup: StripeChargeLookup | null,
+): Promise<LinkedCharge> {
   const link = chargeLinkFromStripeEvent(event);
   const base: LinkedCharge = {
     familyId: familyIdFromStripeEvent(event),
     customerId: stripeRefsFromStripeEvent(event).customerId,
     subscriptionId: link.subscriptionId,
     subscriptionStatus: link.subscriptionStatus,
+    subscriptionCreated: null,
+    subscriptionCustomerId: null,
+    subscriptionFamilyId: null,
+    periodStanding: null,
+    invoiceCreated: null,
   };
-  const needsLookup = !base.subscriptionId || (!base.familyId && !base.customerId);
+  // A bare id with no status is not "not live": it has to be read.
+  const needsLookup =
+    !base.subscriptionId || !base.subscriptionStatus || (!base.familyId && !base.customerId);
   if (!needsLookup || !link.chargeId) return base;
-  const lookup =
-    deps.chargeLookup === undefined
-      ? stripeChargeLookupFromEnv(deps.env ?? process.env)
-      : deps.chargeLookup;
-  if (!lookup) return base;
-  const found = await lookup.lookupCharge(link.chargeId);
-  return {
+  const found = await requireLookup(lookup).lookupCharge(link.chargeId);
+  const merged: LinkedCharge = {
+    ...base,
     familyId: base.familyId ?? found.familyId,
     customerId: base.customerId ?? found.customerId,
-    subscriptionId: base.subscriptionId ?? found.subscriptionId,
-    subscriptionStatus: base.subscriptionStatus ?? found.subscriptionStatus,
+  };
+  if (!found.subscriptionId) return merged;
+  return {
+    ...merged,
+    subscriptionId: found.subscriptionId,
+    subscriptionStatus: found.subscriptionStatus,
+    subscriptionCreated: found.subscriptionCreated,
+    subscriptionCustomerId: found.subscriptionCustomerId,
+    subscriptionFamilyId: found.subscriptionFamilyId,
+    periodStanding: found.periodStanding,
+    invoiceCreated: found.invoiceCreated,
   };
 }
 
@@ -332,44 +738,138 @@ async function familyIdForLinkedCharge(
   return rows[0]?.id ?? null;
 }
 
-async function unresolvedAlreadyRecorded(
+async function readFamilyBilling(
   database: Database,
   familyId: string,
-  eventId: string,
-): Promise<boolean> {
+): Promise<FamilyBillingRow | null> {
   const rows = await database
-    .select({ after: schema.auditLog.after })
-    .from(schema.auditLog)
+    .select({
+      planTier: schema.families.planTier,
+      stripeCustomerId: schema.families.stripeCustomerId,
+      stripeSubscriptionId: schema.families.stripeSubscriptionId,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function eventAlreadyClaimed(database: Database, eventId: string): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.stripeBillingEvents.id })
+    .from(schema.stripeBillingEvents)
+    .where(eq(schema.stripeBillingEvents.eventId, eventId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Conditional on what the decision read, so a grant that landed since is never overwritten. */
+async function writePlanIfUnchanged(
+  tx: BillingTx,
+  familyId: string,
+  read: FamilyBillingRow,
+  planTier: PlanTier,
+): Promise<void> {
+  const updated = await tx
+    .update(schema.families)
+    .set({ planTier, updatedAt: new Date() })
     .where(
       and(
-        eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.actionTaken, 'billing_revoke_unresolved'),
+        eq(schema.families.id, familyId),
+        eq(schema.families.planTier, read.planTier),
+        read.stripeSubscriptionId === null
+          ? isNull(schema.families.stripeSubscriptionId)
+          : eq(schema.families.stripeSubscriptionId, read.stripeSubscriptionId),
       ),
     )
-    .limit(20);
-  return rows.some((row) => auditEventId(row.after) === eventId);
+    .returning({ id: schema.families.id });
+  if (updated.length === 0) throw new FamilyChangedDuringRevoke();
+}
+
+async function moveTier(
+  tx: BillingTx,
+  familyId: string,
+  read: FamilyBillingRow,
+  planTier: PlanTier,
+  eventId: string,
+  reason: 'refund' | 'dispute' | 'surviving_subscription',
+): Promise<void> {
+  await writePlanIfUnchanged(tx, familyId, read, planTier);
+  await tx.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'family_plan_updated',
+    targetTable: 'families',
+    targetId: familyId,
+    before: { planTier: read.planTier },
+    after: { planTier, source: 'stripe', stripeEventId: eventId, reason },
+  });
+}
+
+/** Names a subscription that is over, so no late event for it can bring the tier back. */
+async function insertEndedMarker(
+  tx: BillingTx,
+  familyId: string,
+  eventId: string,
+  subscriptionId: string,
+  reason: 'refund' | 'other_subscription_live' | 'subscription_deleted',
+  tierChanged: boolean,
+): Promise<void> {
+  await tx.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'billing_subscription_ended',
+    targetTable: 'families',
+    targetId: familyId,
+    after: { source: 'stripe', stripeEventId: eventId, subscriptionId, reason, tierChanged },
+  });
+}
+
+/**
+ * A refunded subscription that stays in Stripe grants nothing until a renewal invoiced after
+ * `liftsOnRenewalAfter` takes new money. Null means nothing lifts it.
+ */
+async function insertGrantHold(
+  tx: BillingTx,
+  familyId: string,
+  eventId: string,
+  subscriptionId: string,
+  liftsOnRenewalAfter: number | null,
+): Promise<void> {
+  await tx.insert(schema.auditLog).values({
+    familyId,
+    actor: 'system',
+    actionTaken: 'billing_grant_held',
+    targetTable: 'families',
+    targetId: familyId,
+    after: { source: 'stripe', stripeEventId: eventId, subscriptionId, liftsOnRenewalAfter },
+  });
 }
 
 async function unresolvedRevoke(
   eventId: string,
-  reason: 'no_family' | 'subscription_unresolved',
+  reason: UnresolvedRevokeReason,
   familyId: string | null,
   database: Database,
   deps: ApplyStripeBillingDeps,
+  withinClaim?: (tx: BillingTx) => Promise<void>,
 ): Promise<ApplyStripeBillingResult> {
-  if (familyId && (await unresolvedAlreadyRecorded(database, familyId, eventId))) {
-    return { status: 'duplicate' };
-  }
-  if (familyId) {
-    await database.insert(schema.auditLog).values({
-      familyId,
-      actor: 'system',
-      actionTaken: 'billing_revoke_unresolved',
-      targetTable: 'families',
-      targetId: familyId,
-      after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
-    });
-  }
+  const claimed = await database.transaction(async (tx) => {
+    if (!(await claimEvent(tx, eventId))) return false;
+    if (familyId) {
+      await tx.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'billing_revoke_unresolved',
+        targetTable: 'families',
+        targetId: familyId,
+        after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
+      });
+    }
+    await withinClaim?.(tx);
+    return true;
+  });
+  if (!claimed) return { status: 'duplicate' };
   const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
   const posted = await alert({ eventId, reason });
   const opsAlert = posted ?? 'sent';
@@ -377,10 +877,7 @@ async function unresolvedRevoke(
   return { status: 'unresolved', reason, opsAlert };
 }
 
-async function claimEvent(
-  tx: Parameters<Parameters<Database['transaction']>[0]>[0],
-  eventId: string,
-): Promise<boolean> {
+async function claimEvent(tx: BillingTx, eventId: string): Promise<boolean> {
   const claim = await tx
     .insert(schema.stripeBillingEvents)
     .values({ eventId })
@@ -389,32 +886,93 @@ async function claimEvent(
   return claim.length > 0;
 }
 
-async function isSubscriptionBlocked(
+type PermanentBlockVerb = 'billing_refund_ready' | 'billing_subscription_ended';
+const PERMANENT_BLOCK_VERBS: readonly PermanentBlockVerb[] = [
+  'billing_refund_ready',
+  'billing_subscription_ended',
+];
+
+type GrantBlock =
+  | { verb: PermanentBlockVerb }
+  | { verb: 'billing_grant_held'; liftsOnRenewalAfter: number | null };
+
+function namesSubscription(subscriptionId: string) {
+  return sql`${schema.auditLog.after}->>'subscriptionId' = ${subscriptionId}`;
+}
+
+async function auditVerbNamingSubscription(
   database: Database,
   familyId: string,
   subscriptionId: string,
-  deps: ApplyStripeBillingDeps,
-): Promise<boolean> {
-  if (deps.subscriptionBlocked) {
-    return deps.subscriptionBlocked(familyId, subscriptionId);
-  }
-  const rows = await database
-    .select({ after: schema.auditLog.after })
+  verbs: readonly PermanentBlockVerb[],
+): Promise<PermanentBlockVerb | null> {
+  const [row] = await database
+    .select({ actionTaken: schema.auditLog.actionTaken })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.actionTaken, 'billing_refund_ready'),
+        inArray(schema.auditLog.actionTaken, [...verbs]),
+        namesSubscription(subscriptionId),
       ),
     )
-    .limit(50);
-  return rows.some((row) => auditSubscriptionId(row.after) === subscriptionId);
+    .limit(1);
+  return row ? (row.actionTaken as PermanentBlockVerb) : null;
+}
+
+/** The newest hold-or-release row decides, so a refund of a later renewal holds it again. */
+async function activeGrantHold(
+  database: Database,
+  familyId: string,
+  subscriptionId: string,
+): Promise<GrantBlock | null> {
+  const [row] = await database
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        inArray(schema.auditLog.actionTaken, ['billing_grant_held', 'billing_grant_released']),
+        namesSubscription(subscriptionId),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt))
+    .limit(1);
+  if (row?.actionTaken !== 'billing_grant_held') return null;
+  const after = (row.after as { liftsOnRenewalAfter?: unknown }).liftsOnRenewalAfter;
+  return {
+    verb: 'billing_grant_held',
+    liftsOnRenewalAfter: typeof after === 'number' ? after : null,
+  };
+}
+
+/** Read with no flag check, so a marker keeps blocking if the flag is later turned off. */
+async function grantBlock(
+  database: Database,
+  familyId: string,
+  subscriptionId: string,
+  deps: ApplyStripeBillingDeps,
+): Promise<GrantBlock | null> {
+  if (deps.subscriptionBlocked) {
+    return (await deps.subscriptionBlocked(familyId, subscriptionId))
+      ? { verb: 'billing_refund_ready' }
+      : null;
+  }
+  const permanent = await auditVerbNamingSubscription(
+    database,
+    familyId,
+    subscriptionId,
+    PERMANENT_BLOCK_VERBS,
+  );
+  if (permanent) return { verb: permanent };
+  return activeGrantHold(database, familyId, subscriptionId);
 }
 
 async function claimBlockedGrant(
   eventId: string,
   familyId: string,
   subscriptionId: string,
+  prior: GrantBlock['verb'],
   database: Database,
 ): Promise<ApplyStripeBillingResult> {
   return database.transaction(async (tx) => {
@@ -443,7 +1001,7 @@ async function claimBlockedGrant(
       after: {
         stripeEventId: eventId,
         subscriptionId,
-        prior: 'billing_refund_ready',
+        prior,
       },
     });
     return { status: 'blocked' };
@@ -510,16 +1068,4 @@ async function markRefundReady(
     opsAlert,
   });
   return { status: 'refund_ready', opsAlert };
-}
-
-function auditSubscriptionId(after: unknown): string | null {
-  if (typeof after !== 'object' || after === null || Array.isArray(after)) return null;
-  const id = (after as { subscriptionId?: unknown }).subscriptionId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
-}
-
-function auditEventId(after: unknown): string | null {
-  if (typeof after !== 'object' || after === null || Array.isArray(after)) return null;
-  const id = (after as { stripeEventId?: unknown }).stripeEventId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
 }

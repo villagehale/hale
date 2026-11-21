@@ -1,5 +1,7 @@
 import type { Database } from '@hale/db';
 import type { PlanTier } from '@hale/types';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import { applyStripeBillingEvent } from './stripe-billing-apply.js';
 import type { PriceTierMap } from './stripe-billing.js';
@@ -62,17 +64,26 @@ function fakeDb(
     audits: [],
     claimed: new Set(opts.preClaimed ?? []),
   };
+  const dialect = new PgDialect();
   const selectChain = () => ({
     from: () => ({
-      where: () => ({
-        limit: async () => {
-          const refunds = rec.audits.filter((a) => a.actionTaken === 'billing_refund_ready');
-          if (refunds.length > 0) {
-            return refunds.map((a) => ({ after: a.after, actionTaken: a.actionTaken }));
+      where: (condition: SQL) => {
+        // A marker read filters by verb and subscription in SQL: honour its bound parameters.
+        const { params } = dialect.sqlToQuery(condition);
+        const limit = async () => {
+          if (params.some((p) => typeof p === 'string' && p.startsWith('billing_'))) {
+            return rec.audits
+              .filter(
+                (a) =>
+                  params.includes(a.actionTaken) &&
+                  params.includes((a.after as { subscriptionId?: unknown }).subscriptionId),
+              )
+              .map((a) => ({ after: a.after, actionTaken: a.actionTaken }));
           }
           return familyExists && opts.existingTier ? [{ planTier: opts.existingTier }] : [];
-        },
-      }),
+        };
+        return { limit, orderBy: () => ({ limit }) };
+      },
     }),
   });
   const tx = {

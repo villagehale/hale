@@ -216,6 +216,11 @@ export const OPS_PAGE_VOCABULARY = {
       'unexpected',
     ],
   },
+  /** VIL-736 · Stripe refused a refund lookup or cancel: the event is not claimed. */
+  billing_stripe_refused: {
+    call: ['lookup', 'cancel'],
+    status: ['400', '401', '403', '404', 'other_4xx', 'no_key', 'unknown'],
+  },
   retention_step_failed: {
     step: [
       'deletion_sweep',

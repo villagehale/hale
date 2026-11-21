@@ -6,6 +6,7 @@ import {
   metaCapiEnabled,
   promoNewVisitorCheckoutEnabled,
   stripeBillingRevokeEnabled,
+  stripeRefundEndsSubscriptionEnabled,
 } from './flags.js';
 
 describe('holiday/conversion flags', () => {
@@ -35,5 +36,15 @@ describe('holiday/conversion flags', () => {
     expect(stripeBillingRevokeEnabled({})).toBe(false);
     expect(stripeBillingRevokeEnabled({ STRIPE_BILLING_REVOKE_ENABLED: 'on' })).toBe(false);
     expect(stripeBillingRevokeEnabled({ STRIPE_BILLING_REVOKE_ENABLED: 'true' })).toBe(true);
+  });
+
+  it('turns on refund-ends-subscription only for the exact value true', () => {
+    const read = (value?: string) =>
+      stripeRefundEndsSubscriptionEnabled({ STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: value });
+    expect(stripeRefundEndsSubscriptionEnabled({})).toBe(false);
+    expect(read('on')).toBe(false);
+    expect(read('TRUE')).toBe(false);
+    expect(read('true\n')).toBe(false);
+    expect(read('true')).toBe(true);
   });
 });
