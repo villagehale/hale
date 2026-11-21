@@ -12,12 +12,15 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
+import type { ReceiptResult } from '../browser-use/receipt';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { markLoginLinkSent } from '../login-link/store';
 import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
+import { boundPriceCents, writerTerms } from '../terms/ask';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -25,12 +28,34 @@ import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
 import { planReplyMode } from './towns';
 import {
+  type PlanReplyTerms,
   type PlanReplyWriter,
   createPlanReplyWriter,
   planOpensAtLocal,
   planReplyBody,
 } from './writer';
 
+/** No readable approval: the writer still needs the addendum that explains that detail. */
+const TERMS_UNREADABLE_FACTS: PlanReplyTerms = {
+  free: false,
+  rates: [],
+  residency: 'unknown',
+  tax: 'unknown',
+  refund: null,
+  ageFit: 'unknown',
+  ageBand: null,
+  prerequisite: { required: 'unknown', quote: null },
+  priorChargeUnknown: false,
+  unread: ['page'],
+};
+
+type ReceiptUnsent =
+  | Exclude<ReceiptResult, { ok: true }>['reason']
+  | 'transport_unsupported'
+  | 'too_large'
+  | 'send_failed';
+
+export const PLAN_RECEIPT_TEMPLATE = 'signup_plan_receipt';
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
 export const PLAN_PREP_TEMPLATE = 'signup_plan_prep';
 
@@ -85,6 +110,12 @@ export function createPlanNotifier(
       live && notice.holdExpiresAt
         ? Math.max(0, Math.ceil((notice.holdExpiresAt.getTime() - now.getTime()) / 60_000))
         : null;
+    const approved = notice.terms?.approved ?? null;
+    const terms = notice.terms
+      ? writerTerms(notice.terms.shown, { hold: approved?.hold ?? null })
+      : notice.detail === 'terms_unreadable'
+        ? TERMS_UNREADABLE_FACTS
+        : undefined;
     const text = await deps.writer.write({
       moment: 'run_finished',
       mode: planReplyMode(offer.registrationUrl),
@@ -97,7 +128,9 @@ export function createPlanNotifier(
         await parentTimeZone(database, notice.parentUserId),
       ),
       sessions: replySessions(choices),
-      maxPriceCents: offer.planMaxPriceCents,
+      // With terms the bound price is the figure to say: the stored maximum carries a tax
+      // allowance that was never quoted.
+      maxPriceCents: approved ? boundPriceCents(approved) : offer.planMaxPriceCents,
       waiverAccepted: offer.planWaiverAccepted,
       question: null,
       refusal: null,
@@ -112,14 +145,23 @@ export function createPlanNotifier(
         charged: notice.charged,
         liveBrowser: live !== null,
         holdMinutes,
+        ...(notice.cartDifferences ? { cartDifferences: notice.cartDifferences } : {}),
       },
       language: await readParentLanguage(database, {
         familyId: notice.familyId,
         parentUserId: notice.parentUserId,
       }),
+      ...(terms ? { terms } : {}),
     });
     if (text === null) {
       console.warn({ offerId: notice.offerId, code: 'unwritten' }, 'signup plans: notice failed');
+      if (terms) {
+        await pageOps(database, {
+          site: 'registration_text_unwritten',
+          facts: { moment: 'run_notice' },
+          ref: notice.offerId,
+        });
+      }
       return 'failed';
     }
     const body = planReplyBody(text, live ?? (confirmed ? null : offer.registrationUrl));
@@ -128,8 +170,86 @@ export function createPlanNotifier(
       console.info({ offerId: notice.offerId, code: 'withheld' }, 'signup plans: notice withheld');
       return 'withheld';
     }
-    return deliverDirect(database, deps, notice, { body, to, now });
+    const went = await deliverDirect(database, deps, notice, { body, to, now });
+    // The image is its own send, after the text. The text never mentions it, so an image
+    // that does not go cannot make the text false.
+    if (went === 'sent' && notice.receipt) {
+      await deliverReceipt(database, deps, notice, notice.receipt, { to, now });
+    }
+    return went;
   };
+}
+
+/** A confirmation screenshot of a few short lines is far below this. Larger is refused. */
+export const MAX_RECEIPT_IMAGE_BYTES = 1_000_000;
+
+/**
+ * VIL-715 · the masked receipt, to the approving parent's own 1:1, never a group. Its ledger
+ * row is written `queued` and marked sent only once the transport accepted it. A receipt
+ * that does not go is named on #ops; the registration and the text stand either way.
+ */
+async function deliverReceipt(
+  database: Database,
+  deps: PlanNotifierDeps,
+  notice: PlanOutcomeNotice,
+  receipt: ReceiptResult,
+  input: { to: string; now: Date },
+): Promise<void> {
+  const unsent = async (reason: ReceiptUnsent) => {
+    const page = await pageOps(database, {
+      site: 'registration_receipt_unsent',
+      facts: { reason },
+      ref: notice.offerId,
+    });
+    console.warn({ offerId: notice.offerId, reason, page }, 'signup plans: receipt not sent');
+  };
+  if (!receipt.ok) return unsent(receipt.reason);
+  if (!deps.transport.sendImage) return unsent('transport_unsupported');
+  if (receipt.receipt.bytes > MAX_RECEIPT_IMAGE_BYTES) return unsent('too_large');
+  const messages = schema.channelMessages;
+  const [row] = await database
+    .insert(messages)
+    .values({
+      familyId: notice.familyId,
+      parentUserId: notice.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: PLAN_RECEIPT_TEMPLATE,
+      dedupeKey: `${PLAN_RECEIPT_TEMPLATE}:${notice.offerId}`,
+      status: 'queued',
+      sentAt: null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: messages.id });
+  if (!row) return;
+  try {
+    const sent = await deps.transport.sendImage({
+      to: input.to,
+      png: receipt.receipt.png,
+      filename: 'registration-receipt.png',
+    });
+    const channel = sent.transport ?? 'imessage';
+    await database
+      .update(messages)
+      .set({
+        channel,
+        status: acceptedStatus(channel),
+        providerMessageId: sent.providerMessageId,
+        providerChatId: sent.chatId ?? null,
+        sentAt: input.now,
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+  } catch (err) {
+    await database
+      .update(messages)
+      .set({
+        status: 'failed',
+        errorCode: (err instanceof Error ? err.constructor.name : 'send_threw').slice(0, 80),
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    return unsent('send_failed');
+  }
 }
 
 async function deliverDirect(

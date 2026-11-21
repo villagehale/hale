@@ -198,6 +198,24 @@ export const OPS_PAGE_VOCABULARY = {
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
+  /** VIL-715 · a registration text the model could not write: nothing was sent. */
+  registration_text_unwritten: { moment: ['offer', 'reply', 'run_notice'] },
+  /** VIL-715 · a plan with no readable approval: it was handed back, nothing was charged. */
+  registration_terms_unreadable: {},
+  /** VIL-715 · a registration went through and its masked receipt did not reach the parent. */
+  registration_receipt_unsent: {
+    reason: [
+      'card_shaped',
+      'no_cdp',
+      'attach_failed',
+      'no_page',
+      'verify_failed',
+      'capture_failed',
+      'too_large',
+      'transport_unsupported',
+      'send_failed',
+    ],
+  },
   registration_review_placed_order: {},
   registration_review_unread: {},
   linq_effect_delivery_unknown: {},
@@ -248,6 +266,10 @@ type OpsPageFacts<S extends OpsPageSite> = {
 const OPS_PAGE_PER_REF = [
   'registration_review_placed_order',
   'registration_review_unread',
+  // VIL-715: one family's registration each, so a second family's in the same hour pages too.
+  'registration_text_unwritten',
+  'registration_terms_unreadable',
+  'registration_receipt_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

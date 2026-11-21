@@ -1,7 +1,7 @@
 import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { holdSender, releaseHeldMessage } from '~/lib/channel/intake/opt-out-hold';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -26,6 +26,12 @@ describe('offer_signup coach verb', () => {
   afterAll(async () => {
     await db.close();
   });
+  beforeEach(() => {
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   it('records an offer from chat facts the parent already wrote', async () => {
     const seeded = await seedFamily(db.database);
@@ -39,6 +45,7 @@ describe('offer_signup coach verb', () => {
       now: NOW,
       parentWords: `Ada's rec email has parent and tot swim Tuesday 4:30 at ${URL}`,
       optOutUnread: false,
+      audience: 'direct',
       linksThisTurn: () => [],
       writer,
       onRecorded: (offer) => recorded.push(offer),
@@ -116,6 +123,7 @@ describe('offer_signup coach verb', () => {
         now: at,
         parentWords: words,
         optOutUnread,
+        audience: 'direct',
         linksThisTurn: () => [],
         writer: echoOfferWriter(),
         supersedeReader: reader,
@@ -467,6 +475,7 @@ describe('offer_signup coach verb', () => {
       now: NOW,
       parentWords: 'can you sign Ada up for swim',
       optOutUnread: false,
+      audience: 'direct',
       linksThisTurn: () => [],
       writer: echoOfferWriter(),
       onRecorded: () => {},
@@ -514,6 +523,7 @@ describe('offer_signup coach verb', () => {
           now: NOW,
           parentWords: input.words,
           optOutUnread: false,
+          audience: 'direct',
           linksThisTurn: () => input.links,
           writer: echoOfferWriter(),
           onRecorded: () => {},

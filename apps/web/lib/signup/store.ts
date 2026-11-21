@@ -5,6 +5,7 @@ import { pageOps } from '~/lib/monitoring/failure-page';
 import { redactSignupAudit } from './audit';
 import { signupProviderHost } from './consent';
 import { normalizeSession } from './forms/details';
+import type { SignupTermsShown } from './terms/types';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -46,6 +47,8 @@ export async function recordSignupOffer(
      * replaces. Only this parent's own pending asks in this family are ever closed.
      */
     supersede?: readonly string[];
+    /** VIL-715 · what this ask was written from, stored in the same transaction. */
+    terms?: { shown: SignupTermsShown };
     now: Date;
   },
 ): Promise<RecordOfferResult> {
@@ -131,6 +134,16 @@ export async function recordSignupOffer(
         })
         .returning({ id: offers.id });
       if (!row) throw new Error('signup offer insert returned no row');
+      if (input.terms) {
+        await tx.insert(schema.authorizedSignupTerms).values({
+          offerId: row.id,
+          familyId: input.familyId,
+          childId: input.childId,
+          parentUserId: input.parentUserId,
+          shown: input.terms.shown,
+          createdAt: input.now,
+        });
+      }
       for (const prior of replaced) {
         await tx.insert(schema.auditLog).values({
           familyId: input.familyId,
@@ -241,10 +254,19 @@ export type SendStamp = () => Promise<(channelMessageId: string) => Promise<AskS
  * started first, though the carrier may deliver the other first. The window is one carrier
  * call, and both texts are Hale's about the parent's own asks.
  */
-export function askStamp(database: Database, asks: AskedAbout): SendStamp {
+export function askStamp(
+  database: Database,
+  asks: AskedAbout,
+  /** Runs after this send's number was kept, with that number. */
+  onKept?: (seq: number) => Promise<void>,
+): SendStamp {
   return async () => {
     const seq = await markAskInFlight(database, asks);
-    return (channelMessageId) => keepAskNumber(database, asks, seq, channelMessageId);
+    return async (channelMessageId) => {
+      const outcome = await keepAskNumber(database, asks, seq, channelMessageId);
+      if (outcome === 'stamped') await onKept?.(seq);
+      return outcome;
+    };
   };
 }
 
@@ -541,7 +563,7 @@ export async function markOffer(
   input: {
     offerId: string;
     familyId: string;
-    from: 'pending' | 'submitting';
+    from: 'pending' | 'planned' | 'submitting';
     status: 'submitting' | 'completed' | 'handed_back';
     sessionId?: string | null;
     messageId?: string | null;

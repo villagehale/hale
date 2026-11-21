@@ -426,4 +426,114 @@ describe('what an approval may rest on', () => {
       ),
     ).toEqual({ verdict: 'take_back', named: null });
   });
+
+  describe('on an ask with terms', () => {
+    const TERMS = {
+      boundCents: [8488],
+      freeSessionIds: ['sun-1000'],
+      prerequisiteRequired: true,
+      prerequisiteQuote: 'Must have completed Level 1',
+      prerequisiteAsked: false,
+    };
+    const OFFER_T: PlanReadOffer = {
+      ...OFFER,
+      terms: TERMS,
+      sessions: OFFER.sessions.map((session) => ({ ...session, priceCents: null })),
+    };
+    const yes = (over: Partial<Parameters<typeof toPlanReading>[0]> = {}) =>
+      raw({ said: 'yes', choiceIds: ['sat-0900'], maxPriceCents: 8488, ...over });
+
+    it('a bare yes accepts a bound price the page gave', () => {
+      expect(toPlanReading(yes(), OFFER_T, 'yes')).toMatchObject({
+        verdict: 'approve',
+        maxPriceCents: 8488,
+        limitWrittenCents: null,
+        prerequisiteMet: null,
+      });
+    });
+
+    it('a figure neither stated nor written is still refused', () => {
+      expect(toPlanReading(yes({ maxPriceCents: 9000 }), OFFER_T, 'yes')).toBeNull();
+    });
+
+    it('a number the parent wrote is the limit', () => {
+      const text = 'yes, up to $100';
+      expect(toPlanReading(yes({ maxPriceCents: 10000 }), OFFER_T, text)).toMatchObject({
+        limitWrittenCents: 10000,
+      });
+    });
+
+    it('a limit the model left out still binds, as the smallest amount they wrote', () => {
+      const text = 'yes but no more than $60';
+      expect(toPlanReading(yes(), OFFER_T, text)).toMatchObject({
+        maxPriceCents: 8488,
+        limitWrittenCents: 6000,
+      });
+    });
+
+    it('a limit written with a decimal comma binds on both paths', () => {
+      const text = 'Oui, pas plus de 80,50 $';
+      // The model left the bound price in: their own number is still the limit.
+      expect(toPlanReading(yes({ said: 'Oui' }), OFFER_T, text)).toMatchObject({
+        verdict: 'approve',
+        maxPriceCents: 8488,
+        limitWrittenCents: 8050,
+      });
+      // The model read the number they wrote: it is theirs, so it holds.
+      expect(toPlanReading(yes({ said: 'Oui', maxPriceCents: 8050 }), OFFER_T, text)).toMatchObject(
+        { verdict: 'approve', maxPriceCents: 8050, limitWrittenCents: 8050 },
+      );
+    });
+
+    it.each([
+      ['yes, no more than 60 bucks', 6000],
+      ['yes, max €60', 6000],
+    ])('a limit in any money form today reads still binds: %s', (text, limit) => {
+      expect(toPlanReading(yes({ said: 'yes' }), OFFER_T, text)).toMatchObject({
+        limitWrittenCents: limit,
+      });
+    });
+
+    it('an ask with no terms reads money as it always has', () => {
+      const text = 'Oui, pas plus de 80,50 $';
+      const plain: PlanReadOffer = { ...OFFER_T, terms: undefined };
+      expect(toPlanReading(yes({ said: 'Oui', maxPriceCents: 8050 }), plain, text)).toBeNull();
+    });
+
+    it('a $0 maximum holds only for a free session', () => {
+      expect(
+        toPlanReading(yes({ choiceIds: ['sun-1000'], maxPriceCents: 0 }), OFFER_T, 'yes'),
+      ).toMatchObject({ verdict: 'approve', maxPriceCents: 0 });
+      expect(
+        toPlanReading(yes({ choiceIds: ['sat-0900'], maxPriceCents: 0 }), OFFER_T, 'yes'),
+      ).toBeNull();
+      expect(toPlanReading(raw({ maxPriceCents: 0 }), OFFER, YES)).toBeNull();
+    });
+
+    it('the reader is told when the last text asked the prerequisite question', () => {
+      const asked = signupPlanReadUserMessage({
+        text: 'yes',
+        offer: { ...OFFER_T, terms: { ...TERMS, prerequisiteAsked: true } },
+      });
+      expect(JSON.parse(asked).offer.terms.prerequisiteAsked).toBe(true);
+    });
+
+    it('the prerequisite answer counts only in the parent words', () => {
+      const text = 'yes, she finished level 1';
+      expect(
+        toPlanReading(
+          yes({ prerequisiteSaid: 'she finished level 1', prerequisiteMet: true }),
+          OFFER_T,
+          text,
+        ),
+      ).toMatchObject({ prerequisiteMet: true });
+      expect(
+        toPlanReading(
+          yes({ prerequisiteSaid: 'she finished level 2', prerequisiteMet: true }),
+          OFFER_T,
+          text,
+        ),
+      ).toMatchObject({ prerequisiteMet: null });
+    });
+  });
 });

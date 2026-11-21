@@ -164,3 +164,109 @@ describe('the plan reply gate', () => {
     expect(planOpensAtLocal(at, 'America/New_York').local).toContain('7:00');
   });
 });
+
+describe('the gate on a text that states terms', () => {
+  const terms: NonNullable<PlanReplyFacts['terms']> = {
+    free: false,
+    rates: [{ rate: 'resident', cents: 8488 }],
+    residency: 'resident',
+    tax: 'included',
+    refund: null,
+    ageFit: 'in_band',
+    ageBand: '4 to 6',
+    prerequisite: { required: 'no', quote: null },
+    priorChargeUnknown: false,
+    unread: ['refund'],
+  };
+  const withTerms = (over: Partial<PlanReplyFacts['terms'] & object> = {}): PlanReplyFacts => ({
+    ...FACTS,
+    moment: 'offer',
+    terms: { ...terms, ...over },
+  });
+
+  it.each([['84.88加元'], ['84.88 dollars'], ['84.88元'], ['84,88 $'], ['$84.88']])(
+    'passes the bound price written as %s',
+    (price) => {
+      expect(
+        planReplyViolations(`Speaking class for Ada, ${price}. Want it?`, withTerms()),
+      ).toEqual([]);
+    },
+  );
+
+  it('passes thousands and French forms of a bound price', () => {
+    const big = withTerms({ rates: [{ rate: 'flat', cents: 123450 }] });
+    expect(planReplyViolations('Camp for Ada, $1,234.50. Want it?', big)).toEqual([]);
+    expect(planReplyViolations('Camp pour Ada, 1 234,50 $. Tu veux ?', big)).toEqual([]);
+  });
+
+  it('refuses a price the terms never stated, however it is written', () => {
+    const facts = withTerms({ rates: [{ rate: 'flat', cents: 8800 }] });
+    expect(planReplyViolations('Ada, 84.88 dollars. Want it?', facts)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+  });
+
+  it('refuses a draft that leaves out a bound price', () => {
+    expect(planReplyViolations('Speaking class for Ada. Want it?', withTerms())).toContain(
+      'missing price: every price in terms.rates has to be in the text',
+    );
+  });
+
+  it('refuses a draft that states only one of two possible rates', () => {
+    const both = withTerms({
+      residency: 'unknown',
+      rates: [
+        { rate: 'resident', cents: 8488 },
+        { rate: 'non_resident', cents: 9760 },
+      ],
+    });
+    expect(planReplyViolations('Ada, $84.88. Want it?', both)).toContain(
+      'missing price: every price in terms.rates has to be in the text',
+    );
+    expect(planReplyViolations('Ada, $84.88 or $97.60. Want it?', both)).toEqual([]);
+  });
+
+  it('a rate of zero beside a paid one is said in words, and the paid one must be there', () => {
+    const pair = withTerms({
+      residency: 'unknown',
+      rates: [
+        { rate: 'resident', cents: 0 },
+        { rate: 'non_resident', cents: 4000 },
+      ],
+    });
+    expect(planReplyViolations('Free for residents, $40.00 otherwise. Want it?', pair)).toEqual([]);
+    expect(planReplyViolations('It is free for residents. Want it?', pair)).toContain(
+      'missing price: every price in terms.rates has to be in the text',
+    );
+  });
+
+  it('allows a figure and a clock from the refund quote', () => {
+    const facts = withTerms({ refund: 'Refunds until 5:00 pm less a $10.00 fee' });
+    expect(
+      planReplyViolations('Ada, $84.88. Refunds until 5:00 pm less a $10.00 fee. Want it?', facts),
+    ).toEqual([]);
+  });
+
+  it('does not ask a free class for a price, and refuses one it invents', () => {
+    const free = withTerms({ free: true, rates: [{ rate: 'flat', cents: 0 }] });
+    expect(planReplyViolations('The class is free. Want it?', free)).toEqual([]);
+    expect(planReplyViolations('The class is $5. Want it?', free)).toContain(
+      'invented figure: a price or limit that is not in the facts',
+    );
+  });
+
+  it('leaves the old reading in place when there are no terms', () => {
+    // The old pattern reads `84.88 dollars` as $88.00, which is why terms need their own.
+    const facts: PlanReplyFacts = {
+      ...FACTS,
+      moment: 'clarify',
+      sessions: [{ label: 'Sat', startsAt: 'x', endsAt: 'y', priceCents: 8800 }],
+    };
+    expect(planReplyViolations('Ada, 84.88 dollars.', facts)).toEqual([]);
+  });
+
+  it('keeps terms out of the writer request when there are none', () => {
+    expect(planReplyUserMessage({ ...FACTS, moment: 'clarify' }, null)).not.toContain('terms');
+    expect(planReplyUserMessage(withTerms(), null)).toContain('"terms"');
+  });
+});

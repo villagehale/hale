@@ -169,6 +169,8 @@ import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
 import { AskOrderUnmarked, type SendStamp, askStamp } from '~/lib/signup/store';
+import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
+import { termsAskStamp } from '~/lib/signup/terms/store';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type InboundBurst, mergeBurstContext } from './burst';
 import {
@@ -2639,13 +2641,13 @@ function signupStamps(
     const offerIds = offers
       .filter((offer) => through.includes(offer.text.trim()) && !before.includes(offer.text.trim()))
       .map((offer) => offer.offerId);
-    return offerIds.length > 0
-      ? askStamp(deps.database, {
-          familyId: turn.familyId,
-          parentUserId: turn.parentUserId,
-          offerIds,
-        })
-      : undefined;
+    if (offerIds.length === 0) return undefined;
+    const asked = { familyId: turn.familyId, parentUserId: turn.parentUserId, offerIds };
+    // VIL-715: this bubble carries the offer's own text, so it is what records the terms as
+    // received. Flag off, the terms table is never touched from a turn.
+    return registrationPreflightEnabled(turn.familyId)
+      ? termsAskStamp(deps.database, asked)
+      : askStamp(deps.database, asked);
   });
 }
 

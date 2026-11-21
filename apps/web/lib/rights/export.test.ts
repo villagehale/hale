@@ -286,6 +286,8 @@ function fakeDb(args: {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
     if (which === 32) return { from: () => ({ where: requesterOrderedWhere }) };
+    // VIL-715: what each registration ask showed and bound; none here.
+    if (which === 33) return { from: () => ({ where: requesterOrderedWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -358,6 +360,7 @@ describe('assembleFamilyExport', () => {
     expect(doc.registrationPreparation).toEqual([]);
     expect(doc.watchedSpots).toEqual([]);
     expect(doc.authorizedSignups).toEqual([]);
+    expect(doc.signupTerms).toEqual([]);
     expect(doc.signupFieldConsents).toEqual([]);
     expect(doc.sameActivityOptIns).toEqual([]);
     expect(doc.goingCountOptIns).toEqual([]);
@@ -732,17 +735,17 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Twenty-seven scoped selects (family, children, members, village saves, this parent's
+    // Twenty-eight scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
     // field consents, this household's same-activity opt-ins, the household calendar,
     // shared threads, seats and group lists, and the requester's own language settings,
     // text thread, language changes, consents, connections, calendar mirrors and private
-    // asides) each recorded a
+    // asides, and the registration terms) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(28);
+    expect(spies.whereFamilyIds).toHaveLength(29);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

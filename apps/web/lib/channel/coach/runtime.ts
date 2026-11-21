@@ -112,6 +112,7 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import { loadLiveAsks } from '~/lib/signup/asks';
 import {
   type ProviderWatchContext,
   loadProviderWatchContext,
@@ -124,6 +125,7 @@ import {
   signupAtOpenEnabled,
   signupOfferToolEnabled,
 } from '~/lib/signup/offer-tool';
+import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -287,6 +289,11 @@ export interface ChannelCoachPorts {
    * `healthLineFacts` of it, so 811 reaches only a family placed where 811 is a health
    * line. Required: a coach that cannot place a family must say so with null. */
   loadHealthPlace(familyId: string): Promise<HealthPlace | null>;
+  /**
+   * VIL-715 — this group turn's sender has a registration ask waiting in their own thread.
+   * Absent or false: the group prompt keeps the bytes it had.
+   */
+  privateSignupAskWaiting?(turn: ChannelTurn): Promise<boolean>;
   /** What Hale's Browser Use watch last read on this family's providers (schedules,
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
@@ -647,10 +654,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
       // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
       // Dark and 1:1 turns keep the skill bytes they already had.
-      const coachSkill =
+      const withGroupLists =
         turn.audience === 'group' && groupSharedListsEnabled()
           ? await appendGroupListsReply(withNoRelay)
           : withNoRelay;
+      // VIL-715: a registration is answered in the asker's own thread, never in a group.
+      const askInPrivate =
+        turn.audience === 'group' && (await ports.privateSignupAskWaiting?.(turn)) === true
+          ? await loadCronSkill('coach-signup-group')
+          : null;
+      const coachSkill = askInPrivate
+        ? {
+            ...withGroupLists,
+            instructions: `${withGroupLists.instructions}\n\n${askInPrivate.instructions}`,
+          }
+        : withGroupLists;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -1169,6 +1187,14 @@ async function loadParentStatedFactValues(
     .map((row) => JSON.stringify({ factKey: row.factKey, factValue: row.factValue }));
 }
 
+/** The at-open addendum and, with pre-flight on for this family, what its refusals mean. */
+async function coachSignupAtOpen(preflight: boolean): Promise<Skill> {
+  const atOpen = await loadCronSkill('coach-signup-offer');
+  if (!preflight) return atOpen;
+  const terms = await loadCronSkill('coach-signup-terms');
+  return { ...atOpen, instructions: `${atOpen.instructions}\n\n${terms.instructions}` };
+}
+
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('household-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -1232,7 +1258,9 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             browserUseWatchEnabled(),
           ),
           signupOfferToolEnabled(),
-          signupAtOpenEnabled() ? await loadCronSkill('coach-signup-offer') : null,
+          signupAtOpenEnabled()
+            ? await coachSignupAtOpen(registrationPreflightEnabled(familyId))
+            : null,
         ),
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
@@ -1244,6 +1272,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     loadHealthPlace: (familyId) => readHealthPlace(database, familyId),
+    privateSignupAskWaiting: async (turn) =>
+      registrationPreflightEnabled(turn.familyId) &&
+      (
+        await loadLiveAsks(database, {
+          familyId: turn.familyId,
+          parentUserId: turn.parentUserId,
+          now: turn.now,
+          openQuestions: [],
+        })
+      ).length > 0,
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
     loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
@@ -1422,6 +1460,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               now: turn.now,
               parentWords: turn.body,
               optOutUnread: turn.optOutUnread === true,
+              audience: turn.audience,
               linksThisTurn: () => [
                 ...searchLinks(),
                 ...photoFactSignupLinks(turn.photoFacts, turn.body),

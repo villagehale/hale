@@ -4,6 +4,8 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
+import { moneyCentsWritten } from '~/lib/signup/terms/money';
+import type { CartDifference, SignupTermsHold, SignupTermsShown } from '~/lib/signup/terms/types';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -44,6 +46,31 @@ export interface PlanRunFacts {
   charged: PlanCharged;
   liveBrowser: boolean;
   holdMinutes: number | null;
+  /** VIL-715 · what differed from the approval, on a `cart_mismatch`. Absent otherwise. */
+  cartDifferences?: CartDifference[];
+}
+
+/**
+ * VIL-715 · what Hale read on the program's page, for the text that asks and the texts after
+ * it. Absent on an ask without terms, so the writer's request stays what it was.
+ */
+export interface PlanReplyTerms {
+  free: boolean;
+  /** The prices this family may be charged. */
+  rates: SignupTermsShown['sessions'][number]['rates'];
+  residency: SignupTermsShown['residency'];
+  tax: SignupTermsShown['sessions'][number]['tax'];
+  refund: string | null;
+  ageFit: SignupTermsShown['age']['fit'];
+  ageBand: string | null;
+  prerequisite: SignupTermsShown['prerequisite'];
+  priorChargeUnknown: boolean;
+  /** What Hale could not confirm on the page, by name. */
+  unread: ('page' | 'refund' | 'age' | 'prerequisite' | 'price')[];
+  /** The approval's ack: Hale starts now and will text when it is done. */
+  runsNow?: boolean;
+  /** The approval's ack: Hale will stop at checkout for the parent to finish. */
+  hold?: SignupTermsHold | null;
 }
 
 export interface PlanReplyFacts {
@@ -62,6 +89,7 @@ export interface PlanReplyFacts {
   refusal: string | null;
   run: PlanRunFacts | null;
   language: string | null;
+  terms?: PlanReplyTerms;
 }
 
 export interface PlanReplyWriter {
@@ -69,6 +97,8 @@ export interface PlanReplyWriter {
 }
 
 export const SIGNUP_PLAN_REPLY_SKILL = 'signup-plan-reply';
+/** VIL-715 · the addendum for a text that states terms. Loaded only when they are present. */
+export const SIGNUP_PLAN_TERMS_SKILL = 'signup-plan-terms';
 export const SIGNUP_PLAN_REPLY_TOOL = 'signup_plan_reply';
 export const SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION =
   'Write the one text the parent sees about this registration plan.';
@@ -111,6 +141,8 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   add(facts.run?.cartTotalCents);
   add(facts.run?.amountChargedCents);
   if (typeof facts.run?.charged === 'object') add(facts.run.charged.cents);
+  for (const rate of facts.terms?.rates ?? []) add(rate.cents);
+  for (const cents of moneyCentsWritten(facts.terms?.refund ?? '')) add(cents);
   return known;
 }
 
@@ -153,7 +185,11 @@ export function clocksIn(text: string): number[] {
 }
 
 function knownClocks(facts: PlanReplyFacts): Set<number> {
-  const blobs = [facts.opensAt.local, ...facts.sessions.map((session) => session.label)];
+  const blobs = [
+    facts.opensAt.local,
+    ...facts.sessions.map((session) => session.label),
+    ...(facts.terms?.refund ? [facts.terms.refund] : []),
+  ];
   const known = new Set<number>();
   for (const blob of blobs) {
     for (const value of clocksIn(blob)) known.add(value);
@@ -175,12 +211,23 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
   }
   if (facts) {
     const allowedMoney = knownCents(facts);
+    // A text that states terms reads its figures with the parser that knows every form a
+    // price takes. Without terms, the gate reads the text as it always has.
+    const written = facts.terms ? moneyCentsWritten(tidy) : moneyCentsIn(tidy);
     if (
       allowedMoney.size === 0
-        ? moneyCentsIn(tidy).length > 0
-        : moneyCentsIn(tidy).some((cents) => !allowedMoney.has(cents))
+        ? written.length > 0
+        : written.some((cents) => !allowedMoney.has(cents))
     ) {
       out.push('invented figure: a price or limit that is not in the facts');
+    }
+    if (
+      facts.terms &&
+      !facts.terms.free &&
+      facts.moment === 'offer' &&
+      facts.terms.rates.some((rate) => rate.cents > 0 && !written.includes(rate.cents))
+    ) {
+      out.push('missing price: every price in terms.rates has to be in the text');
     }
     const allowedClocks = knownClocks(facts);
     if (clocksIn(tidy).some((mins) => !allowedClocks.has(mins))) {
@@ -214,6 +261,22 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
     ...facts,
     sessions: facts.sessions.map((session) => ({ ...session, label: withoutLinks(session.label) })),
     question: facts.question === null ? null : withoutLinks(facts.question),
+    ...(facts.terms
+      ? {
+          terms: {
+            ...facts.terms,
+            refund: facts.terms.refund === null ? null : withoutLinks(facts.terms.refund),
+            ageBand: facts.terms.ageBand === null ? null : withoutLinks(facts.terms.ageBand),
+            prerequisite: {
+              ...facts.terms.prerequisite,
+              quote:
+                facts.terms.prerequisite.quote === null
+                  ? null
+                  : withoutLinks(facts.terms.prerequisite.quote),
+            },
+          },
+        }
+      : {}),
     run:
       facts.run === null
         ? null
@@ -276,8 +339,12 @@ export function createPlanReplyWriter(
       }
       if (!resolved) return unwritten('client_unavailable');
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_REPLY_SKILL);
+        system = facts.terms
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_TERMS_SKILL)).instructions}`
+          : skill.instructions;
       } catch (err) {
         return unwritten('skill_unavailable', className(err));
       }
@@ -287,7 +354,7 @@ export function createPlanReplyWriter(
           const { value } = await forceToolJson({
             client: resolved,
             lane: pickLane(skill.meta.task),
-            system: skill.instructions,
+            system,
             userMessage: planReplyUserMessage(facts, note),
             toolName: SIGNUP_PLAN_REPLY_TOOL,
             toolDescription: SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION,
