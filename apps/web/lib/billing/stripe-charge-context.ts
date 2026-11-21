@@ -55,11 +55,13 @@ export interface StripeChargeContext {
   familyId: string | null;
   /** Null when no subscription resolved. */
   periodStanding: PeriodStanding | null;
+  /** When the invoice this charge paid was created, in unix seconds. */
+  invoiceCreated: number | null;
 }
 
 export interface OtherSubscriptions {
   /** Live subscriptions whose current period is not proven refunded. */
-  paid: ReadonlyArray<{ id: string; priceId: string | null }>;
+  paid: ReadonlyArray<{ id: string; priceId: string | null; status: string }>;
   /** Live subscriptions whose current-period charge is proven fully refunded. */
   refundedIds: readonly string[];
   /** A list or search had more than a page, so "nothing else" cannot be concluded. */
@@ -113,6 +115,7 @@ async function lookupCharge(get: StripeRead, chargeId: string): Promise<StripeCh
     subscriptionFamilyId: null,
     familyId: family,
     periodStanding: null,
+    invoiceCreated: null,
   });
 
   const paymentIntentId = readId(charge.payment_intent);
@@ -143,6 +146,7 @@ async function lookupCharge(get: StripeRead, chargeId: string): Promise<StripeCh
     subscriptionFamilyId,
     familyId: family ?? subscriptionFamilyId,
     periodStanding: periodStanding(invoice, subscription, subscriptionId),
+    invoiceCreated: typeof invoice.created === 'number' ? invoice.created : null,
   };
 }
 
@@ -202,7 +206,7 @@ async function otherSubscriptions(
     }
   }
 
-  const paid: Array<{ id: string; priceId: string | null }> = [];
+  const paid: Array<{ id: string; priceId: string | null; status: string }> = [];
   const refundedIds: string[] = [];
   for (const [id, subscription] of found) {
     if (id === excludeSubscriptionId) continue;
@@ -213,7 +217,7 @@ async function otherSubscriptions(
     if (await currentPeriodRefunded(get, id, subscription)) {
       refundedIds.push(id);
     } else {
-      paid.push({ id, priceId: subscriptionPriceId(subscription) });
+      paid.push({ id, priceId: subscriptionPriceId(subscription), status });
     }
   }
   return { paid, refundedIds, truncated };

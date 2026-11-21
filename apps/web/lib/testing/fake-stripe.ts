@@ -37,6 +37,8 @@ export interface FakePaidInvoiceInput {
   refunded?: boolean;
   /** False leaves the subscription's latest_invoice where it was. */
   latest?: boolean;
+  /** Unix seconds. Defaults to the start of the invoiced period. */
+  created?: number;
 }
 
 interface StoredCharge {
@@ -156,6 +158,8 @@ export function createFakeStripe() {
       object: 'invoice',
       customer: subscription.customer,
       status: 'paid',
+      created: input.created ?? input.periodStart,
+      amount_paid: amount,
       billing_reason: input.billingReason ?? 'subscription_create',
       parent: {
         type: 'subscription_details',
@@ -173,6 +177,10 @@ export function createFakeStripe() {
             id: `il_${input.invoiceId}`,
             object: 'line_item',
             period: { start: input.periodStart, end: input.periodEnd },
+            pricing: {
+              type: 'price_details',
+              price_details: { price: subscription.items.data[0]?.price.id },
+            },
             parent: {
               type: 'subscription_item_details',
               invoice_item_details: null,

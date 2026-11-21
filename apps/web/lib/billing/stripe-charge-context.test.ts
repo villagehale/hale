@@ -78,6 +78,7 @@ describe('stripeChargeLookupFromEnv', () => {
       subscriptionFamilyId: FAMILY,
       familyId: FAMILY,
       periodStanding: 'current',
+      invoiceCreated: START,
     });
 
     const [payments] = paymentCalls(fake);
@@ -284,7 +285,7 @@ describe('stripeChargeLookupFromEnv', () => {
       const search = fake.calls.find((call) => call.path === '/v1/subscriptions/search');
       expect(search?.query.get('query')).toBe(`metadata["familyId"]:"${FAMILY}"`);
       expect(found).toEqual({
-        paid: [{ id: 'sub_2', priceId: 'price_plus' }],
+        paid: [{ id: 'sub_2', priceId: 'price_plus', status: 'active' }],
         refundedIds: [],
         truncated: false,
       });

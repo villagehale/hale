@@ -55,6 +55,7 @@ function lookupFake(
         subscriptionFamilyId: null,
         familyId: null,
         periodStanding: null,
+        invoiceCreated: null,
         ...found,
       };
     },
@@ -233,7 +234,11 @@ describe('stripe billing revoke', () => {
         env: REVOKE,
         chargeLookup: lookupFake(
           {},
-          { paid: [{ id: 'sub_live', priceId: null }], refundedIds: [], truncated: false },
+          {
+            paid: [{ id: 'sub_live', priceId: null, status: 'active' }],
+            refundedIds: [],
+            truncated: false,
+          },
         ),
       },
     );
@@ -294,7 +299,11 @@ describe('stripe billing revoke', () => {
         env: REVOKE,
         chargeLookup: lookupFake(
           { customerId: 'cus_newer', subscriptionId: 'sub_old', subscriptionStatus: 'canceled' },
-          { paid: [{ id: 'sub_new', priceId: null }], refundedIds: [], truncated: false },
+          {
+            paid: [{ id: 'sub_new', priceId: null, status: 'active' }],
+            refundedIds: [],
+            truncated: false,
+          },
         ),
       },
     );

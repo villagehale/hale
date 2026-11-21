@@ -486,10 +486,14 @@ export type RevokeUnresolvedReason =
   | 'surviving_plan_differs'
   | 'dispute_plan_kept';
 
+/**
+ * `holdGrants`: the refunded subscription keeps its place in Stripe but stops granting a tier
+ * until a renewal takes new money ({@link renewalPaidAfter}).
+ */
 export type RevokeOutcome =
-  | { action: 'keep'; reason: RevokeKeepReason }
+  | { action: 'keep'; reason: RevokeKeepReason; holdGrants?: true }
   | { action: 'drop'; cancelSubscriptionIds: readonly string[] }
-  | { action: 'unresolved'; reason: RevokeUnresolvedReason }
+  | { action: 'unresolved'; reason: RevokeUnresolvedReason; holdGrants?: true }
   | { action: 'wait' }
   /** This row depends on the family's other subscriptions: call again with `other`. */
   | { action: 'needs_scan' };
@@ -531,26 +535,55 @@ function storedNamesAnother(facts: RevokeFacts): boolean {
   return facts.storedSubscriptionId !== null && facts.storedSubscriptionId !== facts.subscriptionId;
 }
 
+/** The one tier the remaining subscriptions sell, or null when that cannot be said. */
+export function soleSurvivingTier(
+  other: OtherSubscriptions,
+  priceTierMap: PriceTierMap,
+): PlanTier | null {
+  if (other.truncated) return null;
+  const tiers = new Set(
+    other.paid.map((row) => (row.priceId ? (priceTierMap[row.priceId] ?? null) : null)),
+  );
+  const [tier] = tiers;
+  return tiers.size === 1 && tier ? tier : null;
+}
+
 /**
- * A refunded duplicate never moves the plan. The refunded subscription stays live, so its
- * next update would write its own tier straight back, and a sibling can be one whose grant
- * was refused. When the plan on file is not what the remaining subscription sells, a person
- * decides.
+ * A refunded duplicate never moves the plan, and it stops granting one: while it stays in
+ * Stripe its next update would write its own tier for money that was refunded. When the plan
+ * on file is not what the remaining subscription sells, a person decides.
  */
 function keepSurvivingPlan(
   facts: RevokeFacts,
   other: OtherSubscriptions,
   reason: RevokeKeepReason,
 ): RevokeOutcome {
-  if (!facts.flagOn || facts.planTier === 'free') return keep(reason);
-  const tiers = new Set(
-    other.paid.map((row) => (row.priceId ? (facts.priceTierMap[row.priceId] ?? null) : null)),
-  );
-  const [tier] = tiers;
-  if (other.truncated || tiers.size !== 1 || tier !== facts.planTier) {
-    return unresolved('surviving_plan_differs');
+  if (!facts.flagOn) return keep(reason);
+  const matches =
+    facts.planTier === 'free' || soleSurvivingTier(other, facts.priceTierMap) === facts.planTier;
+  return matches
+    ? { action: 'keep', reason, holdGrants: true }
+    : { action: 'unresolved', reason: 'surviving_plan_differs', holdGrants: true };
+}
+
+/**
+ * The one event that lifts a hold: a renewal that took money and was invoiced after the
+ * refunded invoice. A subscription update proves no payment, and a late copy of the refunded
+ * invoice's own `invoice.paid` is not newer than itself.
+ */
+export function renewalPaidAfter(payload: unknown, liftsOnRenewalAfter: number | null): boolean {
+  if (liftsOnRenewalAfter === null || !isRecord(payload) || payload.type !== 'invoice.paid') {
+    return false;
   }
-  return keep(reason);
+  const object = isRecord(payload.data) ? payload.data.object : undefined;
+  if (!isRecord(object)) return false;
+  return (
+    object.billing_reason === 'subscription_cycle' &&
+    typeof object.amount_paid === 'number' &&
+    object.amount_paid > 0 &&
+    typeof object.created === 'number' &&
+    object.created > liftsOnRenewalAfter
+  );
 }
 
 /**
@@ -579,12 +612,14 @@ export function refundOutcome(facts: RevokeFacts & { partial: boolean }): Revoke
     return { action: 'drop', cancelSubscriptionIds: other.refundedIds };
   }
 
-  const live = LIVE_SUBSCRIPTION.has(status);
-  if (!facts.flagOn) return keep(live ? 'active_subscription' : 'subscription_not_ended');
-  if (live) {
-    const period = facts.periodStanding ?? 'unproven';
-    if (period === 'older') return keep('older_invoice');
-    if (period === 'unproven') return unresolved('current_period_unproven');
+  if (!facts.flagOn) {
+    return keep(LIVE_SUBSCRIPTION.has(status) ? 'active_subscription' : 'subscription_not_ended');
+  }
+  const period = facts.periodStanding ?? 'unproven';
+  if (period === 'older') return keep('older_invoice');
+  // The charge paid S's latest invoice, so S may not grant while a person looks at it.
+  if (period === 'unproven') {
+    return { action: 'unresolved', reason: 'current_period_unproven', holdGrants: true };
   }
   const { other } = facts;
   if (other === null) return { action: 'needs_scan' };

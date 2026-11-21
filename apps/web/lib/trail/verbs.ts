@@ -105,6 +105,8 @@ export const AUDIT_VERBS = [
   'billing_grant_blocked',
   'billing_revoke_unresolved',
   'billing_subscription_ended',
+  'billing_grant_held',
+  'billing_grant_released',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -1945,6 +1947,16 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   billing_subscription_ended: { sentence: 'a paid subscription ended', family: 'note' },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS: billing bookkeeping behind the visible
+  // refund row. The family's export still carries them, so the sentences are plain.
+  billing_grant_held: {
+    sentence: 'a refunded subscription stopped counting toward your plan',
+    family: 'note',
+  },
+  billing_grant_released: {
+    sentence: 'a new payment on that subscription counts toward your plan again',
+    family: 'note',
+  },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
   upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },
@@ -2404,6 +2416,9 @@ export const INTERNAL_TRAIL_VERBS = [
   'activity_deep_dispatched',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
+  // VIL-736. Billing bookkeeping; the refund itself is the row History shows.
+  'billing_grant_held',
+  'billing_grant_released',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

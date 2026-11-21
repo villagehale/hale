@@ -14,6 +14,7 @@ import {
   planTierFromStripeEvent,
   priceTierMapFromEnv,
   refundOutcome,
+  renewalPaidAfter,
   stripeRefsFromStripeEvent,
   verifyStripeBillingSignature,
 } from './stripe-billing.js';
@@ -243,17 +244,31 @@ describe('chargeRevokeDecision', () => {
   });
 });
 
+describe('renewalPaidAfter', () => {
+  const renewal = {
+    type: 'invoice.paid',
+    data: { object: { billing_reason: 'subscription_cycle', amount_paid: 7900, created: 2_000 } },
+  };
+
+  it('lifts a hold only for a paid renewal invoiced after the refunded one', () => {
+    expect(renewalPaidAfter(renewal, 1_000)).toBe(true);
+    expect(renewalPaidAfter({ ...renewal, type: 'invoice.payment_failed' }, 1_000)).toBe(false);
+    expect(renewalPaidAfter(renewal, 2_000)).toBe(false);
+    expect(renewalPaidAfter(renewal, null)).toBe(false);
+  });
+});
+
 describe('refund and dispute outcomes', () => {
   const NOW = 1_780_000_000;
   const SETTLED = NOW - 30 * 86_400;
   const NOTHING = { paid: [], refundedIds: [], truncated: false };
   const PLUS_SIBLING = {
-    paid: [{ id: 'sub_b', priceId: 'p_plus' }],
+    paid: [{ id: 'sub_b', priceId: 'p_plus', status: 'active' }],
     refundedIds: [],
     truncated: false,
   };
   const MAX_SIBLING = {
-    paid: [{ id: 'sub_b', priceId: 'p_max' }],
+    paid: [{ id: 'sub_b', priceId: 'p_max', status: 'active' }],
     refundedIds: [],
     truncated: false,
   };
@@ -342,30 +357,50 @@ describe('refund and dispute outcomes', () => {
         { action: 'keep', reason: 'older_invoice' },
       ],
       [
-        'row 5b: live, period unproven',
+        'row 5b: live, period unproven: holds it, because the charge paid its latest invoice',
         { ...ON, periodStanding: 'unproven', other: null },
-        { action: 'unresolved', reason: 'current_period_unproven' },
+        { action: 'unresolved', reason: 'current_period_unproven', holdGrants: true },
       ],
       [
         'row 5b: a null standing on a live subscription reads as unproven',
         { ...ON, periodStanding: null, other: null },
-        { action: 'unresolved', reason: 'current_period_unproven' },
+        { action: 'unresolved', reason: 'current_period_unproven', holdGrants: true },
       ],
       [
-        'row 5c: current, another paid subscription',
+        'row 5c: current, another paid subscription: holds the refunded one',
         { ...ON, other: PLUS_SIBLING },
-        { action: 'keep', reason: 'duplicate_subscription' },
+        { action: 'keep', reason: 'duplicate_subscription', holdGrants: true },
       ],
       [
-        'row 5c: stalled, another paid subscription',
-        { ...ON, subscriptionStatus: 'unpaid', periodStanding: 'older', other: PLUS_SIBLING },
-        { action: 'keep', reason: 'duplicate_subscription' },
+        'row 5c: stalled, current, another paid subscription',
+        { ...ON, subscriptionStatus: 'unpaid', other: PLUS_SIBLING },
+        { action: 'keep', reason: 'duplicate_subscription', holdGrants: true },
+      ],
+      [
+        'row 3b: ended, another paid, flag on: holds the refunded one',
+        { ...ENDED, ...ON, other: PLUS_SIBLING },
+        { action: 'keep', reason: 'active_subscription', holdGrants: true },
       ],
       ['row 5d: current, nothing else', ON, { action: 'drop', cancelSubscriptionIds: ['sub_s'] }],
       [
-        'row 5d: stalled ends whichever period the charge paid',
-        { ...ON, subscriptionStatus: 'paused', periodStanding: 'older' },
+        'row 5d: stalled, current, nothing else',
+        { ...ON, subscriptionStatus: 'paused' },
         { action: 'drop', cancelSubscriptionIds: ['sub_s'] },
+      ],
+      [
+        'row 5a: stalled, older invoice keeps the plan',
+        { ...ON, subscriptionStatus: 'paused', periodStanding: 'older', other: null },
+        { action: 'keep', reason: 'older_invoice' },
+      ],
+      [
+        'row 5a: stalled, older invoice with another paid subscription',
+        { ...ON, subscriptionStatus: 'unpaid', periodStanding: 'older', other: PLUS_SIBLING },
+        { action: 'keep', reason: 'older_invoice' },
+      ],
+      [
+        'row 5b: stalled, period unproven',
+        { ...ON, subscriptionStatus: 'unpaid', periodStanding: 'unproven', other: null },
+        { action: 'unresolved', reason: 'current_period_unproven', holdGrants: true },
       ],
     ] as const)('%s', (_name, over, expected) => {
       const { partial, ...rest } = over as Partial<RevokeFacts> & { partial?: boolean };
@@ -428,11 +463,11 @@ describe('refund and dispute outcomes', () => {
           ...facts({ ...ON, subscriptionCreated: NOW - 60, other: PLUS_SIBLING }),
           partial: false,
         }),
-      ).toEqual({ action: 'keep', reason: 'duplicate_subscription' });
+      ).toEqual({ action: 'keep', reason: 'duplicate_subscription', holdGrants: true });
     });
 
     describe('the plan on file against what still pays, flag on', () => {
-      const DIFFERS = { action: 'unresolved', reason: 'surviving_plan_differs' };
+      const DIFFERS = { action: 'unresolved', reason: 'surviving_plan_differs', holdGrants: true };
 
       it('never moves the tier: a survivor on another tier pages instead', () => {
         expect(
@@ -454,6 +489,7 @@ describe('refund and dispute outcomes', () => {
           {
             action: 'keep',
             reason: 'duplicate_subscription',
+            holdGrants: true,
           },
         );
         expect(
@@ -461,21 +497,32 @@ describe('refund and dispute outcomes', () => {
             ...facts({ ...ON, planTier: 'free', other: MAX_SIBLING }),
             partial: false,
           }),
-        ).toEqual({ action: 'keep', reason: 'duplicate_subscription' });
+        ).toEqual({ action: 'keep', reason: 'duplicate_subscription', holdGrants: true });
       });
 
       it.each([
         [
           'an unknown price',
-          { paid: [{ id: 'sub_b', priceId: 'p_unknown' }], refundedIds: [], truncated: false },
+          {
+            paid: [{ id: 'sub_b', priceId: 'p_unknown', status: 'active' }],
+            refundedIds: [],
+            truncated: false,
+          },
         ],
-        ['no price', { paid: [{ id: 'sub_b', priceId: null }], refundedIds: [], truncated: false }],
+        [
+          'no price',
+          {
+            paid: [{ id: 'sub_b', priceId: null, status: 'active' }],
+            refundedIds: [],
+            truncated: false,
+          },
+        ],
         [
           'mixed tiers',
           {
             paid: [
-              { id: 'sub_b', priceId: 'p_plus' },
-              { id: 'sub_c', priceId: 'p_max' },
+              { id: 'sub_b', priceId: 'p_plus', status: 'active' },
+              { id: 'sub_c', priceId: 'p_max', status: 'active' },
             ],
             refundedIds: [],
             truncated: false,
@@ -483,7 +530,11 @@ describe('refund and dispute outcomes', () => {
         ],
         [
           'a truncated scan',
-          { paid: [{ id: 'sub_b', priceId: 'p_plus' }], refundedIds: [], truncated: true },
+          {
+            paid: [{ id: 'sub_b', priceId: 'p_plus', status: 'active' }],
+            refundedIds: [],
+            truncated: true,
+          },
         ],
       ])('pages instead of guessing on %s', (_name, other) => {
         expect(refundOutcome({ ...facts({ ...ON, other }), partial: false })).toEqual(DIFFERS);
