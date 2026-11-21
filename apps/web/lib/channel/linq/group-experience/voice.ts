@@ -4,9 +4,12 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { linqGroupScenesEnabled } from '../config';
 import { groupLineLeaksPrivate } from './privacy';
 
 export const GROUP_EXPERIENCE_VOICE_SKILL = 'group-experience-voice';
+/** The voice prompt group lines use while LINQ_GROUP_SCENES_ENABLED is off. */
+export const GROUP_EXPERIENCE_VOICE_LEGACY_SKILL = 'group-experience-voice-legacy';
 export const GROUP_EXPERIENCE_VOICE_MAX_TOKENS = 400;
 
 export type GroupExperienceVoiceKind =
@@ -84,16 +87,20 @@ function optionLabels(raw: readonly string[] | undefined): string[] {
   return out;
 }
 
+/** Whether a group line repeats a private term. The legacy path passes its own matcher. */
+export type PrivateLeakCheck = (line: string, deny: readonly string[]) => boolean;
+
 export function lineUsable(
   spoken: GroupExperienceSpoken,
   input: GroupExperienceLineInput,
   deny: readonly string[],
+  leaks: PrivateLeakCheck = groupLineLeaksPrivate,
 ): boolean {
   const line = spoken.line.trim();
   if (!line) return false;
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
-  if (input.audience === 'group' && groupLineLeaksPrivate(line, deny)) return false;
+  if (input.audience === 'group' && leaks(line, deny)) return false;
   if (input.kind === 'rsvp_open' && spoken.options.length !== 3) return false;
   if (input.kind === 'time_open' && spoken.options.length < 2) return false;
   return true;
@@ -103,7 +110,11 @@ export function productionGroupExperienceComposer(): GroupExperienceComposer | u
   if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
   return {
     async compose(input, options) {
-      const skill = await loadCronSkill(GROUP_EXPERIENCE_VOICE_SKILL);
+      const skill = await loadCronSkill(
+        linqGroupScenesEnabled()
+          ? GROUP_EXPERIENCE_VOICE_SKILL
+          : GROUP_EXPERIENCE_VOICE_LEGACY_SKILL,
+      );
       const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
@@ -129,6 +140,7 @@ export async function composeGroupExperienceLine(
   input: GroupExperienceLineInput,
   composer: GroupExperienceComposer | undefined,
   deny: readonly string[] = [],
+  leaks: PrivateLeakCheck = groupLineLeaksPrivate,
 ): Promise<
   | { status: 'composed'; line: string; options: string[] }
   | { status: 'skipped'; reason: GroupExperienceVoiceSkip }
@@ -139,10 +151,10 @@ export async function composeGroupExperienceLine(
   ): Promise<GroupExperienceSpoken | null | 'private'> => {
     try {
       const spoken = await composer.compose(input, { prompt });
-      if (input.audience === 'group' && groupLineLeaksPrivate(spoken.line, deny)) {
+      if (input.audience === 'group' && leaks(spoken.line, deny)) {
         return 'private';
       }
-      return lineUsable(spoken, input, deny) ? spoken : null;
+      return lineUsable(spoken, input, deny, leaks) ? spoken : null;
     } catch (err) {
       console.warn(
         { prompt, err: err instanceof Error ? err.name : 'unknown' },

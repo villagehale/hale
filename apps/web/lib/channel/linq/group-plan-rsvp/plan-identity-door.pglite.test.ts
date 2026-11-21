@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX } from '~/lib/testing/group-scenes';
 import { linqInboundDeps } from '../deps';
 import type { GroupExperienceReading } from '../group-experience/reading';
 import { fakeGroupExperienceComposer } from '../group-experience/voice-fake';
@@ -43,11 +44,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 afterAll(async () => {
   await db.close();
 });
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', HALE);
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -287,7 +290,11 @@ async function ledger(templateKey: string) {
 }
 
 describe('a poll in a chat several families share, with no plan open (gate-3 R4)', () => {
-  it('is made first, then said, ledgered on the asker household, and reaches Linq', async () => {
+  it.each([
+    ['native cards off', undefined, ['messages']],
+    ['native cards on (the Prod value)', 'on', ['messages', 'polls']],
+  ] as const)('is made first, then said, ledgered on the asker household, and reaches Linq, %s', async (_label, polls, expected) => {
+    vi.stubEnv('LINQ_POLLS', polls);
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
     const wire = linqWire();
@@ -306,12 +313,12 @@ describe('a poll in a chat several families share, with no plan open (gate-3 R4)
     );
 
     expect(out.body.outcome).toBe('group_poll_spoken');
-    const polls = await db.database.select().from(schema.linqGroupPolls);
-    expect(polls).toHaveLength(1);
-    expect(polls[0]?.familyId).toBe(a.familyId);
-    expect(polls[0]?.closedAt).toBeNull();
-    expect(polls[0]?.options.map((option) => option.places ?? null)).toEqual([null, null]);
-    expect(wire.groupPosts()).toHaveLength(1);
+    const opened = await db.database.select().from(schema.linqGroupPolls);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]?.familyId).toBe(a.familyId);
+    expect(opened[0]?.closedAt).toBeNull();
+    expect(opened[0]?.options.map((option) => option.places ?? null)).toEqual([null, null]);
+    expect(wire.groupPosts().map((call) => call.url.split('/').pop())).toEqual([...expected]);
     const rows = await ledger(GROUP_POLL_TEMPLATE);
     expect(rows.map((row) => [row.familyId, row.status, row.providerChatId])).toEqual([
       [a.familyId, 'sent', CHAT],

@@ -1,7 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
-import { groupExperienceTurnEnabled, groupPollsEnabled } from '../config';
+import { textedHaleOneToOne } from '~/lib/channel/messaging-door';
+import {
+  groupExperienceTurnEnabled,
+  groupPollsEnabled,
+  linqGroupScenesEnabled,
+} from '../config';
 import { type OneToOneSend, privateAsideOneToOne } from '../connect-link-1to1';
 import {
   moveGroupPlanCalendarCopies,
@@ -11,9 +16,10 @@ import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import type { PlanRef } from '../group-plan-rsvp/plan-identity';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
-import { readFamilySliceForAudience } from '../multi-family';
+import { joinConsent, readFamilySliceForAudience } from '../multi-family';
 import { lookupLinqPollOption } from '../poll';
 import type { ListChatHandles } from '../roster';
+import { primaryParentId } from '../roster-ask';
 import { isGroupExperiencePollKind } from './kinds';
 import { postgresExperiencePollCard } from './poll-card';
 import type { GroupExperienceReader } from './reading';
@@ -23,6 +29,7 @@ import {
   type GroupExperienceTurnPorts,
   takeGroupExperienceTurn,
 } from './turn';
+import { takeGroupExperienceTurn as takeLegacyGroupExperienceTurn } from './turn-legacy';
 import type { GroupExperienceComposer } from './voice';
 
 export interface GroupExperienceInboundPorts {
@@ -108,6 +115,7 @@ export async function considerGroupExperience(
   },
 ): Promise<GroupExperienceTurnOutcome> {
   if (!groupExperienceTurnEnabled()) return { handled: false };
+  if (!linqGroupScenesEnabled()) return considerLegacyGroupExperience(ports, input);
   const senderUserId = input.senderUserId ?? null;
   const askerFamilyId = input.senderFamilyId ?? input.coveringFamilyId;
   return takeGroupExperienceTurn(
@@ -136,6 +144,77 @@ export async function considerGroupExperience(
       pollCard: postgresExperiencePollCard(ports.database),
       settleCalendar: calendarSettle(ports, input.chatId),
       moveCalendar: calendarMove(ports, input.chatId),
+      mayOpenOneToOne: (familyId) => mayOpenLinkOneToOne(ports.database, input.chatId, familyId),
+      sendOneToOne:
+        ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
+      privateSlices: async (familyIds) => {
+        const out = [];
+        for (const familyId of familyIds) {
+          const { slice } = await readFamilySliceForAudience(ports.database, {
+            chatId: input.chatId,
+            dataFamilyId: familyId,
+            audience: familyId,
+          });
+          out.push(slice);
+        }
+        return out;
+      },
+    },
+  );
+}
+
+/**
+ * A posted link's 1:1 is Hale texting first. It goes only to a household that owns this chat
+ * or joined it with its own consent, and whose parent has texted Hale themselves.
+ */
+async function mayOpenLinkOneToOne(
+  database: Database,
+  chatId: string,
+  familyId: string,
+): Promise<boolean> {
+  const [owner] = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (owner?.chatId !== chatId && !(await joinConsent(database, chatId, familyId)).allowed) {
+    return false;
+  }
+  const parent = await primaryParentId(database, familyId);
+  return parent !== null && textedHaleOneToOne(database, parent);
+}
+
+/** The group moment as it runs while LINQ_GROUP_SCENES_ENABLED is off. */
+async function considerLegacyGroupExperience(
+  ports: GroupExperienceInboundPorts,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    senderUserId?: string | null;
+    senderFamilyId?: string | null;
+    coveringFamilyId: string;
+    text: string;
+  },
+): Promise<GroupExperienceTurnOutcome> {
+  const senderUserId = input.senderUserId ?? null;
+  return takeLegacyGroupExperienceTurn(
+    {
+      chatId: input.chatId,
+      familyId: input.coveringFamilyId,
+      senderHandle: input.senderHandle,
+      senderUserId,
+      senderName: await senderNameOf(ports.database, senderUserId),
+      senderFamilyId: input.senderFamilyId ?? null,
+      text: input.text,
+      language: 'en',
+      now: ports.now,
+    },
+    {
+      database: ports.database,
+      reader: ports.reader,
+      composer: ports.composer,
+      send: ports.send,
+      pollCard: postgresExperiencePollCard(ports.database),
       sendOneToOne:
         ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
       privateSlices: async (familyIds) => {
@@ -188,8 +267,9 @@ export async function considerGroupExperiencePollVote(
   if (option.pollKind === 'group_rsvp' && option.choiceValue && option.subjectKey) {
     const response = option.choiceValue;
     if (response !== 'yes' && response !== 'no' && response !== 'maybe') return { handled: false };
+    const scenes = linqGroupScenesEnabled();
     // The card names its plan by id; a closed plan takes no more answers.
-    if (!(await plans.loadOpenPlan(input.chatId, option.subjectKey, ports.now))) {
+    if (scenes && !(await plans.loadOpenPlan(input.chatId, option.subjectKey, ports.now))) {
       return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
     }
     await plans.upsertRsvp({
@@ -206,17 +286,19 @@ export async function considerGroupExperiencePollVote(
       verbatim: option.text,
       now: ports.now,
     });
-    await calendarSettle(
-      ports,
-      input.chatId,
-    )({
-      planId: option.subjectKey,
-      userId: senderUserId,
-      memberKey,
-      displayName: senderName || 'someone',
-      response,
-      parentWords: null,
-    });
+    if (scenes) {
+      await calendarSettle(
+        ports,
+        input.chatId,
+      )({
+        planId: option.subjectKey,
+        userId: senderUserId,
+        memberKey,
+        displayName: senderName || 'someone',
+        response,
+        parentWords: null,
+      });
+    }
     return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };
   }
 

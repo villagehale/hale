@@ -44,6 +44,7 @@ export type CalendarSkipReason =
   | 'unusable'
   | 'not_sent'
   | 'no_parent'
+  | 'never_texted'
   | 'write_failed'
   | 'remove_failed';
 
@@ -467,6 +468,17 @@ export async function settleCalendarAfterAnswer(
   const existing = await ports.store.loadCalendarConsent(input.plan.id, familyId);
   if (existing) return undefined;
 
+  if (
+    ports.privateSend &&
+    !(await ports.privateSend.mayOpen({ familyId, userId: input.userId }))
+  ) {
+    console.info(
+      { outcome: 'group_plan_calendar_ask_never_texted' },
+      'group plan calendar: this parent has not texted Hale 1:1, no ask',
+    );
+    return { status: 'skipped', reason: 'never_texted' };
+  }
+
   const claimed = await ports.store.claimCalendarAsk({
     planId: input.plan.id,
     familyId,
@@ -628,11 +640,26 @@ export async function sendMovedNotice(
     language: ReplyLanguage | null;
   },
 ): Promise<'sent' | { skipped: CalendarSkipReason }> {
+  const userId = input.row.decidedByUserId;
+  if (!userId) {
+    console.warn(
+      { outcome: 'group_plan_calendar_moved_notice_unsent', reason: 'no_parent' },
+      'group plan calendar: no parent recorded for this OK, moved notice not sent',
+    );
+    return { skipped: 'no_parent' };
+  }
+  if (ports.privateSend && !(await ports.privateSend.mayOpen({ familyId: input.row.familyId, userId }))) {
+    console.info(
+      { outcome: 'group_plan_calendar_moved_notice_unsent', reason: 'never_texted' },
+      'group plan calendar: this parent has not texted Hale 1:1, moved notice not sent',
+    );
+    return { skipped: 'never_texted' };
+  }
   const sent = await deliverPrivate(ports, {
     plan: input.plan,
     familyId: input.row.familyId,
-    userId: null,
-    displayName: input.row.displayName,
+    userId,
+    displayName: (await ports.store.parentFirstName(userId)) ?? '',
     householdLabel: input.row.householdLabel,
     language: input.language,
     parentWords: null,

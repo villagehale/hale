@@ -1,12 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { textedHaleOneToOne } from '~/lib/channel/messaging-door';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { namesByOwnWord } from '~/lib/signup/parent-quote';
 import {
   linqGroupPlanRsvpCalendarEnabled,
   linqGroupPlanRsvpEnabled,
   linqGroupPollsEnabled,
+  linqGroupScenesEnabled,
   linqPollsEnabled,
 } from '../config';
 import { type OneToOneSend, sendHouseholdPrivateLine } from '../connect-link-1to1';
@@ -20,6 +22,7 @@ import {
   type CalendarConsentReading,
   type CalendarPrivateKind,
   type CalendarPrivateLine,
+  type CalendarPrivateSender,
   groupPlanCalendarLineInput,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
@@ -42,7 +45,9 @@ import {
   type GroupPollTurnResult,
   takeGroupPollCardVote,
 } from './poll-turn';
+import { takeGroupPollCardVote as takeLegacyGroupPollCardVote } from './poll-turn-legacy';
 import type { GroupPlanRsvpReader } from './reading';
+import type { GroupPlanRsvpReader as LegacyGroupPlanRsvpReader } from './reading-legacy';
 import {
   GROUP_PLAN_CALENDAR_ASK_TEMPLATE,
   GROUP_PLAN_CALENDAR_MOVED_TEMPLATE,
@@ -56,6 +61,7 @@ import {
 import { createPostgresGroupPlanRsvpStore } from './store';
 import type { PlanRsvpResponse, PlanTally } from './tally';
 import { type GroupPlanLine, type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
+import { takeGroupPlanRsvpTurn as takeLegacyGroupPlanRsvpTurn } from './turn-legacy';
 import {
   type GroupPlanRsvpComposer,
   composeGroupPlanRsvpLine,
@@ -130,8 +136,25 @@ function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
         });
 }
 
-function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
+/** A group line from the path behind a dark scenes flag: it names no household or plan. */
+function legacyLedgeredSend(ports: GroupPlanRsvpInboundPorts) {
+  return (line: { chatId: string; text: string; kind?: 'plan' | 'poll' }) =>
+    ports.send
+      ? ports.send({ chatId: line.chatId, text: line.text })
+      : sendGroupPlanRsvpLine(ports.database, {
+          chatId: line.chatId,
+          text: line.text,
+          templateKey: groupTemplate(line.kind),
+          now: ports.now,
+        });
+}
+
+function privateCalendarSend(ports: GroupPlanRsvpInboundPorts): CalendarPrivateSender {
   return {
+    async mayOpen({ familyId, userId }) {
+      const parent = userId ?? (await primaryParentId(ports.database, familyId));
+      return parent !== null && textedHaleOneToOne(ports.database, parent);
+    },
     async send(line: CalendarPrivateLine) {
       const templateKey = calendarTemplate(line.kind);
       const result = await sendHouseholdPrivateLine(ports.database, {
@@ -216,6 +239,7 @@ export async function considerGroupPlanRsvp(
   },
 ): Promise<GroupPlanRsvpTurnOutcome> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return { handled: false };
+  if (!linqGroupScenesEnabled()) return considerLegacyGroupPlanRsvp(ports, input);
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const open = linqGroupPlanRsvpEnabled() ? await store.listOpenPlans(input.chatId, ports.now) : [];
   const livePoll = linqGroupPollsEnabled() ? await store.loadLivePoll(input.chatId) : null;
@@ -251,6 +275,63 @@ export async function considerGroupPlanRsvp(
       reader: ports.reader,
       composer: ports.composer,
       send: ledgeredSend(ports),
+      pollCard: ports.pollCard ?? postgresGroupPollCard(ports.database),
+      households: postgresGroupPlanHouseholds(ports.database),
+      calendar: postgresGroupPlanCalendarWriter(ports.database),
+      consentReader: ports.consentReader ?? sharedCalendarConsentReader(),
+      privateSend: privateCalendarSend(ports),
+    },
+  );
+}
+
+/** One group message on a plan or poll, as it runs while LINQ_GROUP_SCENES_ENABLED is off. */
+async function considerLegacyGroupPlanRsvp(
+  ports: GroupPlanRsvpInboundPorts,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    senderUserId?: string | null;
+    text: string;
+    tapback: LinqTapback | null;
+    tapbackMessageId?: string | null;
+    secretSanta?: boolean;
+  },
+): Promise<GroupPlanRsvpTurnOutcome> {
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const live = linqGroupPlanRsvpEnabled() ? await store.loadLivePlan(input.chatId) : null;
+  const livePoll = linqGroupPollsEnabled() ? await store.loadLivePoll(input.chatId) : null;
+  const cover = await store.coveringFamily(input.chatId);
+  const hostFamilyId = await hostFamilyIdForPlan(
+    postgresGroupPlanHouseholds(ports.database),
+    cover,
+    { chatId: input.chatId, userId: input.senderUserId },
+  );
+  if (!live && !livePoll && !hostFamilyId) return { handled: false };
+
+  return takeLegacyGroupPlanRsvpTurn(
+    {
+      chatId: input.chatId,
+      senderHandle: input.senderHandle,
+      senderName: await senderNameOf(ports.database, input.senderUserId ?? null),
+      senderUserId: input.senderUserId ?? null,
+      text: input.text,
+      tapback: input.tapback,
+      tapbackMessageId: input.tapbackMessageId,
+      secretSanta: input.secretSanta,
+      language: 'en',
+      calendarLanguage: await calendarHouseholdLanguage(
+        ports.database,
+        input.chatId,
+        input.senderUserId ?? null,
+      ),
+      now: ports.now,
+    },
+    {
+      store,
+      // Production passes no reader here. A test's fake answers whichever shape it is asked.
+      reader: ports.reader as unknown as LegacyGroupPlanRsvpReader | undefined,
+      composer: ports.composer,
+      send: legacyLedgeredSend(ports),
       pollCard: ports.pollCard ?? postgresGroupPollCard(ports.database),
       households: postgresGroupPlanHouseholds(ports.database),
       calendar: postgresGroupPlanCalendarWriter(ports.database),
@@ -684,6 +765,30 @@ export async function considerGroupPollCardVote(
     return poll ? store.pollVoterKeys(poll.id) : [];
   });
   const seat = seated.find((person) => person.memberKey === memberKey);
+  if (!linqGroupScenesEnabled()) {
+    return takeLegacyGroupPollCardVote(
+      {
+        chatId: input.chatId,
+        event: input.event,
+        optionId: input.optionId,
+        card: input.card,
+        voter: {
+          memberKey,
+          displayName: senderName || seat?.displayName || 'someone',
+          userId: seat?.userId ?? input.senderUserId ?? null,
+          haleCustomer: seat?.haleCustomer ?? false,
+        },
+        language: 'en',
+        now: ports.now,
+      },
+      {
+        store,
+        composer: ports.composer,
+        send: legacyLedgeredSend(ports),
+        card: ports.pollCard ?? postgresGroupPollCard(ports.database),
+      },
+    );
+  }
   return takeGroupPollCardVote(
     {
       chatId: input.chatId,

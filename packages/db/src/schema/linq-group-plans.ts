@@ -26,8 +26,9 @@ export interface LinqGroupPlanWhichLine {
  * Any plan, not a birthday: a picnic, a museum Saturday, soccer, a class party.
  * The covering family is the household that claimed the chat (T22: one family's
  * plan covers everyone seated). `expected_count` is how many distinct people or
- * households Hale is waiting on. Closed rows stay. A chat may hold several open
- * plans (VIL-689): a message binds to one only by its id, never by being "the" open one.
+ * households Hale is waiting on. Closed rows stay. A chat has at most one live plan
+ * until the unique index below is replaced, which ships when LINQ_GROUP_SCENES_ENABLED is
+ * lit (VIL-689): a message then binds to a plan only by its id, never by being "the" open one.
  */
 export const linqGroupPlans = pgTable(
   'linq_group_plans',
@@ -54,7 +55,7 @@ export const linqGroupPlans = pgTable(
       'linq_group_plans_expected_count_check',
       sql`${table.expectedCount} >= 0 AND ${table.expectedCount} <= 80`,
     ),
-    openChatIdx: index('linq_group_plans_open_chat_idx')
+    liveChatUniq: uniqueIndex('linq_group_plans_live_chat_uniq')
       .on(table.chatId)
       .where(sql`${table.closedAt} IS NULL`),
     familyIdx: index('linq_group_plans_family_idx').on(table.familyId),
@@ -205,6 +206,10 @@ export const linqGroupPlanCalendarConsents = pgTable(
      * its row, and a word it shared with another plan must still name neither.
      */
     whichLine: jsonb('which_line').$type<LinqGroupPlanWhichLine>(),
+    /** VIL-689 · the parent whose OK wrote the copy: a moved-copy notice goes to them. */
+    decidedByUserId: uuid('decided_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     familyEventId: uuid('family_event_id').references(() => familyEvents.id, {
       onDelete: 'set null',
     }),

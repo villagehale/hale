@@ -6,6 +6,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group-scenes';
 import { handleLinqInboundRequest } from '../inbound';
 import { postgresGroupPlanCalendarWriter, postgresGroupPlanHouseholds } from './calendar';
 import {
@@ -29,6 +30,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -36,6 +38,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
 });
 
@@ -45,7 +48,14 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-async function parent(input: { name: string; phone: string; chat?: string; language?: string }) {
+async function parent(input: {
+  name: string;
+  phone: string;
+  chat?: string;
+  language?: string;
+  /** False: this parent has never texted Hale 1:1. */
+  texted?: boolean;
+}) {
   const [family] = await db.database
     .insert(schema.families)
     .values({
@@ -78,6 +88,20 @@ async function parent(input: { name: string; phone: string; chat?: string; langu
     phoneE164Hash: phoneBlindIndex(input.phone),
     verifiedAt: NOW,
   });
+  if (input.texted !== false) {
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: userId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: `dm-${userId}`,
+      inGroup: false,
+      status: 'delivered',
+      sentAt: new Date(NOW.getTime() - 86_400_000),
+      createdAt: new Date(NOW.getTime() - 86_400_000),
+    });
+  }
   return { familyId, userId };
 }
 
@@ -235,6 +259,7 @@ describe('postgres household calendar copy', () => {
         return { providerMessageId: 'm' };
       },
       privateSend: {
+        mayOpen: async () => true,
         async send(line: object) {
           expect(line).not.toHaveProperty('chatId');
           privateCalls.push(line);
@@ -956,6 +981,7 @@ describe('the private reply and a tapback use the household language', () => {
       phoneE164Hash: phoneBlindIndex(phone),
       verifiedAt: NOW,
     });
+    await seedTextedHale(db.database, { familyId: homeId, userId, at: NOW });
     await db.database.insert(schema.linqGroupMembers).values({
       familyId: homeId,
       chatId: CHAT,
@@ -1206,6 +1232,81 @@ describe('a claimed group with no member seat', () => {
         userId: priya.userId,
       }),
     ).toEqual({ status: 'none' });
+  });
+});
+
+describe('Hale never opens a 1:1 cold', () => {
+  async function yesFrom(priya: { familyId: string; userId: string }) {
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    const sent: string[] = [];
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: NOW,
+        composer,
+        reader: {
+          read: async () => ({
+            intent: 'rsvp' as const,
+            planTitle: null,
+            startsAt: null,
+            location: null,
+            deadline: null,
+            response: 'yes' as const,
+            headcount: 1,
+            householdLabel: null,
+            coversNames: [],
+            confidence: 'high' as const,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
+          }),
+        },
+        oneToOne: {
+          text: async ({ body }) => {
+            sent.push(body);
+            return { providerMessageId: 'priv-1', chatId: null };
+          },
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      { chatId: CHAT, senderHandle: PRIYA, senderUserId: priya.userId, text: 'in', tapback: null },
+    );
+    const consent = await store.loadCalendarConsent(plan.id, priya.familyId);
+    const withdrawn = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_calendar_withdrawn'));
+    return { sent, consent, withdrawn };
+  }
+
+  it('a yes from a parent who never texted Hale opens no ask and leaves no ask row', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT, texted: false });
+    const { sent, consent, withdrawn } = await yesFrom(priya);
+    expect(sent).toEqual([]);
+    expect(consent).toBeNull();
+    expect(withdrawn).toEqual([]);
+  });
+
+  it('the same yes from a parent who has texted Hale gets the ask (positive control)', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const { sent, consent } = await yesFrom(priya);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('calendar_ask');
+    expect(consent?.status).toBe('asked');
   });
 });
 

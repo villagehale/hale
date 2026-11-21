@@ -3,6 +3,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  DROP_SINGLE_OPEN_PLAN_INDEX,
+  seedJoinConsent,
+  seedTextedHale,
+} from '~/lib/testing/group-scenes';
 import type { PrivateAsideModel } from '../group-private-aside';
 import { handleLinqGroupMessage } from '../inbound';
 import type { SharedGroupIntent, SharedGroupReader } from '../shared-group-reading';
@@ -30,6 +35,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -37,6 +43,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', FROM);
   for (const flag of [
@@ -177,8 +184,10 @@ async function say(
 
 describe('VIL-399 group moments in a chat several families share', () => {
   it('a posted link says its public facts and takes registration 1:1, not the plain answer', async () => {
-    await seedFamily(PARENT_A, 'Ada');
-    await seedFamily(PARENT_B, 'Bao');
+    for (const family of [await seedFamily(PARENT_A, 'Ada'), await seedFamily(PARENT_B, 'Bao')]) {
+      await seedJoinConsent(db.database, { chatId: CHAT, ...family });
+      await seedTextedHale(db.database, { ...family, at: NOW });
+    }
     const out = await say(
       'anyone want this? https://park.example/camp $120 two sessions',
       'question',

@@ -170,8 +170,12 @@ export function createGroupExperienceReader(
   };
 }
 
+export function groupExperienceReaderAvailable(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY) && process.env.VOICE_DISABLED !== 'true';
+}
+
 export function productionGroupExperienceReader(): GroupExperienceReader | undefined {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.VOICE_DISABLED === 'true') return undefined;
+  if (!groupExperienceReaderAvailable()) return undefined;
   return createGroupExperienceReader(() =>
     budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' }),
   );

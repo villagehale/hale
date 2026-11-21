@@ -4,8 +4,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group-scenes';
 import type { PrivateAsideModel } from '../group-private-aside';
 import { postgresGroupPlanCalendarWriter } from '../group-plan-rsvp/calendar';
+import { runGroupPlanFollowups } from '../group-plan-rsvp/followups';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
 import { handleLinqGroupMessage } from '../inbound';
@@ -39,11 +41,13 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 afterAll(async () => {
   await db.close();
 });
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', FROM);
   for (const flag of [
@@ -108,6 +112,7 @@ async function seedFamily(phone: string, name: string) {
     phoneE164Hash: phoneBlindIndex(phone),
     role: 'parent',
   });
+  await seedTextedHale(db.database, { familyId, userId, at: new Date(NOW.getTime() - 86_400_000) });
   return { familyId, userId };
 }
 
@@ -820,5 +825,78 @@ describe('the OK asks a lock sends to yes households go out by day only', () => 
     const { lock } = await lockAt(NOW);
     expect(lock.texted.map((line) => line.to)).toEqual([PARENT_A]);
     expect(lock.texted[0]?.body).toContain('calendar_ask');
+  });
+});
+
+describe('the follow-up cron and a plan that is over', () => {
+  async function waitingPlan(startsAt: Date | null) {
+    const a = await seedFamily(PARENT_A, 'Ada');
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: a.familyId,
+      title: 'picnic',
+      startsAt,
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: a.userId,
+      expected: [{ memberKey: 'key-bao', displayName: 'Bao', userId: null, haleCustomer: false }],
+      now: new Date(NOW.getTime() - 7 * 86_400_000),
+    });
+    return { store, plan };
+  }
+
+  function followups(store: ReturnType<typeof createPostgresGroupPlanRsvpStore>) {
+    const sent: string[] = [];
+    const run = runGroupPlanFollowups(
+      {
+        store,
+        composer: fakeGroupPlanRsvpComposer(),
+        send: async ({ text }) => {
+          sent.push(text);
+          return { providerMessageId: `f-${sent.length}` };
+        },
+        enabled: () => true,
+      },
+      NOW,
+    );
+    return { run, sent };
+  }
+
+  it('a plan whose start has passed gets no nudge, and it closes', async () => {
+    const { store, plan } = await waitingPlan(new Date(NOW.getTime() - 6 * 86_400_000));
+    const { run, sent } = followups(store);
+    expect((await run).sent).toBe(0);
+    expect(sent).toEqual([]);
+    const [row] = await db.database
+      .select({ closedAt: schema.linqGroupPlans.closedAt })
+      .from(schema.linqGroupPlans)
+      .where(eq(schema.linqGroupPlans.id, plan.id));
+    expect(row?.closedAt).toEqual(NOW);
+  });
+
+  it('a plan still ahead gets its nudge (positive control)', async () => {
+    const { store, plan } = await waitingPlan(new Date(NOW.getTime() + 3 * 86_400_000));
+    const { run, sent } = followups(store);
+    expect((await run).sent).toBe(1);
+    expect(sent).toHaveLength(1);
+    const [row] = await db.database
+      .select({ closedAt: schema.linqGroupPlans.closedAt })
+      .from(schema.linqGroupPlans)
+      .where(eq(schema.linqGroupPlans.id, plan.id));
+    expect(row?.closedAt).toBeNull();
+  });
+
+  it('with the scenes flag off, the cron reads and nudges as it always did', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', '');
+    const { store, plan } = await waitingPlan(new Date(NOW.getTime() - 6 * 86_400_000));
+    const { run, sent } = followups(store);
+    expect((await run).sent).toBe(1);
+    expect(sent).toHaveLength(1);
+    const [row] = await db.database
+      .select({ closedAt: schema.linqGroupPlans.closedAt })
+      .from(schema.linqGroupPlans)
+      .where(eq(schema.linqGroupPlans.id, plan.id));
+    expect(row?.closedAt).toBeNull();
   });
 });

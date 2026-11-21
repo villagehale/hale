@@ -401,6 +401,7 @@ describe('runCarpoolReminders', () => {
   });
 
   it('a driver who never texted Hale 1:1 gets no 1:1, even in a household group (no cold text)', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
     const { familyId, userId } = await seed();
     await seedRoster(familyId, 'confirmed', PARENTS);
     const door = send();

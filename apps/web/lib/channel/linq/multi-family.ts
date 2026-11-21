@@ -36,11 +36,13 @@ import {
 } from './common-time-plan';
 import { considerSharedCarpoolTurn } from './carpool';
 import { denyTermsFromSlices } from './group-experience/deny-terms';
+import { groupLineLeaksPrivate } from './group-experience/privacy';
 import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
 import {
   linqGroupCarpoolEnabled,
   linqGroupCommonTimeEnabled,
+  linqGroupScenesEnabled,
   linqMultiFamilyGroupsEnabled,
 } from './config';
 import { linqChatAuditKey } from './family-audit';
@@ -1043,6 +1045,16 @@ export async function denyListForChat(database: Database, chatId: string): Promi
     ...joins.map((join) => join.familyId),
     ...hosts.map((host) => host.id),
   ]);
+  if (!linqGroupScenesEnabled()) {
+    const tokens: string[] = [];
+    for (const familyId of households) {
+      const slice = await readFamilyPrivateSlice(database, familyId);
+      tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
+      // Calendar titles block leaks too; the clock suffix is not a deny token.
+      tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
+    }
+    return tokens.filter((token) => token.trim().length >= 3);
+  }
   // A plan this chat made is the group's own: a household's calendar copy of it (VIL-503)
   // carries the plan title the group already said, so it is no private term here.
   const chatPlans = await database
@@ -1359,7 +1371,9 @@ async function proposeCommonTime(
   const deny = composed ? await denyListForChat(database, input.chatId) : [];
   const leaked =
     composed !== null &&
-    deny.some((token) => composed.text.toLowerCase().includes(token.toLowerCase()));
+    (linqGroupScenesEnabled()
+      ? groupLineLeaksPrivate(composed.text, deny)
+      : deny.some((token) => composed.text.toLowerCase().includes(token.toLowerCase())));
   const counts = {
     checked: families.filter((family) => family.busy !== null).length,
     asked: families.filter((family) => family.busy === null).length,
@@ -2097,7 +2111,7 @@ export async function takeMultiFamilyTurn(
 
   // VIL-689: a ride in a shared chat. Only a Hale family member here changes one; a line
   // goes to the group only when Hale asks who drives.
-  if (channel && linqGroupCarpoolEnabled()) {
+  if (channel && linqGroupScenesEnabled() && linqGroupCarpoolEnabled()) {
     const ride = await considerSharedCarpoolTurn(database, {
       chatId: input.chatId,
       senderHandle: input.senderHandle,

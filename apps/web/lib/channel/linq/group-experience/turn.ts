@@ -17,6 +17,7 @@ import {
   type GroupPlanRecord,
   type GroupPlanRsvpStore,
   createPostgresGroupPlanRsvpStore,
+  openPlanOrNone,
 } from '../group-plan-rsvp/store';
 import { type FamilyPrivateSlice, denyListForChat, presentHouseholds } from '../multi-family';
 import {
@@ -123,6 +124,11 @@ export interface GroupExperienceTurnPorts {
     /** A parent of `familyId` who asked: they hear it, not the household's primary parent. */
     askerUserId?: string | null;
   }) => Promise<'sent' | 'not_sent'>;
+  /**
+   * Whether Hale may open a 1:1 with this household about a posted link: it joined this chat
+   * (or owns it) and its parent has texted Hale themselves. Absent: no link 1:1 is sent.
+   */
+  mayOpenOneToOne?: (familyId: string) => Promise<boolean>;
   /** The asking household's own slice, for its 1:1 answer only. */
   privateSlices?: (familyIds: readonly string[]) => Promise<FamilyPrivateSlice[]>;
   /** Terms no group line may carry. Production: every household's, via denyListForChat. */
@@ -258,7 +264,7 @@ async function openPlan(
     { chatId: input.chatId, userId: input.senderUserId },
   );
   if (!familyId) return null;
-  return plans.createPlan({
+  return openPlanOrNone(plans, {
     chatId: input.chatId,
     familyId,
     title,
@@ -956,6 +962,13 @@ async function speakLink(
   const texted: string[] = [];
   if (ports.sendOneToOne) {
     for (const familyId of familyIds) {
+      if (!(await ports.mayOpenOneToOne?.(familyId))) {
+        console.info(
+          { outcome: 'group_experience_link_1to1_not_open' },
+          'group experience: this household has not opted in to a 1:1 about a posted link',
+        );
+        continue;
+      }
       const oneToOne = await speak(ports, input, 'registration_1to1', { url }, 0, 'one_to_one', []);
       if (oneToOne.status !== 'composed') continue;
       const sent = await ports.sendOneToOne({

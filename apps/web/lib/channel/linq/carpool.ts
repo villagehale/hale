@@ -35,7 +35,7 @@ import {
 import { decideCarpoolReminder, decideCarpoolTurn, localMinutesIn } from './carpool-cadence';
 import { type CarpoolReader, readingFromTapback, sharedCarpoolReader } from './carpool-reading';
 import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
-import { linqGroupCarpoolEnabled } from './config';
+import { linqGroupCarpoolEnabled, linqGroupScenesEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
 import { groupLineLeaksPrivate } from './group-experience/privacy';
@@ -317,7 +317,12 @@ async function persistPlan(
   }
   const [inserted] = await database
     .insert(schema.linqGroupCarpools)
-    .values({ ...values, chatAudience: await carpoolChatAudience(database, input.chatId) })
+    .values({
+      ...values,
+      ...(linqGroupScenesEnabled()
+        ? { chatAudience: await carpoolChatAudience(database, input.chatId) }
+        : {}),
+    })
     .returning({ id: schema.linqGroupCarpools.id });
   if (!inserted) throw new Error('linq carpool: insert returned no row');
   noteTaskCompleted({ familyId: input.familyId, type: 'carpool', source: 'group' });
@@ -592,7 +597,9 @@ export async function considerSharedCarpoolTurn(
   database: Database,
   input: SharedCarpoolTurnInput,
 ): Promise<CarpoolTurnOutcome> {
-  if (!linqGroupCarpoolEnabled()) return { handled: false, outcome: 'flag_off' };
+  if (!linqGroupCarpoolEnabled() || !linqGroupScenesEnabled()) {
+    return { handled: false, outcome: 'flag_off' };
+  }
   if (!input.senderUserId || !input.senderFamilyId) {
     return { handled: false, outcome: 'unknown_sender' };
   }
@@ -708,14 +715,15 @@ export async function considerSharedCarpoolTurn(
   return { handled: true, outcome, ...(notice ? { notice } : {}) };
 }
 
-/** Roster statuses that mean a household group: one family's own chat, roles named. */
-const HOUSEHOLD_ROSTER_STATUSES = ['confirmed', 'roles_proposed'] as const;
+/** Roster statuses that mean a household group: one family's own chat, seated so far. */
+const HOUSEHOLD_ROSTER_STATUSES = ['confirmed', 'roles_proposed', 'partial'] as const;
 
 /**
  * Whether a ride's chat is one household's group or a chat several families share. Household
- * only on positive proof: a roster with a family and a household status, and no live
- * multi-family join. Anything else (no roster, no family, mixed, refused, ejected, pending, a
- * live join) is shared. Decided once when the ride is made (`chat_audience`).
+ * only on positive proof and with no live multi-family join: a family claimed this chat, or
+ * a roster with a family and a household status. Anything else (no roster, no family, mixed,
+ * refused, ejected, pending, a live join) is shared. Decided once when the ride is made
+ * (`chat_audience`).
  */
 export async function carpoolChatAudience(
   database: Database,
@@ -732,6 +740,12 @@ export async function carpoolChatAudience(
     )
     .limit(1);
   if (join) return 'shared';
+  const [claimed] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (claimed) return 'household';
   const [roster] = await database
     .select({ id: schema.linqGroupRosters.id })
     .from(schema.linqGroupRosters)
@@ -744,6 +758,26 @@ export async function carpoolChatAudience(
     )
     .limit(1);
   return roster ? 'household' : 'shared';
+}
+
+/** A ride recorded as shared, or (scenes on) one whose chat reads as shared today. */
+async function isSharedRide(
+  database: Database,
+  row: { chatId: string; chatAudience: 'household' | 'shared' | null },
+): Promise<boolean> {
+  if (row.chatAudience) return row.chatAudience === 'shared';
+  return linqGroupScenesEnabled() && (await carpoolChatAudience(database, row.chatId)) === 'shared';
+}
+
+/** A driver leg that will never send: retrying it changes nothing, or could text twice. */
+function driverSkipIsFinal(reason: string): boolean {
+  return (
+    reason === 'driver_not_customer' ||
+    reason === 'no_driver_user' ||
+    reason === 'driver_group_claimed' ||
+    reason === 'driver_never_texted' ||
+    reason.startsWith('send_unknown')
+  );
 }
 
 export async function considerCarpoolTapback(
@@ -933,8 +967,9 @@ export async function runCarpoolReminders(
     const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
     // VIL-689 · a ride in a shared chat reminds its driver 1:1 only: one family's ride is
     // never announced to the other families. `reminderGroupSentAt` is that reminder's
-    // generation mark here, as on the household path.
-    if ((row.chatAudience ?? (await carpoolChatAudience(database, row.chatId))) === 'shared') {
+    // generation mark here, as on the household path. A ride recorded as shared keeps this
+    // path even with the scenes flag off: a kill switch must not announce it to the group.
+    if (await isSharedRide(database, row)) {
       triedDriverThisRun.add(row.id);
       const driverSkipped = await deliverDriverLeg(database, {
         rowId: row.id,
@@ -944,23 +979,52 @@ export async function runCarpoolReminders(
         now: input.now,
         sendDriver,
         voice,
+        strictGates: true,
       });
+      if (driverSkipped === 'claimed_elsewhere') {
+        summary.skipped += 1;
+        continue;
+      }
+      if (driverSkipped !== null && !driverSkipIsFinal(driverSkipped)) {
+        // Nothing reached the driver and a later sweep can still try.
+        await release();
+        await audit(
+          database,
+          row.familyId,
+          'group_line_unsent',
+          { kind: 'night_before_driver', notice: driverSkipped, shared: true },
+          row.id,
+        );
+        summary.skipped += 1;
+        continue;
+      }
       await persistPlan(database, {
         chatId: row.chatId,
         familyId: row.familyId,
-        plan: markReminder(plan, 'sent'),
+        plan: markReminder(plan, driverSkipped === null ? 'sent' : 'suppressed'),
         existingId: row.id,
         askMessageId: row.askMessageId,
         now: input.now,
       });
-      await audit(
-        database,
-        row.familyId,
-        'linq_carpool_reminder_sent',
-        { driverSkipped, shared: true },
-        row.id,
-      );
-      summary.fired += 1;
+      if (driverSkipped === null) {
+        await audit(
+          database,
+          row.familyId,
+          'linq_carpool_reminder_sent',
+          { driverSkipped: null, shared: true },
+          row.id,
+        );
+        summary.fired += 1;
+      } else {
+        await audit(
+          database,
+          row.familyId,
+          'linq_carpool_reminder_skipped',
+          { reason: driverSkipped, shared: true },
+          row.id,
+        );
+        summary.skipped += 1;
+      }
       continue;
     }
     const facts = voiceFacts(plan, null);
@@ -1030,6 +1094,7 @@ export async function runCarpoolReminders(
       now: input.now,
       sendDriver,
       voice,
+      strictGates: linqGroupScenesEnabled(),
     });
 
     await persistPlan(database, {
@@ -1081,6 +1146,7 @@ export async function runCarpoolReminders(
       now: input.now,
       sendDriver,
       voice,
+      strictGates: linqGroupScenesEnabled() || row.chatAudience === 'shared',
     });
     if (
       driverSkipped === 'claimed_elsewhere' ||
@@ -1123,20 +1189,26 @@ async function deliverDriverLeg(
     now: Date;
     sendDriver: CarpoolDriverSend;
     voice: CarpoolComposer;
+    /** VIL-689 · the driver's own chat decides the first gate, and a cold 1:1 is refused. */
+    strictGates: boolean;
   },
 ): Promise<string | null> {
   const { plan } = input;
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
-  // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
-  // starts a 1:1 with its members. Their driver hears it in that group only. A ride
-  // in any other chat is not that group's, so it falls to the texted-Hale gate below.
-  if (await driverFamilyClaimedChat(database, plan.driverUserId, input.chatId)) {
+  if (input.strictGates) {
+    // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
+    // starts a 1:1 with its members. Their driver hears it in that group only. A ride
+    // in any other chat is not that group's, so it falls to the texted-Hale gate below.
+    if (await driverFamilyClaimedChat(database, plan.driverUserId, input.chatId)) {
+      return 'driver_group_claimed';
+    }
+    // VIL-689 · never a cold text: whatever kind of chat the ride came from, the driver's 1:1
+    // goes only to someone who has texted Hale themselves.
+    if (!(await textedHaleOneToOne(database, plan.driverUserId))) return 'driver_never_texted';
+  } else if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
     return 'driver_group_claimed';
   }
-  // VIL-689 · never a cold text: whatever kind of chat the ride came from, the driver's 1:1
-  // goes only to someone who has texted Hale themselves.
-  if (!(await textedHaleOneToOne(database, plan.driverUserId))) return 'driver_never_texted';
   const claimAt = input.now;
   const ours = and(
     eq(schema.linqGroupCarpools.id, input.rowId),
@@ -1190,6 +1262,15 @@ async function deliverDriverLeg(
     return driver.skipped;
   }
   return null;
+}
+
+async function driverFamilyHasClaimedGroup(database: Database, userId: string): Promise<boolean> {
+  const rows = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.familyMembers)
+    .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
+    .where(eq(schema.familyMembers.userId, userId));
+  return rows.some((row) => Boolean(row.chatId));
 }
 
 async function driverFamilyClaimedChat(

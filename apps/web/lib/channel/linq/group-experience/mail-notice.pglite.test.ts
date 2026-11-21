@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX } from '~/lib/testing/group-scenes';
 import { postMailNoticeToHouseholdGroup } from './mail-notice';
 import { fakeGroupExperienceComposer } from './voice-fake';
 
@@ -17,6 +18,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -24,6 +26,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('GROUP_MAIL_NOTICE_ENABLED', 'true');
 });
 

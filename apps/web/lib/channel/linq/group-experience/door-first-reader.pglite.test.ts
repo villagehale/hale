@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group-scenes';
 import type { PrivateAsideModel } from '../group-private-aside';
 import type { GroupPlanRsvpReading } from '../group-plan-rsvp/reading';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
@@ -35,11 +36,13 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 afterAll(async () => {
   await db.close();
 });
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', FROM);
   for (const flag of [
@@ -107,6 +110,7 @@ async function seedFamily(phone: string, name: string) {
     phoneE164Hash: phoneBlindIndex(phone),
     role: 'parent',
   });
+  await seedTextedHale(db.database, { familyId, userId, at: new Date(NOW.getTime() - 86_400_000) });
   return { familyId, userId };
 }
 

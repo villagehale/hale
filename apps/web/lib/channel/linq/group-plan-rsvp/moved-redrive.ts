@@ -85,7 +85,8 @@ export async function runGroupPlanMovedNoticeRedrive(
   const calendar = { store, ...groupPlanCalendarPorts(ports) };
   for (const move of open) {
     if (result.due >= MAX_REDRIVE_PER_RUN) break;
-    const parent = await primaryParentId(database, move.familyId);
+    const row = await store.loadCalendarConsent(move.planId, move.familyId);
+    const parent = row?.decidedByUserId ?? (await primaryParentId(database, move.familyId));
     if (!parent) {
       result.skipped += 1;
       continue;
@@ -96,7 +97,6 @@ export async function runGroupPlanMovedNoticeRedrive(
       .select()
       .from(schema.linqGroupPlans)
       .where(eq(schema.linqGroupPlans.id, move.planId));
-    const row = await store.loadCalendarConsent(move.planId, move.familyId);
     if (!plan || plan.closedAt || row?.status !== 'written') {
       result.skipped += 1;
       continue;

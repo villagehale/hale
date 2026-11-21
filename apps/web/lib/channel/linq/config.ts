@@ -186,15 +186,26 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 }
 
 /**
+ * VIL-689 — the group scenes: several open plans per chat, each message bound to its plan by
+ * id; group moments and rides in chats several families share; the private-question, link and
+ * calendar 1:1s that go with them. Exactly `true` enables it. Off, every group path runs what
+ * it ran before this flag, so merging it changes nothing for a parent.
+ */
+export function linqGroupScenesEnabled(): boolean {
+  return isEnabled('linq-group-scenes');
+}
+
+/**
  * VIL-503 — after a household says yes to a tracked plan, Hale asks that household 1:1
  * before writing its calendar (VIL-399 scene 04, launch scope since Barton 11-12). Exactly
- * `true` on any deploy. Unset, empty, `on`, and `false` stay dark, and dark leaves the RSVP
- * tally as it was: no ask, no calendar copy. The plan RSVP flag still has to be on for a
- * plan to exist. Not read under its Preview-only name (`LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED`):
- * Prod holds a value there that did nothing, and it must not light this at merge.
+ * `true` on any deploy, with the scenes flag also exactly `true`: the ask binds a reply to a
+ * plan by the scenes' plan identity. Anything else stays dark, and dark leaves the RSVP tally
+ * as it was: no ask, no calendar copy. The plan RSVP flag still has to be on for a plan to
+ * exist. Not read under its Preview-only name (`LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED`): Prod
+ * holds a value there that did nothing, and it must not light this at merge.
  */
 export function linqGroupPlanRsvpCalendarEnabled(): boolean {
-  return isEnabled('linq-group-plan-calendar');
+  return linqGroupScenesEnabled() && isEnabled('linq-group-plan-calendar');
 }
 
 /**

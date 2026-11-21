@@ -54,6 +54,7 @@ import {
   linqGroupOnboardingV2Enabled,
   linqGroupPlanRsvpEnabled,
   linqGroupPollsEnabled,
+  linqGroupScenesEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -679,7 +680,7 @@ async function runGroupExperience(
     text: string;
     messageId: string;
   },
-  read: GroupMessageRead,
+  read?: GroupMessageRead,
 ): Promise<Extract<GroupExperienceTurnOutcome, { handled: true }> | null> {
   if (!groupExperienceTurnEnabled()) return null;
   const covering =
@@ -715,18 +716,18 @@ async function runGroupExperience(
       coveringFamilyId: covering,
       text: input.text,
       messageId: input.messageId,
-      ...(read.lockAsked ? { decided: 'time_lock' as const } : {}),
-      ...(read.lockAsked && read.lockChoice ? { lockChoice: read.lockChoice } : {}),
-      ...(read.planRef ? { planRef: read.planRef } : {}),
+      ...(read?.lockAsked ? { decided: 'time_lock' as const } : {}),
+      ...(read?.lockAsked && read.lockChoice ? { lockChoice: read.lockChoice } : {}),
+      ...(read?.planRef ? { planRef: read.planRef } : {}),
     },
   );
   return groupExperienceTakesTheTurn(result) ? result : null;
 }
 
 /**
- * VIL-399 — RSVP/time polls, a posted link, or a private question, read once per group
- * message. `read.done` is set the first time, so a later step of the door never reads the
- * same message again.
+ * VIL-399 — RSVP/time polls, a posted link, or a private question. With the scenes flag on,
+ * `read` carries one message's read state: `read.done` is set the first time, so a later step
+ * of the door never reads the same message again.
  */
 async function tryGroupExperienceTurn(
   deps: LinqDoorDeps,
@@ -736,10 +737,10 @@ async function tryGroupExperienceTurn(
     text: string;
     messageId: string;
   },
-  read: GroupMessageRead,
+  read?: GroupMessageRead,
 ): Promise<Response | null> {
-  if (read.done) return null;
-  read.done = true;
+  if (read?.done) return null;
+  if (read) read.done = true;
   const result = await runGroupExperience(deps, input, read);
   if (!result) return null;
   deps.log.info({ outcome: result.outcome }, 'linq inbound: group experience');
@@ -917,7 +918,9 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     linqMultiFamilyGroupsEnabled() &&
     secretSantaEnabled() &&
     (await chatHasCollectingDraw(deps.database, message.chatId));
-  const experienceRead: GroupMessageRead = { done: false };
+  const experienceRead: GroupMessageRead | undefined = linqGroupScenesEnabled()
+    ? { done: false }
+    : undefined;
   // A plan ask in a multi-family chat must run before the shared-group reader,
   // or it is handed back as a question and falls into the mixed-family hold.
   const rsvpFirst = santaCollecting
@@ -972,32 +975,36 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
         },
         // VIL-399: past seating, the duplicate check and a stopped member's guard, the
         // group moments read before Hale's plain shared-chat answer.
-        experience: async () => {
-          if (experienceRead.done) return null;
-          experienceRead.done = true;
-          const moment = await runGroupExperience(
-            deps,
-            {
-              chatId: message.chatId,
-              senderHandle: message.senderHandle,
-              text: message.text,
-              messageId: message.messageId,
-            },
-            experienceRead,
-          );
-          if (!moment) return null;
-          return {
-            result: {
-              handled: true,
-              outcome: moment.outcome,
-              count: moment.count,
-              ...(moment.notice ? { notice: moment.notice } : {}),
-            },
-            // The asker was already texted 1:1 about their own question: one 1:1, not two.
-            privateMove: moment.outcome === 'group_experience_1to1',
-            textedFamilies: moment.texted ?? [],
-          };
-        },
+        ...(experienceRead
+          ? {
+              experience: async () => {
+                if (experienceRead.done) return null;
+                experienceRead.done = true;
+                const moment = await runGroupExperience(
+                  deps,
+                  {
+                    chatId: message.chatId,
+                    senderHandle: message.senderHandle,
+                    text: message.text,
+                    messageId: message.messageId,
+                  },
+                  experienceRead,
+                );
+                if (!moment) return null;
+                return {
+                  result: {
+                    handled: true as const,
+                    outcome: moment.outcome,
+                    count: moment.count,
+                    ...(moment.notice ? { notice: moment.notice } : {}),
+                  },
+                  // The asker was already texted 1:1 about their own question: one 1:1, not two.
+                  privateMove: moment.outcome === 'group_experience_1to1',
+                  textedFamilies: moment.texted ?? [],
+                };
+              },
+            }
+          : {}),
       },
     );
     if (shared.handled) {
@@ -1126,7 +1133,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 async function routeClaimedGroup(
   deps: LinqDoorDeps,
   message: LinqInboundText,
-  experienceRead: GroupMessageRead = { done: false },
+  experienceRead?: GroupMessageRead,
 ): Promise<Response> {
   const stopping = (await optOutIntentOf(message.text)) === 'stop';
   if (!stopping && !linqGroupOnboardingV2Enabled()) {

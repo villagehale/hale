@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type GroupHoldReason, groupAudienceAllows } from '../group-audience';
@@ -13,10 +13,10 @@ import { LinqSendError, listLinqParticipantHandles } from '../transport';
  * and (VIL-471) a group poll line.
  *
  * Claims the channel_messages row before Linq hears the line. A refusal marks
- * that same row failed. The row belongs to the household that owns what the line is
- * about, which the caller names by id: the plan's host household for a tally or a
- * follow-up, the poll's household for a poll line. It is never looked up from whatever
- * plan or poll happens to be open in the chat.
+ * that same row failed. With LINQ_GROUP_SCENES_ENABLED on, the row belongs to the household
+ * that owns what the line is about, which the caller names by id: the plan's host household
+ * for a tally or a follow-up, the poll's household for a poll line. A caller that names none
+ * (scenes off) keeps the covering family, or the chat's open plan or poll's household.
  *
  * Before the claim, the family-chat floor reads who is in the chat now: a tally, a
  * follow-up and a poll line are `event_logistics`. A refused verdict claims nothing,
@@ -39,12 +39,36 @@ export class GroupPlanRsvpHeld extends Error {
   }
 }
 
+async function ledgerFamilyForGroupPlanLine(
+  database: Database,
+  chatId: string,
+): Promise<{ id: string } | null> {
+  const [covering] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (covering) return covering;
+  const [plan] = await database
+    .select({ familyId: schema.linqGroupPlans.familyId })
+    .from(schema.linqGroupPlans)
+    .where(and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)))
+    .limit(1);
+  if (plan) return { id: plan.familyId };
+  const [poll] = await database
+    .select({ familyId: schema.linqGroupPolls.familyId })
+    .from(schema.linqGroupPolls)
+    .where(and(eq(schema.linqGroupPolls.chatId, chatId), isNull(schema.linqGroupPolls.closedAt)))
+    .limit(1);
+  return poll ? { id: poll.familyId } : null;
+}
+
 export async function sendGroupPlanRsvpLine(
   database: Database,
   input: {
     chatId: string;
-    /** The household that owns the plan or poll this line is about. */
-    familyId: string;
+    /** The household that owns the plan or poll this line is about. Absent with scenes off. */
+    familyId?: string;
     /** The plan this line is about, when it is about one: a reaction on it resolves to it. */
     planId?: string | null;
     text: string;
@@ -59,7 +83,13 @@ export async function sendGroupPlanRsvpLine(
     listChatHandles?: ListChatHandles;
   },
 ): Promise<{ providerMessageId: string }> {
-  const family = { id: input.familyId };
+  const family = input.familyId
+    ? { id: input.familyId }
+    : await ledgerFamilyForGroupPlanLine(database, input.chatId);
+  if (!family) {
+    console.warn({ outcome: 'no_covering_family' }, 'group plan rsvp: send not ledgered');
+    throw new Error('group plan rsvp: no covering family');
+  }
   const parentUserId = await primaryParentId(database, family.id);
   if (!parentUserId) {
     console.warn(

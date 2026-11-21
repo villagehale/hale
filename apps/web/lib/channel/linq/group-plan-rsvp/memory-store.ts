@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { linqGroupScenesEnabled } from '../config';
 import type { GroupPollRecord, GroupPollStore, NativeCardOption } from './poll-store';
 import { pollOptionsFrom, withCardIds } from './poll-store';
 import { tallyGroupPoll } from './poll-tally';
@@ -234,6 +235,11 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return world.families.get(chatId) ?? null;
     },
 
+    async loadLivePlan(chatId) {
+      const plan = plansById().find((row) => row.chatId === chatId && row.closedAt === null);
+      return plan ? { ...plan } : null;
+    },
+
     async listOpenPlans(chatId, now) {
       closePast(chatId, now);
       return plansById()
@@ -386,6 +392,9 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
 
     async listDueFollowups(now) {
       const due: { plan: GroupPlanRecord; timeZone: string; waitingNames: string[] }[] = [];
+      if (linqGroupScenesEnabled()) {
+        for (const chatId of new Set(plansById().map((row) => row.chatId))) closePast(chatId, now);
+      }
       for (const plan of plansById()) {
         if (plan.closedAt) continue;
         if (plan.rsvpDeadlineAt && plan.rsvpDeadlineAt.getTime() > now.getTime()) continue;
@@ -419,6 +428,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         familyEventId: null,
         askProviderMessageId: null,
         whichLine: null,
+        decidedByUserId: null,
       };
       world.consents.set(key, row);
       return true;
@@ -455,6 +465,10 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         const row = world.consents.get(consentKey(ask.planId, ask.familyId));
         if (row) row.whichLine = whichLine;
       }
+    },
+
+    async parentFirstName() {
+      return null;
     },
 
     async planTitles(planIds) {
@@ -515,6 +529,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
           familyEventId: null,
           askProviderMessageId: null,
           whichLine: null,
+          decidedByUserId: null,
         });
       }
       world.audits.push({
@@ -559,6 +574,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       if (row) {
         row.status = 'written';
         row.familyEventId = input.familyEventId;
+        row.decidedByUserId = input.actorUserId;
       }
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_written',

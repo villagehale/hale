@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, inArray, isNull, lt, notExists, sql } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { linqGroupScenesEnabled } from '../config';
 import { readGroupMembership } from '../group-membership';
 import { postgresGroupPlanHouseholds } from './calendar';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
@@ -74,6 +75,8 @@ export interface CalendarConsentRow {
   familyEventId: string | null;
   askProviderMessageId: string | null;
   whichLine: (typeof schema.linqGroupPlanCalendarConsents.$inferSelect)['whichLine'];
+  /** The parent whose OK wrote the copy; a moved-copy notice goes to them. */
+  decidedByUserId: string | null;
 }
 
 export interface ClaimCalendarAskInput {
@@ -113,11 +116,55 @@ export const GROUP_PLAN_UNTIMED_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
  */
 export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded';
 
+const SINGLE_OPEN_PLAN_INDEX = 'linq_group_plans_live_chat_uniq';
+
+/**
+ * The chat's one-open-plan unique index refused a second open plan. It stays until the
+ * migration that ships with LINQ_GROUP_SCENES_ENABLED replaces it.
+ */
+export function isSingleOpenPlanViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const pg = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+    if (
+      pg.code === '23505' &&
+      (pg.constraint === SINGLE_OPEN_PLAN_INDEX ||
+        pg.constraint_name === SINGLE_OPEN_PLAN_INDEX ||
+        current.message.includes(SINGLE_OPEN_PLAN_INDEX))
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/** Opens a plan, or null when the one-open-plan index still in place refuses a second. */
+export async function openPlanOrNone(
+  store: Pick<GroupPlanRsvpStore, 'createPlan'>,
+  input: CreatePlanInput,
+): Promise<GroupPlanRecord | null> {
+  try {
+    return await store.createPlan(input);
+  } catch (err) {
+    if (!isSingleOpenPlanViolation(err)) throw err;
+    console.warn(
+      { outcome: 'group_plan_second_open_blocked' },
+      'group plan: this chat has an open plan and the one-plan index is still in place',
+    );
+    return null;
+  }
+}
+
 /** The audit verb a moved calendar copy writes; the held notice re-drive reads it back. */
 export const GROUP_PLAN_CALENDAR_MOVED_VERB = 'linq_group_plan_calendar_moved';
 
 export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
+  /** The chat's one open plan: the read the path behind a dark scenes flag keeps using. */
+  loadLivePlan(chatId: string): Promise<GroupPlanRecord | null>;
   /**
    * The chat's open plans, newest first, closing (and auditing) any whose start has passed.
    * A message binds to one of them only by its id: never by being the only one, or the newest.
@@ -174,6 +221,8 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     asks: readonly { planId: string; familyId: string }[],
     providerMessageId: string,
   ): Promise<void>;
+  /** A parent's first name, to address a line to them. */
+  parentFirstName(userId: string): Promise<string | null>;
   /** The titles of these plans, closed ones included. A plan that no longer exists is absent. */
   planTitles(planIds: readonly string[]): Promise<{ id: string; title: string }[]>;
   findCalendarAskByMessage(
@@ -247,6 +296,7 @@ function consentRow(
     familyEventId: row.familyEventId,
     askProviderMessageId: row.askProviderMessageId,
     whichLine: row.whichLine,
+    decidedByUserId: row.decidedByUserId,
   };
 }
 
@@ -403,6 +453,17 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .where(eq(schema.familyMembers.familyId, family.id))
         .limit(1);
       return { familyId: family.id, timeZone: host?.timezone?.trim() || 'America/Toronto' };
+    },
+
+    async loadLivePlan(chatId) {
+      const [row] = await database
+        .select()
+        .from(schema.linqGroupPlans)
+        .where(
+          and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)),
+        )
+        .limit(1);
+      return row && row.chatId === chatId ? planRecord(row) : null;
     },
 
     async listOpenPlans(chatId, now) {
@@ -721,6 +782,14 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
     },
 
     async listDueFollowups(now) {
+      if (linqGroupScenesEnabled()) {
+        // A nudge never goes out about an event that is over: the same close the chat reads do.
+        const chats = await database
+          .selectDistinct({ chatId: schema.linqGroupPlans.chatId })
+          .from(schema.linqGroupPlans)
+          .where(isNull(schema.linqGroupPlans.closedAt));
+        for (const { chatId } of chats) await closePastPlans(database, chatId, now);
+      }
       const plans = await database
         .select()
         .from(schema.linqGroupPlans)
@@ -862,6 +931,15 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       }
     },
 
+    async parentFirstName(userId) {
+      const [row] = await database
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId))
+        .limit(1);
+      return row?.name?.trim().split(/\s+/)[0] || null;
+    },
+
     async planTitles(planIds) {
       return database
         .select({ id: schema.linqGroupPlans.id, title: schema.linqGroupPlans.title })
@@ -904,6 +982,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           familyEventId: row.familyEventId,
           askProviderMessageId: row.askProviderMessageId,
           whichLine: row.whichLine,
+          decidedByUserId: row.decidedByUserId,
         },
       };
     },
@@ -960,6 +1039,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             familyEventId: row.familyEventId,
             askProviderMessageId: row.askProviderMessageId,
             whichLine: row.whichLine,
+            decidedByUserId: row.decidedByUserId,
           },
         });
       }
@@ -1079,6 +1159,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .set({
           status: 'written',
           familyEventId: input.familyEventId,
+          decidedByUserId: input.actorUserId,
           decidedAt: input.now,
           updatedAt: input.now,
         })

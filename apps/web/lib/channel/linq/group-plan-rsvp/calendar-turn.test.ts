@@ -85,6 +85,7 @@ function privateSpy() {
   }[] = [];
   return {
     lines,
+    mayOpen: async () => true,
     async send(line: {
       planId: string;
       familyId: string;
@@ -1307,6 +1308,7 @@ describe('the private ask lands after the group line', () => {
           return deps.send(line);
         },
         privateSend: {
+          mayOpen: async () => true,
           async send(line) {
             order.push('private');
             return priv.send(line);
@@ -1485,6 +1487,7 @@ describe('why a calendar ask was set aside', () => {
           consent: consentOf('not_this'),
         }),
         privateSend: {
+          mayOpen: async () => true,
           async send() {
             return { status: 'skipped' as const, reason: 'not_sent' as const };
           },

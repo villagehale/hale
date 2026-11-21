@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX } from '~/lib/testing/group-scenes';
 import { postgresGroupPlanCalendarWriter } from './calendar';
 import { runGroupPlanMovedNoticeRedrive } from './moved-redrive';
 import { createPostgresGroupPlanRsvpStore } from './store';
@@ -20,17 +21,20 @@ const NIGHT = new Date('2026-11-13T03:00:00.000Z'); // 22:00 Toronto
 const MORNING = new Date('2026-11-13T13:15:00.000Z'); // 08:15 Toronto
 const NOON = new Date('2026-11-13T17:00:00.000Z'); // 12:00 Toronto
 const PARENT = '+15555550111';
+const COPARENT = '+15555550112';
 const SUNDAY_14 = new Date('2026-11-15T14:00:00-05:00');
 
 let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 afterAll(async () => {
   await db.close();
 });
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
@@ -43,7 +47,21 @@ afterEach(async () => {
   );
 });
 
-async function movedAtNight() {
+async function textedHale(familyId: string, userId: string) {
+  await db.database.insert(schema.channelMessages).values({
+    familyId,
+    parentUserId: userId,
+    channel: 'imessage',
+    direction: 'in',
+    category: 'reply',
+    providerChatId: `dm-${userId}`,
+    inGroup: false,
+    status: 'delivered',
+    sentAt: NIGHT,
+  });
+}
+
+async function movedAtNight(options: { decider?: 'primary' | 'coParent'; texted?: boolean } = {}) {
   const [family] = await db.database
     .insert(schema.families)
     .values({ displayName: 'Ada', provinceOrState: 'ON' })
@@ -65,6 +83,26 @@ async function movedAtNight() {
     phoneE164Hash: phoneBlindIndex(PARENT),
     verifiedAt: NIGHT,
   });
+  let deciderId = userId;
+  if (options.decider === 'coParent') {
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:sam', name: 'Sam Lee', timezone: 'America/Toronto' })
+      .returning({ id: schema.users.id });
+    deciderId = coParent?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: deciderId, role: 'co_parent' });
+    await db.database.insert(schema.parentChannels).values({
+      userId: deciderId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(COPARENT),
+      phoneE164Hash: phoneBlindIndex(COPARENT),
+      verifiedAt: NIGHT,
+    });
+  }
+  if (options.texted !== false) await textedHale(familyId, deciderId);
   const store = createPostgresGroupPlanRsvpStore(db.database);
   const plan = await store.createPlan({
     chatId: CHAT,
@@ -98,7 +136,7 @@ async function movedAtNight() {
     planId: plan.id,
     familyId,
     familyEventId: written.familyEventId,
-    actorUserId: userId,
+    actorUserId: deciderId,
     now: NIGHT,
   });
   await store.noteCalendarMoved({
@@ -146,6 +184,25 @@ describe('runGroupPlanMovedNoticeRedrive', () => {
     const again = ports(MORNING);
     expect((await runGroupPlanMovedNoticeRedrive(again.ports)).sent).toBe(0);
     expect(again.texted).toEqual([]);
+  });
+
+  it('goes to the parent who gave the OK, by their own name, not to the primary parent', async () => {
+    await movedAtNight({ decider: 'coParent' });
+    const morning = ports(MORNING);
+    expect((await runGroupPlanMovedNoticeRedrive(morning.ports)).sent).toBe(1);
+    expect(morning.texted.map((line) => line.to)).toEqual([COPARENT]);
+    expect(morning.texted[0]?.body).toContain('calendar_moved');
+    expect(morning.texted[0]?.body).toContain('Sam');
+    expect(morning.texted[0]?.body).not.toContain('Ada');
+  });
+
+  it('a parent who never texted Hale 1:1 gets no notice (never a cold text)', async () => {
+    await movedAtNight({ texted: false });
+    const morning = ports(MORNING);
+    const run = await runGroupPlanMovedNoticeRedrive(morning.ports);
+    expect(run.sent).toBe(0);
+    expect(run.skipped).toBe(1);
+    expect(morning.texted).toEqual([]);
   });
 
   it('owes nothing once the plan has closed', async () => {

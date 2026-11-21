@@ -43,7 +43,7 @@ import {
   GROUP_PLAN_RSVP_TEMPLATE,
   GroupPlanRsvpHeld,
 } from './send';
-import type { GroupPlanRecord, GroupPlanRsvpStore } from './store';
+import { type GroupPlanRecord, type GroupPlanRsvpStore, openPlanOrNone } from './store';
 import { type PlanTally, isMeaningfulTallyChange } from './tally';
 import {
   type GroupPlanRsvpComposer,
@@ -465,7 +465,7 @@ export async function takeGroupPlanRsvpTurn(
       ))
         ? replaced.id
         : null;
-    plan = await deps.store.createPlan({
+    plan = await openPlanOrNone(deps.store, {
       chatId: input.chatId,
       familyId,
       title,

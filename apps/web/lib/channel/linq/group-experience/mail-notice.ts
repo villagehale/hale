@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { SourceChange } from '~/lib/loop/reminders/change';
 import { inviteWhenLabel } from '~/lib/loop/templates/calendar-invite/sms';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
-import { groupMailNoticeEnabled } from '../config';
+import { groupMailNoticeEnabled, linqGroupScenesEnabled } from '../config';
 import { deliverLinqGroupNotice } from '../group';
 import { primaryParentId } from '../roster-ask';
 import { createPostgresGroupExperienceStore } from './store';
@@ -68,8 +68,15 @@ export async function postMailNoticeToHouseholdGroup(
       facts: {
         title: event.title,
         field: input.change.field,
-        previousWhen: inviteWhenLabel(input.change.previousStartsAt, input.timeZone),
-        when: inviteWhenLabel(event.startsAt, input.timeZone),
+        ...(linqGroupScenesEnabled()
+          ? {
+              previousWhen: inviteWhenLabel(input.change.previousStartsAt, input.timeZone),
+              when: inviteWhenLabel(event.startsAt, input.timeZone),
+            }
+          : {
+              previousStartsAt: input.change.previousStartsAt.toISOString(),
+              startsAt: event.startsAt.toISOString(),
+            }),
       },
     },
     input.composer ?? productionGroupExperienceComposer(),

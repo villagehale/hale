@@ -45,6 +45,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -458,7 +459,7 @@ describe('household or shared is decided once, from positive proof', () => {
     'ejected',
     'not_group',
   ] as const;
-  const HOUSEHOLD = new Set<string>(['confirmed', 'roles_proposed']);
+  const HOUSEHOLD = new Set<string>(['confirmed', 'roles_proposed', 'partial']);
 
   async function familyOnly(name: string) {
     const [family] = await db.database
@@ -500,6 +501,73 @@ describe('household or shared is decided once, from positive proof', () => {
 
   it('no roster at all is shared', async () => {
     expect(await carpoolChatAudience(db.database, CHAT)).toBe('shared');
+  });
+
+  it('a chat a family claimed is a household, with or without a roster', async () => {
+    const familyId = await familyOnly('Ada');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, familyId));
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('household');
+  });
+
+  it('a claimed chat with a live multi-family join is shared', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, a.familyId));
+    expect(await carpoolChatAudience(db.database, CHAT)).toBe('shared');
+  });
+
+  it('a ride made while the claimed chat roster was partial still reminds the household group', async () => {
+    const a = await seedFamily(PARENT_A, 'Ada', 'Zephyrina');
+    await db.database.update(schema.linqMultiFamilyJoins).set({ leftAt: NOW });
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, a.familyId));
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({ chatId: CHAT, familyId: a.familyId, source: 'added_to_existing', status: 'partial' })
+      .returning({ id: schema.linqGroupRosters.id });
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster?.id as string,
+      chatId: CHAT,
+      phoneE164Hash: phoneBlindIndex(PARENT_A),
+      status: 'known_parent',
+    });
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: CHAT,
+      familyId: a.familyId,
+      planKey: 'soccer:2026-11-17',
+      eventLabel: 'soccer',
+      pickupAt: new Date('2026-11-17T22:30:00.000Z'),
+      driverName: 'Ada',
+      driverUserId: a.userId,
+      driverHaleCustomer: 'true',
+      status: 'assigned',
+      reminderStatus: 'pending',
+      reminderFireAt: new Date('2026-11-16T23:00:00.000Z'),
+      chatAudience: await carpoolChatAudience(db.database, CHAT),
+    });
+    await db.database.update(schema.linqGroupRosters).set({ status: 'confirmed' });
+    const group: string[] = [];
+    await runCarpoolReminders(db.database, {
+      now: new Date('2026-11-16T23:05:00.000Z'),
+      send: async ({ text }) => {
+        group.push(text);
+        return { providerMessageId: `g-${group.length}` };
+      },
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: true, providerMessageId: 'driver-1' }),
+      listChatHandles: async () => ({ status: 'ok', handles: [PARENT_A], isGroup: true }),
+    });
+    const [after] = await rides();
+    expect(after?.chatAudience).toBe('household');
+    expect(group).toHaveLength(1);
+    expect(after?.reminderStatus).toBe('sent');
   });
 
   it('a ride keeps the decision it was made with: a roster confirmed later never turns its reminder into a group line or a cold 1:1', async () => {
@@ -589,6 +657,49 @@ describe('the night-before reminder for a shared ride', () => {
     const out = await remind(row?.reminderFireAt as Date);
     expect(out.group).toEqual([]);
     expect(out.driver).toEqual([]);
+  });
+
+  async function verbs() {
+    const rows = await db.database
+      .select({ verb: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog);
+    return rows;
+  }
+
+  it('a reminder that reached nobody is not recorded or audited as sent', async () => {
+    const { row } = await dueRide(false);
+    await remind(row?.reminderFireAt as Date);
+    const [after] = await rides();
+    expect(after?.reminderStatus).toBe('suppressed');
+    const audit = await verbs();
+    expect(audit.map((entry) => entry.verb)).not.toContain('linq_carpool_reminder_sent');
+    const skipped = audit.filter((entry) => entry.verb === 'linq_carpool_reminder_skipped');
+    expect(skipped.map((entry) => (entry.after as { reason: string }).reason)).toEqual([
+      'driver_never_texted',
+    ]);
+  });
+
+  it('a refused 1:1 is released for the next sweep, not recorded as sent', async () => {
+    const { row } = await dueRide(true);
+    const now = new Date((row?.reminderFireAt as Date).getTime() + 5 * 60 * 1000);
+    await runCarpoolReminders(db.database, {
+      now,
+      send: async () => ({ providerMessageId: 'never' }),
+      voice: fakeCarpoolComposer(),
+      sendDriver: async () => ({ sent: false, skipped: 'provider_refused' }),
+    });
+    const [after] = await rides();
+    expect(after?.reminderStatus).toBe('pending');
+    expect(after?.reminderGroupSentAt).toBeNull();
+    expect((await verbs()).map((entry) => entry.verb)).not.toContain('linq_carpool_reminder_sent');
+  });
+
+  it('a 1:1 Linq accepted is recorded and audited as sent (positive control)', async () => {
+    const { row } = await dueRide(true);
+    await remind(row?.reminderFireAt as Date);
+    const [after] = await rides();
+    expect(after?.reminderStatus).toBe('sent');
+    expect((await verbs()).map((entry) => entry.verb)).toContain('linq_carpool_reminder_sent');
   });
 
   it("a driver whose family claimed its own household group still hears about this chat's ride 1:1", async () => {

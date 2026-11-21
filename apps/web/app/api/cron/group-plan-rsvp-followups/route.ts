@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { linqGroupPlanRsvpEnabled } from '~/lib/channel/linq/config';
+import { linqGroupPlanRsvpEnabled, linqGroupScenesEnabled } from '~/lib/channel/linq/config';
 import { runGroupPlanFollowups } from '~/lib/channel/linq/group-plan-rsvp/followups';
 import {
   GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
@@ -30,8 +30,7 @@ export const GET = cronRoute('group-plan-rsvp-followups', async () => {
       send: async ({ chatId, text, familyId, planId }) =>
         sendGroupPlanRsvpLine(db(), {
           chatId,
-          familyId,
-          planId,
+          ...(linqGroupScenesEnabled() ? { familyId, planId } : {}),
           text,
           templateKey: GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE,
           now: new Date(),

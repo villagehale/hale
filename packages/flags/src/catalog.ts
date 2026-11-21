@@ -193,7 +193,9 @@ export const FLAGS = [
   trimmed('linq-group-mentions', 'LINQ_GROUP_MENTIONS_ENABLED'),
   trimmed('linq-group-onboarding-v2', 'LINQ_GROUP_ONBOARDING_V2_ENABLED'),
   trimmed('linq-group-plan-rsvp', 'LINQ_GROUP_PLAN_RSVP_ENABLED'),
-  trimmed('linq-group-plan-calendar', 'LINQ_GROUP_PLAN_CALENDAR_ENABLED'),
+  // VIL-689. Exact `true` only: both flags are new, and merging them turns nothing on.
+  exact('linq-group-plan-calendar', 'LINQ_GROUP_PLAN_CALENDAR_ENABLED'),
+  exact('linq-group-scenes', 'LINQ_GROUP_SCENES_ENABLED'),
   trimmed('linq-group-polls', 'LINQ_GROUP_POLLS_ENABLED'),
   trimmed('linq-group-reminders', 'LINQ_GROUP_REMINDERS_ENABLED'),
   trimmed('linq-group-turn-ai', 'LINQ_GROUP_TURN_AI_ENABLED'),

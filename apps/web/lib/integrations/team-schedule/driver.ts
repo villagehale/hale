@@ -4,6 +4,7 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { carpoolChatAudience } from '~/lib/channel/linq/carpool';
 import { carpoolReminderFireAt } from '~/lib/channel/linq/carpool-cadence';
+import { linqGroupScenesEnabled } from '~/lib/channel/linq/config';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -103,9 +104,10 @@ export async function loadAffectedDrivers(
   if (event?.dutyOwnerUserId) ids.add(event.dutyOwnerUserId);
 
   const day = dayKeyIn(input.originalStartsAt, input.timeZone);
-  const chats = await householdChatIds(database, input.familyId);
+  // With the scenes flag on, a ride in a chat several families share is not this family's.
+  const chats = linqGroupScenesEnabled() ? await householdChatIds(database, input.familyId) : null;
   const carpools =
-    chats.length === 0
+    chats?.length === 0
       ? []
       : await database
           .select({
@@ -117,7 +119,7 @@ export async function loadAffectedDrivers(
           .where(
             and(
               eq(schema.linqGroupCarpools.familyId, input.familyId),
-              inArray(schema.linqGroupCarpools.chatId, chats),
+              ...(chats ? [inArray(schema.linqGroupCarpools.chatId, chats)] : []),
               isNull(schema.linqGroupCarpools.cancelledAt),
               isNotNull(schema.linqGroupCarpools.driverUserId),
               ne(schema.linqGroupCarpools.status, 'cancelled'),
@@ -203,15 +205,15 @@ export async function reanchorCarpoolReminders(
   },
 ): Promise<void> {
   const day = dayKeyIn(input.originalStartsAt, input.timeZone);
-  const chats = await householdChatIds(database, input.familyId);
-  if (chats.length === 0) return;
+  const chats = linqGroupScenesEnabled() ? await householdChatIds(database, input.familyId) : null;
+  if (chats?.length === 0) return;
   const rows = await database
     .select()
     .from(schema.linqGroupCarpools)
     .where(
       and(
         eq(schema.linqGroupCarpools.familyId, input.familyId),
-        inArray(schema.linqGroupCarpools.chatId, chats),
+        ...(chats ? [inArray(schema.linqGroupCarpools.chatId, chats)] : []),
         isNull(schema.linqGroupCarpools.cancelledAt),
       ),
     );

@@ -311,9 +311,17 @@
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
   },
+  "group-experience-read-legacy.md": {
+    "file": "group-experience-read-legacy.md",
+    "sha256": "2127346a1899c3264fa65110cc75d0d9d5aa7e1d6b868e22ca5e85d2e0198817"
+  },
   "group-experience-read.md": {
     "file": "group-experience-read.md",
     "sha256": "11e4d640dfb0e6b8a2af984d91601a38c07e2800794a322c0420b22f111cbc8d"
+  },
+  "group-experience-voice-legacy.md": {
+    "file": "group-experience-voice-legacy.md",
+    "sha256": "3863d9e08f22dec33a4ec3ddbe00b1dc8cb72331a521c3f28b4c74d31d2f4668"
   },
   "group-experience-voice.md": {
     "file": "group-experience-voice.md",
@@ -351,6 +359,10 @@
     "file": "group-plan-rsvp-calendar-voice.md",
     "sha256": "1f6d315cbea4692b6ee01706d9efcffbace2564139e28e76364b8445248d5223"
   },
+  "group-plan-rsvp-read-legacy.md": {
+    "file": "group-plan-rsvp-read-legacy.md",
+    "sha256": "730d817a20659709c429d83cc1a8ec243fae95b4efd541043e9576320e29cfc2"
+  },
   "group-plan-rsvp-read-secret-santa.md": {
     "file": "group-plan-rsvp-read-secret-santa.md",
     "sha256": "b4cfadf529d9c585f8b2bff2a1da577dac60faa9ad2b75842ca75119de8c81d3"
@@ -358,6 +370,10 @@
   "group-plan-rsvp-read.md": {
     "file": "group-plan-rsvp-read.md",
     "sha256": "98c0aee832346d4a63bccc695e9737b48959bfb4fe9b31ccb1785f9852f0091b"
+  },
+  "group-plan-rsvp-voice-legacy.md": {
+    "file": "group-plan-rsvp-voice-legacy.md",
+    "sha256": "2eaea20c3a2bf6fa84b567bfdf723b81a4ea51aaade45f344cdaded096cae944"
   },
   "group-plan-rsvp-voice.md": {
     "file": "group-plan-rsvp-voice.md",
@@ -370,6 +386,10 @@
   "group-poll-tally-read.md": {
     "file": "group-poll-tally-read.md",
     "sha256": "310b69a4c546773232b288343466460030fc3b12602fdcab1cccb32543fd4827"
+  },
+  "group-poll-voice-legacy.md": {
+    "file": "group-poll-voice-legacy.md",
+    "sha256": "41473674bb5a228b017391ffefab251e09268f79e5f9628f3059a7e0a1ee79e7"
   },
   "group-poll-voice.md": {
     "file": "group-poll-voice.md",

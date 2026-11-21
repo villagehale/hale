@@ -4,6 +4,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  DROP_SINGLE_OPEN_PLAN_INDEX,
+  seedJoinConsent,
+  seedTextedHale,
+} from '~/lib/testing/group-scenes';
 import { considerGroupExperience } from './inbound';
 import type { GroupExperienceReading } from './reading';
 import { fakeGroupExperienceComposer } from './voice-fake';
@@ -28,6 +33,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -35,6 +41,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('GROUP_LINK_CARDS_ENABLED', 'true');
   vi.stubEnv('GROUP_PRIVATE_QUESTION_ENABLED', 'true');
@@ -301,6 +308,8 @@ describe('VIL-399 each household 1:1 from a group link goes through the audited 
         phoneE164Hash: phoneBlindIndex(phone),
         verifiedAt: NOW,
       });
+      await seedJoinConsent(db.database, { chatId: CHAT, ...family });
+      await seedTextedHale(db.database, { ...family, at: NOW });
     }
     const texted: string[] = [];
     const w = wire();

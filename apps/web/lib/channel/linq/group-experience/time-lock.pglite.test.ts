@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group-scenes';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
 import { considerGroupPlanRsvp } from '../group-plan-rsvp/inbound';
 import type { GroupPlanRsvpReading } from '../group-plan-rsvp/reading';
@@ -33,6 +34,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -40,6 +42,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
@@ -96,6 +99,7 @@ async function seedFamily(phone: string, name: string) {
     phoneE164Hash: phoneBlindIndex(phone),
     role: 'parent',
   });
+  await seedTextedHale(db.database, { familyId, userId, at: new Date(NOW.getTime() - 86_400_000) });
   return { familyId, userId };
 }
 

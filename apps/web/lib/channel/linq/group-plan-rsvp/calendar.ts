@@ -180,6 +180,12 @@ export interface CalendarPrivateSender {
     | { status: 'sent'; providerMessageId: string | null }
     | { status: 'skipped'; reason: 'not_sent' | 'no_parent' }
   >;
+  /**
+   * Whether Hale may start a 1:1 with this parent (the household's primary parent when no
+   * user is named): only someone who has texted Hale themselves. An ask or a moved notice
+   * is Hale speaking first, so it checks this before anything is claimed or sent.
+   */
+  mayOpen(recipient: { familyId: string; userId: string | null }): Promise<boolean>;
 }
 
 export interface GroupPlanCalendarLineInput {

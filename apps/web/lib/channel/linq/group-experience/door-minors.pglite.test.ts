@@ -3,6 +3,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import {
+  DROP_SINGLE_OPEN_PLAN_INDEX,
+  seedJoinConsent,
+  seedTextedHale,
+} from '~/lib/testing/group-scenes';
 import { postgresGroupPlanCalendarWriter } from '../group-plan-rsvp/calendar';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
@@ -26,6 +31,7 @@ const CHAT = 'chat-door-minors';
 const NOW = new Date('2026-11-12T16:00:00.000Z');
 const PARENT_A = '+15555550111';
 const COPARENT_A = '+15555550133';
+const PARENT_C = '+15555550144';
 const PARENT_B = '+15555550122';
 const GUEST = '+15555550199';
 const FROM = '+15555550100';
@@ -35,11 +41,13 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 afterAll(async () => {
   await db.close();
 });
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', FROM);
   for (const flag of [
@@ -364,7 +372,9 @@ describe('one link post texts each household 1:1 once', () => {
       [PARENT_A, 'Ada', 'Zephyrina'],
       [PARENT_B, 'Bao', 'Quillon'],
     ] as const) {
-      const { familyId } = await seedFamily(phone, name);
+      const { familyId, userId } = await seedFamily(phone, name);
+      await seedJoinConsent(db.database, { chatId: CHAT, familyId, userId });
+      await seedTextedHale(db.database, { familyId, userId, at: NOW });
       // Each household holds a private fact, so the aside has something to say to both.
       await db.database
         .insert(schema.children)
@@ -382,5 +392,24 @@ describe('one link post texts each household 1:1 once', () => {
     for (const line of out.dm) perPhone.set(line.to, (perPhone.get(line.to) ?? 0) + 1);
     expect([...perPhone.values()].every((count) => count === 1)).toBe(true);
     expect(perPhone.size).toBe(2);
+  });
+
+  it('goes only to a household that joined this chat and whose parent has texted Hale', async () => {
+    const joined = await seedFamily(PARENT_A, 'Ada');
+    await seedJoinConsent(db.database, { chatId: CHAT, ...joined });
+    await seedTextedHale(db.database, { ...joined, at: NOW });
+    const neverTexted = await seedFamily(PARENT_B, 'Bao');
+    await seedJoinConsent(db.database, { chatId: CHAT, ...neverTexted });
+    const neverJoined = await seedFamily(PARENT_C, 'Cal');
+    await seedTextedHale(db.database, { ...neverJoined, at: NOW });
+    const out = await door({
+      text: 'this camp looks good https://park.example/camp $120',
+      from: PARENT_A,
+      messageId: 'm-link-2',
+      kind: 'link_facts',
+      others: [PARENT_B, PARENT_C],
+    });
+    expect(out.group).toEqual(['moment:link_facts']);
+    expect(out.dm.map((line) => line.to)).toEqual([PARENT_A]);
   });
 });
