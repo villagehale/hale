@@ -90,6 +90,11 @@ export interface OptOutReadInput {
    * it arrived and when it is read, so a late stop's reply can say when it came in.
    */
   late?: { receivedAt: Date; readAt: Date } | null;
+  /**
+   * VIL-742. This number's one tie to Hale is a live party reminder, so asking to drop it
+   * is a stop. Present only then: every other read keeps its request bytes.
+   */
+  partyGuest?: true;
 }
 
 export interface OptOutReader {
@@ -141,6 +146,7 @@ export function optOutUserMessage(input: OptOutReadInput): string {
           },
         }
       : {}),
+    ...(input.partyGuest ? { sender: 'party_guest' } : {}),
   });
 }
 
@@ -261,10 +267,12 @@ export function createOptOutReader(
   const once = async (input: OptOutReadInput): Promise<OptOutReading | null> => {
     const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
     const skill = await loadCronSkill('opt-out-read');
+    const guest = input.partyGuest ? await loadCronSkill('opt-out-read-party-guest') : null;
     const { value } = await forceToolJson({
       client,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
+      ...(guest ? { systemExtras: [guest.instructions] } : {}),
       userMessage: optOutUserMessage(input),
       toolName: 'opt_out',
       toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
@@ -325,6 +333,8 @@ interface TextRead {
   at: number;
   /** sha256 of the text alone, so an intent-only read finds it without the words. */
   textKey: string;
+  /** Read with the party-guest fact: the same words may be a stop only for this sender. */
+  partyGuest: boolean;
   read: Promise<OptOutReading | null>;
 }
 
@@ -361,7 +371,8 @@ function rememberTextRead(key: string, entry: TextRead): void {
 /**
  * The read whose stop/start confirmation may be sent. Keyed on the text, the language
  * and the region, with no fallback, so a confirmation never crosses a language or a
- * region. An explicit null region is its own key, distinct from a missing one.
+ * region. An explicit null region is its own key, distinct from a missing one. A party
+ * guest's read is its own key too: their words can be a stop that no one else's are.
  */
 export function readReplyOnce(
   reader: OptOutReader | null | undefined,
@@ -373,12 +384,18 @@ export function readReplyOnce(
       input.text,
       input.language,
       input.region === undefined ? 'region-unset' : input.region,
+      ...(input.partyGuest ? ['party-guest'] : []),
     ]),
   );
   const hit = liveTextReads().get(key);
   if (hit) return hit.read;
   const read = reader.read(input);
-  rememberTextRead(key, { at: Date.now(), textKey: sha256(input.text), read });
+  rememberTextRead(key, {
+    at: Date.now(),
+    textKey: sha256(input.text),
+    partyGuest: input.partyGuest === true,
+    read,
+  });
   // A failed read is not remembered: the next ask reads again.
   void read.then((reading) => {
     if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);
@@ -389,8 +406,9 @@ export function readReplyOnce(
 /**
  * The intent alone, for seams that only route (the identity check, the friend voice,
  * the Linq doors). Shared by text: any live read of the same words answers it, since
- * neither the language nor the region changes the intent. Its type carries no
- * confirmation, so no caller can send one.
+ * neither the language nor the region changes the intent. A party guest's read does
+ * change it, so it answers only its own turn ({@link readTurnOnce}) and never this.
+ * Its type carries no confirmation, so no caller can send one.
  */
 export async function readIntentOnce(
   reader: OptOutReader | null | undefined,
@@ -398,7 +416,9 @@ export async function readIntentOnce(
 ): Promise<OptOutIntentReading | null> {
   if (!reader || input.text.trim().length === 0) return null;
   const textKey = sha256(input.text);
-  const live = [...liveTextReads().values()].find((entry) => entry.textKey === textKey);
+  const live = [...liveTextReads().values()].find(
+    (entry) => entry.textKey === textKey && !entry.partyGuest,
+  );
   const reading = await (live?.read ?? readReplyOnce(reader, input));
   return reading ? { intent: reading.intent } : null;
 }

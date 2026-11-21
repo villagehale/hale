@@ -33,7 +33,41 @@ const ANSWERS: ReadonlyArray<{ value: RsvpResponse; label: string }> = [
 
 type FieldError = 'name' | 'headcount' | 'phone' | null;
 
-export function RsvpForm({ token }: { token: string }) {
+/**
+ * VIL-742. The page shows no Hale number, so a guest can only answer once the text
+ * arrives: the way out is to reply and say so, and no keyword is named. The reader takes
+ * that reply in any words (RSVP_GUEST_PLAIN_STOP_ENABLED).
+ */
+function reminderCopy(plainStopWording: boolean): { confirmation: string; checkbox: string } {
+  return plainStopWording
+    ? {
+        confirmation:
+          "I'll text you once, the day before. If you'd rather not hear from Hale, reply and say so, and I won't text you again.",
+        checkbox:
+          "Text me a reminder the day before. One message from Hale about this party only. If you'd rather not hear from Hale, reply and say so. Your number isn't stored unless you tick this.",
+      }
+    : {
+        confirmation: "I'll text you once, the day before. Reply STOP any time.",
+        checkbox:
+          "Text me a reminder the day before. One message from Hale about this party only — reply STOP any time. Your number isn't stored unless you tick this.",
+      };
+}
+
+export function ReminderConfirmation({ plainStopWording }: { plainStopWording: boolean }) {
+  return (
+    <p className="text-slate-green leading-relaxed">
+      {reminderCopy(plainStopWording).confirmation}
+    </p>
+  );
+}
+
+export function RsvpForm({
+  token,
+  plainStopWording,
+}: {
+  token: string;
+  plainStopWording: boolean;
+}) {
   const capture = useAnalytics();
   const [answer, setAnswer] = useState<RsvpResponse | null>(null);
   const [name, setName] = useState('');
@@ -94,11 +128,7 @@ export function RsvpForm({ token }: { token: string }) {
               ? 'The host has your reply.'
               : `The host can see that ${headcount === 1 ? "you're" : `${headcount} of you are`} coming.`}
           </p>
-          {done.reminderOptIn ? (
-            <p className="text-slate-green leading-relaxed">
-              I'll text you once, the day before. Reply STOP any time.
-            </p>
-          ) : null}
+          {done.reminderOptIn ? <ReminderConfirmation plainStopWording={plainStopWording} /> : null}
         </div>
 
         {/* The one soft line. Once, here, and nowhere else. */}
@@ -179,8 +209,7 @@ export function RsvpForm({ token }: { token: string }) {
               className="mt-1"
             />
             <span className="text-slate-green leading-relaxed">
-              Text me a reminder the day before. One message from Hale about this party
-              only — reply STOP any time. Your number isn't stored unless you tick this.
+              {reminderCopy(plainStopWording).checkbox}
             </span>
           </label>
           {wantsReminder ? (

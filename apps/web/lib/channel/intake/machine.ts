@@ -91,6 +91,7 @@ import {
   pageOps,
   reportFirstHelloFailure,
 } from '~/lib/monitoring/failure-page';
+import { guestReadFact } from '~/lib/party/guest-plain-stop';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -549,6 +550,10 @@ async function runIntakeTurn(
   // 2. #868 · no keyword list. The opt-out reader reads every turn, in any wording and
   // any language; a stop is never throttled away (step 3 still reads an over-limit turn).
   const reader = deps.optOutReader ?? sharedOptOutReader();
+  // VIL-742. A 1:1 text only: an unknown chat may be a group, where the reminder is not
+  // all Hale says to them.
+  const guestFact = inbound.isGroup === false ? await guestReadFact(database, phoneHash, now) : {};
+  const stopTurn = guestFact.partyGuest ? handleGuestStop : handleStop;
 
   // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter
   // table). Over the limit we go SILENT rather than replying "slow down": a reply is
@@ -562,6 +567,7 @@ async function runIntakeTurn(
       const reading = await readTurnOnce(reader, inbound, {
         text: inbound.body,
         language: null,
+        ...guestFact,
       });
       const settled = await settleOptOutHold(
         database,
@@ -574,7 +580,7 @@ async function runIntakeTurn(
       const held = heldUnreadOutcome(settled, reading);
       if (held) return held;
       if (reading?.intent === 'stop') {
-        return handleStop(
+        return stopTurn(
           database,
           {
             phoneE164,
@@ -617,6 +623,7 @@ async function runIntakeTurn(
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
+      ...guestFact,
     });
     turnIntent = reading?.intent ?? null;
     read.optOutUnread = reading === null;
@@ -631,7 +638,7 @@ async function runIntakeTurn(
     const held = heldUnreadOutcome(settled, reading);
     if (held) return held;
     if (reading?.intent === 'stop') {
-      return handleStop(
+      return stopTurn(
         database,
         {
           phoneE164,
@@ -4193,6 +4200,24 @@ async function restartFromReader(
     args.now,
   );
   return { status: 'restarted', ack: 'sent' };
+}
+
+/**
+ * VIL-742. This stop erases the opt-in it was read on, so a resend of the same text reads
+ * as a stranger's and would be greeted. The claim goes in first and answers that resend
+ * `duplicate`, so one whose ack failed gets no second ack: the erase is the instruction.
+ * The stop itself stays re-runnable, as every stop is: an erase that never committed
+ * leaves the fact standing, so the resend reads it as a stop again.
+ */
+async function handleGuestStop(
+  database: Database,
+  args: Parameters<typeof handleStop>[1],
+  deps: Parameters<typeof handleStop>[2],
+): Promise<IntakeOutcome> {
+  await claimIntakeTurn(database, args.inbound.providerId, args.now);
+  const outcome = await handleStop(database, args, deps);
+  await completeIntakeTurn(database, args.inbound.providerId, args.now);
+  return outcome;
 }
 
 export async function handleStop(

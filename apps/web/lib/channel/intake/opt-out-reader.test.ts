@@ -496,6 +496,57 @@ describe('intent-only read: shared by text, carries no confirmation', () => {
   });
 });
 
+describe('VIL-742 a party guest read is its own read', () => {
+  it('a plain payload is unchanged to the byte; only a guest read names the sender', () => {
+    const plain = { text: 'no reminder please', language: null, region: 'CA' as const };
+    const facts = JSON.parse(optOutUserMessage(plain)).facts;
+    expect(optOutUserMessage(plain)).toBe(
+      JSON.stringify({ text: plain.text, languageHint: null, facts }),
+    );
+    expect(JSON.parse(optOutUserMessage({ ...plain, partyGuest: true }))).toEqual({
+      text: plain.text,
+      languageHint: null,
+      facts,
+      sender: 'party_guest',
+    });
+  });
+
+  it("a guest's read and a plain read of the same words are two reads, in both orders", async () => {
+    const guestFirst = countingReader('stop');
+    const a = `guest first ${Math.random()}`;
+    await readReplyOnce(guestFirst.reader, { text: a, language: null, partyGuest: true });
+    await readReplyOnce(guestFirst.reader, { text: a, language: null });
+    expect(guestFirst.calls).toHaveLength(2);
+
+    const plainFirst = countingReader('stop');
+    const b = `plain first ${Math.random()}`;
+    await readReplyOnce(plainFirst.reader, { text: b, language: null });
+    await readReplyOnce(plainFirst.reader, { text: b, language: null, partyGuest: true });
+    expect(plainFirst.calls).toHaveLength(2);
+  });
+
+  it("a seam that only asks the intent never gets a guest's stop for the same words", async () => {
+    const text = `intent after guest ${Math.random()}`;
+    const guest = countingReader('stop');
+    await readReplyOnce(guest.reader, { text, language: null, partyGuest: true });
+
+    const plain = countingReader('identity');
+    const intent = await readIntentOnce(plain.reader, { text, language: null });
+
+    expect(plain.calls).toHaveLength(1);
+    expect(intent).toEqual({ intent: 'identity' });
+  });
+
+  it('positive control: two guest reads of the same words share one read', async () => {
+    const { reader, calls } = countingReader('stop');
+    const text = `two guests ${Math.random()}`;
+    const first = await readReplyOnce(reader, { text, language: null, partyGuest: true });
+    const again = await readReplyOnce(reader, { text, language: null, partyGuest: true });
+    expect(calls).toHaveLength(1);
+    expect(again).toBe(first);
+  });
+});
+
 describe('VIL-477 leave_group reading', () => {
   const text = 'Hale can you please leave this group chat';
   const value = {

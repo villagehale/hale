@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { PublicColophon } from '~/components/hale/public-surface';
 import { db } from '~/lib/db';
 import { type PartyCard, buildPartyCard } from '~/lib/party/card';
+import { rsvpGuestPlainStopEnabled } from '~/lib/party/guest-plain-stop';
 import { loadPublicParty } from '~/lib/party/store';
 import { RsvpForm } from './rsvp-form';
 
@@ -94,7 +95,7 @@ export default async function RsvpPage({ params }: PageProps) {
             </p>
           </section>
         ) : (
-          <RsvpForm token={token} />
+          <RsvpForm token={token} plainStopWording={rsvpGuestPlainStopEnabled()} />
         )}
 
         <PublicColophon />
