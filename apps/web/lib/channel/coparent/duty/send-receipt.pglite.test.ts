@@ -2,10 +2,12 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LINQ_WEBHOOK_TIMEOUT_MS } from '~/lib/channel/linq/signature';
+import { LinqSendError, SEND_TIMEOUT_MS } from '~/lib/channel/linq/transport';
 import { PROACTIVE_CADENCE_ENV } from '~/lib/channel/proactive/flag';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { HALE_RECORD, writeFact } from '~/lib/memory/facts';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
 import {
   type TestDb,
@@ -30,6 +32,7 @@ import {
 } from './flag';
 import { commitDutyUpdate } from './model';
 import { settleStrandedDutySends } from './send-receipt';
+import { commitSplitDutyRead } from './split-settle';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE_ONE = '+15555550101';
@@ -52,6 +55,14 @@ const PHONE_SEVENTEEN = '+15555550117';
 const PHONE_EIGHTEEN = '+15555550118';
 const PHONE_NINETEEN = '+15555550119';
 const PHONE_TWENTY = '+15555550120';
+const PHONE_TWENTY_ONE = '+15555550121';
+const PHONE_TWENTY_TWO = '+15555550122';
+const PHONE_TWENTY_THREE = '+15555550123';
+const PHONE_TWENTY_FOUR = '+15555550124';
+const PHONE_TWENTY_FIVE = '+15555550125';
+const PHONE_TWENTY_SIX = '+15555550126';
+const PHONE_TWENTY_SEVEN = '+15555550127';
+const PHONE_TWENTY_EIGHT = '+15555550128';
 
 let db: TestDb;
 
@@ -244,6 +255,7 @@ async function nightBeforeFamily(name: string, start: Date = MONDAY, at: Date = 
 async function splitFamilyOnOneToOnes(
   name: string,
   phones: readonly [string, string] = [PHONE_ONE, PHONE_TWO],
+  start: Date = MONDAY,
 ) {
   const family = await twoParents(name);
   for (const [userId, phone] of [
@@ -267,9 +279,9 @@ async function splitFamilyOnOneToOnes(
     family.parentUserId,
     'gcal',
   );
-  await kidBlock(family, integrationId, `evt-${name}-hockey`, 'Robin hockey', robin);
-  await kidBlock(family, integrationId, `evt-${name}-dance`, 'Casey dance', casey);
-  return family;
+  await kidBlock(family, integrationId, `evt-${name}-hockey`, 'Robin hockey', robin, start);
+  await kidBlock(family, integrationId, `evt-${name}-dance`, 'Casey dance', casey, start);
+  return { ...family, robin, casey };
 }
 
 function scriptedReply(text: string, duringCompose?: () => void): AgentClient {
@@ -327,6 +339,7 @@ function ackInput(
     fetch: wireFetch,
     replyClient: scriptedReply('Sam has swim on Saturday at 3:00pm.'),
     clockMs: () => 0,
+    answerBy: new Date(LINQ_WEBHOOK_TIMEOUT_MS),
     ...overrides,
   };
 }
@@ -341,13 +354,31 @@ function linqFetch(answers: number[]) {
   return { fetch: fetchMock as unknown as typeof fetch, calls };
 }
 
+/** A claim that says nothing was sent: what any reader must see while Linq has the text. */
+const IN_THE_AIR = {
+  status: 'failed',
+  errorCode: 'send_in_flight',
+  sentAt: null,
+  providerMessageId: null,
+};
+
+/** Answers Linq's 201, reading the family's row while the request is in the air. */
+function observingFetch(familyId: string) {
+  const during: Array<Awaited<ReturnType<typeof outRows>>[number] | undefined> = [];
+  const fetchMock = vi.fn(async () => {
+    during.push((await outRows(familyId))[0]);
+    return new Response(JSON.stringify({ message: { id: 'out-air' } }), { status: 201 });
+  });
+  return { fetch: fetchMock as unknown as typeof fetch, during };
+}
+
 describe('a duty ask is sent only once Linq accepts it', () => {
   it('holds no accepted status while the send is still in the air', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     const family = await seedFamily(db.database, 'In the air');
-    let during: string | undefined;
+    let during: Awaited<ReturnType<typeof outRows>>[number] | undefined;
     const send = vi.fn(async () => {
-      during = (await outRows(family.familyId))[0]?.status;
+      during = (await outRows(family.familyId))[0];
       throw refused();
     });
     const delivered = await deliver(
@@ -356,8 +387,53 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       EVENING,
       ports(send, 'chat-air', pager().pager),
     );
-    expect(during).toBe('failed');
+    expect(during).toMatchObject(IN_THE_AIR);
     expect(delivered).toEqual({ status: 'not_sent', reason: 'http_400' });
+  });
+
+  it('holds no accepted status while a 1:1 send is still in the air', async () => {
+    const family = await twoParents('In the air 1:1');
+    const key = `air-direct:${family.familyId}`;
+    let during: Awaited<ReturnType<typeof outRows>>[number] | undefined;
+    const sendDirect = vi.fn(async () => {
+      during = (await outRows(family.familyId))[0];
+      return { providerMessageId: 'linq-air-direct' };
+    });
+    const delivered = await deliverDutyDirectLines(
+      db.database,
+      {
+        familyId: family.familyId,
+        targets: [
+          {
+            parentUserId: family.parentUserId,
+            phone: PHONE_ONE,
+            sendKey: key,
+            dedupeKey: key,
+            attempt: 1,
+          },
+        ],
+        text: 'A model-written split question.',
+        now: AFTERNOON,
+        templateKey: 'linq:group_duty_night_before',
+      },
+      {
+        ...ports(
+          vi.fn(async () => ({ providerMessageId: 'unused' })),
+          'unused',
+          pager().pager,
+        ),
+        target: async () => ({ channel: 'legacy' }),
+        gate: async () => ({ allowed: true, optOut: 'short' }),
+        sendDirect,
+      },
+    );
+    expect(during).toMatchObject(IN_THE_AIR);
+    expect(delivered).toEqual({ status: 'sent', chatId: PHONE_ONE });
+    expect((await outRows(family.familyId))[0]).toMatchObject({
+      status: 'sent',
+      errorCode: null,
+      providerMessageId: 'linq-air-direct',
+    });
   });
 
   it('marks an accepted send sent, with the provider id (positive control)', async () => {
@@ -379,6 +455,9 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       providerMessageId: 'linq-accepted',
     });
     expect(rows[0]?.sentAt?.toISOString()).toBe(EVENING.toISOString());
+    expect(await sendAudits(family.familyId, 'duty_send_accepted')).toEqual([
+      { audience: null, after: { surface: 'ask', attempts: 1 } },
+    ]);
   });
 
   it('waits out the backoff, then retries under the same Linq key, so nothing lands twice', async () => {
@@ -401,9 +480,59 @@ describe('a duty ask is sent only once Linq accepts it', () => {
     expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([key, key]);
     expect((await outRows(family.familyId)).map((row) => row.status)).toEqual(['failed', 'sent']);
 
+    expect(await sendAudits(family.familyId, 'duty_send_accepted')).toEqual([
+      { audience: null, after: { surface: 'ask', attempts: 2 } },
+    ]);
+
     const again = await deliver(family, key, later(2), sendPorts);
     expect(again).toEqual({ status: 'skipped', reason: 'deduped' });
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives each try its own Linq key while every refusal is definite', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Fresh keys');
+    const key = `fresh-${family.familyId}`;
+    const send = vi
+      .fn<DutySendPorts['send']>()
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(refused())
+      .mockResolvedValueOnce({ providerMessageId: 'linq-fresh' });
+    const sendPorts = ports(send, 'chat-fresh', pager().pager);
+
+    await deliver(family, key, EVENING, sendPorts);
+    await deliver(family, key, later(1), sendPorts);
+    const accepted = await deliver(family, key, later(2), sendPorts);
+
+    expect(accepted).toEqual({ status: 'sent', chatId: 'chat-fresh' });
+    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([
+      key,
+      `${key}:retry:1`,
+      `${key}:retry:2`,
+    ]);
+  });
+
+  it('keeps the key of a try that may have landed, through a later definite refusal', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Pinned key');
+    const key = `pinned-${family.familyId}`;
+    const send = vi
+      .fn<DutySendPorts['send']>()
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(timedOut())
+      .mockRejectedValueOnce(refused())
+      .mockResolvedValueOnce({ providerMessageId: 'linq-pinned' });
+    const sendPorts = ports(send, 'chat-pinned', pager().pager);
+
+    for (const hours of [0, 1, 2, 3]) await deliver(family, key, later(hours), sendPorts);
+
+    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([
+      key,
+      `${key}:retry:1`,
+      `${key}:retry:1`,
+      `${key}:retry:1`,
+    ]);
+    expect((await outRows(family.familyId)).at(-1)?.status).toBe('sent');
   });
 
   it('drops after the last try with a named reason, audits it and pages #ops once', async () => {
@@ -419,7 +548,12 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       results.push(await deliver(family, key, later(hours), sendPorts));
     }
     expect(send).toHaveBeenCalledTimes(4);
-    expect(new Set(send.mock.calls.map((call) => call[0].sendKey))).toEqual(new Set([key]));
+    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([
+      key,
+      `${key}:retry:1`,
+      `${key}:retry:2`,
+      `${key}:retry:3`,
+    ]);
     expect(results[3]).toEqual({ status: 'not_sent', reason: 'send_retries_exhausted' });
     expect(results[4]).toEqual({ status: 'skipped', reason: 'send_retries_exhausted' });
     expect(ops.pages).toEqual([
@@ -575,7 +709,7 @@ describe('a split ask on 1:1s', () => {
     expect(toEach.filter((call) => call.to === PHONE_ONE)).toHaveLength(1);
     const second = toEach.filter((call) => call.to === PHONE_TWO);
     expect(second).toHaveLength(2);
-    expect(second[1]?.sendKey).toBe(second[0]?.sendKey);
+    expect(second[1]?.sendKey).toBe(`${second[0]?.sendKey}:retry:1`);
     expect(await openAt(family.familyId, later(2, AFTERNOON))).toMatchObject({
       unanswered: 1,
       silentNamed: false,
@@ -586,6 +720,14 @@ describe('a split ask on 1:1s', () => {
         after: { surface: 'ask', failure: 'send_refused', attempts: 1 },
       },
     ]);
+    const acceptedRows = await sendAudits(family.familyId, 'duty_send_accepted');
+    expect(acceptedRows).toHaveLength(2);
+    expect(acceptedRows).toEqual(
+      expect.arrayContaining([
+        { audience: family.parentUserId, after: { surface: 'ask', attempts: 1 } },
+        { audience: family.secondUserId, after: { surface: 'ask', attempts: 2 } },
+      ]),
+    );
   });
 
   it("reads each parent's gate: no text to a parent on hold, no compose, nothing re-noted", async () => {
@@ -1044,6 +1186,113 @@ describe('one ask across sweeps', () => {
     );
     expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({ unanswered: 1 });
   });
+
+  describe('a throw after the first parent was accepted, before the question was noted', () => {
+    function throwingAfterFirstAccept(familyId: string) {
+      const state = {
+        connectionLost: true,
+        accepted: 0,
+        refuseNext: false,
+        holdUserId: null as string | null,
+      };
+      const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async () => {
+        if (state.accepted === 1 && state.refuseNext) throw refused();
+        state.accepted += 1;
+        return { providerMessageId: `linq-note-${familyId}-${state.accepted}` };
+      });
+      const gate: DutySendPorts['gate'] = async (request) => {
+        if (request.familyId !== familyId) return onHold;
+        if (state.connectionLost && state.accepted === 1) throw new Error('connection lost');
+        return request.parentUserId === state.holdUserId ? onHold : allowed;
+      };
+      return { state, sendDirect, gate };
+    }
+
+    const sweepWith = (sendPorts: DutySendPorts) => (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    it('opens the question at the next sweep, and never counts it twice', async () => {
+      vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+      vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+      const family = await splitFamilyOnOneToOnes('note-throw', [
+        PHONE_TWENTY_ONE,
+        PHONE_TWENTY_TWO,
+      ]);
+      const { state, sendDirect, gate } = throwingAfterFirstAccept(family.familyId);
+      const sweep = sweepWith(directPorts(sendDirect, gate));
+
+      await expect(sweep(AFTERNOON)).rejects.toThrow('connection lost');
+      expect(state.accepted).toBe(1);
+      expect(await openAt(family.familyId, AFTERNOON)).toBeNull();
+
+      state.connectionLost = false;
+      await sweep(later(1, AFTERNOON));
+      expect(state.accepted).toBe(2);
+      expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({
+        split: true,
+        unanswered: 1,
+        silentNamed: false,
+      });
+
+      await sweep(later(2, AFTERNOON));
+      expect(state.accepted).toBe(2);
+      expect(await openAt(family.familyId, later(2, AFTERNOON))).toMatchObject({
+        split: true,
+        unanswered: 1,
+      });
+    });
+
+    it('opens it even when the other parent is refused again', async () => {
+      vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+      vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+      const family = await splitFamilyOnOneToOnes('note-refused', [
+        PHONE_TWENTY_THREE,
+        PHONE_TWENTY_FOUR,
+      ]);
+      const { state, sendDirect, gate } = throwingAfterFirstAccept(family.familyId);
+      const sweep = sweepWith(directPorts(sendDirect, gate));
+
+      await expect(sweep(AFTERNOON)).rejects.toThrow('connection lost');
+      state.connectionLost = false;
+      state.refuseNext = true;
+      await sweep(later(1, AFTERNOON));
+
+      expect(sendDirect).toHaveBeenCalledTimes(2);
+      expect(state.accepted).toBe(1);
+      expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({
+        split: true,
+        unanswered: 1,
+      });
+    });
+
+    it('opens it even when the other parent is on hold, so no send is left to make', async () => {
+      vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+      vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+      const family = await splitFamilyOnOneToOnes('note-hold', [
+        PHONE_TWENTY_FIVE,
+        PHONE_TWENTY_SIX,
+      ]);
+      const { state, sendDirect, gate } = throwingAfterFirstAccept(family.familyId);
+      const sweep = sweepWith(directPorts(sendDirect, gate));
+
+      await expect(sweep(AFTERNOON)).rejects.toThrow('connection lost');
+      const reached = (await outRows(family.familyId))[0]?.parentUserId;
+      state.holdUserId =
+        reached === family.parentUserId ? family.secondUserId : family.parentUserId;
+      state.connectionLost = false;
+      await sweep(later(1, AFTERNOON));
+
+      expect(sendDirect).toHaveBeenCalledTimes(1);
+      expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({
+        split: true,
+        unanswered: 1,
+      });
+    });
+  });
 });
 
 describe('a duty send nothing will offer again', () => {
@@ -1054,7 +1303,13 @@ describe('a duty send nothing will offer again', () => {
 
   async function failedRow(
     family: { familyId: string; parentUserId: string },
-    row: { dedupeKey: string; errorCode: string; createdAt: Date; category?: 'duty_ask' | 'reply' },
+    row: {
+      dedupeKey: string;
+      errorCode: string;
+      createdAt: Date;
+      category?: 'duty_ask' | 'reply';
+      providerChatId?: string | null;
+    },
   ) {
     await db.database.insert(schema.channelMessages).values({
       familyId: family.familyId,
@@ -1063,7 +1318,7 @@ describe('a duty send nothing will offer again', () => {
       direction: 'out',
       category: row.category ?? 'duty_ask',
       dedupeKey: row.dedupeKey,
-      providerChatId: 'chat-stranded',
+      providerChatId: row.providerChatId === undefined ? 'chat-stranded' : row.providerChatId,
       status: 'failed',
       errorCode: row.errorCode,
       createdAt: row.createdAt,
@@ -1238,6 +1493,178 @@ describe('a duty send nothing will offer again', () => {
     expect(await sendAudits(familyB.familyId, 'duty_send_dropped')).toHaveLength(1);
   });
 
+  it('settles a refused leg without a page once the other parent answered the question', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    /** Sunday 8 Nov 2026, 14:00 in Toronto: past the lookback over every row above. */
+    const ASKED = new Date('2026-11-08T19:00:00.000Z');
+    const family = await splitFamilyOnOneToOnes(
+      'answered-leg',
+      [PHONE_TWENTY_SEVEN, PHONE_TWENTY_EIGHT],
+      new Date('2026-11-09T19:00:00.000Z'),
+    );
+    let calls = 0;
+    const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async () => {
+      calls += 1;
+      if (calls > 1) throw refused();
+      return { providerMessageId: 'linq-answered-first' };
+    });
+    const ops = pager();
+    const sendPorts: DutySendPorts = {
+      ...directPorts(sendDirect, async (request) =>
+        request.familyId === family.familyId ? allowed : onHold,
+      ),
+      pager: ops.pager,
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    await sweep(ASKED);
+    expect(sendDirect).toHaveBeenCalledTimes(2);
+    const rows = await outRows(family.familyId);
+    const refusedLeg = rows.find((row) => row.status === 'failed')?.parentUserId;
+    const reached = rows.find((row) => row.status === 'sent')?.parentUserId;
+    expect(refusedLeg).toBeDefined();
+    expect(reached).toBeDefined();
+
+    const hockey = 'evt-answered-leg-hockey';
+    const dance = 'evt-answered-leg-dance';
+    const answer = await commitSplitDutyRead(db.database, {
+      familyId: family.familyId,
+      actorUserId: reached as string,
+      parentCount: 2,
+      childNames: ['Robin', 'Casey'],
+      events: [
+        { eventKey: hockey, role: 'attend', kid: 'Robin', label: 'hockey', childId: family.robin },
+        { eventKey: dance, role: 'attend', kid: 'Casey', label: 'dance', childId: family.casey },
+      ],
+      read: {
+        kind: 'split',
+        confidence: 0.9,
+        write: true,
+        assignments: [
+          {
+            eventKey: hockey,
+            role: 'attend',
+            kid: 'Robin',
+            claim: 'self',
+            name: null,
+            userId: reached as string,
+            confidence: 0.9,
+          },
+          {
+            eventKey: dance,
+            role: 'attend',
+            kid: 'Casey',
+            claim: 'other_parent',
+            name: null,
+            userId: refusedLeg as string,
+            confidence: 0.9,
+          },
+        ],
+      },
+      now: new Date(ASKED.getTime() + 30 * 60_000),
+    });
+    expect(answer.written).toBe(true);
+
+    await sweep(later(1, ASKED));
+    await sweep(later(2, ASKED));
+    await sweep(later(3, ASKED));
+
+    expect(sendDirect).toHaveBeenCalledTimes(2);
+    expect(ops.pages).toEqual([]);
+    const leg = (await outRows(family.familyId)).filter((row) => row.parentUserId === refusedLeg);
+    expect(leg.map((row) => row.errorCode)).toEqual(['send_retries_exhausted']);
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
+      {
+        audience: refusedLeg,
+        after: { surface: 'ask', failure: 'send_refused', attempts: 1, reason: 'answered' },
+      },
+    ]);
+  });
+
+  it.each([
+    ['nobody answered', null],
+    ['the only answer predates this ask', -24],
+  ] as const)(
+    'still pages a refused leg when the other parent was reached and %s',
+    async (name, answeredHoursBefore) => {
+      const family = await twoParents(`leg-unanswered-${name}`);
+      const at = new Date('2026-11-12T16:17:00.000Z');
+      const eventKey = `evt-unanswered-${family.familyId}`;
+      const key = `duty_ask:split_duty:${eventKey}:attend:2026-11-12`;
+      await db.database.insert(schema.channelMessages).values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'duty_ask',
+        dedupeKey: `${key}:${family.parentUserId}`,
+        providerMessageId: `linq-reached-${family.familyId}`,
+        status: 'sent',
+        createdAt: at,
+      });
+      await failedRow(
+        { familyId: family.familyId, parentUserId: family.secondUserId },
+        {
+          dedupeKey: `${key}:${family.secondUserId}`,
+          errorCode: 'http_500',
+          createdAt: at,
+          providerChatId: null,
+        },
+      );
+      if (answeredHoursBefore !== null) {
+        await writeFact(db.database, {
+          familyId: family.familyId,
+          childId: null,
+          factType: 'logistic',
+          factKey: 'duty-ask/open',
+          factValue: {
+            schemaVersion: 1,
+            kind: 'duty_open_question',
+            eventKey,
+            role: 'attend',
+            unanswered: 0,
+            silentNamed: false,
+            status: 'stepped_down',
+            split: true,
+            peerEventKey: 'evt-peer',
+          },
+          confidence: 1,
+          inferredBy: 'coparent_split_duty',
+          heard: HALE_RECORD,
+          validFrom: later(answeredHoursBefore, at),
+        });
+      }
+      const ops = pager();
+
+      await settleStrandedDutySends(db.database, {
+        now: later(2, at),
+        pager: ops.pager,
+        offered: new Set(),
+      });
+
+      expect(ops.pages).toEqual([
+        { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
+      ]);
+      expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
+        {
+          audience: family.secondUserId,
+          after: {
+            surface: 'ask',
+            failure: 'send_refused',
+            attempts: 1,
+            reason: 'send_retries_exhausted',
+          },
+        },
+      ]);
+    },
+  );
+
   it('pages a crash on the last try and a crashed ack, with only the duty memory flag on', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'false');
     vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
@@ -1337,6 +1764,27 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     expect(rows[0]).toMatchObject({ status: 'sent', errorCode: null });
     expect(rows[0]?.sentAt?.toISOString()).toBe(DAY.toISOString());
     expect(ops.pages).toEqual([]);
+    expect(await sendAudits(family.familyId, 'duty_send_accepted')).toEqual([
+      { audience: family.parentUserId, after: { surface: 'ack', attempts: 1 } },
+    ]);
+  });
+
+  it.each([
+    ['restatement', 'llm', 'chat-air-restate'],
+    ['tapback', 'rules', 'chat-air-tapback'],
+  ] as const)('holds no accepted status while a %s is in the air', async (_name, source, chat) => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const family = await ackFamily(`Ack in the air ${source}`, chat);
+    const wire = observingFetch(family.familyId);
+
+    await acknowledgeDutyWrite(
+      ackInput(family, chat, wire.fetch, { source, pager: pager().pager }),
+    );
+
+    expect(wire.during).toHaveLength(1);
+    expect(wire.during[0]).toMatchObject(IN_THE_AIR);
+    expect((await outRows(family.familyId))[0]).toMatchObject({ status: 'sent', errorCode: null });
   });
 
   it('marks a refused tapback failed, not sent, and a retried one sent', async () => {
@@ -1351,6 +1799,9 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     expect(ack).toEqual({ status: 'tapback', sent: false, text: null });
     expect((await outRows(family.familyId)).map((row) => row.status)).toEqual(['failed', 'sent']);
     expect(ops.pages).toEqual([]);
+    expect(await sendAudits(family.familyId, 'duty_send_accepted')).toEqual([
+      { audience: family.parentUserId, after: { surface: 'ack', attempts: 2 } },
+    ]);
   });
 
   it('stops retrying a tapback once another send could outrun the webhook, and pages', async () => {
@@ -1359,21 +1810,76 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     const family = await ackFamily('Ack slow', 'chat-ack-slow');
     const wire = linqFetch([500, 201]);
     const ops = pager();
-    let ms = 0;
-    const clockMs = () => {
-      ms += 3_000;
-      return ms;
-    };
     const ack = await acknowledgeDutyWrite(
       ackInput(family, 'chat-ack-slow', wire.fetch, {
         source: 'rules',
         pager: ops.pager,
-        clockMs,
+        clockMs: () => 2_000,
+        answerBy: new Date(2_000 + SEND_TIMEOUT_MS - 1),
       }),
     );
     expect(ack).toMatchObject({ status: 'skipped', reason: 'send_retries_exhausted' });
     expect(wire.calls).toHaveLength(1);
     expect(ops.pages).toHaveLength(1);
+  });
+
+  it('still retries a tapback when one more send exactly fits the webhook', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const family = await ackFamily('Ack just fits', 'chat-ack-fits');
+    const wire = linqFetch([500, 201]);
+    const ops = pager();
+    const ack = await acknowledgeDutyWrite(
+      ackInput(family, 'chat-ack-fits', wire.fetch, {
+        source: 'rules',
+        pager: ops.pager,
+        clockMs: () => 2_000,
+        answerBy: new Date(2_000 + SEND_TIMEOUT_MS),
+      }),
+    );
+    expect(ack).toEqual({ status: 'tapback', sent: false, text: null });
+    expect(wire.calls).toHaveLength(2);
+    expect(ops.pages).toEqual([]);
+  });
+
+  it('does not retry a tapback when no webhook deadline is known', async () => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const family = await ackFamily('Ack no deadline', 'chat-ack-no-deadline');
+    const wire = linqFetch([500, 201]);
+    const ops = pager();
+    const ack = await acknowledgeDutyWrite(
+      ackInput(family, 'chat-ack-no-deadline', wire.fetch, {
+        source: 'rules',
+        pager: ops.pager,
+        answerBy: undefined,
+      }),
+    );
+    expect(ack).toMatchObject({ status: 'skipped', reason: 'send_retries_exhausted' });
+    expect(wire.calls).toHaveLength(1);
+    expect(ops.pages).toHaveLength(1);
+  });
+
+  it.each([
+    ['a permanent refusal', 400, 'send_refused'],
+    ['a rate limit', 429, 'not_confirmed'],
+  ] as const)('does not re-post a tapback after %s', async (name, status, reason) => {
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const chat = `chat-tap-${status}`;
+    const family = await ackFamily(`Tap ${name}`, chat);
+    const wire = linqFetch([status, 201]);
+    const ops = pager();
+    const ack = await acknowledgeDutyWrite(
+      ackInput(family, chat, wire.fetch, { source: 'rules', pager: ops.pager }),
+    );
+    expect(ack).toMatchObject({ status: 'skipped', reason: 'send_retries_exhausted' });
+    expect(wire.calls).toHaveLength(1);
+    expect(await sendAudits(family.familyId, 'duty_send_failed')).toEqual([]);
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toHaveLength(1);
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ack', reason }, count: 1 },
+    ]);
   });
 });
 

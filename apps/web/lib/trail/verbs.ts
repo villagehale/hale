@@ -267,6 +267,7 @@ export const AUDIT_VERBS = [
   'duty_calendar_cleared',
   'duty_memory_recorded',
   'duty_memory_undone',
+  'duty_send_accepted',
   'duty_send_failed',
   'duty_send_dropped',
   'reply_copy_composed',
@@ -1163,7 +1164,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   duty_memory_recorded: { sentence: 'Hale noted a duty answer', family: 'note' },
   duty_memory_undone: { sentence: 'Hale updated a duty note', family: 'note' },
-  // The row's `after` is the surface, failure code and try count only: no names, no text.
+  // These three rows' `after` is the surface, failure code and try count only: no names, no text.
+  duty_send_accepted: { sentence: 'Hale sent a duty message', family: 'done' },
   duty_send_failed: {
     sentence: 'Hale held a duty message back to try sending it again',
     family: 'note',

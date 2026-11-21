@@ -15,6 +15,7 @@ import type { DutyRole } from './model';
  * this file does not grow a second clock. A count is not a hold.
  */
 
+export const DUTY_OPEN_FACT_KEY = 'duty-ask/open';
 export const REASK_WITHIN_MS = 48 * 60 * 60 * 1000;
 export const NIGHT_BEFORE_START_MIN = 17 * 60;
 

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -9,15 +9,18 @@ import {
   nextComposeHold,
 } from '~/lib/loop/reminders/schedule';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { DUTY_OPEN_FACT_KEY } from './cadence';
 
 /**
  * A duty row says 'sent' only once Linq has accepted the text. Until then it is a 'failed'
  * row under this code: it holds the dedupe key against a concurrent run, and a crash
  * mid-send leaves a row that claims nothing.
  *
- * Every try of one ask to one recipient carries the same Linq idempotency key (the base
- * dedupe key). A try that looked failed may still have landed (a timeout, a 5xx, a crash),
- * and a fresh compose has new words, so only the key keeps the parents from reading it twice.
+ * A try that looked failed may still have landed (a timeout, a 5xx, a crash), and a fresh
+ * compose has new words, so only Linq's idempotency key keeps the parents from reading it
+ * twice: every later try reuses that try's key. A definite refusal cannot have landed, so
+ * while every try so far was one, the next gets its own key in case Linq remembers a
+ * refused one.
  *
  * A send ends one of two ways: accepted, or dropped with SEND_RETRIES_EXHAUSTED on its last
  * row, an audit row and an #ops page. The plan decides what is offered again, so a send it
@@ -26,6 +29,7 @@ import type { OpsPager } from '~/lib/monitoring/failure-page';
 export const DUTY_SEND_IN_FLIGHT = 'send_in_flight';
 
 export const DUTY_ASK_KEY_PREFIX = 'duty_ask:';
+const SPLIT_ASK_KEY_PREFIX = `${DUTY_ASK_KEY_PREFIX}split_duty:`;
 export const DUTY_ACK_KEY_PREFIX = 'linq:duty_ack:';
 
 /** How often the nudge cron runs the duty sweep (apps/web/vercel.json). */
@@ -55,8 +59,8 @@ function failureLabel(code: string | null): 'not_confirmed' | 'send_refused' {
 export type DutySendSurface = 'ask' | 'ack';
 
 export type DutySendAttempt =
-  /** `dueAt`: when a retry became due. Null on a first try. */
-  | { kind: 'try'; dedupeKey: string; attempt: number; dueAt: Date | null }
+  /** `sendKey`: Linq's key for this try. `dueAt`: when a retry became due. Null on a first try. */
+  | { kind: 'try'; dedupeKey: string; sendKey: string; attempt: number; dueAt: Date | null }
   | { kind: 'accepted' }
   | { kind: 'in_flight' }
   | { kind: 'wait' }
@@ -118,11 +122,14 @@ export function dutySendClaim(now: Date) {
  * A provider id means Linq took the text, even if a later receipt flipped the row to
  * 'failed'. That is a failed delivery, not a refusal, and is never sent again.
  */
-function isAccepted(rows: readonly DutySendRow[]): boolean {
-  return rows.some(
-    (row) =>
-      row.providerMessageId !== null || (SENT_STATUSES as readonly string[]).includes(row.status),
+function rowAccepted(row: DutySendRow): boolean {
+  return (
+    row.providerMessageId !== null || (SENT_STATUSES as readonly string[]).includes(row.status)
   );
+}
+
+function isAccepted(rows: readonly DutySendRow[]): boolean {
+  return rows.some(rowAccepted);
 }
 
 /** One door's rows: its key and that key's retries. */
@@ -151,14 +158,16 @@ function attemptFrom(rows: readonly DutySendRow[], baseKey: string, now: Date): 
   if (running) return { kind: 'in_flight' };
   const failures = rows.filter((row) => row.status === 'failed');
   const last = failures.at(-1);
-  if (!last) return { kind: 'try', dedupeKey: baseKey, attempt: 1, dueAt: null };
+  if (!last) return { kind: 'try', dedupeKey: baseKey, sendKey: baseKey, attempt: 1, dueAt: null };
   const step = nextComposeHold(failures.length - 1, last.createdAt);
   if (step.action === 'exhausted') return { kind: 'exhausted' };
   if (step.nextTryAt.getTime() > now.getTime()) return { kind: 'wait' };
   const attempt = failures.length + 1;
+  const dedupeKey = dutyAttemptKey(baseKey, attempt);
   return {
     kind: 'try',
-    dedupeKey: dutyAttemptKey(baseKey, attempt),
+    dedupeKey,
+    sendKey: failures.find((row) => mayHaveLanded(row.errorCode))?.dedupeKey ?? dedupeKey,
     attempt,
     dueAt: step.nextTryAt,
   };
@@ -212,17 +221,37 @@ export async function readDutySendAttempt(
 
 export async function markDutySendAccepted(
   database: Database,
-  input: { claimId: string; now: Date; providerMessageId: string | null },
+  input: {
+    familyId: string;
+    claimId: string;
+    now: Date;
+    providerMessageId: string | null;
+    attempt: number;
+    surface: DutySendSurface;
+    /** The adult a send to one person belongs to. Null on a send to the family's group. */
+    audience: string | null;
+  },
 ): Promise<void> {
-  await database
-    .update(schema.channelMessages)
-    .set({
-      status: acceptedStatus('imessage'),
-      errorCode: null,
-      sentAt: input.now,
-      providerMessageId: input.providerMessageId,
-    })
-    .where(eq(schema.channelMessages.id, input.claimId));
+  await database.transaction(async (tx) => {
+    await tx
+      .update(schema.channelMessages)
+      .set({
+        status: acceptedStatus('imessage'),
+        errorCode: null,
+        sentAt: input.now,
+        providerMessageId: input.providerMessageId,
+      })
+      .where(eq(schema.channelMessages.id, input.claimId));
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'duty_send_accepted',
+      targetTable: 'channel_messages',
+      targetId: input.claimId,
+      audience: input.audience,
+      after: { surface: input.surface, attempts: input.attempt },
+    });
+  });
 }
 
 export function defaultDutyPager(database: Database): OpsPager {
@@ -244,6 +273,8 @@ interface DutySendFailure {
   audience: string | null;
   /** No further try will happen: the row is marked, and the send is dropped. */
   final: boolean;
+  /** Another parent answered this ask, so a final send ends without being a failure to page. */
+  answered?: boolean;
 }
 
 /** Linq's own code stays on the ledger row. The immutable audit row gets the closed label. */
@@ -263,7 +294,7 @@ async function recordDutySendFailure(database: Database, input: DutySendFailure)
         surface: input.surface,
         failure: failureLabel(input.code),
         attempts: input.attempt,
-        ...(input.final ? { reason: SEND_RETRIES_EXHAUSTED } : {}),
+        ...(input.final ? { reason: input.answered ? 'answered' : SEND_RETRIES_EXHAUSTED } : {}),
       },
     };
     await tx
@@ -293,11 +324,13 @@ export async function settleDutySendFailure(
   });
 }
 
-function isStranded(
-  send: { scope: string; baseKey: string; rows: readonly DutySendRow[] },
-  now: Date,
-  offered: ReadonlySet<string>,
-): boolean {
+interface OneDutySend {
+  scope: string;
+  baseKey: string;
+  rows: DutySendRow[];
+}
+
+function isStranded(send: OneDutySend, now: Date, offered: ReadonlySet<string>): boolean {
   const state = attemptFrom(send.rows, send.baseKey, now);
   if (state.kind === 'exhausted') {
     return !send.rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED);
@@ -312,6 +345,55 @@ function isStranded(
 
 function keyStartsWith(prefix: string) {
   return sql`left(${schema.channelMessages.dedupeKey}, ${prefix.length}) = ${prefix}`;
+}
+
+/**
+ * One parent's leg of a split ask that another parent received and then answered, so this
+ * copy is no longer owed. An answer recorded before that parent was reached belongs to an
+ * earlier ask on the same events and says nothing about this one.
+ */
+async function splitAskAnswered(
+  database: Database,
+  send: OneDutySend,
+  sends: ReadonlyMap<string, OneDutySend>,
+): Promise<boolean> {
+  const leg = send.rows[0];
+  if (!leg) return false;
+  const parentSuffix = `:${leg.parentUserId}`;
+  if (!send.baseKey.endsWith(parentSuffix)) return false;
+  const askKey = send.baseKey.slice(0, -parentSuffix.length);
+  const legsOfAsk = `${dutySendScope(leg.familyId, askKey)}:`;
+  const reachedAt = [...sends.values()]
+    .filter((other) => other.scope.startsWith(legsOfAsk))
+    .flatMap((other) => other.rows.filter(rowAccepted))
+    .map((row) => row.createdAt.getTime());
+  if (reachedAt.length === 0) return false;
+  const [fact] = await database
+    .select({
+      value: schema.familyMemoryFacts.factValue,
+      validFrom: schema.familyMemoryFacts.validFrom,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, leg.familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, DUTY_OPEN_FACT_KEY),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .limit(1);
+  if (!fact || fact.validFrom.getTime() < Math.min(...reachedAt)) return false;
+  const open = fact.value as {
+    status?: string;
+    split?: boolean;
+    eventKey?: string;
+    peerEventKey?: string | null;
+  };
+  if (open.status !== 'stepped_down' || open.split !== true) return false;
+  return [open.eventKey, open.peerEventKey].some(
+    (eventKey) => eventKey && askKey.startsWith(`${SPLIT_ASK_KEY_PREFIX}${eventKey}:`),
+  );
 }
 
 /**
@@ -335,7 +417,7 @@ export async function settleStrandedDutySends(
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
-  const sends = new Map<string, { scope: string; baseKey: string; rows: DutySendRow[] }>();
+  const sends = new Map<string, OneDutySend>();
   for (const row of rows) {
     if (row.dedupeKey === null) continue;
     const baseKey = baseKeyOf(row.dedupeKey);
@@ -361,6 +443,7 @@ export async function settleStrandedDutySends(
     const rowSurface: DutySendSurface = send.baseKey.startsWith(DUTY_ACK_KEY_PREFIX)
       ? 'ack'
       : 'ask';
+    const answered = rowSurface === 'ask' && (await splitAskAnswered(database, send, sends));
     await recordDutySendFailure(database, {
       familyId: last.familyId,
       claimId: last.id,
@@ -369,7 +452,9 @@ export async function settleStrandedDutySends(
       surface: rowSurface,
       audience: rowSurface === 'ack' || last.providerChatId === null ? last.parentUserId : null,
       final: true,
+      answered,
     });
+    if (answered) continue;
     dropped += 1;
     if (rowSurface === 'ask') surface = 'ask';
     if (failureLabel(last.errorCode) === 'not_confirmed') reason = 'not_confirmed';

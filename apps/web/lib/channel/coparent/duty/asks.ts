@@ -40,6 +40,7 @@ import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
   type CadencePlan,
+  DUTY_OPEN_FACT_KEY,
   type DutyOccasion,
   type OpenDutyQuestion,
   addCalendarDays,
@@ -105,7 +106,7 @@ import { defaultTravelTimeClient } from './travel';
  * `email` is dropped by the planner, including a party invite.
  */
 
-export const DUTY_OPEN_FACT_KEY = 'duty-ask/open';
+export { DUTY_OPEN_FACT_KEY };
 export const DUTY_REASK_PREFIX = 'duty-ask/reask/';
 export const DUTY_STOP_ASKING_KEY = 'duty-ask/stop-asking';
 export const DUTY_STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
@@ -1189,6 +1190,14 @@ async function noteLinesSent(
   }
 }
 
+/** The open fact is this split ask, answered or not. The answer may name the pair either way. */
+function openHoldsSplitAsk(open: OpenDutyQuestion | null, lines: readonly CadenceLine[]): boolean {
+  const ask = lines.find((row) => row.mode === 'split_duty');
+  if (!ask || !open?.split) return false;
+  const pair = [ask.eventKey, ask.peerEventKey];
+  return pair.includes(open.eventKey) && (!open.peerEventKey || pair.includes(open.peerEventKey));
+}
+
 function dutySendStopped(attempts: readonly DutySendAttempt[]): DutyDelivery {
   if (attempts.some((row) => row.kind === 'wait')) {
     return { status: 'held', reason: 'send_retry_backoff' };
@@ -1320,7 +1329,7 @@ export async function deliverDutyGroupLine(
     sent = await ports.send({
       chatId: target.chatId,
       text: body,
-      sendKey: input.dedupeKey,
+      sendKey: attempt.sendKey,
       fetch: input.fetch,
     });
   } catch (err) {
@@ -1339,9 +1348,13 @@ export async function deliverDutyGroupLine(
     return { status: 'not_sent', reason: final ? SEND_RETRIES_EXHAUSTED : code };
   }
   await markDutySendAccepted(database, {
+    familyId: input.familyId,
     claimId: claimed.id,
     now: input.now,
     providerMessageId: sent.providerMessageId,
+    attempt: attempt.attempt,
+    surface: 'ask',
+    audience: null,
   });
   if (coldStartLadderEnabled()) {
     await recordOptionalAsk(database, {
@@ -1357,7 +1370,7 @@ export async function deliverDutyGroupLine(
 export interface DutyDirectTarget {
   parentUserId: string;
   phone: string;
-  /** The base key for this parent: the Linq key on every try. */
+  /** Linq's key for this try (see `DutySendAttempt`). */
   sendKey: string;
   dedupeKey: string;
   attempt: number;
@@ -1403,8 +1416,7 @@ async function dutyDirectReach(
   for (const parentUserId of input.parentUserIds) {
     const phone = await resolveSendablePhone(database, parentUserId);
     if (!phone) continue;
-    const sendKey = `${input.dedupeKey}:${parentUserId}`;
-    const attempt = dutyDoorAttempt(rows, sendKey, input.now);
+    const attempt = dutyDoorAttempt(rows, `${input.dedupeKey}:${parentUserId}`, input.now);
     if (attempt.kind !== 'try') {
       closed.push(attempt);
       continue;
@@ -1420,7 +1432,7 @@ async function dutyDirectReach(
     targets.push({
       parentUserId,
       phone,
-      sendKey,
+      sendKey: attempt.sendKey,
       dedupeKey: attempt.dedupeKey,
       attempt: attempt.attempt,
     });
@@ -1516,9 +1528,13 @@ export async function deliverDutyDirectLines(
       continue;
     }
     await markDutySendAccepted(database, {
+      familyId: input.familyId,
       claimId: claimed.id,
       now: input.now,
       providerMessageId: sent.providerMessageId,
+      attempt: target.attempt,
+      surface: 'ask',
+      audience: target.parentUserId,
     });
     reached = target.phone;
   }
@@ -1638,6 +1654,17 @@ async function applyPlan(
           ports,
         )
       : null;
+  const askedAlready = reach?.askedAlready === true;
+  // A crash after a parent's copy was accepted can skip this write. That parent can answer
+  // now, so the question opens here whatever happens to the other parent's send.
+  if (askedAlready && !openHoldsSplitAsk(input.view.open, input.lines)) {
+    await noteLinesSent(database, {
+      familyId: input.familyId,
+      lines: input.lines,
+      open: input.view.open,
+      now: input.now,
+    });
+  }
   if (reach) {
     if (reach.targets.length === 0) return reach.stopped;
   } else {
@@ -1650,7 +1677,6 @@ async function applyPlan(
   }
   // A parent being retried has not seen this question. It reaches them as a first ask: no
   // count of unanswered asks, and no line naming who has not replied.
-  const askedAlready = reach?.askedAlready === true;
   const lines = askedAlready ? input.lines.filter((row) => !row.namesSilentParent) : input.lines;
   const plan = renderDutyLines(lines, input.view.render);
   if (!plan) return { status: 'skipped', reason: 'placeholder' };

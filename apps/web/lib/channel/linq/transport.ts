@@ -101,6 +101,11 @@ const LINQ_RATE_LIMIT_CODE = '1007';
 /** The longest Retry-After a send waits out in-call; a longer one is handed back. */
 const IN_CALL_RETRY_MAX_MS = 1_000;
 
+/** A rate limit is not permanent, but asking again right away only earns another. */
+export function isLinqRateLimit(err: LinqSendError): boolean {
+  return err.httpStatus === 429 || err.code === LINQ_RATE_LIMIT_CODE;
+}
+
 /**
  * VIL-611 · Linq's `message.idempotency_key` for one send. It names the send, never its
  * words: Linq drops a reused key as a duplicate, so a key built from the text would drop

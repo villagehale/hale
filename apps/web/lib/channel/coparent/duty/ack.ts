@@ -8,13 +8,13 @@ import {
   sendFlooredChatMessage,
 } from '~/lib/channel/linq/group-audience';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
-import { LINQ_WEBHOOK_TIMEOUT_MS } from '~/lib/channel/linq/signature';
 import {
   LinqSendError,
   SEND_TIMEOUT_MS,
+  isLinqRateLimit,
   listLinqParticipantHandles,
 } from '~/lib/channel/linq/transport';
-import { reactToLinqMessage } from '~/lib/channel/outbound-transport';
+import { reactToLinqMessage, refusalStopsRetry } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
@@ -44,9 +44,12 @@ import {
  * reaction carries no household content), and the outcome names the floor's reason.
  */
 
-/** A further tapback starts only while one whole send would still land inside Linq's
- * webhook timeout: this path can run inline in the inbound webhook. */
-const ACK_RETRY_WINDOW_MS = LINQ_WEBHOOK_TIMEOUT_MS - SEND_TIMEOUT_MS;
+/** A further tapback is only for a failure that can clear by itself, and only while one
+ * whole send still lands before Linq stops waiting on this webhook (`answerBy`). */
+function tapbackMayRetry(err: LinqSendError, answerBy: Date | undefined, nowMs: number): boolean {
+  if (refusalStopsRetry(err) || isLinqRateLimit(err)) return false;
+  return answerBy !== undefined && nowMs + SEND_TIMEOUT_MS <= answerBy.getTime();
+}
 
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
@@ -100,6 +103,8 @@ export async function acknowledgeDutyWrite(input: {
   listChatHandles?: ListChatHandles;
   pager?: OpsPager;
   clockMs?: () => number;
+  /** When Linq stops waiting on the webhook this runs inside. Absent outside a webhook. */
+  answerBy?: Date;
 }): Promise<DutyAck> {
   const skip = (reason: Extract<DutyAck, { status: 'skipped' }>['reason']): DutyAck => ({
     status: 'skipped',
@@ -172,7 +177,6 @@ export async function acknowledgeDutyWrite(input: {
   const baseKey = `${DUTY_ACK_KEY_PREFIX}${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`;
   const pager = input.pager ?? defaultDutyPager(input.database);
   const clockMs = input.clockMs ?? Date.now;
-  const startedAt = clockMs();
   for (let attempt = 1; ; attempt += 1) {
     const [claimed] = await input.database
       .insert(schema.channelMessages)
@@ -233,7 +237,7 @@ export async function acknowledgeDutyWrite(input: {
       }
       // A restatement gets one try: another would need a model call inside the webhook.
       const final =
-        restate || isLastDutySendTry(attempt) || clockMs() - startedAt >= ACK_RETRY_WINDOW_MS;
+        restate || isLastDutySendTry(attempt) || !tapbackMayRetry(err, input.answerBy, clockMs());
       await settleDutySendFailure(input.database, {
         ...failure,
         code: dutyFailureCode(err),
@@ -244,9 +248,13 @@ export async function acknowledgeDutyWrite(input: {
     }
 
     await markDutySendAccepted(input.database, {
+      familyId: input.familyId,
       claimId: claimed.id,
       now: input.now,
       providerMessageId: null,
+      attempt,
+      surface: 'ack',
+      audience: input.actorUserId,
     });
     if (pass && line) return { status: 'restated', sent: true, text: line };
     return heldBy ? audienceHeld(heldBy, true) : { status: 'tapback', sent: false, text: null };
