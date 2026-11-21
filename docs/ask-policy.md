@@ -82,7 +82,7 @@ The money classes match the kinds whose `REQUIRED_CHECKS` include `check_spendin
 A fact can add a class. It can never remove one.
 
 - **`commitsFamily`** adds `register_or_book`, so the action is ask first. It is the drafter's stored reading that a reply commits the family to an enrolment, a booking or a payment: `commits_parent_to_enrollment_booking_or_payment` on the payload. A misreading can only make Hale ask more.
-- **`writesAnotherParentsCalendar`** adds `other_persons_info`, so the action is ask first. With no approving parent, the Google leg of `calendar_add`, `calendar_move` or `calendar_cancel` writes to the family's one scoped connection, or to the connection already holding the event. If that calendar's owner does not personally hold the kind (their own streak and live grant), the action waits for a yes. A connection that names no owner counts as someone else's, and so does a read that fails: the action waits for a yes and the audit row carries `calendarOwnerUnread`. The door reads the owner through `writeTarget`, the same flag read and connection choice the write uses, on every pass with no approving parent. After a yes, an add goes to the approver's own calendar. A move or cancel follows the calendar that holds the event, and that parent's yes covers it.
+- **`writesAnotherParentsCalendar`** adds `other_persons_info`, so the action is ask first. With no approving parent, the Google leg of `calendar_add`, `calendar_move` or `calendar_cancel` writes to the family's one scoped connection, or to the connection already holding the event. If that calendar's owner does not personally hold the kind (their own streak and live grant), the action waits for a yes. A connection that names no owner counts as someone else's, and so does a read that fails: the action waits for a yes and the audit row carries `calendarOwnerUnread`. The door reads the owner through `writeTarget`, the same flag read and connection choice the write uses, on every pass with no approving parent. After a yes, an add goes to the approver's own calendar. A move or cancel follows the calendar that holds the event, whoever owns it, so one parent's yes can rewrite the event on the other parent's own Google calendar without that parent's yes (see the gaps below).
 - **Teen content is not a policy fact.** A teenager's private content, in a family with a teenager, is held by the teen cap (`teen_redaction`) before the policy is read. It is re-held on resume.
 
 ## The recorded yes
@@ -100,7 +100,7 @@ No streak earns an ask-first kind a grant: `grantAutonomyOnStreak` returns `ask_
 
 ## Tell after: the texts and their pages
 
-Each text is written by the model. When it cannot be written, nothing is sent and #ops is paged, once per site per hour (`pageOps`, closed vocabulary). The action stands.
+Each text is written by the model. When it cannot be written, nothing is sent and #ops is paged, once per site per hour (`pageOps`, closed vocabulary). The action stands. A writer that could not run at all, because its skill will not load or its model client cannot be built, counts as unwritten.
 
 | text | skill | page site |
 |---|---|---|
@@ -113,6 +113,8 @@ Each text is written by the model. When it cannot be written, nothing is sent an
 | the group plan's calendar report | `group-plan-calendar-report` | `group_plan_unwritten` (already) |
 | the Gmail draft notice | `gmail-draft-notice` | the failed-turn page (already; no draft is written without its notice) |
 
+A team-schedule change the executor refused (outside the action window) or failed did not land, so nobody is told it moved and no reminder moves. A refused change stays a draft for the parent's yes, a failed one is left as `needs_human`, and the effects run only after a real run.
+
 `calendar_invite_unwritten` pages for every deferral that left a parent without the text: `client_unavailable`, `skill_unavailable`, `model_failed`, `gate_exhausted` (every draft refused), `time_unjudged`, and a summary held before the model call (`summary_too_long`, `summary_carries_destination`). The time judge failing and an unreadable zone share `time_unjudged` on the invite leg, so both page. Every invite sender that follows a calendar change is wrapped: the drain, the nudge cron's cancel re-drive, the group common-time plan, and an undo's withdrawal.
 
 ## Just do
@@ -121,7 +123,7 @@ An execution's audit row carries `decision.askTier` while the flag is on. An act
 
 ## Lanes outside the executor
 
-These run outside the executor. The flag changes one of them, the provider email below. Each of the others already requires its own recorded yes, listed here so later work keeps to the same tiers.
+These run outside the executor. The flag changes two of them, the provider email and the co-parent invite on the SMS door. Each of the others already requires its own recorded yes, listed here so later work keeps to the same tiers.
 
 | lane | classes | tier | the yes it requires today |
 |---|---|---|---|
@@ -131,7 +133,7 @@ These run outside the executor. The flag changes one of them, the provider email
 | email to a provider after a plan's options did not match | `contact_third_party` | `ask_first` | the parent's model-read reply, bound to the ask. With the flag on, a `provider_email_yes` audit row naming the parent and their message is written first, and no email leaves without it |
 | village introduction | `contact_third_party`, `other_persons_info` | `ask_first` | both families' `village_intro` consent rows |
 | caregiver invite | `contact_third_party` | `ask_first` | a `caregiver_access_grant` consent row from the parent's reply, before the send |
-| co-parent invite | `contact_third_party` | `ask_first` | a `co_parent_access_grant` consent row (see the gaps below) |
+| co-parent invite | `contact_third_party` | `ask_first` | a `co_parent_access_grant` consent row. With the flag on, the SMS door writes it before the text leaves, and a write that fails sends nothing. With the flag off, that door texts first and writes the row after |
 | multi-family group reads, shared free/busy | `other_persons_info` | `ask_first` | per-parent `multi_family_group` and free/busy consent rows |
 | a coach calendar change (`propose_calendar_*`) | `family_calendar` | asks today (not built as tell after, see below) | the parent's yes to the draft, which writes `action.approved_by_human` |
 | an email offer's add (`email_alert_add`) | `family_calendar` | `tell_after` | the parent's yes to Hale's offer |
@@ -147,7 +149,7 @@ The coach's other verbs:
 
 ## Not built: tell after for a calendar change the parent asks for
 
-**VIL-719 names this flow as tell after, and it is not built.** A calendar change the parent asks for in the thread still goes propose, then their yes, then execute. After it runs, the invite text and the calendar-write notice tell after, and both page when unwritten. Barton has not ruled on removing the question, so nothing here treats it as decided.
+**VIL-719 names this flow as tell after, and it is not built.** A calendar change the parent asks for in the thread still goes propose, then their yes, then execute. After it runs, the invite text and the calendar-write notice tell after, and both page when unwritten. Barton has not ruled on removing the question, so nothing here treats it as decided. Two notes pull different ways: VIL-719 (11-19) lists this flow as tell after, and VIL-711 (a post-launch idea, 11-18) says Hale "acts only after the parent confirms in their own words" before it changes a calendar.
 
 Removing the question is more than a skill edit. The yes is what stops outside content from moving a calendar today, so the change needs all of these:
 
@@ -176,7 +178,7 @@ Ask-first orchestrator drafts use today's surfaces: the thread's standing questi
 
 ## Known gaps (already on main, not changed by this flag)
 
-- A co-parent invite text can go out before its consent row is written.
+- A parent's yes on a move or cancel rewrites the event on the Google calendar that holds it, including the other parent's own, and that parent is not asked (`selectGcalConnection`). It needs Google writes armed for the approving parent. The alternatives are asking the calendar's owner, or skipping the Google write and leaving the old time on their calendar. Barton has not ruled on this.
 - A plan run can use the other parent's saved city login and card unless `PLAN_CITY_LOGIN_OWNER_ENABLED`.
 - The email to a provider after a plan options mismatch has no reviewer, its body is assembled in code, and with the flag off it has no recorded yes.
 - Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind. It binds no Google port, so it never writes to anyone's Google calendar.
@@ -189,5 +191,5 @@ Ask-first orchestrator drafts use today's surfaces: the thread's standing questi
 - **Off:** every path behaves as before, and nothing is stamped or paged.
 - **Kill:** set exactly `false` and redeploy hale-web. Unset is also off while the PostHog path is off. With the PostHog path on, only `false` (or `off`) overrides PostHog.
 - **PostHog:** a `pnpm posthog:sync-flags` creates catalog flags at 100%. While the PostHog path is on, keep this key out of a sync, or set the env to `false`, until Barton says go.
-- **New audit verb:** `action.gated.ask_first`.
+- **New audit verbs:** `action.gated.ask_first`, and `co_parent_invite_send_unconfirmed` for a co-parent invite text that failed or could not be confirmed after the parent's yes.
 - **New page sites:** the six `*_unwritten` sites this change adds to the table above (`group_plan_unwritten` and the failed-turn page were already there).
