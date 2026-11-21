@@ -1,6 +1,6 @@
 # Ask policy: just do, tell after, ask first
 
-**Status:** proposed 2026-11-20 (VIL-719). It runs behind `ASK_POLICY_TIERS_ENABLED`, which is off by default. The table is waiting for Noah's review and is not approved until he signs it.
+**Status:** the tables below were reviewed against the code on 2026-11-21 (VIL-719). Barton approves them when he merges. The policy runs behind `ASK_POLICY_TIERS_ENABLED`, which is off by default.
 
 - **Code:** `packages/tools-contracts/src/ask-policy.ts`.
 - **Parity test:** `packages/tools-contracts/src/ask-policy-doc.test.ts` fails when the two tables below disagree with the code, so change both together.
@@ -31,8 +31,9 @@ A tier never loosens an autonomy gate (CLAUDE.md rule 4). Whether Hale may *star
 10. the drafter's commitment reading
 11. the execute lane
 12. the delivered turn-on text
+13. **whose Google calendar a calendar kind would write to** (new, at the executor door)
 
-A just-do or tell-after kind passes every one of these before it runs on its own. The policy adds one gate and removes none.
+A just-do or tell-after kind passes every one of these before it runs on its own. The policy adds two gates and removes none.
 
 A parent's yes to a draft is the override it always was: it runs a draft of any tier, ask first included.
 
@@ -81,6 +82,7 @@ The money classes match the kinds whose `REQUIRED_CHECKS` include `check_spendin
 A fact can add a class. It can never remove one.
 
 - **`commitsFamily`** adds `register_or_book`, so the action is ask first. It is the drafter's stored reading that a reply commits the family to an enrolment, a booking or a payment: `commits_parent_to_enrollment_booking_or_payment` on the payload. A misreading can only make Hale ask more.
+- **`writesAnotherParentsCalendar`** adds `other_persons_info`, so the action is ask first. With no approving parent, the Google leg of `calendar_add`, `calendar_move` or `calendar_cancel` writes to the family's one scoped connection, or to the connection already holding the event. If that calendar's owner does not personally hold the kind (their own streak and live grant), the action waits for a yes. A connection that names no owner counts as someone else's. The door reads the owner through `writeTarget`, the same flag read and connection choice the write uses, on every pass with no approving parent. After a yes, an add goes to the approver's own calendar. A move or cancel follows the calendar that holds the event, and that parent's yes covers it.
 - **Teen content is not a policy fact.** A teenager's private content, in a family with a teenager, is held by the teen cap (`teen_redaction`) before the policy is read. It is re-held on resume.
 
 ## The recorded yes
@@ -92,7 +94,7 @@ With the flag on, three places hold an ask-first action that has no such row:
 2. the resume re-gate, for a checkpoint an autonomous pass wrote;
 3. the door in `executeAndRecord`, whatever path got there.
 
-An actor id alone is not a yes. A refused action goes back to the parent as a draft and is audited `action.gated.ask_first`. The audit's detail names the classes, and `resumed` or `backstop` when one of those two places fired.
+An actor id alone is not a yes. A refused action goes back to the parent as a draft and is audited `action.gated.ask_first`. The audit's detail names the classes, and `resumed` or `backstop` when one of those two places fired. A hold for another parent's Google calendar is made at the door and names `writesAnotherParentsCalendar` instead of `backstop`.
 
 No streak earns an ask-first kind a grant: `grantAutonomyOnStreak` returns `ask_first`. A turn-on text for an ask-first kind is withheld, so no text promises that Hale will do it on its own.
 
@@ -106,6 +108,7 @@ Each text is written by the model. When it cannot be written, nothing is sent an
 | the invite text to each parent after a calendar placement | `calendar-invite-voice`, `calendar-cancel-voice` | `calendar_invite_unwritten` |
 | the calendar-write notice, behind `CALENDAR_WRITE_NOTICE_ENABLED` | `calendar-write-notice` | `calendar_write_notice_unwritten` |
 | the team-schedule text after a change applied under a grant | `team-schedule-parent` | `team_schedule_unwritten` |
+| the driver's text after that change | `team-schedule-driver` | `team_schedule_driver_unwritten` |
 | the receipt after an email offer's yes placed the event | `offer-receipt` | `offer_receipt_unwritten` |
 | the group plan's calendar report | `group-plan-calendar-report` | `group_plan_unwritten` (already) |
 | the Gmail draft notice | `gmail-draft-notice` | the failed-turn page (already; no draft is written without its notice) |
@@ -143,21 +146,19 @@ The coach's other verbs:
 
 ## Decided, not built here
 
-- **A calendar change the parent asks for in the thread still asks.** It still goes propose, then the parent's yes, then execute. After it runs, the invite text and the calendar-write notice tell after, and both page when unwritten. Removing the question needs three things:
-  - a coach-skill change, which means a coach-channel eval re-record;
-  - its own execution entry point (not `executeApprovedAction` with a stand-in approver);
-  - a recorded basis for the approval.
+- **A calendar change the parent asks for in the thread still asks.** It still goes propose, then the parent's yes, then execute. After it runs, the invite text and the calendar-write notice tell after, and both page when unwritten. This stays until Barton decides otherwise, for two reasons:
+  - VIL-711, the recorded direction for this flow, has Hale restate the change and act only after the parent confirms.
+  - Removing the question changes the coach skill, which needs a paid coach-channel eval re-record, its own execution entry point (not `executeApprovedAction` with a stand-in approver), and a recorded basis for the approval.
 
-  The ready version, which loosens no gate: when the texting parent already holds a delivered grant for that calendar kind, a reviewer-approved coach draft runs through the same spine a yes uses, records `basis: instruction_under_grant`, and the coach tells after instead of asking. VIL-711 (restate before a calendar change) is the planned step.
+  If Barton wants it, the version that loosens no gate is: when the texting parent already holds a delivered grant for that calendar kind, a reviewer-approved coach draft runs through the same spine a yes uses, records `basis: instruction_under_grant`, and the coach tells after instead of asking.
 - **Ask-first orchestrator drafts use today's surfaces:** the thread's standing questions, which the model words when the parent next writes, and the approvals page. No new proactive ask is sent.
-- **For Noah: the Google leg of `calendar_*`.** On an autonomous pass with no actor, the Google write goes to the family's single scoped connection, whoever owns it, which can be the co-parent's own calendar (`apps/web/lib/integrations/google-calendar-placement.ts`). These kinds stay tell after, per the ticket. If that write counts as another person's information, the fix is a code-computed fact ("the Google target is not the grant holder's") that adds `other_persons_info`.
 
 ## Known gaps (already on main, not changed by this flag)
 
 - A co-parent invite text can go out before its consent row is written.
 - A plan run can use the other parent's saved city login and card unless `PLAN_CITY_LOGIN_OWNER_ENABLED`.
 - The email to a provider after a plan options mismatch runs on the parent's model-read reply. It has no consent row and no reviewer.
-- Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind.
+- Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind. It binds no Google port, so it never writes to anyone's Google calendar.
 - Across the flag flip, a parent's tap can land on an autonomous checkpoint of an ask-first kind. That tap writes no `action.approved_by_human` row, so the door hands the action back as a draft. The tap's job id is the action id, so a second tap is ignored until pg-boss archives the finished job. An approval that lands outside the action window has the same limit today.
 - A parent whose `send_email` grant predates the flag, and who was told Hale would email on its own, is not told it will ask again. Autonomous email cannot run today: the Gmail sender needs an actor.
 
@@ -168,4 +169,4 @@ The coach's other verbs:
 - **Kill:** set exactly `false` and redeploy hale-web. Unset is also off while the PostHog path is off. With the PostHog path on, only `false` (or `off`) overrides PostHog.
 - **PostHog:** a `pnpm posthog:sync-flags` creates catalog flags at 100%. While the PostHog path is on, keep this key out of a sync, or set the env to `false`, until Barton says go.
 - **New audit verb:** `action.gated.ask_first`.
-- **New page sites:** the five `*_unwritten` sites in the table above.
+- **New page sites:** the six `*_unwritten` sites this change adds to the table above (`group_plan_unwritten` and the failed-turn page were already there).
