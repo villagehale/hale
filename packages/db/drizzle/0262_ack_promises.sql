@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS "ack_promises" (
 	"asked_at" timestamp with time zone NOT NULL,
 	"promised_minutes" integer NOT NULL,
 	"due_at" timestamp with time zone NOT NULL,
+	"held_until" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"claimed_at" timestamp with time zone,
 	"settled_at" timestamp with time zone,

@@ -24,9 +24,11 @@ import { users } from './users.js';
  * landed, sends ONE short note saying so.
  *
  * WHAT IS DELIBERATELY NOT HERE: the parent's words, the ack's words, the note's words, a
- * phone number. The task is a closed category and the times are times. The words live
- * where every reply's words live (`messages`), and the number is read from the parent's
- * live channel at send time, so a revoked channel cannot be texted from a stale copy.
+ * phone number. The task is a closed category and the times are times. The note's words
+ * land in the parent's thread (`messages`). The ack's do not: like the holding line it goes
+ * mid-turn with no thread row, so the coach cannot see the time it stated, and this row is
+ * the only record of it. The number is read from the parent's live channel at send time, so
+ * a revoked channel cannot be texted from a stale copy.
  *
  * ONCE PER TEXT, by construction: the unique index on the inbound row means one text
  * carries at most one promise, and `claimed_at` is the sweep's claim, taken with a
@@ -45,7 +47,8 @@ export type AckPromiseTask = (typeof ACK_PROMISE_TASKS)[number];
  *
  * `answered`: the reply to that text landed, so nothing was owed. `sent`: the late note
  * went. `lane_off`: the flag was off when it came due. `stale`: the sweep reached it too
- * long after it came due for a note to mean anything. `held`: a send rail stopped the note
+ * long after it came due (or after the night it was held through) for a note to mean
+ * anything. `held`: a send rail stopped the note
  * (sends paused, no live channel, an unread opt-out). `unwritten`: the model could not
  * write a sendable note, nothing was sent and #ops was paged. `send_failed`: the transport
  * refused it.
@@ -96,6 +99,11 @@ export const ackPromises = pgTable(
     promisedMinutes: integer('promised_minutes').notNull(),
     /** When the stated window ends: the ack's send time plus {@link promisedMinutes}. */
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    /**
+     * Set while a note is owed and it is night on the parent's clock: when the sweep looks at
+     * this row again. It stays unclaimed until then, so nothing goes out through the night.
+     */
+    heldUntil: timestamp('held_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** The sweep's claim, taken before anything is composed. Once set, never again. */
     claimedAt: timestamp('claimed_at', { withTimezone: true }),

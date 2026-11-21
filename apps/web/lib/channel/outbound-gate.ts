@@ -375,6 +375,33 @@ export function proactiveFloorOpensAt(now: Date, timeZone: string): Date {
     : zonedLocalInstant(addDaysToKey(today, 1), PROACTIVE_QUIET_HOURS.end, timeZone);
 }
 
+/** How soon a parent with no single zone is read again while it is night in one of them. */
+const NO_SINGLE_ZONE_RECHECK_MS = 60 * 60 * 1000;
+
+/**
+ * VIL-717 · when the floor next opens for this parent, or null when it is open now, on the
+ * clock {@link assertProactiveSendAllowed} reads. For a lane that waits the night out
+ * instead of being refused (the ack's late note). With no single zone there is no one
+ * morning to name, so it says when to look again.
+ */
+export async function proactiveFloorClosedUntil(
+  ports: Pick<OutboundGatePorts, 'parentTimeZone' | 'parentClock' | 'parentPhone'>,
+  parentUserId: string,
+  now: Date,
+): Promise<Date | null> {
+  const clock = ports.parentClock ? await ports.parentClock(parentUserId) : null;
+  const parentPhone = ports.parentPhone?.bind(ports);
+  const phone = parentPhone && (() => parentPhone(parentUserId));
+  if (clock?.kind === 'unresolved') {
+    const quiet = await quietAcrossZones({ now, zones: clock.zones, phone });
+    return quiet ? new Date(now.getTime() + NO_SINGLE_ZONE_RECHECK_MS) : null;
+  }
+  const timeZone =
+    clock?.kind === 'zone' ? clock.timeZone : await ports.parentTimeZone(parentUserId);
+  const quiet = await proactiveQuietNow({ now, timeZone, phone });
+  return quiet ? proactiveFloorOpensAt(now, timeZone) : null;
+}
+
 /**
  * The `channel_messages.category` each proactive class is counted under. A class of
  * its own per kind, so one class's volume can never consume another's budget — with

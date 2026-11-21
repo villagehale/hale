@@ -1,7 +1,22 @@
 import { type AckPromiseOutcome, type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNotNull, isNull, lt, lte } from 'drizzle-orm';
-import { acceptedStatus } from '~/lib/channel/ledger';
 import {
+  and,
+  asc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  notInArray,
+  or,
+} from 'drizzle-orm';
+import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { HOLDING_LINE_TEMPLATE_KEY } from '~/lib/channel/router/holding-line';
+import {
+  SIDE_TURN_TEMPLATE_KEY,
   TURN_ANSWERED_ACTION,
   TURN_LEDGER_TARGET,
   TURN_NOTHING_SENT,
@@ -137,9 +152,15 @@ export interface DueAckPromise {
   askedAt: Date;
   promisedMinutes: number;
   dueAt: Date;
+  /** When a night hold on this row ended, or null when it was never held. */
+  heldUntil: Date | null;
+  createdAt: Date;
 }
 
-/** The oldest unclaimed promises that have come due. Reads the partial index only. */
+/**
+ * The oldest unclaimed promises that have come due and are not being held through the
+ * parent's night. Reads the partial index only.
+ */
 export async function loadDueAckPromises(
   database: Database,
   now: Date,
@@ -159,9 +180,17 @@ export async function loadDueAckPromises(
       askedAt: schema.ackPromises.askedAt,
       promisedMinutes: schema.ackPromises.promisedMinutes,
       dueAt: schema.ackPromises.dueAt,
+      heldUntil: schema.ackPromises.heldUntil,
+      createdAt: schema.ackPromises.createdAt,
     })
     .from(schema.ackPromises)
-    .where(and(isNull(schema.ackPromises.claimedAt), lte(schema.ackPromises.dueAt, now)))
+    .where(
+      and(
+        isNull(schema.ackPromises.claimedAt),
+        lte(schema.ackPromises.dueAt, now),
+        or(isNull(schema.ackPromises.heldUntil), lte(schema.ackPromises.heldUntil, now)),
+      ),
+    )
     .orderBy(asc(schema.ackPromises.dueAt))
     .limit(limit);
   // The CHECK constraints hold task and channel to these values; the casts restate them.
@@ -183,6 +212,17 @@ export async function claimAckPromise(database: Database, id: string, now: Date)
     .where(and(eq(schema.ackPromises.id, id), isNull(schema.ackPromises.claimedAt)))
     .returning({ id: schema.ackPromises.id });
   return rows.length > 0;
+}
+
+/**
+ * Keep a due promise out of the sweep until `until`, unclaimed: its note is owed, and it is
+ * night on the parent's clock. Two overlapping ticks write the same morning.
+ */
+export async function holdAckPromise(database: Database, id: string, until: Date): Promise<void> {
+  await database
+    .update(schema.ackPromises)
+    .set({ heldUntil: until })
+    .where(and(eq(schema.ackPromises.id, id), isNull(schema.ackPromises.claimedAt)));
 }
 
 /** Settle a claimed promise with its named outcome, and its audit row, in one transaction. */
@@ -225,10 +265,13 @@ export async function settleAckPromise(
  *
  * `answered`: the turn ledger has an answered row for that text (wiring.ts
  * auditTurnLedger), whichever path answered it: the turn itself, its re-drive, or a turn it
- * was folded into. `closed_unanswered`: the turn is over (its routed claim is written, see
- * route.ts `done`) and nothing answered it, which includes an answered row marked
- * {@link TURN_NOTHING_SENT}: that row stops a re-drive, but the parent heard nothing. `open`:
- * neither, so the text is still being worked on or waits in the queue for its next attempt.
+ * was folded into. `closed_unanswered` needs a positive fact that nothing reached the
+ * parent: an answered row marked {@link TURN_NOTHING_SENT} (it stops a re-drive, but they
+ * heard nothing), or a closed turn with no reply on the delivery ledger since the ack. The
+ * routed claim alone is not that fact: the answered row is written after Linq took the reply
+ * and its failure is swallowed (route.ts `claimAnswerQuietly`), so a closed turn with no
+ * answered row may still have answered. `open`: neither, so the text is still being worked
+ * on or waits in the queue for its next attempt.
  *
  * The answered read is family-scoped and starts at the ask, so it rides the audit log's
  * (family_id, occurred_at) index.
@@ -237,7 +280,10 @@ export type AckReplyState = 'answered' | 'closed_unanswered' | 'open';
 
 export async function ackReplyState(
   database: Database,
-  promise: Pick<DueAckPromise, 'familyId' | 'inboundChannelMessageId' | 'askedAt'>,
+  promise: Pick<
+    DueAckPromise,
+    'familyId' | 'parentUserId' | 'inboundChannelMessageId' | 'askedAt' | 'createdAt'
+  >,
 ): Promise<AckReplyState> {
   const answered = await database
     .select({ after: schema.auditLog.after })
@@ -262,7 +308,45 @@ export async function ackReplyState(
     .from(schema.channelTurnAnswerClaims)
     .where(eq(schema.channelTurnAnswerClaims.channelMessageId, promise.inboundChannelMessageId))
     .limit(1);
-  return closed.length > 0 ? 'closed_unanswered' : 'open';
+  if (closed.length === 0) return 'open';
+  return (await replyOnLedgerSinceAck(database, promise)) ? 'answered' : 'closed_unanswered';
+}
+
+/** Lines that go out beside an answer and are never one. */
+const NOT_AN_ANSWER = [
+  ACK_ETA_TEMPLATE_KEY,
+  ACK_LATE_NOTE_TEMPLATE_KEY,
+  HOLDING_LINE_TEMPLATE_KEY,
+  SIDE_TURN_TEMPLATE_KEY,
+];
+
+/**
+ * Whether the delivery ledger has a reply to this parent since the promise was written. The
+ * promise is written before the answer can go (the ack's `settle`), so the bound is safe.
+ */
+async function replyOnLedgerSinceAck(
+  database: Database,
+  promise: Pick<DueAckPromise, 'familyId' | 'parentUserId' | 'createdAt'>,
+): Promise<boolean> {
+  const replies = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, promise.parentUserId),
+        eq(schema.channelMessages.category, 'reply'),
+        gt(schema.channelMessages.createdAt, promise.createdAt),
+        eq(schema.channelMessages.familyId, promise.familyId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+        or(
+          isNull(schema.channelMessages.templateKey),
+          notInArray(schema.channelMessages.templateKey, NOT_AN_ANSWER),
+        ),
+      ),
+    )
+    .limit(1);
+  return replies.length > 0;
 }
 
 /**
@@ -305,8 +389,8 @@ export async function recordLateNote(
         parentUserId: input.promise.parentUserId,
         channel: input.sent.channel,
         direction: 'out',
-        // A reply-class line: part of the conversation the parent started minutes ago, so
-        // no proactive cap or category budget counts it.
+        // A reply-class line: part of the conversation the parent started, so no proactive
+        // cap or category budget counts it.
         category: 'reply',
         templateKey: ACK_LATE_NOTE_TEMPLATE_KEY,
         providerMessageId: input.sent.providerMessageId,

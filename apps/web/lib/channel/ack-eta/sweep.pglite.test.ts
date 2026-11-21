@@ -1,17 +1,22 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { inProactiveQuietHours, proactiveFloorOpensAt } from '~/lib/channel/outbound-gate';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { auditTurnLedger } from '~/lib/channel/router/wiring';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { AckCompose, LateNoteFacts } from './compose';
+import { ackDeadlinePorts } from './production';
 import { recordAckPromise } from './promise';
 import {
   ACK_LATE_NOTE_STALE_MS,
+  ACK_NOTE_WRITE_HEADROOM_MS,
+  ACK_SWEEP_BATCH,
   ACK_SWEEP_BUDGET_MS,
   type AckDeadlinePorts,
   runAckDeadlineSweep,
 } from './sweep';
+import { retryCeilingMs } from './window';
 
 /**
  * VIL-717 · the deadline sweep against the real DDL and the real turn ledger. The writer is
@@ -40,7 +45,10 @@ const PROMISED_MINUTES = 5;
 const DUE_AT = new Date(ACK_AT.getTime() + PROMISED_MINUTES * 60_000);
 const AFTER_DUE = new Date(DUE_AT.getTime() + 30_000);
 
-async function seedPromise(channel: 'sms' | 'imessage' = 'imessage') {
+async function seedPromise(
+  channel: 'sms' | 'imessage' = 'imessage',
+  times: { askedAt: Date; ackAt: Date } = { askedAt: ASKED_AT, ackAt: ACK_AT },
+) {
   const { familyId, parentUserId } = await seedFamily(db.database);
   const [inbound] = await db.database
     .insert(schema.channelMessages)
@@ -78,9 +86,9 @@ async function seedPromise(channel: 'sms' | 'imessage' = 'imessage') {
     providerChatId: channel === 'imessage' ? 'chat-one' : null,
     replyToMessageId: channel === 'imessage' ? 'parent-msg-1' : null,
     language: 'en',
-    askedAt: ASKED_AT,
+    askedAt: times.askedAt,
     promisedMinutes: PROMISED_MINUTES,
-    now: ACK_AT,
+    now: times.ackAt,
   });
   if (recorded.status !== 'recorded') throw new Error(`seed: promise ${recorded.status}`);
   return { familyId, parentUserId, inboundId: inbound.id, promiseId: recorded.promiseId };
@@ -102,6 +110,7 @@ function ports(overrides: Partial<AckDeadlinePorts> & { line?: AckCompose } = {}
         return line ?? { status: 'composed', line: 'a stand-in late note' };
       },
     },
+    quietUntil: async () => null,
     rail: async () => 'clear',
     phone: async () => '+15550000000',
     transport,
@@ -363,5 +372,289 @@ describe('VIL-717 · the deadline sweep', () => {
     expect(p.transport.sent).toEqual([]);
     expect(h.transport.sent).toEqual([]);
     expect(h.facts).toEqual([]);
+  });
+  it.each(['sends_paused', 'opt_out_unread'] as const)(
+    'holds the note on %s: nothing is written or sent, and the reason is on the audit row',
+    async (rail) => {
+      const seeded = await seedPromise();
+      const p = ports({ rail: async () => rail });
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ held: 1 });
+      expect(p.facts).toEqual([]);
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'held' });
+      const audits = await deadlineAudits(seeded.promiseId);
+      expect(audits.map((a) => a.after)).toContainEqual({ outcome: 'held', reason: rail });
+    },
+  );
+
+  it('a clear rail lets the same note go (the control for the holds above)', async () => {
+    const seeded = await seedPromise();
+    const p = ports({ rail: async () => 'clear' });
+
+    const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(summary.settled).toEqual({ sent: 1 });
+    expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'sent' });
+  });
+
+  it('sends nothing when the answer lands while the note is being written', async () => {
+    const seeded = await seedPromise();
+    const p = ports();
+    const lateNote = p.ports.writer.lateNote;
+    p.ports.writer = {
+      ...p.ports.writer,
+      lateNote: async (facts) => {
+        await auditTurnLedger(db.database).recordAnswered({
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          channelMessageId: seeded.inboundId,
+          folded: [],
+        });
+        return lateNote(facts);
+      },
+    };
+
+    const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    // The writer ran, so it is the read after it that stopped the send.
+    expect(p.facts).toHaveLength(1);
+    expect(summary.settled).toEqual({ answered: 1 });
+    expect(p.transport.sent).toEqual([]);
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.map((a) => a.after)).toContainEqual({
+      outcome: 'answered',
+      reason: 'while_writing',
+    });
+  });
+
+  describe('a turn that closed with its answered row missing', () => {
+    async function outbound(
+      seeded: { familyId: string; parentUserId: string },
+      templateKey: string | null,
+      status: 'sent' | 'failed' = 'sent',
+    ) {
+      await db.database.insert(schema.channelMessages).values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status,
+        templateKey,
+      });
+    }
+
+    it('a reply Linq took is an answer: no note says nothing more is coming', async () => {
+      const seeded = await seedPromise('sms');
+      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
+      await outbound(seeded, null);
+      const p = ports();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ answered: 1 });
+      expect(p.facts).toEqual([]);
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'answered' });
+    });
+
+    it.each([
+      ['the ack itself', 'ack_eta', 'sent'],
+      ['a holding tapback', 'holding_line', 'sent'],
+      ["another text's side reply", 'side_turn', 'sent'],
+      ['a send the provider refused', null, 'failed'],
+    ] as const)('%s is not an answer: the note still goes', async (_label, key, status) => {
+      const seeded = await seedPromise('sms');
+      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
+      await outbound(seeded, key, status);
+      const p = ports();
+
+      await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(p.facts.map((f) => f.status)).toEqual(['stopped']);
+      expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+    });
+  });
+
+  describe('quiet hours on the parent’s clock', () => {
+    const TORONTO = 'America/Toronto';
+    const quietUntil = async (_parentUserId: string, at: Date) =>
+      inProactiveQuietHours(at, TORONTO) ? proactiveFloorOpensAt(at, TORONTO) : null;
+    // 23:20 and 23:20:20 in Toronto (UTC-5 in November), so due at 23:25:20.
+    const NIGHT_ASK = new Date('2025-11-21T04:20:00.000Z');
+    const NIGHT_ACK = new Date('2025-11-21T04:20:20.000Z');
+    const NIGHT_TICK = new Date('2025-11-21T04:31:00.000Z');
+    const MORNING = new Date('2025-11-21T13:00:00.000Z');
+    const MORNING_TICK = new Date('2025-11-21T13:00:30.000Z');
+
+    it('production reads the floor from the parent’s own stored zone', async () => {
+      const { parentUserId } = await seedFamily(db.database);
+      await db.database
+        .update(schema.users)
+        .set({ timezone: TORONTO })
+        .where(eq(schema.users.id, parentUserId));
+      const wired = ackDeadlinePorts(db.database);
+
+      await expect(wired.quietUntil(parentUserId, NIGHT_TICK)).resolves.toEqual(MORNING);
+      // 12:00 in Toronto.
+      await expect(
+        wired.quietUntil(parentUserId, new Date('2025-11-21T17:00:00.000Z')),
+      ).resolves.toBeNull();
+    });
+
+    it('holds a note owed at 23:31, unclaimed, and sends nothing until 08:00', async () => {
+      const seeded = await seedPromise('sms', { askedAt: NIGHT_ASK, ackAt: NIGHT_ACK });
+      const p = ports({ quietUntil });
+
+      const night = await runAckDeadlineSweep(db.database, p.ports, NIGHT_TICK);
+
+      expect(night).toMatchObject({ due: 1, claimed: 0, quietHeld: 1, settled: {} });
+      expect(p.facts).toEqual([]);
+      expect(p.transport.sent).toEqual([]);
+      const held = await promiseRow(seeded.promiseId);
+      expect(held?.claimedAt).toBeNull();
+      expect(held?.settledAt).toBeNull();
+      expect(held?.heldUntil).toEqual(MORNING);
+
+      // Not read again through the night: a row held till morning is not due.
+      const dawn = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(MORNING.getTime() - 60_000),
+      );
+      expect(dawn).toMatchObject({ due: 0, claimed: 0, quietHeld: 0 });
+      expect(p.transport.sent).toEqual([]);
+    });
+
+    it('the first tick after 08:00 sends it, and a text past the retry ceiling is told it stopped', async () => {
+      const seeded = await seedPromise('sms', { askedAt: NIGHT_ASK, ackAt: NIGHT_ACK });
+      const p = ports({ quietUntil });
+      await runAckDeadlineSweep(db.database, p.ports, NIGHT_TICK);
+      // The ceiling has passed: the queue gave up on this text during the night.
+      expect(MORNING_TICK.getTime()).toBeGreaterThan(NIGHT_ASK.getTime() + retryCeilingMs());
+
+      const morning = await runAckDeadlineSweep(db.database, p.ports, MORNING_TICK);
+
+      expect(morning.settled).toEqual({ sent: 1 });
+      expect(p.facts.map((f) => [f.status, f.newWithinMinutes])).toEqual([['stopped', null]]);
+      expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'sent' });
+    });
+
+    it('a text still inside the retry ceiling at 08:00 says Hale is still on it', async () => {
+      // 07:50 in Toronto: due at 07:55:20, inside the night, and the queue is still trying.
+      const askedAt = new Date('2025-11-21T12:50:00.000Z');
+      const ackAt = new Date('2025-11-21T12:50:20.000Z');
+      await seedPromise('sms', { askedAt, ackAt });
+      const p = ports({ quietUntil });
+
+      const held = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date('2025-11-21T12:56:00.000Z'),
+      );
+      expect(held).toMatchObject({ claimed: 0, quietHeld: 1 });
+
+      await runAckDeadlineSweep(db.database, p.ports, MORNING_TICK);
+
+      expect(p.facts.map((f) => f.status)).toEqual(['still_working']);
+      expect(p.facts[0]?.newWithinMinutes ?? 0).toBeGreaterThan(PROMISED_MINUTES);
+    });
+
+    it('a promise already answered settles at night: nothing to wait for, nothing sent', async () => {
+      const seeded = await seedPromise('sms', { askedAt: NIGHT_ASK, ackAt: NIGHT_ACK });
+      await auditTurnLedger(db.database).recordAnswered({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channelMessageId: seeded.inboundId,
+        folded: [],
+      });
+      const p = ports({ quietUntil });
+
+      const night = await runAckDeadlineSweep(db.database, p.ports, NIGHT_TICK);
+
+      expect(night).toMatchObject({ claimed: 1, quietHeld: 0, settled: { answered: 1 } });
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({
+        outcome: 'answered',
+        heldUntil: null,
+      });
+    });
+
+    it('the stale clock restarts at 08:00, and a tick that misses that window drops it', async () => {
+      const kept = await seedPromise('sms', { askedAt: NIGHT_ASK, ackAt: NIGHT_ACK });
+      const p = ports({ quietUntil });
+      await runAckDeadlineSweep(db.database, p.ports, NIGHT_TICK);
+
+      const late = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(MORNING.getTime() + ACK_LATE_NOTE_STALE_MS + 1_000),
+      );
+
+      expect(late.settled).toEqual({ stale: 1 });
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(kept.promiseId)).toMatchObject({ outcome: 'stale' });
+    });
+
+    it('a note that could not land before 21:00 waits for morning; one that can, goes', async () => {
+      // 20:50 in Toronto, due at 20:55:20.
+      const askedAt = new Date('2025-11-21T01:50:00.000Z');
+      const ackAt = new Date('2025-11-21T01:50:20.000Z');
+      const eightAm = new Date('2025-11-21T13:00:00.000Z');
+      const tooLate = await seedPromise('sms', { askedAt, ackAt });
+      const p = ports({ quietUntil });
+
+      // Inside the write headroom of 21:00.
+      const close = new Date(
+        new Date('2025-11-21T02:00:00.000Z').getTime() - ACK_NOTE_WRITE_HEADROOM_MS + 1_000,
+      );
+      const held = await runAckDeadlineSweep(db.database, p.ports, close);
+
+      expect(held).toMatchObject({ claimed: 0, quietHeld: 1 });
+      expect(p.transport.sent).toEqual([]);
+      expect((await promiseRow(tooLate.promiseId))?.heldUntil).toEqual(eightAm);
+
+      // The control: the same evening, clear of the headroom.
+      await db.exec('truncate table families, users cascade');
+      await seedPromise('sms', { askedAt, ackAt });
+      const clear = ports({ quietUntil });
+      const early = new Date(
+        new Date('2025-11-21T02:00:00.000Z').getTime() - ACK_NOTE_WRITE_HEADROOM_MS - 1_000,
+      );
+      const sent = await runAckDeadlineSweep(db.database, clear.ports, early);
+      expect(sent).toMatchObject({ claimed: 1, quietHeld: 0, settled: { sent: 1 } });
+      expect(clear.transport.bodies()).toEqual(['a stand-in late note']);
+    });
+
+    it('rows held for the night never crowd out a parent whose day it is', async () => {
+      const nightParents = new Set<string>();
+      for (let i = 0; i < ACK_SWEEP_BATCH; i += 1) {
+        const seeded = await seedPromise('sms', {
+          askedAt: NIGHT_ASK,
+          ackAt: new Date(NIGHT_ACK.getTime() + i * 1_000),
+        });
+        nightParents.add(seeded.parentUserId);
+      }
+      const daytime = await seedPromise('sms', {
+        askedAt: NIGHT_ASK,
+        ackAt: new Date(NIGHT_ACK.getTime() + ACK_SWEEP_BATCH * 1_000),
+      });
+      const p = ports({
+        quietUntil: async (parentUserId, at) =>
+          nightParents.has(parentUserId) ? proactiveFloorOpensAt(at, TORONTO) : null,
+      });
+
+      await runAckDeadlineSweep(db.database, p.ports, NIGHT_TICK);
+      await runAckDeadlineSweep(db.database, p.ports, new Date(NIGHT_TICK.getTime() + 60_000));
+
+      expect(p.transport.sent.map((s) => s.sendKey)).toEqual([
+        `ack_eta_late_note:${daytime.promiseId}`,
+      ]);
+    });
   });
 });

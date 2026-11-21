@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
+import { buildOutboundGatePorts, proactiveFloorClosedUntil } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { proactiveSendsPaused } from '~/lib/channel/proactive/flag';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
@@ -74,6 +75,8 @@ export function ackDeadlinePorts(database: Database): AckDeadlinePorts {
     enabled: (familyId) => ackEtaEnabled(familyId),
     clock: () => Date.now(),
     writer: createAckLineWriter(noteClient),
+    quietUntil: (parentUserId, now) =>
+      proactiveFloorClosedUntil(buildOutboundGatePorts(database), parentUserId, now),
     rail: (parentUserId) => noteRail(database, parentUserId),
     phone: (parentUserId) => resolveSendablePhone(database, parentUserId),
     // The router's own way out: Linq for both doors, the 1:1 chat on iMessage.

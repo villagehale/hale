@@ -5,8 +5,8 @@ import { type EnvBag, isEnabled, posthogFlagsPathEnabled } from '@hale/flags';
  *
  * Default off. Exactly `true` turns it on (`ack-eta` in packages/flags/src/catalog.ts);
  * `true\n`, `TRUE` and unset stay off. Off, a slow 1:1 turn is exactly today's: a tapback
- * on iMessage when reactions are lit, nothing on SMS, and the drain's deadline leg names
- * `flag_off` and reads nothing.
+ * on iMessage when reactions are lit, nothing on SMS. The drain's deadline leg names
+ * `flag_off` and reads nothing, unless PostHog flags are on ({@link ackEtaMayBeLit}).
  */
 export const ACK_ETA_ENABLED_ENV = 'ACK_ETA_ENABLED';
 
