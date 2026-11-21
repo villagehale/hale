@@ -8,9 +8,11 @@ import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group
 import type { PrivateAsideModel } from '../group-private-aside';
 import { postgresGroupPlanCalendarWriter } from '../group-plan-rsvp/calendar';
 import { runGroupPlanFollowups } from '../group-plan-rsvp/followups';
+import { runGroupPlanMovedNoticeRedrive } from '../group-plan-rsvp/moved-redrive';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
 import { handleLinqGroupMessage } from '../inbound';
+import { leaveFamilyFromSharedGroup } from '../multi-family';
 import type { SharedGroupReader } from '../shared-group-reading';
 import { fakeSharedGroupComposer } from '../shared-group-voice-fake';
 import { considerGroupExperience } from './inbound';
@@ -825,6 +827,101 @@ describe('the OK asks a lock sends to yes households go out by day only', () => 
     const { lock } = await lockAt(NOW);
     expect(lock.texted.map((line) => line.to)).toEqual([PARENT_A]);
     expect(lock.texted[0]?.body).toContain('calendar_ask');
+  });
+
+  // 13:15Z is 08:15 in Toronto: the shared morning re-drive slot.
+  const MORNING_SLOT = new Date('2026-11-13T13:15:00.000Z');
+
+  async function redriveAt(now: Date) {
+    const texted: { to: string; body: string }[] = [];
+    const result = await runGroupPlanMovedNoticeRedrive({
+      database: db.database,
+      now,
+      composer: fakeGroupPlanRsvpComposer(),
+      oneToOne: {
+        text: async ({ to, body }: { to: string; body: string }) => {
+          texted.push({ to, body });
+          return { providerMessageId: `dm-r-${texted.length}`, chatId: `dm-r-${texted.length}` };
+        },
+        link: async () => ({ providerMessageId: 'unused' }),
+      },
+    });
+    return { texted, result };
+  }
+
+  async function consentRows() {
+    return db.database
+      .select({
+        familyId: schema.linqGroupPlanCalendarConsents.familyId,
+        status: schema.linqGroupPlanCalendarConsents.status,
+      })
+      .from(schema.linqGroupPlanCalendarConsents);
+  }
+
+  it('the ask a night lock held goes out once, in the morning slot', async () => {
+    const { lock } = await lockAt(NIGHT);
+    expect(lock.texted).toEqual([]);
+    expect(await consentRows()).toEqual([]);
+
+    const before = await redriveAt(new Date('2026-11-13T05:00:00.000Z'));
+    expect(before.texted).toEqual([]);
+
+    const morning = await redriveAt(MORNING_SLOT);
+    expect(morning.texted.map((line) => line.to)).toEqual([PARENT_A]);
+    expect(morning.texted[0]?.body).toContain('calendar_ask');
+    expect(morning.result.asksSent).toBe(1);
+    expect((await consentRows()).map((row) => row.status)).toEqual(['asked']);
+
+    const again = await redriveAt(new Date(MORNING_SLOT.getTime() + 600_000));
+    expect(again.texted).toEqual([]);
+    expect(again.result.asksSent).toBe(0);
+  });
+
+  it('a household whose answer changed before morning is not asked', async () => {
+    const { picnic } = await lockAt(NIGHT);
+    await db.database
+      .update(schema.linqGroupPlanRsvps)
+      .set({ response: 'no' })
+      .where(eq(schema.linqGroupPlanRsvps.planId, picnic.id));
+    const morning = await redriveAt(MORNING_SLOT);
+    expect(morning.texted).toEqual([]);
+    expect(await consentRows()).toEqual([]);
+  });
+
+  it('a household that left the chat before morning is not asked', async () => {
+    const { picnic } = await lockAt(NIGHT);
+    const plans = createPostgresGroupPlanRsvpStore(db.database);
+    const [yes] = await plans.listYesRsvps(picnic.id);
+    const left = await leaveFamilyFromSharedGroup(db.database, {
+      chatId: CHAT,
+      familyId: picnic.familyId,
+      userId: yes?.userId as string,
+      verbatim: 'we are out of this group',
+      now: NIGHT,
+      send: async () => ({ providerMessageId: 'g-left' }),
+    });
+    expect(left.outcome).toBe('left');
+    const morning = await redriveAt(MORNING_SLOT);
+    expect(morning.texted).toEqual([]);
+    expect(await consentRows()).toEqual([]);
+  });
+
+  it('a plan that closed before morning owes no ask', async () => {
+    const { picnic } = await lockAt(NIGHT);
+    await db.database
+      .update(schema.linqGroupPlans)
+      .set({ closedAt: NIGHT })
+      .where(eq(schema.linqGroupPlans.id, picnic.id));
+    const morning = await redriveAt(MORNING_SLOT);
+    expect(morning.texted).toEqual([]);
+    expect(await consentRows()).toEqual([]);
+  });
+
+  it('a daytime lock leaves nothing owed for the morning', async () => {
+    await lockAt(NOW);
+    expect((await consentRows()).map((row) => row.status)).toEqual(['asked']);
+    const morning = await redriveAt(MORNING_SLOT);
+    expect(morning.texted).toEqual([]);
   });
 });
 

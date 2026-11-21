@@ -213,6 +213,7 @@ export const AUDIT_VERBS = [
   'linq_group_plan_calendar_withdrawn',
   'linq_group_plan_calendar_moved',
   'linq_group_plan_calendar_which_asked',
+  'linq_group_plan_calendar_ask_held',
   'linq_group_plan_closed',
   'linq_group_plan_time_set',
   'linq_group_poll_started',
@@ -971,6 +972,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_plan_calendar_which_asked: {
     sentence: 'Hale asked which group plan you meant before putting one on your calendar',
+    family: 'awaiting',
+  },
+  linq_group_plan_calendar_ask_held: {
+    sentence: 'Hale is waiting for the morning to ask about putting a group plan on your calendar',
     family: 'awaiting',
   },
   linq_group_plan_closed: {

@@ -408,9 +408,12 @@ export async function settleGroupPlanCalendarAfterRsvp(
       : null;
     const zone = home?.status === 'one' ? await store.householdTimeZone(home.familyId) : null;
     if (zone === null || inProactiveQuietHours(ports.now, zone)) {
+      if (home?.status === 'one' && !(await store.loadCalendarConsent(plan.id, home.familyId))) {
+        await store.noteCalendarAskHeld({ planId: plan.id, familyId: home.familyId });
+      }
       console.info(
         { outcome: 'group_plan_calendar_ask_held_quiet', zoneKnown: zone !== null },
-        'group plan calendar: an ask Hale would start waits; not sent outside the daytime',
+        'group plan calendar: an ask Hale would start waits for the morning',
       );
       return undefined;
     }

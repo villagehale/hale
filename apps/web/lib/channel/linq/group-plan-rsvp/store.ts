@@ -164,6 +164,9 @@ export async function openPlanOrNone(
 /** The audit verb a moved calendar copy writes; the held notice re-drive reads it back. */
 export const GROUP_PLAN_CALENDAR_MOVED_VERB = 'linq_group_plan_calendar_moved';
 
+/** The audit verb of an OK ask quiet hours held; the morning re-drive reads it back. */
+export const GROUP_PLAN_CALENDAR_ASK_HELD_VERB = 'linq_group_plan_calendar_ask_held';
+
 export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
   /** The chat's one open plan: the read the path behind a dark scenes flag keeps using. */
@@ -227,6 +230,8 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   /** The titles of these chats' most recently closed plans, newest first. */
   closedPlanTitles(chatIds: readonly string[]): Promise<string[]>;
   /** A parent's first name, to address a line to them. */
+  /** A calendar ask this household is owed waits for the morning re-drive. */
+  noteCalendarAskHeld(input: { planId: string; familyId: string }): Promise<void>;
   /** The line that was to announce this new plan never landed: it closes as `unsent`. */
   closeUnheardPlan(planId: string, now: Date): Promise<void>;
   /**
@@ -1159,6 +1164,16 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .returning({ id: schema.auditLog.id });
       if (!row) throw new Error('noteCalendarMoved: audit_log insert returned no row');
       return row.id;
+    },
+
+    async noteCalendarAskHeld(input) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+        targetTable: 'linq_group_plans',
+        targetId: input.planId,
+      });
     },
 
     async noteCalendarRemoved(input) {

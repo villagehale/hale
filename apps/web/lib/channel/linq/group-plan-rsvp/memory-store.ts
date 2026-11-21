@@ -13,7 +13,11 @@ import type {
   GroupPlanRsvpStore,
   UpsertRsvpInput,
 } from './store';
-import { GROUP_PLAN_PAST_AFTER_MS, GROUP_PLAN_UNTIMED_IDLE_MS } from './store';
+import {
+  GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+  GROUP_PLAN_PAST_AFTER_MS,
+  GROUP_PLAN_UNTIMED_IDLE_MS,
+} from './store';
 import {
   type PlanExpectedRow,
   type PlanRsvpResponse,
@@ -561,6 +565,13 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         after: { familyEventId: input.familyEventId, startsAt: input.startsAt.toISOString() },
       });
       return randomUUID();
+    },
+
+    async noteCalendarAskHeld(input) {
+      world.audits.push({
+        actionTaken: GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+        after: { familyId: input.familyId },
+      });
     },
 
     async noteCalendarRemoved(input) {
