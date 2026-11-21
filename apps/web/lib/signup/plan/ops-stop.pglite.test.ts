@@ -627,6 +627,7 @@ describe('a stop that lands while the run is going', () => {
     ['not open yet', { ...CLOSED, outcome: 'not_open', detail: 'none' }],
     ['a failed run', { ...CLOSED, outcome: 'error', detail: 'run_failed' }],
     ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
+    ['payment details entered', { ...CLOSED, outcome: 'error', detail: 'payment_boundary' }],
   ])('ending at %s, the parent hears nothing and the browser is let go', async (_name, ending) => {
     const plan = await dueFamily();
     const runner = runEndingAt(ending, opsStop);
