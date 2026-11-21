@@ -1,10 +1,14 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, eq, inArray } from 'drizzle-orm';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import {
+  type InviteBodyResult,
+  closeCoParentInviteWithoutYes,
   familyHasCoParent,
   loadPendingAssent,
   recordCoParentAssent,
+  reopenCoParentInviteAfterFailedSend,
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
@@ -103,7 +107,9 @@ export type CoParentNumberOutcome =
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
     }
   /** The invite text could not be written. Nobody was texted. */
-  | { status: 'ask_unwritten'; reply: null };
+  | { status: 'ask_unwritten'; reply: null }
+  /** Another turn holds this invite's claim, and with it the send and the reply. */
+  | { status: 'already_claimed'; reply: null };
 
 /**
  * iMessage, flag on, and the stored choice is a new group. A confirmed phone
@@ -248,18 +254,7 @@ export async function deliverCoParentNumberInvite(
     return held(line);
   }
 
-  const sms = await input.sendSms({
-    to: parsed.phoneE164,
-    body: inviteText,
-  });
-  await ledgerSmsInvite(database, {
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    now: input.now,
-    providerMessageId: sms.providerMessageId,
-  });
-
-  const sent = await recordCoParentAssent(database, {
+  const assent = {
     invite: started.invite,
     inviterName: name,
     language,
@@ -268,12 +263,29 @@ export async function deliverCoParentNumberInvite(
     now: input.now,
     ask: input.ask,
     prepared: inviteText,
-  });
-  if (sent.status !== 'ready') {
-    console.warn(
-      { familyId: input.familyId },
-      'coparent number invite: the SMS send landed and the assent was already claimed',
-    );
+  };
+  if (askPolicyTiersEnabled(input.familyId)) {
+    const sent = await sendOnRecordedYes(database, input, parsed.phoneE164, assent);
+    if (sent === 'already_claimed') return { status: 'already_claimed', reply: null };
+  } else {
+    const sms = await input.sendSms({
+      to: parsed.phoneE164,
+      body: inviteText,
+    });
+    await ledgerSmsInvite(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+      providerMessageId: sms.providerMessageId,
+    });
+
+    const sent = await recordCoParentAssent(database, assent);
+    if (sent.status !== 'ready') {
+      console.warn(
+        { familyId: input.familyId },
+        'coparent number invite: the SMS send landed and the assent was already claimed',
+      );
+    }
   }
 
   return {
@@ -281,6 +293,60 @@ export async function deliverCoParentNumberInvite(
     reply: await coParentInviteSentAck(label, language),
     templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
   };
+}
+
+/**
+ * VIL-719 · with the ask policy on, the parent's yes is on record before anyone is texted.
+ * The claim and the consent row commit together, so a write that fails leaves nothing sent.
+ *
+ * Each failure leaves the invite where a re-drive of this turn does the right thing:
+ *  - the yes could not be written: closed, so the re-drive starts clean and records it;
+ *  - the send failed: back to waiting on the parent, so the re-drive cannot text them twice
+ *    (a timeout may still have landed);
+ *  - the ledger write failed after the send: left open, so the re-drive reads it as already
+ *    invited and texts no one.
+ */
+async function sendOnRecordedYes(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    sendSms: CoParentNumberDeps['sendSms'];
+  },
+  to: string,
+  assent: Parameters<typeof recordCoParentAssent>[1],
+): Promise<'sent' | 'already_claimed'> {
+  const logUnrepaired = (err: unknown) =>
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'coparent number invite: could not repair the invite after a failure',
+    );
+  let recorded: InviteBodyResult;
+  try {
+    recorded = await recordCoParentAssent(database, assent);
+  } catch (err) {
+    await closeCoParentInviteWithoutYes(database, assent.invite, input.now).catch(logUnrepaired);
+    throw err;
+  }
+  if (recorded.status !== 'ready') return 'already_claimed';
+
+  let sms: { providerMessageId: string };
+  try {
+    sms = await input.sendSms({ to, body: recorded.body });
+  } catch (err) {
+    await reopenCoParentInviteAfterFailedSend(database, assent.invite, input.now).catch(
+      logUnrepaired,
+    );
+    throw err;
+  }
+  await ledgerSmsInvite(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+    providerMessageId: sms.providerMessageId,
+  });
+  return 'sent';
 }
 
 async function askWasDelivered(

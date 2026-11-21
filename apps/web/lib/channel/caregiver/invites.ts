@@ -866,6 +866,71 @@ export type InviteBodyResult =
   | { status: 'unwritten' };
 
 /**
+ * VIL-719 · the parent's yes could not be written, so nobody was texted. Closed so the
+ * turn's re-drive opens a clean invite and records the yes then. Only an invite still
+ * waiting on the parent closes: a claim another turn won in the meantime stands.
+ */
+export async function closeCoParentInviteWithoutYes(
+  database: Database,
+  invite: CoParentInvite,
+  now: Date,
+): Promise<void> {
+  const closed = await database
+    .update(schema.caregiverInvites)
+    .set({ state: 'superseded', closedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.caregiverInvites.id, invite.id),
+        eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+        isNull(schema.caregiverInvites.closedAt),
+      ),
+    )
+    .returning({ id: schema.caregiverInvites.id });
+  if (closed.length === 0) return;
+  await database.insert(schema.auditLog).values({
+    familyId: invite.familyId,
+    actor: invite.invitedByUserId,
+    actionTaken: inviteVerb(invite.role, 'superseded'),
+    targetTable: 'caregiver_invites',
+    targetId: invite.id,
+    after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
+  });
+}
+
+/**
+ * VIL-719 · the parent's yes is on record and the text to the person they named did not
+ * go, or cannot be shown to have gone. The invite returns to waiting on the parent, the
+ * state it held before the claim, so a re-drive finds it pending and never texts them a
+ * second time. The consent row stands: the parent did say yes.
+ */
+export async function reopenCoParentInviteAfterFailedSend(
+  database: Database,
+  invite: CoParentInvite,
+  now: Date,
+): Promise<void> {
+  const reopened = await database
+    .update(schema.caregiverInvites)
+    .set({ state: 'awaiting_parent_assent', updatedAt: now })
+    .where(
+      and(
+        eq(schema.caregiverInvites.id, invite.id),
+        eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
+        isNull(schema.caregiverInvites.closedAt),
+      ),
+    )
+    .returning({ id: schema.caregiverInvites.id });
+  if (reopened.length === 0) return;
+  await database.insert(schema.auditLog).values({
+    familyId: invite.familyId,
+    actor: 'system',
+    actionTaken: 'co_parent_invite_send_unconfirmed',
+    targetTable: 'caregiver_invites',
+    targetId: invite.id,
+    after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
+  });
+}
+
+/**
  * The parent's confirmation: the authorisation row, then the state advance, in one
  * transaction. The caregiver's clock restarts here — they have their own 72 hours.
  * Returns the body to text the caregiver, so the caller cannot advance the state

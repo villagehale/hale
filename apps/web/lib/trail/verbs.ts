@@ -404,6 +404,8 @@ export const AUDIT_VERBS = [
   'co_parent_invite_seat_taken',
   'co_parent_invite_blocked_prior_refusal',
   'co_parent_invite_blocked',
+  // VIL-719. A text to a co-parent that failed or could not be confirmed after the parent's yes.
+  'co_parent_invite_send_unconfirmed',
   'co_parent_sms_inbound',
   'co_parent_sms_outbound',
   'co_parent_access_withdrawn',
@@ -1642,6 +1644,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // happen: when the ask is refused, and when the parent's yes is refused after the fact.
   co_parent_invite_blocked: {
     sentence: 'Hale did not text the number you gave me',
+    family: 'note',
+  },
+  // Worded for both endings: a provider refusal, and a send whose result never came back.
+  co_parent_invite_send_unconfirmed: {
+    sentence: 'Hale could not confirm its text to the number you gave me went out',
     family: 'note',
   },
   co_parent_invite_blocked_prior_refusal: {

@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
@@ -124,6 +124,52 @@ async function inviteStates(): Promise<string[]> {
     .select({ state: schema.caregiverInvites.state })
     .from(schema.caregiverInvites);
   return rows.map((row) => row.state);
+}
+
+async function grantRows(familyId: string): Promise<number> {
+  const rows = await db.database
+    .select({ id: schema.consentRecords.id })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, 'co_parent_access_grant'),
+        eq(schema.consentRecords.granted, true),
+      ),
+    );
+  return rows.length;
+}
+
+async function inviteLedgerRows(): Promise<number> {
+  const rows = await db.database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.templateKey, SMS_COPARENT_INVITE_TEMPLATE_KEY));
+  return rows.length;
+}
+
+async function auditVerbs(): Promise<string[]> {
+  const rows = await db.database
+    .select({ actionTaken: schema.auditLog.actionTaken })
+    .from(schema.auditLog);
+  return rows.map((row) => row.actionTaken);
+}
+
+/** A real write failure at the table, not a fake of the function under test. */
+async function failInserts(table: string, when = 'true'): Promise<void> {
+  await db.exec(`
+    create or replace function fail_insert_for_test() returns trigger as $$
+    begin
+      raise exception 'write failed for test';
+    end;
+    $$ language plpgsql;
+    create trigger fail_insert_for_test before insert on ${table}
+      for each row when (${when}) execute function fail_insert_for_test();
+  `);
+}
+
+async function restoreInserts(table: string): Promise<void> {
+  await db.exec(`drop trigger if exists fail_insert_for_test on ${table};`);
 }
 
 async function groupChatId(): Promise<string | null> {
@@ -283,6 +329,155 @@ describe('a number on the SMS door', () => {
     expect(outcome).toEqual({ status: 'not_pending' });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+  });
+
+  describe('VIL-719 the parent yes is on record before anyone is texted', () => {
+    const CLAIM_LOST_TRIGGER = 'lose_invite_claim_for_test';
+
+    afterEach(async () => {
+      await restoreInserts('consent_records');
+      await restoreInserts('channel_messages');
+      await db.exec(`drop trigger if exists ${CLAIM_LOST_TRIGGER} on caregiver_invites;`);
+    });
+
+    async function seedTurn() {
+      const seeded = await seedHousehold();
+      const inboundId = await seedAsk(seeded, 'sms');
+      const turn = {
+        ...seeded,
+        body: '9055550182',
+        now: NOW,
+        inboundChannelMessageId: inboundId,
+        ask: askWriter(),
+      };
+      return { seeded, turn };
+    }
+
+    it('policy on: the consent row exists at the moment the text leaves', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const grantsAtSend: number[] = [];
+      const sendSms = vi.fn(async () => {
+        grantsAtSend.push(await grantRows(seeded.familyId));
+        return { providerMessageId: 'SM_recorded_first' };
+      });
+      const outcome = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(grantsAtSend).toEqual([1]);
+      expect(outcome).toEqual({
+        status: 'sent',
+        reply: await coParentInviteSentAck('them', 'en'),
+        templateKey: 'coparent:number_invite_ack',
+      });
+      expect(await grantRows(seeded.familyId)).toBe(1);
+      expect(await inviteLedgerRows()).toBe(1);
+      expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+    });
+
+    it('policy off: today’s order, the text leaves before the consent row', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+      const { seeded, turn } = await seedTurn();
+      const grantsAtSend: number[] = [];
+      const sendSms = vi.fn(async () => {
+        grantsAtSend.push(await grantRows(seeded.familyId));
+        return { providerMessageId: 'SM_today' };
+      });
+      const outcome = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(grantsAtSend).toEqual([0]);
+      expect(outcome.status).toBe('sent');
+      expect(await grantRows(seeded.familyId)).toBe(1);
+    });
+
+    it('policy on: a yes that cannot be written texts no one, and the re-drive finishes it', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_after_redrive' }));
+
+      await failInserts('consent_records');
+      await expect(
+        deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+      ).rejects.toThrow();
+      expect(sendSms).not.toHaveBeenCalled();
+      expect(await grantRows(seeded.familyId)).toBe(0);
+      expect(await inviteLedgerRows()).toBe(0);
+      expect(await inviteStates()).toEqual(['superseded']);
+
+      await restoreInserts('consent_records');
+      const redriven = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(redriven.status).toBe('sent');
+      expect(sendSms).toHaveBeenCalledTimes(1);
+      expect(sendSms).toHaveBeenCalledWith({
+        to: COPARENT_PHONE,
+        body: writtenAsk({ kind: 'coparent_invite', inviterName: 'Jimmy', language: 'en' }),
+      });
+      expect(await grantRows(seeded.familyId)).toBe(1);
+      expect(await inviteLedgerRows()).toBe(1);
+      expect((await inviteStates()).sort()).toEqual(['awaiting_caregiver_reply', 'superseded']);
+    });
+
+    it('policy on: a send that fails keeps the yes, waits on the parent, and never texts twice', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi
+        .fn(async () => ({ providerMessageId: 'SM_second_attempt' }))
+        .mockRejectedValueOnce(new Error('linq timed out'));
+
+      await expect(
+        deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+      ).rejects.toThrow('linq timed out');
+      expect(sendSms).toHaveBeenCalledTimes(1);
+      expect(await grantRows(seeded.familyId)).toBe(1);
+      expect(await inviteLedgerRows()).toBe(0);
+      expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+      expect(await auditVerbs()).toContain('co_parent_invite_send_unconfirmed');
+
+      const redriven = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(redriven).toEqual({ status: 'not_pending' });
+      expect(sendSms).toHaveBeenCalledTimes(1);
+    });
+
+    it('policy on: a ledger write that fails after the text left does not text it again', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_landed' }));
+
+      await failInserts(
+        'channel_messages',
+        `new.template_key = '${SMS_COPARENT_INVITE_TEMPLATE_KEY}'`,
+      );
+      await expect(
+        deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+      ).rejects.toThrow();
+      expect(sendSms).toHaveBeenCalledTimes(1);
+      expect(await grantRows(seeded.familyId)).toBe(1);
+      expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+
+      await restoreInserts('channel_messages');
+      const redriven = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(redriven.status).toBe('refused');
+      expect(sendSms).toHaveBeenCalledTimes(1);
+    });
+
+    it('policy on: a turn that loses the claim sends nothing and says nothing', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_never' }));
+      await db.exec(`
+        create or replace function lose_invite_claim_for_test() returns trigger as $$
+        begin
+          return null;
+        end;
+        $$ language plpgsql;
+        create trigger ${CLAIM_LOST_TRIGGER} before update on caregiver_invites
+          for each row when (new.state = 'awaiting_caregiver_reply')
+          execute function lose_invite_claim_for_test();
+      `);
+      const outcome = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      expect(outcome).toEqual({ status: 'already_claimed', reply: null });
+      expect(sendSms).not.toHaveBeenCalled();
+      expect(await grantRows(seeded.familyId)).toBe(0);
+      expect(await inviteLedgerRows()).toBe(0);
+    });
   });
 
   it('redirects and does not text when the SMS flag is dark', async () => {
