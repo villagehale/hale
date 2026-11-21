@@ -67,7 +67,11 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     claimShadow: { dispatch: () => 'off' },
-    claimEnforce: { enforces: () => false, decide: async () => ({ status: 'off' as const }) },
+    claimEnforce: {
+      enforces: () => false,
+      decide: async () => ({ status: 'off' as const }),
+      recordRefusal: async () => 'off' as const,
+    },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -1012,6 +1016,7 @@ describe('VIL-581 · enforce at the dispatch choke reads model-written bodies on
   ) {
     const decided: unknown[] = [];
     const shadowed: DispatchShadowInput[] = [];
+    const refusals: unknown[] = [];
     const run = makePorts({
       renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
       claimShadow: {
@@ -1026,9 +1031,13 @@ describe('VIL-581 · enforce at the dispatch choke reads model-written bodies on
           decided.push(input);
           return decision;
         },
+        recordRefusal: async (input) => {
+          refusals.push(input);
+          return 'stored';
+        },
       },
     });
-    return { ...run, decided, shadowed };
+    return { ...run, decided, shadowed, refusals };
   }
 
   it('a clean read sends, and the shadow is not started', async () => {
@@ -1046,11 +1055,30 @@ describe('VIL-581 · enforce at the dispatch choke reads model-written bodies on
   });
 
   it('an unbacked read fails the leg the same way the regex floor does', async () => {
-    const { ports, ledger, shadowed } = enforcePorts({ status: 'unbacked' }, true);
+    const refusal = {
+      claims: [
+        {
+          segment: 0,
+          kind: 'scheduled_event',
+          cited: 'none',
+          status: 'refused' as const,
+          reason: 'no_scheduled_row',
+          why: 'cited_none',
+        },
+      ],
+      candidates: { offered: {}, capped: [] },
+    };
+    const { ports, ledger, shadowed, refusals } = enforcePorts(
+      { status: 'unbacked', refusal },
+      true,
+    );
     const result = await dispatchLoopMessage(message(), ports);
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
     expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
     expect(shadowed).toEqual([]);
+    expect(refusals).toEqual([
+      { familyId: message().familyId, channelMessageId: expect.any(String), refusal },
+    ]);
   });
 
   it('a retryable read failure throws ChannelRetryableError and writes no row', async () => {

@@ -331,7 +331,14 @@ async function dispatchLeg(
           return { channel, outcome: 'failed', reason: 'claim_read_failed', voice };
         }
         if (decision.status === 'unbacked') {
-          await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+          const channelMessageId = await writeLedgerRow(ports, msg, channel, 'failed', {
+            errorCode: 'unbacked_claim',
+          });
+          await ports.claimEnforce.recordRefusal({
+            familyId: msg.familyId,
+            channelMessageId,
+            refusal: decision.refusal,
+          });
           return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
         }
       }
