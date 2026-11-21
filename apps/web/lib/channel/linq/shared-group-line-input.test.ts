@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SHARED_GROUP_VOICE_SKILL, sharedGroupLineInput } from './shared-group-line-input';
 import { sharedLineUsable } from './shared-group-voice';
 
@@ -11,6 +11,21 @@ describe('shared group line input', () => {
     const stop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en');
     expect(stop.questions).toBe(0);
     expect(stop.wayOut).toBe(true);
+  });
+
+  it('refuses a stop confirmation that names a keyword only with the flag on (VIL-744)', () => {
+    const stop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en');
+    const teaches = 'Got it Jordan, I will leave you out. Reply START if you change your mind.';
+    const plain = 'Got it Jordan, I will leave you out of this chat.';
+    try {
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'false');
+      expect(sharedLineUsable(teaches, stop)).toBe(true);
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
+      expect(sharedLineUsable(teaches, stop)).toBe(false);
+      expect(sharedLineUsable(plain, stop)).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('never refuses a line for its length', () => {

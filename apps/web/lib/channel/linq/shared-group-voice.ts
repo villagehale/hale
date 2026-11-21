@@ -2,6 +2,7 @@ import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
+import { namesKeyword, noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
@@ -108,6 +109,9 @@ export function sharedLineUsable(
   if (input.questions === 0 && questions !== 0) return false;
   if (text.includes('TODO-Design')) return false;
   if (BANNED.test(text) && !input.wayOut) return false;
+  if (input.wayOut && noStopKeywordCopyEnabled()) {
+    if (namesKeyword(text, sharedGroupFactStrings(input))) return false;
+  }
   const folded = text.toLowerCase();
   for (const token of deny) {
     const needle = token.trim();

@@ -167,6 +167,10 @@
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
   },
+  "coach-no-stop-keyword.md": {
+    "file": "coach-no-stop-keyword.md",
+    "sha256": "339c6245f99f89fe37107926bd2afc34cd74dee9a2c4913f3a2bc4520a2855eb"
+  },
   "coach-photo-facts.md": {
     "file": "coach-photo-facts.md",
     "sha256": "50cb3d0323f8852c0397103a7dafbe2bc604c543b1d9f2387a625b541095e0a9"
@@ -322,6 +326,10 @@
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
+  "group-onboarding-no-keyword.md": {
+    "file": "group-onboarding-no-keyword.md",
+    "sha256": "fdb278cd3227ec885bdc622d3482f3cc1201c0bc20e4a7dd7dfcd8b1881b671a"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
