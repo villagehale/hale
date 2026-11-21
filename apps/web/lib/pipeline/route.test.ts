@@ -117,4 +117,83 @@ describe('POST /api/events/ingest — inbound secret gate', () => {
     await expect(res.json()).resolves.toEqual({ status: 'unbound' });
     expect(ingestEventMock).not.toHaveBeenCalled();
   });
+
+  describe('the body maximum', () => {
+    const MAX_BYTES = 256 * 1024;
+
+    /** A valid signed payload exactly `bytes` long, padded with `pad` (one or two bytes). */
+    function bodyOfBytes(bytes: number, pad = 'x'): string {
+      const empty = JSON.stringify({ familyRef: FAMILY_ID, kind: 'email', subject: '', body: '' });
+      const room = bytes - empty.length;
+      const padBytes = Buffer.byteLength(pad, 'utf8');
+      const subject = 'y'.repeat(room % padBytes);
+      const padded = pad.repeat(Math.floor(room / padBytes));
+      const raw = JSON.stringify({ familyRef: FAMILY_ID, kind: 'email', subject, body: padded });
+      expect(Buffer.byteLength(raw, 'utf8')).toBe(bytes);
+      return raw;
+    }
+
+    it('refuses a body one byte over with a structured 413, and does no work', async () => {
+      vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
+      vi.stubEnv('INGEST_BODY_MAX_ENABLED', 'true');
+      const raw = bodyOfBytes(MAX_BYTES + 1);
+
+      const res = await callPost(request(raw, signInboundBody(SECRET, raw)));
+
+      expect(res.status).toBe(413);
+      await expect(res.json()).resolves.toEqual({ error: 'body_too_large', maxBytes: MAX_BYTES });
+      expect(dbMock).not.toHaveBeenCalled();
+      expect(ingestEventMock).not.toHaveBeenCalled();
+    });
+
+    it('counts bytes, not characters', async () => {
+      vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
+      vi.stubEnv('INGEST_BODY_MAX_ENABLED', 'true');
+      const raw = bodyOfBytes(MAX_BYTES + 1, 'é');
+      // Positive control: in characters this body is well under the maximum.
+      expect(raw.length).toBeLessThan(MAX_BYTES);
+
+      const res = await callPost(request(raw, signInboundBody(SECRET, raw)));
+
+      expect(res.status).toBe(413);
+      expect(ingestEventMock).not.toHaveBeenCalled();
+    });
+
+    it('takes a body exactly at the maximum whole', async () => {
+      vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
+      vi.stubEnv('INGEST_BODY_MAX_ENABLED', 'true');
+      const raw = bodyOfBytes(MAX_BYTES);
+
+      const res = await callPost(request(raw, signInboundBody(SECRET, raw)));
+
+      expect(res.status).toBe(200);
+      expect(ingestEventMock).toHaveBeenCalledTimes(1);
+      const arg = ingestEventMock.mock.calls[0]?.[0] as { body: string };
+      expect(arg.body).toBe((JSON.parse(raw) as { body: string }).body);
+    });
+
+    it.each([
+      ['unset', undefined],
+      ['with a trailing newline', 'true\n'],
+    ])('lets an over-size body through with the flag %s', async (_label, value) => {
+      vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
+      if (value !== undefined) vi.stubEnv('INGEST_BODY_MAX_ENABLED', value);
+      const raw = bodyOfBytes(MAX_BYTES + 1);
+
+      const res = await callPost(request(raw, signInboundBody(SECRET, raw)));
+
+      expect(res.status).toBe(200);
+      expect(ingestEventMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still answers 401 to an unsigned body over the maximum', async () => {
+      vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
+      vi.stubEnv('INGEST_BODY_MAX_ENABLED', 'true');
+
+      const res = await callPost(request(bodyOfBytes(MAX_BYTES + 1)));
+
+      expect(res.status).toBe(401);
+      expect(ingestEventMock).not.toHaveBeenCalled();
+    });
+  });
 });
