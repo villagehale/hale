@@ -1,11 +1,11 @@
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type ReceiptKeep, cardShapedNumber, maskAndCapture } from './receipt';
+import { type ReceiptKeep, cardShapedNumber, renderReceipt } from './receipt';
 
 /**
  * The proof is differential: the same page rendered with two different secrets of the same
- * length, masked and captured. If any pixel depended on a secret, the PNG bytes would
- * differ. Local pages only; nothing here reaches a provider.
+ * length, and a receipt taken from each. If any pixel depended on a secret, the PNG bytes
+ * would differ. Local pages only; nothing here reaches a provider.
  */
 const KEEP: ReceiptKeep = {
   confirmationNumber: 'R-55120',
@@ -103,6 +103,37 @@ const FIXTURES: Record<string, (s: Secret) => string> = {
     ),
   'iframe content': (s) =>
     shell('', `<iframe srcdoc="<p>${s.card}</p>" width="400" height="80"></iframe>`),
+  'a background image in a shadow root on a holder of the number': (s) =>
+    shell(
+      '',
+      `<script>
+        const holder = document.getElementById('num').parentElement;
+        const root = holder.attachShadow({ mode: 'closed' });
+        root.innerHTML = '<slot></slot><div style="visibility:visible !important;width:400px;height:60px"></div>';
+        root.querySelector('div').style.setProperty(
+          'background-image',
+          ${JSON.stringify(`url("${svgData(s.card)}")`)},
+          'important',
+        );
+      </script>`,
+    ),
+  'a background image on a pseudo-element no mask rule outranks': (s) =>
+    shell(
+      `<style>
+        #h #b #keeper#keeper#keeper::after {
+          content: "" !important;
+          display: block !important;
+          visibility: visible !important;
+          width: 400px !important;
+          height: 60px !important;
+          background-image: url("${svgData(s.card)}") !important;
+        }
+      </style>`,
+      '',
+    )
+      .replace('<html>', '<html id="h">')
+      .replace('<body ', '<body id="b" ')
+      .replace('<p>Confirmation number', '<p id="keeper">Confirmation number'),
   'a page script that re-renders the secret after the mask': (s) =>
     shell(
       '',
@@ -132,10 +163,10 @@ async function rendered(html: string): Promise<Page> {
   return page;
 }
 
-async function capture(html: string, options?: { freeze?: boolean }) {
+async function capture(html: string, keep: ReceiptKeep = KEEP) {
   const page = await rendered(html);
   try {
-    return await maskAndCapture(page, KEEP, options);
+    return await renderReceipt(page, keep);
   } finally {
     await page.context().close();
   }
@@ -185,60 +216,58 @@ describe('the masked receipt', () => {
     expect(result.ok && result.receipt.kept).toEqual(['R-55120']);
   });
 
-  it('the freeze stops a page script from painting the secret after the mask', async () => {
-    // Writes the card into a visible, fixed element every few milliseconds. Only the freeze
-    // stands between that script and the capture.
-    const late = (card: string) =>
-      shell(
-        '',
-        `<script>
-          setInterval(() => {
-            const el = document.createElement('div');
-            el.textContent = '${card}';
-            el.style.cssText = 'display:block !important;visibility:visible !important;position:fixed !important;left:16px;top:120px;z-index:2147483647';
-            document.body.appendChild(el);
-          }, 5);
-        </script>`,
-      );
-    const run = async (freeze: boolean) => {
-      const page = await rendered(late(A.card));
-      try {
-        return await maskAndCapture(page, KEEP, {
-          freeze,
-          afterMask: () => page.waitForTimeout(60),
-        });
-      } finally {
-        await page.context().close();
-      }
-    };
-    expect((await run(true)).ok).toBe(true);
-    // The control: without the freeze the secret comes back, and the check refuses the image.
-    expect(await run(false)).toEqual({ ok: false, reason: 'verify_failed' });
-  }, 30_000);
+  it('what the image holds is the kept strings: another number gives other pixels', async () => {
+    // The control for "byte-identical": a capture that painted nothing would also match.
+    const first = await capture(shell('', ''));
+    const other = await capture(shell('', '').replaceAll('R-55120', 'R-55121'), {
+      ...KEEP,
+      confirmationNumber: 'R-55121',
+    });
+    expect(first.ok && other.ok).toBe(true);
+    if (!first.ok || !other.ok) return;
+    expect(first.receipt.png.equals(other.receipt.png)).toBe(false);
+  });
+
+  it('leaves the provider page as it found it, and leaves no extra page open', async () => {
+    const page = await rendered(shell('', `<p>Card: ${A.card}</p>`));
+    try {
+      const before = await page.content();
+      const result = await renderReceipt(page, KEEP);
+      expect(result.ok).toBe(true);
+      expect(await page.content()).toBe(before);
+      expect(page.context().pages()).toEqual([page]);
+    } finally {
+      await page.context().close();
+    }
+  });
+
+  it('a page script that lies about the read cannot put its own string on the image', async () => {
+    const answering = (answer: string) =>
+      shell('', `<script>Array.prototype.map = function () { return ${answer}; };</script>`);
+    // An answer that is not a yes or no per string reads as not shown: no image at all.
+    expect(await capture(answering(`['${A.card}', '${A.card}', '${A.card}']`))).toEqual({
+      ok: false,
+      reason: 'verify_failed',
+    });
+    // "All of them are shown" can only put Hale's own strings on it.
+    const lied = await capture(answering('[true, true, true]'));
+    expect(lied.ok && lied.receipt.kept).toEqual([
+      'R-55120',
+      'Get Ready Public Speaking',
+      '$84.88',
+    ]);
+  });
+
+  it('a kept string shaped like a card number is left off', async () => {
+    const page = shell('', `<p>${A.card}</p>`);
+    const result = await capture(page, { ...KEEP, className: A.card });
+    expect(result.ok && result.receipt.kept).toEqual(['R-55120', '$84.88']);
+  });
 
   it('a page without the confirmation number leaves no image', async () => {
     const result = await capture('<!doctype html><html><body><p>Thanks!</p></body></html>');
     expect(result).toEqual({ ok: false, reason: 'verify_failed' });
   });
-
-  it('a page the mask cannot clear leaves no image', async () => {
-    // A rule more specific than the mask's own keeps a pseudo-element's text on a kept
-    // ancestor. Only the check of what will paint can catch it.
-    const stubborn = shell(
-      `<style>
-        #h #b #keeper#keeper#keeper::after {
-          content: "${A.card}" !important;
-          display: inline !important;
-          visibility: visible !important;
-        }
-      </style>`,
-      '',
-    )
-      .replace('<html>', '<html id="h">')
-      .replace('<body ', '<body id="b" ')
-      .replace('<p>Confirmation number', '<p id="keeper">Confirmation number');
-    expect(await capture(stubborn)).toEqual({ ok: false, reason: 'verify_failed' });
-  }, 30_000);
 });
 
 describe('cardShapedNumber', () => {
