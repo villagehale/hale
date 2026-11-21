@@ -104,6 +104,11 @@ export function failedSendPatch(code: string): {
   return { status: 'failed', errorCode: code };
 }
 
+/** A rate limit is not permanent, but asking again right away only earns another. */
+export function refusalIsRateLimit(err: unknown): boolean {
+  return err instanceof LinqSendError && linq.isLinqRateLimit(err);
+}
+
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 
 /** The same sentence with URLs removed. Other wording, including STOP, stays. */
@@ -146,7 +151,13 @@ export async function sendResolvingNewChat(
       { code: 'link_on_new_chat' },
       'outbound: new Linq chat cannot take a link; plain-text version sent',
     );
-    const sent = await transport.send({ to: input.to, body: plain });
+    // Refused before any POST, so this is the key's first use at Linq. A retry of this send
+    // carries the same key, and Linq answers it without a second bubble.
+    const sent = await transport.send({
+      to: input.to,
+      body: plain,
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+    });
     return { ...sent, linkOmitted: 'link_on_new_chat' };
   }
 }
