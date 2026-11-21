@@ -242,7 +242,7 @@ jobs:
       # --env-mode=loose lets the flag env through turbo's strict filter.
       # --force skips a cache entry recorded when those flags were off.
       # --continue keeps one package's failure from cancelling the web suite.
-      # --launch-set holds promo and payment flags off, as they are at launch.
+      # --launch-set holds promo, payment and the proactive pause flags off, as at launch.
       - name: Test
         run: node scripts/ci/all-flags-on.mjs --launch-set -- pnpm exec turbo run test --env-mode=loose --force --continue
 

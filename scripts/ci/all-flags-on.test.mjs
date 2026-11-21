@@ -16,6 +16,7 @@ const HELD_OFF_AT_LAUNCH = [
   'CHECKOUT_SERVER_CURRENCY_ENABLED',
   'STRIPE_BILLING_REVOKE_ENABLED',
   'LINQ_APP_CLIP_PAY_ENABLED',
+  'PROACTIVE_SENDS_PAUSED',
 ];
 
 function printedEnv(args) {
@@ -149,7 +150,7 @@ describe('all-flags-on CLI', () => {
 });
 
 describe('--launch-set', () => {
-  it('holds promo and payment flags off and forces every other flag as before', () => {
+  it('holds promo, payment and pause flags off and forces every other flag as before', () => {
     const full = printedEnv([]);
     const launch = printedEnv(['--launch-set']);
     const expected = { ...full };
@@ -162,19 +163,28 @@ describe('--launch-set', () => {
     expect(launch.LOOP_SEND_ENABLED).toBe('true');
   });
 
-  it('holds off a payment flag added to the catalog later', () => {
+  it('holds off the pause switch and a payment flag added to the catalog later', () => {
+    const boolean = { type: 'boolean', parser: 'exact-true', default: false };
     const { env, unset } = launchSetEnv(
-      [],
+      [
+        { ...boolean, key: 'proactive-sends-paused', env: 'PROACTIVE_SENDS_PAUSED' },
+        { ...boolean, key: 'loop-send', env: 'LOOP_SEND_ENABLED' },
+      ],
       [{ env: 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED' }, { env: 'NEW_PAYMENT_ENABLED' }],
     );
-    expect(env).toEqual({ BROWSER_USE_SIGNUP_PAYMENT_ENABLED: 'true' });
-    expect(unset).toEqual(['NEW_PAYMENT_ENABLED']);
+    expect(env).toEqual({ LOOP_SEND_ENABLED: 'true', BROWSER_USE_SIGNUP_PAYMENT_ENABLED: 'true' });
+    expect(unset).toEqual(['PROACTIVE_SENDS_PAUSED', 'NEW_PAYMENT_ENABLED']);
   });
 
   it('removes a held-off flag the caller exported and keeps the rest of the env', () => {
     const read =
-      'process.stdout.write(JSON.stringify([process.env.HOLIDAY_PROMO_ENABLED ?? "unset", process.env.INHERITED_PROBE, process.env.LOOP_SEND_ENABLED]))';
-    const env = { ...process.env, HOLIDAY_PROMO_ENABLED: 'true', INHERITED_PROBE: 'kept' };
+      'process.stdout.write(JSON.stringify([process.env.HOLIDAY_PROMO_ENABLED ?? "unset", process.env.PROACTIVE_SENDS_PAUSED ?? "unset", process.env.INHERITED_PROBE, process.env.LOOP_SEND_ENABLED]))';
+    const env = {
+      ...process.env,
+      HOLIDAY_PROMO_ENABLED: 'true',
+      PROACTIVE_SENDS_PAUSED: 'true',
+      INHERITED_PROBE: 'kept',
+    };
 
     const launch = spawnSync(
       process.execPath,
@@ -182,14 +192,14 @@ describe('--launch-set', () => {
       { encoding: 'utf8', env },
     );
     expect(launch.status).toBe(0);
-    expect(JSON.parse(launch.stdout)).toEqual(['unset', 'kept', 'true']);
+    expect(JSON.parse(launch.stdout)).toEqual(['unset', 'unset', 'kept', 'true']);
 
     const full = spawnSync(process.execPath, [script, '--', process.execPath, '-e', read], {
       encoding: 'utf8',
       env,
     });
     expect(full.status).toBe(0);
-    expect(JSON.parse(full.stdout)).toEqual(['true', 'kept', 'true']);
+    expect(JSON.parse(full.stdout)).toEqual(['true', 'true', 'kept', 'true']);
   });
 });
 

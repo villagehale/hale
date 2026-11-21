@@ -9,7 +9,7 @@
 // narrow allowlist is left empty, which means every family.
 //
 // --launch-set is the set Hale launches with: payment and promo flags stay off,
-// except the ones in LAUNCH_PAYMENT_ENV.
+// except the ones in LAUNCH_PAYMENT_ENV, and so does the proactive pause switch.
 //
 //   node scripts/ci/all-flags-on.mjs
 //   node scripts/ci/all-flags-on.mjs -- pnpm exec turbo run test --env-mode=loose --force
@@ -22,6 +22,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const catalogPath = path.join(root, 'packages', 'flags', 'src', 'catalog.ts');
 const LAUNCH_PAYMENT_ENV = new Set(['BROWSER_USE_SIGNUP_PAYMENT_ENABLED']);
+// Default off, but on means every proactive send is refused, so no launch state has it on.
+const LAUNCH_HELD_OFF_ENV = new Set(['PROACTIVE_SENDS_PAUSED']);
 
 /**
  * @param {{ type?: string, parser?: string, default?: boolean | string, onVariant?: string }} spec
@@ -81,8 +83,8 @@ export function forcedOnEnv(flags, paymentEnvOnly = []) {
 }
 
 /**
- * The env for a launch-set run, plus the payment and promo flags to remove so a
- * value exported in the caller's shell cannot turn one back on.
+ * The env for a launch-set run, plus the flags it holds off, to remove so a value
+ * exported in the caller's shell cannot turn one back on.
  *
  * @param {Parameters<typeof forcedOnEnv>[0]} flags
  * @param {readonly { env: string }[]} paymentEnvOnly
@@ -90,9 +92,16 @@ export function forcedOnEnv(flags, paymentEnvOnly = []) {
  */
 export function launchSetEnv(flags, paymentEnvOnly) {
   const isLaunchPayment = (row) => LAUNCH_PAYMENT_ENV.has(row.env);
+  const isHeldOff = (spec) => LAUNCH_HELD_OFF_ENV.has(spec.env);
   return {
-    env: forcedOnEnv(flags, paymentEnvOnly.filter(isLaunchPayment)),
-    unset: paymentEnvOnly.filter((row) => !isLaunchPayment(row)).map((row) => row.env),
+    env: forcedOnEnv(
+      flags.filter((spec) => !isHeldOff(spec)),
+      paymentEnvOnly.filter(isLaunchPayment),
+    ),
+    unset: [
+      ...flags.filter(isHeldOff),
+      ...paymentEnvOnly.filter((row) => !isLaunchPayment(row)),
+    ].map((row) => row.env),
   };
 }
 
