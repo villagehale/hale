@@ -3,16 +3,18 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
-import { speak } from '~/lib/channel/spoken-line';
+import { setSharedSpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   SMS_COPARENT_INVITE_TEMPLATE_KEY,
   deliverCoParentNumberInvite,
   parseCoParentNumberReply,
 } from './coparent-invite';
+import { coParentNumberHandler } from '../router/handlers';
 
 /**
  * A number after the co-parent ask. SMS still texts the locked invite. Linq
@@ -304,5 +306,110 @@ describe('a number on the SMS door', () => {
     });
     expect(sendSms).not.toHaveBeenCalled();
     expect(await inviteStates()).toEqual([]);
+  });
+
+  describe('when the redirect line is held (VIL-706)', () => {
+    afterEach(() => {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+    });
+
+    async function numberTurn() {
+      const seeded = await seedHousehold();
+      const inboundId = await seedAsk(seeded, 'sms');
+      const sendSms = vi.fn();
+      const outcome = await deliverCoParentNumberInvite(db.database, {
+        ...seeded,
+        body: '9055550182',
+        now: NOW,
+        inboundChannelMessageId: inboundId,
+        sendSms,
+      });
+      return { outcome, sendSms, seeded };
+    }
+
+    it('names flag_off on the refused outcome and sends nothing', async () => {
+      vi.stubEnv('F14_ENABLED', '');
+      vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+      const { outcome, sendSms } = await numberTurn();
+      expect(outcome).toEqual({
+        status: 'refused',
+        reply: null,
+        templateKey: 'coparent:number_invite_held',
+        lineHeld: 'flag_off',
+      });
+      expect(sendSms).not.toHaveBeenCalled();
+    });
+
+    it('names unwritten on the refused outcome when the model writes nothing', async () => {
+      vi.stubEnv('F14_ENABLED', '');
+      setSharedSpokenLineWriter({ write: async () => null });
+      const { outcome, sendSms } = await numberTurn();
+      expect(outcome).toEqual({
+        status: 'refused',
+        reply: null,
+        templateKey: 'coparent:number_invite_held',
+        lineHeld: 'unwritten',
+      });
+      expect(sendSms).not.toHaveBeenCalled();
+    });
+
+    it('names the hold on the unreached outcome too', async () => {
+      vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+      const seeded = await seedHousehold();
+      const inboundId = await seedAsk(seeded, 'sms');
+      await db.database
+        .delete(schema.parentChannels)
+        .where(eq(schema.parentChannels.userId, seeded.parentUserId));
+      const sendSms = vi.fn();
+      const outcome = await deliverCoParentNumberInvite(db.database, {
+        ...seeded,
+        body: '9055550182',
+        now: NOW,
+        inboundChannelMessageId: inboundId,
+        sendSms,
+      });
+      expect(outcome).toEqual({
+        status: 'unreached',
+        reply: null,
+        templateKey: 'coparent:number_invite_held',
+        lineHeld: 'flag_off',
+      });
+      expect(sendSms).not.toHaveBeenCalled();
+    });
+
+    it('positive control: a written redirect goes out with no hold named', async () => {
+      vi.stubEnv('F14_ENABLED', '');
+      const { outcome } = await numberTurn();
+      expect(outcome).toEqual({
+        status: 'refused',
+        reply: await speak({
+          purpose: 'caregiver_co_parent_redirect',
+          language: 'en',
+          addendum: 'door-line',
+        }),
+        templateKey: 'coparent:number_invite_held',
+        lineHeld: null,
+      });
+    });
+
+    it('carries the hold through the handler verdict', async () => {
+      vi.stubEnv('F14_ENABLED', '');
+      vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+      const seeded = await seedHousehold();
+      const inboundId = await seedAsk(seeded, 'sms');
+      const verdict = await coParentNumberHandler({ sendSms: vi.fn() }).handle(db.database, {
+        ...seeded,
+        body: '9055550182',
+        now: NOW,
+        inboundChannelMessageId: inboundId,
+      } as Parameters<ReturnType<typeof coParentNumberHandler>['handle']>[1]);
+      expect(verdict).toEqual({
+        claimed: true,
+        outcome: 'refused',
+        reply: null,
+        templateKey: 'coparent:number_invite_held',
+        lineHeld: 'flag_off',
+      });
+    });
   });
 });

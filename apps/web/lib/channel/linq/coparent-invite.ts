@@ -13,7 +13,7 @@ import {
   coParentReferrerUnnamed,
   coParentRefusal,
 } from '~/lib/channel/coparent/copy';
-import { composeDoorLine } from '~/lib/channel/door-line';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
@@ -101,6 +101,8 @@ export type CoParentNumberOutcome =
       status: 'refused' | 'unreached';
       reply: string | null;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
+      /** Null when the line went out, or why it did not (rule #11). */
+      lineHeld: DoorLineHold | null;
     }
   /** The invite text could not be written. Nobody was texted. */
   | { status: 'ask_unwritten'; reply: null };
@@ -192,10 +194,11 @@ export async function deliverCoParentNumberInvite(
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
-  const held = (reply: string | null): CoParentNumberOutcome => ({
+  const held = (reply: string | null, hold: DoorLineHold | null): CoParentNumberOutcome => ({
     status: 'refused',
     reply,
     templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+    lineHeld: hold,
   });
 
   const parentPhone = await resolveSendablePhone(database, input.parentUserId);
@@ -210,6 +213,7 @@ export async function deliverCoParentNumberInvite(
       status: 'unreached',
       reply: line.sent ? line.body : null,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+      lineHeld: lineHeld(line),
     };
   }
 
@@ -217,14 +221,14 @@ export async function deliverCoParentNumberInvite(
   // thread while the flag is dark; the SMS send is what the flag holds.
   if (!f14EnabledFor(input.familyId)) {
     const line = await redirect();
-    return held(line.sent ? line.body : null);
+    return held(line.sent ? line.body : null, lineHeld(line));
   }
 
   const name = await parentName(database, input.parentUserId);
   const unnamed = await coParentReferrerUnnamed(language);
   if (!name) {
     if (!unnamed) return { status: 'ask_unwritten', reply: null };
-    return held(unnamed);
+    return held(unnamed, null);
   }
   const inviteText = await writeConsentAsk(input.ask, {
     kind: 'coparent_invite',
@@ -252,7 +256,7 @@ export async function deliverCoParentNumberInvite(
   if (started.status === 'refused') {
     const line = await coParentRefusal(started.reason, language);
     if (!line) return { status: 'ask_unwritten', reply: null };
-    return held(line);
+    return held(line, null);
   }
 
   const sms = await input.sendSms({

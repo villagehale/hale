@@ -450,6 +450,11 @@ export type HandlerVerdict =
        * 1:1, it is the ordinary answer.
        */
       onlyToAsker?: true;
+      /**
+       * VIL-706 · a door line this turn owed and did not send, and why. Set only when
+       * one was held, so a claim that sent nothing is never reported as a plain answer.
+       */
+      lineHeld?: DoorLineHold;
     };
 
 /**
@@ -944,7 +949,7 @@ export interface RouterResult {
   /**
    * VIL-706 · on `not_a_parent` for a caregiver Hale may answer: null when the scoped
    * line went out, or why it did not (`flag_off`, or `unwritten` after #ops was paged).
-   * Absent on every other result.
+   * On a `handled` turn, set only when the handler held a door line. Absent otherwise.
    */
   lineHeld?: DoorLineHold | null;
 }
@@ -1709,6 +1714,7 @@ async function routeChannelMessageInner(
         handler: handler.name,
         conversationId,
         lane: null,
+        ...(verdict.lineHeld ? { lineHeld: verdict.lineHeld } : {}),
       });
     }
   }

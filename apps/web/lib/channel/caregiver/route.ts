@@ -154,8 +154,9 @@ export type CoParentOutcome =
   | { status: 'co_parent_invite_started' }
   | { status: 'co_parent_invite_sent' }
   | { status: 'co_parent_invite_dropped' }
-  /** `dark` is the flag, and it is a refusal like any other: the parent asked and Hale
-   * answered with the forwardable link instead. It is NOT silence. */
+  /** `dark` is the flag, and it is a refusal like any other: the parent asked and the
+   * number was not texted. With the door flag lit Hale says so and points at the
+   * forwardable link; with it off the line is held and named in `lineHeld`. */
   | ({ status: 'co_parent_add_refused'; reason: CoParentRefusal | 'dark' } & DoorLineOutcome)
   | {
       status: 'co_parent_accepted';

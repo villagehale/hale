@@ -945,6 +945,44 @@ describe('routing order', () => {
     expect(result.conversationId).toBe(conversationRows(h.fake)[0]?.id);
   });
 
+  /** VIL-706: a handler that held a door line says so, and the router names it. */
+  it('names a door line a claiming handler held', async () => {
+    const holding: DeterministicHandler = {
+      name: 'co_parent_number',
+      async detects() {
+        return true;
+      },
+      async handle() {
+        return {
+          claimed: true as const,
+          outcome: 'refused',
+          reply: null,
+          lineHeld: 'flag_off' as const,
+        };
+      },
+    };
+    const h = harness({ context: { body: '9055550182' }, handlers: [holding] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).toMatchObject({
+      status: 'handled',
+      handler: 'co_parent_number',
+      lineHeld: 'flag_off',
+    });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('names no hold for a claiming handler that replied (positive control)', async () => {
+    const h = harness({ context: { body: 'done' }, handlers: [claimingHandler('health', 'Ok.')] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(result).not.toHaveProperty('lineHeld');
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
   /** A claimed message with no copy is a handler that already replied for itself; the
    * router must not invent a second message. */
   it('sends nothing when a handler claims without copy', async () => {
