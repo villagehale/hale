@@ -177,7 +177,7 @@ describe('POST /api/events/ingest — inbound secret gate', () => {
       ['with a trailing newline', 'true\n'],
     ])('lets an over-size body through with the flag %s', async (_label, value) => {
       vi.stubEnv('INBOUND_WEBHOOK_SECRET', SECRET);
-      if (value !== undefined) vi.stubEnv('INGEST_BODY_MAX_ENABLED', value);
+      vi.stubEnv('INGEST_BODY_MAX_ENABLED', value);
       const raw = bodyOfBytes(MAX_BYTES + 1);
 
       const res = await callPost(request(raw, signInboundBody(SECRET, raw)));
