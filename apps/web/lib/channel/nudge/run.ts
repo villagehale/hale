@@ -910,7 +910,7 @@ async function runForFamily(
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
-      actionTaken: 'proactive_nudge_skipped',
+      actionTaken: 'proactive_nudge_unwritten',
       targetTable: 'families',
       targetId: family.familyId,
       after: {
@@ -1317,7 +1317,7 @@ export async function countUnusableNudgeDrafts(
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.actionTaken, 'proactive_nudge_skipped'),
+        eq(schema.auditLog.actionTaken, 'proactive_nudge_unwritten'),
         sql`${schema.auditLog.after}->>'unwritten' = 'unusable'`,
         sql`${schema.auditLog.after}->>'nudgeRef' = ${nudgeRef}`,
       ),

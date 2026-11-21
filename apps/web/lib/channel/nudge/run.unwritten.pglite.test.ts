@@ -4,7 +4,9 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { pageOps } from '~/lib/monitoring/failure-page';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   MAX_UNUSABLE_NUDGE_DRAFTS,
@@ -103,14 +105,14 @@ function deps(transport: FakeTransport, client: AgentClient | null): NudgeRunDep
   };
 }
 
-async function skipRows() {
+async function unwrittenRows() {
   const rows = await db.database
     .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.actionTaken, 'proactive_nudge_skipped'),
+        eq(schema.auditLog.actionTaken, 'proactive_nudge_unwritten'),
       ),
     );
   return rows.map((row) => row.after as Record<string, unknown>);
@@ -179,7 +181,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     expect(result).toMatchObject({ sent: 0, unwritten: 1, settled: 0, failed: 0 });
     expect(transport.sent).toEqual([]);
     expect(await ledgerRows()).toEqual([]);
-    const rows = await skipRows();
+    const rows = await unwrittenRows();
     expect(rows).toEqual([
       {
         reason: 'unvoiced',
@@ -206,7 +208,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
       expect(result).toMatchObject({ sent: 0, unwritten: 1, settled: 0, failed: 0 });
     }
     const draftCalls = create.mock.calls.length;
-    const rows = await skipRows();
+    const rows = await unwrittenRows();
     expect(new Set(rows.map((row) => row.nudgeRef)).size).toBe(1);
     expect(await countUnusableNudgeDrafts(db.database, familyId, String(rows[0]?.nudgeRef))).toBe(
       MAX_UNUSABLE_NUDGE_DRAFTS,
@@ -227,7 +229,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     expect(after).toMatchObject({ sent: 0, unwritten: 0, settled: 1, failed: 0 });
     // The preflight probe is the only call left: no draft is asked for.
     expect(create.mock.calls.length).toBe(draftCalls + 1);
-    expect(await skipRows()).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
+    expect(await unwrittenRows()).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
     expect(transport.sent).toEqual([]);
     expect(await ledgerRows()).toEqual([]);
   }, 30_000);
@@ -237,7 +239,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const row = (after: Record<string, unknown>) => ({
       familyId,
       actor: 'system',
-      actionTaken: 'proactive_nudge_skipped',
+      actionTaken: 'proactive_nudge_unwritten',
       targetTable: 'families',
       targetId: familyId,
       after,
@@ -256,6 +258,31 @@ describe('a nudge the model could not write, over real Postgres', () => {
     expect(await countUnusableNudgeDrafts(db.database, familyId, ref)).toBe(1);
   }, 30_000);
 
+  it('History leaves out a failed write, and the rights export keeps it', async () => {
+    const DELIBERATE_QUIET = 'Hale had nothing worth interrupting you for';
+    const FAILED_WRITE = 'Hale could not write a heads-up, so it sent nothing';
+    await runNudgeCron(db.database, deps(new FakeTransport(), null), NOW);
+    // The positive control: a deliberate quiet is still on History.
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_nudge_skipped',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { reason: 'nothing_worth_saying' },
+    });
+
+    const history = (await loadTrailForFamily(db.database, familyId)).map((row) => row.summary);
+    expect(history).toContain(DELIBERATE_QUIET);
+    expect(history).not.toContain(FAILED_WRITE);
+
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(copy.trail.map((row) => row.summary)).toContain(FAILED_WRITE);
+  }, 30_000);
+
   it('positive control: the good draft goes out word for word and pages nobody', async () => {
     const transport = new FakeTransport();
     const { client } = answering(GOOD_DRAFT);
@@ -264,7 +291,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     expect(result).toMatchObject({ sent: 1, unwritten: 0, settled: 0, failed: 0 });
     expect(transport.bodies()).toEqual([GOOD_DRAFT]);
     expect(await ledgerRows()).toEqual([{ status: 'queued' }]);
-    expect(await skipRows()).toEqual([]);
+    expect(await unwrittenRows()).toEqual([]);
     expect(posted).toEqual([]);
   }, 30_000);
 });

@@ -13,14 +13,14 @@ import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
-import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { factNudgeWriter } from '~/lib/testing/nudge-writer';
+import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice.js';
 import {
+  MAX_UNUSABLE_NUDGE_DRAFTS,
   type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
-  MAX_UNUSABLE_NUDGE_DRAFTS,
   countUnusableNudgeDrafts,
   defaultNudgeRunDeps,
   f14EnabledFor,
@@ -617,10 +617,11 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     return h.writes.filter((write) => write.table === schema.channelMessages);
   }
 
-  function skipRows(h: Harness) {
+  function unwrittenRows(h: Harness) {
     return h.writes.filter(
       (write) =>
-        write.table === schema.auditLog && write.payload.actionTaken === 'proactive_nudge_skipped',
+        write.table === schema.auditLog &&
+        write.payload.actionTaken === 'proactive_nudge_unwritten',
     );
   }
 
@@ -637,8 +638,8 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     expect(ledgerRows(h)).toEqual([]);
     expect(h.threaded).toEqual([]);
     expect(h.closed).toEqual([]);
-    expect(skipRows(h)).toHaveLength(1);
-    expect(skipRows(h)[0]?.payload).toMatchObject({
+    expect(unwrittenRows(h)).toHaveLength(1);
+    expect(unwrittenRows(h)[0]?.payload).toMatchObject({
       familyId: 'fam-1',
       after: { reason: 'unvoiced', kind: 'registration', unwritten: reason, settled: false },
     });
@@ -652,7 +653,10 @@ describe('runNudgeCron — a nudge the model could not write', () => {
       composeMessage: async () => ({ unwritten: 'unusable' }),
     });
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    const trail = JSON.stringify({ page: h.pages, skip: skipRows(h).map((row) => row.payload) });
+    const trail = JSON.stringify({
+      page: h.pages,
+      skip: unwrittenRows(h).map((row) => row.payload),
+    });
     expect(trail).toContain('nudge_unwritten');
     for (const fact of ['Maya', 'Richmond Hill', 'Fall 2026', 'Aug']) {
       expect(trail).not.toContain(fact);
@@ -685,14 +689,16 @@ describe('runNudgeCron — a nudge the model could not write', () => {
       expect(result).toMatchObject({ unwritten: 1, settled: 0 });
       expect(composeMessage).toHaveBeenCalledTimes(attempt);
     }
-    const flags = skipRows(h).map((row) => (row.payload.after as { settled: boolean }).settled);
+    const flags = unwrittenRows(h).map(
+      (row) => (row.payload.after as { settled: boolean }).settled,
+    );
     expect(flags).toEqual([...Array(MAX_UNUSABLE_NUDGE_DRAFTS - 1).fill(false), true]);
 
     const pagesBefore = h.pages.length;
     const after = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     expect(after).toMatchObject({ sent: 0, unwritten: 0, settled: 1 });
     expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS);
-    expect(skipRows(h)).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
+    expect(unwrittenRows(h)).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
     expect(h.pages).toHaveLength(pagesBefore);
     expect(h.transport.sent).toEqual([]);
     expect(ledgerRows(h)).toEqual([]);
@@ -780,7 +786,7 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     expect(result).toMatchObject({ sent: 1, quiet: 0, unwritten: 0, settled: 0 });
     expect(h.transport.bodies()).toEqual([line]);
     expect(ledgerRows(h)).toHaveLength(1);
-    expect(skipRows(h)).toEqual([]);
+    expect(unwrittenRows(h)).toEqual([]);
     expect(h.pages).toEqual([]);
   });
 
@@ -1492,7 +1498,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expect(h.writes.some((w) => w.table === schema.channelMessages)).toBe(false);
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload).toMatchObject({
-      actionTaken: 'proactive_nudge_skipped',
+      actionTaken: 'proactive_nudge_unwritten',
       after: { reason: 'unvoiced', kind: 'weekday_care' },
     });
     const text = JSON.stringify(audit?.payload);
@@ -1764,7 +1770,7 @@ describe('runNudgeCron — empty Saturday', () => {
     expect(h.transport.bodies().join(' ')).not.toContain('looks open');
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload).toMatchObject({
-      actionTaken: 'proactive_nudge_skipped',
+      actionTaken: 'proactive_nudge_unwritten',
       after: { reason: 'saturday_unvoiced', kind: 'empty_saturday' },
     });
     expect(JSON.stringify(audit?.payload)).not.toContain('sat-1');
