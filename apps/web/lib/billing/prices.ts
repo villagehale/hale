@@ -1,9 +1,9 @@
 import type { BillingCurrency, BillingPeriod } from '@hale/types';
 import { isFoundingPromoWindowOpen, parseFoundingPromoEndsAt } from '@hale/types';
-import { holidayPromoEnabled } from './flags.js';
+import { checkoutServerCurrencyEnabled, holidayPromoEnabled } from './flags.js';
 import { stripePaymentLinkUrl } from './promo-preview.js';
 
-type PaidTier = 'plus' | 'family';
+export type PaidTier = 'plus' | 'family';
 
 /**
  * Env-driven Stripe price selection for the holiday promo and the USD list path.
@@ -93,6 +93,20 @@ export function paymentLinkUrlWhilePromoAllows(
 export function paidTierFromUnknown(value: unknown): PaidTier {
   if (value === 'family' || value === 'max') return 'family';
   return 'plus';
+}
+
+/**
+ * Case-insensitive plus / max / family. Anything else, including a present
+ * unknown string, is null so checkout can answer 400 instead of selling Plus.
+ * Omitted (undefined / null) is also null; the route treats that as Plus only
+ * when the caller sent no tier at all.
+ */
+export function parsePaidTier(value: unknown): PaidTier | null {
+  if (typeof value !== 'string') return null;
+  const token = value.trim().toLowerCase();
+  if (token === 'plus') return 'plus';
+  if (token === 'family' || token === 'max') return 'family';
+  return null;
 }
 
 export function isPromoAnnualSku(sku: CheckoutSku): boolean {
@@ -312,10 +326,13 @@ function maxListSelection(
  * 2. Window open → that tier's promo yearly for the visitor's currency.
  *    Client period / list / monthly env ids are ignored. Missing promo id
  *    is unavailable.
- * 3. After the window, Plus uses monthly/annual list for that currency,
- *    then CAD as fallback. Max uses only that currency's dedicated
- *    `STRIPE_PRICE_MAX_ANNUAL_*` id — never CAD-for-USD, never
- *    `STRIPE_PRICE_FAMILY_ANNUAL`, never Plus list. Missing is
+ * 3. After the window, Plus uses that currency's list price. USD list is
+ *    US$14/mo (`STRIPE_PRICE_PLUS_MONTHLY_USD`) or US$119/yr
+ *    (`STRIPE_PRICE_PLUS_ANNUAL_USD`). When CHECKOUT_SERVER_CURRENCY_ENABLED
+ *    is exactly `true`, a missing USD id is `no_price` — never the CAD id.
+ *    With the flag off, USD still falls back to CAD. Max uses only that
+ *    currency's dedicated `STRIPE_PRICE_MAX_ANNUAL_*` id — never CAD-for-USD,
+ *    never `STRIPE_PRICE_FAMILY_ANNUAL`, never Plus list. Missing is
  *    unavailable. Preview callers do not get list prices after the cutoff.
  */
 export function resolveCheckoutPrice(input: {
@@ -352,7 +369,7 @@ export function resolveCheckoutPrice(input: {
 
   const native = listSelection(input.currency, input.period, env);
   if (native) return { status: 'selected', price: native };
-  if (input.currency !== 'CAD') {
+  if (!checkoutServerCurrencyEnabled(env) && input.currency !== 'CAD') {
     const cad = listSelection('CAD', input.period, env);
     if (cad) return { status: 'selected', price: cad };
   }

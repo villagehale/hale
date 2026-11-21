@@ -7,7 +7,7 @@ import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanTopic } from './topics';
 
@@ -123,6 +123,7 @@ export function noteViolations(body: string, grounding: NoteGrounding): string[]
     );
   }
   if (hasLinkShape(text)) {
+    noteLinkGate('coach-plan-note', 'redraft');
     violations.push('The message contains a link or a web address. Never send one.');
   }
 

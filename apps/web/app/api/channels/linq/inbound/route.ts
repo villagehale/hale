@@ -3,7 +3,7 @@ import { INBOUND_TURN_QUEUES } from '~/lib/channel/config';
 import { linqInboundDeps } from '~/lib/channel/linq/deps';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import { withWebhookFailureAlert } from '~/lib/channel/webhook-alert';
-import { kickDrain } from '~/lib/cron/kick-drain';
+import { inboundDrainOrigin, kickDrain } from '~/lib/cron/kick-drain';
 
 // Node runtime: signature verification is node:crypto HMAC, and the handler
 // reaches pg-boss. Neither runs on the edge runtime.
@@ -24,7 +24,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request): Promise<Response> {
   return withWebhookFailureAlert('linq_inbound', async () => {
     const deps = linqInboundDeps();
-    const origin = process.env.APP_URL ?? new URL(req.url).origin;
+    const origin = inboundDrainOrigin(req);
     return handleLinqInboundRequest(req, {
       ...deps,
       enqueue: async (job) => {

@@ -920,9 +920,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { noteDeadLetteredTurn } = await import('~/lib/monitoring/failure-page');
   const { foldedMemberIds } = await import('~/lib/channel/router/burst');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
-  const { recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
-  const { dispatchAndReleaseHold } = await import('~/lib/loop/reminders/held-at-send');
+  const { abandonAndSettleReminder, dispatchAndReleaseHold } = await import(
+    '~/lib/loop/reminders/held-at-send'
+  );
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
   const { productionCalendarInviteVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
@@ -990,8 +991,11 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
               message,
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),
+          // VIL-730 · the abandoned send's failed row, then a reminder's rows go back to
+          // the run (never left looking sent).
           channelSendDead: (message) =>
-            recordAbandonedDispatch(
+            abandonAndSettleReminder(
+              db(),
               message,
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),

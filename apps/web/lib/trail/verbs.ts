@@ -97,11 +97,13 @@ export const AUDIT_VERBS = [
   'child_updated',
   'child_removed',
   'family_location_updated',
+  'timezone_resolved',
   'family_plan_updated',
   'family_plan_change_refused',
   'family_plan_comped',
   'billing_refund_ready',
   'billing_grant_blocked',
+  'billing_revoke_unresolved',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -146,6 +148,8 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-707. A text whose opt-out read failed was held and not answered.
+  'opt_out_unread_held',
   // VIL-553. An operator cleared a hold no read could release (a shared provider id).
   'opt_out_hold_cleared',
   // VIL-572. One parent's texting language became the one Hale writes to them in.
@@ -225,6 +229,7 @@ export const AUDIT_VERBS = [
   // VIL-448. A reminder anyone in the family group asked for.
   'group_reminder_set',
   'group_reminder_cancelled',
+  'group_reminder_landed_after_stop',
   'group_reminder_sent',
   'group_reminder_dropped',
   'group_reminder_failed',
@@ -332,6 +337,8 @@ export const AUDIT_VERBS = [
   'calendar_mirror_removed',
   'reminder_suppressed',
   'reminder_held_at_send',
+  // VIL-730 · a reminder send that did not reach the parent, back to the run to retry.
+  'reminder_send_failed',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -727,6 +734,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   child_updated: { sentence: 'you updated a child’s details', family: 'done' },
   child_removed: { sentence: 'you removed a child', family: 'done' },
   family_location_updated: { sentence: 'you updated your family’s location', family: 'done' },
+  timezone_resolved: { sentence: 'learned the clock from where you are', family: 'note' },
   family_plan_updated: { sentence: 'you changed your plan', family: 'done' },
   family_plan_change_refused: {
     sentence: 'a paid plan starts at checkout, so your plan did not change',
@@ -793,6 +801,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
   opt_out_hold_read: {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
+  opt_out_unread_held: {
+    sentence: 'Hale held a text it could not read, and sent nothing',
     family: 'note',
   },
   opt_out_hold_cleared: {
@@ -1019,6 +1031,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   group_reminder_cancelled: {
     sentence: 'A reminder asked for in your family group was cancelled',
+    family: 'note',
+  },
+  group_reminder_landed_after_stop: {
+    sentence: 'A reminder reached the chat after this person had asked not to be texted',
     family: 'note',
   },
   group_reminder_sent: {
@@ -1362,6 +1378,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // VIL-562. The row's `after` is the offset and the hold reason only — no title, no time.
   reminder_held_at_send: {
     sentence: 'Hale held a reminder back for quiet hours',
+    family: 'note',
+  },
+  // VIL-730. The send did not reach the parent; Hale tries again. The row's `after` is the
+  // failure code, the offset and the try count only — no title, no time, no text.
+  reminder_send_failed: {
+    sentence: 'Hale held a reminder back to try sending it again',
     family: 'note',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
@@ -1942,6 +1964,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
+  billing_revoke_unresolved: {
+    sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
+    family: 'problem',
+  },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
   upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },
@@ -2379,6 +2405,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-707. The held text is that parent's. Another adult does not see it.
+  'opt_out_unread_held',
   // VIL-553. About the one adult who holds the number.
   'opt_out_hold_cleared',
   // VIL-572. About the one parent whose language changed.

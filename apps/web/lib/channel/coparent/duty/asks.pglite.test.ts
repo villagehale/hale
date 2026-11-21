@@ -190,6 +190,37 @@ describe('duty ask sweep', () => {
     expect(live.some((row) => row.role === 'pickup')).toBe(true);
   });
 
+  it('plans in the primary parent stored language after one off-language turn', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedDutyFamily('Stored language');
+    await secondParent(family.familyId, 'Sam');
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'en' })
+      .where(eq(schema.families.id, family.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
+      .where(eq(schema.users.id, family.parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: SUNDAY_AFTERNOON,
+      bubbleLeaving: true,
+    });
+
+    expect(view).toMatchObject({ language: 'fr' });
+  });
+
   it('asks one question when two events have no kid in the title', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     const family = await seedDutyFamily('Two kids');

@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond } from '~/lib/format/link-shape';
+import { hasLinkBeyond, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { MorningFacts } from './copy';
 import { type CheckRegistrationText, checkRegistrationText } from './text-check';
@@ -73,6 +73,9 @@ export async function composeRegistrationMorning(
       const text = value.text.trim();
       const refusals = morningRefusals(text, facts);
       if (refusals.length > 0) {
+        if (refusals.includes('other_link')) {
+          noteLinkGate('morning-compose', linkAttemptKind(attempt, MORNING_MAX_ATTEMPTS));
+        }
         console.warn({ familyId, attempt, refusals }, 'registration morning: draft refused');
         continue;
       }

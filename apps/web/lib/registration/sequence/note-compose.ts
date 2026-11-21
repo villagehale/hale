@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond } from '~/lib/format/link-shape';
+import { hasLinkBeyond, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { CourseBindRefusal } from './prepare-reply.js';
@@ -134,7 +134,8 @@ export function noteRefusals(body: string, facts: RegistrationNoteFacts): string
   const text = body.trim();
   if (text === '') return ['empty'];
   const handed = facts.kind === 'approval_card' ? [facts.link] : [];
-  return hasLinkBeyond(text, handed) ? ['other_link'] : [];
+  if (hasLinkBeyond(text, handed)) return ['other_link'];
+  return [];
 }
 
 const outputSchema = z.object({ text: z.string() });
@@ -183,6 +184,9 @@ export async function composeRegistrationNote(
       const text = value.text.trim();
       const refusals = noteRefusals(text, facts);
       if (refusals.length === 0) return text;
+      if (refusals.includes('other_link')) {
+        noteLinkGate('note-compose', linkAttemptKind(attempt, NOTE_MAX_ATTEMPTS));
+      }
       console.warn(
         { familyId, kind: facts.kind, attempt, refusals },
         'registration note: draft refused',

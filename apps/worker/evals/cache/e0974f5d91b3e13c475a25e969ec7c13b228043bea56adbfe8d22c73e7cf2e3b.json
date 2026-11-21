@@ -1,0 +1,27 @@
+{
+  "value": {
+    "reply": "Great, thanks Dana. Hale keeps only what's about the kids, and Google shares the whole calendar with Hale, so I see everything on it, but I only keep the kids' things and I never change or delete your events. You can disconnect any time. Want me to connect your calendar using the link above?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "calendar"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": true,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "connectCalendar": true
+  },
+  "latencyMs": 1900,
+  "usage": {
+    "input_tokens": 652,
+    "output_tokens": 460,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

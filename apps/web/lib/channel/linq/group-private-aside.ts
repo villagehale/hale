@@ -9,6 +9,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqChatAuditKey } from './family-audit';
 import {
   type FamilyPrivateSlice,
+  joinConsent,
   presentHouseholds,
   readFamilySliceForAudience,
 } from './multi-family';
@@ -36,9 +37,10 @@ import { primaryParentId } from './roster-ask';
  *      when nothing overlaps or it would repeat the last aside with nothing changed. Code
  *      never compares texts or topics, and never decides a clash by keyword.
  *
- * Code checks facts only: each ref is a household present in THIS chat; one aside per
- * (group message, family), keyed on the audit row; the draft is non-empty. A failed read
- * or draft sends nothing (no fixed copy, no fallback).
+ * Code checks facts only: each ref is a household present in THIS chat whose own join
+ * consent for the chat is granted; one aside per (group message, family), keyed on the
+ * audit row; the draft is non-empty. A failed consent read, model read, or draft sends
+ * nothing (no fixed copy, no fallback to whoever is merely present).
  */
 
 export const PRIVATE_ASIDE_AUDIT = 'linq_private_aside_sent';
@@ -277,16 +279,32 @@ export async function runPrivateAside(
     exceptFamilies?: readonly string[];
   },
 ): Promise<PrivateAsideOutcome> {
-  // Presence, not a join: a household hears about its own facts 1:1 while someone from it
-  // is here, has not stopped Hale here, and its parent has not said it is out. One group
-  // message texts a household 1:1 once: one already texted by it is not asked about again.
+  // Present, not stopped, and not marked out — then that household's own join consent.
+  // This runs only while LINQ_MULTI_FAMILY_GROUPS_ENABLED is exactly `true`
+  // (takeMultiFamilyTurn). The consent filter sits inside that gate. One group message texts
+  // a household 1:1 once: one already texted by it is not asked about again.
   const except = new Set(input.exceptFamilies ?? []);
-  const familyIds = (
+  const presentIds = (
     await presentHouseholds(database, input.chatId, {
       includeStopped: false,
       includeLeft: false,
     })
   ).filter((familyId) => !except.has(familyId));
+  if (presentIds.length === 0) return { outcome: 'no_families' };
+
+  let familyIds: string[];
+  try {
+    familyIds = [];
+    for (const id of presentIds) {
+      if ((await joinConsent(database, input.chatId, id)).allowed) familyIds.push(id);
+    }
+  } catch (err) {
+    console.warn(
+      { chatId: input.chatId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq private aside: consent read failed',
+    );
+    return { outcome: 'read_failed' };
+  }
   if (familyIds.length === 0) return { outcome: 'no_families' };
 
   const slices = new Map<string, FamilyPrivateSlice>();

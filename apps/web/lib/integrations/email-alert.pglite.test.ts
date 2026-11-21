@@ -8,9 +8,9 @@ import {
 } from '~/lib/channel/coach/read-email-tool';
 import { departCoParent } from '~/lib/channel/coparent/depart';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
-import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import {
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
@@ -2029,6 +2029,23 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
     await expect(sweepAt(later, new Date(MORNING.getTime() + 15 * 60_000))).resolves.toEqual([]);
     expect(later.rereads).toEqual([]);
     expect(later.transport.sent).toEqual([]);
+  });
+
+  it('a send pause keeps the debt open, and the sweep after the pause still sends', async () => {
+    const paused = { allowed: false, reason: 'sends_paused' } as const;
+    await expect(sweepAt(harness({ verdict: paused }), HELD_AT, [HELD_ENVELOPE])).resolves.toEqual([
+      'gate_refused:sends_paused',
+    ]);
+    const still = harness({ verdict: paused });
+    await expect(sweepAt(still, new Date('2026-09-17T11:55:00.000Z'))).resolves.toEqual([
+      'hold_waiting',
+    ]);
+    expect(still.rereads).toEqual([]);
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: null, outcome: null }]);
+
+    const morning = harness();
+    await expect(sweepAt(morning, MORNING)).resolves.toEqual(['sent']);
+    expect(morning.transport.sent).toHaveLength(1);
   });
 
   it('still inside quiet hours, the debt waits without a Gmail read or a model call', async () => {

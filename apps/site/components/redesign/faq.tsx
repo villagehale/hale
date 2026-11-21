@@ -6,6 +6,8 @@ import { FaqDeepLink } from './faq-deeplink';
 import { FaqItem } from './faq-item';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
+import type { BillingCurrency } from '@hale/types';
+import { paidPlansCostAnswer } from '~/lib/billing/plain-price';
 import { FAQ } from '~/lib/faq/index';
 import { Phrase, tx } from './tx';
 
@@ -23,12 +25,15 @@ export function RedesignFaq({
   smsNumber,
   prefill,
   source = null,
+  currency = 'CAD',
 }: {
   locale: Locale;
   smsNumber: string;
   prefill: string;
   /** A `?s=` code the page already validated. */
   source?: string | null;
+  /** Which list-price row to print. Missing geo is CAD. */
+  currency?: BillingCurrency;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
@@ -70,7 +75,7 @@ export function RedesignFaq({
           ) : item.question === "Is Hale a person?" ? (
             <Phrase locale={locale} sentence={item.answer} phrase="aloha@villagehale.com" href="mailto:aloha@villagehale.com" />
           ) : (
-            t(item.answer)
+            t(item.id === 'what-do-paid-plans-cost' ? paidPlansCostAnswer(currency) : item.answer)
           )}
         </FaqItem>
       ))}

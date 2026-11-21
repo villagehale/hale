@@ -5,6 +5,8 @@ import { buildAlternates, ogLocale } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
+import { paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { FAQ, faqJsonLd } from '~/lib/faq/index';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
@@ -39,9 +41,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function FaqPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
   const source = await pageSource(searchParams);
+  const currency = await visitorCurrency();
   const items = FAQ.map((item) => ({
     question: tx(locale, item.question),
-    answer: tx(locale, item.answer),
+    answer: tx(
+      locale,
+      item.id === 'what-do-paid-plans-cost' ? paidPlansCostAnswer(currency) : item.answer,
+    ),
   }));
   return (
     <>
@@ -55,6 +61,7 @@ export default async function FaqPage({ params, searchParams }: PageProps) {
         smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
         prefill={intakePrefill(locale)}
         source={source}
+        currency={currency}
       />
     </>
   );

@@ -1,8 +1,18 @@
+import { setFlagEvaluatorForTests } from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PROACTIVE_ROUTING, proactiveCadence, requestedCadence, unroutedKinds } from './flag';
+import {
+  PROACTIVE_ROUTING,
+  familyDecisionCapEnabled,
+  proactiveCadence,
+  proactiveReviewGuardsEnabled,
+  proactiveSendsPaused,
+  requestedCadence,
+  unroutedKinds,
+} from './flag';
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  setFlagEvaluatorForTests(null);
 });
 
 describe('proactive cadence flag', () => {
@@ -54,5 +64,33 @@ describe('proactive cadence flag', () => {
     expect(PROACTIVE_ROUTING.co_parent_departed).toBe('decider');
     expect(PROACTIVE_ROUTING.travel_brief).toBe('decider');
     expect(PROACTIVE_ROUTING.next_day_checkback).toBe('decider');
+  });
+
+  it('arms the review guards, the daily decision cap, and the send pause only on exact true', () => {
+    expect(proactiveReviewGuardsEnabled()).toBe(false);
+    expect(familyDecisionCapEnabled()).toBe(false);
+    expect(proactiveSendsPaused()).toBe(false);
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true\n');
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'TRUE');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', ' true');
+    expect(proactiveReviewGuardsEnabled()).toBe(false);
+    expect(familyDecisionCapEnabled()).toBe(false);
+    expect(proactiveSendsPaused()).toBe(false);
+    vi.stubEnv('PROACTIVE_REVIEW_GUARDS_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_FAMILY_DECISION_CAP_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    expect(proactiveReviewGuardsEnabled()).toBe(true);
+    expect(familyDecisionCapEnabled()).toBe(true);
+    expect(proactiveSendsPaused()).toBe(true);
+  });
+
+  it('keeps an exact env pause when PostHog has the flag loaded as false', () => {
+    setFlagEvaluatorForTests(() => false);
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    vi.stubEnv('POSTHOG_ID_SALT', 'test-salt');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+    expect(proactiveSendsPaused()).toBe(true);
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true\n');
+    expect(proactiveSendsPaused()).toBe(false);
   });
 });

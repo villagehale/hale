@@ -40,6 +40,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -116,14 +117,16 @@ function flatten(text) {
 // ── the composer's refusals(), replicated from apology.ts ───────────────────
 
 const MAX_APOLOGY_CHARS = 160;
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('invented_number');
@@ -163,6 +166,7 @@ const BROKEN_APOLOGY =
   'Oops! We hit a technical error 😊. Your request is still waiting - please check the app at https://villagehale.com and try again in 5 minutes, ok?';
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();

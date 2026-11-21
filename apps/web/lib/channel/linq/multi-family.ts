@@ -875,7 +875,7 @@ export async function presentHouseholds(
  * while someone from it is in this chat.
  */
 /** Whether this family's live join here carries its own granted, unrevoked consent for this chat. */
-async function joinConsent(
+export async function joinConsent(
   database: Database,
   chatId: string,
   familyId: string,
@@ -937,7 +937,8 @@ export async function readFamilySliceForAudience(
 
 /**
  * One family's private terms, ungated. Its callers gate it: the family's own aside reads it
- * only while the family is present, and the deny list reads it only to refuse those terms.
+ * only while the family is present and its join consent for this chat is granted, and the
+ * deny list reads it only to refuse those terms.
  * Calendar rows are clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone
  * so the private aside can compare plan times (privateTimesOf).
  */
@@ -1215,8 +1216,11 @@ export type MultiFamilyTurnResult =
     };
 
 /**
- * The private aside never touches the group send: it only reads each family's own
- * consented slice and texts that family 1:1. A throw is logged and never fails the turn.
+ * The private aside never touches the group send. It reads a household's own slice
+ * only when `joinConsent` allows it for this chat, then texts that family 1:1. A
+ * household without that consent is left out of the prompt and gets no aside. A
+ * consent read that throws is `read_failed` (nothing sent; presence is not used
+ * instead). Any other throw is logged and never fails the turn.
  *
  * `delivered` is true only when a 1:1 actually reached that family (`sent`, or
  * `suppressed` because the same text was already sent). A read that picks a family

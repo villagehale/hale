@@ -71,7 +71,10 @@ describe('sendLinqChatMessage', () => {
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${API_KEY}`);
     expect(JSON.parse(String(init.body))).toEqual({
-      message: { parts: [{ type: 'text', value: 'Thursday works' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: 'Thursday works' }],
+      },
     });
   });
 
@@ -112,6 +115,7 @@ describe('sendLinqChatMessage', () => {
     expect(sent).toEqual({ providerMessageId: 'msg-out-2' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Thursday works' }],
         reply_to: { message_id: 'msg-in-1' },
       },
@@ -144,11 +148,17 @@ describe('sendLinqChatMessage', () => {
     expect(bodies).toEqual([
       {
         message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
           parts: [{ type: 'text', value: 'Thursday works' }],
           reply_to: { message_id: 'msg-in-1' },
         },
       },
-      { message: { parts: [{ type: 'text', value: 'Thursday works' }] } },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Thursday works' }],
+        },
+      },
     ]);
     expect(warn).toHaveBeenCalledOnce();
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain('Thursday');
@@ -170,6 +180,7 @@ describe('sendLinqChatMessage', () => {
     expect(sent).toEqual({ providerMessageId: 'msg-out-mention' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
       },
     });
@@ -196,8 +207,18 @@ describe('sendLinqChatMessage', () => {
 
     expect(sent).toEqual({ providerMessageId: 'msg-plain' });
     expect(bodies).toEqual([
-      { message: { parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }] } },
-      { message: { parts: [{ type: 'text', value: 'Swim is at 4.' }] } },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
+        },
+      },
+      {
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Swim is at 4.' }],
+        },
+      },
     ]);
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain('+14155551234');
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain(CHAT);
@@ -262,6 +283,7 @@ describe('createLinqTextTransport', () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Swim is at 4.', mention: '+14155551234' }],
       },
     });
@@ -285,6 +307,7 @@ describe('createLinqTextTransport', () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'Done' }],
         reply_to: { message_id: 'msg-in-9' },
       },
@@ -297,7 +320,10 @@ describe('createLinqTextTransport', () => {
     const transport = createLinqTextTransport({ chatId: CHAT, fetch: fetchMock });
     await transport.send({ to: '+12025559876', body: 'Hey, it is Hale.' });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value: 'Hey, it is Hale.' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: 'Hey, it is Hale.' }],
+      },
     });
   });
 
@@ -500,6 +526,7 @@ describe('Linq human-feel helpers', () => {
     const init = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(String(init?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'media', url: 'https://example.com/photo.jpg' }],
         reply_to: { message_id: 'msg-in-1', part_index: 0 },
       },
@@ -512,7 +539,10 @@ describe('Linq human-feel helpers', () => {
       fetch: link,
     });
     expect(JSON.parse(String(link.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'link', value: 'https://example.com/camp' }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'link', value: 'https://example.com/camp' }],
+      },
     });
 
     await expect(
@@ -543,6 +573,7 @@ describe('Linq human-feel helpers', () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [
           {
             type: 'text',
@@ -564,7 +595,10 @@ describe('Linq human-feel helpers', () => {
       fetch: plain,
     });
     expect(JSON.parse(String(plain.mock.calls[0]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value }],
+      },
     });
   });
 
@@ -919,6 +953,7 @@ describe('Linq group, card, poll, and effect helpers', () => {
     expect(effect.providerMessageId).toBe('effect-1');
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [{ type: 'text', value: 'nice' }],
         effect: { type: 'screen', name: 'confetti' },
       },
@@ -1068,6 +1103,7 @@ describe('createLinqPhoneTransport', () => {
           href: 'https://api.linqapp.com/api/partner/v3/chats/c1/messages',
           body: {
             message: {
+              idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
               parts: [
                 { type: 'text', value: 'Tiny Gym runs Sundays 9:30. https://example.test/gym' },
               ],
@@ -1217,7 +1253,10 @@ describe('createLinqPhoneTransport', () => {
         'https://api.linqapp.com/api/partner/v3/chats/c1/messages',
       ]);
       expect(bodies[1]).toEqual({
-        message: { parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }] },
+        message: {
+          idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+          parts: [{ type: 'text', value: 'Tiny Gym runs Sundays 9:30.' }],
+        },
       });
     });
 
@@ -1320,7 +1359,10 @@ describe('createLinqPhoneTransport', () => {
       `https://api.linqapp.com/api/partner/v3/chats/${CHAT}/messages`,
     );
     expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
-      message: { parts: [{ type: 'text', value: body }] },
+      message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
+        parts: [{ type: 'text', value: body }],
+      },
     });
 
     const empty = vi.fn(async () => Response.json({ chats: [] }));
@@ -1348,6 +1390,7 @@ describe('createLinqPhoneTransport', () => {
     expect(sent.providerMessageId).toBe('msg-card');
     expect(JSON.parse(String(listed.mock.calls[1]?.[1]?.body))).toEqual({
       message: {
+        idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
         parts: [
           { type: 'text', value: 'save this' },
           { type: 'media', url: media },

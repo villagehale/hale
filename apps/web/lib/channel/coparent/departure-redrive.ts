@@ -182,8 +182,9 @@ export async function runDepartureNoticeRedrive(
     else if (outcome === 'no_staying_parent') result.noStayingParent += 1;
     else if (outcome === 'no_send_target') result.noSendTarget += 1;
     else if (outcome === 'send_failed') result.sendFailed += 1;
-    else if (outcome === 'gate_refused:quiet_hours') result.heldAgain += 1;
-    else result.refused += 1;
+    else if (outcome === 'gate_refused:quiet_hours' || outcome === 'gate_refused:sends_paused') {
+      result.heldAgain += 1;
+    } else result.refused += 1;
   }
 
   return result;

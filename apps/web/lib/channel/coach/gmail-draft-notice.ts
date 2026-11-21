@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { isGsm7 } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import type { GmailDraftOperation } from '~/lib/integrations/gmail-draft-service';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -50,7 +50,10 @@ export function noticeProblems(raw: string): string[] {
   if (!text) problems.push('empty');
   if (text.length > MAX_NOTICE_CHARS) problems.push('too_long');
   if (text && !isGsm7(text)) problems.push('not_gsm7');
-  if (hasLinkShape(text)) problems.push('link');
+  if (hasLinkShape(text)) {
+    noteLinkGate('gmail-draft-notice', 'redraft');
+    problems.push('link');
+  }
   if (KEYWORD_YES.test(text)) problems.push('keyword_yes');
   if (CLAIMS_SENT.test(text)) problems.push('claims_sent');
   if (APP_POINTER.test(text)) problems.push('app_pointer');

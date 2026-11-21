@@ -133,14 +133,15 @@ async function dispatchAt(job: ChannelSendJob, at: string) {
 }
 
 /** The T-24h job the shipped run enqueues at the 18:12 MST slot on 5 Nov, for an event
- * at 16:00 MST on 6 Nov. Its row is 'sent' from the moment of the enqueue. */
+ * at 16:00 MST on 6 Nov. Its row is pending (not 'sent') from the moment of the enqueue
+ * until the drain settles it (VIL-730). */
 async function eveningBeforeJob(): Promise<ChannelSendJob> {
   await seedEvent('2026-11-06T23:00:00Z');
   await runReminderCron(db.database, deps(), new Date('2026-11-06T01:12:00Z'));
   const [job] = enqueued;
   if (!job) throw new Error('the run enqueued no evening-before reminder');
   expect(job.dedupeKey).toBe(`reminder:-P1D:${familyId}:${parentUserId}:2026-11-05`);
-  expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+  expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
   return job;
 }
 
@@ -178,7 +179,7 @@ describe('releaseHeldReminder (VIL-562)', () => {
     // 08:12 MST: re-offered, recomposed, under the same evening key.
     await runReminderCron(db.database, deps(), new Date('2026-11-06T15:12:00Z'));
     expect(enqueued.map((j) => j.dedupeKey)).toEqual([job.dedupeKey, job.dedupeKey]);
-    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
   });
 
   it('R2: a T-1h held at 21:05 is released, then the 21:12 run ends it as started', async () => {
@@ -269,7 +270,7 @@ describe('releaseHeldReminder (VIL-562)', () => {
       const result: DispatchResult = { legs: [{ channel: 'sms', outcome }] };
       expect(await releaseHeldReminder(db.database, job, result)).toEqual({ outcome: 'not_held' });
     }
-    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
     expect(await audits('reminder_held_at_send')).toEqual([]);
   });
 
@@ -284,7 +285,7 @@ describe('releaseHeldReminder (VIL-562)', () => {
       outcome: 'not_held',
     });
     expect(error).not.toHaveBeenCalled();
-    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
 
     // Positive control: the same hold on the reminder itself is released.
     expect(await releaseHeldReminder(db.database, job, result)).toEqual({
@@ -307,7 +308,7 @@ describe('releaseHeldReminder (VIL-562)', () => {
       expect.objectContaining({ code: 'payload_unreadable' }),
       expect.any(String),
     );
-    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
   });
 
   it('R6: a quiet hold with no named reason is hold_unnamed, rows untouched', async () => {
@@ -323,7 +324,7 @@ describe('releaseHeldReminder (VIL-562)', () => {
       expect.objectContaining({ code: 'hold_unnamed' }),
       expect.any(String),
     );
-    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: 'send_pending' });
     expect(await audits('reminder_held_at_send')).toEqual([]);
   });
 

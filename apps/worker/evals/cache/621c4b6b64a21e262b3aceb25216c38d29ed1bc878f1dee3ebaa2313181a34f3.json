@@ -1,0 +1,26 @@
+{
+  "value": {
+    "reply": "Totally fine, I'll leave the place out. Next up, what are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "asksCount": 1,
+    "asksName": false,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "placeDeclined": true
+  },
+  "latencyMs": 1663,
+  "usage": {
+    "input_tokens": 685,
+    "output_tokens": 417,
+    "cache_read_input_tokens": 7119,
+    "cache_creation_input_tokens": 0
+  }
+}

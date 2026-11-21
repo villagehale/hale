@@ -60,6 +60,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import {
   INTRO_VOICE_FIXTURES,
   MAX_RETIRED_SIMILARITY,
@@ -134,7 +135,9 @@ function introAskUserMessage(request, rejected = []) {
 /** Mirrors MAX_INTRO_SEGMENTS. */
 const MAX_INTRO_SEGMENTS = 2;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+let hasLinkShape = () => {
+  throw new Error('hasLinkShape is not loaded');
+};
 
 /** Mirrors KEYWORD_INSTRUCTION. The instruction, never the word: "yes" and "no" are
  * ordinary English and a composed ask may well contain them. STOP is deliberately absent —
@@ -165,7 +168,7 @@ function introAskRefusals(body, request) {
   if (body === '') return ['empty'];
   if (body.length > maxIntroAskChars) found.push('over_char_cap');
   if (smsSegmentsRef(body) > MAX_INTRO_SEGMENTS) found.push('over_segment_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
@@ -329,6 +332,7 @@ const BROKEN_ASK =
   'you rather not? Reply YES INTROS or NO INTROS.';
 
 async function main() {
+  hasLinkShape = await loadHasLinkShape();
   assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');

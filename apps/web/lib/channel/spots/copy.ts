@@ -1,4 +1,4 @@
-import { hasLinkShape } from '../../format/link-shape';
+import { hasLinkShape, noteLinkGate } from '../../format/link-shape';
 import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
 import { checkedSchedule } from './schedule';
 
@@ -122,7 +122,10 @@ export function spotOpenRefusals(text: string, facts: SpotOpenFacts): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
   const refusals: string[] = [];
-  if (hasLinkShape(body)) refusals.push('link');
+  if (hasLinkShape(body)) {
+    noteLinkGate('spot-open', 'redraft');
+    refusals.push('link');
+  }
   if (body.includes('?')) refusals.push('asks_a_question');
   const backed = backedNumbers(facts);
   if ((body.match(/\d+/g) ?? []).some((run) => !backed.has(Number(run)))) {

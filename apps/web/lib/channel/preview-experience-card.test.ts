@@ -57,6 +57,7 @@ describe('POST /api/channels/preview/experience-card (VIL-480)', () => {
     expect(body.chatId).toBe(fakeExperienceChatId('+14375550101'));
     const sent = calls.find((c) => (c.body as any)?.message?.experience);
     expect((sent?.body as any).message).toEqual({
+      idempotency_key: expect.stringMatching(/^[0-9a-f]{64}$/),
       experience: {
         name: 'link',
         action: 'open',

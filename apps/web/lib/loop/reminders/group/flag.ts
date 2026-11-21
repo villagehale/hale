@@ -16,6 +16,19 @@ export function groupRemindersEnabled(): boolean {
 }
 
 /**
+ * VIL-707. An in-flight group reminder that Linq has not accepted yet can be
+ * cancelled, and the send checks the member's opt-out again immediately before
+ * the provider call. Exactly `true`. Anything else leaves `in_flight` to land.
+ */
+export const GROUP_REMINDER_INFLIGHT_CANCEL_ENV = 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED';
+
+export function groupReminderInFlightCancelEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('group-reminder-inflight-cancel', undefined, env);
+}
+
+/**
  * All three flags. The tick sends nothing unless this holds: with v2 off, a claimed group
  * is every loop text's home channel, so a reminder handed to the 1:1 dispatch could land
  * in the group instead.

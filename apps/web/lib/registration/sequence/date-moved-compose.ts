@@ -3,7 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -42,7 +42,8 @@ export type DateMovedInput = DateMovedFacts & { language: ReplyLanguage };
 export function dateMovedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  return hasLinkShape(text) ? ['link'] : [];
+  if (hasLinkShape(text)) return ['link'];
+  return [];
 }
 
 /** What goes on the wire: the writer's text, then the page on its own line. */
@@ -96,6 +97,9 @@ export async function composeDateMoved(
       const text = value.text.trim();
       const refusals = dateMovedRefusals(text);
       if (refusals.length === 0) return text;
+      if (refusals.includes('link')) {
+        noteLinkGate('date-moved', linkAttemptKind(attempt, DATE_MOVED_MAX_ATTEMPTS));
+      }
       console.warn({ familyId, attempt, refusals }, 'registration date moved: draft refused');
     } catch (err) {
       console.warn(

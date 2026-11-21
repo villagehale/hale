@@ -8,6 +8,7 @@ import { assembleFamilyExport } from '~/lib/rights/export';
 import {
   forgetSharedGroupPeople,
   forgetSharedGroupPresence,
+  joinFamilyToSharedGroup,
   noticeSharedGroupAdded,
   takeMultiFamilyTurn,
 } from '~/lib/channel/linq/multi-family';
@@ -728,7 +729,7 @@ describe('in a multi-family group turn', () => {
     intent: SharedGroupReading['intent'],
     extra: { optOut?: boolean; answer?: Decision; adaKid?: string } = {},
   ) {
-    await parent(MEI, 'Mei');
+    const mei = await parent(MEI, 'Mei');
     const ada = await parent(ADA, 'Ada');
     if (extra.adaKid) {
       // Ada said in the chat whose parent she is.
@@ -741,6 +742,20 @@ describe('in a multi-family group turn', () => {
         inferredKidName: extra.adaKid,
         seatedAt: NOW,
       });
+    }
+    for (const [phone, who] of [
+      [MEI, mei],
+      [ADA, ada],
+    ] as const) {
+      const joined = await joinFamilyToSharedGroup(db.database, {
+        chatId: CHAT,
+        familyId: who.familyId,
+        userId: who.userId,
+        phone,
+        verbatim: 'our family is in this group',
+        now: NOW,
+      });
+      if (joined.outcome !== 'joined') throw new Error(`join consent: ${joined.outcome}`);
     }
     const wire = sender();
     const { model, seen } = scripted(

@@ -56,6 +56,8 @@ async function sendOnce(
     now: Date;
   },
   send: () => Promise<{ providerMessageId: string; chatId?: string | null }>,
+  /** Right before the provider call. False: the member opted out, so nothing is sent. */
+  beforeSend?: () => Promise<boolean>,
 ): Promise<GroupReminderSendOutcome> {
   const [claimed] = await database
     .insert(schema.channelMessages)
@@ -74,6 +76,40 @@ async function sendOnce(
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { outcome: 'already_sent' };
+
+  if (beforeSend) {
+    let allowed = false;
+    try {
+      allowed = await beforeSend();
+    } catch (err) {
+      // The provider has not been called, so this key must not look like a send that
+      // may have landed. Clearing it lets a later tick try again.
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'opt_out_check_failed', dedupeKey: null })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.warn(
+        {
+          familyId: entry.familyId,
+          templateKey: entry.templateKey,
+          err: err instanceof Error ? err.name : 'unknown',
+        },
+        'group reminder: opt-out check failed before the send, left to retry',
+      );
+      return { outcome: 'not_sent', code: 'opt_out_check_failed', retryable: true };
+    }
+    if (!allowed) {
+      await database
+        .update(schema.channelMessages)
+        .set({ status: 'failed', errorCode: 'member_opted_out', dedupeKey: null })
+        .where(eq(schema.channelMessages.id, claimed.id));
+      console.info(
+        { familyId: entry.familyId, outcome: 'member_opted_out' },
+        'group reminder: opted out before the send, nothing sent',
+      );
+      return { outcome: 'not_sent', code: 'member_opted_out', retryable: false };
+    }
+  }
 
   let sent: { providerMessageId: string; chatId?: string | null };
   try {
@@ -127,6 +163,8 @@ export async function postGroupReminderLine(
     now: Date;
     send?: GroupLineSend;
     listChatHandles?: ListChatHandles;
+    /** Immediately before Linq is called. False sends nothing. */
+    beforeSend?: () => Promise<boolean>;
   },
 ): Promise<GroupReminderLineOutcome> {
   const audience = await groupAudienceAllows(
@@ -155,6 +193,7 @@ export async function postGroupReminderLine(
             text: input.text,
             replyTo: input.replyTo ? { messageId: input.replyTo } : undefined,
           }),
+    input.beforeSend,
   );
 }
 
@@ -173,6 +212,8 @@ export async function textGroupReminderDirect(
     dedupeKey: string;
     now: Date;
     transport: ChannelTransport;
+    /** Immediately before Linq is called. False sends nothing. */
+    beforeSend?: () => Promise<boolean>;
   },
 ): Promise<GroupReminderSendOutcome> {
   return sendOnce(
@@ -186,5 +227,6 @@ export async function textGroupReminderDirect(
       now: input.now,
     },
     () => sendResolvingNewChat(input.transport, { to: input.to, body: input.text }),
+    input.beforeSend,
   );
 }

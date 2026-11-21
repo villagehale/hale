@@ -1,0 +1,28 @@
+{
+  "value": {
+    "reply": "Here's what's near Springfield for Mia (4) and Leo (1). Swim lessons at the community pool suit Mia, and the library storytime and drop-in playgroup both work for the two of them. What should I call you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "asksCount": 1,
+    "asksName": true,
+    "speaksAsParent": false,
+    "joinInProse": false,
+    "messageIsYes": false,
+    "messageOnlyName": null,
+    "questionBeforeList": false,
+    "groupLeads": [
+      "Swim lessons at the community pool for ages 3 to 5, on Saturdays at 10:00. It fits Mia.",
+      "Library storytime for all ages on Tuesdays at 10:30, free, and a drop-in playgroup for ages 0 to 6 on weekday mornings, also free. Both work for Mia and Leo."
+    ]
+  },
+  "latencyMs": 2158,
+  "usage": {
+    "input_tokens": 853,
+    "output_tokens": 543,
+    "cache_read_input_tokens": 6810,
+    "cache_creation_input_tokens": 0
+  }
+}

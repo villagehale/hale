@@ -1,4 +1,10 @@
-import { FOUNDING_PROMO_STARTS_AT, currencyFromIpCountry, promoPhaseAt } from '@hale/types';
+import {
+  FOUNDING_PROMO_STARTS_AT,
+  currencyFromIpCountry,
+  promoPhaseAt,
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
+  serverCheckoutCurrency,
+} from '@hale/types';
 import type { Metadata } from 'next';
 import { cookies, headers } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -6,7 +12,7 @@ import { FoundingCheckout } from '~/components/billing/founding-checkout';
 import { PortalHeading } from '~/components/portal/heading';
 import styles from '~/components/portal/portal.module.css';
 import { attributionFromRequest } from '~/lib/billing/attribution';
-import { holidayPromoEnabled } from '~/lib/billing/flags';
+import { checkoutServerCurrencyEnabled, holidayPromoEnabled } from '~/lib/billing/flags';
 import { foundingWindowOpen, isPromoAnnualSku, resolveCheckoutPrice } from '~/lib/billing/prices';
 import { familyMayUseFoundingCheckout } from '~/lib/billing/promo-access';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
@@ -36,7 +42,9 @@ export default async function FoundingCheckoutPage({
     search: query,
   });
   const now = new Date();
-  const currency = currencyFromIpCountry(h.get('x-vercel-ip-country'));
+  const currency = checkoutServerCurrencyEnabled()
+    ? serverCheckoutCurrency(h.get('x-vercel-ip-country'))
+    : currencyFromIpCountry(h.get('x-vercel-ip-country'));
   const familyId = await currentFamilyId();
   const basics = await loadFamilyBasics();
   if (basics.planTier !== 'free') {
@@ -78,6 +86,15 @@ export default async function FoundingCheckoutPage({
   }
   if (!familyMayUseFoundingCheckout(familyId, now)) {
     notFound();
+  }
+  if (!currency) {
+    return (
+      <div className={styles.one}>
+        <section className={styles.card}>
+          <p className={styles.text}>{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p>
+        </section>
+      </div>
+    );
   }
   const stripeReady = Boolean(process.env.STRIPE_SECRET_KEY && process.env.APP_URL);
   const plus = resolveCheckoutPrice({
