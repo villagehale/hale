@@ -146,7 +146,11 @@ export async function sendResolvingNewChat(
       { code: 'link_on_new_chat' },
       'outbound: new Linq chat cannot take a link; plain-text version sent',
     );
-    const sent = await transport.send({ to: input.to, body: plain });
+    const sent = await transport.send({
+      to: input.to,
+      body: plain,
+      ...(input.sendKey ? { sendKey: `${input.sendKey}:plain` } : {}),
+    });
     return { ...sent, linkOmitted: 'link_on_new_chat' };
   }
 }

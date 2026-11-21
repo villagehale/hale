@@ -197,6 +197,8 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
+  duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},

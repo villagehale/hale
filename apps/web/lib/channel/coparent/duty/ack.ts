@@ -1,20 +1,35 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { acceptedStatus } from '~/lib/channel/ledger';
+import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import {
   type GroupHoldReason,
   chatFloorAllows,
   sendFlooredChatMessage,
 } from '~/lib/channel/linq/group-audience';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
-import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
+import { LINQ_WEBHOOK_TIMEOUT_MS } from '~/lib/channel/linq/signature';
+import {
+  LinqSendError,
+  SEND_TIMEOUT_MS,
+  listLinqParticipantHandles,
+} from '~/lib/channel/linq/transport';
 import { reactToLinqMessage } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { dutyCopyMayLeave, dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
+import {
+  defaultDutyPager,
+  dutyAttemptKey,
+  dutySendClaim,
+  dutySendMayHaveLeft,
+  isLastDutySendTry,
+  markDutySendAccepted,
+  settleDutySendFailure,
+} from './send-receipt';
 
 /**
  * LLM writes get one restate the model wrote. Deterministic hits get a
@@ -27,6 +42,10 @@ import { coparentDutyMemoryEnabled } from './flag';
  * is written or sent into the chat; the parent's message gets the tapback instead (a
  * reaction carries no household content), and the outcome names the floor's reason.
  */
+
+/** A further try starts only while one whole send would still land inside Linq's webhook
+ * timeout: this path can run inline in the inbound webhook. */
+const ACK_RETRY_WINDOW_MS = LINQ_WEBHOOK_TIMEOUT_MS - SEND_TIMEOUT_MS;
 
 const QUIET_START = '21:00:00';
 const QUIET_END = '08:00:00';
@@ -54,7 +73,8 @@ export type DutyAck =
         | 'model_unsent'
         | 'non_kid_title'
         | 'not_configured'
-        | 'placeholder';
+        | 'placeholder'
+        | typeof SEND_RETRIES_EXHAUSTED;
       sent: false;
       text: null;
     };
@@ -77,6 +97,8 @@ export async function acknowledgeDutyWrite(input: {
   fetch?: typeof fetch;
   replyClient?: AgentClient | null;
   listChatHandles?: ListChatHandles;
+  pager?: OpsPager;
+  clockMs?: () => number;
 }): Promise<DutyAck> {
   const skip = (reason: Extract<DutyAck, { status: 'skipped' }>['reason']): DutyAck => ({
     status: 'skipped',
@@ -127,9 +149,9 @@ export async function acknowledgeDutyWrite(input: {
   const facts = [input.name, input.kid, input.event, input.day, input.time].flatMap((value) =>
     value?.trim() ? [value.trim()] : [],
   );
-  const line =
+  const compose = async () =>
     restate && plan
-      ? await replyProse(
+      ? replyProse(
           {
             client: await resolveReplyClient(input.replyClient),
             database: input.database,
@@ -141,66 +163,100 @@ export async function acknowledgeDutyWrite(input: {
           { purpose: plan.purpose, questionAllowed: plan.questionAllowed, facts },
         )
       : null;
+  const clockMs = input.clockMs ?? Date.now;
+  const startedAt = clockMs();
+  let line = await compose();
   if (restate && (!line || !dutyCopyMayLeave(line))) return skip('model_unsent');
   if (!restate && !input.inboundMessageId) {
     return heldBy ? audienceHeld(heldBy, false) : skip('no_proactive_1to1');
   }
 
-  const [claimed] = await input.database
-    .insert(schema.channelMessages)
-    .values({
+  const baseKey = `linq:duty_ack:${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`;
+  const pager = input.pager ?? defaultDutyPager(input.database);
+  let unconfirmedKey: string | null = null;
+  // An ack answers the turn in hand and nothing re-offers it later, so its bounded tries
+  // run here; each restatement is written again by the model.
+  for (let attempt = 1; ; attempt += 1) {
+    const dedupeKey = dutyAttemptKey(baseKey, attempt);
+    const sendKey: string = unconfirmedKey ?? dedupeKey;
+    const [claimed] = await input.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: input.familyId,
+        parentUserId: input.actorUserId,
+        channel: 'imessage',
+        direction: 'out',
+        category: 'reply',
+        templateKey,
+        dedupeKey,
+        providerChatId: input.inboundChatId,
+        ...dutySendClaim(input.now),
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!claimed) return skip('not_configured');
+    const failure = {
       familyId: input.familyId,
-      parentUserId: input.actorUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey,
-      dedupeKey: `linq:duty_ack:${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`,
-      providerChatId: input.inboundChatId,
-      status: acceptedStatus('imessage'),
-      sentAt: input.now,
-    })
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) return skip('not_configured');
+      claimId: claimed.id,
+      attempt,
+      surface: 'ack',
+      now: input.now,
+      pager,
+    } as const;
 
-  const markFailed = async (code: string) => {
-    await input.database
-      .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
-      .where(eq(schema.channelMessages.id, claimed.id));
-  };
-
-  if (pass && line) {
     try {
-      await sendFlooredChatMessage(pass, 'pickup_duty', {
-        chatId: input.inboundChatId,
-        text: line,
-        fetch: input.fetch,
-      });
-      return { status: 'restated', sent: true, text: line };
+      if (pass && line) {
+        await sendFlooredChatMessage(pass, 'pickup_duty', {
+          chatId: input.inboundChatId,
+          text: line,
+          sendKey,
+          fetch: input.fetch,
+        });
+      } else {
+        await reactToLinqMessage({
+          messageId: input.inboundMessageId as string,
+          operation: 'add',
+          type: 'like',
+          fetch: input.fetch,
+        });
+      }
     } catch (err) {
-      if (err instanceof LinqSendError && err.code === 'not_configured') {
-        await markFailed('not_configured');
+      if (!(err instanceof LinqSendError)) {
+        await settleDutySendFailure(input.database, {
+          ...failure,
+          code: 'unknown',
+          drop: SEND_RETRIES_EXHAUSTED,
+        });
+        throw err;
+      }
+      if (err.code === 'not_configured') {
+        await input.database
+          .update(schema.channelMessages)
+          .set({ status: 'failed', errorCode: err.code })
+          .where(eq(schema.channelMessages.id, claimed.id));
+        console.info({ reason: err.code }, 'duty memory: the ack was not sent');
         return skip('not_configured');
       }
-      throw err;
+      if (dutySendMayHaveLeft(err.code)) unconfirmedKey = sendKey;
+      const spent = isLastDutySendTry(attempt) || clockMs() - startedAt >= ACK_RETRY_WINDOW_MS;
+      const rewritten = !spent && restate ? await compose() : null;
+      const unwritten = !spent && restate && (!rewritten || !dutyCopyMayLeave(rewritten));
+      await settleDutySendFailure(input.database, {
+        ...failure,
+        code: err.code,
+        drop: unwritten ? 'model_unsent' : spent ? SEND_RETRIES_EXHAUSTED : null,
+      });
+      if (unwritten) return skip('model_unsent');
+      if (spent) return skip(SEND_RETRIES_EXHAUSTED);
+      if (restate) line = rewritten;
+      continue;
     }
-  }
 
-  try {
-    await reactToLinqMessage({
-      messageId: input.inboundMessageId as string,
-      operation: 'add',
-      type: 'like',
-      fetch: input.fetch,
+    await markDutySendAccepted(input.database, {
+      claimId: claimed.id,
+      now: input.now,
+      providerMessageId: null,
     });
+    if (pass && line) return { status: 'restated', sent: true, text: line };
     return heldBy ? audienceHeld(heldBy, true) : { status: 'tapback', sent: false, text: null };
-  } catch (err) {
-    if (err instanceof LinqSendError && err.code === 'not_configured') {
-      await markFailed('not_configured');
-      console.info({ reason: 'not_configured' }, 'duty memory: tapback was not sent');
-      return skip('not_configured');
-    }
-    throw err;
   }
 }
