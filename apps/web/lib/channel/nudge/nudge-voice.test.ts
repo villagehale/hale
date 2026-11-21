@@ -77,6 +77,17 @@ const DROP_IN: Nudge = {
   kidNames: ['Mia'],
 };
 
+const SATURDAY: Nudge = {
+  kind: 'empty_saturday',
+  kidName: 'Maya',
+  saturday: '2026-10-10',
+  candidateId: 'sat-1',
+  title: 'Fanous Lantern Craft',
+  venueName: 'North York Central Library',
+  whenLabel: '2:00 p.m.',
+  url: 'https://tpl.example/lantern',
+};
+
 describe('nudgeVoiceContext', () => {
   it('hands the model the facts and no internal identifiers', () => {
     const context = JSON.stringify(nudgeVoiceContext(SWAP));
@@ -257,6 +268,35 @@ describe('composeNudgeMessage — weekday care', () => {
     expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-REQUEST');
     errors.mockRestore();
   });
+
+  it('a draft the check refuses sends nothing', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const written = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      {
+        familyId: 'fam-1',
+        database: {} as never,
+        client: answering(JSON.stringify({ message: 'Want weekday stuff too? Tuesday at 9:15?' })),
+      },
+    );
+    errors.mockRestore();
+    expect(written).toEqual({ unwritten: 'unusable' });
+  });
+
+  it('positive control: a good draft is what goes out, word for word', async () => {
+    // Claude's own answer for this ask (weekday-care-ask eval, weekend-fallback).
+    const draft =
+      "Hey, I just noticed everything I've sent you so far has been for the weekend. Want me to look at weekday stuff too?";
+    const written = await composeNudgeMessage(
+      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
+      {
+        familyId: 'fam-1',
+        database: {} as never,
+        client: answering(JSON.stringify({ message: draft })),
+      },
+    );
+    expect(written).toEqual({ message: draft });
+  });
 });
 
 /**
@@ -292,6 +332,7 @@ describe('composeNudgeMessage — when the model cannot write it, nothing is wri
     ['registration', REGISTRATION, 'Fall 2026 registration opens at 9:15.'],
     ['weather_swap', SWAP, 'Library story time starts at 9:15 on Saturday.'],
     ['weekday_dropin', DROP_IN, 'EarlyON drop-in starts at 9:15 on Tuesday.'],
+    ['empty_saturday', SATURDAY as VoicedNudge, 'Fanous Lantern Craft starts at 9:15 on Saturday.'],
   ];
 
   it.each(KINDS)('%s: no client', async (_kind, nudge) => {
@@ -366,20 +407,47 @@ describe('composeNudgeMessage — when the model cannot write it, nothing is wri
 });
 
 describe('composeNudgeMessage — empty Saturday', () => {
+  const GOOD_DRAFT =
+    'Maya could make Fanous Lantern Craft at North York Central Library on Saturday at 2:00 p.m.';
+
   it('does not fall back to the fixed sentence when there is no model', async () => {
-    const message = await composeNudgeMessage(
-      {
-        kind: 'empty_saturday',
-        kidName: 'Maya',
-        saturday: '2026-10-10',
-        candidateId: 'sat-1',
-        title: 'Fanous Lantern Craft',
-        venueName: 'North York Central Library',
-        whenLabel: '2:00 p.m.',
-        url: 'https://tpl.example/lantern',
-      },
-      { familyId: 'fam-1', database: {} as never, client: null },
-    );
+    const message = await composeNudgeMessage(SATURDAY, {
+      familyId: 'fam-1',
+      database: {} as never,
+      client: null,
+    });
     expect(message).toEqual({ unwritten: 'no_client' });
+  });
+
+  it('a model call that throws is named apart from a bad draft', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const written = await composeNudgeMessage(SATURDAY, {
+      familyId: 'fam-1',
+      database: agentRunsDb,
+      client: failingCall,
+    });
+    errors.mockRestore();
+    expect(written).toEqual({ unwritten: 'model_failed' });
+  });
+
+  it.each([
+    ['does not name the session', 'Maya could make a craft at the library on Saturday.'],
+    ['writes the opt-out line', `Fanous Lantern Craft on Saturday suits Maya. ${NUDGE_OPT_OUT}`],
+  ])('a draft that passes the fact lint but %s sends nothing', async (_why, draft) => {
+    const written = await composeNudgeMessage(SATURDAY, {
+      familyId: 'fam-1',
+      database: agentRunsDb,
+      client: answering(JSON.stringify({ message: draft })),
+    });
+    expect(written).toEqual({ unwritten: 'unusable' });
+  });
+
+  it('positive control: a good draft goes out word for word, with its link', async () => {
+    const written = await composeNudgeMessage(SATURDAY, {
+      familyId: 'fam-1',
+      database: agentRunsDb,
+      client: answering(JSON.stringify({ message: GOOD_DRAFT })),
+    });
+    expect(written).toEqual({ message: `${GOOD_DRAFT} https://tpl.example/lantern` });
   });
 });
