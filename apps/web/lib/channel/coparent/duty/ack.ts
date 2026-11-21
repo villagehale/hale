@@ -22,10 +22,10 @@ import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { dutyCopyMayLeave, dutyOwnerEcho, dutyTitleMayBeSpoken } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
 import {
+  DUTY_ACK_KEY_PREFIX,
   defaultDutyPager,
   dutyAttemptKey,
   dutySendClaim,
-  dutySendMayHaveLeft,
   isLastDutySendTry,
   markDutySendAccepted,
   settleDutySendFailure,
@@ -43,8 +43,8 @@ import {
  * reaction carries no household content), and the outcome names the floor's reason.
  */
 
-/** A further try starts only while one whole send would still land inside Linq's webhook
- * timeout: this path can run inline in the inbound webhook. */
+/** A further tapback starts only while one whole send would still land inside Linq's
+ * webhook timeout: this path can run inline in the inbound webhook. */
 const ACK_RETRY_WINDOW_MS = LINQ_WEBHOOK_TIMEOUT_MS - SEND_TIMEOUT_MS;
 
 const QUIET_START = '21:00:00';
@@ -149,9 +149,9 @@ export async function acknowledgeDutyWrite(input: {
   const facts = [input.name, input.kid, input.event, input.day, input.time].flatMap((value) =>
     value?.trim() ? [value.trim()] : [],
   );
-  const compose = async () =>
+  const line =
     restate && plan
-      ? replyProse(
+      ? await replyProse(
           {
             client: await resolveReplyClient(input.replyClient),
             database: input.database,
@@ -163,22 +163,16 @@ export async function acknowledgeDutyWrite(input: {
           { purpose: plan.purpose, questionAllowed: plan.questionAllowed, facts },
         )
       : null;
-  const clockMs = input.clockMs ?? Date.now;
-  const startedAt = clockMs();
-  let line = await compose();
   if (restate && (!line || !dutyCopyMayLeave(line))) return skip('model_unsent');
   if (!restate && !input.inboundMessageId) {
     return heldBy ? audienceHeld(heldBy, false) : skip('no_proactive_1to1');
   }
 
-  const baseKey = `linq:duty_ack:${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`;
+  const baseKey = `${DUTY_ACK_KEY_PREFIX}${input.familyId}:${input.inboundMessageId ?? input.now.toISOString()}`;
   const pager = input.pager ?? defaultDutyPager(input.database);
-  let unconfirmedKey: string | null = null;
-  // An ack answers the turn in hand and nothing re-offers it later, so its bounded tries
-  // run here; each restatement is written again by the model.
+  const clockMs = input.clockMs ?? Date.now;
+  const startedAt = clockMs();
   for (let attempt = 1; ; attempt += 1) {
-    const dedupeKey = dutyAttemptKey(baseKey, attempt);
-    const sendKey: string = unconfirmedKey ?? dedupeKey;
     const [claimed] = await input.database
       .insert(schema.channelMessages)
       .values({
@@ -188,7 +182,7 @@ export async function acknowledgeDutyWrite(input: {
         direction: 'out',
         category: 'reply',
         templateKey,
-        dedupeKey,
+        dedupeKey: dutyAttemptKey(baseKey, attempt),
         providerChatId: input.inboundChatId,
         ...dutySendClaim(input.now),
       })
@@ -199,9 +193,8 @@ export async function acknowledgeDutyWrite(input: {
       claimId: claimed.id,
       attempt,
       surface: 'ack',
-      now: input.now,
-      pager,
       audience: input.actorUserId,
+      pager,
     } as const;
 
     try {
@@ -209,7 +202,7 @@ export async function acknowledgeDutyWrite(input: {
         await sendFlooredChatMessage(pass, 'pickup_duty', {
           chatId: input.inboundChatId,
           text: line,
-          sendKey,
+          sendKey: baseKey,
           fetch: input.fetch,
         });
       } else {
@@ -222,11 +215,7 @@ export async function acknowledgeDutyWrite(input: {
       }
     } catch (err) {
       if (!(err instanceof LinqSendError)) {
-        await settleDutySendFailure(input.database, {
-          ...failure,
-          code: 'unknown',
-          drop: SEND_RETRIES_EXHAUSTED,
-        });
+        await settleDutySendFailure(input.database, { ...failure, code: 'unknown', final: true });
         throw err;
       }
       if (err.code === 'not_configured') {
@@ -237,18 +226,11 @@ export async function acknowledgeDutyWrite(input: {
         console.info({ reason: err.code }, 'duty memory: the ack was not sent');
         return skip('not_configured');
       }
-      if (dutySendMayHaveLeft(err.code)) unconfirmedKey = sendKey;
-      const spent = isLastDutySendTry(attempt) || clockMs() - startedAt >= ACK_RETRY_WINDOW_MS;
-      const rewritten = !spent && restate ? await compose() : null;
-      const unwritten = !spent && restate && (!rewritten || !dutyCopyMayLeave(rewritten));
-      await settleDutySendFailure(input.database, {
-        ...failure,
-        code: err.code,
-        drop: unwritten ? 'model_unsent' : spent ? SEND_RETRIES_EXHAUSTED : null,
-      });
-      if (unwritten) return skip('model_unsent');
-      if (spent) return skip(SEND_RETRIES_EXHAUSTED);
-      if (restate) line = rewritten;
+      // A restatement gets one try: another would need a model call inside the webhook.
+      const final =
+        restate || isLastDutySendTry(attempt) || clockMs() - startedAt >= ACK_RETRY_WINDOW_MS;
+      await settleDutySendFailure(input.database, { ...failure, code: err.code, final });
+      if (final) return skip(SEND_RETRIES_EXHAUSTED);
       continue;
     }
 

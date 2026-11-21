@@ -357,13 +357,13 @@ describe('a duty ask is sent only once Linq accepts it', () => {
     expect(rows[0]?.sentAt?.toISOString()).toBe(EVENING.toISOString());
   });
 
-  it('waits out the backoff, then retries a refusal under a new Linq key', async () => {
+  it('waits out the backoff, then retries under the same Linq key, so nothing lands twice', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     const family = await seedFamily(db.database, 'Retry');
     const key = `retry-${family.familyId}`;
     const send = vi
       .fn<DutySendPorts['send']>()
-      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(timedOut())
       .mockResolvedValueOnce({ providerMessageId: 'linq-second' });
     const sendPorts = ports(send, 'chat-retry', pager().pager);
 
@@ -374,36 +374,12 @@ describe('a duty ask is sent only once Linq accepts it', () => {
 
     const retried = await deliver(family, key, later(1), sendPorts);
     expect(retried).toEqual({ status: 'sent', chatId: 'chat-retry' });
-    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([key, `${key}:retry:1`]);
+    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([key, key]);
     expect((await outRows(family.familyId)).map((row) => row.status)).toEqual(['failed', 'sent']);
 
     const again = await deliver(family, key, later(2), sendPorts);
     expect(again).toEqual({ status: 'skipped', reason: 'deduped' });
     expect(send).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps the Linq key after a timeout, so a text that did leave is not sent twice', async () => {
-    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
-    const family = await seedFamily(db.database, 'Timed out');
-    const key = `timeout-${family.familyId}`;
-    const send = vi
-      .fn<DutySendPorts['send']>()
-      .mockRejectedValueOnce(refused())
-      .mockRejectedValueOnce(timedOut())
-      .mockRejectedValueOnce(refused())
-      .mockResolvedValueOnce({ providerMessageId: 'linq-original' });
-    const sendPorts = ports(send, 'chat-timeout', pager().pager);
-
-    for (const hours of [0, 1, 2, 3]) await deliver(family, key, later(hours), sendPorts);
-
-    const unconfirmed = `${key}:retry:1`;
-    expect(send.mock.calls.map((call) => call[0].sendKey)).toEqual([
-      key,
-      unconfirmed,
-      unconfirmed,
-      unconfirmed,
-    ]);
-    expect((await outRows(family.familyId)).at(-1)?.status).toBe('sent');
   });
 
   it('drops after the last try with a named reason, audits it and pages #ops once', async () => {
@@ -419,12 +395,15 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       results.push(await deliver(family, key, later(hours), sendPorts));
     }
     expect(send).toHaveBeenCalledTimes(4);
+    expect(new Set(send.mock.calls.map((call) => call[0].sendKey))).toEqual(new Set([key]));
     expect(results[3]).toEqual({ status: 'not_sent', reason: 'send_retries_exhausted' });
     expect(results[4]).toEqual({ status: 'skipped', reason: 'send_retries_exhausted' });
     expect(ops.pages).toEqual([
       { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
     ]);
-    expect((await outRows(family.familyId)).every((row) => row.status === 'failed')).toBe(true);
+    const rows = await outRows(family.familyId);
+    expect(rows.every((row) => row.status === 'failed')).toBe(true);
+    expect(rows.at(-1)?.errorCode).toBe('send_retries_exhausted');
     expect(await sendAudits(family.familyId, 'duty_send_failed')).toHaveLength(3);
     expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
       {
@@ -517,8 +496,16 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       'Second model wording.',
     ]);
   });
+});
 
-  it('on 1:1s, retries only the parent Linq refused and opens the question once', async () => {
+describe('a split ask on 1:1s', () => {
+  const openAt = async (familyId: string, now: Date) => {
+    const view = await planFamilyDutyAsks(db.database, { familyId, now, bubbleLeaving: false });
+    if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
+    return view.open;
+  };
+
+  it('opens the question at the first acceptance, then retries only the refused parent', async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
     vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
     const family = await splitFamilyOnOneToOnes('direct-retry');
@@ -541,27 +528,34 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       target: async () => ({ channel: 'legacy' }),
       sendDirect,
     };
+    const client = scriptedReply('Who drives Robin to hockey and who drives Casey to dance?');
     const sweep = (now: Date) =>
-      sweepDutyAsks(db.database, {
-        now,
-        ports: sendPorts,
-        replyClient: scriptedReply('Who drives Robin to hockey and who drives Casey to dance?'),
-      });
+      sweepDutyAsks(db.database, { now, ports: sendPorts, replyClient: client });
+    const compose = vi.mocked(client.messages.create);
 
     await sweep(AFTERNOON);
+    expect(await openAt(family.familyId, AFTERNOON)).toMatchObject({
+      split: true,
+      unanswered: 1,
+      silentNamed: false,
+    });
+
     await sweep(later(1, AFTERNOON));
+    const retryPrompt = JSON.stringify(compose.mock.calls.at(-1));
+    expect(retryPrompt).toContain('Robin hockey');
+    expect(retryPrompt).not.toContain('1 unanswered');
     await sweep(later(2, AFTERNOON));
 
-    const toEach = sendDirect.mock.calls.map((call) => call[0].to);
-    expect(toEach.filter((to) => to === PHONE_ONE)).toHaveLength(1);
-    expect(toEach.filter((to) => to === PHONE_TWO)).toHaveLength(2);
-    const view = await planFamilyDutyAsks(db.database, {
-      familyId: family.familyId,
-      now: later(2, AFTERNOON),
-      bubbleLeaving: false,
+    expect(compose).toHaveBeenCalledTimes(2);
+    const toEach = sendDirect.mock.calls.map((call) => call[0]);
+    expect(toEach.filter((call) => call.to === PHONE_ONE)).toHaveLength(1);
+    const second = toEach.filter((call) => call.to === PHONE_TWO);
+    expect(second).toHaveLength(2);
+    expect(second[1]?.sendKey).toBe(second[0]?.sendKey);
+    expect(await openAt(family.familyId, later(2, AFTERNOON))).toMatchObject({
+      unanswered: 1,
+      silentNamed: false,
     });
-    if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
-    expect(view.open?.unanswered).toBe(1);
     expect(await sendAudits(family.familyId, 'duty_send_failed')).toEqual([
       {
         audience: family.secondUserId,
@@ -570,7 +564,7 @@ describe('a duty ask is sent only once Linq accepts it', () => {
     ]);
   });
 
-  it("on 1:1s, reads each parent's gate, so a retry never texts a parent now on hold", async () => {
+  it("reads each parent's gate: no text to a parent on hold, no compose, nothing re-noted", async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
     vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
     const family = await splitFamilyOnOneToOnes('direct-held', [PHONE_THREE, PHONE_FOUR]);
@@ -608,36 +602,141 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       gate,
       sendDirect,
     };
+    const client = scriptedReply('Who drives Robin to hockey and who drives Casey to dance?');
     const sweep = (now: Date) =>
-      sweepDutyAsks(db.database, {
-        now,
-        ports: sendPorts,
-        replyClient: scriptedReply('Who drives Robin to hockey and who drives Casey to dance?'),
-      });
+      sweepDutyAsks(db.database, { now, ports: sendPorts, replyClient: client });
 
     await sweep(AFTERNOON);
     onHold = true;
     await sweep(later(1, AFTERNOON));
+    await sweep(later(2, AFTERNOON));
 
     const toEach = sendDirect.mock.calls.map((call) => call[0].to);
     expect(toEach.filter((to) => to === otherPhone)).toHaveLength(1);
     expect(toEach.filter((to) => to === heldPhone)).toHaveLength(1);
-    const view = await planFamilyDutyAsks(db.database, {
-      familyId: family.familyId,
-      now: later(1, AFTERNOON),
-      bubbleLeaving: false,
+    expect(vi.mocked(client.messages.create)).toHaveBeenCalledTimes(1);
+    expect(await openAt(family.familyId, later(2, AFTERNOON))).toMatchObject({
+      unanswered: 1,
+      silentNamed: false,
     });
-    if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
-    expect(view.open?.unanswered).toBe(1);
+  });
+});
+
+describe('a duty send nothing will offer again', () => {
+  /** Monday 5 Oct 2026, 20:17 in Toronto: the last sweep before quiet hours. */
+  const REFUSED_AT = new Date('2026-10-06T00:17:00.000Z');
+  /** Past the sweep's lookback over every row the tests above wrote. */
+  const CRASHED_AT = new Date('2026-10-12T16:17:00.000Z');
+
+  async function failedRow(
+    family: { familyId: string; parentUserId: string },
+    row: { dedupeKey: string; errorCode: string; createdAt: Date; category?: 'duty_ask' | 'reply' },
+  ) {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: row.category ?? 'duty_ask',
+      dedupeKey: row.dedupeKey,
+      providerChatId: 'chat-stranded',
+      status: 'failed',
+      errorCode: row.errorCode,
+      createdAt: row.createdAt,
+    });
+  }
+
+  it('drops a refused ask the plan stopped offering, and pages once', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Stranded');
+    const dedupeKey = `duty_ask:night_before:evt-stranded-${family.familyId}:pickup:2026-10-05`;
+    await failedRow(family, { dedupeKey, errorCode: 'http_500', createdAt: REFUSED_AT });
+    const ops = pager();
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: ports(vi.fn<DutySendPorts['send']>(), 'chat-stranded', ops.pager),
+      });
+
+    await sweep(later(1, REFUSED_AT));
+    expect(ops.pages).toEqual([]);
+
+    await sweep(later(2, REFUSED_AT));
+    await sweep(later(3, REFUSED_AT));
+
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
+    ]);
+    expect((await outRows(family.familyId))[0]?.errorCode).toBe('send_retries_exhausted');
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
+      {
+        audience: null,
+        after: {
+          surface: 'ask',
+          failure: 'send_refused',
+          attempts: 1,
+          reason: 'send_retries_exhausted',
+        },
+      },
+    ]);
+  });
+
+  it('pages a crash on the last try and a crashed ack, with only the duty memory flag on', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'false');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+    const family = await seedFamily(db.database, 'Crashed last');
+    const base = `duty_ask:night_before:evt-crash-${family.familyId}:pickup:2026-10-12`;
+    await failedRow(family, {
+      dedupeKey: base,
+      errorCode: 'http_500',
+      createdAt: new Date(CRASHED_AT.getTime() - 3 * HOUR_MS),
+    });
+    await failedRow(family, {
+      dedupeKey: `${base}:retry:1`,
+      errorCode: 'http_500',
+      createdAt: new Date(CRASHED_AT.getTime() - 2 * HOUR_MS),
+    });
+    await failedRow(family, {
+      dedupeKey: `${base}:retry:2`,
+      errorCode: 'http_500',
+      createdAt: new Date(CRASHED_AT.getTime() - HOUR_MS),
+    });
+    await failedRow(family, {
+      dedupeKey: `${base}:retry:3`,
+      errorCode: 'send_in_flight',
+      createdAt: CRASHED_AT,
+    });
+    await failedRow(family, {
+      dedupeKey: `linq:duty_ack:${family.familyId}:in-crashed`,
+      errorCode: 'send_in_flight',
+      createdAt: CRASHED_AT,
+      category: 'reply',
+    });
+    const ops = pager();
+
+    await sweepDutyAsks(db.database, {
+      now: later(2, CRASHED_AT),
+      ports: ports(vi.fn<DutySendPorts['send']>(), 'chat-stranded', ops.pager),
+    });
+
+    expect(ops.pages).toHaveLength(2);
+    expect(ops.pages).toEqual(
+      expect.arrayContaining([
+        { site: 'duty_unsent', facts: { surface: 'ask', reason: 'not_confirmed' }, count: 1 },
+        { site: 'duty_unsent', facts: { surface: 'ack', reason: 'not_confirmed' }, count: 1 },
+      ]),
+    );
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toHaveLength(2);
   });
 });
 
 describe('a duty ack is sent only once Linq accepts it', () => {
-  it('leaves no sent row for a refused restatement, rewrites each retry, pages when spent', async () => {
+  it('leaves no sent row for a refused restatement, gives it one try, and pages', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const family = await ackFamily('Ack refused', 'chat-ack-refused');
-    const wire = linqFetch([500, 500, 500, 500]);
+    const wire = linqFetch([500]);
     const ops = pager();
     const client = scriptedReply('Sam has swim on Saturday at 3:00pm.');
     const ack = await acknowledgeDutyWrite(
@@ -650,16 +749,17 @@ describe('a duty ack is sent only once Linq accepts it', () => {
       text: null,
     });
     const rows = await outRows(family.familyId);
-    expect(rows).toHaveLength(4);
-    expect(rows.every((row) => row.status === 'failed' && row.errorCode === 'http_500')).toBe(true);
-    expect(vi.mocked(client.messages.create).mock.calls).toHaveLength(4);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'failed', errorCode: 'send_retries_exhausted' });
+    expect(vi.mocked(client.messages.create)).toHaveBeenCalledTimes(1);
+    expect(wire.calls).toHaveLength(1);
     expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
       {
         audience: family.parentUserId,
         after: {
           surface: 'ack',
           failure: 'send_refused',
-          attempts: 4,
+          attempts: 1,
           reason: 'send_retries_exhausted',
         },
       },
@@ -700,7 +800,7 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     expect(ops.pages).toEqual([]);
   });
 
-  it('stops retrying once another send could outrun the webhook, and pages', async () => {
+  it('stops retrying a tapback once another send could outrun the webhook, and pages', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const family = await ackFamily('Ack slow', 'chat-ack-slow');
@@ -712,7 +812,11 @@ describe('a duty ack is sent only once Linq accepts it', () => {
       return ms;
     };
     const ack = await acknowledgeDutyWrite(
-      ackInput(family, 'chat-ack-slow', wire.fetch, { pager: ops.pager, clockMs }),
+      ackInput(family, 'chat-ack-slow', wire.fetch, {
+        source: 'rules',
+        pager: ops.pager,
+        clockMs,
+      }),
     );
     expect(ack).toMatchObject({ status: 'skipped', reason: 'send_retries_exhausted' });
     expect(wire.calls).toHaveLength(1);
