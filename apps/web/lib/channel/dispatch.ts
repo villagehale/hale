@@ -12,6 +12,7 @@ import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
+import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
 import { sendTexts } from './outbound-transport';
@@ -139,6 +140,8 @@ export interface DispatchPorts {
    * enforced family. Required; off is a named `off` decision, not a missing port.
    */
   claimEnforce: DispatchClaimEnforce;
+  /** Pages #ops when a refused verdict could not be stored (failure-page.ts). */
+  opsPager: OpsPager;
   renderer: {
     render: (
       m: LoopMessage,
@@ -334,7 +337,7 @@ async function dispatchLeg(
           const channelMessageId = await writeLedgerRow(ports, msg, channel, 'failed', {
             errorCode: 'unbacked_claim',
           });
-          await ports.claimEnforce.recordRefusal({
+          await keepRefusedVerdict(ports, {
             familyId: msg.familyId,
             channelMessageId,
             refusal: decision.refusal,
@@ -589,6 +592,33 @@ async function auditIfGarbled(
 }
 
 /** The words a parent will actually read. */
+/**
+ * The refusal is decided and on the ledger before this runs, so a store that fails must not
+ * reject the dispatch: a retried calendar invite takes a fresh key after a failed row
+ * (`nextInviteKey`), so it would be read again and could send. Only the error's name is
+ * logged, because a driver error can echo its query's parameters.
+ */
+async function keepRefusedVerdict(
+  ports: DispatchPorts,
+  input: Parameters<DispatchClaimEnforce['recordRefusal']>[0],
+): Promise<void> {
+  try {
+    await ports.claimEnforce.recordRefusal(input);
+  } catch (err) {
+    const page = await ports.opsPager
+      .page({ site: 'claim_refusal_unstored', facts: {}, ref: input.channelMessageId })
+      .catch((): OpsPagerOutcome => 'page_failed');
+    console.error(
+      {
+        event: 'claim_refusal_unstored',
+        err: err instanceof Error ? err.name : 'unknown',
+        page,
+      },
+      'dispatch: the refused verdict was not stored - the refusal stands',
+    );
+  }
+}
+
 function claimText(rendered: RenderedContent): string {
   return rendered.text;
 }

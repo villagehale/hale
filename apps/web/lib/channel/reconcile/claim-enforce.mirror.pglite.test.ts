@@ -1,6 +1,9 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type DispatchPorts, dispatchLoopMessage } from '~/lib/channel/dispatch';
+import { fakeChannel } from '~/lib/channel/fakes';
+import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { loadClaimShadowContext } from './candidate-rows';
 import type { ClaimRowAlias } from './candidates';
@@ -42,6 +45,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -286,5 +290,95 @@ describe('dispatch claim enforce · the refused verdict is kept', () => {
     const { stored, rows } = await refusedLeg();
     expect(stored).toBe('off');
     expect(rows).toEqual([]);
+  });
+});
+
+describe('dispatch · storing the verdict never changes the decision', () => {
+  const REFUSED_LEG = [{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }];
+
+  async function refusedDispatch() {
+    const { familyId, owner } = await seed();
+    const sms = fakeChannel('sms');
+    const ports: DispatchPorts = {
+      ...buildDispatchPorts(db.database, {
+        channels: { sms },
+        renderer: { render: () => ({ kind: 'sms', text: REMINDER, modelWritten: true }) },
+        now: () => NOW,
+      }),
+      smsConsentLive: async () => true,
+      parentPhone: async () => null,
+      claimEnforce: bindDispatchClaimEnforce(
+        db.database,
+        createClaimEnforcer({
+          enforces: () => true,
+          reader: citesTitledRow(TITLE),
+          loadContext: loadClaimShadowContext,
+        }),
+      ),
+    };
+    const result = await dispatchLoopMessage(
+      {
+        templateKey: 'reminder',
+        familyId,
+        parentUserId: owner,
+        category: 'reminder',
+        urgency: 'normal',
+        payload: {},
+        dedupeKey: 'reminder:verdict-store',
+      },
+      ports,
+    );
+    const ledger = await db.database
+      .select({
+        id: schema.channelMessages.id,
+        status: schema.channelMessages.status,
+        errorCode: schema.channelMessages.errorCode,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+    return { result, sms, ledger };
+  }
+
+  it('a stored refusal sits on its failed ledger row and pages nobody', async () => {
+    vi.stubEnv('CLAIM_REFUSAL_STORE_ENABLED', 'true');
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    const post = vi.fn(async () => new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', post);
+    const { result, sms, ledger } = await refusedDispatch();
+    expect(result.legs).toEqual(REFUSED_LEG);
+    expect(sms.calls).toEqual([]);
+    expect(ledger).toEqual([
+      { id: expect.any(String), status: 'failed', errorCode: 'unbacked_claim' },
+    ]);
+    const stored = await db.database
+      .select({ channelMessageId: schema.claimRefusals.channelMessageId })
+      .from(schema.claimRefusals);
+    expect(stored).toEqual([{ channelMessageId: ledger[0]?.id }]);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('with the table missing the leg stays refused and unsent, and the page leaves', async () => {
+    vi.stubEnv('CLAIM_REFUSAL_STORE_ENABLED', 'true');
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.example.test/ops');
+    const post = vi.fn(
+      async (_url: string, _init: { body: string }) => new Response('ok', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', post);
+    await db.exec('alter table claim_refusals rename to claim_refusals_absent');
+    try {
+      const { result, sms, ledger } = await refusedDispatch();
+      expect(result.legs).toEqual(REFUSED_LEG);
+      expect(sms.calls).toEqual([]);
+      expect(ledger).toEqual([
+        { id: expect.any(String), status: 'failed', errorCode: 'unbacked_claim' },
+      ]);
+      expect(post).toHaveBeenCalledTimes(1);
+      const page = String(post.mock.calls[0]?.[1].body);
+      expect(page).toContain('site claim_refusal_unstored');
+      expect(page).toContain(`ref ${ledger[0]?.id}`);
+      expect(page).not.toContain(TITLE);
+    } finally {
+      await db.exec('alter table claim_refusals_absent rename to claim_refusals');
+    }
   });
 });

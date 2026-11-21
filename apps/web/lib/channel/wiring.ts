@@ -60,5 +60,11 @@ export function buildDispatchPorts(
     // VIL-581 · bound to this handle; a no-op while CLAIM_READER_MODE is unset.
     claimShadow: { dispatch: (input) => defaultClaimShadow().dispatch(database, input) },
     claimEnforce: bindDispatchClaimEnforce(database),
+    opsPager: {
+      async page(page) {
+        const { pageOps } = await import('~/lib/monitoring/failure-page');
+        return pageOps(database, page);
+      },
+    },
   };
 }
