@@ -197,6 +197,27 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-735 · a billing text owed to a parent that was not sent. Each is one family's money. */
+  billing_notice_unsent: {
+    lane: ['payment', 'plan_change'],
+    reason: [
+      'unwritten',
+      'fact_check',
+      'claim_gate',
+      'send_refused',
+      'send_abandoned',
+      'not_confirmed',
+      'payer_unresolved',
+      'duplicate_payment',
+      'duplicate_under_review',
+      'subscription_unread',
+      'thread_unread',
+      'plan_state_unsettled',
+      'stale',
+      'unrecorded',
+      'unexpected',
+    ],
+  },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
@@ -248,6 +269,7 @@ type OpsPageFacts<S extends OpsPageSite> = {
 const OPS_PAGE_PER_REF = [
   'registration_review_placed_order',
   'registration_review_unread',
+  'billing_notice_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

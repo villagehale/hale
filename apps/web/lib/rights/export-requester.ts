@@ -89,6 +89,19 @@ export interface RequesterOnlyExport {
     sentAt: string;
     withheld: 'teen' | null;
   }[];
+  /**
+   * VIL-735 · the texts Hale owed this adult about a payment, a cancel or a refund. Only
+   * their own carry amounts. A notice with no resolved payer is in each adult's copy
+   * without any. Stripe ids stay out.
+   */
+  billingNotices: {
+    lane: string;
+    status: string;
+    reason: string | null;
+    createdAt: string;
+    updatedAt: string;
+    refunds: { refundedMinor: number; chargeMinor: number; currency: string }[];
+  }[];
 }
 
 const TEEN_EVIDENCE_CONSENT = 'teen_content_access';
@@ -221,6 +234,26 @@ export async function loadRequesterOnlyExport(
 
   const asides = await privateAsidesSentTo(database, { familyId, userId: requesterUserId });
 
+  const notices = schema.billingNotices;
+  const noticeRows = await database
+    .select({
+      parentUserId: notices.parentUserId,
+      lane: notices.lane,
+      status: notices.status,
+      dropReason: notices.dropReason,
+      facts: notices.facts,
+      createdAt: notices.createdAt,
+      updatedAt: notices.updatedAt,
+    })
+    .from(notices)
+    .where(
+      and(
+        eq(notices.familyId, familyId),
+        or(eq(notices.parentUserId, requesterUserId), isNull(notices.parentUserId)),
+      ),
+    )
+    .orderBy(asc(notices.createdAt));
+
   const round2 = accessExportRound2Enabled();
   return {
     textThread: turns
@@ -286,5 +319,20 @@ export async function loadRequesterOnlyExport(
         withheld,
       };
     }),
+    billingNotices: noticeRows.map((row) => ({
+      lane: row.lane,
+      status: row.status,
+      reason: row.dropReason,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      refunds:
+        row.parentUserId === requesterUserId
+          ? (row.facts.refunds ?? []).map((refund) => ({
+              refundedMinor: refund.refundedMinor,
+              chargeMinor: refund.chargeMinor,
+              currency: refund.currency,
+            }))
+          : [],
+    })),
   };
 }

@@ -1,4 +1,5 @@
 import type { ChildNameLevel } from '~/lib/loop/prefs';
+import type { BillingClaimFacts } from './reconcile/billing-text';
 
 /**
  * F11 · The Sunday Loop — the channel seam types (VIL-213 · A2). "Channels are
@@ -62,6 +63,12 @@ export interface LoopMessage {
    * parent's loop_channel.
    */
   channel?: ChannelKind;
+  /**
+   * VIL-735 · the facts a billing notice was written from. Only that lane sets it. The
+   * dispatch holds the text to them (reconcile/billing-text.ts) and gives them to the
+   * claim gate as rows, so a true "you're on Plus" is backed and a wrong plan is not.
+   */
+  claimFacts?: BillingClaimFacts;
 }
 
 /**
