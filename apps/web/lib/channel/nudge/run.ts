@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq, lte, sql } from 'drizzle-orm';
 import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
@@ -74,6 +75,7 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type OpsPage, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import {
@@ -152,6 +154,19 @@ const WEATHER_DAYS = 8;
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their slot forever. */
 const MAX_NUDGE_FAMILIES_PER_RUN = 100;
+
+/**
+ * How many drafts of one nudge may come back and fail their check before Hale stops
+ * asking for another. The sweep reaches a family once a day, so this is days of paid
+ * calls for a text that keeps failing. An outage, a missing key or a missing skill is
+ * not counted: none of them says anything about this nudge, and it should still go out
+ * once the model is back.
+ */
+export const MAX_UNUSABLE_NUDGE_DRAFTS = 3;
+
+/** The recipient slot of a nudge's audit ref: the household, because one compose serves
+ * every parent in it. A real dedupe key has a user id here, so the two never collide. */
+const HOUSEHOLD_REF_SEAT = 'household';
 
 /** Whether `now` sits in this family's local send hour. */
 export function isNudgeSlot(now: Date, timeZone: string): boolean {
@@ -344,6 +359,16 @@ export interface NudgeRunDeps {
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
   /**
+   * The model's turn on this nudge. REQUIRED (rule #11), and a dep so a sweep test can
+   * state what the model did. Nothing stands behind it: a nudge it cannot write is not
+   * sent (Dec 1 rule 1).
+   */
+  composeMessage: typeof composeNudgeMessage;
+  /** #ops, for a nudge no model could write. Closed facts only, never a body. */
+  page(database: Database, page: OpsPage): Promise<OpsPagerOutcome>;
+  /** How many drafts of this nudge already came back and failed their check. */
+  countUnusableDrafts(database: Database, familyId: string, nudgeRef: string): Promise<number>;
+  /**
    * VIL-423 · the page reader the send-time date check uses, built once per run. Null
    * when no model key is configured: every check is then `unread` / `no_reader`, by name.
    */
@@ -371,6 +396,12 @@ export interface NudgeRunResult {
    * is what misses them.
    */
   shadowUnqueued: number;
+  /** Families whose nudge the model could not write this run. Nothing was sent and #ops
+   * was paged. They are also in `quiet`, which only says no text went out. */
+  unwritten: number;
+  /** Families whose nudge was left alone this run: its drafts failed their check
+   * {@link MAX_UNUSABLE_NUDGE_DRAFTS} times, so it is not written again. Also in `quiet`. */
+  settled: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
   /**
@@ -400,6 +431,8 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     deduped: 0,
     queued: 0,
     shadowUnqueued: 0,
+    unwritten: 0,
+    settled: 0,
     failed: 0,
     held: {
       not_enrolled: 0,
@@ -471,6 +504,15 @@ export function dedupeKeyFor(
     default:
       return assertNever(nudge);
   }
+}
+
+/**
+ * One nudge across the sweep's days, whichever parent it was for. A digest, because the
+ * audit row it rides on is family-visible and immutable: no window, child or event id.
+ */
+function nudgeAuditRef(nudge: Nudge, familyId: string, now: Date, timeZone: string): string {
+  const key = dedupeKeyFor(nudge, familyId, HOUSEHOLD_REF_SEAT, now, timeZone);
+  return createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
 /**
@@ -723,6 +765,8 @@ type FamilyTally = {
   deduped: number;
   queued: number;
   shadowUnqueued: number;
+  unwritten: number;
+  settled: number;
   held: ProactiveHoldReason[];
   /** The decide's own reasons for this family. A property of the DECISION, so it is
    * the household's like `quiet` is, not the recipient's. */
@@ -736,6 +780,8 @@ function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
     deduped: 0,
     queued: 0,
     shadowUnqueued: 0,
+    unwritten: 0,
+    settled: 0,
     held: [],
     skips: {},
     ...overrides,
@@ -824,15 +870,21 @@ async function runForFamily(
   }
   if (pending.length === 0) return emptyTally({ deduped, held });
 
+  const nudgeRef = nudgeAuditRef(nudge, family.familyId, now, family.timeZone);
+  const unusableDrafts = await deps.countUnusableDrafts(database, family.familyId, nudgeRef);
+  if (unusableDrafts >= MAX_UNUSABLE_NUDGE_DRAFTS) {
+    return emptyTally({ quiet: true, deduped, held, settled: 1 });
+  }
+
   // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
   // about a parent, so composing it twice would spend the model twice to say the same
   // thing — and risk saying it two different ways to two people in one house.
-  const message = await composeNudgeMessage(nudge, {
+  const written = await deps.composeMessage(nudge, {
     familyId: family.familyId,
     database,
     client: deps.client,
   });
-  if (message === null) {
+  if ('unwritten' in written) {
     await deps.audit(database, {
       familyId: family.familyId,
       actor: 'system',
@@ -842,10 +894,23 @@ async function runForFamily(
       after: {
         reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
         kind: nudge.kind,
+        unwritten: written.unwritten,
+        nudgeRef,
+        settled:
+          written.unwritten === 'unusable' && unusableDrafts + 1 >= MAX_UNUSABLE_NUDGE_DRAFTS,
       },
     });
-    return emptyTally({ quiet: true });
+    const page = await deps.page(database, {
+      site: 'nudge_unwritten',
+      facts: { kind: nudge.kind, reason: written.unwritten },
+    });
+    console.warn(
+      { familyId: family.familyId, kind: nudge.kind, reason: written.unwritten, page },
+      'nudge: not written, nothing sent',
+    );
+    return emptyTally({ quiet: true, deduped, held, unwritten: 1 });
   }
+  const message = written.message;
 
   // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
   // and still sends; live queues and the hourly decider sends.
@@ -1112,7 +1177,7 @@ async function runForFamily(
       await deps.recordActivityOffers(database, family.familyId, [decision.offeredPick], now);
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
+  return emptyTally({ sent, deduped, shadowUnqueued, held, skips: decision.skips });
 }
 
 /**
@@ -1175,6 +1240,8 @@ export async function runNudgeCron(
       result.deduped += outcome.deduped;
       result.queued += outcome.queued;
       result.shadowUnqueued += outcome.shadowUnqueued;
+      result.unwritten += outcome.unwritten;
+      result.settled += outcome.settled;
       for (const reason of outcome.held) result.held[reason] += 1;
       for (const [reason, count] of Object.entries(outcome.skips)) {
         const key = reason as keyof NudgeSkipCounts;
@@ -1213,6 +1280,28 @@ async function nameAskLanguage(
   return copyLanguage(await readParentLanguage(database, { familyId, parentUserId })) === 'fr'
     ? 'fr'
     : 'en';
+}
+
+/** The drafts of this nudge that already failed their check, read off its audit rows.
+ * Stops at the bound: past it the answer is the same. */
+export async function countUnusableNudgeDrafts(
+  database: Database,
+  familyId: string,
+  nudgeRef: string,
+): Promise<number> {
+  const rows = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'proactive_nudge_skipped'),
+        sql`${schema.auditLog.after}->>'unwritten' = 'unusable'`,
+        sql`${schema.auditLog.after}->>'nudgeRef' = ${nudgeRef}`,
+      ),
+    )
+    .limit(MAX_UNUSABLE_NUDGE_DRAFTS);
+  return rows.length;
 }
 
 export async function selectNudgeFamilies(database: Database, now: Date): Promise<NudgeFamily[]> {
@@ -1293,6 +1382,9 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     transport: createOutboundTransport(),
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),
+    composeMessage: composeNudgeMessage,
+    page: pageOps,
+    countUnusableDrafts: countUnusableNudgeDrafts,
     fulfillCommitment,
     threadMessage: threadProactiveMessage,
     loadParentCallName,

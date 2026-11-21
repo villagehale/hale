@@ -25,6 +25,7 @@ import {
 } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
+import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -232,6 +233,9 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    composeMessage: factNudgeWriter,
+    page: async () => 'paged',
+    countUnusableDrafts: async () => 0,
     recordActivityOffers,
     // The REAL ledger writer over the same store.
     fulfillCommitment,

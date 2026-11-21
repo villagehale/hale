@@ -9,15 +9,19 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
-import { NUDGE_OPT_OUT } from './nudge-voice.js';
+import { factNudgeWriter } from '~/lib/testing/nudge-writer';
+import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice.js';
 import {
   type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
+  MAX_UNUSABLE_NUDGE_DRAFTS,
+  countUnusableNudgeDrafts,
   defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
@@ -121,6 +125,8 @@ interface Harness {
   offers: Array<{ ref: string; channelMessageId: string | null }>;
   /** Every nudge that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  /** Every #ops page, exactly as it would leave. */
+  pages: OpsPage[];
 }
 
 function harness(
@@ -169,6 +175,8 @@ function harness(
     /** VIL-423 · the date check's reader factory. The default throws, so a read while
      * REGISTRATION_DATE_CHECK is off is a failure rather than a silent page fetch. */
     createDateReader?: NudgeRunDeps['createDateReader'];
+    /** What the model does with this nudge. Default: it writes a line from the facts. */
+    composeMessage?: NudgeRunDeps['composeMessage'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -176,6 +184,7 @@ function harness(
   const closed: Harness['closed'] = [];
   const offers: Harness['offers'] = [];
   const threaded: Harness['threaded'] = [];
+  const pages: OpsPage[] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: NudgeRunDeps = {
@@ -245,6 +254,24 @@ function harness(
     },
     transport,
     client: null,
+    composeMessage: options.composeMessage ?? factNudgeWriter,
+    page: async (_db, page) => {
+      pages.push(page);
+      return 'paged';
+    },
+    // Mirrors prod: the count is read back off the audit rows this sweep wrote.
+    countUnusableDrafts: async (_db, familyId, nudgeRef) =>
+      writes.filter((write) => {
+        const after = write.payload.after as
+          | { unwritten?: unknown; nudgeRef?: unknown }
+          | undefined;
+        return (
+          write.table === schema.auditLog &&
+          write.payload.familyId === familyId &&
+          after?.unwritten === 'unusable' &&
+          after.nudgeRef === nudgeRef
+        );
+      }).length,
     // The model writes the name ask; the harness answers with a marker per kind so a
     // test can tell the open ask from the confirm without any fixed copy existing.
     composeNameAsk: async ({ ask }) =>
@@ -287,7 +314,7 @@ function harness(
       }),
   };
 
-  return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
+  return { deps, transport, writes, dedupeKeys, closed, offers, threaded, pages };
 }
 
 /** The ledger rows of one text are written in one transaction; the fake runs it inline. */
@@ -539,6 +566,159 @@ describe('runNudgeCron — sending', () => {
     await runNudgeCron(db(), settled.deps, FRIDAY_10AM);
     const settledAudit = settled.writes.find((w) => w.table === schema.auditLog);
     expect(settledAudit?.payload.after).toMatchObject({ cohort: 'weekly_rhythm' });
+  });
+});
+
+/**
+ * Dec 1 rule 1: if the model cannot write it, send nothing and page #ops. The failure
+ * reasons are stipulated here because this block is about the sweep's reaction; that
+ * the real composer returns each of them is pinned in nudge-voice.test.ts.
+ */
+describe('runNudgeCron — a nudge the model could not write', () => {
+  const REASONS = ['no_client', 'skill_load', 'model_failed', 'unusable'] as const;
+
+  function ledgerRows(h: Harness) {
+    return h.writes.filter((write) => write.table === schema.channelMessages);
+  }
+
+  function skipRows(h: Harness) {
+    return h.writes.filter(
+      (write) =>
+        write.table === schema.auditLog && write.payload.actionTaken === 'proactive_nudge_skipped',
+    );
+  }
+
+  it.each(REASONS)('%s: sends nothing, audits it by name and pages #ops', async (reason) => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      composeMessage: async () => ({ unwritten: reason }),
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 1, unwritten: 1, settled: 0, failed: 0 });
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h)).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    expect(h.closed).toEqual([]);
+    expect(skipRows(h)).toHaveLength(1);
+    expect(skipRows(h)[0]?.payload).toMatchObject({
+      familyId: 'fam-1',
+      after: { reason: 'unvoiced', kind: 'registration', unwritten: reason, settled: false },
+    });
+    expect(h.pages).toEqual([{ site: 'nudge_unwritten', facts: { kind: 'registration', reason } }]);
+  });
+
+  it('carries no fact of the nudge on the page or the audit row', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      composeMessage: async () => ({ unwritten: 'unusable' }),
+    });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    const trail = JSON.stringify({ page: h.pages, skip: skipRows(h).map((row) => row.payload) });
+    expect(trail).toContain('nudge_unwritten');
+    for (const fact of ['Maya', 'Richmond Hill', 'Fall 2026', 'Aug']) {
+      expect(trail).not.toContain(fact);
+    }
+  });
+
+  it('a household with one parent held still names that hold', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      recipients: [
+        { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
+        { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
+      ],
+      consentedFor: (parentUserId) => parentUserId === 'user-1',
+      composeMessage: async () => ({ unwritten: 'model_failed' }),
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.unwritten).toBe(1);
+    expect(result.held.no_watch_consent).toBe(1);
+  });
+
+  it('tries a bad draft again at the next slot, then settles it unsent', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const h = harness({ windows: [win()], composeMessage });
+
+    for (let attempt = 1; attempt <= MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result).toMatchObject({ unwritten: 1, settled: 0 });
+      expect(composeMessage).toHaveBeenCalledTimes(attempt);
+    }
+    const flags = skipRows(h).map((row) => (row.payload.after as { settled: boolean }).settled);
+    expect(flags).toEqual([...Array(MAX_UNUSABLE_NUDGE_DRAFTS - 1).fill(false), true]);
+
+    const pagesBefore = h.pages.length;
+    const after = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(after).toMatchObject({ sent: 0, unwritten: 0, settled: 1 });
+    expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS);
+    expect(skipRows(h)).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
+    expect(h.pages).toHaveLength(pagesBefore);
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h)).toEqual([]);
+  });
+
+  it('a settled nudge does not settle a different one', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const h = harness({ windows: [win()], composeMessage });
+    for (let attempt = 0; attempt < MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
+      await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    }
+    composeMessage.mockClear();
+    const other = await runNudgeCron(
+      db(),
+      {
+        ...h.deps,
+        loadWindows: async () => [win({ id: 'w-2' })],
+      },
+      FRIDAY_10AM,
+    );
+    expect(composeMessage).toHaveBeenCalledTimes(1);
+    expect(other).toMatchObject({ unwritten: 1, settled: 0 });
+  });
+
+  it.each(['no_client', 'skill_load', 'model_failed'] as const)(
+    '%s never spends a try: the outage ends and the nudge still goes',
+    async (reason) => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      const composeMessage = vi.fn<NudgeRunDeps['composeMessage']>(async () => ({
+        unwritten: reason,
+      }));
+      const h = harness({ windows: [win()], composeMessage });
+      for (let run = 0; run < MAX_UNUSABLE_NUDGE_DRAFTS + 2; run += 1) {
+        const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+        expect(result).toMatchObject({ unwritten: 1, settled: 0 });
+      }
+      composeMessage.mockResolvedValue({ message: 'Written once the model was back.' });
+      const back = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(back.sent).toBe(1);
+      expect(h.transport.bodies()).toEqual(['Written once the model was back.']);
+    },
+  );
+
+  it('positive control: a written nudge sends those words and pages nobody', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const line = 'Richmond Hill Fall 2026 registration opens Tuesday, and Maya is in the band.';
+    const h = harness({ windows: [win()], composeMessage: async () => ({ message: line }) });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 1, quiet: 0, unwritten: 0, settled: 0 });
+    expect(h.transport.bodies()).toEqual([line]);
+    expect(ledgerRows(h)).toHaveLength(1);
+    expect(skipRows(h)).toEqual([]);
+    expect(h.pages).toEqual([]);
+  });
+
+  it('production wires the real writer, the real pager and the real count', () => {
+    const wired = defaultNudgeRunDeps();
+    expect(wired.composeMessage).toBe(composeNudgeMessage);
+    expect(wired.page).toBe(pageOps);
+    expect(wired.countUnusableDrafts).toBe(countUnusableNudgeDrafts);
   });
 });
 
