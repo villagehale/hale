@@ -99,6 +99,11 @@ export interface AskFacts {
    * booking or a payment. Adds `register_or_book`.
    */
   commitsFamily?: boolean;
+  /**
+   * On a pass with no approving parent, a calendar kind's Google leg would write to a calendar
+   * whose owner holds no live grant for the kind. Adds `other_persons_info`.
+   */
+  writesAnotherParentsCalendar?: boolean;
 }
 
 /** True when `value` is a kind this policy classifies. */
@@ -114,6 +119,7 @@ export function actionClassesFor(kind: ActionType, facts: AskFacts = {}): Action
   if (!isAskPolicyKind(kind)) return [];
   const classes = new Set<ActionClass>(ACTION_CLASSES_BY_KIND[kind]);
   if (facts.commitsFamily === true) classes.add('register_or_book');
+  if (facts.writesAnotherParentsCalendar === true) classes.add('other_persons_info');
   return ACTION_CLASSES.filter((actionClass) => classes.has(actionClass));
 }
 

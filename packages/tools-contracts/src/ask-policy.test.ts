@@ -60,7 +60,13 @@ const EXPECTED_TIER: Record<ActionType, AskTier> = {
   calendar_cancel: 'tell_after',
 };
 
-const FACT_SETS: readonly AskFacts[] = [{}, { commitsFamily: true }, { commitsFamily: false }];
+const FACT_SETS: readonly AskFacts[] = [
+  {},
+  { commitsFamily: true },
+  { commitsFamily: false },
+  { writesAnotherParentsCalendar: true },
+  { writesAnotherParentsCalendar: false },
+];
 
 const rank = (tier: AskTier): number => ASK_TIERS.indexOf(tier);
 
@@ -139,7 +145,17 @@ describe('facts', () => {
   it('a false fact adds nothing', () => {
     expect(askTierFor('calendar_add', { commitsFamily: false })).toBe('tell_after');
     expect(askTierFor('add_to_digest_only', { commitsFamily: false })).toBe('just_do');
+    expect(askTierFor('calendar_add', { writesAnotherParentsCalendar: false })).toBe('tell_after');
   });
+
+  it.each(['calendar_add', 'calendar_move', 'calendar_cancel'] as const)(
+    "a write that would land on another parent's own calendar makes %s ask first",
+    (kind) => {
+      const facts = { writesAnotherParentsCalendar: true };
+      expect(actionClassesFor(kind, facts)).toEqual(['family_calendar', 'other_persons_info']);
+      expect(askTierFor(kind, facts)).toBe('ask_first');
+    },
+  );
 });
 
 describe('fail closed', () => {

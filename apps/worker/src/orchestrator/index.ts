@@ -30,7 +30,10 @@ import {
   defaultExecutorDeps,
   runExecutor,
 } from '../services/executor.js';
-import type { GoogleCalendarPlacement } from '../services/google-calendar-placement.js';
+import type {
+  GoogleCalendarOp,
+  GoogleCalendarPlacement,
+} from '../services/google-calendar-placement.js';
 import {
   autonomyTurnOnDelivered,
   getMemorySlice,
@@ -75,7 +78,42 @@ function askFirstDetail(actionType: ActionType, facts: AskFacts): Record<string,
     askTier: 'ask_first',
     classes: actionClassesFor(actionType, facts),
     ...(facts.commitsFamily === true ? { commitsFamily: true } : {}),
+    ...(facts.writesAnotherParentsCalendar === true ? { writesAnotherParentsCalendar: true } : {}),
   };
+}
+
+const GOOGLE_OP_BY_CALENDAR_KIND: Partial<Record<ActionType, GoogleCalendarOp>> = {
+  calendar_add: 'create',
+  calendar_move: 'update',
+  calendar_cancel: 'delete',
+};
+
+/**
+ * VIL-719 · with no approving parent, a calendar kind's Google leg writes to the family's one
+ * scoped connection, or the connection already holding the event, whoever owns it. A live
+ * grant is that parent's standing yes for their own calendar. Anyone else's calendar is
+ * another person's information, so the action waits for a yes.
+ */
+async function googleWriteReachesAnotherParent(
+  familyId: string,
+  action: { actionType: ActionType; payload: Record<string, unknown> },
+  googleCalendar?: GoogleCalendarPlacement,
+): Promise<boolean> {
+  const op = GOOGLE_OP_BY_CALENDAR_KIND[action.actionType];
+  if (!op || !googleCalendar) return false;
+  const { reversalHandle } = action.payload;
+  const target = await googleCalendar.writeTarget({
+    familyId,
+    op,
+    familyEventId: op !== 'create' && typeof reversalHandle === 'string' ? reversalHandle : null,
+    actorUserId: null,
+  });
+  if (!target.writes) return false;
+  const standing = await loadAutonomyStanding(familyId, action.actionType);
+  return !standing.some(
+    (parent) =>
+      parent.parentUserId === target.ownerUserId && parent.streakReached && parent.optedIn,
+  );
 }
 
 /**
@@ -821,25 +859,42 @@ async function executeAndRecord(
   actorUserId?: string | null,
   sendEmail?: EmailSender,
 ): Promise<void> {
-  const facts = storedAskFacts(approved);
-  const askTier = askPolicyTiersEnabled(familyId) ? askTierFor(approved.actionType, facts) : null;
+  const policyOn = askPolicyTiersEnabled(familyId);
+  const writesAnotherParentsCalendar =
+    policyOn && !actorUserId
+      ? await googleWriteReachesAnotherParent(familyId, approved, googleCalendar)
+      : false;
+  const facts: AskFacts = { ...storedAskFacts(approved), writesAnotherParentsCalendar };
+  const askTier = policyOn ? askTierFor(approved.actionType, facts) : null;
   // VIL-719 — the door. Whatever path got here (the autonomous pass, a resume, a parent's
   // tap that landed on an autonomous checkpoint, a lane calling executeApprovedAction), an
   // ask-first action runs only on a recorded yes: the `action.approved_by_human` row that
   // recordHumanApproval writes. An actor id alone is not that row. Refused, it goes back to
-  // the parent as a draft (`reviewed`), never into the failed bucket.
+  // the parent as a draft (`reviewed`), never into the failed bucket. Every other gate has
+  // already cleared a calendar kind, so a write to another parent's calendar is held here,
+  // the first point that knows whose calendar it is; that hold is expected, not a backstop.
   if (askTier === 'ask_first' && (await loadHumanApprover(actionId)) === null) {
     await markEventStage(familyId, eventId, 'reviewed');
-    logger.error(
-      { familyId, actionId, actionType: approved.actionType },
-      'orchestrator: ask-first action reached the executor with no recorded yes — held for approval, not executed',
-    );
+    if (writesAnotherParentsCalendar) {
+      logger.info(
+        { familyId, actionId, actionType: approved.actionType },
+        "orchestrator: Google write would land on another parent's calendar — drafted for approval",
+      );
+    } else {
+      logger.error(
+        { familyId, actionId, actionType: approved.actionType },
+        'orchestrator: ask-first action reached the executor with no recorded yes — held for approval, not executed',
+      );
+    }
     await recordActionGate({
       familyId,
       actionId,
       actionType: approved.actionType,
       reason: 'ask_first',
-      detail: { ...askFirstDetail(approved.actionType, facts), backstop: true },
+      detail: {
+        ...askFirstDetail(approved.actionType, facts),
+        ...(writesAnotherParentsCalendar ? {} : { backstop: true }),
+      },
     });
     return;
   }

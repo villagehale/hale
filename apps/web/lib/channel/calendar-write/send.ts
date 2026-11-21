@@ -182,6 +182,7 @@ export function withCalendarWriteNotice(
   ports: CalendarWriteNoticePorts,
 ): GoogleCalendarPlacement {
   return {
+    writeTarget: (request) => inner.writeTarget(request),
     async sync(request) {
       const report = await inner.sync(request);
       const result = await noticeAfterSync(request, report, ports);

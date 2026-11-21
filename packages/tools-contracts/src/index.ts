@@ -506,8 +506,9 @@ export const REQUIRED_CHECKS = {
 //     approved by a single parent's YES — so it is not gated by two-parent consent.
 //     Since VIL-454 a placement also has a Google leg: with no approving parent (an
 //     autonomous pass) it writes to the family's one scoped Google connection, which
-//     can be the co-parent's own calendar. docs/ask-policy.md records that as an open
-//     question for the ask policy; the membership here is unchanged.
+//     can be the co-parent's own calendar. With ASK_POLICY_TIERS_ENABLED on, that write
+//     waits for a yes unless the calendar's owner holds the kind (docs/ask-policy.md).
+//     The membership here is unchanged.
 //
 // All other action types touch only the acting parent's surface (their email
 // thread, their order, their form) or internal-only state (digest), so they are

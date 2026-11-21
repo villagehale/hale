@@ -32,6 +32,13 @@ function ports(overrides: Partial<CalendarWriteNoticePorts> = {}): CalendarWrite
 
 const WRITTEN = { status: 'written', googleEventId: 'g1' } as const;
 
+function fakePlacement() {
+  return {
+    sync: vi.fn(async (_request: GoogleCalendarPlacementRequest) => WRITTEN),
+    writeTarget: vi.fn(async () => ({ writes: false as const })),
+  };
+}
+
 describe('VIL-454 noticeAfterSync', () => {
   it('does nothing when the flag is off', async () => {
     const p = ports({ enabled: () => false });
@@ -116,13 +123,26 @@ describe('VIL-454 noticeAfterSync', () => {
 
 describe('VIL-454 withCalendarWriteNotice', () => {
   it('returns the inner report untouched, even when the notice throws', async () => {
-    const inner = { sync: vi.fn(async () => WRITTEN) };
+    const inner = fakePlacement();
     const wrapped = withCalendarWriteNotice(
       inner,
       ports({ send: vi.fn(async () => Promise.reject(new Error('x'))) }),
     );
     expect(await wrapped.sync(REQUEST)).toEqual(WRITTEN);
     expect(inner.sync).toHaveBeenCalledWith(REQUEST);
+  });
+});
+
+describe('VIL-719 the placement behind the notice', () => {
+  it('keeps answering whose calendar a write would land on', async () => {
+    const writeTarget = vi.fn(async () => ({ writes: true as const, ownerUserId: 'u2' }));
+    const wrapped = withCalendarWriteNotice({ ...fakePlacement(), writeTarget }, ports());
+    const request = { familyId: 'f1', op: 'create', familyEventId: null, actorUserId: null } as const;
+    await expect(wrapped.writeTarget(request)).resolves.toEqual({
+      writes: true,
+      ownerUserId: 'u2',
+    });
+    expect(writeTarget).toHaveBeenCalledWith(request);
   });
 });
 
@@ -133,7 +153,7 @@ describe('VIL-719 a notice the model could not write', () => {
 
   it('policy on: sends nothing, leaves the placement alone, and pages #ops once', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
-    const inner = { sync: vi.fn(async () => WRITTEN) };
+    const inner = fakePlacement();
     const p = ports({ compose: vi.fn(async () => null) });
     expect(await withCalendarWriteNotice(inner, p).sync(REQUEST)).toEqual(WRITTEN);
     expect(p.send).not.toHaveBeenCalled();
@@ -148,7 +168,7 @@ describe('VIL-719 a notice the model could not write', () => {
   it('policy off: sends nothing and pages no one, as before', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
     const p = ports({ compose: vi.fn(async () => null) });
-    await withCalendarWriteNotice({ sync: vi.fn(async () => WRITTEN) }, p).sync(REQUEST);
+    await withCalendarWriteNotice(fakePlacement(), p).sync(REQUEST);
     expect(p.send).not.toHaveBeenCalled();
     expect(p.pager.page).not.toHaveBeenCalled();
   });
@@ -156,7 +176,7 @@ describe('VIL-719 a notice the model could not write', () => {
   it('policy on: a written notice pages no one', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
     const p = ports();
-    await withCalendarWriteNotice({ sync: vi.fn(async () => WRITTEN) }, p).sync(REQUEST);
+    await withCalendarWriteNotice(fakePlacement(), p).sync(REQUEST);
     expect(p.send).toHaveBeenCalledTimes(1);
     expect(p.pager.page).not.toHaveBeenCalled();
   });
@@ -194,7 +214,7 @@ describe('VIL-454 production ports build no transport up front', () => {
     vi.stubEnv('CALENDAR_WRITE_NOTICE_ENABLED', '');
     const makeTransport = vi.fn();
     const placement = withCalendarWriteNotice(
-      { sync: async () => WRITTEN },
+      fakePlacement(),
       productionCalendarWriteNoticePorts({} as Database, makeTransport as never),
     );
     expect(await placement.sync(REQUEST)).toEqual(WRITTEN);

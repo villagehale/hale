@@ -2,6 +2,10 @@ import { type IngestedEventPayload, REQUIRED_CHECKS } from '@hale/tools-contract
 import type { ActionType, ClassifierSuggestion, FamilyStage } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
+import type {
+  GoogleCalendarPlacement,
+  GoogleCalendarWriteTarget,
+} from '../services/google-calendar-placement.js';
 
 /**
  * VIL-719 · the three-tier ask policy in the orchestrator. Every autonomy gate is cleared
@@ -27,6 +31,7 @@ const metrics: AgentRunMetrics = {
 let actionType: ActionType = 'send_email';
 let teenContent = false;
 let commitsParent = false;
+let draftPayload: Record<string, unknown> = {};
 
 const runClassifier = vi.fn(async () => ({
   eventType: 'school_email',
@@ -46,7 +51,7 @@ const runDrafter = vi.fn(async () => ({
     eventId: 'evt-1',
     familyId: 'fam-1',
     actionType,
-    payload: {},
+    payload: draftPayload,
     draftConfidence: 0.97,
     rationale: 'draft',
     recipientVisibility: 'public' as const,
@@ -69,7 +74,10 @@ const runReviewer = vi.fn(async () => ({
 const runExecutor = vi.fn(async () => ({ ok: true, detail: {} }));
 vi.mock('../agents/drafter.js', () => ({ runDrafter: () => runDrafter() }));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: () => runReviewer() }));
-vi.mock('../services/executor.js', () => ({ runExecutor: () => runExecutor() }));
+vi.mock('../services/executor.js', () => ({
+  runExecutor: () => runExecutor(),
+  defaultExecutorDeps: () => ({}),
+}));
 
 let familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
 let standing: { parentUserId: string; streakReached: boolean; optedIn: boolean }[] = [];
@@ -155,6 +163,7 @@ beforeEach(() => {
   actionType = 'send_email';
   teenContent = false;
   commitsParent = false;
+  draftPayload = {};
   familyCreatedAt = new Date('2020-01-01T00:00:00.000Z');
   standing = [{ parentUserId: 'parent-1', streakReached: true, optedIn: true }];
   childStages = ['newborn'];
@@ -424,5 +433,153 @@ describe('the executor door (executeAndRecord), through the human approval path'
     expect(recordExecution).toHaveBeenCalledWith(
       expect.objectContaining({ decision: { source: 'human', reason: 'ok' } }),
     );
+  });
+});
+
+describe("the Google leg of a calendar kind, when no parent approved this pass", () => {
+  const HOLDER = { parentUserId: 'parent-1', streakReached: true, optedIn: true };
+  const CO_PARENT = { parentUserId: 'parent-2', streakReached: false, optedIn: false };
+
+  function googleTo(target: GoogleCalendarWriteTarget) {
+    return {
+      sync: vi.fn(async () => ({ status: 'skipped' as const, reason: 'flag_off' as const })),
+      writeTarget: vi.fn(async () => target),
+    } satisfies GoogleCalendarPlacement;
+  }
+
+  const held = {
+    reason: 'ask_first',
+    detail: {
+      askTier: 'ask_first',
+      classes: ['family_calendar', 'other_persons_info'],
+      writesAnotherParentsCalendar: true,
+    },
+  };
+
+  beforeEach(() => {
+    standing = [HOLDER, CO_PARENT];
+    actionType = 'calendar_add';
+  });
+
+  it.each([
+    ['calendar_add', 'create', null],
+    ['calendar_move', 'update', 'fe-1'],
+    ['calendar_cancel', 'delete', 'fe-1'],
+  ] as const)(
+    "policy on: %s that would land on the co-parent's own calendar waits for a yes",
+    async (kind, op, familyEventId) => {
+      policyOn();
+      actionType = kind;
+      draftPayload = familyEventId ? { reversalHandle: familyEventId } : {};
+      const google = googleTo({ writes: true, ownerUserId: 'parent-2' });
+      await runOrchestrator(job, { googleCalendar: google });
+      expect(google.writeTarget).toHaveBeenCalledWith({
+        familyId: 'fam-1',
+        op,
+        familyEventId,
+        actorUserId: null,
+      });
+      expect(runExecutor).not.toHaveBeenCalled();
+      expect(recordExecution).not.toHaveBeenCalled();
+      expect(markEventStage).toHaveBeenLastCalledWith('fam-1', 'evt-1', 'reviewed');
+      expect(gateReasons()).toEqual([expect.objectContaining(held)]);
+    },
+  );
+
+  it('policy on: a connection that names no owner waits for a yes', async () => {
+    policyOn();
+    await runOrchestrator(job, {
+      googleCalendar: googleTo({ writes: true, ownerUserId: null }),
+    });
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(gateReasons()).toEqual([expect.objectContaining(held)]);
+  });
+
+  it('policy on: an owner whose grant is live but whose streak broke does not count', async () => {
+    policyOn();
+    standing = [HOLDER, { parentUserId: 'parent-2', streakReached: false, optedIn: true }];
+    await runOrchestrator(job, {
+      googleCalendar: googleTo({ writes: true, ownerUserId: 'parent-2' }),
+    });
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(gateReasons()).toEqual([expect.objectContaining(held)]);
+  });
+
+  it("positive control, policy on: the grant holder's own calendar runs and tells after", async () => {
+    policyOn();
+    await runOrchestrator(job, {
+      googleCalendar: googleTo({ writes: true, ownerUserId: 'parent-1' }),
+    });
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+    expect(recordExecution).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: { source: 'autonomous', reason: 'green', askTier: 'tell_after' },
+      }),
+    );
+  });
+
+  it('policy on: a co-parent who holds their own grant may have it written', async () => {
+    policyOn();
+    standing = [HOLDER, { parentUserId: 'parent-2', streakReached: true, optedIn: true }];
+    await runOrchestrator(job, {
+      googleCalendar: googleTo({ writes: true, ownerUserId: 'parent-2' }),
+    });
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+  });
+
+  it('policy on: a Google leg that would write nowhere changes nothing', async () => {
+    policyOn();
+    await runOrchestrator(job, { googleCalendar: googleTo({ writes: false }) });
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+  });
+
+  it('policy on: a kind with no Google leg never reads the target', async () => {
+    policyOn();
+    actionType = 'add_to_digest_only';
+    const google = googleTo({ writes: true, ownerUserId: 'parent-2' });
+    await runOrchestrator(job, { googleCalendar: google });
+    expect(google.writeTarget).not.toHaveBeenCalled();
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+  });
+
+  it('policy on: an autonomous checkpoint re-reads the target on resume and holds', async () => {
+    policyOn();
+    resumePoint = { eventId: 'evt-1', status: 'approved_pending_execute', teenContent: false };
+    checkpointed = {
+      actionId: 'action-1',
+      actionType: 'calendar_move',
+      payload: { reversalHandle: 'fe-1' },
+    };
+    const google = googleTo({ writes: true, ownerUserId: 'parent-2' });
+    await runOrchestrator(job, { googleCalendar: google });
+    expect(google.writeTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ op: 'update', familyEventId: 'fe-1', actorUserId: null }),
+    );
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(markEventStage).toHaveBeenLastCalledWith('fam-1', 'evt-1', 'reviewed');
+    expect(gateReasons()).toEqual([expect.objectContaining(held)]);
+  });
+
+  it("policy on: a checkpoint the parent's recorded yes claimed runs without reading the target", async () => {
+    policyOn();
+    resumePoint = { eventId: 'evt-1', status: 'approved_pending_execute', teenContent: false };
+    checkpointed = { actionId: 'action-1', actionType: 'calendar_add', payload: {} };
+    approver = 'parent-1';
+    const google = googleTo({ writes: true, ownerUserId: 'parent-2' });
+    await runOrchestrator(job, { googleCalendar: google });
+    expect(google.writeTarget).not.toHaveBeenCalled();
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+  });
+
+  it('policy off: the target is never read and the placement runs as before', async () => {
+    policyOff();
+    const google = googleTo({ writes: true, ownerUserId: 'parent-2' });
+    await runOrchestrator(job, { googleCalendar: google });
+    expect(google.writeTarget).not.toHaveBeenCalled();
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
   });
 });
