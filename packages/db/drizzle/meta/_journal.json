@@ -1674,6 +1674,13 @@
       "when": 1794365900000,
       "tag": "0258_family_timezone_resolved",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1795185782265,
+      "tag": "0259_linq_group_loop_guards",
+      "breakpoints": true
     }
   ]
 }

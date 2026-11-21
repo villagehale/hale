@@ -203,6 +203,9 @@ export const OPS_PAGE_VOCABULARY = {
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
+  // VIL-728. A group chat went quiet: Hale reached the loop guard's cap with no verified
+  // person speaking. `count` is how many Hale messages did it. No chat id, no family id.
+  group_loop_guard_tripped: {},
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
   inbound_canary_failed: {
     stage: [

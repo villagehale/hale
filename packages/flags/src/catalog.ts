@@ -176,6 +176,9 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
+  // VIL-728. After a run of Hale group messages with no verified person speaking, Hale
+  // answers no unverified sender in that chat until a verified person speaks. Exact `true`.
+  exact('group-loop-guard', 'GROUP_LOOP_GUARD_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),

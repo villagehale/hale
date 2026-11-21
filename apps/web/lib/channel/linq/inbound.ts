@@ -90,6 +90,12 @@ import {
 } from './group';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import {
+  type GroupLoopGuardPorts,
+  type GroupLoopGuardVerdict,
+  checkGroupLoopGuard,
+  noteGroupLoopGuardTrip,
+} from './group-loop-guard';
+import {
   type GroupCoparentPorts,
   considerGroupCoparent,
   firstSeatableHandle,
@@ -158,6 +164,7 @@ import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
 import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
+import type { SharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import {
   LINQ_WEBHOOK_TIMEOUT_MS,
@@ -270,6 +277,10 @@ export async function handleLinqInboundRequest(
     secretSantaTurn?: SecretSantaTurnModel;
     /** VIL-686 test seam. Production writes every Secret Santa line with the model. */
     secretSantaLine?: SecretSantaLineWriter;
+    /** VIL-728 test seam. Production pages #ops through pageOps when the loop guard trips. */
+    groupLoopGuardPage?: GroupLoopGuardPorts['page'];
+    /** VIL-728 test seam. Production reads a shared-group turn with the shared model reader. */
+    sharedGroupReader?: SharedGroupReader;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -599,6 +610,7 @@ function rosterPorts(deps: LinqDoorDeps): RosterTurnPorts {
 function multiFamilyPorts(deps: LinqDoorDeps) {
   return {
     send: deps.sendGroupText,
+    reader: deps.sharedGroupReader,
     listHandles: deps.listChatHandles,
     composer: deps.sharedGroupVoice,
     santaTurn: deps.secretSantaTurn,
@@ -834,6 +846,87 @@ async function tryGroupPollCardVote(
 }
 
 /**
+ * VIL-728 — the loop guard (group-loop-guard.ts), with `GROUP_LOOP_GUARD_ENABLED` exactly
+ * `true`. A verified person always goes on, and reopens a quiet chat. Anyone else goes on
+ * until Hale has sent the cap with no person speaking; then this answers 200 with
+ * `group_loop_guard_quiet`: no turn runs, nothing is recorded and nothing is sent. The only
+ * read is the opt-out read the group paths of this door already make, and a stop or a
+ * start goes on. A guard that cannot read is logged and the turn runs as with the flag off.
+ */
+async function groupLoopGuardDoor(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+): Promise<Response | null> {
+  let guard: GroupLoopGuardVerdict;
+  try {
+    guard = await checkGroupLoopGuard(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      now: deps.now?.() ?? new Date(),
+    });
+  } catch (err) {
+    deps.log.error(
+      {
+        outcome: 'group_loop_guard_unread',
+        err: err instanceof Error ? err.name : 'unknown',
+        providerMessageId: message.messageId,
+      },
+      'linq inbound: group loop guard could not read, the turn runs unguarded',
+    );
+    return null;
+  }
+  if (guard.verdict === 'off' || guard.verdict === 'open') return null;
+  if (guard.verdict === 'person') {
+    if (guard.resumed) {
+      deps.log.info(
+        { outcome: 'group_loop_guard_resumed', providerMessageId: message.messageId },
+        'linq inbound: a person spoke, the group loop guard reopened the chat',
+      );
+    }
+    return null;
+  }
+  if (guard.tripped && guard.haleSince !== null) {
+    const trip = await noteGroupLoopGuardTrip(
+      deps.database,
+      { chatId: message.chatId, haleSince: guard.haleSince, cap: guard.cap },
+      { page: deps.groupLoopGuardPage },
+    );
+    deps.log.warn(
+      {
+        outcome: 'group_loop_guard_tripped',
+        haleSince: guard.haleSince,
+        cap: guard.cap,
+        audited: trip.audited,
+        auditFailed: trip.auditFailed,
+        page: trip.page,
+        providerMessageId: message.messageId,
+      },
+      'linq inbound: group loop guard tripped, Hale is quiet here until a person speaks',
+    );
+  }
+  // One cached read per text (readIntentOnce), and none at all for a media-only message.
+  const optOut = await optOutIntentOf(message.text);
+  if (optOut) {
+    deps.log.info(
+      { outcome: 'group_loop_guard_opt_out', optOut, providerMessageId: message.messageId },
+      'linq inbound: an opt-out goes on through a quiet group',
+    );
+    return null;
+  }
+  deps.log.info(
+    {
+      outcome: 'group_loop_guard_quiet',
+      tripped: guard.tripped,
+      cap: guard.cap,
+      providerMessageId: message.messageId,
+    },
+    'linq inbound: group turn',
+  );
+  await deps.countOutcome('rate_limited');
+  return json({ outcome: 'group_loop_guard_quiet' });
+}
+
+/**
  * A group is the household year only once Hale has claimed it. The trigger
  * from an enrolled parent of one family is that claim. Anyone else is held,
  * and a STOP from them sends nothing. A STOP from a parent still routes, so
@@ -848,6 +941,9 @@ export function handleLinqGroupMessage(
 }
 
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  // VIL-728: before any group path can answer, so a bot loop is cut on every one of them.
+  const quiet = await groupLoopGuardDoor(deps, message);
+  if (quiet) return quiet;
   // VIL-686: while this chat's Secret Santa is collecting, "I'm in" and "count me out" are
   // its words, so the RSVP door waits until the shared-group turn has read them. A row,
   // not words, decides it.
