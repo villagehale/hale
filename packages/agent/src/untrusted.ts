@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * VIL-560 · one mark for untrusted email, calendar and web content in a prompt.
  *
@@ -9,12 +11,19 @@
 
 export type UntrustedSource = 'email' | 'calendar' | 'web' | 'other';
 
-export const UNTRUSTED_CLOSE = '</untrusted>';
+const TAG_ID_HEX_LENGTH = 24;
 
 /**
- * A payload key is attacker-controlled when the tree walker uses it as `field`.
- * Quotes, brackets and newlines in that key must not end the attribute or the tag.
+ * A tag name carrying a hash of the value it wraps. The value cannot spell its own
+ * closer in any encoding, because writing the id into the value changes the id. The
+ * hash is deterministic, so a cached prompt keeps its key.
  */
+export function untrustedTag(name: string, value: string): string {
+  const id = createHash('sha256').update(value).digest('hex').slice(0, TAG_ID_HEX_LENGTH);
+  return `${name}-${id}`;
+}
+
+/** Quotes, brackets and newlines in a field name must not end the attribute or the tag. */
 function escapeField(field: string): string {
   return field
     .replaceAll('&', '&amp;')
@@ -23,33 +32,6 @@ function escapeField(field: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('\r', ' ')
     .replaceAll('\n', ' ');
-}
-
-export function untrustedOpen(source: UntrustedSource, field: string): string {
-  return `<untrusted source="${source}" field="${escapeField(field)}">`;
-}
-
-/**
- * Any closing tag a model could read as ours: any case, spaces, invisible characters,
- * accents, full-width forms, an escaped slash, attributes, or no closing bracket at
- * all. The email-alert fence (`</untrusted_email_body>`) shares the name, so it is
- * covered here too.
- */
-const CLOSING_TAG = /[<\uff1c\ufe64]([\s\p{Cf}\p{M}\\]*[/\uff0f][^<>\uff1c\uff1e\ufe64\ufe65]*)/gu;
-const CLOSER_NAME = 'untrusted';
-
-/**
- * Hostile text must not be able to close the mark. A closer loses its opening bracket,
- * so it stays readable and is no longer a tag in any spelling.
- */
-export function neutralizeUntrustedClosers(value: string): string {
-  return value.replace(CLOSING_TAG, (tag, afterBracket: string) => {
-    const name = afterBracket
-      .normalize('NFKD')
-      .replace(/[\s\p{Cf}\p{M}\\/]/gu, '')
-      .toLowerCase();
-    return name.startsWith(CLOSER_NAME) ? `&lt;${afterBracket}` : tag;
-  });
 }
 
 /** Maps where a row came from (`events.source`), so a label never comes from content. */
@@ -71,26 +53,8 @@ export function untrustedSourceFor(origin: string): UntrustedSource {
 }
 
 export function markUntrusted(source: UntrustedSource, field: string, value: string): string {
-  return `${untrustedOpen(source, field)}\n${neutralizeUntrustedClosers(value)}\n${UNTRUSTED_CLOSE}`;
-}
-
-/** Wrap every string in a JSON-able value, keeping the shape. Numbers and nulls stay. */
-export function markUntrustedTree(source: UntrustedSource, value: unknown): unknown {
-  return markTree(source, value, 'value');
-}
-
-function markTree(source: UntrustedSource, value: unknown, field: string): unknown {
-  if (typeof value === 'string') return markUntrusted(source, field, value);
-  if (Array.isArray(value)) return value.map((item) => markTree(source, item, field));
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-        key,
-        markTree(source, item, key),
-      ]),
-    );
-  }
-  return value;
+  const tag = untrustedTag('untrusted', value);
+  return `<${tag} source="${source}" field="${escapeField(field)}">\n${value}\n</${tag}>`;
 }
 
 /** The bytes a prompt should carry: marked when the flag is on, unchanged when it is off. */
@@ -103,10 +67,12 @@ export function presentUntrusted(
   return enabled ? markUntrusted(source, field, value) : value;
 }
 
-export function presentUntrustedTree(
+/** One mark around a JSON-able value, so its keys sit inside the mark with its strings. */
+export function presentUntrustedJson(
   enabled: boolean,
   source: UntrustedSource,
+  field: string,
   value: unknown,
 ): unknown {
-  return enabled ? markUntrustedTree(source, value) : value;
+  return enabled ? markUntrusted(source, field, JSON.stringify(value)) : value;
 }

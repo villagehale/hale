@@ -2,7 +2,7 @@ import {
   type GuardResult,
   type RegisteredTool,
   defineTool,
-  presentUntrustedTree,
+  presentUntrustedJson,
   untrustedSourceFor,
 } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
@@ -246,9 +246,10 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
                 ? event
                 : {
                     ...event,
-                    payload: presentUntrustedTree(
+                    payload: presentUntrustedJson(
                       true,
                       untrustedSourceFor(eventSources[index] ?? ''),
+                      'payload',
                       event.payload,
                     ),
                   },

@@ -2,7 +2,7 @@ import {
   SPARSE_CACHE_TTL,
   forceToolJson,
   pickLane,
-  presentUntrustedTree,
+  presentUntrustedJson,
   untrustedSourceFor,
 } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
@@ -69,9 +69,10 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     action_type: input.actionType,
     event: {
       ...input.event,
-      payload: presentUntrustedTree(
+      payload: presentUntrustedJson(
         isEnabled('untrusted-field-marking'),
         untrustedSourceFor(input.source),
+        'payload',
         input.event.payload,
       ),
     },

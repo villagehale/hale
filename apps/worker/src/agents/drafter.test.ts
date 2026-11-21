@@ -79,11 +79,13 @@ describe('runDrafter — untrusted field marking (VIL-560)', () => {
 
     await draftFrom(source, type);
 
-    expect(sentPayload()).toEqual({
-      title: markUntrusted(label, 'title', 'Swim'),
-      notes: { parking: markUntrusted(label, 'parking', 'Lot B') },
-      attendees: 2,
-    });
+    expect(sentPayload()).toBe(
+      markUntrusted(
+        label,
+        'payload',
+        JSON.stringify({ title: 'Swim', notes: { parking: 'Lot B' }, attendees: 2 }),
+      ),
+    );
   });
 
   it('flag off: the payload is the bytes production sends today', async () => {

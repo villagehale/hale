@@ -1,5 +1,5 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { SPARSE_CACHE_TTL, pickLane, presentUntrustedTree, untrustedSourceFor } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane, presentUntrustedJson, untrustedSourceFor } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
@@ -56,9 +56,10 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
     action_type: input.actionType,
     event: {
       ...input.event,
-      payload: presentUntrustedTree(
+      payload: presentUntrustedJson(
         isEnabled('untrusted-field-marking'),
         untrustedSourceFor(input.source),
+        'payload',
         input.event.payload,
       ),
     },

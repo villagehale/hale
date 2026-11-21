@@ -47,12 +47,12 @@ async function snapshotPayloads(familyId: string) {
   return snapshot.recentEvents;
 }
 
-function markedAs(label: 'email' | 'calendar' | 'other') {
-  return {
-    subject: markUntrusted(label, 'subject', 'Picture day'),
-    detail: { note: markUntrusted(label, 'note', 'Bring a smile') },
-    count: 2,
-  };
+/** jsonb reorders keys, so the mark is checked against the bytes it wraps. */
+function expectMarked(payload: unknown, label: 'email' | 'calendar' | 'other') {
+  const marked = payload as string;
+  const inner = marked.slice(marked.indexOf('\n') + 1, marked.lastIndexOf('\n'));
+  expect(marked).toBe(markUntrusted(label, 'payload', inner));
+  expect(JSON.parse(inner)).toEqual(PAYLOAD);
 }
 
 describe('read_recent_memory marks event payloads by where each row came from (VIL-560)', () => {
@@ -65,9 +65,9 @@ describe('read_recent_memory marks event payloads by where each row came from (V
 
     const events = await snapshotPayloads(familyId);
 
-    expect(events.find((e) => e.eventId === gmail)?.payload).toEqual(markedAs('email'));
-    expect(events.find((e) => e.eventId === gcal)?.payload).toEqual(markedAs('calendar'));
-    expect(events.find((e) => e.eventId === sms)?.payload).toEqual(markedAs('other'));
+    expectMarked(events.find((e) => e.eventId === gmail)?.payload, 'email');
+    expectMarked(events.find((e) => e.eventId === gcal)?.payload, 'calendar');
+    expectMarked(events.find((e) => e.eventId === sms)?.payload, 'other');
   });
 
   it('flag on: a teen row keeps its placeholder, with no mark around it', async () => {
@@ -85,7 +85,7 @@ describe('read_recent_memory marks event payloads by where each row came from (V
     const withheld = events.find((e) => e.eventId === null);
     expect(typeof withheld?.payload).toBe('string');
     expect(String(withheld?.payload)).not.toContain('<untrusted');
-    expect(events.find((e) => e.eventId === adult)?.payload).toEqual(markedAs('email'));
+    expectMarked(events.find((e) => e.eventId === adult)?.payload, 'email');
   });
 
   it('flag off: every payload is the stored row, unmarked', async () => {
