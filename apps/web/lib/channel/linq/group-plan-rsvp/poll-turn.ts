@@ -7,6 +7,7 @@ import {
   GROUP_POLL_MAX_OPTIONS,
   type GroupPollTally,
   isPollSettlePoint,
+  optionKeyAt,
   tallyGroupPoll,
 } from './poll-tally';
 import type { GroupPlanRsvpReading, GroupPollReadView } from './reading';
@@ -298,8 +299,29 @@ async function startPoll(
     return spokenOrUnsent(said, tally);
   }
 
-  // The poll exists, with its household and its plan (by id), before anything is said: the
-  // line is ledgered on that household, never on whatever is open in the chat.
+  // A new poll closes the chat's live one, so it opens only once the group has heard it. The
+  // line is ledgered on the asker's household by id, so it needs no poll row to go out.
+  const opening = tallyGroupPoll(
+    choices.map((choice, index) => ({
+      key: optionKeyAt(index),
+      text: choice.text,
+      providerOptionId: null,
+    })),
+    [],
+    expected,
+  );
+  const cardPlanned = deps.card?.enabled() ?? false;
+  const said = await speakPoll(deps, {
+    chatId: context.chatId,
+    familyId,
+    kind: 'poll_started',
+    language: context.language,
+    question,
+    tally: opening,
+    card: cardPlanned,
+  });
+  if (said.status !== 'sent') return spokenOrUnsent(said, opening);
+
   const planId = context.planId ?? null;
   const poll = await deps.store.createPoll({
     chatId: context.chatId,
@@ -315,22 +337,6 @@ async function startPoll(
     providerMessageId: null,
     now: context.now,
   });
-  const opening = await deps.store.loadPollTally(poll.id);
-  const cardPlanned = deps.card?.enabled() ?? false;
-  const said = await speakPoll(deps, {
-    chatId: context.chatId,
-    familyId: poll.familyId,
-    kind: 'poll_started',
-    language: context.language,
-    question,
-    tally: opening,
-    card: cardPlanned,
-  });
-  if (said.status !== 'sent') {
-    // Nobody heard it, so nobody can vote on it: it closes rather than catch a later pick.
-    await deps.store.closePoll(poll.id, null, context.now, 'unsent');
-    return spokenOrUnsent(said, opening);
-  }
 
   let card: GroupPollTurnResult['card'];
   if (!deps.card) {

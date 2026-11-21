@@ -120,11 +120,11 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
       return poll && poll.providerMessageId === providerMessageId ? copyPoll(poll) : null;
     },
 
-    async closePoll(pollId, _actorUserId, now, reason = 'locked') {
+    async closePoll(pollId, _actorUserId, now) {
       const poll = world.polls.get(pollId);
       if (!poll || poll.closedAt) return false;
       poll.closedAt = now;
-      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason } });
+      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason: 'locked' } });
       return true;
     },
 

@@ -10,7 +10,6 @@ import {
 
 export type GroupPollOrigin = 'parent' | 'hale_offer';
 export type GroupPollVoteSource = 'text' | 'native';
-export type GroupPollCloseReason = 'locked' | 'unsent';
 
 export interface GroupPollRecord {
   id: string;
@@ -63,16 +62,8 @@ export interface GroupPollStore {
   pollForCard(chatId: string, providerMessageId: string): Promise<GroupPollRecord | null>;
   /** Closes the chat's live poll, if any, then opens this one. */
   createPoll(input: CreatePollInput): Promise<GroupPollRecord>;
-  /**
-   * Closes this poll: a lock landed on it, or its opening line never reached the group.
-   * False when it was already closed.
-   */
-  closePoll(
-    pollId: string,
-    actorUserId: string | null,
-    now: Date,
-    reason?: GroupPollCloseReason,
-  ): Promise<boolean>;
+  /** Closes this poll: a lock landed on it. False when it was already closed. */
+  closePoll(pollId: string, actorUserId: string | null, now: Date): Promise<boolean>;
   attachCard(
     pollId: string,
     card: { providerMessageId: string; options: readonly NativeCardOption[] },
@@ -161,7 +152,7 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
       return row ? recordOf(row) : null;
     },
 
-    async closePoll(pollId, actorUserId, now, reason = 'locked') {
+    async closePoll(pollId, actorUserId, now) {
       const [closed] = await database
         .update(schema.linqGroupPolls)
         .set({ closedAt: now, updatedAt: now })
@@ -174,7 +165,7 @@ export function createPostgresGroupPollStore(database: Database): GroupPollStore
         actionTaken: 'linq_group_poll_closed',
         targetTable: 'linq_group_polls',
         targetId: closed.id,
-        after: { reason },
+        after: { reason: 'locked' },
       });
       return true;
     },

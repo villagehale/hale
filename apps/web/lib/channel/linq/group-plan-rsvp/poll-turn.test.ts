@@ -288,12 +288,11 @@ describe('group polls in the shared group turn', () => {
     expect(result.handled && result.notice).toEqual({ skipped: 'model_failed' });
     expect(sent).toHaveLength(0);
     expect(card.sent).toHaveLength(0);
-    // The poll was made first (so its line could be ledgered on its household), then closed
-    // when nobody heard it: no live poll catches a later pick.
+    // Nobody heard it, so it never opened: no live poll catches a later pick, and nothing the
+    // chat was already voting on was closed for it.
     expect(await store.loadLivePoll(CHAT)).toBeNull();
-    expect(world.audits.filter((a) => a.actionTaken === 'linq_group_poll_closed')).toEqual([
-      { actionTaken: 'linq_group_poll_closed', after: { reason: 'unsent' } },
-    ]);
+    expect(world.audits.filter((a) => a.actionTaken === 'linq_group_poll_closed')).toEqual([]);
+    expect(world.audits.filter((a) => a.actionTaken === 'linq_group_poll_started')).toEqual([]);
   });
 
   it('records a plain-language pick quietly, and a changed mind counts once', async () => {
