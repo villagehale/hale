@@ -77,6 +77,8 @@ import {
   defaultDutyPager,
   dutyDoorAccepted,
   dutyDoorAttempt,
+  dutyDoorClosesOther,
+  dutyFailureCode,
   dutySendClaim,
   dutySendScope,
   isLastDutySendTry,
@@ -1327,7 +1329,7 @@ export async function deliverDutyGroupLine(
     await settleDutySendFailure(database, {
       familyId: input.familyId,
       claimId: claimed.id,
-      code,
+      code: dutyFailureCode(err),
       attempt: attempt.attempt,
       surface: 'ask',
       audience: null,
@@ -1383,6 +1385,13 @@ async function dutyDirectReach(
   const rows = await readDutyAskRows(database, input);
   if (dutyDoorAccepted(rows, input.dedupeKey)) {
     return { targets: [], askedAlready: true, stopped: { status: 'skipped', reason: 'deduped' } };
+  }
+  if (dutyDoorClosesOther(rows, input.dedupeKey)) {
+    return {
+      targets: [],
+      askedAlready: false,
+      stopped: { status: 'held', reason: 'send_retry_backoff' },
+    };
   }
   const askedAlready = input.parentUserIds.some((id) =>
     dutyDoorAccepted(rows, `${input.dedupeKey}:${id}`),
@@ -1495,7 +1504,7 @@ export async function deliverDutyDirectLines(
       await settleDutySendFailure(database, {
         familyId: input.familyId,
         claimId: claimed.id,
-        code: err instanceof LinqSendError ? err.code : 'unknown',
+        code: dutyFailureCode(err),
         attempt: target.attempt,
         surface: 'ask',
         audience: target.parentUserId,

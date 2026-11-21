@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   COMPOSE_HOLD_FIRST_GAP_MS,
   COMPOSE_HOLD_MAX_ATTEMPTS,
@@ -32,17 +33,23 @@ const DUTY_SWEEP_EVERY_MS = 60 * 60_000;
 /** A duty key names one local day, so a send older than this has nothing left to settle. */
 const STRANDED_LOOKBACK_MS = 48 * DUTY_SWEEP_EVERY_MS;
 
-const UNCONFIRMED_SEND_CODES: ReadonlySet<string> = new Set([
-  DUTY_SEND_IN_FLIGHT,
-  'timeout',
-  'network',
-  'missing_message_id',
-  'missing_chat_id',
-  'unknown',
-]);
+/**
+ * On a row whose failure does not prove the text stayed home: a timeout, a network error,
+ * a 5xx, an answer with no id. Only a permanent LinqSendError says Linq did not take it.
+ */
+const MAY_HAVE_LANDED_PREFIX = 'unconfirmed:';
+
+export function dutyFailureCode(err: unknown): string {
+  if (err instanceof LinqSendError && err.permanent) return err.code;
+  return `${MAY_HAVE_LANDED_PREFIX}${err instanceof LinqSendError ? err.code : 'unknown'}`;
+}
+
+function mayHaveLanded(code: string | null): boolean {
+  return code === DUTY_SEND_IN_FLIGHT || code?.startsWith(MAY_HAVE_LANDED_PREFIX) === true;
+}
 
 function failureLabel(code: string | null): 'not_confirmed' | 'send_refused' {
-  return code !== null && UNCONFIRMED_SEND_CODES.has(code) ? 'not_confirmed' : 'send_refused';
+  return mayHaveLanded(code) ? 'not_confirmed' : 'send_refused';
 }
 
 export type DutySendSurface = 'ask' | 'ack';
@@ -126,6 +133,13 @@ function doorRows(rows: readonly DutySendRow[], doorKey: string): DutySendRow[] 
   );
 }
 
+/** A door that may have carried the ask, or that ended it: the other door must not send it. */
+function closesOtherDoor(rows: readonly DutySendRow[]): boolean {
+  return rows.some(
+    (row) => row.errorCode === SEND_RETRIES_EXHAUSTED || mayHaveLanded(row.errorCode),
+  );
+}
+
 function attemptFrom(rows: readonly DutySendRow[], baseKey: string, now: Date): DutySendAttempt {
   if (isAccepted(rows)) return { kind: 'accepted' };
   if (rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED)) return { kind: 'exhausted' };
@@ -172,6 +186,10 @@ export function dutyDoorAccepted(rows: readonly DutySendRow[], doorKey: string):
   return isAccepted(doorRows(rows, doorKey));
 }
 
+export function dutyDoorClosesOther(rows: readonly DutySendRow[], doorKey: string): boolean {
+  return closesOtherDoor(doorRows(rows, doorKey));
+}
+
 export function dutyDoorAttempt(
   rows: readonly DutySendRow[],
   doorKey: string,
@@ -187,7 +205,9 @@ export async function readDutySendAttempt(
 ): Promise<DutySendAttempt> {
   const rows = await readDutyAskRows(database, input);
   if (isAccepted(rows)) return { kind: 'accepted' };
-  return dutyDoorAttempt(rows, input.dedupeKey, input.now);
+  const own = doorRows(rows, input.dedupeKey);
+  if (closesOtherDoor(rows.filter((row) => !own.includes(row)))) return { kind: 'wait' };
+  return attemptFrom(own, input.dedupeKey, input.now);
 }
 
 export async function markDutySendAccepted(

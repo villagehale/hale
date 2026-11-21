@@ -48,6 +48,10 @@ const PHONE_THIRTEEN = '+15555550113';
 const PHONE_FOURTEEN = '+15555550114';
 const PHONE_FIFTEEN = '+15555550115';
 const PHONE_SIXTEEN = '+15555550116';
+const PHONE_SEVENTEEN = '+15555550117';
+const PHONE_EIGHTEEN = '+15555550118';
+const PHONE_NINETEEN = '+15555550119';
+const PHONE_TWENTY = '+15555550120';
 
 let db: TestDb;
 
@@ -77,7 +81,7 @@ const MONDAY = new Date('2026-09-28T19:00:00.000Z');
 const DAY = new Date('2026-09-24T15:00:00.000Z');
 const HOUR_MS = 60 * 60_000;
 const later = (hours: number, from: Date = EVENING) => new Date(from.getTime() + hours * HOUR_MS);
-const refused = () => new LinqSendError('http_500', 500, false);
+const refused = () => new LinqSendError('http_400', 400, true);
 const timedOut = () => new LinqSendError('timeout', 0, false);
 
 function pager() {
@@ -353,7 +357,7 @@ describe('a duty ask is sent only once Linq accepts it', () => {
       ports(send, 'chat-air', pager().pager),
     );
     expect(during).toBe('failed');
-    expect(delivered).toEqual({ status: 'not_sent', reason: 'http_500' });
+    expect(delivered).toEqual({ status: 'not_sent', reason: 'http_400' });
   });
 
   it('marks an accepted send sent, with the provider id (positive control)', async () => {
@@ -886,6 +890,90 @@ describe('one ask across sweeps', () => {
     expect(sendDirect).not.toHaveBeenCalled();
   });
 
+  it('a group send that may have landed keeps the 1:1 door shut', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('door-unsure-group', [
+      PHONE_SEVENTEEN,
+      PHONE_EIGHTEEN,
+    ]);
+    let door: 'group' | 'legacy' = 'group';
+    const send = vi
+      .fn<DutySendPorts['send']>()
+      .mockRejectedValueOnce(new LinqSendError('http_502', 502, false))
+      .mockResolvedValueOnce({ providerMessageId: 'linq-door-original' });
+    const sendDirect = accepting();
+    const sendPorts: DutySendPorts = {
+      ...directPorts(sendDirect, onlyFamily(family.familyId)),
+      send,
+      target: async () =>
+        door === 'group'
+          ? { channel: 'group', chatId: 'chat-door-unsure', familyId: family.familyId }
+          : { channel: 'legacy' },
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    await sweep(AFTERNOON);
+    door = 'legacy';
+    await sweep(later(1, AFTERNOON));
+    expect(sendDirect).not.toHaveBeenCalled();
+
+    door = 'group';
+    await sweep(later(2, AFTERNOON));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]?.[0].sendKey).toBe(send.mock.calls[0]?.[0].sendKey);
+  });
+
+  it('a 1:1 leg that may have landed keeps the group door shut', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('door-unsure-leg', [PHONE_NINETEEN, PHONE_TWENTY]);
+    let door: 'group' | 'legacy' = 'legacy';
+    const send = vi.fn<DutySendPorts['send']>();
+    let timeouts = 2;
+    const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async (input) => {
+      if (timeouts > 0) {
+        timeouts -= 1;
+        throw timedOut();
+      }
+      return { providerMessageId: `linq-leg-${input.sendKey}` };
+    });
+    const sendPorts: DutySendPorts = {
+      ...directPorts(sendDirect, onlyFamily(family.familyId)),
+      send,
+      target: async () =>
+        door === 'group'
+          ? { channel: 'group', chatId: 'chat-door-leg', familyId: family.familyId }
+          : { channel: 'legacy' },
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    await sweep(AFTERNOON);
+    door = 'group';
+    await sweep(later(1, AFTERNOON));
+    expect(send).not.toHaveBeenCalled();
+
+    door = 'legacy';
+    await sweep(later(2, AFTERNOON));
+    const keysFor = (phone: string) =>
+      sendDirect.mock.calls.filter((call) => call[0].to === phone).map((call) => call[0].sendKey);
+    for (const phone of [PHONE_NINETEEN, PHONE_TWENTY]) {
+      const keys = keysFor(phone);
+      expect(keys).toHaveLength(2);
+      expect(keys[1]).toBe(keys[0]);
+    }
+  });
+
   it('a hold while the plan still offers the ask does not end it', async () => {
     vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
     vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
@@ -1201,7 +1289,7 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const family = await ackFamily('Ack refused', 'chat-ack-refused');
-    const wire = linqFetch([500]);
+    const wire = linqFetch([400]);
     const ops = pager();
     const client = scriptedReply('Sam has swim on Saturday at 3:00pm.');
     const ack = await acknowledgeDutyWrite(

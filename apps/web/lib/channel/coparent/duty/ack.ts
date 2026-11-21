@@ -25,6 +25,7 @@ import {
   DUTY_ACK_KEY_PREFIX,
   defaultDutyPager,
   dutyAttemptKey,
+  dutyFailureCode,
   dutySendClaim,
   isLastDutySendTry,
   markDutySendAccepted,
@@ -215,7 +216,11 @@ export async function acknowledgeDutyWrite(input: {
       }
     } catch (err) {
       if (!(err instanceof LinqSendError)) {
-        await settleDutySendFailure(input.database, { ...failure, code: 'unknown', final: true });
+        await settleDutySendFailure(input.database, {
+          ...failure,
+          code: dutyFailureCode(err),
+          final: true,
+        });
         throw err;
       }
       if (err.code === 'not_configured') {
@@ -229,7 +234,11 @@ export async function acknowledgeDutyWrite(input: {
       // A restatement gets one try: another would need a model call inside the webhook.
       const final =
         restate || isLastDutySendTry(attempt) || clockMs() - startedAt >= ACK_RETRY_WINDOW_MS;
-      await settleDutySendFailure(input.database, { ...failure, code: err.code, final });
+      await settleDutySendFailure(input.database, {
+        ...failure,
+        code: dutyFailureCode(err),
+        final,
+      });
       if (final) return skip(SEND_RETRIES_EXHAUSTED);
       continue;
     }
