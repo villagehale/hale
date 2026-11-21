@@ -1,4 +1,4 @@
-import { placeTokensIn, scrubContactTokens, scrubPlaceTokens } from '@hale/types';
+import { PLACE_TOKENS, placeTokensIn, scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import { deidentifyLiveQuery } from '~/lib/channel/intake/live-lookup';
@@ -238,6 +238,65 @@ describe('trace mask', () => {
     const out = haleMask({ data: 'we are at 12345 Maple Street' });
     expect(out).not.toContain('Maple');
     expect(out).toContain('[REDACTED_ADDRESS]');
+  });
+});
+
+describe('scrub cost on a long input', () => {
+  it('returns on a long run of spaced single digits', { timeout: 15_000 }, () => {
+    const long = '1 '.repeat(100_000);
+    expect(scrubPlaceTokens(long, '[x]')).toBe(long);
+  });
+
+  it('returns on a long run of separate ZIPs', { timeout: 15_000 }, () => {
+    expect(scrubPlaceTokens('99999 a '.repeat(25_000), '[x]')).toBe('[x] a '.repeat(25_000));
+  });
+});
+
+describe('the ZIP pattern', () => {
+  /** The pattern before it refused a start at the third group of a digit run, as the
+   * reference: that guard must change the cost and never a match. */
+  const EVERY_START =
+    /(?<![$€£¥¢]\s?)(?<!\d)(?<!(?<!\d)\d{1,4}[.,])(?:\d+ )*\d{5}(?:-\d{4})?(?: \d+)*(?!\d)(?![.,]\d{1,4}(?!\d))(?!\s*(?:dollars?|bucks|usd|cad)\b)/gi;
+  const GROUPS = ['1', '12', '1234', '12345', '99999', '123456'];
+  const BETWEEN = ['-', '.', ',', '$', 'a', ' dollars', '  '];
+
+  /** A deterministic stream (mulberry32), so a failure replays. */
+  function seeded(seed: number): () => number {
+    let state = seed;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const offsets = (pattern: RegExp, text: string) =>
+    Array.from(text.matchAll(pattern), (m) => [m.index, m[0]]);
+
+  it('takes the same matches as trying every start', () => {
+    const zip = PLACE_TOKENS.find((p) => p.source.includes(String.raw`\d{5}(?:-\d{4})?`));
+    if (!zip) throw new Error('no ZIP pattern in PLACE_TOKENS');
+    expect(zip.source).not.toBe(EVERY_START.source);
+
+    const next = seeded(620);
+    let withAMatch = 0;
+    let thirdGroupOrLater = 0;
+    for (let i = 0; i < 20_000; i += 1) {
+      // Mostly single spaces between groups: the runs the guard acts on.
+      let text = '';
+      for (let groups = 2 + Math.floor(next() * 8); groups > 0; groups -= 1) {
+        text += GROUPS[Math.floor(next() * GROUPS.length)];
+        text += next() < 0.7 ? ' ' : BETWEEN[Math.floor(next() * BETWEEN.length)];
+      }
+      const expected = offsets(EVERY_START, text);
+      if (expected.length > 0) withAMatch += 1;
+      if (/\d \d+ \d/.test(text)) thirdGroupOrLater += 1;
+      expect(offsets(zip, text)).toEqual(expected);
+    }
+    // Positive controls: the corpus matches, and it holds the runs the guard acts on.
+    expect(withAMatch).toBeGreaterThan(5_000);
+    expect(thirdGroupOrLater).toBeGreaterThan(5_000);
   });
 });
 

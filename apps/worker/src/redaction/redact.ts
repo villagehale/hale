@@ -1,7 +1,7 @@
 /**
  * PII redaction (rule #1) for the classifier's input (web pipeline/classify.ts, worker
- * agents/classifier.ts), the Google sync payload it enqueues and events.payload stores
- * (web integrations/sync.ts), and the shadow eval. Strips family PII from an input
+ * agents/classifier.ts), the Google sync payload it enqueues (web integrations/sync.ts),
+ * and the shadow eval. Strips family PII from an input
  * before a prompt sees it, and assertNoPII fails CLOSED — if any PII pattern
  * survives, it throws, so the caller drops the input rather than leak it.
  *
@@ -11,7 +11,13 @@
 
 import { placeTokensIn, scrubPlaceTokens } from '@hale/types';
 
-const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+/**
+ * An address. A match starts at the first character of a run of address characters, or at
+ * a + straight after an address, because a domain cannot hold a + and the last match
+ * stopped there. Any other start in the run would rescan it (quadratic) and find nothing
+ * the first start did not.
+ */
+const EMAIL_RE = /(?:(?<![\w.+-])|(?=\+)(?<=@[\w.-]+))[\w.+-]+@[\w-]+\.[\w.-]+/g;
 // ISO-ish date: YYYY-MM-DD.
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 // NANP phone: optional +1, 3-3-4 with common separators.
@@ -40,20 +46,8 @@ export function redactText(text: string, knownChildNames: readonly string[]): st
   return scrubPlaceTokens(out, '[POSTAL]');
 }
 
-/**
- * The top-level key a connector payload carries its provider's id under (Gmail, Calendar,
- * Drive in integrations/sync.ts). The id is an opaque key the provider minted, not text a
- * person wrote, and the redacted payload is what events.payload stores. The place matcher
- * reads a ZIP or a code glued to letters, so it would rewrite part of about one Gmail id
- * in five, and the Gmail draft path reads the message id back from that row.
- */
-const PROVIDER_ID_KEY = 'id';
-/** What every one of those ids is made of (URL-safe base64, hex, base32hex). A value with a
- * space, an @ or any other character is text under that key, and is redacted as text. */
-const OPAQUE_ID = /^[A-Za-z0-9_-]+$/;
-
-/** Deep-redact every string value in a payload, except a top-level provider id;
- * non-strings pass through. */
+/** Deep-redact every string value in a payload, under every key; non-strings pass through.
+ * A caller that must keep a provider's own id sets it aside itself (integrations/sync.ts). */
 export function redactEventPayload<T>(payload: T, knownChildNames: readonly string[]): T {
   const walk = (v: unknown): unknown => {
     if (typeof v === 'string') return redactText(v, knownChildNames);
@@ -63,14 +57,6 @@ export function redactEventPayload<T>(payload: T, knownChildNames: readonly stri
     }
     return v;
   };
-  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-    return Object.fromEntries(
-      Object.entries(payload).map(([k, val]) => [
-        k,
-        k === PROVIDER_ID_KEY && typeof val === 'string' && OPAQUE_ID.test(val) ? val : walk(val),
-      ]),
-    ) as T;
-  }
   return walk(payload) as T;
 }
 
