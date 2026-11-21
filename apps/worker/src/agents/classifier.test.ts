@@ -89,6 +89,10 @@ function capturedSignal(create: ReturnType<typeof vi.fn>): {
   return { ...parsed.signal, family_context_slice: parsed.family_context_slice };
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('runClassifier — the input it sends is redacted by the callee (rule #1)', () => {
   it('redacts child name, email, phone and date out of raw_content', async () => {
     const { client, create } = capturingClient();
@@ -129,6 +133,7 @@ describe('runClassifier — the input it sends is redacted by the callee (rule #
   });
 
   it('is idempotent on an already-redacted payload — why sync.ts redacts before enqueue', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
     const alreadyRedacted = {
       subject: '[CHILD] — pickup change',
       body: 'call [PHONE] or [EMAIL] by [DATE]',
@@ -166,10 +171,6 @@ describe('runClassifier — the input it sends is redacted by the callee (rule #
 });
 
 describe('runClassifier — untrusted field marking (VIL-560)', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it.each([
     ['gmail', 'email'],
     ['gcal', 'calendar'],

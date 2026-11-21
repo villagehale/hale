@@ -335,6 +335,14 @@ describe('readEmailAlertNotice', () => {
 });
 
 describe('emailAlertNoticeUserMessage', () => {
+  beforeEach(() => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('is the facts JSON when no body is handed — the notice eval is not re-keyed', () => {
     const f = facts();
     expect(emailAlertNoticeUserMessage(f)).toBe(JSON.stringify(f));

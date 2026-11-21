@@ -1,7 +1,7 @@
 import { GuardrailError, defineTool, invokeTool, markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -28,8 +28,13 @@ afterAll(async () => {
   await db.close();
 });
 
+beforeEach(() => {
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+});
+
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -108,7 +113,6 @@ describe('read_email · production reader', () => {
       await expect(
         r.read({ familyId, parentUserId, conversationId, gmailMessageId: 'gm-mark' }),
       ).resolves.toEqual({ read: true, body: expected, truncated: false });
-      vi.unstubAllEnvs();
     },
   );
 

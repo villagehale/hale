@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SignupIdentity } from '../types';
 import { BrowserUseApiError, browserUseApi } from './client';
 import type { BrowserUseEngineDeps } from './engine';
@@ -1069,6 +1069,14 @@ describe('a plan run longer than one sweep', () => {
 });
 
 describe('plan facts', () => {
+  beforeEach(() => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('ranks the choices and leaves their labels out when the session slot is not granted', () => {
     const { input } = plan({ fieldsAllowed: ['child_first_name'] });
     const facts = planFacts(input) as {
