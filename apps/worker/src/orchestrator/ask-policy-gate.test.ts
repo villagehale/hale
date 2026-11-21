@@ -529,6 +529,33 @@ describe("the Google leg of a calendar kind, when no parent approved this pass",
     expect(recordActionGate).not.toHaveBeenCalled();
   });
 
+  it('policy on: a target read that throws holds the action for a yes, never strands it', async () => {
+    policyOn();
+    actionType = 'calendar_move';
+    draftPayload = { reversalHandle: 'not-a-uuid' };
+    const google = {
+      sync: vi.fn(async () => ({ status: 'skipped' as const, reason: 'flag_off' as const })),
+      writeTarget: vi.fn(async (): Promise<GoogleCalendarWriteTarget> => {
+        throw new Error('invalid input syntax for type uuid');
+      }),
+    } satisfies GoogleCalendarPlacement;
+    await expect(runOrchestrator(job, { googleCalendar: google })).resolves.toBeUndefined();
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordExecution).not.toHaveBeenCalled();
+    expect(markEventStage).toHaveBeenLastCalledWith('fam-1', 'evt-1', 'reviewed');
+    expect(gateReasons()).toEqual([
+      expect.objectContaining({
+        reason: 'ask_first',
+        detail: {
+          askTier: 'ask_first',
+          classes: ['family_calendar', 'other_persons_info'],
+          writesAnotherParentsCalendar: true,
+          calendarOwnerUnread: true,
+        },
+      }),
+    ]);
+  });
+
   it('policy on: a Google leg that would write nowhere changes nothing', async () => {
     policyOn();
     await runOrchestrator(job, { googleCalendar: googleTo({ writes: false }) });

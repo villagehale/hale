@@ -89,31 +89,47 @@ const GOOGLE_OP_BY_CALENDAR_KIND: Partial<Record<ActionType, GoogleCalendarOp>> 
 };
 
 /**
- * VIL-719 · with no approving parent, a calendar kind's Google leg writes to the family's one
- * scoped connection, or the connection already holding the event, whoever owns it. A live
- * grant is that parent's standing yes for their own calendar. Anyone else's calendar is
- * another person's information, so the action waits for a yes.
+ * VIL-719 · where a calendar kind's Google leg would land with no approving parent: the
+ * family's one scoped connection, or the connection already holding the event, whoever owns
+ * it. A live grant is that parent's standing yes for their own calendar; anyone else's
+ * calendar is another person's information, so the action waits for a yes. `unread` is a
+ * read that failed: the owner is unknown, and Hale asks rather than guesses.
  */
-async function googleWriteReachesAnotherParent(
+type GoogleWriteReach = 'clear' | 'another_parent' | 'unread';
+
+async function googleWriteReach(
   familyId: string,
   action: { actionType: ActionType; payload: Record<string, unknown> },
   googleCalendar?: GoogleCalendarPlacement,
-): Promise<boolean> {
+): Promise<GoogleWriteReach> {
   const op = GOOGLE_OP_BY_CALENDAR_KIND[action.actionType];
-  if (!op || !googleCalendar) return false;
+  if (!op || !googleCalendar) return 'clear';
   const { reversalHandle } = action.payload;
-  const target = await googleCalendar.writeTarget({
-    familyId,
-    op,
-    familyEventId: op !== 'create' && typeof reversalHandle === 'string' ? reversalHandle : null,
-    actorUserId: null,
-  });
-  if (!target.writes) return false;
-  const standing = await loadAutonomyStanding(familyId, action.actionType);
-  return !standing.some(
-    (parent) =>
-      parent.parentUserId === target.ownerUserId && parent.streakReached && parent.optedIn,
-  );
+  try {
+    const target = await googleCalendar.writeTarget({
+      familyId,
+      op,
+      familyEventId: op !== 'create' && typeof reversalHandle === 'string' ? reversalHandle : null,
+      actorUserId: null,
+    });
+    if (!target.writes) return 'clear';
+    const standing = await loadAutonomyStanding(familyId, action.actionType);
+    const holds = standing.some(
+      (parent) =>
+        parent.parentUserId === target.ownerUserId && parent.streakReached && parent.optedIn,
+    );
+    return holds ? 'clear' : 'another_parent';
+  } catch (err) {
+    logger.error(
+      {
+        familyId,
+        actionType: action.actionType,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'orchestrator: could not read whose calendar the Google write would land on',
+    );
+    return 'unread';
+  }
 }
 
 /**
@@ -860,10 +876,9 @@ async function executeAndRecord(
   sendEmail?: EmailSender,
 ): Promise<void> {
   const policyOn = askPolicyTiersEnabled(familyId);
-  const writesAnotherParentsCalendar =
-    policyOn && !actorUserId
-      ? await googleWriteReachesAnotherParent(familyId, approved, googleCalendar)
-      : false;
+  const reach: GoogleWriteReach =
+    policyOn && !actorUserId ? await googleWriteReach(familyId, approved, googleCalendar) : 'clear';
+  const writesAnotherParentsCalendar = reach !== 'clear';
   const facts: AskFacts = { ...storedAskFacts(approved), writesAnotherParentsCalendar };
   const askTier = policyOn ? askTierFor(approved.actionType, facts) : null;
   // VIL-719 — the door. Whatever path got here (the autonomous pass, a resume, a parent's
@@ -893,6 +908,7 @@ async function executeAndRecord(
       reason: 'ask_first',
       detail: {
         ...askFirstDetail(approved.actionType, facts),
+        ...(reach === 'unread' ? { calendarOwnerUnread: true } : {}),
         ...(writesAnotherParentsCalendar ? {} : { backstop: true }),
       },
     });
