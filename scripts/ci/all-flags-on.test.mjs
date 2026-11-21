@@ -18,6 +18,8 @@ const HELD_OFF_AT_LAUNCH = [
   'LINQ_APP_CLIP_PAY_ENABLED',
   'PROACTIVE_SENDS_PAUSED',
 ];
+// Held off by name before its catalog row lands, so not asserted against today's output.
+const HELD_OFF_ONCE_DECLARED = ['PROACTIVE_WEEKLY_CAP_ENABLED'];
 
 function printedEnv(args) {
   const printed = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
@@ -158,22 +160,41 @@ describe('--launch-set', () => {
       expect(full[name]).toBe('true');
       delete expected[name];
     }
+    for (const name of HELD_OFF_ONCE_DECLARED) delete expected[name];
     expect(launch).toEqual(expected);
     expect(launch.BROWSER_USE_SIGNUP_PAYMENT_ENABLED).toBe('true');
     expect(launch.LOOP_SEND_ENABLED).toBe('true');
   });
 
-  it('holds off the pause switch and a payment flag added to the catalog later', () => {
+  it('holds off the pause switch, the weekly cap and a payment flag added to the catalog later', () => {
     const boolean = { type: 'boolean', parser: 'exact-true', default: false };
     const { env, unset } = launchSetEnv(
       [
         { ...boolean, key: 'proactive-sends-paused', env: 'PROACTIVE_SENDS_PAUSED' },
+        { ...boolean, key: 'proactive-weekly-cap', env: 'PROACTIVE_WEEKLY_CAP_ENABLED' },
         { ...boolean, key: 'loop-send', env: 'LOOP_SEND_ENABLED' },
       ],
       [{ env: 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED' }, { env: 'NEW_PAYMENT_ENABLED' }],
     );
     expect(env).toEqual({ LOOP_SEND_ENABLED: 'true', BROWSER_USE_SIGNUP_PAYMENT_ENABLED: 'true' });
-    expect(unset).toEqual(['PROACTIVE_SENDS_PAUSED', 'NEW_PAYMENT_ENABLED']);
+    expect(unset).toEqual([
+      'PROACTIVE_SENDS_PAUSED',
+      'PROACTIVE_WEEKLY_CAP_ENABLED',
+      'NEW_PAYMENT_ENABLED',
+    ]);
+  });
+
+  it('counts --launch-set only before the -- separator', () => {
+    const probe = 'process.stdout.write(process.env.HOLIDAY_PROMO_ENABLED ?? "unset")';
+    const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+
+    const afterSeparator = run(['--', process.execPath, '-e', probe, '--', '--launch-set']);
+    expect(afterSeparator.status).toBe(0);
+    expect(afterSeparator.stdout).toBe('true');
+
+    const beforeSeparator = run(['--launch-set', '--', process.execPath, '-e', probe]);
+    expect(beforeSeparator.status).toBe(0);
+    expect(beforeSeparator.stdout).toBe('unset');
   });
 
   it('removes a held-off flag the caller exported and keeps the rest of the env', () => {
@@ -204,15 +225,22 @@ describe('--launch-set', () => {
 });
 
 describe('flags-on CI job', () => {
-  const ci = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const workflow = (file) =>
+    readFileSync(new URL(`../../.github/workflows/${file}`, import.meta.url), 'utf8');
 
-  it('runs the launch set past a failed package and stays advisory', () => {
-    const job = ci.slice(ci.indexOf('\n  flags-on:\n'), ci.indexOf('\n  worker-evals:\n'));
-    expect(job).toContain('continue-on-error: true');
-    expect(job).toContain(
+  it('runs the launch set past a failed package, advisory, in its own workflow', () => {
+    const flagsOn = workflow('flags-on.yml');
+    expect(flagsOn.match(/^name: (.+)$/m)[1]).toBe('Flags-on tests');
+    expect(flagsOn).toMatch(/group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n/);
+    expect(flagsOn).toContain('\npermissions:\n  contents: read\n');
+    expect(flagsOn).toContain('name: Unit tests (default-off flags on)');
+    expect(flagsOn).toContain('continue-on-error: true');
+    expect(flagsOn).toContain(
       'run: node scripts/ci/all-flags-on.mjs --launch-set -- pnpm exec turbo run test --env-mode=loose --force --continue',
     );
 
+    const ci = workflow('ci.yml');
+    expect(ci).not.toContain('all-flags-on.mjs');
     const required = ci.slice(ci.indexOf('\n  required:\n'));
     const needs = required.match(/needs: \[(.+)\]/)[1].split(', ');
     expect(needs).toContain('verify');

@@ -8,8 +8,8 @@
 // on, and a family-scoped read stays off unless the id is that sentinel. A
 // narrow allowlist is left empty, which means every family.
 //
-// --launch-set is the set Hale launches with: payment and promo flags stay off,
-// except the ones in LAUNCH_PAYMENT_ENV, and so does the proactive pause switch.
+// --launch-set forces every default-off catalog flag except promo, payment (all but
+// LAUNCH_PAYMENT_ENV), the proactive pause switch and the weekly proactive cap.
 //
 //   node scripts/ci/all-flags-on.mjs
 //   node scripts/ci/all-flags-on.mjs -- pnpm exec turbo run test --env-mode=loose --force
@@ -22,8 +22,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const catalogPath = path.join(root, 'packages', 'flags', 'src', 'catalog.ts');
 const LAUNCH_PAYMENT_ENV = new Set(['BROWSER_USE_SIGNUP_PAYMENT_ENABLED']);
-// Default off, but on means every proactive send is refused, so no launch state has it on.
-const LAUNCH_HELD_OFF_ENV = new Set(['PROACTIVE_SENDS_PAUSED']);
+// PROACTIVE_SENDS_PAUSED refuses every proactive send when on, so no launch state has it on.
+// PROACTIVE_WEEKLY_CAP_ENABLED stays off until Barton says go; it has no catalog row yet.
+const LAUNCH_HELD_OFF_ENV = new Set(['PROACTIVE_SENDS_PAUSED', 'PROACTIVE_WEEKLY_CAP_ENABLED']);
 
 /**
  * @param {{ type?: string, parser?: string, default?: boolean | string, onVariant?: string }} spec
