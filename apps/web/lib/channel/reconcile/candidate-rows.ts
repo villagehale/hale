@@ -4,6 +4,7 @@ import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
+import type { BillingClaimFacts } from './billing-text';
 import { CLAIM_ROW_SLOTS, type ClaimCandidateRow } from './candidates';
 import { type SendAudience, claimRowLabel } from './claim-label';
 import type { ReconcileView } from './reconcile';
@@ -630,5 +631,57 @@ async function cancellationRows(
       cancelled(claimRowLabel({ from: 'watched_page', label: row.label }, now), null),
     ),
     ...plans.map((row) => cancelled(claimRowLabel({ from: 'signup', ...row }, now), null)),
+  ];
+}
+
+const asDollars = (minor: number) => `$${(minor / 100).toFixed(2)}`;
+
+/**
+ * VIL-735 · the rows a billing notice's text may cite: the writer's facts, as rows of the
+ * kinds the reader already knows, so a true "you're on Plus" is backed without touching
+ * its grammar. The labels are English on purpose: only the reader sees them.
+ */
+export function billingClaimRows(
+  familyId: string,
+  facts: BillingClaimFacts,
+  now: Date,
+): ClaimCandidateRow[] {
+  const was = facts.previousPlan && facts.previousPlan !== facts.plan ? facts.previousPlan : null;
+  const planLabel = [
+    `Hale plan now: ${facts.plan}`,
+    was ? ` (was ${was})` : '',
+    facts.paidThrough ? `, paid through ${facts.paidThrough.date}` : '',
+  ].join('');
+  const row = (
+    kind: 'registration_done' | 'cancelled' | 'send_done',
+    fact: 'plan' | 'ended' | 'refund',
+    text: string,
+  ): ClaimCandidateRow => ({
+    familyId,
+    source: 'billing_fact',
+    kind,
+    fact,
+    what: claimRowLabel({ from: 'billing', text }, now),
+    currentPlan: facts.plan,
+  });
+  const endedPlan = facts.previousPlan && facts.previousPlan !== 'Free' ? facts.previousPlan : null;
+  return [
+    row('registration_done', 'plan', planLabel),
+    ...(facts.ended
+      ? [
+          row(
+            'cancelled',
+            'ended',
+            endedPlan ? `The Hale ${endedPlan} subscription ended` : 'The Hale subscription ended',
+          ),
+        ]
+      : []),
+    ...facts.refunds.map((refund) =>
+      row(
+        'send_done',
+        'refund',
+        `A refund of ${asDollars(refund.refundedMinor)} of the ${asDollars(refund.chargeMinor)} paid to Hale`,
+      ),
+    ),
   ];
 }

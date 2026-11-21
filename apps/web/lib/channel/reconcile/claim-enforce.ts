@@ -1,7 +1,12 @@
 import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { type ClaimShadowContext, loadClaimShadowContext } from './candidate-rows';
-import { buildClaimCandidates } from './candidates';
+import type { BillingClaimFacts } from './billing-text';
+import {
+  type ClaimShadowContext,
+  billingClaimRows,
+  loadClaimShadowContext,
+} from './candidate-rows';
+import { type ClaimCandidateRow, buildClaimCandidates } from './candidates';
 import {
   CLAIM_READ_MAX_BUDGET_MS,
   type ClaimReadFailure,
@@ -56,6 +61,9 @@ export interface ClaimEnforceInput {
   inbound?: string;
   view: ReconcileView;
   pending?: { activityFollowup: string | null; spotWatch: string | null };
+  /** VIL-735 · rows from the writer's own facts, offered first so a full slot cannot
+   * crowd them out. Absent on every other lane. */
+  writerRows?: readonly ClaimCandidateRow[];
   signal: AbortSignal;
   budgetMs: number;
 }
@@ -94,7 +102,11 @@ export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
         await reportClaimReadFailed(input.familyId, context.reason);
         return { status: 'failed', reason: context.reason };
       }
-      const candidates = buildClaimCandidates(input.familyId, context.rows, context.timeZone);
+      const candidates = buildClaimCandidates(
+        input.familyId,
+        [...(input.writerRows ?? []), ...context.rows],
+        context.timeZone,
+      );
       const outcome = await ports.reader.read({
         body: input.body,
         language: context.language,
@@ -175,6 +187,7 @@ export interface DispatchClaimEnforce {
     parentUserId: string;
     body: string;
     now: Date;
+    writerFacts?: BillingClaimFacts;
   }): Promise<DispatchClaimDecision>;
 }
 
@@ -209,6 +222,9 @@ export function bindDispatchClaimEnforce(
         now: input.now,
         body: input.body,
         view,
+        ...(input.writerFacts
+          ? { writerRows: billingClaimRows(input.familyId, input.writerFacts, input.now) }
+          : {}),
         signal: new AbortController().signal,
         budgetMs: CLAIM_READ_MAX_BUDGET_MS,
       });

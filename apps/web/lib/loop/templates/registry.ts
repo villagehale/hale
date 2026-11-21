@@ -6,6 +6,7 @@ import type {
   TemplateRenderer,
 } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
+import { BILLING_NOTICE_TEMPLATE_KEY, billingNoticeRenderer } from './billing-notice';
 import { CALENDAR_CANCEL_SMS_TEMPLATE_KEY, calendarCancelSmsRenderer } from './calendar-cancel/sms';
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY, calendarInviteSmsRenderer } from './calendar-invite/sms';
 import { caregiverReminderRenderer } from './caregiver';
@@ -37,6 +38,10 @@ export const loopTemplateRenderer: TemplateRenderer = {
     // generic shell and report it as a successful send.
     if (message.templateKey === CAREGIVER_REMINDER_TEMPLATE_KEY) {
       return caregiverReminderRenderer.render(message, channel, nameLevel);
+    }
+    // VIL-735 · registered for the same reason: the fallback would send generic copy.
+    if (message.templateKey === BILLING_NOTICE_TEMPLATE_KEY) {
+      return billingNoticeRenderer.render(message, channel, nameLevel);
     }
     return defaultLoopRenderer.render(message, channel, nameLevel);
   },
