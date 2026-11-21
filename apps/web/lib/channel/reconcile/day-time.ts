@@ -145,3 +145,32 @@ export function dayTimeConflict(
     times.length > 0 && !times.some((t) => t.minute === row.minute && t.hours.includes(row.hour))
   );
 }
+
+/** VIL-732 · names a clock time, and passes the check above: the row's start, on its day. */
+export function namesRowStart(
+  sentence: string,
+  startsAt: Date,
+  timeZone: string,
+  locale: string | undefined,
+): boolean {
+  return namedTimes(sentence).length > 0 && !dayTimeConflict(sentence, startsAt, timeZone, locale);
+}
+
+/**
+ * VIL-732 · every clock time in the sentence is the row's own end, and any weekday it
+ * names is the row's. One stray time beside the end leaves it unbacked.
+ */
+export function namesOnlyRowEnd(
+  sentence: string,
+  row: { startsAt: Date; endsAt: Date },
+  timeZone: string,
+  locale: string | undefined,
+): boolean {
+  const days = namedDays(sentence, locale);
+  if (days.size > 0 && !days.has(rowLocal(row.startsAt, timeZone).day)) return false;
+  const end = rowLocal(row.endsAt, timeZone);
+  const times = namedTimes(sentence);
+  return (
+    times.length > 0 && times.every((t) => t.minute === end.minute && t.hours.includes(end.hour))
+  );
+}

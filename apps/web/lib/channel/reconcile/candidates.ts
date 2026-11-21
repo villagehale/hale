@@ -66,6 +66,8 @@ export type ClaimCandidateRow =
       kind: 'scheduled_event';
       what: ClaimRowLabel;
       startsAt: Date;
+      /** Read by the verifier only: never projected, so the reader's request is unchanged. */
+      endsAt?: Date | null;
     }
   | { familyId: string; source: 'parent_stated'; kind: 'scheduled_event'; what: ClaimRowLabel }
   | {

@@ -110,6 +110,7 @@ function verdict(
   claims: ReadClaim[],
   rows: ClaimCandidateRow[],
   locale: string | undefined = 'en',
+  env?: Record<string, string | undefined>,
 ) {
   const candidates = buildClaimCandidates(FAM, rows, TZ);
   const segments = segmentSentences(body, locale);
@@ -123,6 +124,7 @@ function verdict(
       attempts: 1,
     },
     { candidates, locale, timeZone: TZ },
+    env,
   );
 }
 
@@ -401,5 +403,114 @@ describe('the day/time check on a cited calendar row', () => {
   it('a parent-stated booking has no time and is never day-checked', () => {
     const v = verdict('Thursday 3pm checkup is booked.', [claim('scheduled_event', 's1')], [ROW.s]);
     expect(v.resolutions[0]).toMatchObject({ status: 'backed', matchedBy: 'parent_stated' });
+  });
+});
+
+describe('a sentence naming the row’s end (CLAIM_END_TIME_CHECK_ENABLED)', () => {
+  // Tuesday 2026-11-03, 1pm to 2pm in the family's zone (UTC−7).
+  const ONE = new Date('2026-11-03T20:00:00Z');
+  const ONE_THIRTY = new Date('2026-11-03T20:30:00Z');
+  const TWO = new Date('2026-11-03T21:00:00Z');
+  const ELEVEN = new Date('2026-11-03T18:00:00Z');
+  const ON = { CLAIM_END_TIME_CHECK_ENABLED: 'true' };
+  const OFF = { CLAIM_END_TIME_CHECK_ENABLED: 'false' };
+  const swim = (endsAt: Date | null): ClaimCandidateRow => ({ ...ROW.e, startsAt: ONE, endsAt });
+  const everySentenceOn = (body: string, row: ClaimRowAlias) =>
+    segmentSentences(body, 'en').map((s) => claim('scheduled_event', row, s.index));
+  const refused = (body: string, end: Date | null, env: Record<string, string>) =>
+    verdict(body, everySentenceOn(body, 'e1'), [swim(end)], 'en', env).refusedSegments;
+
+  it.each(['Swim is at 1pm. It runs until 2pm.', 'Swim is at 1:00. It runs until 2:00.'])(
+    '%s passes with the flag on and is refused with it off',
+    (body) => {
+      const claims = everySentenceOn(body, 'e1');
+      const on = verdict(body, claims, [swim(TWO)], 'en', ON);
+      expect(on.refusedSegments).toEqual([]);
+      expect(on.resolutions[1]).toEqual({
+        claim: claims[1],
+        status: 'backed',
+        alias: 'e1',
+        matchedBy: 'scheduled_row',
+      });
+      const off = verdict(body, claims, [swim(TWO)], 'en', OFF);
+      expect(off.refusedSegments).toEqual([1]);
+      expect(off.resolutions[1]).toMatchObject({
+        status: 'refused',
+        reason: 'no_scheduled_row',
+        why: 'day_time_conflict',
+      });
+    },
+  );
+
+  it('the end said as the start stays refused, alone or repeated', () => {
+    expect(refused('Swim is at 2pm.', TWO, ON)).toEqual([0]);
+    expect(refused('Swim is at 2pm. It runs until 2pm.', TWO, ON)).toEqual([0, 1]);
+  });
+
+  it('a right start with a wrong end stays refused', () => {
+    expect(refused('Swim is at 1pm. It runs until 3pm.', TWO, ON)).toEqual([1]);
+  });
+
+  it('the end with no start anywhere in the body stays refused', () => {
+    expect(refused('It runs until 2pm.', TWO, ON)).toEqual([0]);
+  });
+
+  it('a row with no end behaves exactly as with the flag off', () => {
+    for (const body of ['Swim is at 1pm. It runs until 2pm.', 'Swim is at 1pm.']) {
+      const claims = everySentenceOn(body, 'e1');
+      expect(verdict(body, claims, [swim(null)], 'en', ON)).toEqual(
+        verdict(body, claims, [swim(null)], 'en', OFF),
+      );
+    }
+    expect(refused('Swim is at 1pm. It runs until 2pm.', null, ON)).toEqual([1]);
+    expect(refused('Swim is at 1pm.', null, ON)).toEqual([]);
+  });
+
+  it('another event at the same hour cannot vouch for this row’s start', () => {
+    const piano: ClaimCandidateRow = {
+      ...ROW.e,
+      what: label('Piano'),
+      startsAt: ONE,
+      endsAt: ONE_THIRTY,
+    };
+    const body = 'Piano is at 1pm. Swim is at 2pm.';
+    const claims = [claim('scheduled_event', 'e1', 0), claim('scheduled_event', 'e2', 1)];
+    expect(verdict(body, claims, [piano, swim(TWO)], 'en', ON).refusedSegments).toEqual([1]);
+  });
+
+  it('a wrong weekday beside the end stays refused; the right one passes', () => {
+    expect(refused('Swim is at 1pm. It runs until 2pm on Thursday.', TWO, ON)).toEqual([1]);
+    expect(refused('Swim is at 1pm. It runs until 2pm on Tuesday.', TWO, ON)).toEqual([]);
+  });
+
+  it('a start sentence the gate refuses cannot vouch for the end', () => {
+    const body = 'Swim is at 1pm and she is registered. It runs until 2pm.';
+    const claims = [
+      claim('scheduled_event', 'e1', 0),
+      claim('registration_done', 'none', 0),
+      claim('scheduled_event', 'e1', 1),
+    ];
+    expect(verdict(body, claims, [swim(TWO)], 'en', ON).refusedSegments).toEqual([0, 1]);
+  });
+
+  it('another time beside the end stays refused', () => {
+    expect(refused('Swim is at 1pm. It runs until 2pm, then pickup is at 5pm.', TWO, ON)).toEqual([
+      1,
+    ]);
+  });
+
+  it('an end before the start backs nothing', () => {
+    expect(refused('Swim is at 1pm. It runs until 11am.', ELEVEN, ON)).toEqual([1]);
+  });
+
+  it.each(['true\n', 'TRUE', '1', 'on'])('the value %j leaves the flag off', (value) => {
+    const env = { CLAIM_END_TIME_CHECK_ENABLED: value };
+    expect(refused('Swim is at 1pm. It runs until 2pm.', TWO, env)).toEqual([1]);
+  });
+
+  it('the reader is never shown the end, so its request and recordings do not move', () => {
+    const withEnd = buildClaimCandidates(FAM, [swim(TWO)], TZ).projected;
+    expect(withEnd).toEqual(buildClaimCandidates(FAM, [swim(null)], TZ).projected);
+    expect(withEnd[0]?.when).toContain('1:00');
   });
 });

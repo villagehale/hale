@@ -228,6 +228,7 @@ async function calendarRows(
     .select({
       title: schema.familyEvents.title,
       startsAt: schema.familyEvents.startsAt,
+      endsAt: schema.familyEvents.endsAt,
       childId: schema.familyEvents.childId,
       sensitive: schema.familyEvents.sensitive,
       childDateOfBirth: schema.children.dateOfBirth,
@@ -258,6 +259,7 @@ async function calendarRows(
       now,
     ),
     startsAt: row.startsAt,
+    endsAt: row.endsAt,
   }));
 }
 

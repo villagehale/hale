@@ -1,7 +1,9 @@
 import type { ClaimCandidateRow, ClaimCandidateSet, ClaimRowAlias } from './candidates';
 import type { ClaimReadOutcome, ReadClaim } from './claim-reader';
-import { dayTimeConflict } from './day-time';
+import { dayTimeConflict, namesOnlyRowEnd, namesRowStart } from './day-time';
+import { claimEndTimeCheckEnabled } from './flag';
 import type { ClaimResolution, RefusalReason } from './reconcile';
+import type { Segment } from './sentences';
 
 /**
  * VIL-581 · code verifies every citation the reader made. Pure: the alias must be one
@@ -157,17 +159,65 @@ function resolve(
   return { claim, status: 'backed', alias: claim.row, matchedBy: by };
 }
 
+/**
+ * VIL-732 (CLAIM_END_TIME_CHECK_ENABLED) · the reminder skill has the writer say when an
+ * event ends, and the check in `resolve` compares a sentence with the row's start only.
+ * A claim it refused is backed when every clock time in its sentence is the cited row's
+ * own end AND another sentence names that row's start. That other sentence must be one
+ * the reader cited to this same row, so another event at the same hour cannot vouch for
+ * it, and must hold no refused claim, so it is still there when refused sentences are cut.
+ */
+function backedByOwnEnd(
+  resolution: ReadClaimResolution,
+  all: readonly ReadClaimResolution[],
+  segments: readonly Segment[],
+  ctx: Parameters<typeof resolve>[2],
+): ReadClaimResolution {
+  if (resolution.status !== 'refused' || resolution.why !== 'day_time_conflict') return resolution;
+  const { claim } = resolution;
+  const row = ctx.candidates.byAlias.get(claim.row);
+  if (row?.source !== 'calendar' || !row.endsAt) return resolution;
+  const { startsAt, endsAt } = row;
+  const sentence = segments[claim.segment];
+  if (
+    !sentence ||
+    endsAt.getTime() <= startsAt.getTime() ||
+    !namesOnlyRowEnd(sentence.text, { startsAt, endsAt }, ctx.timeZone, ctx.locale)
+  ) {
+    return resolution;
+  }
+  const citesRow = new Set(
+    all.flatMap((r) => (r.status === 'backed' && r.alias === claim.row ? [r.claim.segment] : [])),
+  );
+  const holdsRefusal = new Set(
+    all.flatMap((r) => (r.status === 'refused' ? [r.claim.segment] : [])),
+  );
+  const startNamedElsewhere = segments.some(
+    (s) =>
+      citesRow.has(s.index) &&
+      !holdsRefusal.has(s.index) &&
+      namesRowStart(s.text, startsAt, ctx.timeZone, ctx.locale),
+  );
+  return startNamedElsewhere
+    ? { claim, status: 'backed', alias: claim.row, matchedBy: 'scheduled_row' }
+    : resolution;
+}
+
 export function verifyClaimRead(
   read: Extract<ClaimReadOutcome, { status: 'read' }>,
   ctx: { candidates: ClaimCandidateSet; locale: string | undefined; timeZone: string },
+  env: Record<string, string | undefined> = process.env,
 ): ClaimReadVerdict {
-  const resolutions = read.claims.map((claim) => {
+  const resolved = read.claims.map((claim) => {
     // acceptClaimRead already bounded every index; an unknown one here is a bug.
     const segment = read.segments[claim.segment];
     if (!segment)
       throw new RangeError('claim verdict: a claim cites a segment that does not exist');
     return resolve(claim, segment.text, ctx);
   });
+  const resolutions = claimEndTimeCheckEnabled(ctx.candidates.familyId, env)
+    ? resolved.map((r) => backedByOwnEnd(r, resolved, read.segments, ctx))
+    : resolved;
   const refusedSegments = [
     ...new Set(resolutions.filter((r) => r.status === 'refused').map((r) => r.claim.segment)),
   ].sort((a, b) => a - b);

@@ -249,6 +249,7 @@ export const FLAGS = [
     onVariant: 'enforce',
     offVariant: 'off',
   },
+  exact('claim-end-time-check', 'CLAIM_END_TIME_CHECK_ENABLED'),
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),

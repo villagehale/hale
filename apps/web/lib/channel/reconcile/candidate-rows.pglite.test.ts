@@ -118,6 +118,19 @@ describe('loadClaimShadowContext — calendar rows', () => {
     // Positive control: titles that may travel do.
     expect(wire).toContain('Dentist');
   });
+
+  it('a calendar row carries its own end, and a row with none carries null', async () => {
+    const familyId = await family({ primary: await user('America/Denver') });
+    const ends = new Date(at(1).getTime() + 3_600_000);
+    await event(familyId, 'Swim lesson', at(1), { endsAt: ends });
+    await event(familyId, 'Dentist', at(2));
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const calendar = context.rows.flatMap((r) => (r.source === 'calendar' ? [r] : []));
+    expect(calendar.map((r) => [r.what, r.endsAt])).toEqual([
+      ['Swim lesson', ends],
+      ['Dentist', null],
+    ]);
+  });
 });
 
 describe('loadClaimShadowContext — ledger rows', () => {
