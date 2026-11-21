@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  billingThreadNoticesArmedAt,
   checkoutServerCurrencyEnabled,
   checkoutSuccessStatesEnabled,
   conversionsApiEnabled,
@@ -41,5 +42,43 @@ describe('holiday/conversion flags', () => {
       expect(checkoutSuccessStatesEnabled({ CHECKOUT_SUCCESS_STATES_ENABLED: value })).toBe(false);
     }
     expect(checkoutSuccessStatesEnabled({ CHECKOUT_SUCCESS_STATES_ENABLED: 'true' })).toBe(true);
+  });
+});
+
+describe('billingThreadNoticesArmedAt', () => {
+  const SINCE = '2026-11-22T15:00:00Z';
+
+  it('is armed only by the exact flag and a strict UTC instant', () => {
+    expect(
+      billingThreadNoticesArmedAt({
+        BILLING_THREAD_NOTICES_ENABLED: 'true',
+        BILLING_THREAD_NOTICES_SINCE: SINCE,
+      }),
+    ).toEqual(new Date(SINCE));
+    expect(
+      billingThreadNoticesArmedAt({
+        BILLING_THREAD_NOTICES_ENABLED: 'true',
+        BILLING_THREAD_NOTICES_SINCE: '2026-11-22T15:00:00.250Z',
+      }),
+    ).toEqual(new Date('2026-11-22T15:00:00.250Z'));
+  });
+
+  it.each([
+    ['flag unset', undefined, SINCE],
+    ['flag with a trailing newline', 'true\n', SINCE],
+    ['flag TRUE', 'TRUE', SINCE],
+    ['since unset', 'true', undefined],
+    ['since a bare date', 'true', '2026-11-22'],
+    ['since with a trailing newline', 'true', `${SINCE}\n`],
+    ['since with an offset instead of Z', 'true', '2026-11-22T15:00:00+00:00'],
+    ['since not a real day', 'true', '2026-02-31T15:00:00Z'],
+    ['since garbage', 'true', 'yesterday'],
+  ])('stays off with %s', (_label, flag, since) => {
+    expect(
+      billingThreadNoticesArmedAt({
+        BILLING_THREAD_NOTICES_ENABLED: flag,
+        BILLING_THREAD_NOTICES_SINCE: since,
+      }),
+    ).toBeNull();
   });
 });

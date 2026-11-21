@@ -145,12 +145,13 @@ describe('checkout success flags', () => {
     expect(read({ [name]: 'true' })).toBe(true);
   });
 
-  it('declares the states flag in the catalog hale-web reads it from', () => {
+  it('declares both flags in the catalog hale-web reads them from', () => {
     const catalog = readFileSync(
       fileURLToPath(new URL('../../../../packages/flags/src/catalog.ts', import.meta.url)),
       'utf8',
     );
     expect(catalog).toContain("env: 'CHECKOUT_SUCCESS_STATES_ENABLED'");
+    expect(catalog).toContain("env: 'BILLING_THREAD_NOTICES_ENABLED'");
   });
 });
 
