@@ -13,7 +13,7 @@ import {
   claimFailureStep,
 } from '~/lib/auth/claim-phone-copy';
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
-import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
+import { PORTAL_INTAKE_PREFILL, messagesCapable, platformFromUa } from '~/lib/text-hale-target';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 
 /**
@@ -40,6 +40,7 @@ export function FoundingJoinForm({
   const [tries, setTries] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [verified, setVerified] = useState(false);
+  const [hasThread, setHasThread] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -98,8 +99,12 @@ export function FoundingJoinForm({
         body: JSON.stringify({ tier }),
       });
       if (checkout.status === 409) {
-        const denied = (await checkout.json().catch(() => null)) as { error?: unknown } | null;
+        const denied = (await checkout.json().catch(() => null)) as {
+          error?: unknown;
+          hasThread?: unknown;
+        } | null;
         if (denied?.error === 'already_paid') {
+          setHasThread(denied.hasThread === true);
           setStep('paid');
           return;
         }
@@ -156,8 +161,9 @@ export function FoundingJoinForm({
           }
           return;
         }
-        const body = (await verify.json()) as { alreadyPaid?: boolean };
+        const body = (await verify.json()) as { alreadyPaid?: boolean; hasThread?: boolean };
         if (body.alreadyPaid) {
+          setHasThread(body.hasThread === true);
           setStep('paid');
           return;
         }
@@ -184,16 +190,27 @@ export function FoundingJoinForm({
   const CODE_SLOTS = ['1', '2', '3', '4', '5', '6'] as const;
 
   if (step === 'paid') {
+    // Without a composer the door is /text, the page that starts a new parent off.
+    const showDoor =
+      !hasThread || (smsNumber !== '' && messagesCapable(platformFromUa(navigator.userAgent)));
     return (
       <section className={`${stage.card} ${stage.door}`}>
         <div className={stage.act}>
           <div className={styles.stack}>
             <p className={styles.eyebrow}>Founding family</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
-            <p className={stage.lede}>Text Hale to start.</p>
-            <DeviceTextLink smsNumber={smsNumber} prefill={PORTAL_INTAKE_PREFILL} source={null}>
-              Text Hale
-            </DeviceTextLink>
+            <p className={stage.lede}>
+              {hasThread ? 'Keep texting Hale like you do now.' : 'Text Hale to start.'}
+            </p>
+            {showDoor ? (
+              <DeviceTextLink
+                smsNumber={smsNumber}
+                prefill={hasThread ? null : PORTAL_INTAKE_PREFILL}
+                source={null}
+              >
+                Text Hale
+              </DeviceTextLink>
+            ) : null}
           </div>
         </div>
       </section>

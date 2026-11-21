@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
-import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import { and, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { isParentRole } from '~/lib/channel/role-scope';
+import { checkoutSuccessStatesEnabled } from './flags';
 
 /**
  * `billing_checkout_started` is written right after Stripe returns the session, so its
@@ -50,33 +50,62 @@ export async function resolveCheckoutPayer(
 }
 
 /**
- * Whether this parent has their own 1:1 thread with Hale. A verified channel is not one:
- * a co-parent seated from a group reply has that with no 1:1 text.
+ * Whether this parent already texts Hale outside a group. A verified channel is not that:
+ * a co-parent seated from a group reply has one with no 1:1 text. Rows written before
+ * `in_group` existed hold null there, so only a row marked as a group, or one in the
+ * family's own group chat, is ruled out.
  */
 export async function hasOneToOneThread(
   database: Database,
   parentUserId: string,
   groupChatId: string | null,
 ): Promise<boolean> {
-  const door = await resolveMessagingDoor(database, parentUserId, { excludeChatId: groupChatId });
-  if (door.channel === 'imessage') return door.chatId !== null;
-  // 'sms' is also the door's answer for someone Hale has never heard from.
+  const { channelMessages } = schema;
   const [row] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
+    .select({ id: channelMessages.id })
+    .from(channelMessages)
     .where(
       and(
-        eq(schema.channelMessages.parentUserId, parentUserId),
-        eq(schema.channelMessages.direction, 'in'),
-        eq(schema.channelMessages.channel, 'sms'),
+        eq(channelMessages.parentUserId, parentUserId),
+        eq(channelMessages.direction, 'in'),
+        inArray(channelMessages.channel, ['sms', 'imessage']),
+        or(isNull(channelMessages.inGroup), eq(channelMessages.inGroup, false)),
         groupChatId
           ? or(
-              isNull(schema.channelMessages.providerChatId),
-              ne(schema.channelMessages.providerChatId, groupChatId),
+              isNull(channelMessages.providerChatId),
+              ne(channelMessages.providerChatId, groupChatId),
             )
           : undefined,
       ),
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * For the /founding "already on a paid plan" screen, behind the page-state flag. The code
+ * is already spent by the time this runs, so a failed read answers false and the screen
+ * keeps today's wording instead of costing the parent a 500.
+ */
+export async function alreadyPaidParentHasThread(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  env: Record<string, string | undefined> = process.env,
+): Promise<boolean> {
+  if (!checkoutSuccessStatesEnabled(env)) return false;
+  try {
+    const [family] = await database
+      .select({ linqGroupChatId: schema.families.linqGroupChatId })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+    if (!family) return false;
+    return await hasOneToOneThread(database, parentUserId, family.linqGroupChatId);
+  } catch (err) {
+    console.warn('founding paid screen: thread read failed', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return false;
+  }
 }

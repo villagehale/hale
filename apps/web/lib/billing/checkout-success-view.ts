@@ -1,11 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
-import { and, desc, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { firstName } from '~/lib/loop/reminders/group/standing';
 import type { OpsPage, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
 import { hasOneToOneThread, resolveCheckoutPayer } from './checkout-payer.js';
+import { billingThreadNoticesArmedAt } from './flags';
+import { payerThreadProof } from './notices/thread';
 
 /**
  * Which state the checkout success page shows, from the Stripe session and Hale's DB.
@@ -61,6 +63,8 @@ export interface FamilyFacts {
 export interface CheckoutViewDeps {
   database: () => Database;
   page: (database: Database, page: OpsPage) => Promise<OpsPagerOutcome>;
+  /** The chat Linq holds for Hale's line and this number. A read: it sends nothing. */
+  findDirectChat: (phone: string) => Promise<string | null>;
   env?: Record<string, string | undefined>;
   now?: Date;
 }
@@ -76,7 +80,6 @@ const PURCHASE_CLOCK_SKEW_SECONDS = 60;
  * Meta receive. So the name and the check-in last only as long as the buyer's own landing.
  */
 const GREETING_WINDOW_SECONDS = 30 * 60;
-const STRICT_UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -264,42 +267,34 @@ async function loadFamilyFacts(database: Database, s: SessionFacts): Promise<Fam
   };
 }
 
-/** The notices lane's armed check: the flag is exact `true` and SINCE is a real UTC instant. */
-function billingNoticesArmedAt(env: Record<string, string | undefined>): Date | null {
-  if (env.BILLING_THREAD_NOTICES_ENABLED !== 'true') return null;
-  const raw = env.BILLING_THREAD_NOTICES_SINCE;
-  if (raw === undefined || !STRICT_UTC_INSTANT.test(raw)) return null;
-  const at = new Date(raw);
-  if (Number.isNaN(at.getTime())) return null;
-  return at.toISOString().slice(0, 19) === raw.slice(0, 19) ? at : null;
-}
-
 /**
- * Whether the page may promise a check-in. Selects the channel's id only: the phone
- * stays encrypted on this public route.
+ * Whether the page may promise a check-in: the notices lane is armed for this purchase and
+ * its own thread proof holds, so the page never promises a text the lane would refuse to
+ * send. A proof that cannot be read leaves the sentence out; it must not hold a parent who
+ * has paid on the pending view.
  */
 async function checkInIsDue(
   database: Database,
   s: SessionFacts,
   payerId: string,
-  env: Record<string, string | undefined>,
+  deps: CheckoutViewDeps,
 ): Promise<boolean> {
-  const armedAt = billingNoticesArmedAt(env);
+  const armedAt = billingThreadNoticesArmedAt(deps.env ?? process.env);
   if (armedAt === null || s.subscriptionCreated === null) return false;
   if (s.subscriptionCreated * 1000 <= armedAt.getTime()) return false;
-  const [channel] = await database
-    .select({ id: schema.parentChannels.id })
-    .from(schema.parentChannels)
-    .where(
-      and(
-        eq(schema.parentChannels.userId, payerId),
-        eq(schema.parentChannels.kind, 'sms'),
-        isNotNull(schema.parentChannels.verifiedAt),
-        isNull(schema.parentChannels.revokedAt),
-      ),
-    )
-    .limit(1);
-  return channel !== undefined;
+  try {
+    const proof = await payerThreadProof(database, payerId, {
+      before: new Date(s.createdAt * 1000),
+      findDirectChat: deps.findDirectChat,
+    });
+    if (proof === 'unread') console.warn('checkout view: thread proof unread');
+    return proof === 'thread';
+  } catch (err) {
+    console.warn('checkout view: thread proof failed', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return false;
+  }
 }
 
 async function payerFirstName(database: Database, payerId: string): Promise<string | null> {
@@ -335,7 +330,7 @@ async function familyView(
   if (payerId === null) return { state, firstName: null, checkInDue: false };
   const [name, checkInDue] = await Promise.all([
     payerFirstName(database, payerId),
-    checkInIsDue(database, s, payerId, deps.env ?? process.env),
+    checkInIsDue(database, s, payerId, deps),
   ]);
   return { state, firstName: name, checkInDue };
 }

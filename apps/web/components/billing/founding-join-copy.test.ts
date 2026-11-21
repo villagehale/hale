@@ -10,6 +10,11 @@ import { FoundingJoinForm } from './founding-join-form';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const LABELS = { plusLabel: '$59/yr', maxLabel: '$99/yr' };
+const HALE_NUMBER = '+15555550100';
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
+const WINDOWS = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const KEEP_TEXTING = 'Keep texting Hale like you do now.';
+const START = 'Text Hale to start.';
 
 let root: ReturnType<typeof createRoot> | null = null;
 
@@ -26,20 +31,28 @@ function setInputValue(el: HTMLInputElement, value: string): void {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-async function renderAlreadyPaidScreen(): Promise<HTMLElement> {
+async function renderAlreadyPaidScreen(
+  verifyBody: Record<string, unknown> = { alreadyPaid: true },
+  props: { smsNumber?: string; checkoutConflict?: Record<string, unknown> } = {},
+): Promise<HTMLElement> {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) =>
-      String(input).includes('/api/promo/join/verify')
-        ? new Response(JSON.stringify({ alreadyPaid: true }), { status: 200 })
-        : new Response('{}', { status: 200 }),
-    ),
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/promo/join/verify')) {
+        return new Response(JSON.stringify(verifyBody), { status: 200 });
+      }
+      if (url.includes('/api/promo/join/checkout') && props.checkoutConflict) {
+        return new Response(JSON.stringify(props.checkoutConflict), { status: 409 });
+      }
+      return new Response('{}', { status: 200 });
+    }),
   );
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(createElement(FoundingJoinForm, LABELS));
+    root?.render(createElement(FoundingJoinForm, { ...LABELS, smsNumber: props.smsNumber }));
   });
   await act(async () => {
     setInputValue(container.querySelector('#founding-phone') as HTMLInputElement, '5555551234');
@@ -65,10 +78,58 @@ describe('/founding join copy', () => {
     );
   });
 
-  it('tells a number already on a paid plan to text Hale, without the old promise', async () => {
-    const screen = await renderAlreadyPaidScreen();
+  it('tells a paid number with no thread to start, with the hello, and no old promise', async () => {
+    vi.stubGlobal('navigator', { userAgent: IPHONE });
+    const screen = await renderAlreadyPaidScreen({ alreadyPaid: true }, { smsNumber: HALE_NUMBER });
     expect(screen.textContent).toContain('This number is already on a paid plan.');
-    expect(screen.textContent).toContain('Text Hale to start.');
+    expect(screen.textContent).toContain(START);
+    expect(screen.textContent).not.toContain(KEEP_TEXTING);
     expect(screen.textContent).not.toContain('will not text first');
+    expect(screen.querySelector('a')?.getAttribute('href')).toBe(
+      `sms:${HALE_NUMBER}&body=Hey%20Hale%2C%20what%27s%20going%20on%3F`,
+    );
+  });
+
+  it('tells a parent who already texts Hale to keep going, with an empty composer', async () => {
+    vi.stubGlobal('navigator', { userAgent: IPHONE });
+    const screen = await renderAlreadyPaidScreen(
+      { alreadyPaid: true, hasThread: true },
+      { smsNumber: HALE_NUMBER },
+    );
+    expect(screen.textContent).toContain('This number is already on a paid plan.');
+    expect(screen.textContent).toContain(KEEP_TEXTING);
+    expect(screen.textContent).not.toContain(START);
+    expect(screen.querySelector('a')?.getAttribute('href')).toBe(`sms:${HALE_NUMBER}`);
+  });
+
+  it('leaves the door off for that parent on a device that cannot open their thread', async () => {
+    vi.stubGlobal('navigator', { userAgent: WINDOWS });
+    const screen = await renderAlreadyPaidScreen(
+      { alreadyPaid: true, hasThread: true },
+      { smsNumber: HALE_NUMBER },
+    );
+    expect(screen.textContent).toContain(KEEP_TEXTING);
+    expect(screen.querySelector('a')).toBeNull();
+  });
+
+  it('reads the same answer from a checkout that finds the number already paid', async () => {
+    vi.stubGlobal('navigator', { userAgent: IPHONE });
+    const screen = await renderAlreadyPaidScreen(
+      { alreadyPaid: false },
+      {
+        smsNumber: HALE_NUMBER,
+        checkoutConflict: { error: 'already_paid', hasThread: true },
+      },
+    );
+    const plus = [...screen.querySelectorAll('button')].find((el) =>
+      el.textContent?.includes('Continue · Plus'),
+    );
+    expect(plus).toBeTruthy();
+    await act(async () => {
+      plus?.click();
+    });
+    expect(screen.textContent).toContain('This number is already on a paid plan.');
+    expect(screen.textContent).toContain(KEEP_TEXTING);
+    expect(screen.querySelector('a')?.getAttribute('href')).toBe(`sms:${HALE_NUMBER}`);
   });
 });

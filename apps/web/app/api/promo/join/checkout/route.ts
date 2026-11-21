@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { billingWebhookReady } from '~/lib/billing/billing-live';
+import { alreadyPaidParentHasThread } from '~/lib/billing/checkout-payer';
 import { decideCheckoutCurrency, decideCheckoutTier } from '~/lib/billing/checkout-request';
 import { checkoutMarketingOrigin } from '~/lib/billing/checkout-session';
 import { createBillingCheckout } from '~/lib/billing/create-checkout';
@@ -120,7 +121,15 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'no_family' }, { status: 404 });
     }
     if (result.status === 'already_paid') {
-      return NextResponse.json({ error: 'already_paid' }, { status: 409 });
+      const hasThread = await alreadyPaidParentHasThread(
+        defaultDb(),
+        binding.familyId,
+        binding.userId,
+      );
+      return NextResponse.json(
+        { error: 'already_paid', ...(hasThread ? { hasThread: true } : {}) },
+        { status: 409 },
+      );
     }
     if (result.status === 'founding_only') {
       return NextResponse.json({ error: 'founding_unavailable' }, { status: 409 });

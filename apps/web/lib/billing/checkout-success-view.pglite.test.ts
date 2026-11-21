@@ -1,16 +1,25 @@
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
-import { hasOneToOneThread, resolveCheckoutPayer } from './checkout-payer';
+import {
+  alreadyPaidParentHasThread,
+  hasOneToOneThread,
+  resolveCheckoutPayer,
+} from './checkout-payer';
 import { type CheckoutViewDeps, checkoutViewFromSession } from './checkout-success-view';
 
 const PRICE_ENV = { STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus' };
 const PRICE_MAP = { price_plus: 'plus' as const };
 const NO_NOTICES: Record<string, string | undefined> = {};
+const NO_DIRECT_CHAT = async (_phone: string): Promise<string | null> => null;
+const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+const PARENT_PHONE = '+14165550101';
 
 let test: TestDb;
 let nextId = 0;
@@ -21,6 +30,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await test.close();
+});
+
+beforeEach(() => {
+  vi.stubEnv('APP_ENCRYPTION_KEY', ENCRYPTION_KEY);
 });
 
 function uniq(prefix: string): string {
@@ -78,6 +91,7 @@ function view(p: Purchase, deps: Partial<CheckoutViewDeps> = {}) {
   return checkoutViewFromSession(paidSession(p), p.tier ?? 'plus', {
     database: () => test.database,
     env: NO_NOTICES,
+    findDirectChat: NO_DIRECT_CHAT,
     ...deps,
     page: pager,
   });
@@ -202,7 +216,7 @@ async function verifiedChannel(familyId: string, userId: string) {
     .values({
       userId,
       familyId,
-      phoneE164Encrypted: uniq('encrypted'),
+      phoneE164Encrypted: encryptString(PARENT_PHONE),
       phoneE164Hash: uniq('hash'),
       verifiedAt: new Date(),
     })
@@ -482,6 +496,7 @@ describe('checkoutViewFromSession on real billing rows', () => {
     const result = await checkoutViewFromSession(session, 'plus', {
       database: () => test.database,
       env: NO_NOTICES,
+      findDirectChat: NO_DIRECT_CHAT,
       page: vi.fn(),
     });
     expect(result).toEqual({ state: 'receipt' });
@@ -494,6 +509,7 @@ describe('checkoutViewFromSession on real billing rows', () => {
     const stale = await checkoutViewFromSession(paidSession(old), 'plus', {
       database: untouchable,
       env: NO_NOTICES,
+      findDirectChat: NO_DIRECT_CHAT,
       page: vi.fn(),
     });
     expect(stale).toEqual({ state: 'receipt' });
@@ -507,9 +523,13 @@ describe('checkoutViewFromSession on real billing rows', () => {
   it('greets by name only in the half hour after paying', async () => {
     const { familyId, parentUserId } = await seedFamily(test.database);
     await setName(parentUserId, 'Riley Parent');
-    await inbound(familyId, parentUserId);
-    await verifiedChannel(familyId, parentUserId);
     const now = nowSeconds();
+    const chat = uniq('chat_direct');
+    await inbound(familyId, parentUserId, {
+      providerChatId: chat,
+      createdAt: new Date((now - 7000) * 1000),
+    });
+    await verifiedChannel(familyId, parentUserId);
     const p = purchase(familyId, { created: now - 3700, subscriptionCreated: now - 3600 });
     await startCheckout(familyId, parentUserId, p.created);
     await applyEvent(completedEvent(p));
@@ -517,13 +537,14 @@ describe('checkoutViewFromSession on real billing rows', () => {
       BILLING_THREAD_NOTICES_ENABLED: 'true',
       BILLING_THREAD_NOTICES_SINCE: new Date((now - 7200) * 1000).toISOString(),
     };
+    const findDirectChat = async () => chat;
 
-    expect(await view(p, { env })).toEqual({
+    expect(await view(p, { env, findDirectChat })).toEqual({
       state: 'plan_active',
       firstName: null,
       checkInDue: false,
     });
-    expect(await view({ ...p, subscriptionCreated: now - 60 }, { env })).toEqual({
+    expect(await view({ ...p, subscriptionCreated: now - 60 }, { env, findDirectChat })).toEqual({
       state: 'plan_active',
       firstName: 'Riley',
       checkInDue: true,
@@ -543,7 +564,7 @@ describe('checkoutViewFromSession on real billing rows', () => {
           paymentStatus: 'unpaid',
         }),
         'plus',
-        { database: untouchable, env: NO_NOTICES, page: vi.fn() },
+        { database: untouchable, env: NO_NOTICES, findDirectChat: NO_DIRECT_CHAT, page: vi.fn() },
       );
       expect(result).toEqual({ state: 'not_paid' });
     }
@@ -559,7 +580,7 @@ describe('checkoutViewFromSession on real billing rows', () => {
         subscriptionCreated: nowSeconds() - 50,
       }),
       'plus',
-      { database: untouchable, env: NO_NOTICES, page: vi.fn() },
+      { database: untouchable, env: NO_NOTICES, findDirectChat: NO_DIRECT_CHAT, page: vi.fn() },
     );
     expect(result).toEqual({ state: 'pending' });
   });
@@ -597,6 +618,33 @@ describe('who paid', () => {
     expect(await hasOneToOneThread(test.database, parentUserId, 'chat_group')).toBe(false);
     await inbound(familyId, parentUserId, { channel: 'sms', providerChatId: null, inGroup: null });
     expect(await hasOneToOneThread(test.database, parentUserId, 'chat_group')).toBe(true);
+  });
+
+  it('counts a 1:1 text from before the group bit existed as a thread', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await setName(parentUserId, 'Riley Parent');
+    await inbound(familyId, parentUserId, { inGroup: null, providerChatId: 'chat_old_direct' });
+    await test.database
+      .update(schema.families)
+      .set({ linqGroupChatId: uniq('chat_family_group') })
+      .where(eq(schema.families.id, familyId));
+    const p = purchase(familyId);
+    await startCheckout(familyId, parentUserId, p.created);
+    await applyEvent(completedEvent(p));
+    expect(await view(p)).toEqual({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+  });
+
+  it('a row with no group bit inside the family group is not a thread', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await inbound(familyId, parentUserId, { inGroup: null, providerChatId: 'chat_family_group' });
+    expect(await hasOneToOneThread(test.database, parentUserId, 'chat_family_group')).toBe(false);
+    expect(await hasOneToOneThread(test.database, parentUserId, 'chat_other')).toBe(true);
+  });
+
+  it('a row marked as a group is not a thread in any chat', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await inbound(familyId, parentUserId, { inGroup: true, providerChatId: 'chat_some_group' });
+    expect(await hasOneToOneThread(test.database, parentUserId, null)).toBe(false);
   });
 
   it('binds the payer to this session when another parent opens checkout later', async () => {
@@ -675,66 +723,195 @@ describe('the check-in sentence', () => {
     BILLING_THREAD_NOTICES_SINCE: since,
   });
 
-  async function checkInFamily() {
-    const active = await activeFamily();
-    const channelId = await verifiedChannel(active.familyId, active.parentUserId);
-    const sinceBefore = new Date((active.p.subscriptionCreated - 3600) * 1000).toISOString();
-    return { ...active, channelId, sinceBefore };
+  /** A payer the notices lane would text: an inbound row in Linq's direct chat, before the session. */
+  async function checkInFamily(rowOver: Partial<typeof schema.channelMessages.$inferInsert> = {}) {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await setName(parentUserId, 'Riley Parent');
+    const channelId = await verifiedChannel(familyId, parentUserId);
+    const p = purchase(familyId);
+    const chat = uniq('chat_direct');
+    await inbound(familyId, parentUserId, {
+      providerChatId: chat,
+      createdAt: new Date((p.created - 3600) * 1000),
+      ...rowOver,
+    });
+    await startCheckout(familyId, parentUserId, p.created);
+    expect(await applyEvent(completedEvent(p))).toMatchObject({ status: 'applied' });
+    const sinceBefore = new Date((p.subscriptionCreated - 3600) * 1000).toISOString();
+    const findDirectChat = vi.fn(async (_phone: string): Promise<string | null> => chat);
+    return { familyId, parentUserId, p, channelId, sinceBefore, chat, findDirectChat };
   }
 
-  it('is due with the flag, an earlier SINCE, a 1:1 thread and a live channel', async () => {
-    const { p, sinceBefore } = await checkInFamily();
-    expect(await view(p, { env: armed(sinceBefore) })).toMatchObject({
+  it('is due on the lane proof, and asks about the parent current number', async () => {
+    const { p, sinceBefore, findDirectChat } = await checkInFamily();
+    expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
+      state: 'plan_active',
+      firstName: 'Riley',
+      checkInDue: true,
+    });
+    expect(findDirectChat).toHaveBeenCalledWith(PARENT_PHONE);
+  });
+
+  it('is due for a parent whose only 1:1 text predates the group bit', async () => {
+    const { p, sinceBefore, findDirectChat } = await checkInFamily({ inGroup: null });
+    expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toMatchObject({
       state: 'plan_active',
       checkInDue: true,
     });
   });
 
-  it('is not due with the flag unset or not exactly true', async () => {
-    const { p, sinceBefore } = await checkInFamily();
+  it('is not due with the flag unset or not exactly true, and asks Linq nothing', async () => {
+    const { p, sinceBefore, findDirectChat } = await checkInFamily();
     for (const value of [undefined, 'TRUE', 'true\n']) {
       const env = {
         BILLING_THREAD_NOTICES_ENABLED: value,
         BILLING_THREAD_NOTICES_SINCE: sinceBefore,
       };
-      expect(await view(p, { env })).toMatchObject({ state: 'plan_active', checkInDue: false });
+      expect(await view(p, { env, findDirectChat })).toMatchObject({
+        state: 'plan_active',
+        checkInDue: false,
+      });
     }
+    expect(findDirectChat).not.toHaveBeenCalled();
   });
 
-  it('is not due with a malformed SINCE', async () => {
-    const { p, sinceBefore } = await checkInFamily();
+  it('is not due with a SINCE the lane refuses', async () => {
+    const { p, sinceBefore, findDirectChat } = await checkInFamily();
     for (const since of [
       '',
       'yesterday',
       '2026-11-21',
       `${sinceBefore}\n`,
       '2026-02-30T00:00:00Z',
+      sinceBefore.replace(/\.\d{3}Z$/, '.5Z'),
     ]) {
-      expect(await view(p, { env: armed(since) })).toMatchObject({
+      expect(await view(p, { env: armed(since), findDirectChat })).toMatchObject({
         state: 'plan_active',
         checkInDue: false,
       });
     }
+    expect(findDirectChat).not.toHaveBeenCalled();
   });
 
   it('is not due for a subscription older than SINCE', async () => {
-    const { p } = await checkInFamily();
+    const { p, findDirectChat } = await checkInFamily();
     const after = new Date((p.subscriptionCreated + 3600) * 1000).toISOString();
-    expect(await view(p, { env: armed(after) })).toMatchObject({
+    expect(await view(p, { env: armed(after), findDirectChat })).toMatchObject({
       state: 'plan_active',
       checkInDue: false,
     });
   });
 
   it('is not due when the payer channel is revoked', async () => {
-    const { p, channelId, sinceBefore } = await checkInFamily();
+    const { p, channelId, sinceBefore, findDirectChat } = await checkInFamily();
     await test.database
       .update(schema.parentChannels)
       .set({ revokedAt: new Date() })
       .where(eq(schema.parentChannels.id, channelId));
-    expect(await view(p, { env: armed(sinceBefore) })).toMatchObject({
+    expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toMatchObject({
       state: 'plan_active',
       checkInDue: false,
     });
+  });
+
+  it('is not due for a new visitor who texts only after paying', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await setName(parentUserId, 'Riley Parent');
+    await verifiedChannel(familyId, parentUserId);
+    const p = purchase(familyId);
+    await startCheckout(familyId, parentUserId, p.created);
+    await applyEvent(completedEvent(p));
+    const chat = uniq('chat_direct');
+    const after = new Date((p.created + 5) * 1000);
+    await inbound(familyId, parentUserId, {
+      providerChatId: chat,
+      createdAt: after,
+      sentAt: after,
+    });
+    const sinceBefore = new Date((p.subscriptionCreated - 3600) * 1000).toISOString();
+    expect(
+      await view(p, { env: armed(sinceBefore), findDirectChat: async () => chat }),
+    ).toMatchObject({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+  });
+
+  it('is not due when the only inbound text is an old SMS with no Linq chat', async () => {
+    const { p, sinceBefore } = await checkInFamily({ channel: 'sms', providerChatId: null });
+    expect(
+      await view(p, { env: armed(sinceBefore), findDirectChat: NO_DIRECT_CHAT }),
+    ).toMatchObject({ state: 'plan_active', checkInDue: false });
+  });
+
+  it('is not due when the text is in a chat other than Linq direct one', async () => {
+    const { p, sinceBefore } = await checkInFamily();
+    expect(
+      await view(p, { env: armed(sinceBefore), findDirectChat: async () => 'chat_another' }),
+    ).toMatchObject({ state: 'plan_active', checkInDue: false });
+  });
+
+  it('leaves the sentence out and keeps the plan when Linq cannot answer', async () => {
+    const { p, sinceBefore } = await checkInFamily();
+    const findDirectChat = async () => {
+      throw new LinqSendError('timeout', 0, false);
+    };
+    expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
+      state: 'plan_active',
+      firstName: 'Riley',
+      checkInDue: false,
+    });
+  });
+
+  it('leaves the sentence out and keeps the plan when the proof throws anything else', async () => {
+    const { p, sinceBefore } = await checkInFamily();
+    const findDirectChat = async () => {
+      throw new TypeError('bug');
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
+      state: 'plan_active',
+      firstName: 'Riley',
+      checkInDue: false,
+    });
+    expect(warn).toHaveBeenCalledWith('checkout view: thread proof failed', { err: 'TypeError' });
+    warn.mockRestore();
+  });
+});
+
+describe('the /founding already-paid screen', () => {
+  const ON = { CHECKOUT_SUCCESS_STATES_ENABLED: 'true' };
+
+  it('counts the same threads as the success page, only with the flag on', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await inbound(familyId, parentUserId, { inGroup: null, providerChatId: 'chat_old_direct' });
+    expect(await alreadyPaidParentHasThread(test.database, familyId, parentUserId, ON)).toBe(true);
+    for (const value of [undefined, 'TRUE', 'true\n']) {
+      expect(
+        await alreadyPaidParentHasThread(untouchable(), familyId, parentUserId, {
+          CHECKOUT_SUCCESS_STATES_ENABLED: value,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it('is false for a parent who has only written in the family group', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    const groupChat = uniq('chat_family_group');
+    await test.database
+      .update(schema.families)
+      .set({ linqGroupChatId: groupChat })
+      .where(eq(schema.families.id, familyId));
+    await inbound(familyId, parentUserId, { inGroup: null, providerChatId: groupChat });
+    expect(await alreadyPaidParentHasThread(test.database, familyId, parentUserId, ON)).toBe(false);
+    await inbound(familyId, parentUserId, { inGroup: false, providerChatId: uniq('chat_direct') });
+    expect(await alreadyPaidParentHasThread(test.database, familyId, parentUserId, ON)).toBe(true);
+  });
+
+  it('answers false and names the failure when the read fails', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await alreadyPaidParentHasThread(untouchable(), familyId, parentUserId, ON)).toBe(false);
+    expect(warn).toHaveBeenCalledWith('founding paid screen: thread read failed', {
+      err: 'Error',
+    });
+    warn.mockRestore();
   });
 });

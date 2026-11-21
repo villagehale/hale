@@ -6,6 +6,7 @@ import {
 import { checkoutViewFromSession } from '~/lib/billing/checkout-success-view';
 import { checkoutSuccessStatesEnabled } from '~/lib/billing/flags';
 import { stripeCheckoutClientFromEnv } from '~/lib/billing/stripe-client';
+import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
 import { db as defaultDb } from '~/lib/db';
 import { pageOps } from '~/lib/monitoring/failure-page';
 
@@ -46,6 +47,7 @@ export async function GET(req: Request): Promise<Response> {
     const view = await checkoutViewFromSession(session, facts.tier, {
       database: defaultDb,
       page: pageOps,
+      findDirectChat: (phone) => findHaleDirectChat(phone),
     });
     return NextResponse.json(
       { ...facts, view },
