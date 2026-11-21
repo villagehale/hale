@@ -136,6 +136,7 @@ async function haleLine(input: {
       providerChatId: input.chatId,
       status: 'sent',
       sentAt: input.at,
+      sendRecordedAt: input.at,
       createdAt: input.at,
     })
     .returning({ id: schema.channelMessages.id });
@@ -1531,6 +1532,127 @@ describe('a private reply among calendar asks', () => {
     expect(chosen.handled).toBe(true);
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('written');
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+  });
+});
+
+/** Priya holds two open calendar asks (picnic, then museum `gapMs` later, the last line). */
+async function twoOpenAsks(gapMs: number) {
+  const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+  const [other] = await db.database
+    .insert(schema.families)
+    .values({
+      displayName: 'Other chat',
+      provinceOrState: 'ON',
+      primaryLanguage: 'en',
+      linqGroupChatId: 'chat-museum',
+    })
+    .returning({ id: schema.families.id });
+  const otherId = other?.id as string;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId: otherId, userId: priya.userId, role: 'co_parent' });
+  await db.database.insert(schema.linqGroupMembers).values({
+    familyId: priya.familyId,
+    chatId: CHAT,
+    userId: priya.userId,
+    phoneE164Encrypted: encryptString(PRIYA),
+    phoneE164Hash: phoneBlindIndex(PRIYA),
+    role: 'parent',
+    seatedAt: NOW,
+  });
+  const store = createPostgresGroupPlanRsvpStore(db.database);
+  const plan = (chatId: string, familyId: string, title: string) =>
+    store.createPlan({
+      chatId,
+      familyId,
+      title,
+      startsAt: new Date('2026-11-08T16:00:00.000Z'),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+  const picnic = await plan(CHAT, priya.familyId, 'Saturday picnic');
+  const museum = await plan('chat-museum', otherId, 'Museum Saturday');
+  const asks = [
+    { planId: picnic.id, familyId: priya.familyId, messageId: 'ask-picnic', at: NOW },
+    {
+      planId: museum.id,
+      familyId: otherId,
+      messageId: 'ask-museum',
+      at: new Date(NOW.getTime() + gapMs),
+    },
+  ];
+  for (const ask of asks) {
+    await store.claimCalendarAsk({
+      planId: ask.planId,
+      familyId: ask.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await askWasSent(store, { ...ask, userId: priya.userId });
+  }
+  vi.stubEnv('VERCEL_ENV', 'preview');
+  vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+  const ports = {
+    database: db.database,
+    now: new Date(NOW.getTime() + 120_000),
+    composer: fakeGroupPlanRsvpComposer(),
+    consentReader: { read: async () => ({ decision: 'ok' as const, confidence: 'high' as const }) },
+    oneToOne: {
+      text: async () => ({ providerMessageId: 'priv-one', chatId: null }),
+      link: async () => ({ providerMessageId: 'link' }),
+    },
+  };
+  const status = async () => ({
+    picnic: (await store.loadCalendarConsent(picnic.id, priya.familyId))?.status,
+    museum: (await store.loadCalendarConsent(museum.id, otherId))?.status,
+  });
+  return { priya, ports, status };
+}
+
+describe('a 1:1 reply with several calendar asks open: the newest ask, code-checked', () => {
+  it('a bare yes answers the newest ask (the last line), never the older one', async () => {
+    const { priya, ports, status } = await twoOpenAsks(60_000);
+    const yes = await considerPrivateCalendarReply(ports, {
+      senderUserId: priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+      text: 'yes',
+    });
+    expect(yes.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'written' });
+    expect(ports.composer.calls.some((call) => call.input.kind === 'calendar_which')).toBe(false);
+  });
+
+  it('a reply naming the older plan answers that one only', async () => {
+    const { priya, ports, status } = await twoOpenAsks(60_000);
+    const named = await considerPrivateCalendarReply(ports, {
+      senderUserId: priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+      text: 'yes to the picnic',
+    });
+    expect(named.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'written', museum: 'asked' });
+  });
+
+  it('two asks sent seconds apart are a tie: a bare yes binds nothing and Hale asks which', async () => {
+    const { priya, ports, status } = await twoOpenAsks(3_000);
+    const yes = await considerPrivateCalendarReply(ports, {
+      senderUserId: priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+      text: 'yes',
+    });
+    expect(yes.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
+    expect(ports.composer.calls.filter((call) => call.input.kind === 'calendar_which')).toHaveLength(
+      1,
+    );
   });
 });
 

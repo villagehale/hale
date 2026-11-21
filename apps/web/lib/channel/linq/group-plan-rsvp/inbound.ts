@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { newestAsks } from '~/lib/channel/router/open-questions';
 import { namesFacts } from '~/lib/signup/parent-quote';
 import {
   linqGroupPlanRsvpCalendarEnabled,
@@ -382,16 +383,19 @@ type PrivateCalendarCandidate = Awaited<
 >[number];
 
 /**
- * One ask is that ask. Several asks: a reply binds only an ask its words name, by a whole
- * word of the plan's title (code-checked), and only when the reader also reads a decision
- * on it. The model alone never picks among several asks: a decision with no ask named, or
- * with more than one named, is `ambiguous` and Hale asks which one. No decision on any
- * ask leaves the turn to the 1:1 door.
+ * One ask is that ask. Several asks: a reply binds an ask its words name, by a whole word
+ * of the plan's title (code-checked). A reply naming none is read against the newest ask
+ * only, the one code found as Hale's last 1:1 line and clearly newest by send time
+ * (VIL-302 `newestAsks`). Either way the reader must also read a decision on it. The model
+ * alone never picks among several asks: a decision with no newest ask (a tie, an unknown
+ * send time) and none named, or with more than one named, is `ambiguous` and Hale asks
+ * which one. No decision on any ask leaves the turn to the 1:1 door.
  */
 async function pickPrivateCalendarAsk(
   ports: GroupPlanRsvpInboundPorts,
   input: { senderName: string | null; text: string },
   open: PrivateCalendarCandidate[],
+  newest: PrivateCalendarCandidate | null,
 ): Promise<
   | { kind: 'none' }
   | { kind: 'ambiguous'; candidates: PrivateCalendarCandidate[] }
@@ -408,9 +412,10 @@ async function pickPrivateCalendarAsk(
   const named = open.filter((item) =>
     namesFacts(input.text, { activity: item.plan.title, host: '' }),
   );
+  const bound = named.length > 0 ? named : newest ? [newest] : [];
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const hits: { item: PrivateCalendarCandidate; reading: CalendarConsentReading }[] = [];
-  for (const item of named.length > 0 ? named : open) {
+  for (const item of bound.length > 0 ? bound : open) {
     const reading = await reader.read({
       text: input.text,
       tapback: null,
@@ -431,10 +436,50 @@ async function pickPrivateCalendarAsk(
   }
   const hit = hits[0];
   if (!hit) return { kind: 'none' };
-  if (named.length === 1 && hits.length === 1) {
+  if (bound.length === 1 && hits.length === 1) {
     return { kind: 'one', plan: hit.item.plan, consent: hit.item.consent, decided: hit.reading };
   }
   return { kind: 'ambiguous', candidates: hits.map((entry) => entry.item) };
+}
+
+/**
+ * The ask a bare reply answers: Hale's last 1:1 line, and the only ask in the newest tie
+ * by the database send clock of the line that carried it. Null when asks tie, a send time
+ * is unknown, or the last line is not an ask.
+ */
+async function newestOpenAsk(
+  database: Database,
+  parentUserId: string,
+  open: PrivateCalendarCandidate[],
+  lastLine: string | null,
+): Promise<PrivateCalendarCandidate | null> {
+  const asked = open.filter((item) => item.consent.status === 'asked');
+  const ids = asked.flatMap((item) =>
+    item.consent.askProviderMessageId ? [item.consent.askProviderMessageId] : [],
+  );
+  if (lastLine === null || ids.length === 0) return null;
+  const rows = await database
+    .select({
+      providerMessageId: schema.channelMessages.providerMessageId,
+      sendRecordedAt: schema.channelMessages.sendRecordedAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+        inArray(schema.channelMessages.providerMessageId, ids),
+      ),
+    );
+  const sentAt = new Map(rows.map((row) => [row.providerMessageId, row.sendRecordedAt]));
+  const tie = newestAsks(
+    asked.map((item) => ({
+      item,
+      askedAt: sentAt.get(item.consent.askProviderMessageId ?? '') ?? null,
+    })),
+  );
+  const only = tie?.length === 1 ? tie[0]?.item : undefined;
+  return only && only.consent.askProviderMessageId === lastLine ? only : null;
 }
 
 /**
@@ -544,7 +589,12 @@ export async function considerPrivateCalendarReply(
       'group plan calendar: 1:1 reply left to the 1:1 door',
     );
   }
-  const picked = await pickPrivateCalendarAsk(ports, input, open);
+  const picked = await pickPrivateCalendarAsk(
+    ports,
+    input,
+    open,
+    await newestOpenAsk(ports.database, input.senderUserId, open, lastLine),
+  );
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {
     const which = await askWhichCalendarPlan(ports, store, input, picked.candidates);
