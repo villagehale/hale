@@ -5,9 +5,9 @@
  * NFKC turns the non-breaking spaces a French amount carries into plain ones.
  */
 const NUMBER = String.raw`\d{1,3}(?:[, ]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
-const BEFORE = String.raw`(?:C(?:A)?\$|US\$|\$|\b(?:CAD|USD)\b)\s*`;
+const BEFORE = String.raw`(?:C(?:A)?\$|US\$|\$|(?<![a-z])(?:cad|usd)(?![a-z]))\s*`;
 // A sign right before another number is that number's: "the 2027 $98 session" is $98.
-const AFTER = String.raw`\s*(?:\$(?!\s*\d)|加元|加币|美元|元|块|\b(?:dollars?|CAD|USD)\b)`;
+const AFTER = String.raw`\s*(?:\$(?!\s*\d)|加元|加币|美元|元|块|(?:dollars?|cad|usd)(?![a-z]))`;
 const AMOUNT = new RegExp(`(${BEFORE})?(?<!\\d)(${NUMBER})(?!\\d)(${AFTER})?`, 'giu');
 
 function toCents(raw: string): number | null {
