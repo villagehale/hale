@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   type TestDb,
   createTestDb,
@@ -18,6 +18,7 @@ import {
   lookupLoginLink,
   markLoginLinkSent,
   mintFreshLoginLink,
+  mintTakeoverLink,
 } from './store';
 
 const NOW = new Date('2026-12-01T12:00:00.000Z');
@@ -40,6 +41,9 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await db.close();
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 async function family() {
@@ -145,6 +149,41 @@ describe('provider login links', () => {
     });
     const freshCode = fresh.url.split('/').pop() as string;
     expect(await lookupLoginLink(db.database, freshCode, NOW)).toMatchObject({ ok: true });
+  });
+
+  it('a takeover card replaces the open card for its host: one live card per host holds', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    const f = await family();
+    const ids = {
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      offerId: f.offerId,
+      providerHost: HOST,
+    };
+    const login = await mintFreshLoginLink(db.database, { ...ids, purpose: PURPOSE, now: NOW });
+    const takeover = await mintTakeoverLink(db.database, {
+      ...ids,
+      purpose: { ...PURPOSE, kind: 'takeover', opensAt: null, card: null, takeover: 'code' },
+      expiresAt: new Date(NOW.getTime() + 13 * 60_000),
+      browser: { browserId: 'browser-1', liveViewUrl: 'https://live.browser-use.com/s/fixture' },
+      now: NOW,
+    });
+
+    expect(await lookupLoginLink(db.database, login.url.split('/').pop() as string, NOW)).toEqual({
+      ok: false,
+      reason: 'used',
+    });
+    expect(
+      await lookupLoginLink(db.database, takeover.url.split('/').pop() as string, NOW),
+    ).toMatchObject({ ok: true, purpose: { kind: 'takeover', takeover: 'code' } });
+    const links = schema.providerLoginLinks;
+    const open = await db.database
+      .select({ id: links.id })
+      .from(links)
+      .where(
+        and(eq(links.familyId, f.familyId), eq(links.providerHost, HOST), isNull(links.consumedAt)),
+      );
+    expect(open).toEqual([{ id: takeover.id }]);
   });
 
   it('a retried notice reuses the card it already sent, and the parent keeps that one live card', async () => {

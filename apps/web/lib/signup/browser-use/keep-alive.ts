@@ -1,3 +1,5 @@
+import { takeoverPurpose } from '../takeover/purpose';
+
 /**
  * Browser Use V4 `keepAlive` is integer seconds, 120–14400. Omitting it lets
  * the API default to 14400 (four hours). Hale always sends 900 (15 minutes)
@@ -21,8 +23,17 @@ const PARENT_HANDOFF_DETAILS = new Set([
  * live view: a real login, or a checkout / filled-form hand-off. A generic
  * `needs_human` stop (captcha, session not found, unreadable choice) closes
  * it. `session_not_found` is never a hand-off.
+ *
+ * VIL-718 · with `takeover` (TAKEOVER_LINK_ENABLED exactly `true`, read by the caller), every
+ * step the takeover link covers keeps the browser too, a captcha included: the parent answers
+ * it on the live view, and Hale never does.
  */
-export function parentTakesOverLiveView(outcome: string, detail: string): boolean {
+export function parentTakesOverLiveView(
+  outcome: string,
+  detail: string,
+  takeover = false,
+): boolean {
+  if (takeover && takeoverPurpose(outcome, detail) !== null) return true;
   if (outcome === 'needs_login' || outcome === 'ready_for_parent') return true;
   if (outcome === 'reached_checkout' || outcome === 'payment_not_approved') return true;
   if (outcome !== 'needs_human') return false;

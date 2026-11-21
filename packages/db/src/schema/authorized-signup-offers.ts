@@ -38,7 +38,18 @@ export interface AuthorizedSignupSession {
  * no run id never creates a second one. `reviewStarted` is written before the checkout
  * review run is created: a resume that finds it cannot read what the review did, and the
  * review can place the order, so a charge may exist.
+ *
+ * VIL-718 · `takeover` is a run that stopped for a step only the parent can do. Its browser
+ * stays open and the parent holds the takeover link (`loginLinkId`, a `provider_login_links`
+ * row: never its code and never the live view). `doneAt` is stamped when the parent taps done,
+ * and the next sweep queues the next turn of the same session. `lapsedAt` is stamped by the
+ * sweep that finds the link ran out first: that plan ends, and nothing retries it. A `signup`
+ * token for a run picked back up after a takeover carries `takeover`, so the plan never asks
+ * the parent for the same step twice and never asks more than a set number of times.
  */
+/** VIL-718 · the steps a takeover covers. The same list as `TAKEOVER_PURPOSES` in apps/web. */
+export type AuthorizedSignupTakeoverPurpose = 'sign_in' | 'code' | 'passkey' | 'captcha';
+
 export type AuthorizedSignupPlanResume =
   | {
       phase: 'signup';
@@ -46,6 +57,22 @@ export type AuthorizedSignupPlanResume =
       sessionId: string | null;
       browserId: string | null;
       reviewStarted?: true;
+      takeover?: { purpose: AuthorizedSignupTakeoverPurpose; round: number };
+    }
+  | {
+      phase: 'takeover';
+      /** The run that stopped for the parent. It is over; it is never waited on again. */
+      runId: string;
+      sessionId: string;
+      browserId: string | null;
+      purpose: AuthorizedSignupTakeoverPurpose;
+      loginLinkId: string;
+      /** When the link closes (ISO). The plan's lease runs to the same moment. */
+      expiresAt: string;
+      /** Takeovers this plan has asked for, this one included. */
+      round: number;
+      doneAt: string | null;
+      lapsedAt: string | null;
     }
   | {
       phase: 'paying';

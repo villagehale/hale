@@ -200,6 +200,11 @@ export const OPS_PAGE_VOCABULARY = {
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
+  // VIL-718 · a takeover text the model could not write: nothing went to the parent.
+  takeover_unwritten: {
+    purpose: ['sign_in', 'code', 'passkey', 'captcha'],
+    moment: ['ask', 'unfinished'],
+  },
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
