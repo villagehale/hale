@@ -159,6 +159,7 @@ describe('GET /api/cron/drain', () => {
 
   it('answers the summary on a clean run', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('BILLING_THREAD_NOTICES_ENABLED', undefined);
     const { GET } = await import('./route');
     runDrainCronMock.mockResolvedValue({ processed: 2, failed: 0, dropped: 1 });
 

@@ -18,7 +18,7 @@ import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { BillingNoticeCompose, BillingNoticeFacts } from './compose';
 import { recordBillingNoticeIntent } from './record';
-import { type BillingNoticeRunDeps, runBillingNoticeTick } from './run';
+import { type BillingNoticeRunDeps, guardedChannels, runBillingNoticeTick } from './run';
 import type { NoticeSubscription } from './subscription-read';
 
 /**
@@ -224,8 +224,14 @@ type ComposeAnswer =
   | BillingNoticeCompose
   | ((signal: AbortSignal) => Promise<BillingNoticeCompose>);
 
-function deps(over: Partial<BillingNoticeRunDeps> & { answers?: ComposeAnswer[] } = {}) {
-  const { answers, ...rest } = over;
+function deps(
+  over: Partial<BillingNoticeRunDeps> & {
+    answers?: ComposeAnswer[];
+    /** Runs inside the dispatch's claim read: after every check the lane makes itself. */
+    duringClaimRead?: () => Promise<void>;
+  } = {},
+) {
+  const { answers, duringClaimRead, ...rest } = over;
   const sms: Channel = {
     kind: 'sms',
     async send({ userId, rendered }) {
@@ -241,17 +247,20 @@ function deps(over: Partial<BillingNoticeRunDeps> & { answers?: ComposeAnswer[] 
       );
     },
   };
-  const ports = {
+  const portsFor = (beforeSend: () => Promise<void>) => ({
     ...buildDispatchPorts(db.database, {
-      channels: { sms },
+      channels: guardedChannels({ sms }, beforeSend),
       renderer: loopTemplateRenderer,
       now: () => clock.now,
     }),
     claimEnforce: {
       enforces: () => true,
-      decide: async () => ({ status: 'clean' as const }),
+      decide: async () => {
+        await duringClaimRead?.();
+        return { status: 'clean' as const };
+      },
     },
-  };
+  });
   const pager: OpsPager = {
     async page(page) {
       pages.push(page);
@@ -284,7 +293,8 @@ function deps(over: Partial<BillingNoticeRunDeps> & { answers?: ComposeAnswer[] 
       if (typeof next === 'function') return next(signal);
       return next ?? { status: 'written', text: defaultText(facts) };
     },
-    dispatch: (message: LoopMessage) => dispatchLoopMessage(message, ports),
+    dispatch: (message: LoopMessage, beforeSend) =>
+      dispatchLoopMessage(message, portsFor(beforeSend)),
     ...rest,
   };
   return built;
@@ -370,25 +380,29 @@ describe('a text the parent gets', () => {
         return { providerMessageId: `linq-${familyId}`, transport: 'imessage', chatId: CHAT };
       },
     };
-    const ports = {
-      ...buildDispatchPorts(db.database, {
-        channels: {
-          sms: createSmsChannel({
-            resolveTarget: (id) => resolveSendablePhone(db.database, id),
-            familyTarget: (id) => familyOutboundTargetForUser(db.database, id),
-            database: db.database,
-            configured: true,
-            transport,
-          }),
-        },
-        renderer: loopTemplateRenderer,
-        now: () => clock.now,
-      }),
-      claimEnforce: { enforces: () => true, decide: async () => ({ status: 'clean' as const }) },
-    };
+    const realSms = createSmsChannel({
+      resolveTarget: (id) => resolveSendablePhone(db.database, id),
+      familyTarget: (id) => familyOutboundTargetForUser(db.database, id),
+      database: db.database,
+      configured: true,
+      transport,
+    });
     const notice = await insertNotice({});
 
-    await tick({ dispatch: (message) => dispatchLoopMessage(message, ports) });
+    await tick({
+      dispatch: (message, beforeSend) =>
+        dispatchLoopMessage(message, {
+          ...buildDispatchPorts(db.database, {
+            channels: guardedChannels({ sms: realSms }, beforeSend),
+            renderer: loopTemplateRenderer,
+            now: () => clock.now,
+          }),
+          claimEnforce: {
+            enforces: () => true,
+            decide: async () => ({ status: 'clean' as const }),
+          },
+        }),
+    });
 
     expect((await noticeRow(notice.id)).status).toBe('sent');
     expect(sent).toHaveLength(1);
@@ -1293,6 +1307,158 @@ describe('one message for a refund and a cancel', () => {
     expect(pages[0]?.facts).toEqual({ lane: 'plan_change', reason: 'plan_state_unsettled' });
     expect(linqCalls).toHaveLength(0);
     expect(composed).toHaveLength(0);
+  });
+});
+
+describe('what changed while the text was being written', () => {
+  const cancelDuring = async (at: Date) => {
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+    await recordBillingNoticeIntent(
+      db.database,
+      {
+        id: `evt_cancel_during_${at.getTime()}`,
+        type: 'customer.subscription.deleted',
+        livemode: true,
+        created: Math.floor(at.getTime() / 1000),
+        data: {
+          object: {
+            id: 'sub_1',
+            metadata: { familyId },
+            cancellation_details: { reason: 'cancellation_requested' },
+          },
+        },
+      },
+      { status: 'applied', tier: 'free' },
+      { env: ARMED, now: at },
+    );
+  };
+
+  it('a cancel during the write: the "still on Plus" draft never leaves, and one text covers both', async () => {
+    const notice = await refundNotice();
+    await tick({
+      answers: [
+        async () => {
+          await cancelDuring(later(AFTERNOON, 1));
+          return { status: 'written', text: "You're on Plus now. $159.00 went back to you." };
+        },
+      ],
+    });
+    expect(linqCalls).toHaveLength(0);
+    expect((await noticeRow(notice.id)).dropReason).toBe('merged');
+    expect(await auditRows('billing_notice_send_failed')).toHaveLength(0);
+
+    clock.now = later(AFTERNOON, 15);
+    await tick();
+    expect(linqCalls).toHaveLength(1);
+    expect(linqCalls[0]?.text).toBe("You're on the free plan now. $159.00 went back to you.");
+    expect(composed.at(-1)).toMatchObject({ plan: 'Free', ended: { why: 'cancelled' } });
+  });
+
+  it('a cancel during the claim read: the draft still does not leave', async () => {
+    await refundNotice();
+    await tick({ duringClaimRead: () => cancelDuring(later(AFTERNOON, 1)) });
+    expect(linqCalls).toHaveLength(0);
+    const ledger = await db.database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, familyId),
+          eq(schema.channelMessages.direction, 'out'),
+        ),
+      );
+    expect(ledger).toHaveLength(0);
+
+    clock.now = later(AFTERNOON, 15);
+    await tick();
+    expect(linqCalls).toHaveLength(1);
+    expect(composed.at(-1)).toMatchObject({ plan: 'Free', ended: { why: 'cancelled' } });
+  });
+
+  it('the tier moved with no new event: no text, no attempt used, and the next tick reads it fresh', async () => {
+    const notice = await refundNotice();
+    await tick({
+      answers: [
+        async () => {
+          await db.database
+            .update(schema.families)
+            .set({ planTier: 'family' })
+            .where(eq(schema.families.id, familyId));
+          return { status: 'written', text: "You're on Plus now. $159.00 went back to you." };
+        },
+      ],
+    });
+    expect(linqCalls).toHaveLength(0);
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.attempts).toBe(0);
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 1));
+
+    clock.now = later(AFTERNOON, 1);
+    await tick();
+    expect(linqCalls).toHaveLength(1);
+    expect(composed.at(-1)?.plan).toBe('Max');
+  });
+
+  it('an opt-out hold during the claim read: zero Linq calls, back to open, no attempt used', async () => {
+    const notice = await insertNotice({});
+    await tick({
+      duringClaimRead: async () => {
+        const phone = await resolveSendablePhone(db.database, parentUserId);
+        await db.database
+          .insert(schema.optOutReadHolds)
+          .values({ phoneHash: phoneBlindIndex(phone as string), heldAt: AFTERNOON });
+      },
+    });
+    expect(linqCalls).toHaveLength(0);
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.attempts).toBe(0);
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 60));
+  });
+
+  it('nothing changed: the check lets the text through (positive control)', async () => {
+    const notice = await refundNotice();
+    await tick({ duringClaimRead: async () => {} });
+    expect(linqCalls).toHaveLength(1);
+    expect((await noticeRow(notice.id)).status).toBe('sent');
+  });
+});
+
+describe('a refund of an older subscription after a rebuy', () => {
+  it('does not wait for a deletion that already happened: money back, still on the plan, no date', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ stripeSubscriptionId: 'sub_replacement' })
+      .where(eq(schema.families.id, familyId));
+    subscription = { ...ACTIVE, status: 'canceled' };
+    const notice = await refundNotice();
+    await tick();
+    expect((await noticeRow(notice.id)).status).toBe('sent');
+    expect(pages).toHaveLength(0);
+    expect(composed[0]).toMatchObject({
+      plan: 'Plus',
+      ended: null,
+      refunds: [{ amount: '$159.00' }],
+      paidThrough: null,
+    });
+  });
+
+  it('the family’s own current subscription ended at Stripe: still waits for the deletion', async () => {
+    await db.database
+      .update(schema.families)
+      .set({ stripeSubscriptionId: 'sub_1' })
+      .where(eq(schema.families.id, familyId));
+    subscription = { ...ACTIVE, status: 'canceled' };
+    const notice = await refundNotice();
+    await tick();
+    expect(composed).toHaveLength(0);
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
   });
 });
 

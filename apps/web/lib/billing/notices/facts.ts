@@ -26,6 +26,11 @@ import type { NoticeSubscription, NoticeSubscriptionReader } from './subscriptio
 
 const PLAN_NAME: Record<string, BillingPlanName> = { free: 'Free', plus: 'Plus', family: 'Max' };
 
+/** The name a parent knows this tier by, or null for a value this code does not know. */
+export function billingPlanName(tier: string): BillingPlanName | null {
+  return PLAN_NAME[tier] ?? null;
+}
+
 /** One purchase writes several plan rows around the subscription's own start. */
 const PURCHASE_ROWS_MS = 60_000;
 /** A refund landed before its cancel: how long the deletion event gets to arrive. */
@@ -166,7 +171,10 @@ export async function readNoticeFacts(
   deps: { subscriptions: NoticeSubscriptionReader | null; now: Date },
 ): Promise<NoticeFactsRead> {
   const [family] = await database
-    .select({ planTier: schema.families.planTier })
+    .select({
+      planTier: schema.families.planTier,
+      stripeSubscriptionId: schema.families.stripeSubscriptionId,
+    })
     .from(schema.families)
     .where(eq(schema.families.id, notice.familyId))
     .limit(1);
@@ -178,7 +186,7 @@ export async function readNoticeFacts(
     readParentLanguage(database, { familyId: notice.familyId, parentUserId: notice.parentUserId }),
     billingNoticeClock(database, notice.parentUserId),
   ]);
-  const shared = { language, clock, plan };
+  const shared = { language, clock, plan, currentSubscriptionId: family.stripeSubscriptionId };
   return notice.lane === 'payment'
     ? paymentFacts(database, notice, deps, shared)
     : planChangeFacts(database, notice, deps, shared);
@@ -188,6 +196,7 @@ interface SharedFacts {
   language: BillingNoticeFacts['language'];
   clock: ParentClock;
   plan: BillingPlanName;
+  currentSubscriptionId: string | null;
 }
 
 async function paymentFacts(
@@ -249,7 +258,7 @@ async function planChangeFacts(
   database: Database,
   notice: BillingNotice,
   deps: { subscriptions: NoticeSubscriptionReader | null; now: Date },
-  { language, clock, plan }: SharedFacts,
+  { language, clock, plan, currentSubscriptionId }: SharedFacts,
 ): Promise<NoticeFactsRead> {
   const moved = await planBeforeChange(database, notice);
   const previousPlan = moved === plan ? null : moved;
@@ -274,13 +283,16 @@ async function planChangeFacts(
       );
       return { status: 'failed', reason: 'subscription_unread' };
     }
-    // The refund's event can arrive before its cancel. "Still on Plus" about a
-    // subscription Stripe already ended would be false, so the row waits for the deletion.
-    if (
-      refunds.length > 0 &&
-      !ended &&
-      reads.some((read) => read.status !== null && ENDED_STRIPE_STATUSES.has(read.status))
-    ) {
+    // The refund's event can arrive before its cancel. "Still on Plus" about a subscription
+    // Stripe already ended would be false, so the row waits for the deletion. An older
+    // subscription a rebuy replaced has no deletion coming: the plan rests on the new one.
+    const planRestsOnEnded = reads.some(
+      (read, index) =>
+        read.status !== null &&
+        ENDED_STRIPE_STATUSES.has(read.status) &&
+        (currentSubscriptionId === null || subjects[index] === currentSubscriptionId),
+    );
+    if (refunds.length > 0 && !ended && planRestsOnEnded) {
       if (deps.now.getTime() - notice.createdAt.getTime() >= LAGGING_CANCEL_LIMIT_MS) {
         return { status: 'drop', reason: 'plan_state_unsettled', page: true };
       }

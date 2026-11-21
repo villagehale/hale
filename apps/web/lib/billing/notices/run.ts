@@ -12,14 +12,15 @@ import {
   type DispatchResult,
   dispatchLoopMessage,
 } from '~/lib/channel/dispatch';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
-import type { BillingClaimFacts } from '~/lib/channel/reconcile/billing-text';
-import type { LoopMessage } from '~/lib/channel/types';
+import type { BillingClaimFacts, BillingPlanName } from '~/lib/channel/reconcile/billing-text';
+import type { Channel, ChannelKind, LoopMessage } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
-import { nextComposeHold } from '~/lib/loop/reminders/schedule';
 import { categoryEnabled, deliverableNow, loadLoopPrefsView } from '~/lib/loop/prefs';
+import { nextComposeHold } from '~/lib/loop/reminders/schedule';
 import { BILLING_NOTICE_TEMPLATE_KEY } from '~/lib/loop/templates/billing-notice';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { voiceClient } from '~/lib/loop/voice/compose';
@@ -30,7 +31,7 @@ import {
   type BillingNoticeFacts,
   composeBillingNotice,
 } from './compose';
-import { billingNoticeClock, readNoticeFacts } from './facts';
+import { billingNoticeClock, billingPlanName, readNoticeFacts } from './facts';
 import { addsNoticeSubject, mergeNoticeFacts } from './merge';
 import { confirmPayerSeat, resolveNoticePayer } from './payer';
 import { BILLING_NOTICE_LOCK_NS, writeNoticeAudit } from './store';
@@ -59,6 +60,11 @@ export const BILLING_RECEIPT_FRESH_MS = 15 * 60_000;
 const PAUSED_RETRY_MS = 15 * 60_000;
 const OPT_OUT_RETRY_MS = 60 * 60_000;
 const QUIET_RETRY_MS = 30 * 60_000;
+/** The draft no longer matches the facts: the next tick writes it again. */
+const FACTS_MOVED_RETRY_MS = 60_000;
+/** Why the last check before the send stopped it. Neither is a failed attempt. */
+const OPT_OUT_HELD = 'opt_out_held';
+const FACTS_MOVED = 'facts_moved';
 
 /** The route's ceiling is 800s and the queues may use 700. No notice starts past this. */
 const LAST_START_MS = 640_000;
@@ -124,7 +130,9 @@ export interface BillingNoticeRunDeps {
     familyId: string;
     signal: AbortSignal;
   }) => Promise<BillingNoticeCompose>;
-  dispatch: (message: LoopMessage) => Promise<DispatchResult>;
+  /** The dispatch, with `beforeSend` run on the adapter: after the claim read, right
+   * before the text leaves. It stops the send by throwing. */
+  dispatch: (message: LoopMessage, beforeSend: () => Promise<void>) => Promise<DispatchResult>;
 }
 
 export interface BillingNoticeTick {
@@ -145,10 +153,7 @@ export function defaultBillingNoticeDeps(
   database: Database,
   runStartedAt: number,
 ): BillingNoticeRunDeps {
-  const ports = buildDispatchPorts(database, {
-    channels: productionChannels(database),
-    renderer: loopTemplateRenderer,
-  });
+  const channels = productionChannels(database);
   return {
     env: process.env,
     now: () => new Date(),
@@ -168,7 +173,33 @@ export function defaultBillingNoticeDeps(
           await recordAgentRun(database, run);
         },
       }),
-    dispatch: (message) => dispatchLoopMessage(message, ports),
+    dispatch: (message, beforeSend) =>
+      dispatchLoopMessage(
+        message,
+        buildDispatchPorts(database, {
+          channels: guardedChannels(channels, beforeSend),
+          renderer: loopTemplateRenderer,
+        }),
+      ),
+  };
+}
+
+/** The channels, with this lane's last check in front of the provider call. */
+export function guardedChannels(
+  channels: Partial<Record<ChannelKind, Channel>>,
+  beforeSend: () => Promise<void>,
+): Partial<Record<ChannelKind, Channel>> {
+  const { sms } = channels;
+  if (!sms) return channels;
+  return {
+    ...channels,
+    sms: {
+      kind: sms.kind,
+      async send(input) {
+        await beforeSend();
+        return sms.send(input);
+      },
+    },
   };
 }
 
@@ -323,18 +354,65 @@ async function writeAndSend(
     dedupeKey: noticeDedupeKey(row.id),
     claimFacts: facts.claim,
   };
+  const beforeSend = async () => {
+    const held = await heldAtSend(database, row, facts.writer.plan);
+    if (held) throw new ChannelRetryableError('sms', held, 'billing notice: held at send');
+  };
   let result: DispatchResult;
   try {
-    result = await deps.dispatch(message);
+    result = await deps.dispatch(message, beforeSend);
   } catch (err) {
     // A throw after Linq accepted (the thread write, say) is still a text they received.
     if (await settleIfAccepted(database, row, deps)) return 'sent';
     if (err instanceof ChannelRetryableError) {
+      if (err.code === OPT_OUT_HELD || err.code === FACTS_MOVED) {
+        const wait = err.code === OPT_OUT_HELD ? OPT_OUT_RETRY_MS : FACTS_MOVED_RETRY_MS;
+        await returnToOpen(
+          database,
+          row,
+          { nextTryAt: new Date(deps.now().getTime() + wait), attempts: row.attempts },
+          deps,
+        );
+        return 'held';
+      }
       return failAttempt(database, row, failureOf(err.code), deps);
     }
     throw err;
   }
   return settleDispatch(database, row, result, deps);
+}
+
+/**
+ * The last read before the text leaves, after the writer and the claim reader have had
+ * their minutes. An opt-out hold is not something the dispatch checks. A plan that moved,
+ * or a new event for this lane, means the draft may no longer be true, so it is discarded
+ * and the row goes back to `open` to be written again from the new facts.
+ */
+async function heldAtSend(
+  database: Database,
+  row: BillingNotice & { parentUserId: string },
+  plan: BillingPlanName,
+): Promise<typeof OPT_OUT_HELD | typeof FACTS_MOVED | null> {
+  if (await isParentHeld(database, row.parentUserId)) return OPT_OUT_HELD;
+  const [family] = await database
+    .select({ planTier: schema.families.planTier })
+    .from(schema.families)
+    .where(eq(schema.families.id, row.familyId))
+    .limit(1);
+  if (!family || billingPlanName(family.planTier) !== plan) return FACTS_MOVED;
+  const [newer] = await database
+    .select({ id: schema.billingNotices.id })
+    .from(schema.billingNotices)
+    .where(
+      and(
+        eq(schema.billingNotices.familyId, row.familyId),
+        eq(schema.billingNotices.lane, row.lane),
+        eq(schema.billingNotices.status, 'open'),
+        ne(schema.billingNotices.id, row.id),
+      ),
+    )
+    .limit(1);
+  return newer ? FACTS_MOVED : null;
 }
 
 function noticeDedupeKey(id: string): string {
