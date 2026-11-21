@@ -338,6 +338,12 @@ export const PAYMENT_ENV_ONLY = [
     type: 'boolean' as const,
     note: 'env-only; exact `true`; refund and dispute webhooks revoke the tier, checkout waits for an applied billing event, reconcile pages #ops; nothing in PostHog may turn this on',
   },
+  {
+    env: 'BILLING_THREAD_NOTICES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`, armed only with a strict BILLING_THREAD_NOTICES_SINCE instant; AI-written Linq text to the paying parent after a payment, cancel or refund; nothing in PostHog may turn this on',
+  },
 ] as const;
 
 export function getFlag(key: string): FlagSpec {
