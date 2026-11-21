@@ -162,7 +162,13 @@ export type ProactiveSendKind =
    * VIL-131 · Hale just did a kind without asking. One text per execution, same
    * reason the turn-on text is not a counter.
    */
-  | 'autonomy_acted';
+  | 'autonomy_acted'
+  /**
+   * VIL-717 · Hale told a parent when to expect an answer and that time passed. A cron
+   * writes this one, so it is an unprompted text however much it is about their own ask.
+   * The bound is the promise: one claim per text, and no count.
+   */
+  | 'ack_late_note';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -305,6 +311,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // of what the text is for, and execution waits until the text has gone out.
   autonomy_armed: false,
   autonomy_acted: false,
+  // "Still on it" is worth as much at 08:00, and a parent who texted at 23:00 is not woken
+  // to hear it. The ack's sweep waits the night out rather than being refused.
+  ack_late_note: false,
 };
 
 /**
@@ -455,6 +464,8 @@ export const PROACTIVE_CATEGORY: Record<
   duty_ask: 'duty_ask',
   autonomy_armed: 'autonomy_armed',
   autonomy_acted: 'autonomy_acted',
+  // Hale following up on a thread it is in the middle of, as the next-day check-back does.
+  ack_late_note: 'followup',
 };
 
 export interface OutboundGatePorts {

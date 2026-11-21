@@ -2136,8 +2136,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   // VIL-717. Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide
-  // export: both are about one adult's own ask, and carry that adult as their audience. The
-  // ack itself is the reply row History already shows.
+  // export: all three are about one adult's own ask, and carry that adult as their audience.
+  // The ack itself is the reply row History already shows.
   ack_eta_promised: {
     sentence: 'Hale told you when to expect an answer',
     family: 'note',
@@ -2422,10 +2422,11 @@ export const INTERNAL_TRAIL_VERBS = [
   'sms_turn_folded',
   // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
   'activity_deep_dispatched',
-  // VIL-717. The promised time and its settling, for one adult's own ask; the ack and the
-  // late note are the visible rows.
+  // VIL-717. The promised time, its settling and the late note, for one adult's own ask; the
+  // ack is the visible row.
   'ack_eta_promised',
   'ack_eta_deadline',
+  'ack_eta_late_note_sent',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
 ] as const satisfies readonly AuditVerb[];

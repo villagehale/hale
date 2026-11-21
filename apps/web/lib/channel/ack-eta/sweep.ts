@@ -1,8 +1,10 @@
 import type { AckPromiseOutcome, Database } from '@hale/db';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason, ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
 import type { ReplyRoute, ReplyTransport } from '~/lib/channel/router/reply-route';
 import type { AckComposeFallback, AckLineWriter, LateNoteFacts } from './compose';
 import {
+  type AckReplyState,
   type DueAckPromise,
   ackReplyState,
   claimAckPromise,
@@ -18,15 +20,15 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  * VIL-717 · THE DEADLINE SWEEP — the one note when Hale is later than it said.
  *
  * Runs as a leg of the scheduled every-minute drain. It reads the promises whose stated
- * window has passed (promise.ts), CLAIMS each one before anything else (so a note fires at
- * most once per text, however many ticks overlap), and settles it with a named outcome:
+ * window has passed (promise.ts), works out what each one needs, CLAIMS it (so a note fires
+ * at most once per text, however many ticks overlap), and settles it with a named outcome:
  *
  *   answered     the reply landed; nothing was owed and nothing is sent.
- *   lane_off     ACK_ETA_ENABLED is off for the family now; nothing is sent.
+ *   lane_off     ACK_ETA_ENABLED or F14 is off for the family now; nothing is sent.
  *   stale        the tick reached it long after it could first have gone; a note then
  *                would only confuse, so nothing is sent.
- *   held         a send rail stopped it: sends paused, no live channel, or an unread
- *                opt-out; nothing is sent.
+ *   held         the outbound gate refused it for good (no live channel, no watch consent)
+ *                or refused it at the send; nothing is sent.
  *   unwritten    the model could not write a sendable note; nothing is sent, #ops paged.
  *   send_failed  the transport refused it.
  *   sent         the note went, in the ask's own 1:1 (threaded under it on iMessage).
@@ -39,10 +41,13 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  * coming on it. The reply is read once more right before the send, so a reply that lands
  * while the note is being written stops it.
  *
- * NEVER THROUGH THE PARENT'S NIGHT. This is a cron's message, not the direct reply the quiet
- * floor exempts (outbound-gate.ts `inProactiveQuietHours`). A note owed while it is night on
- * the parent's clock stays unclaimed and goes on the first tick after the floor opens, as a
- * recovered first reply does (intake/first-reply-recovery.ts).
+ * THE OUTBOUND GATE DECIDES. This is a cron's message, not the direct reply the quiet floor
+ * exempts (outbound-gate.ts `inProactiveQuietHours`), so it is a proactive class of its own
+ * (`ack_late_note`) and reaches the transport only on an `allowed` verdict, read before the
+ * claim and again on the send's own clock. A hold that can lift leaves the row unclaimed:
+ * the parent's night until the first tick after the floor opens, as a recovered first reply
+ * does (intake/first-reply-recovery.ts), and the operator pause or an unread opt-out until
+ * they clear or the note goes stale. A refusal that will not lift settles it, named.
  */
 
 /** How many due promises one tick takes. The rest are a minute later. */
@@ -69,19 +74,22 @@ export const ACK_SWEEP_BUDGET_MS = 20_000;
  */
 export const ACK_NOTE_WRITE_HEADROOM_MS = 3 * 60_000;
 
-/** Why a send rail held a note. A closed vocabulary: it lands in an audit row. */
-export type AckSendRail = 'clear' | 'sends_paused' | 'opt_out_unread';
-
 export interface AckDeadlinePorts {
   /** ACK_ETA_ENABLED, for this family, now. */
   enabled(familyId: string): boolean;
-  /** Wall-clock milliseconds, for {@link ACK_SWEEP_BUDGET_MS}. */
+  /** F14's dark-launch gate: whether Hale may start a conversation with this family at all. */
+  f14For(familyId: string): boolean;
+  /** Wall-clock milliseconds, for {@link ACK_SWEEP_BUDGET_MS} and the send's own clock. */
   clock(): number;
   writer: AckLineWriter;
+  /** The outbound chokepoint's verdict on one late note to this parent at `now`. */
+  gate(request: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+  }): Promise<ProactiveSendVerdict>;
   /** When the quiet floor opens for this parent, or null when it is open now. */
   quietUntil(parentUserId: string, now: Date): Promise<Date | null>;
-  /** The rails a note passes before it is written. */
-  rail(parentUserId: string): Promise<AckSendRail>;
   /** The parent's sendable number, read now and never stored on the promise. Null when
    * they have no live, verified channel (a stop revokes it), which holds the note. */
   phone(parentUserId: string): Promise<string | null>;
@@ -100,6 +108,8 @@ export interface AckDeadlineSweepSummary {
   deferred: number;
   /** Due promises that owe a note and were left unclaimed: it is night on the parent's clock. */
   quietHeld: number;
+  /** Due promises left unclaimed behind a hold that can lift: the pause or an unread opt-out. */
+  railHeld: number;
   settled: Partial<Record<AckPromiseOutcome, number>>;
   pruned: number;
 }
@@ -133,40 +143,62 @@ function isStale(promise: DueAckPromise, now: Date): boolean {
   return now.getTime() - firstCouldGo > ACK_LATE_NOTE_STALE_MS;
 }
 
-/**
- * When an owed note must wait for morning, the time to look at it again. Null when nothing
- * is owed (the lane is off, it is past saying, the answer landed) or it is day on the
- * parent's clock: those settle on this tick.
- */
-async function quietHold(
+/** What one due promise needs, read before anyone claims it. */
+type NotePlan =
+  /** Nothing goes, for a reason with a name: claim it and settle. */
+  | { kind: 'settle'; settlement: Settlement }
+  /** A note is owed and the gate allows it: claim it, write it, send it. */
+  | { kind: 'write'; state: Exclude<AckReplyState, 'answered'> }
+  /** A note is owed and it is night on the parent's clock: unclaimed until the floor opens. */
+  | { kind: 'night'; until: Date }
+  /** A hold that can lift inside the stale window: left unclaimed for the next tick. */
+  | { kind: 'rail'; reason: ProactiveHoldReason };
+
+async function planNote(
   database: Database,
   ports: AckDeadlinePorts,
   promise: DueAckPromise,
   now: Date,
-): Promise<Date | null> {
-  if (!ports.enabled(promise.familyId) || isStale(promise, now)) return null;
-  if ((await ackReplyState(database, promise)) === 'answered') return null;
-  return (
-    (await ports.quietUntil(promise.parentUserId, now)) ??
-    ports.quietUntil(promise.parentUserId, new Date(now.getTime() + ACK_NOTE_WRITE_HEADROOM_MS))
-  );
+): Promise<NotePlan> {
+  const settle = (settlement: Settlement): NotePlan => ({ kind: 'settle', settlement });
+  if (!ports.enabled(promise.familyId)) return settle({ outcome: 'lane_off' });
+  if (!ports.f14For(promise.familyId)) return settle({ outcome: 'lane_off', reason: 'f14_dark' });
+  if (isStale(promise, now)) return settle({ outcome: 'stale' });
+  const state = await ackReplyState(database, promise);
+  if (state === 'answered') return settle({ outcome: 'answered' });
+
+  const { familyId, parentUserId } = promise;
+  const verdict = await ports.gate({ familyId, parentUserId, now });
+  if (verdict.allowed) {
+    const closing = await ports.quietUntil(
+      parentUserId,
+      new Date(now.getTime() + ACK_NOTE_WRITE_HEADROOM_MS),
+    );
+    return closing ? { kind: 'night', until: closing } : { kind: 'write', state };
+  }
+  switch (verdict.reason) {
+    case 'quiet_hours': {
+      const until = await ports.quietUntil(parentUserId, now);
+      return until ? { kind: 'night', until } : { kind: 'rail', reason: verdict.reason };
+    }
+    case 'sends_paused':
+    case 'opt_out_unread':
+      return { kind: 'rail', reason: verdict.reason };
+    case 'not_enrolled':
+    case 'no_watch_consent':
+      return settle({ outcome: 'held', reason: verdict.reason });
+  }
 }
 
-/** What became of one claimed promise. Never throws for a reason it can name. */
-async function settleOne(
+/** Writes and sends one claimed note. Never throws for a reason it can name. */
+async function writeNote(
   database: Database,
   ports: AckDeadlinePorts,
   promise: DueAckPromise,
+  state: Exclude<AckReplyState, 'answered'>,
   now: Date,
+  sendClock: () => Date,
 ): Promise<Settlement> {
-  if (!ports.enabled(promise.familyId)) return { outcome: 'lane_off' };
-  if (isStale(promise, now)) return { outcome: 'stale' };
-
-  const state = await ackReplyState(database, promise);
-  if (state === 'answered') return { outcome: 'answered' };
-
-  const rail = await ports.rail(promise.parentUserId);
-  if (rail !== 'clear') return { outcome: 'held', reason: rail };
   const phone = await ports.phone(promise.parentUserId);
   if (!phone) return { outcome: 'held', reason: 'not_enrolled' };
 
@@ -190,6 +222,13 @@ async function settleOne(
   if ((await ackReplyState(database, promise)) === 'answered') {
     return { outcome: 'answered', reason: 'while_writing' };
   }
+  // So may a stop. The gate again, on the clock the send will actually go out on.
+  const atSend = await ports.gate({
+    familyId: promise.familyId,
+    parentUserId: promise.parentUserId,
+    now: sendClock(),
+  });
+  if (!atSend.allowed) return { outcome: 'held', reason: atSend.reason };
 
   let sent: Awaited<ReturnType<ReplyTransport['send']>>;
   try {
@@ -251,37 +290,50 @@ export async function runAckDeadlineSweep(
     claimed: 0,
     deferred: 0,
     quietHeld: 0,
+    railHeld: 0,
     settled: {},
     pruned: 0,
   };
   const startedMs = ports.clock();
+  const sendClock = () => new Date(now.getTime() + (ports.clock() - startedMs));
   for (const [index, promise] of due.entries()) {
     if (ports.clock() - startedMs >= ACK_SWEEP_BUDGET_MS) {
       summary.deferred += due.length - index;
       break;
     }
-    let heldUntil: Date | null;
+    let plan: NotePlan;
     try {
-      heldUntil = await quietHold(database, ports, promise, now);
-      if (heldUntil) await holdAckPromise(database, promise.id, heldUntil);
+      plan = await planNote(database, ports, promise, now);
+      if (plan.kind === 'night') await holdAckPromise(database, promise.id, plan.until);
     } catch (err) {
       // Nothing is claimed and nothing went, so the next tick asks again.
       ports.log.error(
         { promiseId: promise.id, err: errName(err) },
-        'ack eta: the quiet-hours check threw, nothing sent',
+        'ack eta: the read before the claim threw, nothing sent',
       );
       summary.deferred += 1;
       continue;
     }
-    if (heldUntil) {
+    if (plan.kind === 'night') {
       summary.quietHeld += 1;
+      continue;
+    }
+    if (plan.kind === 'rail') {
+      summary.railHeld += 1;
+      ports.log.info(
+        { promiseId: promise.id, reason: plan.reason },
+        'ack eta: a send rail holds the note for now',
+      );
       continue;
     }
     if (!(await claimAckPromise(database, promise.id, now))) continue;
     summary.claimed += 1;
     let settlement: Settlement;
     try {
-      settlement = await settleOne(database, ports, promise, now);
+      settlement =
+        plan.kind === 'settle'
+          ? plan.settlement
+          : await writeNote(database, ports, promise, plan.state, now, sendClock);
     } catch (err) {
       // A read that threw before anything was sent: nothing went, and the claim stands, so
       // no later tick can send a note the parent might get twice.

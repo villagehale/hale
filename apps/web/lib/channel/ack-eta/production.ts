@@ -1,10 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
-import { buildOutboundGatePorts, proactiveFloorClosedUntil } from '~/lib/channel/outbound-gate';
+import { f14EnabledFor } from '~/lib/channel/f14';
+import {
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+  proactiveFloorClosedUntil,
+} from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
-import { proactiveSendsPaused } from '~/lib/channel/proactive/flag';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -15,7 +18,7 @@ import { type AckComposeFallback, createAckLineWriter } from './compose';
 import { ackEtaEnabled } from './flag';
 import { recordAckPromise } from './promise';
 import { createAckTaskReader } from './read';
-import type { AckDeadlinePorts, AckSendRail } from './sweep';
+import type { AckDeadlinePorts } from './sweep';
 
 /**
  * VIL-717 · the production ports: the model client, the send rails, the Linq doors and the
@@ -58,26 +61,16 @@ function noteClient(): AgentClient {
   return noteAnthropic;
 }
 
-/**
- * The rails a late note passes before it is written: the operator pause and an unread
- * opt-out. A live channel is the phone port's: a revoked or unverified one has no number
- * (sms-consent-core.ts `resolveSendablePhone`), so it cannot be texted at all.
- */
-async function noteRail(database: Database, parentUserId: string): Promise<AckSendRail> {
-  if (proactiveSendsPaused()) return 'sends_paused';
-  if (await isParentHeld(database, parentUserId)) return 'opt_out_unread';
-  return 'clear';
-}
-
 /** The deadline sweep's production ports (drain leg, app/api/cron/drain/route.ts). */
 export function ackDeadlinePorts(database: Database): AckDeadlinePorts {
+  const gatePorts = buildOutboundGatePorts(database);
   return {
     enabled: (familyId) => ackEtaEnabled(familyId),
+    f14For: f14EnabledFor,
     clock: () => Date.now(),
     writer: createAckLineWriter(noteClient),
-    quietUntil: (parentUserId, now) =>
-      proactiveFloorClosedUntil(buildOutboundGatePorts(database), parentUserId, now),
-    rail: (parentUserId) => noteRail(database, parentUserId),
+    gate: (request) => assertProactiveSendAllowed({ ...request, kind: 'ack_late_note' }, gatePorts),
+    quietUntil: (parentUserId, now) => proactiveFloorClosedUntil(gatePorts, parentUserId, now),
     phone: (parentUserId) => resolveSendablePhone(database, parentUserId),
     // The router's own way out: Linq for both doors, the 1:1 chat on iMessage.
     transport: createReplyTransport({ phone: createOutboundTransport() }),

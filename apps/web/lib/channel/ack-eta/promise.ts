@@ -14,12 +14,15 @@ import {
   or,
 } from 'drizzle-orm';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { HOLDING_LINE_TEMPLATE_KEY } from '~/lib/channel/router/holding-line';
 import {
   SIDE_TURN_TEMPLATE_KEY,
   TURN_ANSWERED_ACTION,
+  TURN_FAILED_ACTION,
   TURN_LEDGER_TARGET,
   TURN_NOTHING_SENT,
+  type TurnFailureReason,
 } from '~/lib/channel/router/turn-ledger';
 import type { AckTask } from './read';
 
@@ -267,16 +270,30 @@ export async function settleAckPromise(
  * auditTurnLedger), whichever path answered it: the turn itself, its re-drive, or a turn it
  * was folded into. `closed_unanswered` needs a positive fact that nothing reached the
  * parent: an answered row marked {@link TURN_NOTHING_SENT} (it stops a re-drive, but they
- * heard nothing), or a closed turn with no reply on the delivery ledger since the ack. The
- * routed claim alone is not that fact: the answered row is written after Linq took the reply
- * and its failure is swallowed (route.ts `claimAnswerQuietly`), so a closed turn with no
- * answered row may still have answered. `open`: neither, so the text is still being worked
- * on or waits in the queue for its next attempt.
+ * heard nothing), a failed row naming {@link NOTHING_WENT_FAILURE}, or a closed turn with no
+ * reply on the delivery ledger between the ack and the close. The routed claim alone is not
+ * that fact: the answered row is written after Linq took the reply and its failure is
+ * swallowed (route.ts `claimAnswerQuietly`), so a closed turn with no answered row may still
+ * have answered. `open`: neither, so the text is still being worked on or waits in the queue
+ * for its next attempt.
  *
  * The answered read is family-scoped and starts at the ask, so it rides the audit log's
  * (family_id, occurred_at) index.
  */
 export type AckReplyState = 'answered' | 'closed_unanswered' | 'open';
+
+/**
+ * The one failure that closes a turn with nothing sent and no answered row to mark: the
+ * draft notice could not be written (route.ts `disposeOfFailedTurn`). The other silent
+ * failures claim the turn and carry {@link TURN_NOTHING_SENT}.
+ */
+const NOTHING_WENT_FAILURE: TurnFailureReason = 'notice_unsent';
+
+function afterField(after: unknown, key: string): unknown {
+  return typeof after === 'object' && after !== null
+    ? (after as Record<string, unknown>)[key]
+    : undefined;
+}
 
 export async function ackReplyState(
   database: Database,
@@ -285,57 +302,74 @@ export async function ackReplyState(
     'familyId' | 'parentUserId' | 'inboundChannelMessageId' | 'askedAt' | 'createdAt'
   >,
 ): Promise<AckReplyState> {
-  const answered = await database
-    .select({ after: schema.auditLog.after })
+  const turnRows = await database
+    .select({ action: schema.auditLog.actionTaken, after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, promise.familyId),
         gte(schema.auditLog.occurredAt, new Date(promise.askedAt.getTime() - 60_000)),
-        eq(schema.auditLog.actionTaken, TURN_ANSWERED_ACTION),
+        inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_FAILED_ACTION]),
         eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
         eq(schema.auditLog.targetId, promise.inboundChannelMessageId),
       ),
     );
-  const nothingSent = (after: unknown) =>
-    typeof after === 'object' &&
-    after !== null &&
-    (after as Record<string, unknown>).nothing_sent === TURN_NOTHING_SENT.nothing_sent;
-  if (answered.some((row) => !nothingSent(row.after))) return 'answered';
+  const answered = turnRows.filter((row) => row.action === TURN_ANSWERED_ACTION);
+  if (
+    answered.some((row) => afterField(row.after, 'nothing_sent') !== TURN_NOTHING_SENT.nothing_sent)
+  ) {
+    return 'answered';
+  }
   if (answered.length > 0) return 'closed_unanswered';
+  if (
+    turnRows.some(
+      (row) =>
+        row.action === TURN_FAILED_ACTION &&
+        afterField(row.after, 'reason') === NOTHING_WENT_FAILURE,
+    )
+  ) {
+    return 'closed_unanswered';
+  }
   const closed = await database
     .select({ id: schema.channelTurnAnswerClaims.id })
     .from(schema.channelTurnAnswerClaims)
     .where(eq(schema.channelTurnAnswerClaims.channelMessageId, promise.inboundChannelMessageId))
     .limit(1);
   if (closed.length === 0) return 'open';
-  return (await replyOnLedgerSinceAck(database, promise)) ? 'answered' : 'closed_unanswered';
+  return (await replyOnLedgerBeforeClose(database, promise)) ? 'answered' : 'closed_unanswered';
 }
 
 /** Lines that go out beside an answer and are never one. */
-const NOT_AN_ANSWER = [
-  ACK_ETA_TEMPLATE_KEY,
-  ACK_LATE_NOTE_TEMPLATE_KEY,
-  HOLDING_LINE_TEMPLATE_KEY,
-  SIDE_TURN_TEMPLATE_KEY,
-];
+const NOT_AN_ANSWER = [ACK_ETA_TEMPLATE_KEY, HOLDING_LINE_TEMPLATE_KEY, SIDE_TURN_TEMPLATE_KEY];
 
 /**
- * Whether the delivery ledger has a reply to this parent since the promise was written. The
- * promise is written before the answer can go (the ack's `settle`), so the bound is safe.
+ * Whether the delivery ledger holds this turn's own reply: a reply-class row to this parent
+ * written after the promise and no later than the turn's close. The promise is written
+ * before the answer can go (the ack's `settle`), and the turn writes its receipt before
+ * `done()` closes it. Past the close a row is some other send: nudges and polls write this
+ * category too (monitoring/reply-latency.ts). Compared in SQL, because a JS `Date` would
+ * drop the close's microseconds and could fall below the reply it must include.
  */
-async function replyOnLedgerSinceAck(
+async function replyOnLedgerBeforeClose(
   database: Database,
-  promise: Pick<DueAckPromise, 'familyId' | 'parentUserId' | 'createdAt'>,
+  promise: Pick<
+    DueAckPromise,
+    'familyId' | 'parentUserId' | 'inboundChannelMessageId' | 'createdAt'
+  >,
 ): Promise<boolean> {
   const replies = await database
     .select({ id: schema.channelMessages.id })
     .from(schema.channelMessages)
+    .innerJoin(
+      schema.channelTurnAnswerClaims,
+      eq(schema.channelTurnAnswerClaims.channelMessageId, promise.inboundChannelMessageId),
+    )
     .where(
       and(
         eq(schema.channelMessages.parentUserId, promise.parentUserId),
         eq(schema.channelMessages.category, 'reply'),
         gt(schema.channelMessages.createdAt, promise.createdAt),
+        lte(schema.channelMessages.createdAt, schema.channelTurnAnswerClaims.claimedAt),
         eq(schema.channelMessages.familyId, promise.familyId),
         eq(schema.channelMessages.direction, 'out'),
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
@@ -389,9 +423,7 @@ export async function recordLateNote(
         parentUserId: input.promise.parentUserId,
         channel: input.sent.channel,
         direction: 'out',
-        // A reply-class line: part of the conversation the parent started, so no proactive
-        // cap or category budget counts it.
-        category: 'reply',
+        category: PROACTIVE_CATEGORY.ack_late_note,
         templateKey: ACK_LATE_NOTE_TEMPLATE_KEY,
         providerMessageId: input.sent.providerMessageId,
         providerChatId: input.sent.chatId,
@@ -406,9 +438,10 @@ export async function recordLateNote(
       familyId: input.promise.familyId,
       actor: 'system',
       actionTaken: 'ack_eta_late_note_sent',
-      targetTable: 'channel_messages',
-      targetId: id,
-      after: { promise: input.promise.id },
+      // Keyed on the adult it was sent to: their access copy keeps it (rights/export.ts).
+      targetTable: 'users',
+      targetId: input.promise.parentUserId,
+      after: { promise: input.promise.id, channelMessage: id },
       audience: input.promise.parentUserId,
     });
     return id;

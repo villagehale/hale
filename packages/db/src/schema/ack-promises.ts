@@ -46,10 +46,10 @@ export type AckPromiseTask = (typeof ACK_PROMISE_TASKS)[number];
  * How a promise that came due was settled (rule #11: every ending is named).
  *
  * `answered`: the reply to that text landed, so nothing was owed. `sent`: the late note
- * went. `lane_off`: the flag was off when it came due. `stale`: the sweep reached it too
+ * went. `lane_off`: ACK_ETA_ENABLED or F14 was off when it came due. `stale`: the sweep reached it too
  * long after it came due (or after the night it was held through) for a note to mean
- * anything. `held`: a send rail stopped the note
- * (sends paused, no live channel, an unread opt-out). `unwritten`: the model could not
+ * anything. `held`: the outbound gate refused the note for good (no live channel, no watch
+ * consent) or at the moment of sending. `unwritten`: the model could not
  * write a sendable note, nothing was sent and #ops was paged. `send_failed`: the transport
  * refused it.
  */

@@ -737,6 +737,46 @@ describe('the next-day check-back class', () => {
   });
 });
 
+describe('the late note on a missed ack time', () => {
+  /** 02:00 Toronto, inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency: it waits for 08:00 even when the parent texted at night', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'ack_late_note',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('needs watch consent like every other unprompted text', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'ack_late_note', now: MIDDAY },
+        ports({ consented: false }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'no_watch_consent' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'ack_late_note', now: MIDDAY },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
+  it('is ledgered as a follow-up and sends on its own clock', () => {
+    expect(PROACTIVE_CATEGORY.ack_late_note).toBe('followup');
+    expect(PROACTIVE_ROUTING.ack_late_note).toBe('immediate');
+  });
+});
+
 describe('holdStatus — one copy, beside the union it is keyed on', () => {
   /**
    * It was a module-private `Record` in `integrations/email-alert.ts` and AGAIN in

@@ -1,13 +1,21 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { holdSender } from '~/lib/channel/intake/opt-out-hold';
+import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { inProactiveQuietHours, proactiveFloorOpensAt } from '~/lib/channel/outbound-gate';
 import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
 import { auditTurnLedger } from '~/lib/channel/router/wiring';
+import { POLICY_VERSION } from '~/lib/consent';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import type { AckCompose, LateNoteFacts } from './compose';
+import type { AckCompose, AckLineWriter, LateNoteFacts } from './compose';
 import { ackDeadlinePorts } from './production';
-import { recordAckPromise } from './promise';
+import { recordAckPromise, recordLateNote } from './promise';
 import {
   ACK_LATE_NOTE_STALE_MS,
   ACK_NOTE_WRITE_HEADROOM_MS,
@@ -110,8 +118,9 @@ function ports(overrides: Partial<AckDeadlinePorts> & { line?: AckCompose } = {}
         return line ?? { status: 'composed', line: 'a stand-in late note' };
       },
     },
+    f14For: () => true,
+    gate: async () => ({ allowed: true, optOut: 'short' }),
     quietUntil: async () => null,
-    rail: async () => 'clear',
     phone: async () => '+15550000000',
     transport,
     page: async (page) => {
@@ -373,34 +382,6 @@ describe('VIL-717 · the deadline sweep', () => {
     expect(h.transport.sent).toEqual([]);
     expect(h.facts).toEqual([]);
   });
-  it.each(['sends_paused', 'opt_out_unread'] as const)(
-    'holds the note on %s: nothing is written or sent, and the reason is on the audit row',
-    async (rail) => {
-      const seeded = await seedPromise();
-      const p = ports({ rail: async () => rail });
-
-      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
-
-      expect(summary.settled).toEqual({ held: 1 });
-      expect(p.facts).toEqual([]);
-      expect(p.transport.sent).toEqual([]);
-      expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'held' });
-      const audits = await deadlineAudits(seeded.promiseId);
-      expect(audits.map((a) => a.after)).toContainEqual({ outcome: 'held', reason: rail });
-    },
-  );
-
-  it('a clear rail lets the same note go (the control for the holds above)', async () => {
-    const seeded = await seedPromise();
-    const p = ports({ rail: async () => 'clear' });
-
-    const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
-
-    expect(summary.settled).toEqual({ sent: 1 });
-    expect(p.transport.bodies()).toEqual(['a stand-in late note']);
-    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'sent' });
-  });
-
   it('sends nothing when the answer lands while the note is being written', async () => {
     const seeded = await seedPromise();
     const p = ports();
@@ -450,8 +431,9 @@ describe('VIL-717 · the deadline sweep', () => {
 
     it('a reply Linq took is an answer: no note says nothing more is coming', async () => {
       const seeded = await seedPromise('sms');
-      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
+      // The real order: the turn writes its reply's receipt, then done() closes it.
       await outbound(seeded, null);
+      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
       const p = ports();
 
       const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
@@ -469,14 +451,391 @@ describe('VIL-717 · the deadline sweep', () => {
       ['a send the provider refused', null, 'failed'],
     ] as const)('%s is not an answer: the note still goes', async (_label, key, status) => {
       const seeded = await seedPromise('sms');
-      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
       await outbound(seeded, key, status);
+      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
       const p = ports();
 
       await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
 
       expect(p.facts.map((f) => f.status)).toEqual(['stopped']);
       expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+    });
+
+    it('a nudge written after the turn closed is not the answer: the note still goes', async () => {
+      const seeded = await seedPromise('sms');
+      await auditTurnLedger(db.database).recordRouted({ channelMessageId: seeded.inboundId });
+      const [close] = await db.database
+        .select({ claimedAt: schema.channelTurnAnswerClaims.claimedAt })
+        .from(schema.channelTurnAnswerClaims)
+        .where(eq(schema.channelTurnAnswerClaims.channelMessageId, seeded.inboundId));
+      if (!close) throw new Error('seed: the routed claim did not land');
+      // The nudge sweep's own row: category reply, its own key, a minute after the close.
+      await db.database.insert(schema.channelMessages).values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+        templateKey: 'followup:activity',
+        createdAt: new Date(close.claimedAt.getTime() + 60_000),
+      });
+      const p = ports();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ sent: 1 });
+      expect(p.facts.map((f) => f.status)).toEqual(['stopped']);
+      expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+    });
+
+    it('a turn whose failure row says nothing went stays unanswered, whatever else went out', async () => {
+      const seeded = await seedPromise('sms');
+      // A nudge inside the turn's own window, so only the failure row can tell them apart.
+      await outbound(seeded, 'followup:activity');
+      const turns = auditTurnLedger(db.database);
+      await turns.recordFailed({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channelMessageId: seeded.inboundId,
+        reason: 'notice_unsent',
+      });
+      await turns.recordRouted({ channelMessageId: seeded.inboundId });
+      const p = ports();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ sent: 1 });
+      expect(p.facts.map((f) => f.status)).toEqual(['stopped']);
+    });
+  });
+
+  it('two overlapping ticks claim a due promise once and send one note', async () => {
+    const seeded = await seedPromise();
+    const p = ports();
+    // Both ticks have read the row before either claims it, whatever order the queries run.
+    let arrived = 0;
+    let release: () => void = () => {};
+    const bothPlanned = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    p.ports.quietUntil = async () => {
+      arrived += 1;
+      if (arrived === 2) release();
+      await bothPlanned;
+      return null;
+    };
+
+    const ticks = await Promise.all([
+      runAckDeadlineSweep(db.database, p.ports, AFTER_DUE),
+      runAckDeadlineSweep(db.database, p.ports, AFTER_DUE),
+    ]);
+
+    expect(ticks.map((tick) => tick.due)).toEqual([1, 1]);
+    expect(ticks.map((tick) => tick.claimed).sort()).toEqual([0, 1]);
+    expect(p.transport.sent.map((sent) => sent.sendKey)).toEqual([
+      `ack_eta_late_note:${seeded.promiseId}`,
+    ]);
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.filter((a) => (a.after as { outcome?: string }).outcome === 'sent')).toHaveLength(
+      1,
+    );
+  });
+
+  describe('through the outbound gate, on the production wiring', () => {
+    const PHONE = '+15550000000';
+    const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+
+    beforeEach(() => {
+      vi.stubEnv('APP_ENCRYPTION_KEY', ENCRYPTION_KEY);
+      vi.stubEnv('ACK_ETA_ENABLED', 'true');
+      vi.stubEnv('F14_ENABLED', 'true');
+    });
+
+    afterEach(async () => {
+      vi.unstubAllEnvs();
+      await db.database.delete(schema.optOutHeldMessages);
+    });
+
+    async function enroll(seeded: { familyId: string; parentUserId: string }) {
+      await db.database.insert(schema.parentChannels).values({
+        userId: seeded.parentUserId,
+        familyId: seeded.familyId,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(PHONE),
+        phoneE164Hash: phoneBlindIndex(PHONE),
+        verifiedAt: ASKED_AT,
+      });
+    }
+
+    async function answerWatch(
+      seeded: { familyId: string; parentUserId: string },
+      granted: boolean,
+    ) {
+      await db.database.insert(schema.consentRecords).values({
+        userId: seeded.parentUserId,
+        familyId: seeded.familyId,
+        consentType: 'proactive_watch',
+        consentScope: WATCH_CONSENT_SCOPE,
+        granted,
+        policyVersion: POLICY_VERSION,
+        evidence: { verbatimReply: granted ? 'an invented yes' : 'an invented no' },
+      });
+    }
+
+    function wired(lateNote?: AckLineWriter['lateNote']) {
+      const transport = new FakeReplyTransport();
+      const built: AckDeadlinePorts = {
+        ...ackDeadlinePorts(db.database),
+        writer: {
+          ack: async () => ({ status: 'unavailable', reason: 'client_unavailable' }),
+          lateNote: lateNote ?? (async () => ({ status: 'composed', line: 'a stand-in note' })),
+        },
+        transport,
+        page: async () => 'paged',
+        thread: async () => undefined,
+        log: { info: () => {}, warn: () => {}, error: () => {} },
+      };
+      return { ports: built, transport };
+    }
+
+    it('a parent who declined the watch gets no note, and the refusal is named', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, false);
+      const p = wired();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ held: 1 });
+      expect(p.transport.sent).toEqual([]);
+      const audits = await deadlineAudits(seeded.promiseId);
+      expect(audits.map((a) => a.after)).toContainEqual({
+        outcome: 'held',
+        reason: 'no_watch_consent',
+      });
+    });
+
+    it('a parent with no live channel gets no note, and the refusal is named', async () => {
+      const seeded = await seedPromise('sms');
+      await answerWatch(seeded, true);
+      const p = wired();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ held: 1 });
+      expect(p.transport.sent).toEqual([]);
+      const audits = await deadlineAudits(seeded.promiseId);
+      expect(audits.map((a) => a.after)).toContainEqual({
+        outcome: 'held',
+        reason: 'not_enrolled',
+      });
+    });
+
+    it('a parent who said yes to the watch gets it (the control)', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      const p = wired();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ sent: 1 });
+      expect(p.transport.bodies()).toEqual(['a stand-in note']);
+    });
+
+    it('with F14 dark for the family there is no note, and that is named', async () => {
+      vi.stubEnv('F14_ENABLED', 'false');
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      const p = wired();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ lane_off: 1 });
+      expect(p.transport.sent).toEqual([]);
+      const audits = await deadlineAudits(seeded.promiseId);
+      expect(audits.map((a) => a.after)).toContainEqual({
+        outcome: 'lane_off',
+        reason: 'f14_dark',
+      });
+    });
+
+    it('with F14 off, a family on its allowlist still gets the note', async () => {
+      vi.stubEnv('F14_ENABLED', 'false');
+      const seeded = await seedPromise('sms');
+      vi.stubEnv('F14_FAMILY_ALLOWLIST', seeded.familyId);
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      const p = wired();
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ sent: 1 });
+    });
+
+    it('during an operator pause the note stays owed, and goes when the pause lifts', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      const p = wired();
+      vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+
+      const paused = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(paused).toMatchObject({ due: 1, claimed: 0, railHeld: 1, settled: {} });
+      expect(p.transport.sent).toEqual([]);
+      expect((await promiseRow(seeded.promiseId))?.claimedAt).toBeNull();
+
+      vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+      const lifted = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(AFTER_DUE.getTime() + 60_000),
+      );
+
+      expect(lifted.settled).toEqual({ sent: 1 });
+      expect(p.transport.bodies()).toEqual(['a stand-in note']);
+    });
+
+    it('an unread opt-out holds the note unclaimed until the read succeeds', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      await holdSender(db.database, {
+        phoneHash: phoneBlindIndex(PHONE),
+        providerMessageId: 'an-invented-held-text',
+        now: AFTER_DUE,
+      });
+      const p = wired();
+
+      const held = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(held).toMatchObject({ claimed: 0, railHeld: 1, settled: {} });
+      expect(p.transport.sent).toEqual([]);
+      expect((await promiseRow(seeded.promiseId))?.claimedAt).toBeNull();
+
+      await db.database.delete(schema.optOutHeldMessages);
+      const read = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(AFTER_DUE.getTime() + 60_000),
+      );
+
+      expect(read.settled).toEqual({ sent: 1 });
+    });
+
+    it('a hold that outlasts the stale window ends as stale, and nothing goes', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'true');
+      const p = wired();
+      await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      const late = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(DUE_AT.getTime() + ACK_LATE_NOTE_STALE_MS + 1_000),
+      );
+
+      expect(late.settled).toEqual({ stale: 1 });
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'stale' });
+    });
+
+    it('a parent who leaves the channel while the note is written is not texted', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      const p = wired(async () => {
+        await db.database
+          .update(schema.parentChannels)
+          .set({ revokedAt: new Date() })
+          .where(eq(schema.parentChannels.userId, seeded.parentUserId));
+        return { status: 'composed', line: 'a stand-in note' };
+      });
+
+      const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(summary.settled).toEqual({ held: 1 });
+      expect(p.transport.sent).toEqual([]);
+      const audits = await deadlineAudits(seeded.promiseId);
+      expect(audits.map((a) => a.after)).toContainEqual({
+        outcome: 'held',
+        reason: 'not_enrolled',
+      });
+    });
+  });
+
+  describe("the note's audit row is one adult's", () => {
+    const NOTE = 'Hale told you an answer was taking longer than it said';
+    const ANSWERED = 'Hale came back to you about an activity search';
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    async function twoParentsAndANote() {
+      const seeded = await seedPromise('sms');
+      const [co] = await db.database
+        .insert(schema.users)
+        .values({ email: `${seeded.familyId}-co@example.test`, name: 'Co Parent' })
+        .returning({ id: schema.users.id });
+      const coParent = co?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: seeded.familyId, userId: coParent, role: 'co_parent' });
+      await recordLateNote(db.database, {
+        promise: {
+          id: seeded.promiseId,
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+        },
+        sent: { providerMessageId: 'an-invented-id', channel: 'sms', chatId: null },
+        now: AFTER_DUE,
+      });
+      // A family-visible row, so a History that shows nothing cannot pass the negatives.
+      await db.database.insert(schema.auditLog).values({
+        familyId: seeded.familyId,
+        actor: 'system',
+        actionTaken: 'activity_followup_sent',
+        targetTable: 'agent_commitments',
+        targetId: seeded.promiseId,
+      });
+      const history = async (viewerUserId: string) =>
+        (await loadTrailForFamily(db.database, seeded.familyId, undefined, { viewerUserId })).map(
+          (row) => row.summary,
+        );
+      const copy = async (actorUserId: string) =>
+        (
+          await assembleFamilyExport(db.database, seeded.familyId, { actorUserId, now: AFTER_DUE })
+        ).trail.map((row) => row.summary);
+      return { asker: seeded.parentUserId, coParent, history, copy };
+    }
+
+    it('audience read off: not in anyone’s History, in the asker’s own access copy only', async () => {
+      const { asker, coParent, history, copy } = await twoParentsAndANote();
+
+      expect(await history(coParent)).toContain(ANSWERED);
+      expect(await history(coParent)).not.toContain(NOTE);
+      expect(await history(asker)).not.toContain(NOTE);
+      expect(await copy(asker)).toEqual(expect.arrayContaining([NOTE, ANSWERED]));
+      const coParentCopy = await copy(coParent);
+      expect(coParentCopy).toContain(ANSWERED);
+      expect(coParentCopy).not.toContain(NOTE);
+    });
+
+    it('audience read on: in the asker’s History and copy, never the other adult’s', async () => {
+      vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+      const { asker, coParent, history, copy } = await twoParentsAndANote();
+
+      expect(await history(asker)).toEqual(expect.arrayContaining([NOTE, ANSWERED]));
+      expect(await history(coParent)).toContain(ANSWERED);
+      expect(await history(coParent)).not.toContain(NOTE);
+      expect(await copy(asker)).toEqual(expect.arrayContaining([NOTE, ANSWERED]));
+      expect(await copy(coParent)).not.toContain(NOTE);
     });
   });
 

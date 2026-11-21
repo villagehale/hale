@@ -56,6 +56,8 @@ export const PROACTIVE_ROUTING: Record<ProactiveSendKind, 'decider' | 'immediate
     // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
     autonomy_armed: 'immediate',
     autonomy_acted: 'immediate',
+    // VIL-717. Its own clock: a note that the promised time passed means nothing in a batch.
+    ack_late_note: 'immediate',
   };
 
 /** The classes whose sweeps still send on their own, in table order. */
