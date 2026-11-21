@@ -3,13 +3,13 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { carriesExactOptOutLine, segmentsWithOptOutReserved } from '../opt-out';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
-import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
+import { MAX_NUDGE_SEGMENTS } from './shell';
 import {
   WEEKDAY_ASK_MAX_TOKENS,
   WEEKDAY_ASK_TOOL,
@@ -28,16 +28,16 @@ import {
  * one is discarded and the DETERMINISTIC render goes out in its place.
  *
  * The one addition over M3's shape, and it is the reason this file is not just a copy:
- * this message is UNSOLICITED. {@link NUDGE_OPT_OUT} is not the model's to write — a
- * composed message that includes it is rejected. The sender no longer appends it
- * (founder decision, 2026-10-01).
+ * this message is UNSOLICITED. The opt-out line (lib/channel/opt-out.ts) is not the
+ * model's to write — a composed message that includes it is rejected. The sender no
+ * longer appends it (founder decision, 2026-10-01).
  */
 
 const VOICE_MAX_TOKENS = 300;
 
 // Re-exported so every existing importer keeps its import path: these moved to ./shell
 // only to break the cycle between this file and the static health renderer.
-export { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT };
+export { MAX_NUDGE_SEGMENTS };
 
 export interface NudgeVoice {
   message: string;
@@ -172,8 +172,8 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
  * that used to fit still fits; the line itself is not appended. */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
-  if (message.includes(NUDGE_OPT_OUT)) return false;
-  return smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
+  if (carriesExactOptOutLine(message)) return false;
+  return segmentsWithOptOutReserved(message) <= MAX_NUDGE_SEGMENTS;
 }
 
 function joinNames(names: readonly string[]): string {
@@ -277,7 +277,7 @@ async function composeEmptySaturday(
   });
   if (!voice || !usableNudgeMessage(voice.message, nudge)) return null;
   const linked = withActivityLink(voice.message, nudge.url);
-  if (smsSegments(`${linked}\n\n${NUDGE_OPT_OUT}`) > MAX_NUDGE_SEGMENTS) return null;
+  if (segmentsWithOptOutReserved(linked) > MAX_NUDGE_SEGMENTS) return null;
   if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return null;
   return linked;
 }

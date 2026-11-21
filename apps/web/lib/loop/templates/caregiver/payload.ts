@@ -35,6 +35,12 @@ export interface CaregiverReminderPayload {
    */
   timeZone: string;
   events: CaregiverReminderEvent[];
+  /**
+   * VIL-706 · the whole reminder, written by the model from facts by the reminder run
+   * while CAREGIVER_REMINDER_MODEL_COPY_ENABLED is lit (compose.ts). The renderer sends
+   * these words and nothing else. Absent on a leg enqueued while the flag was off.
+   */
+  texts?: string[];
 }
 
 function isReminderEvent(value: unknown): value is CaregiverReminderEvent {
@@ -61,5 +67,16 @@ export function asCaregiverReminderPayload(
   if (!Array.isArray(payload.events) || !payload.events.every(isReminderEvent)) {
     throw new Error('caregiver reminder renderer: malformed events');
   }
-  return { offset, timeZone: payload.timeZone, events: payload.events };
+  if (payload.texts === undefined) {
+    return { offset, timeZone: payload.timeZone, events: payload.events };
+  }
+  const texts = payload.texts;
+  if (
+    !Array.isArray(texts) ||
+    texts.length === 0 ||
+    !texts.every((t): t is string => typeof t === 'string' && t.trim() !== '')
+  ) {
+    throw new Error('caregiver reminder renderer: malformed texts');
+  }
+  return { offset, timeZone: payload.timeZone, events: payload.events, texts };
 }

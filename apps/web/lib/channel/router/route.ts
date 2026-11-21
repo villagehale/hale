@@ -21,7 +21,6 @@ import {
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import { REPLY_BUBBLE_BREAK, splitReplyBubbles } from '~/lib/channel/coach/reply';
@@ -40,6 +39,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
@@ -239,7 +239,7 @@ import { pageUnwrittenCrisis } from './unwritten-moment';
  * answers the next three questions, and the ORDER it answers them in is the whole
  * design:
  *
- *   1. WHO IS TALKING?   A caregiver is answered with M6's one static line and stops
+ *   1. WHO IS TALKING?   A caregiver is answered with M6's one scoped line and stops
  *      here. The webhook already refuses to enqueue a non-parent, so this is the second
  *      of two gates — deliberately, because the cost of the pair being wrong is a
  *      household agent answering a babysitter's question about a child (rule #1), and
@@ -450,6 +450,11 @@ export type HandlerVerdict =
        * 1:1, it is the ordinary answer.
        */
       onlyToAsker?: true;
+      /**
+       * VIL-706 · a door line this turn owed and did not send, and why. Set only when
+       * one was held, so a claim that sent nothing is never reported as a plain answer.
+       */
+      lineHeld?: DoorLineHold;
     };
 
 /**
@@ -941,6 +946,12 @@ export interface RouterResult {
   /** Which lane deflected it, when one did. Null for every other status — including an
    * in-domain turn, which is not an unmet intent and is counted as nothing. */
   lane: UnmetIntentLane | null;
+  /**
+   * VIL-706 · on `not_a_parent` for a caregiver Hale may answer: null when the scoped
+   * line went out, or why it did not (`flag_off`, or `unwritten` after #ops was paged).
+   * On a `handled` turn, set only when the handler held a door line. Absent otherwise.
+   */
+  lineHeld?: DoorLineHold | null;
 }
 
 /**
@@ -1194,24 +1205,40 @@ async function routeChannelMessageInner(
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
   // never appear in the parents' Ask history.
   if (context.role === null || !PARENT_ROLES.has(context.role)) {
+    let scopedHeld: DoorLineHold | null | undefined;
     if (context.reply && isOutsiderWeMayAnswer(context.role)) {
       // Ledgered and audited like every other outbound (rule #6) — but with NO
       // conversation, because a caregiver's exchange must never appear in the parents'
       // Ask history. That is the one difference between this send and a parent's.
-      await sendReply(deps, {
-        route: context.reply,
-        body: scopedReply(context.primaryParentName),
-        job,
-        conversationId: null,
-        claim: claimAnswer,
-        openAsks: { leaves: null },
+      // The model writes it from the parent's name alone (VIL-706): what the caregiver
+      // asked is never in the facts, so it cannot be repeated back.
+      const line = await composeDoorLine({
+        purpose: 'caregiver_scoped_reply',
+        language: await familySpeechLanguage(deps.database, job.family_id),
+        facts: { parentName: context.primaryParentName ?? '' },
       });
+      if (line.sent) {
+        await sendReply(deps, {
+          route: context.reply,
+          body: line.body,
+          job,
+          conversationId: null,
+          claim: claimAnswer,
+          openAsks: { leaves: null },
+        });
+      } else {
+        // Nothing goes out, and the composer logged why. The answer is still claimed,
+        // so a re-driven turn does not try again and text the caregiver twice.
+        await claimAnswer();
+      }
+      scopedHeld = lineHeld(line);
     }
     return done(deps, job, {
       status: 'not_a_parent',
       handler: null,
       conversationId: null,
       lane: null,
+      ...(scopedHeld === undefined ? {} : { lineHeld: scopedHeld }),
     });
   }
 
@@ -1687,6 +1714,7 @@ async function routeChannelMessageInner(
         handler: handler.name,
         conversationId,
         lane: null,
+        ...(verdict.lineHeld ? { lineHeld: verdict.lineHeld } : {}),
       });
     }
   }

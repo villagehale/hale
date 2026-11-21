@@ -1,12 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
 import type { HealthPlace } from '~/lib/channel/health-line';
-import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { referralReply } from '~/lib/channel/off-domain/copy';
-import { smsEncoding, smsSegments } from './sms-segments';
+import { smsEncoding } from './sms-segments';
 
 /** The province whose verified provider paths these lines are (VIL-589). */
 const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
@@ -59,12 +57,10 @@ const SMS_COPY_SOURCES = [
   'lib/channel/intake/official-page.ts',
   'lib/channel/intake/live-lookup.ts',
   'lib/channel/off-domain/copy.ts',
-  'lib/channel/caregiver/copy.ts',
   // VIL-355's bilingual half. Its own copy.test.ts asserts GSM-7 per string by hand,
   // which only ever covers the strings somebody remembered to list there; this scan is
   // what makes a NEW French sentence with a `ç` or a `ê` in it a failing test.
   'lib/channel/coparent/copy.ts',
-  'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',
   'lib/channel/founder/copy.ts',
@@ -155,56 +151,6 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
     // The offences are the assertion subject, so a failure names the character, the
     // line, and the copy it is in — "expected 1 to be 0" would send nobody anywhere.
     expect(nonGsm7(relativePath)).toEqual([]);
-  });
-});
-
-/**
- * The co-parent join link, rendered — the composition the file scan cannot see.
- *
- * The mint message is the longest deterministic body Hale sends, because 72 of its
- * characters are a URL it did not write. That makes the segment ceiling the real gate
- * here rather than the alphabet: a sentence added to this copy without counting is a
- * third segment on a message every joining family pays for, and a link amputated by a
- * split is a link that adds nobody.
- */
-describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
-  const CODE = 'join-0123456789abcdef0123456789abcdef';
-  const RENDERED: Record<string, string> = {
-    joinInviteForward: joinInviteForward(CODE),
-    'joinWelcome (named)': joinWelcome('Ana'),
-    'joinWelcome (anonymous)': joinWelcome(null),
-    // The one part of this message Hale did not write: a name a parent typed. Toronto
-    // types accents, and one of them re-encodes the WHOLE welcome as UCS-2 and halves
-    // the budget it is already spending — so the interpolation is under the same gate
-    // as the copy around it.
-    'joinWelcome (accented name)': joinWelcome('Zoe\u0308'),
-    'joinWelcome (accented, precomposed)': joinWelcome('Zo\u00eb'),
-    'joinWelcome (a name nobody could text back)': joinWelcome('X'.repeat(120)),
-    JOIN_ACCEPTED_ACK,
-  };
-
-  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
-    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > 2 }).toEqual({
-      encoding: 'gsm7',
-      overBudget: false,
-    });
-  });
-
-  /** The link is the payload; everything else is what fits around it. Asserted whole so
-   * a trimmed or split URL fails here rather than in a stranger's inbox. */
-  // What it does INSTEAD of mangling them: a name the alphabet cannot carry is dropped
-  // for the anonymous form, the same call `affordableNames` makes in health/copy.ts.
-  // Folding it would spell somebody's name wrong on the first message they ever get.
-  it('falls back to the anonymous form rather than respelling a name', () => {
-    expect(joinWelcome('Zo\u00eb')).toBe(joinWelcome(null));
-    expect(joinWelcome('X'.repeat(120))).toBe(joinWelcome(null));
-    expect(joinWelcome('Ana')).toContain('Ana');
-  });
-
-  /** The link is the payload; everything else is what fits around it. Asserted whole so
-   * a trimmed or split URL fails here rather than in a stranger's inbox. */
-  it('carries the whole link inside the budget', () => {
-    expect(joinInviteForward(CODE)).toContain(`https://www.villagehale.com/text?s=${CODE}`);
   });
 });
 
@@ -319,35 +265,5 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(body).not.toMatch(/\bthe app\b/i);
     expect(body).not.toMatch(/https?:/i);
-  });
-});
-
-/**
- * Skill audit P0 #4 — the copy paths that were still handing the job back.
- *
- * Founder doctrine, 2026-08-11: Hale never points a parent at the app in chat. The
- * thread IS the product, so "finish it in the app" is the work returned to the person
- * who texted to be rid of it — and it fired on exactly the messages where the job
- * mattered most: a turn that broke, an answer too long to send, a photo Hale could not
- * read. Each of these now carries what to do next IN the thread.
- *
- * SCOPED to the five the audit named. Three lines in `router/copy.ts` still carry a URL
- * and are deliberately not here: `nothingPendingReply` and `nothingToUndoReply` answer
- * "where do my records live", which is the doctrine's one stated exception, and
- * `capabilityReply` is a stub with no production caller (audit #21). Widening this to
- * the whole file is a founder call about that exception, not a test change.
- */
-describe('nothing Hale texts sends a parent to the app', () => {
-  const RENDERED: Record<string, string> = {
-    CO_PARENT_REDIRECT,
-  };
-
-  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
-    expect(body).not.toMatch(/https?:/i);
-    expect(body).not.toMatch(/\bthe app\b/i);
-    // Still GSM-7 and still inside the budget: a rewrite is exactly when a curly
-    // apostrophe or a third segment gets in.
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
   });
 });
