@@ -137,7 +137,10 @@ export function createPreflightReader(
         return value;
       } catch (err) {
         console.info(
-          { reason: 'model_failed', detail: err instanceof Error ? err.constructor.name : 'unknown' },
+          {
+            reason: 'model_failed',
+            detail: err instanceof Error ? err.constructor.name : 'unknown',
+          },
           'signup preflight read: unread',
         );
         return null;

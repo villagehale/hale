@@ -59,7 +59,9 @@ function amountFor(
 ): SignupTermsAmount | { clarify: 'limit_below_rate' | 'no_amount' } {
   const currency = input.shown.currency;
   const limit = input.limitWrittenCents;
-  const cents = session ? ratesFor(input.shown.residency, session.rates).map((row) => row.cents) : [];
+  const cents = session
+    ? ratesFor(input.shown.residency, session.rates).map((row) => row.cents)
+    : [];
   if (cents.length === 0) {
     return limit === null ? { clarify: 'no_amount' } : { kind: 'ceiling', cents: limit, currency };
   }

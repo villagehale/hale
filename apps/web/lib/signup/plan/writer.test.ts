@@ -184,17 +184,14 @@ describe('the gate on a text that states terms', () => {
     terms: { ...terms, ...over },
   });
 
-  it.each([
-    ['84.88加元'],
-    ['84.88 dollars'],
-    ['84.88元'],
-    ['84,88 $'],
-    ['$84.88'],
-  ])('passes the bound price written as %s', (price) => {
-    expect(planReplyViolations(`Speaking class for Ada, ${price}. Want it?`, withTerms())).toEqual(
-      [],
-    );
-  });
+  it.each([['84.88加元'], ['84.88 dollars'], ['84.88元'], ['84,88 $'], ['$84.88']])(
+    'passes the bound price written as %s',
+    (price) => {
+      expect(
+        planReplyViolations(`Speaking class for Ada, ${price}. Want it?`, withTerms()),
+      ).toEqual([]);
+    },
+  );
 
   it('passes thousands and French forms of a bound price', () => {
     const big = withTerms({ rates: [{ rate: 'flat', cents: 123450 }] });

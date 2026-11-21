@@ -16,6 +16,7 @@ import { pageOps } from '~/lib/monitoring/failure-page';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
+import type { ReceiptResult } from '../browser-use/receipt';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { markLoginLinkSent } from '../login-link/store';
 import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
@@ -48,6 +49,9 @@ const TERMS_UNREADABLE_FACTS: PlanReplyTerms = {
   unread: ['page'],
 };
 
+type ReceiptUnsent = Exclude<ReceiptResult, { ok: true }>['reason'] | 'transport_unsupported' | 'too_large' | 'send_failed';
+
+export const PLAN_RECEIPT_TEMPLATE = 'signup_plan_receipt';
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
 export const PLAN_PREP_TEMPLATE = 'signup_plan_prep';
 
@@ -162,8 +166,86 @@ export function createPlanNotifier(
       console.info({ offerId: notice.offerId, code: 'withheld' }, 'signup plans: notice withheld');
       return 'withheld';
     }
-    return deliverDirect(database, deps, notice, { body, to, now });
+    const went = await deliverDirect(database, deps, notice, { body, to, now });
+    // The image is its own send, after the text. The text never mentions it, so an image
+    // that does not go cannot make the text false.
+    if (went === 'sent' && notice.receipt) {
+      await deliverReceipt(database, deps, notice, notice.receipt, { to, now });
+    }
+    return went;
   };
+}
+
+/** A confirmation screenshot of a few short lines is far below this. Larger is refused. */
+export const MAX_RECEIPT_IMAGE_BYTES = 1_000_000;
+
+/**
+ * VIL-715 · the masked receipt, to the approving parent's own 1:1, never a group. Its ledger
+ * row is written `queued` and marked sent only once the transport accepted it. A receipt
+ * that does not go is named on #ops; the registration and the text stand either way.
+ */
+async function deliverReceipt(
+  database: Database,
+  deps: PlanNotifierDeps,
+  notice: PlanOutcomeNotice,
+  receipt: ReceiptResult,
+  input: { to: string; now: Date },
+): Promise<void> {
+  const unsent = async (reason: ReceiptUnsent) => {
+    const page = await pageOps(database, {
+      site: 'registration_receipt_unsent',
+      facts: { reason },
+      ref: notice.offerId,
+    });
+    console.warn({ offerId: notice.offerId, reason, page }, 'signup plans: receipt not sent');
+  };
+  if (!receipt.ok) return unsent(receipt.reason);
+  if (!deps.transport.sendImage) return unsent('transport_unsupported');
+  if (receipt.receipt.bytes > MAX_RECEIPT_IMAGE_BYTES) return unsent('too_large');
+  const messages = schema.channelMessages;
+  const [row] = await database
+    .insert(messages)
+    .values({
+      familyId: notice.familyId,
+      parentUserId: notice.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'reply',
+      templateKey: PLAN_RECEIPT_TEMPLATE,
+      dedupeKey: `${PLAN_RECEIPT_TEMPLATE}:${notice.offerId}`,
+      status: 'queued',
+      sentAt: null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: messages.id });
+  if (!row) return;
+  try {
+    const sent = await deps.transport.sendImage({
+      to: input.to,
+      png: receipt.receipt.png,
+      filename: 'registration-receipt.png',
+    });
+    const channel = sent.transport ?? 'imessage';
+    await database
+      .update(messages)
+      .set({
+        channel,
+        status: acceptedStatus(channel),
+        providerMessageId: sent.providerMessageId,
+        providerChatId: sent.chatId ?? null,
+        sentAt: input.now,
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+  } catch (err) {
+    await database
+      .update(messages)
+      .set({
+        status: 'failed',
+        errorCode: (err instanceof Error ? err.constructor.name : 'send_threw').slice(0, 80),
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    return unsent('send_failed');
+  }
 }
 
 async function deliverDirect(

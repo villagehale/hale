@@ -127,6 +127,16 @@ export interface ChannelTransport {
    * Absent on SMS. A refusal is named; callers must not pretend the card left.
    */
   requestLocation?(input: { chatId: string }): Promise<LocationRequestResult>;
+  /**
+   * VIL-715 · one private image into this number's existing 1:1, after the text it follows.
+   * The bytes never get a public URL (see `OutboundMessage.mediaUrls`). A transport without
+   * it cannot carry one, and the caller names that absence (rule #11).
+   */
+  sendImage?(input: { to: string; png: Uint8Array; filename: string }): Promise<{
+    providerMessageId: string;
+    transport?: MessageTransport;
+    chatId?: string | null;
+  }>;
 }
 
 /**

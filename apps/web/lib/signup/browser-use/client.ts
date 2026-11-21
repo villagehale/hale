@@ -113,6 +113,8 @@ export interface BrowserUseApi {
     id: string;
     cdpUrl: string | null;
   }>;
+  /** GET /browsers/{id}. `cdpUrl` is a credential: never logged, never stored. */
+  getBrowser(browserId: string): Promise<{ id: string; cdpUrl: string | null }>;
   stopBrowser(browserId: string): Promise<void>;
   createRun(input: BrowserUseRunRequest): Promise<{ id: string; sessionId: string }>;
   getRunStatus(runId: string): Promise<BrowserUseRunStatus>;
@@ -186,6 +188,13 @@ export function browserUseApi(options: {
         // Hale creates itself can carry it.
         solveCaptchas: true,
       });
+      return { id: browser.id, cdpUrl: browser.cdpUrl ?? null };
+    },
+    async getBrowser(browserId) {
+      const browser = await call<{ id: string; cdpUrl?: string | null }>(
+        'GET',
+        `/browsers/${id(browserId)}`,
+      );
       return { id: browser.id, cdpUrl: browser.cdpUrl ?? null };
     },
     async stopBrowser(browserId) {

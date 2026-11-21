@@ -242,9 +242,7 @@ describe('bindApproval', () => {
   });
 
   it('a program with no name falls back to the session label', () => {
-    const got = bindApproval(
-      input({ shown: shown({ program: { courseIds: [], name: null } }) }),
-    );
+    const got = bindApproval(input({ shown: shown({ program: { courseIds: [], name: null } }) }));
     expect(got.kind === 'bound' && got.approved.sessions[0]?.program.name).toBe('Sat 9:30');
   });
 });

@@ -1605,6 +1605,26 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
         chatId,
       };
     },
+    // VIL-715: into this parent's existing 1:1 only. A number with no 1:1 on this line is
+    // refused by name, and an image never opens a chat or reaches a group.
+    async sendImage({ to, png, filename }) {
+      const from = linqFromE164();
+      if (!from) throw new LinqSendError('not_configured', 0, true);
+      const chatId = await findLinqDirectChat({ from, to, fetch: deps.fetch });
+      if (!chatId) throw new LinqSendError('media_on_new_chat', 400, true);
+      const { attachmentId } = await putLinqAttachment({
+        bytes: png,
+        contentType: 'image/png',
+        filename,
+        fetch: deps.fetch,
+      });
+      const sent = await sendLinqParts({
+        chatId,
+        parts: [{ type: 'media', attachmentId }],
+        fetch: deps.fetch,
+      });
+      return { providerMessageId: sent.providerMessageId, transport: 'imessage' as const, chatId };
+    },
   };
 }
 
@@ -1883,6 +1903,20 @@ export async function uploadLinqAttachment(input: {
   fetch?: typeof fetch;
 }): Promise<{ attachmentId: string }> {
   if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  return putLinqAttachment(input);
+}
+
+/**
+ * The upload itself, ungated: `uploadLinqAttachment` holds the voice-memo gate, and the
+ * one-to-one receipt image (VIL-715) has its own flag. Private bytes, a private id: no
+ * public URL is ever made for them.
+ */
+async function putLinqAttachment(input: {
+  bytes: Uint8Array;
+  contentType: string;
+  filename: string;
+  fetch?: typeof fetch;
+}): Promise<{ attachmentId: string }> {
   if (input.bytes.byteLength === 0) throw new LinqSendError('empty_attachment', 0, true);
   const result = await linqRequest({
     method: 'POST',

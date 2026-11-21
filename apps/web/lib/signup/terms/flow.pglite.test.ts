@@ -508,7 +508,9 @@ describe('the yes', () => {
     });
     if (!offer.ok) throw new Error(offer.reason);
     await (
-      await (await import('../store')).askStamp(db.database, {
+      await (
+        await import('../store')
+      ).askStamp(db.database, {
         familyId: f.familyId,
         parentUserId: f.parentUserId,
         offerIds: [offer.id],

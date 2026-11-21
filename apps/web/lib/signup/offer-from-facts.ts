@@ -228,7 +228,12 @@ async function offerWithTerms(
   });
   if (!text) {
     await writeAudit(database, input, null, { step: 'offer', reason: 'unwritten' });
-    await pageOps(database, { site: 'registration_text_unwritten', facts: { moment: 'offer' } });
+    // No offer exists yet, so the family is the row ops starts from.
+    await pageOps(database, {
+      site: 'registration_text_unwritten',
+      facts: { moment: 'offer' },
+      ref: input.familyId,
+    });
     return { ok: false, reason: 'unwritten' };
   }
   const stored = await recordSignupOffer(database, {

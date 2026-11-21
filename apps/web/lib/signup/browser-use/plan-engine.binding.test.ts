@@ -212,12 +212,9 @@ function input(over: Partial<BrowserUsePlanInput> = {}) {
     fieldsAllowed: ['child_first_name', 'child_last_name', 'child_dob', 'session'],
     choices: [
       {
-        id: 's-1',
         label: 'Sat 9:30',
         startsAt: '2026-12-05T09:30:00',
         endsAt: '2026-12-05T10:30:00',
-        full: false,
-        priceCents: null,
       },
     ],
     maxPriceCents: 8488,
@@ -372,9 +369,7 @@ describe('a bound plan run', () => {
     expect(result.outcome).toBe('completed');
     expect(steps.some((step) => step.step === 'cart_check')).toBe(false);
     const first = h.created()[0] as { task: string; outputSchema: { properties: object } };
-    expect(first.task).toBe(
-      first.task.replace('# skill browser-use-cart-read', '<never there>'),
-    );
+    expect(first.task).toBe(first.task.replace('# skill browser-use-cart-read', '<never there>'));
     expect(Object.keys(first.outputSchema.properties)).not.toContain('cart_read');
   });
 });

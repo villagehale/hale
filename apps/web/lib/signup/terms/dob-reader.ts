@@ -48,7 +48,7 @@ export function acceptDobReading(
   const said = raw.said.normalize('NFKC');
   const year = date.slice(0, 4);
   const day = String(Number(date.slice(8, 10)));
-  const digits = said.match(/\d+/g) ?? [];
+  const digits: string[] = said.match(/\d+/g) ?? [];
   const hasYear = digits.includes(year) || digits.includes(year.slice(2));
   const hasDay = digits.some((run) => run === day || run === day.padStart(2, '0'));
   return hasYear && hasDay ? date : null;
@@ -77,7 +77,10 @@ export function createDobReader(
         return value;
       } catch (err) {
         console.info(
-          { reason: 'model_failed', detail: err instanceof Error ? err.constructor.name : 'unknown' },
+          {
+            reason: 'model_failed',
+            detail: err instanceof Error ? err.constructor.name : 'unknown',
+          },
           'signup dob read: unread',
         );
         return null;

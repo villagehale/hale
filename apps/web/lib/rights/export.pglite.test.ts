@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ACTIVITY_HELD_TOPIC } from '~/lib/channel/activity/venue-pages';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -467,6 +467,40 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
       },
     ]);
 
+    const [offerRow] = await db.database
+      .select({ id: schema.authorizedSignupOffers.id })
+      .from(schema.authorizedSignupOffers)
+      .where(eq(schema.authorizedSignupOffers.status, 'planned'))
+      .orderBy(desc(schema.authorizedSignupOffers.createdAt))
+      .limit(1);
+    const termsShown = {
+      v: 1 as const,
+      read: 'course_model' as const,
+      program: { courseIds: ['283993'], name: 'Swim' },
+      residency: 'resident' as const,
+      age: { fit: 'in_band' as const, band: '4 to 6', rule: null },
+      prerequisite: { required: 'no' as const, quote: null },
+      refund: null,
+      currency: 'cad' as const,
+      countsAgainstSeason: false,
+      priorChargeUnknown: false,
+      sessions: [
+        {
+          sessionId: 's-2',
+          rates: [{ rate: 'resident' as const, cents: 8488 }],
+          tax: 'included' as const,
+          source: 'course_model' as const,
+        },
+      ],
+    };
+    await db.database.insert(schema.authorizedSignupTerms).values({
+      offerId: offerRow?.id as string,
+      familyId,
+      childId: child?.id as string,
+      parentUserId,
+      shown: termsShown,
+    });
+
     const doc = await assembleFamilyExport(db.database, familyId, {
       actorUserId: parentUserId,
       loadTrail: async () => [],
@@ -505,6 +539,15 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
         planOpensAt: null,
         planWaiverAccepted: null,
         planApprovedAt: null,
+      },
+    ]);
+    expect(doc.signupTerms).toEqual([
+      {
+        offerId: offerRow?.id,
+        shown: termsShown,
+        approved: null,
+        approvedAt: null,
+        createdAt: expect.any(String),
       },
     ]);
   });

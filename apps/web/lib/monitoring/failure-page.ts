@@ -266,6 +266,10 @@ type OpsPageFacts<S extends OpsPageSite> = {
 const OPS_PAGE_PER_REF = [
   'registration_review_placed_order',
   'registration_review_unread',
+  // VIL-715: one family's registration each, so a second family's in the same hour pages too.
+  'registration_text_unwritten',
+  'registration_terms_unreadable',
+  'registration_receipt_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

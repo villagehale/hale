@@ -55,9 +55,9 @@ describe('compareCart', () => {
   });
 
   it('an extra fee stops as fees', () => {
-    expect(
-      compareCart(bound(), cart({ totalCents: 9488, feesCents: 1000 }), who, 'final'),
-    ).toEqual(['fees']);
+    expect(compareCart(bound(), cart({ totalCents: 9488, feesCents: 1000 }), who, 'final')).toEqual(
+      ['fees'],
+    );
   });
 
   it('a non-resident rate on a resident binding stops', () => {
@@ -98,9 +98,9 @@ describe('compareCart', () => {
   });
 
   it('an offset start compares in the portal zone', () => {
-    expect(
-      compareCart(bound({ startsAt: '2026-03-28T13:30:00Z' }), cart(), who, 'cart'),
-    ).toEqual([]);
+    expect(compareCart(bound({ startsAt: '2026-03-28T13:30:00Z' }), cart(), who, 'cart')).toEqual(
+      [],
+    );
   });
 
   it.each(['Addie', 'Ava'])('a different first name stops (%s)', (name) => {

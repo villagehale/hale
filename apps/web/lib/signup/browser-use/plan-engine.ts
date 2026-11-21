@@ -203,11 +203,27 @@ export interface BrowserUsePlanInput
    * nothing is paid.
    */
   onCheckpoint: (resume: PlanResumeToken) => Promise<boolean>;
+  /**
+   * VIL-715 · called once on a confirmed registration, before the browser stops, to capture
+   * the masked receipt. Absent: no receipt. A failure here never changes the outcome.
+   */
+  onConfirmed?: (facts: PlanConfirmedFacts) => Promise<void>;
 }
 
 /** What reading a payment already under way needs: no identity, consent or saved session. */
-export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil'> {
+export interface PlanPaymentInput
+  extends Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil' | 'onConfirmed'> {
   resume: PlanPayingToken;
+}
+
+/** VIL-715 · what the provider confirmed, while its confirmation page is still open. */
+export interface PlanConfirmedFacts {
+  browserId: string;
+  confirmationNumber: string;
+  amountChargedCents: number | null;
+  choiceIndex: number | null;
+  /** The browser's CDP address. A credential: never logged, never stored. */
+  getCdpUrl: (browserId: string) => Promise<string | null>;
 }
 
 /**
@@ -316,7 +332,7 @@ export function runBrowserUsePlanSignup(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  return tracked(input.resume, deps, (tracker) => drivePlan(input, deps, tracker));
+  return tracked(input, deps, (tracker) => drivePlan(input, deps, tracker));
 }
 
 /**
@@ -328,16 +344,15 @@ export function settleBrowserUsePlanPayment(
   input: PlanPaymentInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  return tracked(input.resume, deps, (tracker) =>
-    resumePayment(input, deps, tracker, input.resume),
-  );
+  return tracked(input, deps, (tracker) => resumePayment(input, deps, tracker, input.resume));
 }
 
 async function tracked(
-  resume: PlanResumeToken | null,
+  input: Pick<BrowserUsePlanInput, 'onConfirmed'> & { resume: PlanResumeToken | null },
   deps: BrowserUseEngineDeps,
   drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  const { resume } = input;
   const tracker: PlanTracker = {
     browserId: resume?.browserId ?? null,
     runId: resume?.runId ?? null,
@@ -363,6 +378,27 @@ async function tracked(
   }
   // The browser holds the family's place in line until a later sweep picks it up.
   if (result.outcome === 'checkpointed') return result;
+  if (
+    input.onConfirmed &&
+    result.outcome === 'completed' &&
+    result.confirmationNumber &&
+    tracker.browserId
+  ) {
+    await input
+      .onConfirmed({
+        browserId: tracker.browserId,
+        confirmationNumber: result.confirmationNumber,
+        amountChargedCents: result.amountChargedCents,
+        choiceIndex: result.choiceIndex,
+        getCdpUrl: async (id) => (await deps.api.getBrowser(id)).cdpUrl,
+      })
+      .catch((err: unknown) => {
+        console.warn(
+          { error: err instanceof Error ? err.name : 'unknown' },
+          'signup plans: receipt capture threw',
+        );
+      });
+  }
   return settleBrowser(deps, result, tracker);
 }
 

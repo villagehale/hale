@@ -62,7 +62,11 @@ const amountSchema = z.discriminatedUnion('kind', [
       .nullable(),
     limitCents: z.number().int().positive().nullable(),
   }),
-  z.object({ kind: z.literal('ceiling'), cents: z.number().int().positive(), currency: currencySchema }),
+  z.object({
+    kind: z.literal('ceiling'),
+    cents: z.number().int().positive(),
+    currency: currencySchema,
+  }),
   z.object({ kind: z.literal('free') }),
 ]);
 
@@ -120,8 +124,7 @@ export async function loadSignupTerms(
     .limit(1);
   if (!row) return { status: 'none' };
   const shown = signupTermsShownSchema.safeParse(row.shown);
-  const approved =
-    row.approved === null ? null : signupTermsApprovedSchema.safeParse(row.approved);
+  const approved = row.approved === null ? null : signupTermsApprovedSchema.safeParse(row.approved);
   if (!shown.success || (approved !== null && !approved.success)) {
     return { status: 'unreadable' };
   }

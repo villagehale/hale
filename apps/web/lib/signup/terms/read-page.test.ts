@@ -2,11 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { RegistrationPageFetch } from '~/lib/registration/page';
-import {
-  type PreflightReader,
-  type SignupPreflightRead,
-  readProgramTerms,
-} from './read-page';
+import { type PreflightReader, type SignupPreflightRead, readProgramTerms } from './read-page';
 
 const markham = readFileSync(
   join(__dirname, '../../channel/spots/fixtures/markham-course.html'),

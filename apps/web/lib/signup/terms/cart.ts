@@ -44,7 +44,10 @@ export function boundWallClock(
     hourCycle: 'h23',
   }).formatToParts(at);
   const part = (type: string) => parts.find((item) => item.type === type)?.value;
-  return { date: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` };
+  return {
+    date: `${part('year')}-${part('month')}-${part('day')}`,
+    time: `${part('hour')}:${part('minute')}`,
+  };
 }
 
 function firstName(name: string): string {
