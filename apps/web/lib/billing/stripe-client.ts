@@ -40,7 +40,10 @@ export interface CheckoutSessionParams {
 
 export interface StripeCheckoutClient {
   createCheckoutSession(params: CheckoutSessionParams): Promise<{ url: string }>;
-  retrieveCheckoutSession?(sessionId: string): Promise<unknown | null>;
+  retrieveCheckoutSession?(
+    sessionId: string,
+    options?: { expand?: readonly string[] },
+  ): Promise<unknown | null>;
 }
 
 const STRIPE_CHECKOUT_ENDPOINT = 'https://api.stripe.com/v1/checkout/sessions';
@@ -79,8 +82,12 @@ export function stripeCheckoutClientFromEnv(
       }
       return { url: json.url };
     },
-    async retrieveCheckoutSession(sessionId) {
-      const res = await fetchImpl(`${STRIPE_CHECKOUT_ENDPOINT}/${sessionId}`, {
+    async retrieveCheckoutSession(sessionId, options) {
+      const expand = new URLSearchParams(
+        (options?.expand ?? []).map((path) => ['expand[]', path]),
+      ).toString();
+      const url = `${STRIPE_CHECKOUT_ENDPOINT}/${sessionId}${expand ? `?${expand}` : ''}`;
+      const res = await fetchImpl(url, {
         method: 'GET',
         headers: { authorization: `Bearer ${secret}` },
       });

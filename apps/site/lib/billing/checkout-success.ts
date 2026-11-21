@@ -28,6 +28,23 @@ export function conversionsApiEnabled(
   return env.CONVERSIONS_API_ENABLED === 'true';
 }
 
+/** The page picks its state from hale-web's `view`. Set on both Vercel projects. */
+export function checkoutSuccessStatesEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.CHECKOUT_SUCCESS_STATES_ENABLED === 'true';
+}
+
+/**
+ * The check-in sentence is a promise only the billing-notice lane keeps. Set on both
+ * Vercel projects together; the sentence also needs `checkInDue` from hale-web.
+ */
+export function billingThreadNoticesEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.BILLING_THREAD_NOTICES_ENABLED === 'true';
+}
+
 export function googleAdsConversionSendTo(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
@@ -42,6 +59,28 @@ export function metaPixelIdFromEnv(
   return id ? id : null;
 }
 
+export type PaidPlanName = 'Plus' | 'Max';
+
+/**
+ * The page state hale-web chose from Stripe and its DB. Only the active plan carries a
+ * name, and the plan name always comes from the verified tier.
+ */
+export type CheckoutSuccessView =
+  | {
+      readonly state: 'plan_active';
+      readonly plan: PaidPlanName;
+      readonly firstName: string | null;
+      readonly checkInDue: boolean;
+    }
+  | { readonly state: 'upgraded' }
+  | { readonly state: 'already_on_plan'; readonly plan: PaidPlanName }
+  | { readonly state: 'new_visitor' }
+  | { readonly state: 'pending' }
+  | { readonly state: 'under_review' }
+  | { readonly state: 'receipt' }
+  | { readonly state: 'not_paid' }
+  | { readonly state: 'unknown' };
+
 export interface CheckoutSessionFacts {
   readonly transactionId: string;
   readonly value: number;
@@ -49,6 +88,8 @@ export interface CheckoutSessionFacts {
   readonly paid: boolean;
   /** Verified paid tier from the app's Stripe retrieve. `family` is Max. */
   readonly tier: 'plus' | 'family' | null;
+  /** Present only when hale-web has CHECKOUT_SUCCESS_STATES_ENABLED on. */
+  readonly view?: CheckoutSuccessView;
 }
 
 export function googlePurchaseFromPaidSession(input: {
@@ -81,16 +122,54 @@ export function metaPurchaseFromPaidSession(input: {
   };
 }
 
-/** Plan name for the success page, from the verified tier only. */
-export function paidPlanName(facts: CheckoutSessionFacts | null): 'Plus' | 'Max' | null {
-  if (!facts?.paid) return null;
-  if (facts.tier === 'plus') return 'Plus';
-  if (facts.tier === 'family') return 'Max';
+function planNameForTier(tier: CheckoutSessionFacts['tier']): PaidPlanName | null {
+  if (tier === 'plus') return 'Plus';
+  if (tier === 'family') return 'Max';
   return null;
+}
+
+/** Plan name for the success page, from the verified tier only. */
+export function paidPlanName(facts: CheckoutSessionFacts | null): PaidPlanName | null {
+  if (!facts?.paid) return null;
+  return planNameForTier(facts.tier);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const PLAIN_VIEW_STATES = [
+  'upgraded',
+  'new_visitor',
+  'pending',
+  'under_review',
+  'receipt',
+  'not_paid',
+  'unknown',
+] as const;
+
+function isPlainViewState(value: unknown): value is (typeof PLAIN_VIEW_STATES)[number] {
+  return (PLAIN_VIEW_STATES as readonly unknown[]).includes(value);
+}
+
+/** A whitelist: an unknown state is no view, and an unknown field never passes through. */
+function checkoutViewFromJson(
+  payload: unknown,
+  tier: CheckoutSessionFacts['tier'],
+): CheckoutSuccessView | null {
+  if (!isRecord(payload)) return null;
+  const { state } = payload;
+  if (state === 'plan_active' || state === 'already_on_plan') {
+    const plan = planNameForTier(tier);
+    if (!plan) return { state: 'receipt' };
+    if (state === 'already_on_plan') return { state, plan };
+    const firstName =
+      typeof payload.firstName === 'string' && payload.firstName.length > 0
+        ? payload.firstName
+        : null;
+    return { state, plan, firstName, checkInDue: payload.checkInDue === true };
+  }
+  return isPlainViewState(state) ? { state } : null;
 }
 
 export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | null {
@@ -101,13 +180,31 @@ export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | 
   if (!transactionId || !SESSION_ID.test(transactionId) || !currency || value === null) {
     return null;
   }
+  const tier = payload.tier === 'plus' || payload.tier === 'family' ? payload.tier : null;
+  const view = checkoutViewFromJson(payload.view, tier);
   return {
     transactionId,
     value,
     currency,
     paid: payload.paid === true,
-    tier: payload.tier === 'plus' || payload.tier === 'family' ? payload.tier : null,
+    tier,
+    ...(view ? { view } : {}),
   };
+}
+
+/**
+ * The state this page renders. Null renders today's page: the flag is off here, or
+ * hale-web sent no view. With no id or a failed read nobody knows whether a charge went
+ * through, so the answer is `unknown`, the one view that makes no claim about money.
+ */
+export function checkoutViewForPage(
+  sessionId: string | null,
+  facts: CheckoutSessionFacts | null,
+  env: Record<string, string | undefined> = process.env,
+): CheckoutSuccessView | null {
+  if (!checkoutSuccessStatesEnabled(env)) return null;
+  if (!sessionId || !facts) return { state: 'unknown' };
+  return facts.view ?? null;
 }
 
 export async function fetchCheckoutSessionFacts(
