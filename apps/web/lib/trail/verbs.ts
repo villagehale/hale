@@ -1931,11 +1931,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
   promo_join_family_created: {
-    sentence: 'you started a founding family from a text code',
+    sentence: 'you joined Hale with a text code',
     family: 'note',
   },
   promo_join_verified: {
-    sentence: 'you confirmed the founding text code',
+    sentence: 'you confirmed your text code',
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
