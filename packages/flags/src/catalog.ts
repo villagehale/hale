@@ -178,6 +178,11 @@ export const FLAGS = [
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
+  // VIL-734. A team-schedule driver text is on the ledger as sent only once Linq accepts
+  // it; a refused send is retried and the last try pages #ops. Exact `true`.
+  exact('team-schedule-send-receipt', 'TEAM_SCHEDULE_SEND_RECEIPT_ENABLED'),
+  // VIL-734. A group reminder that closes failed pages #ops. Exact `true`.
+  exact('group-reminder-unsent-page', 'GROUP_REMINDER_UNSENT_PAGE_ENABLED'),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {

@@ -7,14 +7,15 @@ import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { primaryParentId } from '~/lib/channel/linq/roster-ask';
 import { listLinqParticipantHandles } from '~/lib/channel/linq/transport';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { AMBIGUOUS_SEND_CODES, createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { threadIfParent } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { reminderFacts } from './facts';
-import { groupReminderInFlightCancelEnabled } from './flag';
+import { groupReminderInFlightCancelEnabled, groupReminderUnsentPageEnabled } from './flag';
 import {
   type GroupReminderLineOutcome,
   postGroupReminderLine,
@@ -79,6 +80,8 @@ export interface GroupReminderTickPorts {
   /** Hale's 1:1 line, for a customer's own reminder. */
   oneToOne: ChannelTransport;
   listChatHandles?: ListChatHandles;
+  /** #ops, for a reminder that closed without reaching anyone. Defaults to the real page. */
+  pager?: OpsPager;
 }
 
 export type GroupReminderTickSummary =
@@ -104,8 +107,11 @@ async function close(
   database: Database,
   row: GroupReminderRow,
   input: Parameters<typeof closeReminder>[2],
+  pager: OpsPager,
 ): Promise<FireOutcome> {
-  return (await closeReminder(database, row, input)) ? input.status : 'lost';
+  if (!(await closeReminder(database, row, input))) return 'lost';
+  if (input.status === 'failed') await pageUnsent(pager, input.reason);
+  return input.status;
 }
 
 /** Taken once the text is written, just before it goes: a STOP or a cancel meanwhile wins. */
@@ -119,6 +125,35 @@ async function committed(database: Database, row: GroupReminderRow): Promise<boo
 }
 
 const SEND_UNCONFIRMED = 'send_unconfirmed';
+
+/**
+ * VIL-734 · what #ops hears about a reminder that closed failed. Null: nobody needs paging,
+ * because the member stopped Hale, or {@link pageUnwritten} already said so.
+ */
+function unsentPageReason(
+  reason: string | null,
+): 'send_refused' | 'send_unconfirmed' | 'no_what' | 'no_ledger_owner' | null {
+  if (reason === 'unwritten' || reason === 'member_opted_out') return null;
+  if (reason === 'no_what' || reason === 'no_ledger_owner') return reason;
+  if (reason === SEND_UNCONFIRMED || reason === 'unknown') return 'send_unconfirmed';
+  return reason !== null && AMBIGUOUS_SEND_CODES.has(reason) ? 'send_unconfirmed' : 'send_refused';
+}
+
+async function pageUnsent(pager: OpsPager, reason: string | null): Promise<void> {
+  if (!groupReminderUnsentPageEnabled()) return;
+  const pageReason = unsentPageReason(reason);
+  if (!pageReason) return;
+  await pager.page({ site: 'group_reminder_unsent', facts: { reason: pageReason }, count: 1 });
+}
+
+function defaultPager(database: Database): OpsPager {
+  return {
+    async page(page) {
+      const { pageOps } = await import('~/lib/monitoring/failure-page');
+      return pageOps(database, page);
+    },
+  };
+}
 
 /** What a send under this key left on the ledger, if one was ever claimed. */
 async function priorSend(database: Database, dedupeKey: string) {
@@ -148,12 +183,18 @@ async function closeFromLedger(
   row: GroupReminderRow,
   prior: PriorSend,
   now: Date,
+  pager: OpsPager,
 ): Promise<FireOutcome> {
   if (prior.providerMessageId) {
-    return close(database, row, { status: 'sent', reason: 'already_sent', now });
+    return close(database, row, { status: 'sent', reason: 'already_sent', now }, pager);
   }
   if (prior.status === 'failed') {
-    return close(database, row, { status: 'failed', reason: prior.errorCode ?? 'unknown', now });
+    return close(
+      database,
+      row,
+      { status: 'failed', reason: prior.errorCode ?? 'unknown', now },
+      pager,
+    );
   }
   await database
     .update(schema.channelMessages)
@@ -168,7 +209,7 @@ async function closeFromLedger(
     { reminderId: row.id, outcome: SEND_UNCONFIRMED },
     'group reminders: a send with no answer from Linq on record, not sent again',
   );
-  return close(database, row, { status: 'failed', reason: SEND_UNCONFIRMED, now });
+  return close(database, row, { status: 'failed', reason: SEND_UNCONFIRMED, now }, pager);
 }
 
 /**
@@ -182,6 +223,7 @@ async function settle(
   sent: GroupReminderLineOutcome,
   now: Date,
   thread: () => Promise<unknown>,
+  pager: OpsPager,
 ): Promise<FireOutcome> {
   if (sent.outcome === 'held' && sent.reason === 'participants_unverified') {
     await releaseSend(database, row);
@@ -192,7 +234,7 @@ async function settle(
     return 'retrying';
   }
   if (sent.outcome === 'held') {
-    return close(database, row, { status: 'dropped', reason: 'audience_held', now });
+    return close(database, row, { status: 'dropped', reason: 'audience_held', now }, pager);
   }
   if (sent.outcome === 'not_sent') {
     if (sent.retryable) {
@@ -203,11 +245,11 @@ async function settle(
       );
       return 'retrying';
     }
-    return close(database, row, { status: 'failed', reason: sent.code, now });
+    return close(database, row, { status: 'failed', reason: sent.code, now }, pager);
   }
   if (sent.outcome === 'already_sent') {
     const prior = await priorSend(database, sendKey);
-    return prior ? closeFromLedger(database, row, prior, now) : 'retrying';
+    return prior ? closeFromLedger(database, row, prior, now, pager) : 'retrying';
   }
   await thread();
   const closed = await closeReminder(database, row, { status: 'sent', reason: null, now });
@@ -317,12 +359,13 @@ async function fireOne(
   ports: GroupReminderTickPorts & { voice: GroupReminderVoice },
 ): Promise<FireOutcome> {
   const now = ports.now;
+  const pager = ports.pager ?? defaultPager(database);
   const templateKey =
     row.delivery === 'direct' ? GROUP_REMINDER_DIRECT_TEMPLATE : GROUP_REMINDER_TEMPLATE;
   const sendKey = `${templateKey}:${row.id}`;
   // Before every check: a send a dead tick made, or began, decides it, whatever changed since.
   const prior = await priorSend(database, sendKey);
-  if (prior) return closeFromLedger(database, row, prior, now);
+  if (prior) return closeFromLedger(database, row, prior, now, pager);
   const seats = await liveSeats(database, row.chatId);
   const askerSeat = seats.find((seat) => seat.phoneHash === row.askedByPhoneHash) ?? null;
   const recipientSeat = row.forPhoneHash
@@ -364,9 +407,9 @@ async function fireOne(
     return 'retrying';
   }
   if (decision.kind === 'drop') {
-    return close(database, row, { status: 'dropped', reason: decision.reason, now });
+    return close(database, row, { status: 'dropped', reason: decision.reason, now }, pager);
   }
-  if (!row.what) return close(database, row, { status: 'failed', reason: 'no_what', now });
+  if (!row.what) return close(database, row, { status: 'failed', reason: 'no_what', now }, pager);
 
   const timeZone = await askerTimeZone(database, row.familyId, row.askedByUserId);
   const facts = reminderFacts({
@@ -378,7 +421,12 @@ async function fireOne(
   });
   const text = await ports.voice.write(facts);
   if (!text) {
-    const outcome = await close(database, row, { status: 'failed', reason: 'unwritten', now });
+    const outcome = await close(
+      database,
+      row,
+      { status: 'failed', reason: 'unwritten', now },
+      pager,
+    );
     await pageUnwritten();
     return outcome;
   }
@@ -387,7 +435,7 @@ async function fireOne(
     const userId = row.askedByUserId;
     const to = userId ? await resolveSendablePhone(database, userId) : null;
     if (!userId || !to) {
-      return close(database, row, { status: 'dropped', reason: 'direct_unreachable', now });
+      return close(database, row, { status: 'dropped', reason: 'direct_unreachable', now }, pager);
     }
     if (!(await committed(database, row))) return 'lost';
     const texted = await textGroupReminderDirect(database, {
@@ -401,14 +449,20 @@ async function fireOne(
       transport: ports.oneToOne,
       beforeSend: optOutGate(database, row, now),
     });
-    return settle(database, row, sendKey, texted, now, () =>
-      threadIfParent(database, { familyId: row.familyId, parentUserId: userId, body: text }),
+    return settle(
+      database,
+      row,
+      sendKey,
+      texted,
+      now,
+      () => threadIfParent(database, { familyId: row.familyId, parentUserId: userId, body: text }),
+      pager,
     );
   }
 
   const ledgerUserId = (await primaryParentId(database, row.familyId)) ?? row.askedByUserId;
   if (!ledgerUserId) {
-    return close(database, row, { status: 'failed', reason: 'no_ledger_owner', now });
+    return close(database, row, { status: 'failed', reason: 'no_ledger_owner', now }, pager);
   }
   if (!(await committed(database, row))) return 'lost';
   const posted = await postGroupReminderLine(database, {
@@ -424,14 +478,22 @@ async function fireOne(
     listChatHandles: ports.listChatHandles,
     beforeSend: optOutGate(database, row, now),
   });
-  return settle(database, row, sendKey, posted, now, async () => {
-    const conversationId = await resolveOrCreateNoteConversation(
-      row.familyId,
-      channelGroupNoteKey(row.chatId),
-      database,
-    );
-    await appendMessage(conversationId, 'assistant', text, database);
-  });
+  return settle(
+    database,
+    row,
+    sendKey,
+    posted,
+    now,
+    async () => {
+      const conversationId = await resolveOrCreateNoteConversation(
+        row.familyId,
+        channelGroupNoteKey(row.chatId),
+        database,
+      );
+      await appendMessage(conversationId, 'assistant', text, database);
+    },
+    pager,
+  );
 }
 
 export async function runGroupReminderTick(

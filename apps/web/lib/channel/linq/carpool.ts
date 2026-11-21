@@ -10,6 +10,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import {
+  AMBIGUOUS_SEND_CODES,
   createOutboundTransport,
   failedSendPatch,
   readSendRefusal,
@@ -986,9 +987,6 @@ async function familyOfUser(database: Database, userId: string): Promise<string 
  * ledgered (claim row first) before the provider is called, and kept out of the
  * household group thread.
  */
-/** Provider errors that cannot prove the text did not go out. */
-const AMBIGUOUS_SEND_CODES = new Set(['timeout', 'network', 'missing_message_id']);
-
 /**
  * Devin #975 r3/r4 — an unrecognised error, a timeout, a network drop, or an
  * accepted send with no readable id may have gone out (`unknown`: the caller

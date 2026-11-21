@@ -197,6 +197,14 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-734 · a driver's schedule-change text that reached them on no try. */
+  team_schedule_driver_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started'],
+  },
+  /** VIL-734 · a group reminder that closed failed: nothing reached the person who asked. */
+  group_reminder_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner'],
+  },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},

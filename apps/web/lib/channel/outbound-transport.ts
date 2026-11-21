@@ -80,6 +80,13 @@ export function readSendRefusal(err: unknown): { code: string; permanent: boolea
   return null;
 }
 
+/** Provider errors that cannot prove the text did not go out. */
+export const AMBIGUOUS_SEND_CODES: ReadonlySet<string> = new Set([
+  'timeout',
+  'network',
+  'missing_message_id',
+]);
+
 /**
  * Permanent refusals are not retried. `not_configured` is permanent at the
  * provider and transient for the sweep: a later tick sends once the door exists.

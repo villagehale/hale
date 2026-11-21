@@ -334,6 +334,11 @@ export const AUDIT_VERBS = [
   'reminder_held_at_send',
   // VIL-730 · a reminder send that did not reach the parent, back to the run to retry.
   'reminder_send_failed',
+  // VIL-734 · a driver's schedule-change text: Linq took it, it was refused and goes
+  // again, or it never reached them.
+  'team_schedule_driver_sent',
+  'team_schedule_driver_send_failed',
+  'team_schedule_driver_unsent',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -1360,6 +1365,20 @@ const VERBS: Record<AuditVerb, Verb> = {
   reminder_send_failed: {
     sentence: 'Hale held a reminder back to try sending it again',
     family: 'note',
+  },
+  // VIL-734. They name no adult. The row's `after` is the try, the channel or the failure
+  // code only: no text, no time, no place.
+  team_schedule_driver_sent: {
+    sentence: 'Hale told the driver about a schedule change',
+    family: 'done',
+  },
+  team_schedule_driver_send_failed: {
+    sentence: 'Hale could not reach the driver about a schedule change and will try again',
+    family: 'note',
+  },
+  team_schedule_driver_unsent: {
+    sentence: 'Hale could not reach the driver about a schedule change',
+    family: 'problem',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
   // said a connector item is theirs, so Hale stopped tracking it.
