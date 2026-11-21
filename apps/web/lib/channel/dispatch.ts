@@ -591,12 +591,11 @@ async function auditIfGarbled(
   });
 }
 
-/** The words a parent will actually read. */
 /**
- * The refusal is decided and on the ledger before this runs, so a store that fails must not
- * reject the dispatch: a retried calendar invite takes a fresh key after a failed row
- * (`nextInviteKey`), so it would be read again and could send. Only the error's name is
- * logged, because a driver error can echo its query's parameters.
+ * The refusal is decided and on the ledger before this runs, and that failed row carries no
+ * dedupe key, so a store failure that rejected the dispatch would let a retry read the body
+ * again and possibly send it. Only the error's name is logged, because a driver error can
+ * echo its query's parameters.
  */
 async function keepRefusedVerdict(
   ports: DispatchPorts,
@@ -619,6 +618,7 @@ async function keepRefusedVerdict(
   }
 }
 
+/** The words a parent will actually read. */
 function claimText(rendered: RenderedContent): string {
   return rendered.text;
 }
