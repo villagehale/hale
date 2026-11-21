@@ -133,10 +133,20 @@ async function draftAction(): Promise<{ actionId: string }> {
   return { actionId: action.id };
 }
 
+/** What the real executor leaves on the row when a change lands. */
+async function markExecuted(actionId: string): Promise<void> {
+  await db.database
+    .update(schema.actions)
+    .set({ userVisibleState: 'autonomous', executedAt: NOW })
+    .where(eq(schema.actions.id, actionId));
+}
+
 function ports(over: {
   match?: ScheduleMatch;
   parentText?: string | null;
   autonomous?: boolean;
+  /** False: the executor refused it (outside the action window) and the row stays drafted. */
+  executes?: boolean;
   payloads?: CalendarPlacementPayload[];
 }): TeamScheduleApplyPorts {
   const transport = new FakeTransport();
@@ -158,7 +168,9 @@ function ports(over: {
       autonomous: over.autonomous === true,
       parentUserId: over.autonomous ? family.parentUserId : null,
     }),
-    execute: async () => undefined,
+    execute: async (actionId) => {
+      if (over.executes !== false) await markExecuted(actionId);
+    },
     gate: async () => ({ allowed: true, optOut: 'short' }),
     resolvePhone: async () => '+14165550100',
     transport,
@@ -498,6 +510,7 @@ describe('applyTeamScheduleEffects', () => {
       timeZone: TZ,
       newStartsAt: NEW_START,
     });
+    await markExecuted(drafted.actionId);
     await applyTeamScheduleEffects(db.database, {
       actionId: drafted.actionId,
       familyId: family.familyId,
@@ -525,6 +538,7 @@ describe('VIL-719 the driver text after an applied change', () => {
       timeZone: TZ,
       newStartsAt: NEW_START,
     });
+    await markExecuted(drafted.actionId);
     const base = ports({}).driver;
     const transport = new FakeTransport();
     const composeDriver = vi.fn(async () => text);
@@ -558,6 +572,144 @@ describe('VIL-719 the driver text after an applied change', () => {
     const { transport } = await applyWithDriverText('Pickup moved to 2.');
     expect(transport.sent).toHaveLength(1);
     expect(pages).toEqual([]);
+  });
+});
+
+describe('VIL-719 a change the executor did not run', () => {
+  const REMINDER_AT = new Date(START.getTime() - 3600_000);
+
+  async function seedReminder(eventId: string) {
+    const [reminder] = await db.database
+      .insert(schema.eventReminders)
+      .values({
+        familyId: family.familyId,
+        eventRef: eventId,
+        parentUserId: family.parentUserId,
+        offset: '-PT1H',
+        fireAt: REMINDER_AT,
+        status: 'scheduled',
+      })
+      .returning({ id: schema.eventReminders.id });
+    if (!reminder) throw new Error('no reminder');
+    return reminder.id;
+  }
+
+  async function reminderFireAt(reminderId: string) {
+    const [row] = await db.database
+      .select({ fireAt: schema.eventReminders.fireAt })
+      .from(schema.eventReminders)
+      .where(eq(schema.eventReminders.id, reminderId));
+    return row?.fireAt.toISOString();
+  }
+
+  async function effectsStamp() {
+    const rows = await db.database
+      .select({ effectsAppliedAt: schema.teamScheduleChanges.effectsAppliedAt })
+      .from(schema.teamScheduleChanges)
+      .where(eq(schema.teamScheduleChanges.familyId, family.familyId));
+    return rows.map((row) => row.effectsAppliedAt);
+  }
+
+  async function applyUnderGrant(eventId: string, executes: boolean) {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const p = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+      parentText: 'Leo’s hockey moved to 2.',
+      autonomous: true,
+      executes,
+    });
+    const result = await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      p,
+    );
+    return { result, sent: (p.transport as FakeTransport).sent };
+  }
+
+  it('policy on: nobody is told it moved, reminders stay, and the draft waits', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, false);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_not_applied' });
+    expect(sent).toEqual([]);
+    expect(pages).toEqual([]);
+    expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
+    expect(await effectsStamp()).toEqual([null]);
+    const actions = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(actions.map((row) => row.state)).toEqual(['drafted_for_approval']);
+  });
+
+  it('positive control, policy on: a change that ran is told and its effects land', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, true);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(sent.length).toBeGreaterThan(0);
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+  });
+
+  it('policy off: the same refusal still runs the effects and the text, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, false);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(sent.length).toBeGreaterThan(0);
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+  });
+
+  it('policy on: the approval path applies effects only once the change has run', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const reminderId = await seedReminder(eventId);
+    const drafted = await draftAction();
+    await db.database.insert(schema.teamScheduleChanges).values({
+      familyId: family.familyId,
+      actionId: drafted.actionId,
+      familyEventId: eventId,
+      gmailMessageId: 'gmail-1',
+      changeKind: 'time',
+      originalStartsAt: START,
+      timeZone: TZ,
+      newStartsAt: NEW_START,
+    });
+
+    await applyTeamScheduleEffects(db.database, {
+      actionId: drafted.actionId,
+      familyId: family.familyId,
+      now: NOW,
+    });
+    expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
+    expect(await effectsStamp()).toEqual([null]);
+
+    await markExecuted(drafted.actionId);
+    await applyTeamScheduleEffects(db.database, {
+      actionId: drafted.actionId,
+      familyId: family.familyId,
+      now: NOW,
+    });
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+    expect(await effectsStamp()).toEqual([NOW]);
   });
 });
 

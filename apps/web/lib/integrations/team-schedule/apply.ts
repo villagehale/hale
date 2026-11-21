@@ -75,6 +75,7 @@ export type TeamScheduleOutcome =
   | 'schedule_change_asked'
   | 'schedule_change_applied'
   | 'schedule_change_unwritten'
+  | 'schedule_change_not_applied'
   | 'send_failed'
   | 'no_send_target'
   | 'no_chat'
@@ -158,6 +159,19 @@ async function actionApproved(database: Database, actionId: string): Promise<boo
     .where(eq(schema.actions.id, actionId))
     .limit(1);
   return row?.reviewerVerdict === 'approved';
+}
+
+/** The executor's success state. A refused change stays drafted; a failed one needs a human. */
+async function actionExecuted(database: Database, actionId: string): Promise<boolean> {
+  const [row] = await database
+    .select({
+      userVisibleState: schema.actions.userVisibleState,
+      executedAt: schema.actions.executedAt,
+    })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, actionId))
+    .limit(1);
+  return row?.userVisibleState === 'autonomous' && row.executedAt !== null;
 }
 
 export async function calendarKindAutonomous(
@@ -331,6 +345,18 @@ export async function applyTeamScheduleChange(
 
   if (standing.autonomous && standing.parentUserId) {
     await ports.execute(drafted.actionId, standing.parentUserId);
+    // VIL-719 · the executor refuses a change outside the action window and can fail one.
+    // With the policy on, a change that did not land is not told or acted on as applied.
+    if (
+      askPolicyTiersEnabled(input.familyId) &&
+      !(await actionExecuted(database, drafted.actionId))
+    ) {
+      console.info(
+        { familyId: input.familyId, outcome: 'schedule_change_not_applied' },
+        'team schedule: the change did not run, nobody told',
+      );
+      return { handled: true, outcome: 'schedule_change_not_applied' };
+    }
     await applyTeamScheduleEffects(
       database,
       {
@@ -508,6 +534,11 @@ export async function applyTeamScheduleEffects(
     )
     .limit(1);
   if (!row) return;
+  // VIL-719 · a parent's yes can land outside the action window and leave the change unrun.
+  // With the policy on, its effects wait, unstamped, for the run that lands it.
+  if (askPolicyTiersEnabled(input.familyId) && !(await actionExecuted(database, input.actionId))) {
+    return;
+  }
 
   const [event] = await database
     .select({
