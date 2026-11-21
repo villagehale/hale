@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askTierFor } from '@hale/tools-contracts';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
 import {
   autonomyTurnOnDelivered,
@@ -6,7 +7,7 @@ import {
   loadFamilyCreatedAt,
 } from '@hale/worker/memory-writer';
 import { defaultExecuteApprovedDeps, executeApprovedAction } from '@hale/worker/orchestrator';
-import { withinObservationWindow } from '@hale/worker/autonomy-gate';
+import { askPolicyTiersEnabled, withinObservationWindow } from '@hale/worker/autonomy-gate';
 import { and, eq, isNull } from 'drizzle-orm';
 import { mintChannelCalendarDraft } from '~/lib/channel/coach/draft';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -31,6 +32,7 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
 import {
@@ -73,6 +75,7 @@ export type TeamScheduleOutcome =
   | 'schedule_change_asked'
   | 'schedule_change_applied'
   | 'schedule_change_unwritten'
+  | 'schedule_change_not_applied'
   | 'send_failed'
   | 'no_send_target'
   | 'no_chat'
@@ -132,6 +135,12 @@ export interface TeamScheduleApplyPorts {
   threadMessage: typeof threadProactiveMessage;
   parentLanguage(parentUserId: string): Promise<string>;
   driver: DriverNotifyPorts;
+  /**
+   * VIL-719 · tells #ops when the text after an applied change (this lane's tell-after)
+   * could not be written. Required (rule #11); read only while ASK_POLICY_TIERS_ENABLED is
+   * on for the family.
+   */
+  pager: OpsPager;
 }
 
 function asSpoken(change: MatchChange): SpokenChange | null {
@@ -152,6 +161,19 @@ async function actionApproved(database: Database, actionId: string): Promise<boo
   return row?.reviewerVerdict === 'approved';
 }
 
+/** The executor's success state. A refused change stays drafted; a failed one needs a human. */
+async function actionExecuted(database: Database, actionId: string): Promise<boolean> {
+  const [row] = await database
+    .select({
+      userVisibleState: schema.actions.userVisibleState,
+      executedAt: schema.actions.executedAt,
+    })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, actionId))
+    .limit(1);
+  return row?.userVisibleState === 'autonomous' && row.executedAt !== null;
+}
+
 export async function calendarKindAutonomous(
   database: Database,
   familyId: string,
@@ -159,6 +181,12 @@ export async function calendarKindAutonomous(
   now: Date,
 ): Promise<{ autonomous: boolean; parentUserId: string | null }> {
   if (process.env.AUTONOMOUS_EXECUTE_ENABLED !== 'true') {
+    return { autonomous: false, parentUserId: null };
+  }
+  // VIL-719 · this lane applies a change through executeApprovedAction with the grant
+  // holder standing in as the approver, which is not that parent's yes to this change. So
+  // it may never carry an ask-first kind; one would wait for the parent instead.
+  if (askPolicyTiersEnabled(familyId) && askTierFor(actionType) === 'ask_first') {
     return { autonomous: false, parentUserId: null };
   }
   const createdAt = await loadFamilyCreatedAt(familyId, database);
@@ -317,6 +345,18 @@ export async function applyTeamScheduleChange(
 
   if (standing.autonomous && standing.parentUserId) {
     await ports.execute(drafted.actionId, standing.parentUserId);
+    // VIL-719 · the executor refuses a change outside the action window and can fail one.
+    // With the policy on, a change that did not land is not told or acted on as applied.
+    if (
+      askPolicyTiersEnabled(input.familyId) &&
+      !(await actionExecuted(database, drafted.actionId))
+    ) {
+      console.info(
+        { familyId: input.familyId, outcome: 'schedule_change_not_applied' },
+        'team schedule: the change did not run, nobody told',
+      );
+      return { handled: true, outcome: 'schedule_change_not_applied' };
+    }
     await applyTeamScheduleEffects(
       database,
       {
@@ -329,8 +369,19 @@ export async function applyTeamScheduleChange(
   }
 
   if (text === null) {
+    // VIL-719 · the change was applied and its text could not be written: nothing is sent,
+    // the change stands, and ops hears of it while the ask policy is on for this family.
+    const applied = standing.autonomous && standing.parentUserId !== null;
+    const page =
+      applied && askPolicyTiersEnabled(input.familyId)
+        ? await ports.pager.page({
+            site: 'team_schedule_unwritten',
+            facts: { change: spoken },
+            ref: drafted.actionId,
+          })
+        : null;
     console.info(
-      { familyId: input.familyId, outcome: 'schedule_change_unwritten' },
+      { familyId: input.familyId, outcome: 'schedule_change_unwritten', ...(page ? { page } : {}) },
       'team schedule: parent text unwritten after apply',
     );
     return { handled: true, outcome: 'schedule_change_unwritten' };
@@ -483,6 +534,11 @@ export async function applyTeamScheduleEffects(
     )
     .limit(1);
   if (!row) return;
+  // VIL-719 · a parent's yes can land outside the action window and leave the change unrun.
+  // With the policy on, its effects wait, unstamped, for the run that lands it.
+  if (askPolicyTiersEnabled(input.familyId) && !(await actionExecuted(database, input.actionId))) {
+    return;
+  }
 
   const [event] = await database
     .select({
@@ -550,6 +606,7 @@ export async function applyTeamScheduleEffects(
       database,
       {
         familyId: input.familyId,
+        actionId: input.actionId,
         drivers,
         change: row.changeKind,
         kid: child?.name ?? null,
@@ -607,6 +664,7 @@ export function teamSchedulePortsFor(
     transport,
     threadMessage: threadProactiveMessage,
     parentLanguage: (parentUserId) => readParentLanguage(database, { familyId, parentUserId }),
+    pager: failurePageOpsPager(() => database),
     driver: productionDriverNotifyPorts(database, transport, async (input) => {
       const [parent] = await database
         .select({

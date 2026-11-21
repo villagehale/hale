@@ -404,6 +404,8 @@ export const AUDIT_VERBS = [
   'co_parent_invite_seat_taken',
   'co_parent_invite_blocked_prior_refusal',
   'co_parent_invite_blocked',
+  // VIL-719. A text to a co-parent that failed or could not be confirmed after the parent's yes.
+  'co_parent_invite_send_unconfirmed',
   'co_parent_sms_inbound',
   'co_parent_sms_outbound',
   'co_parent_access_withdrawn',
@@ -449,6 +451,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // Held because the turn-on text has not been delivered yet.
   'action.gated.autonomy_notice_pending',
+  // VIL-719. The ask policy puts this kind in ask first: it runs only on the parent's yes.
+  'action.gated.ask_first',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
   'autonomy_notice_covered',
@@ -1642,6 +1646,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not text the number you gave me',
     family: 'note',
   },
+  // Worded for both endings: a provider refusal, and a send whose result never came back.
+  co_parent_invite_send_unconfirmed: {
+    sentence: 'Hale could not confirm its text to the number you gave me went out',
+    family: 'note',
+  },
   co_parent_invite_blocked_prior_refusal: {
     // Says the refusal happened, never when or by whom — the same bound the parent's own
     // reply carries. The row exists so an operator can answer "why was nobody texted".
@@ -1757,6 +1766,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  // VIL-719. Same reused sentence: an ask-first action is a draft brought to the parent.
+  'action.gated.ask_first': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_notice_pending': {
     sentence: 'held until Hale had told you it would handle this on its own',
     family: 'awaiting',

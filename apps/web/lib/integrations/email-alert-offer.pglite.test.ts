@@ -431,6 +431,56 @@ describe('a YES puts the occasion on the family week', () => {
     expect(audit).toHaveLength(1);
   });
 
+  describe('VIL-719 a receipt the model could not write', () => {
+    function silentHandler(pages: unknown[]) {
+      return emailAlertAddHandler({
+        writeReceipt: { write: async () => null },
+        pager: {
+          page: async (page) => {
+            pages.push(page);
+            return 'paged';
+          },
+        },
+      });
+    }
+
+    it('policy on: the event stands, nothing is sent, the offer stays open, and #ops is paged', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const offerId = await seedOffer();
+      const pages: unknown[] = [];
+      const verdict = await silentHandler(pages).handle(
+        db.database,
+        await turn('yes', { resolved: reading(offerId, 'yes') }),
+      );
+      expect(verdict).toMatchObject({ claimed: true, outcome: 'added', reply: null });
+      await expect(events()).resolves.toHaveLength(1);
+      await expect(offers()).resolves.toMatchObject([{ resolvedAt: null, resolution: null }]);
+      expect(pages).toEqual([{ site: 'offer_receipt_unwritten', facts: {}, ref: offerId }]);
+    });
+
+    it('policy off: the same unwritten receipt pages no one', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+      const offerId = await seedOffer();
+      const pages: unknown[] = [];
+      await silentHandler(pages).handle(
+        db.database,
+        await turn('yes', { resolved: reading(offerId, 'yes') }),
+      );
+      expect(pages).toEqual([]);
+    });
+
+    it('policy on: a declined offer placed nothing, so its unwritten receipt pages no one', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const offerId = await seedOffer();
+      const pages: unknown[] = [];
+      await silentHandler(pages).handle(
+        db.database,
+        await turn('no', { resolved: reading(offerId, 'no') }),
+      );
+      expect(pages).toEqual([]);
+    });
+  });
+
   it('answers a NO by resolving the offer as declined, and writes no event', async () => {
     const offerId = await seedOffer();
 

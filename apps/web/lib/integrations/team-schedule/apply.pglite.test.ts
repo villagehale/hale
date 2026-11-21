@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Database } from '@hale/db';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import {
   type TestDb,
@@ -14,6 +15,7 @@ import {
   type TeamScheduleApplyPorts,
   applyTeamScheduleChange,
   applyTeamScheduleEffects,
+  calendarKindAutonomous,
 } from './apply';
 import { TEAM_SCHEDULE_CHANGES_ENABLED_ENV } from './flag';
 import type { ScheduleMatch } from './match';
@@ -37,14 +39,19 @@ afterAll(async () => {
   await db.close();
 });
 
+/** VIL-719 · every page a test's ports were asked to send. */
+const pages: unknown[] = [];
+
 beforeEach(async () => {
   family = await seedFamily(db.database);
   childId = await seedChild(db.database, family.familyId, 'Leo', 96);
   delete process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV];
+  pages.length = 0;
 });
 
 afterEach(() => {
   delete process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV];
+  vi.unstubAllEnvs();
 });
 
 async function seedGame(over: { location?: string; dutyOwnerUserId?: string } = {}) {
@@ -126,10 +133,20 @@ async function draftAction(): Promise<{ actionId: string }> {
   return { actionId: action.id };
 }
 
+/** What the real executor leaves on the row when a change lands. */
+async function markExecuted(actionId: string): Promise<void> {
+  await db.database
+    .update(schema.actions)
+    .set({ userVisibleState: 'autonomous', executedAt: NOW })
+    .where(eq(schema.actions.id, actionId));
+}
+
 function ports(over: {
   match?: ScheduleMatch;
   parentText?: string | null;
   autonomous?: boolean;
+  /** False: the executor refused it (outside the action window) and the row stays drafted. */
+  executes?: boolean;
   payloads?: CalendarPlacementPayload[];
 }): TeamScheduleApplyPorts {
   const transport = new FakeTransport();
@@ -151,18 +168,32 @@ function ports(over: {
       autonomous: over.autonomous === true,
       parentUserId: over.autonomous ? family.parentUserId : null,
     }),
-    execute: async () => undefined,
+    execute: async (actionId) => {
+      if (over.executes !== false) await markExecuted(actionId);
+    },
     gate: async () => ({ allowed: true, optOut: 'short' }),
     resolvePhone: async () => '+14165550100',
     transport,
     threadMessage: async () => 'conv-1',
     parentLanguage: async () => 'en',
+    pager: {
+      page: async (page) => {
+        pages.push(page);
+        return 'paged';
+      },
+    },
     driver: {
       composeDriver: async () => 'Pickup moved to 2.',
       gate: async () => ({ allowed: true, optOut: 'short' }),
       resolvePhone: async () => '+14165550100',
       transport,
       threadMessage: async () => 'conv-1',
+      pager: {
+        page: async (page) => {
+          pages.push(page);
+          return 'paged';
+        },
+      },
     },
   };
 }
@@ -319,6 +350,85 @@ describe('applyTeamScheduleChange', () => {
     expect(result).toEqual({ handled: true, outcome: 'schedule_change_unwritten' });
   });
 
+  it('VIL-719 policy on: an applied change whose text cannot be written pages #ops once', async () => {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const transportPorts = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+      parentText: null,
+      autonomous: true,
+    });
+    const result = await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      transportPorts,
+    );
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_unwritten' });
+    expect(pages).toEqual([
+      { site: 'team_schedule_unwritten', facts: { change: 'time' }, ref: expect.any(String) },
+    ]);
+  });
+
+  it('VIL-719 policy off: the same unwritten text pages no one', async () => {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame();
+    const result = await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      ports({
+        match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+        parentText: null,
+        autonomous: true,
+      }),
+    );
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_unwritten' });
+    expect(pages).toEqual([]);
+  });
+
+  it('VIL-719 policy on: an ask with no text applied nothing and pages no one', async () => {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      ports({
+        match: { eventId, change: 'cancel', newStartsAt: null, newLocation: null },
+        parentText: null,
+      }),
+    );
+    expect(pages).toEqual([]);
+  });
+
   it('does not follow a planted phone or link in the extraction', async () => {
     process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
     const eventId = await seedGame();
@@ -400,6 +510,7 @@ describe('applyTeamScheduleEffects', () => {
       timeZone: TZ,
       newStartsAt: NEW_START,
     });
+    await markExecuted(drafted.actionId);
     await applyTeamScheduleEffects(db.database, {
       actionId: drafted.actionId,
       familyId: family.familyId,
@@ -410,5 +521,224 @@ describe('applyTeamScheduleEffects', () => {
       .from(schema.eventReminders)
       .where(eq(schema.eventReminders.id, reminder.id));
     expect(moved?.fireAt.toISOString()).toBe(new Date(NEW_START.getTime() - 3600_000).toISOString());
+  });
+});
+
+describe('VIL-719 the driver text after an applied change', () => {
+  async function applyWithDriverText(text: string | null) {
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const drafted = await draftAction();
+    await db.database.insert(schema.teamScheduleChanges).values({
+      familyId: family.familyId,
+      actionId: drafted.actionId,
+      familyEventId: eventId,
+      gmailMessageId: 'gmail-1',
+      changeKind: 'time',
+      originalStartsAt: START,
+      timeZone: TZ,
+      newStartsAt: NEW_START,
+    });
+    await markExecuted(drafted.actionId);
+    const base = ports({}).driver;
+    const transport = new FakeTransport();
+    const composeDriver = vi.fn(async () => text);
+    await applyTeamScheduleEffects(
+      db.database,
+      { actionId: drafted.actionId, familyId: family.familyId, now: NOW },
+      { ...base, transport, composeDriver },
+    );
+    return { actionId: drafted.actionId, transport, composeDriver };
+  }
+
+  it('policy on: a text the model could not write sends nothing and pages #ops', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const { actionId, transport, composeDriver } = await applyWithDriverText(null);
+    expect(composeDriver).toHaveBeenCalledTimes(1);
+    expect(transport.sent).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'team_schedule_driver_unwritten', facts: { change: 'time' }, ref: actionId },
+    ]);
+  });
+
+  it('policy off: the same unwritten text pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const { transport } = await applyWithDriverText(null);
+    expect(transport.sent).toEqual([]);
+    expect(pages).toEqual([]);
+  });
+
+  it('positive control, policy on: a written text is sent and pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const { transport } = await applyWithDriverText('Pickup moved to 2.');
+    expect(transport.sent).toHaveLength(1);
+    expect(pages).toEqual([]);
+  });
+});
+
+describe('VIL-719 a change the executor did not run', () => {
+  const REMINDER_AT = new Date(START.getTime() - 3600_000);
+
+  async function seedReminder(eventId: string) {
+    const [reminder] = await db.database
+      .insert(schema.eventReminders)
+      .values({
+        familyId: family.familyId,
+        eventRef: eventId,
+        parentUserId: family.parentUserId,
+        offset: '-PT1H',
+        fireAt: REMINDER_AT,
+        status: 'scheduled',
+      })
+      .returning({ id: schema.eventReminders.id });
+    if (!reminder) throw new Error('no reminder');
+    return reminder.id;
+  }
+
+  async function reminderFireAt(reminderId: string) {
+    const [row] = await db.database
+      .select({ fireAt: schema.eventReminders.fireAt })
+      .from(schema.eventReminders)
+      .where(eq(schema.eventReminders.id, reminderId));
+    return row?.fireAt.toISOString();
+  }
+
+  async function effectsStamp() {
+    const rows = await db.database
+      .select({ effectsAppliedAt: schema.teamScheduleChanges.effectsAppliedAt })
+      .from(schema.teamScheduleChanges)
+      .where(eq(schema.teamScheduleChanges.familyId, family.familyId));
+    return rows.map((row) => row.effectsAppliedAt);
+  }
+
+  async function applyUnderGrant(eventId: string, executes: boolean) {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const p = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+      parentText: 'Leo’s hockey moved to 2.',
+      autonomous: true,
+      executes,
+    });
+    const result = await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      p,
+    );
+    return { result, sent: (p.transport as FakeTransport).sent };
+  }
+
+  it('policy on: nobody is told it moved, reminders stay, and the draft waits', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, false);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_not_applied' });
+    expect(sent).toEqual([]);
+    expect(pages).toEqual([]);
+    expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
+    expect(await effectsStamp()).toEqual([null]);
+    const actions = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(actions.map((row) => row.state)).toEqual(['drafted_for_approval']);
+  });
+
+  it('positive control, policy on: a change that ran is told and its effects land', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, true);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(sent.length).toBeGreaterThan(0);
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+  });
+
+  it('policy off: the same refusal still runs the effects and the text, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, false);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(sent.length).toBeGreaterThan(0);
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+  });
+
+  it('policy on: the approval path applies effects only once the change has run', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const reminderId = await seedReminder(eventId);
+    const drafted = await draftAction();
+    await db.database.insert(schema.teamScheduleChanges).values({
+      familyId: family.familyId,
+      actionId: drafted.actionId,
+      familyEventId: eventId,
+      gmailMessageId: 'gmail-1',
+      changeKind: 'time',
+      originalStartsAt: START,
+      timeZone: TZ,
+      newStartsAt: NEW_START,
+    });
+
+    await applyTeamScheduleEffects(db.database, {
+      actionId: drafted.actionId,
+      familyId: family.familyId,
+      now: NOW,
+    });
+    expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
+    expect(await effectsStamp()).toEqual([null]);
+
+    await markExecuted(drafted.actionId);
+    await applyTeamScheduleEffects(db.database, {
+      actionId: drafted.actionId,
+      familyId: family.familyId,
+      now: NOW,
+    });
+    expect(await reminderFireAt(reminderId)).toBe(
+      new Date(NEW_START.getTime() - 3600_000).toISOString(),
+    );
+    expect(await effectsStamp()).toEqual([NOW]);
+  });
+});
+
+describe('VIL-719 calendarKindAutonomous never carries an ask-first kind', () => {
+  it('policy on: an ask-first kind is refused before any standing is read', async () => {
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    // A database that throws on any read proves the refusal reads no standing.
+    const untouched = new Proxy({}, {
+      get() {
+        throw new Error('read the database');
+      },
+    }) as Database;
+    expect(await calendarKindAutonomous(untouched, family.familyId, 'send_email', NOW)).toEqual({
+      autonomous: false,
+      parentUserId: null,
+    });
+  });
+
+  it('policy off: the same kind goes on to the standing checks', async () => {
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const untouched = new Proxy({}, {
+      get() {
+        throw new Error('read the database');
+      },
+    }) as Database;
+    await expect(
+      calendarKindAutonomous(untouched, family.familyId, 'send_email', NOW),
+    ).rejects.toThrow('read the database');
   });
 });

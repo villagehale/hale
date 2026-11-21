@@ -1,10 +1,12 @@
 import { schema } from '@hale/db';
+import { POSTHOG_ID_SALT_ENV, hashFamilyIdForFlags, setFlagEvaluatorForTests } from '@hale/flags';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { dispatchAutonomyNotices } from './dispatch';
 import {
@@ -43,6 +45,9 @@ beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
+  // VIL-719: most cases here grant send_email, an ask-first kind under the ask policy, so
+  // the suite pins the policy off; the cases at the end turn it on.
+  vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
 });
 
 afterEach(async () => {
@@ -218,6 +223,7 @@ function ports(
 ) {
   const seen: AutonomyNoticeContext[] = [];
   const threaded: string[] = [];
+  const pages: OpsPage[] = [];
   const sendPorts: AutonomyNoticePorts = {
     ...autonomyNoticeReaders(db.database),
     compose: async (input) => {
@@ -229,8 +235,14 @@ function ports(
       threaded.push(input.body);
       return 'conv-1';
     },
+    pager: {
+      page: async (page) => {
+        pages.push(page);
+        return 'paged';
+      },
+    },
   };
-  return { sendPorts, seen, transport, threaded };
+  return { sendPorts, seen, transport, threaded, pages };
 }
 
 describe('telling a parent a kind turned on', () => {
@@ -420,6 +432,8 @@ describe('telling a parent a kind turned on', () => {
   it('sends nothing while the lane is unset, then sends when it is exactly true', async () => {
     vi.unstubAllEnvs();
     vi.stubEnv('F14_ENABLED', 'true');
+    // VIL-719: the unstub above dropped the suite's pin; this case grants send_email.
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
     expect(process.env.AUTONOMOUS_EXECUTE_ENABLED).not.toBe('true');
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'send_email');
@@ -814,7 +828,7 @@ describe('telling a parent a kind turned on', () => {
 async function recordActed(
   familyId: string,
   actionType: string,
-  opts?: { payload?: Record<string, unknown> },
+  opts?: { payload?: Record<string, unknown>; askTier?: string },
 ) {
   actedNotices += 1;
   const [event] = await db.database
@@ -843,7 +857,255 @@ async function recordActed(
     actionTaken: 'action.executed',
     targetTable: 'actions',
     targetId: actionId,
-    after: { decision: { source: 'autonomous', reason: 'the kind was on' } },
+    after: {
+      decision: {
+        source: 'autonomous',
+        reason: 'the kind was on',
+        ...(opts?.askTier ? { askTier: opts.askTier } : {}),
+      },
+    },
   });
   return actionId;
 }
+
+describe('VIL-719 the ask policy on the on-its-own and turn-on texts', () => {
+  afterEach(() => {
+    setFlagEvaluatorForTests(null);
+  });
+
+  it('policy on: an on-its-own text the model could not write sends nothing, stays owed, and pages #ops', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const parent = await seedParent();
+    const consentRecordId = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'calendar_add',
+      new Date(MORNING.getTime() - 60_000),
+    );
+    await db.database.insert(schema.auditLog).values({
+      familyId: parent.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_armed_notice_sent',
+      targetTable: 'consent_records',
+      targetId: consentRecordId,
+      after: { dedupeKey: `autonomy_armed:${consentRecordId}` },
+    });
+    const actionId = await recordActed(parent.familyId, 'calendar_add', {
+      payload: { title: 'swim' },
+      askTier: 'tell_after',
+    });
+    const { sendPorts, transport, pages } = ports(async () => ({ skipped: 'model_failed' }));
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.composeSkipped).toBe(1);
+    expect(transport.bodies()).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'autonomy_acted_unwritten', facts: { reason: 'model_failed' }, ref: actionId },
+    ]);
+    expect(await messageRows(parent.familyId)).toEqual([]);
+  });
+
+  it('policy on: a writer that could not run is unwritten: owed, and #ops is paged', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const parent = await seedParent();
+    const consentRecordId = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'calendar_add',
+      new Date(MORNING.getTime() - 60_000),
+    );
+    await db.database.insert(schema.auditLog).values({
+      familyId: parent.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_armed_notice_sent',
+      targetTable: 'consent_records',
+      targetId: consentRecordId,
+      after: { dedupeKey: `autonomy_armed:${consentRecordId}` },
+    });
+    const actionId = await recordActed(parent.familyId, 'calendar_add', {
+      payload: { title: 'swim' },
+      askTier: 'tell_after',
+    });
+    const { sendPorts, transport, pages } = ports(async () => {
+      throw new Error('skill file missing');
+    });
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.composeSkipped).toBe(1);
+    expect(transport.bodies()).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'autonomy_acted_unwritten', facts: { reason: 'skill_unavailable' }, ref: actionId },
+    ]);
+    expect(await messageRows(parent.familyId)).toEqual([]);
+  });
+
+  it('policy off: a writer that could not run escapes the pass and pages no one, as on main', async () => {
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'calendar_add');
+    await recordActed(parent.familyId, 'calendar_add', { payload: { title: 'swim' } });
+    const { sendPorts, transport, pages } = ports(async () => {
+      throw new Error('skill file missing');
+    });
+
+    await expect(
+      dispatchAutonomyNotices(
+        db.database,
+        { now: MORNING, familyId: parent.familyId, slot: 'now' },
+        sendPorts,
+      ),
+    ).rejects.toThrow('skill file missing');
+    expect(transport.bodies()).toEqual([]);
+    expect(pages).toEqual([]);
+  });
+
+  it('policy off: the same unwritten text pages no one, as before', async () => {
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'calendar_add');
+    await recordActed(parent.familyId, 'calendar_add', { payload: { title: 'swim' } });
+    const { sendPorts, pages } = ports(async () => ({ skipped: 'model_failed' }));
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.composeSkipped).toBe(1);
+    expect(pages).toEqual([]);
+  });
+
+  it('policy on: a turn-on text alone is not a tell-after, so its failure pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'calendar_add');
+    const { sendPorts, pages } = ports(async () => ({ skipped: 'model_failed' }));
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.composeSkipped).toBe(1);
+    expect(pages).toEqual([]);
+  });
+
+  it('policy on: an action run as just do owes no text; off, it is owed again', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'add_to_digest_only');
+    await recordActed(parent.familyId, 'add_to_digest_only', {
+      payload: { title: 'picture day' },
+      askTier: 'just_do',
+    });
+    const { sendPorts, seen } = ports(async (input) => ({
+      message: `model ${input.occasion} ${households}`,
+    }));
+
+    const on = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(on.justDo).toBe(1);
+    expect(on.sent).toBe(1);
+    expect(seen.map((row) => row.occasion)).toEqual(['armed']);
+    expect(seen[0]?.items).toBeUndefined();
+
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const off = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(off.justDo).toBe(0);
+    expect(off.sent).toBe(1);
+    expect(seen.map((row) => row.occasion)).toEqual(['armed', 'acted']);
+  });
+
+  it('policy on: a turn-on text for an ask-first kind is withheld; off, it is owed again', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'send_email');
+    const { sendPorts, transport } = ports(async (input) => ({
+      message: `model ${input.occasion} ${households}`,
+    }));
+
+    const on = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(on.askFirstWithheld).toBe(1);
+    expect(on.open).toBe(0);
+    expect(on.sent).toBe(0);
+    expect(transport.bodies()).toEqual([]);
+
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const off = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(off.askFirstWithheld).toBe(0);
+    expect(off.sent).toBe(1);
+  });
+
+  it('policy on: a turn-on text for a tell-after kind still goes', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'calendar_add');
+    const { sendPorts } = ports(async (input) => ({
+      message: `model ${input.occasion} ${households}`,
+    }));
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+    expect(result.askFirstWithheld).toBe(0);
+    expect(result.sent).toBe(1);
+  });
+
+  it('reads the policy per family: a PostHog rollout to one family withholds only its turn-on', async () => {
+    const salt = 'vil-719-test-salt';
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    vi.stubEnv(POSTHOG_ID_SALT_ENV, salt);
+    // Unset, not `false`: on the PostHog path an env `false` is the kill.
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', undefined);
+    const rolledOut = await seedParent();
+    const other = await seedParent();
+    await grant(rolledOut.familyId, rolledOut.parentUserId, 'send_email');
+    await grant(other.familyId, other.parentUserId, 'send_email');
+    const rolledOutId = hashFamilyIdForFlags(rolledOut.familyId, salt);
+    setFlagEvaluatorForTests(({ key, distinctId }) =>
+      key === 'ask-policy-tiers' ? distinctId === rolledOutId : undefined,
+    );
+    const { sendPorts } = ports(async (input) => ({
+      message: `model ${input.occasion} ${households}`,
+    }));
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.askFirstWithheld).toBe(1);
+    expect(result.sent).toBe(1);
+    expect(await auditDedupeKeys(rolledOut.familyId, 'autonomy_armed_notice_sent')).toEqual([]);
+    expect(await auditDedupeKeys(other.familyId, 'autonomy_armed_notice_sent')).toHaveLength(1);
+  });
+});

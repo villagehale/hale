@@ -1,3 +1,5 @@
+import { isEnabled } from '@hale/flags';
+import type { AskFacts } from '@hale/tools-contracts';
 import type { ActionType, FamilyStage } from '@hale/types';
 
 /**
@@ -118,4 +120,30 @@ export function commitsParentToEnrollmentBookingOrPayment(draft: {
 }): boolean {
   if (draft.commitsParentToEnrollmentBookingOrPayment === true) return true;
   return draft.payload?.commits_parent_to_enrollment_booking_or_payment === true;
+}
+
+/**
+ * VIL-719 · the three-tier ask policy's switch, read by both apps through this one reader.
+ * On only when `ASK_POLICY_TIERS_ENABLED` is exactly `true`. Off, every path that checks it
+ * behaves as it did before the policy existed. The family is required: under a PostHog
+ * rollout a read without one is a different answer, and the worker that holds an action
+ * and the web that texts about it must agree on the same household.
+ */
+export function askPolicyTiersEnabled(
+  familyId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('ask-policy-tiers', familyId, env);
+}
+
+/**
+ * The ask policy's facts that a stored action carries: the drafter's commitment reading, on
+ * the draft or on the stored payload. Teen content is not on an action row; the teen cap
+ * reads it from the event wherever an action can run.
+ */
+export function storedAskFacts(draft: {
+  commitsParentToEnrollmentBookingOrPayment?: boolean;
+  payload?: Record<string, unknown>;
+}): AskFacts {
+  return { commitsFamily: commitsParentToEnrollmentBookingOrPayment(draft) };
 }
