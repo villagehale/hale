@@ -1,4 +1,9 @@
-import { type AgentClient, type UntrustedSource, markUntrusted } from '@hale/agent';
+import {
+  type AgentClient,
+  type UntrustedSource,
+  buildGenerationProperties,
+  markUntrusted,
+} from '@hale/agent';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -16,6 +21,7 @@ import { extractChildEvent } from '~/lib/sentinel/extract';
 import { triageEmail } from '~/lib/sentinel/triage';
 import { signupFacts } from '~/lib/signup/browser-use/engine';
 import { type BrowserUsePlanInput, planFacts } from '~/lib/signup/browser-use/plan-engine';
+import { haleMask } from '~/lib/telemetry/mask';
 
 const FLAG = 'UNTRUSTED_FIELD_MARKING_ENABLED';
 
@@ -289,6 +295,39 @@ describe.each([
       undefined,
     ]);
   });
+
+  it('telemetry still scrubs an address or phone number that opens a field', () => {
+    const address = '42 Example Road';
+    const phone = '4165550199';
+    const messages = [
+      emailAlertNoticeUserMessage({
+        email: { sender: null, subject: null, title: 'Swim', location: address },
+      } as unknown as EmailAlertNoticeFacts),
+      eventNotesUserMessage('Swim', `${phone} for the side door`),
+    ].map((content) => ({ role: 'user', content }));
+    expect(messages[0]?.content).toContain(address);
+    expect(messages[1]?.content).toContain(phone);
+
+    const posthog = JSON.stringify(
+      buildGenerationProperties({
+        ctx: {},
+        model: 'claude-test',
+        latencyMs: 1,
+        contentEnabled: true,
+        request: { messages },
+      }).$ai_input,
+    );
+    const langfuse = haleMask({ data: JSON.stringify(messages) });
+
+    expect(posthog).toContain('[address]');
+    expect(posthog).toContain('[phone]');
+    expect(posthog).not.toContain(address);
+    expect(posthog).not.toContain(phone);
+    expect(langfuse).toContain('[REDACTED_ADDRESS]');
+    expect(langfuse).toContain('[REDACTED_PHONE]');
+    expect(langfuse).not.toContain(address);
+    expect(langfuse).not.toContain(phone);
+  });
 });
 
 /** What a reader could take for a tag name once case, width, accents, spacing, invisible
@@ -324,7 +363,7 @@ describe('with the flag on, hostile text stays inside its mark (VIL-560)', () =>
 
       const marked = (sent().signal as { raw_content: string }).raw_content;
       const redacted = JSON.stringify(redactEventPayload(payload, []));
-      const close = marked.slice(marked.lastIndexOf('\n') + 1);
+      const close = marked.slice(marked.lastIndexOf('</'));
       expect(marked).toBe(markUntrusted('calendar', 'payload', redacted));
       expect(fold(payload.body)).toContain('untrusted');
       expect(fold(payload.body)).not.toContain(fold(close));

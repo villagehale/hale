@@ -490,7 +490,7 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
       messages: { content: string }[];
     };
     const marked = JSON.parse(draftRequest.messages[0]?.content as string).event.payload as string;
-    const inner = marked.slice(marked.indexOf('\n') + 1, marked.lastIndexOf('\n'));
+    const inner = marked.slice(marked.indexOf('>') + 2, marked.lastIndexOf(' </'));
     expect(marked).toBe(markUntrusted('calendar', 'payload', inner));
     expect(JSON.parse(inner)).toEqual({
       from: 'clinic@example.com',

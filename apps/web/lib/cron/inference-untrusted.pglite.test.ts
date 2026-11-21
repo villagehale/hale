@@ -50,7 +50,7 @@ async function snapshotPayloads(familyId: string) {
 /** jsonb reorders keys, so the mark is checked against the bytes it wraps. */
 function expectMarked(payload: unknown, label: 'email' | 'calendar' | 'other') {
   const marked = payload as string;
-  const inner = marked.slice(marked.indexOf('\n') + 1, marked.lastIndexOf('\n'));
+  const inner = marked.slice(marked.indexOf('>') + 2, marked.lastIndexOf(' </'));
   expect(marked).toBe(markUntrusted(label, 'payload', inner));
   expect(JSON.parse(inner)).toEqual(PAYLOAD);
 }

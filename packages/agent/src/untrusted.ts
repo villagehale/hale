@@ -52,9 +52,14 @@ export function untrustedSourceFor(origin: string): UntrustedSource {
   }
 }
 
+/**
+ * A space, not a newline, around the value. In a JSON-encoded prompt a newline becomes a
+ * literal `\n`, and its `n` removes the word boundary the telemetry scrubbers need to
+ * catch an address or phone number at the start of the value.
+ */
 export function markUntrusted(source: UntrustedSource, field: string, value: string): string {
   const tag = untrustedTag('untrusted', value);
-  return `<${tag} source="${source}" field="${escapeField(field)}">\n${value}\n</${tag}>`;
+  return `<${tag} source="${source}" field="${escapeField(field)}"> ${value} </${tag}>`;
 }
 
 /** The bytes a prompt should carry: marked when the flag is on, unchanged when it is off. */

@@ -206,7 +206,7 @@ describe('runClassifier — untrusted field marking (VIL-560)', () => {
 
       const marked = capturedSignal(create).raw_content;
       const redacted = JSON.stringify(redactEventPayload(hostile, []));
-      const close = marked.slice(marked.lastIndexOf('\n') + 1);
+      const close = marked.slice(marked.lastIndexOf('</'));
       const fold = (text: string) =>
         text
           .normalize('NFKD')

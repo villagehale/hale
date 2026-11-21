@@ -16,8 +16,8 @@ const fold = (text: string) =>
     .replace(/[^\p{L}\p{N}]/gu, '');
 
 function partsOf(marked: string) {
-  const open = marked.slice(0, marked.indexOf('\n'));
-  const close = marked.slice(marked.lastIndexOf('\n') + 1);
+  const open = marked.slice(0, marked.indexOf('>') + 1);
+  const close = marked.slice(marked.lastIndexOf('</'));
   const inner = marked.slice(open.length + 1, marked.length - close.length - 1);
   return { open, close, inner };
 }
@@ -28,7 +28,7 @@ describe('markUntrusted', () => {
     const name = untrustedTag('untrusted', body);
     expect(name).toMatch(/^untrusted-[0-9a-f]{24}$/);
     expect(markUntrusted('email', 'body', body)).toBe(
-      `<${name} source="email" field="body">\n${body}\n</${name}>`,
+      `<${name} source="email" field="body"> ${body} </${name}>`,
     );
   });
 
