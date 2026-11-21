@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 /**
  * VIL-560 · one mark for untrusted email, calendar and web content in a prompt.
  *
@@ -11,16 +9,21 @@ import { createHash } from 'node:crypto';
 
 export type UntrustedSource = 'email' | 'calendar' | 'web' | 'other';
 
-const TAG_ID_HEX_LENGTH = 24;
+/**
+ * ASCII `<` and what a model could read as it: full-width and small forms, angle brackets
+ * and ornaments, the vertical forms that fold to them, and the invisible tag-block `<`.
+ * Not `«`, which is ordinary French punctuation and folds to none of these.
+ */
+const TAG_OPENERS =
+  /[<\uFF1C\uFE64\u2039\u2329\u3008\u300A\u27E8\u27EA\u276C\u276E\u2770\u2991\u29FC\uFE3D\uFE3F\u{E003C}]/gu;
 
 /**
- * A tag name carrying a hash of the value it wraps. The value cannot spell its own
- * closer in any encoding, because writing the id into the value changes the id. The
- * hash is deterministic, so a cached prompt keeps its key.
+ * Every character that could open a tag becomes `&lt;`, so a value holds no tag and so no
+ * closer, in any spelling. Nothing else changes: `&` stays, so "Parks & Rec" never comes
+ * back as `&amp;`.
  */
-export function untrustedTag(name: string, value: string): string {
-  const id = createHash('sha256').update(value).digest('hex').slice(0, TAG_ID_HEX_LENGTH);
-  return `${name}-${id}`;
+export function escapeTagOpeners(value: string): string {
+  return value.replace(TAG_OPENERS, '&lt;');
 }
 
 /** Quotes, brackets and newlines in a field name must not end the attribute or the tag. */
@@ -58,8 +61,7 @@ export function untrustedSourceFor(origin: string): UntrustedSource {
  * catch an address or phone number at the start of the value.
  */
 export function markUntrusted(source: UntrustedSource, field: string, value: string): string {
-  const tag = untrustedTag('untrusted', value);
-  return `<${tag} source="${source}" field="${escapeField(field)}"> ${value} </${tag}>`;
+  return `<untrusted source="${source}" field="${escapeField(field)}"> ${escapeTagOpeners(value)} </untrusted>`;
 }
 
 /** The bytes a prompt should carry: marked when the flag is on, unchanged when it is off. */

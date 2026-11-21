@@ -206,16 +206,10 @@ describe('runClassifier — untrusted field marking (VIL-560)', () => {
 
       const marked = capturedSignal(create).raw_content;
       const redacted = JSON.stringify(redactEventPayload(hostile, []));
-      const close = marked.slice(marked.lastIndexOf('</'));
-      const fold = (text: string) =>
-        text
-          .normalize('NFKD')
-          .toLowerCase()
-          .replace(/[^\p{L}\p{N}]/gu, '');
+      expect(redacted).toContain('<');
       expect(marked).toBe(markUntrusted('calendar', 'payload', redacted));
-      expect(fold(hostile.body)).toContain('untrusted');
-      expect(fold(hostile.body)).not.toContain(fold(close));
-      expect(fold(redacted)).not.toContain(fold(close));
+      expect(marked.slice(marked.indexOf('>') + 1, marked.lastIndexOf('</'))).not.toContain('<');
+      expect(marked.split('</untrusted>')).toHaveLength(2);
     },
   );
 
