@@ -573,8 +573,9 @@ function driverLegStep(attempts: readonly DriverAttempt[], now: Date): DriverLeg
 
 /**
  * A leg that ended on this adult's own standing: they stopped Hale, gave no consent, left no
- * number, or sent a text Hale still has not read. The row is theirs alone. As a family row it
- * would tell every other parent seat about this adult's stop or their unread text.
+ * number, left the household, or sent a text Hale still has not read. The row is theirs alone.
+ * As a family row it would tell every other parent seat about this adult's stop, their leaving
+ * or their unread text.
  */
 function driverUnreachableAudit(
   familyId: string,
@@ -768,6 +769,9 @@ async function sendDriverAttempt(
   ports: DriverNotifyPorts,
   now: Date,
 ): Promise<DriverLegOutcome> {
+  if (!turn.previous && !(await stillInHousehold(database, leg))) {
+    return leaveRemovedDriver(database, leg, null, ports.pager);
+  }
   const driverFamilyId = await driverFamily(database, leg);
   const door = await resolveMessagingDoor(database, leg.userId, {
     excludeChatId: await familyGroupChatId(database, driverFamilyId),
@@ -819,6 +823,10 @@ async function sendDriverAttempt(
     ...notice,
     ...(turn.previous ? { signal: AbortSignal.timeout(DRIVER_RETRY_COMPOSE_BOUND_MS) } : {}),
   });
+  // A compose can take half a minute, and the household can take them out in that time.
+  if (!(await stillInHousehold(database, leg))) {
+    return leaveRemovedDriver(database, leg, turn.previous, ports.pager);
+  }
   if (text === null) {
     const [row] = await writeAttempt(DRIVER_UNWRITTEN);
     if (!row) return 'lost';
@@ -906,6 +914,67 @@ async function sendDriverAttempt(
     );
   }
   return 'sent';
+}
+
+/**
+ * Whether this household still has this adult. The duty and carpool columns outlive every way
+ * out of it, and the outbound gate reads only the adult's own consent, so someone with a Hale
+ * household of their own passes it after this family took them out. A family row says they
+ * are in. A group seat says so only for a caregiver or other family: a co-parent who left the
+ * family keeps a live parent seat here and in any shared group, because `departCoParent` ends
+ * the family row and no seat.
+ */
+async function stillInHousehold(database: Database, leg: DriverLeg): Promise<boolean> {
+  const [member] = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, leg.familyId),
+        eq(schema.familyMembers.userId, leg.userId),
+      ),
+    )
+    .limit(1);
+  if (member) return true;
+  const [seat] = await database
+    .select({ id: schema.linqGroupMembers.id })
+    .from(schema.linqGroupMembers)
+    .where(
+      and(
+        eq(schema.linqGroupMembers.familyId, leg.familyId),
+        eq(schema.linqGroupMembers.userId, leg.userId),
+        isNull(schema.linqGroupMembers.removedAt),
+        inArray(schema.linqGroupMembers.role, ['caregiver', 'other_family']),
+      ),
+    )
+    .limit(1);
+  return seat !== undefined;
+}
+
+/**
+ * This adult is out of the household. A retry ends on a row that is theirs alone, so nothing
+ * on the family's record mentions them. A first try has no row to close and writes none.
+ */
+async function leaveRemovedDriver(
+  database: Database,
+  leg: DriverLeg,
+  previous: OpenAttempt | null,
+  pager: OpsPager,
+): Promise<DriverLegOutcome> {
+  if (!previous) {
+    console.info(
+      { familyId: leg.familyId, outcome: 'driver_not_in_household' },
+      'team schedule: driver is no longer in the household',
+    );
+    return 'held';
+  }
+  return closeDriverLeg(
+    database,
+    leg,
+    previous,
+    { code: SEND_RETRIES_EXHAUSTED, reason: 'superseded', page: null, ownStanding: true },
+    pager,
+  );
 }
 
 async function driverFamily(database: Database, leg: DriverLeg): Promise<string> {
@@ -1075,6 +1144,8 @@ export async function retryTeamScheduleDrivers(
             { code: DRIVER_UNCONFIRMED, reason: DRIVER_UNCONFIRMED, page: 'send_unconfirmed' },
             ports.pager,
           );
+        } else if (!(await stillInHousehold(database, leg))) {
+          outcome = await leaveRemovedDriver(database, leg, step.open, ports.pager);
         } else if (!stillDriving.has(userId)) {
           outcome = await closeDriverLeg(
             database,

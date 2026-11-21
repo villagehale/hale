@@ -51,7 +51,8 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
   'linq_secret_santa_draw_sent',
   'linq_secret_santa_noted',
-  // VIL-734. That one driver stopped Hale, left no number, or has a text still unread.
+  // VIL-734. That one driver stopped Hale, left no number, left the household, or has a text
+  // still unread.
   'team_schedule_driver_unreachable',
 ] as const satisfies readonly AuditVerb[];
 

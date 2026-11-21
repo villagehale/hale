@@ -3,10 +3,13 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
 import { holdSender, releaseHeldMessage } from '~/lib/channel/intake/opt-out-hold';
 import { FakeTransport, type OutboundMessage } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
+import { unseatParticipantRemoved } from '~/lib/channel/linq/group-members';
+import { unseatCaregiverSeat } from '~/lib/channel/linq/roster-seat';
 import {
   GARBLED_TEXT,
   LinqSendError,
@@ -1323,6 +1326,335 @@ describe('the driver text, flag on', () => {
 
     expect(await tick(h.ports, at(6))).toMatchObject({ sent: 1, waiting: 0 });
     expect(h.transport.bodies()).toHaveLength(2);
+  });
+});
+
+describe('the driver text, an adult the household has taken out', () => {
+  const SEATED_PHONE = '+15555550177';
+  const GROUP_CHAT = 'chat-household-group';
+
+  beforeEach(() => {
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+  });
+
+  /**
+   * An adult with a Hale household of their own, so the real gate passes them on their own
+   * channel and watch consent, seated in this family's group and driving its carpool.
+   */
+  async function seatedDriver(
+    seatRole: schema.LinqGroupMember['role'],
+    familyRole: 'co_parent' | 'nanny' | null,
+  ) {
+    const own = await seedFamily(db.database, 'Their Own Family');
+    await db.database
+      .update(schema.users)
+      .set({ timezone: TZ, resolvedTimezone: TZ, timezoneSource: 'place' })
+      .where(eq(schema.users.id, own.parentUserId));
+    await db.database.insert(schema.parentChannels).values({
+      userId: own.parentUserId,
+      familyId: own.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(SEATED_PHONE),
+      phoneE164Hash: phoneBlindIndex(SEATED_PHONE),
+      verifiedAt: NOW,
+    });
+    await recordWatchConsent(
+      db.database,
+      {
+        familyId: own.familyId,
+        userId: own.parentUserId,
+        granted: true,
+        verbatimReply: 'yes',
+        interpretation: 'the parent said yes to being watched',
+        channelMessageId: null,
+      },
+      NOW,
+    );
+    if (familyRole) {
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: family.familyId, userId: own.parentUserId, role: familyRole });
+    }
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP_CHAT })
+      .where(eq(schema.families.id, family.familyId));
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: family.familyId,
+      chatId: GROUP_CHAT,
+      userId: own.parentUserId,
+      phoneE164Encrypted: encryptString(SEATED_PHONE),
+      phoneE164Hash: phoneBlindIndex(SEATED_PHONE),
+      role: seatRole,
+    });
+    await db.database.insert(schema.linqGroupCarpools).values({
+      chatId: GROUP_CHAT,
+      familyId: family.familyId,
+      planKey: `team:${randomUUID()}`,
+      pickupAt: START,
+      driverUserId: own.parentUserId,
+      status: 'assigned',
+    });
+    return own;
+  }
+
+  /** The roster rows a group-granted caregiver seat is taken back through. */
+  async function grantCaregiverSeat(userId: string) {
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({
+        chatId: GROUP_CHAT,
+        familyId: family.familyId,
+        source: 'added_to_existing',
+        status: 'confirmed',
+      })
+      .returning({ id: schema.linqGroupRosters.id });
+    if (!roster) throw new Error('no roster');
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster.id,
+      chatId: GROUP_CHAT,
+      phoneE164Hash: phoneBlindIndex(SEATED_PHONE),
+      userId,
+      status: 'confirmed',
+      confirmedRole: 'nanny',
+    });
+  }
+
+  const removedFromChat = () =>
+    unseatParticipantRemoved(db.database, {
+      chatId: GROUP_CHAT,
+      participantHandle: SEATED_PHONE,
+      now: at(1),
+    });
+
+  const legRows = (userId: string) =>
+    db.database
+      .select({ errorCode: schema.channelMessages.errorCode })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.parentUserId, userId),
+          eq(schema.channelMessages.templateKey, 'team_schedule:driver'),
+        ),
+      );
+
+  const ownRows = (userId: string) =>
+    db.database
+      .select({
+        familyId: schema.auditLog.familyId,
+        action: schema.auditLog.actionTaken,
+        after: schema.auditLog.after,
+      })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.audience, userId),
+          eq(schema.auditLog.actionTaken, 'team_schedule_driver_unreachable'),
+        ),
+      );
+
+  const familyTrail = async () =>
+    (
+      await assembleFamilyExport(db.database, family.familyId, {
+        actorUserId: family.parentUserId,
+        now: at(40),
+      })
+    ).trail.map((row) => row.summary);
+
+  it('positive control: the same adult, still seated, gets the retry through the real gate', async () => {
+    const driver = await seatedDriver('other_family', null);
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 1, closed: 0 });
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+  });
+
+  it.each([
+    {
+      how: 'removed from the group',
+      seatRole: 'other_family' as const,
+      familyRole: null,
+      remove: async (_userId: string) => {
+        expect((await removedFromChat()).outcome).toBe('group_member_unseated');
+      },
+    },
+    {
+      how: 'a caregiver seat taken back',
+      seatRole: 'caregiver' as const,
+      familyRole: 'nanny' as const,
+      remove: async (userId: string) => {
+        await grantCaregiverSeat(userId);
+        const out = await unseatCaregiverSeat(db.database, {
+          familyId: family.familyId,
+          userId,
+          chatId: GROUP_CHAT,
+          via: 'participant_removed',
+          now: at(1),
+        });
+        expect(out.outcome).toBe('unseated');
+      },
+    },
+    {
+      how: 'a caregiver seat ended by a stop in the group',
+      seatRole: 'caregiver' as const,
+      familyRole: 'nanny' as const,
+      remove: async (userId: string) => {
+        await grantCaregiverSeat(userId);
+        const out = await unseatCaregiverSeat(db.database, {
+          familyId: family.familyId,
+          userId,
+          chatId: GROUP_CHAT,
+          via: 'group_stop',
+          now: at(1),
+        });
+        expect(out.outcome).toBe('unseated');
+      },
+    },
+  ])('closes the retry with no text after $how', async ({ seatRole, familyRole, remove }) => {
+    const driver = await seatedDriver(seatRole, familyRole);
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused()] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+    await remove(driver.parentUserId);
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 0, closed: 1 });
+    expect(await tick(ports, at(30))).toMatchObject({ sent: 0, closed: 0 });
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await legRows(driver.parentUserId)).toEqual([{ errorCode: 'send_retries_exhausted' }]);
+    expect(await ownRows(driver.parentUserId)).toEqual([
+      {
+        familyId: driver.familyId,
+        action: 'team_schedule_driver_unreachable',
+        after: { reason: 'superseded', attempts: 1 },
+      },
+    ]);
+    const trail = await familyTrail();
+    expect(trail).toContain(
+      'Hale could not reach the driver about a schedule change and will try again',
+    );
+    expect(trail).not.toContain('Hale could not reach the driver about a schedule change');
+    expect(trail).not.toContain('Hale did not text you about a schedule change');
+  });
+
+  it('sends nothing when they are taken out while the model writes the retry', async () => {
+    const driver = await seatedDriver('other_family', null);
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      gate: realGate,
+      composeDriver: async (input) => {
+        const text = await h.ports.composeDriver(input);
+        if (h.compose.calls === 2) await removedFromChat();
+        return text;
+      },
+    };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 0, closed: 1 });
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await legRows(driver.parentUserId)).toEqual([{ errorCode: 'send_retries_exhausted' }]);
+    expect(await ownRows(driver.parentUserId)).toMatchObject([
+      { after: { reason: 'superseded', attempts: 1 } },
+    ]);
+  });
+
+  it('still retries a co-parent who only left the chat', async () => {
+    const driver = await seatedDriver('co_parent', 'co_parent');
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+    expect((await removedFromChat()).outcome).toBe('group_member_unseated');
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 1, closed: 0 });
+
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+    expect(await ownRows(driver.parentUserId)).toEqual([]);
+  });
+
+  it('closes the retry of a co-parent who left the family, though their seats stay live', async () => {
+    const driver = await seatedDriver('co_parent', 'co_parent');
+    await db.database.insert(schema.linqMultiFamilyMembers).values({
+      chatId: 'chat-shared-group',
+      familyId: family.familyId,
+      userId: driver.parentUserId,
+      phoneE164Encrypted: encryptString(SEATED_PHONE),
+      phoneE164Hash: phoneBlindIndex(SEATED_PHONE),
+      role: 'co_parent',
+    });
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused()] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+
+    const departed = await departCoParent(db.database, {
+      familyId: family.familyId,
+      actorUserId: driver.parentUserId,
+      now: at(1),
+    });
+    expect(departed.outcome).toBe('departed');
+    const [groupSeat] = await db.database
+      .select({ removedAt: schema.linqGroupMembers.removedAt })
+      .from(schema.linqGroupMembers)
+      .where(eq(schema.linqGroupMembers.userId, driver.parentUserId));
+    const [sharedSeat] = await db.database
+      .select({ removedAt: schema.linqMultiFamilyMembers.removedAt })
+      .from(schema.linqMultiFamilyMembers)
+      .where(eq(schema.linqMultiFamilyMembers.userId, driver.parentUserId));
+    expect(groupSeat).toEqual({ removedAt: null });
+    expect(sharedSeat).toEqual({ removedAt: null });
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 0, closed: 1 });
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await legRows(driver.parentUserId)).toEqual([{ errorCode: 'send_retries_exhausted' }]);
+  });
+
+  it('writes and sends nothing on a first try to someone already taken out', async () => {
+    const driver = await seatedDriver('other_family', null);
+    await removedFromChat();
+    const { changeId } = await seedChange();
+    const h = harness();
+
+    await firstTry(changeId, { ...h.ports, gate: realGate }, NOW, [
+      { userId: driver.parentUserId },
+    ]);
+
+    expect(h.compose.calls).toBe(0);
+    expect(h.transport.tried).toBe(0);
+    expect(await legRows(driver.parentUserId)).toEqual([]);
+    expect(await ownRows(driver.parentUserId)).toEqual([]);
+  });
+
+  it('flag off: the first try runs as on main, with no household check', async () => {
+    vi.stubEnv(FLAG, 'false');
+    const driver = await seatedDriver('other_family', null);
+    await removedFromChat();
+    const { changeId } = await seedChange();
+    const h = harness();
+
+    await firstTry(changeId, { ...h.ports, gate: realGate }, NOW, [
+      { userId: driver.parentUserId },
+    ]);
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
   });
 });
 

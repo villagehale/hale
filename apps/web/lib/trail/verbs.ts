@@ -339,7 +339,7 @@ export const AUDIT_VERBS = [
   'team_schedule_driver_sent',
   'team_schedule_driver_send_failed',
   'team_schedule_driver_unsent',
-  // VIL-734 · that text ended on one adult's own stop, consent or missing number.
+  // VIL-734 · that text ended on one adult's own stop, consent, missing number or leaving.
   'team_schedule_driver_unreachable',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
@@ -1382,8 +1382,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale could not reach the driver about a schedule change',
     family: 'problem',
   },
-  // About the one adult who stopped Hale, left no number, or has a text Hale could not read:
-  // their audience, off History and the family export (rights/export.ts), in their own copy.
+  // About the one adult who stopped Hale, left no number, left the household, or has a text
+  // Hale could not read: their audience, off History and the family export (rights/export.ts),
+  // in their own copy.
   team_schedule_driver_unreachable: {
     sentence: 'Hale did not text you about a schedule change',
     family: 'note',
@@ -2429,7 +2430,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'activity_deep_dispatched',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
-  // VIL-734. One driver's own stop, consent or missing number.
+  // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
 ] as const satisfies readonly AuditVerb[];
 
