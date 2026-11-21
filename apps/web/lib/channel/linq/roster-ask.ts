@@ -14,6 +14,7 @@ import type { RoleWordKey } from './group-onboarding-line-input';
 import {
   type GroupLineOutcome,
   type GroupLineSend,
+  type GroupLineSource,
   type GroupOnboardingComposer,
   sendGroupOnboardingLine,
   sendUnledgeredGroupLine,
@@ -113,7 +114,7 @@ export async function firstName(database: Database, userId: string | null): Prom
 }
 
 /** The parent the ask names: the primary parent when they are in the chat, else any known parent. */
-async function knownParentName(
+export async function knownParentName(
   database: Database,
   roster: RosterRow,
   primary: string | null,
@@ -132,13 +133,16 @@ async function knownParentName(
   return firstName(database, pick);
 }
 
-interface FamilyVoice {
+export interface FamilyVoice {
   familyId: string;
   ledgerUserId: string;
   language: ReplyLanguage;
 }
 
-async function familyVoice(database: Database, roster: RosterRow): Promise<FamilyVoice | null> {
+export async function familyVoice(
+  database: Database,
+  roster: RosterRow,
+): Promise<FamilyVoice | null> {
   if (!roster.familyId) return null;
   const ledgerUserId = await primaryParentId(database, roster.familyId);
   if (!ledgerUserId) {
@@ -200,32 +204,59 @@ export async function askRoster(
   });
   if (!delivered(notice)) return { outcome: 'roster_ask_not_sent', notice };
 
+  await markRosterAsked(database, {
+    rosterId: roster.id,
+    familyId: family.familyId,
+    now: input.now,
+    source: notice.outcome === 'sent' ? notice.source : 'already_sent',
+  });
+  return { outcome: 'roster_asked', notice };
+}
+
+/**
+ * A line that asked the roster who they are went out: the roster is asked, every member
+ * not yet asked is `asked`, and the immutable row says how many. Shared by `roster_ask`
+ * and the VIL-727 join intro that carries the same ask (`via: 'join_intro'`).
+ */
+export async function markRosterAsked(
+  database: Database,
+  input: {
+    rosterId: string;
+    familyId: string;
+    now: Date;
+    source: GroupLineSource | 'already_sent';
+    via?: 'join_intro';
+  },
+): Promise<number> {
   await database
     .update(schema.linqGroupRosters)
     .set({ askedAt: input.now, updatedAt: input.now })
-    .where(and(eq(schema.linqGroupRosters.id, roster.id), isNull(schema.linqGroupRosters.askedAt)));
+    .where(
+      and(eq(schema.linqGroupRosters.id, input.rosterId), isNull(schema.linqGroupRosters.askedAt)),
+    );
   const asked = await database
     .update(schema.linqGroupRosterMembers)
     .set({ status: 'asked', askedAt: input.now, updatedAt: input.now })
     .where(
       and(
-        eq(schema.linqGroupRosterMembers.rosterId, roster.id),
+        eq(schema.linqGroupRosterMembers.rosterId, input.rosterId),
         eq(schema.linqGroupRosterMembers.status, 'proposed'),
       ),
     )
     .returning({ id: schema.linqGroupRosterMembers.id });
   await database.insert(schema.auditLog).values({
-    familyId: family.familyId,
+    familyId: input.familyId,
     actor: 'system',
     actionTaken: 'linq_group_roster_asked',
     targetTable: 'linq_group_rosters',
-    targetId: roster.id,
+    targetId: input.rosterId,
     after: {
       asked: asked.length,
-      source: notice.outcome === 'sent' ? notice.source : 'already_sent',
+      source: input.source,
+      ...(input.via ? { via: input.via } : {}),
     },
   });
-  return { outcome: 'roster_asked', notice };
+  return asked.length;
 }
 
 export type NoFamilyOutcome =
