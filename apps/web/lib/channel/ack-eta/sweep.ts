@@ -47,12 +47,22 @@ export const ACK_SWEEP_BATCH = 5;
 /** A note is worth sending only this long after the window it reports on closed. */
 export const ACK_LATE_NOTE_STALE_MS = 20 * 60 * 1000;
 
+/**
+ * The sweep's share of the drain tick. It runs before the queues, inside the roughly 100s
+ * the drain's wall budget leaves under the function ceiling, and an outage is exactly when
+ * promises come due with a model that only times out. Past this it starts no more notes;
+ * the rest stay unclaimed for the next minute.
+ */
+export const ACK_SWEEP_BUDGET_MS = 20_000;
+
 /** Why a send rail held a note. A closed vocabulary: it lands in an audit row. */
 export type AckSendRail = 'clear' | 'sends_paused' | 'opt_out_unread';
 
 export interface AckDeadlinePorts {
   /** ACK_ETA_ENABLED, for this family, now. */
   enabled(familyId: string): boolean;
+  /** Wall-clock milliseconds, for {@link ACK_SWEEP_BUDGET_MS}. */
+  clock(): number;
   writer: AckLineWriter;
   /** The rails a note passes before it is written. */
   rail(parentUserId: string): Promise<AckSendRail>;
@@ -70,6 +80,8 @@ export interface AckDeadlinePorts {
 export interface AckDeadlineSweepSummary {
   due: number;
   claimed: number;
+  /** Due promises left unclaimed for the next tick because this one spent its budget. */
+  deferred: number;
   settled: Partial<Record<AckPromiseOutcome, number>>;
   pruned: number;
 }
@@ -188,8 +200,19 @@ export async function runAckDeadlineSweep(
   now: Date,
 ): Promise<AckDeadlineSweepSummary> {
   const due = await loadDueAckPromises(database, now, ACK_SWEEP_BATCH);
-  const summary: AckDeadlineSweepSummary = { due: due.length, claimed: 0, settled: {}, pruned: 0 };
-  for (const promise of due) {
+  const summary: AckDeadlineSweepSummary = {
+    due: due.length,
+    claimed: 0,
+    deferred: 0,
+    settled: {},
+    pruned: 0,
+  };
+  const startedMs = ports.clock();
+  for (const [index, promise] of due.entries()) {
+    if (ports.clock() - startedMs >= ACK_SWEEP_BUDGET_MS) {
+      summary.deferred = due.length - index;
+      break;
+    }
     if (!(await claimAckPromise(database, promise.id, now))) continue;
     summary.claimed += 1;
     let settlement: Settlement;

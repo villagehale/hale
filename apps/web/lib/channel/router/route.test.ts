@@ -19,6 +19,11 @@ vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
   sharedLinqEffectDecider: () => ({ decide: effectDecide }),
 }));
 import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
+import type { AckEtaRouterPorts } from '~/lib/channel/ack-eta/arm';
+import { ACK_ETA_ENABLED_ENV } from '~/lib/channel/ack-eta/flag';
+import { ACK_ETA_TEMPLATE_KEY, type AckPromiseInput } from '~/lib/channel/ack-eta/promise';
+import type { AckTask } from '~/lib/channel/ack-eta/read';
+import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
@@ -76,6 +81,7 @@ import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordSignupOffer } from '~/lib/signup/store';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
@@ -126,12 +132,6 @@ import { darkSideTurn } from './side-turn.fixture';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { TURN_ANSWERED_ACTION, auditTurnLedger, loadInboundContext } from './wiring';
-import type { AckEtaRouterPorts } from '~/lib/channel/ack-eta/arm';
-import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
-import { ACK_ETA_ENABLED_ENV } from '~/lib/channel/ack-eta/flag';
-import { ACK_ETA_TEMPLATE_KEY, type AckPromiseInput } from '~/lib/channel/ack-eta/promise';
-import type { AckTask } from '~/lib/channel/ack-eta/read';
-import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 
 // The live search is on by default in production. These tests describe the kill switch
 // (dark) unless a test lights it, so each starts dark.
@@ -370,6 +370,7 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
  */
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
+  nothingSent: string[];
   deferred: string[];
   deferredReasons: {
     channelMessageId: string;
@@ -383,6 +384,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
 } {
   const ledger = {
     answered: [] as string[],
+    nothingSent: [] as string[],
     deferred: [] as string[],
     folded: [] as string[],
     deferredReasons: [] as {
@@ -400,8 +402,9 @@ function fakeTurnLedger(): InboundTurnLedger & {
       if (ledger.deferred.includes(channelMessageId)) return 'deferred';
       return 'fresh';
     },
-    async recordAnswered(input: { channelMessageId: string }) {
+    async recordAnswered(input: { channelMessageId: string; nothingSent?: boolean }) {
       ledger.answered.push(input.channelMessageId);
+      if (input.nothingSent) ledger.nothingSent.push(input.channelMessageId);
       return 'claimed' as const;
     },
     // A side turn's (side-turn.ts): dark in every test here.
@@ -7425,7 +7428,9 @@ describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () =
   function ackPorts(
     options: {
       task?: AckTask | 'none' | 'unread';
-      write?: { status: 'composed'; line: string } | { status: 'unavailable'; reason: 'gate_exhausted' };
+      write?:
+        | { status: 'composed'; line: string }
+        | { status: 'unavailable'; reason: 'gate_exhausted' };
     } = {},
   ) {
     const reads: string[] = [];
@@ -7591,7 +7596,10 @@ describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () =
   });
 
   it('an ack the model cannot write: nothing is sent, #ops is paged, the answer still comes', async () => {
-    const ack = ackPorts({ task: 'research', write: { status: 'unavailable', reason: 'gate_exhausted' } });
+    const ack = ackPorts({
+      task: 'research',
+      write: { status: 'unavailable', reason: 'gate_exhausted' },
+    });
     const h = harness({
       coach: slowCoach(150, 'the real answer'),
       ackEta: ack.ports,
@@ -7687,6 +7695,23 @@ describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () =
     expect(redrive.reads).toEqual([]);
     expect(again.logs).toContainEqual([{ outcome: 're_driven' }, expect.any(String)]);
   });
+
+  it.each([
+    ['lit', 'true', [job().channel_message_id]],
+    ['off', 'false', []],
+  ])(
+    '%s: a turn that closes with nothing sent is marked only for the sweep',
+    async (_label, value, marked) => {
+      vi.stubEnv(ACK_ETA_ENABLED_ENV, value);
+      const h = harness({ coach: fakeCoach(''), context: { reply: SMS_ROUTE } });
+
+      const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      expect(result.status).toBe('agent_silent');
+      expect(h.turns.answered).toEqual([job().channel_message_id]);
+      expect(h.turns.nothingSent).toEqual(marked);
+    },
+  );
 
   it.each([
     ['unset', undefined],
@@ -10039,6 +10064,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
    * words nothing goes, and the turn ends on a named outcome rather than a crash.
    */
   it('an empty reply with a card sends nothing and names the card it withheld', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     const cards: unknown[] = [];
     const { h } = bubbleTurn({
       reply: '',
@@ -10055,6 +10081,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(h.transport.sent).toEqual([]);
     expect(cards).toEqual([]);
     expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.nothingSent).toEqual([ID]);
     expect(JSON.stringify(h.logs)).toContain('{"outcome":"empty_reply_card_withheld"}');
   });
 
@@ -10261,6 +10288,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
   ])(
     'lit, alone: when %s fails after the tapback landed, nothing more is sent',
     async (_label, fail, outcome) => {
+      vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
       const reactions = linq();
       const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
       fail(h);
@@ -10271,6 +10299,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
       // The tapback answered: not the words beside it, and not an apology.
       expect(h.transport.sent).toEqual([]);
       expect(result.status).toBe('agent_reacted');
+      expect(h.turns.nothingSent).toEqual([]);
       expect(JSON.stringify(h.logs)).toContain(outcome);
     },
   );
@@ -10292,6 +10321,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
   });
 
   it('lit, alone, refused: nothing is sent at all, and the turn is claimed under its own name', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     const reactions = linq(409);
     const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
 
@@ -10302,6 +10332,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
     expect(h.transport.sent).toEqual([]);
     expect(result.status).toBe('agent_reaction_unsent');
     expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.nothingSent).toEqual([ID]);
     expect(auditRows(h.fake).filter((row) => row.actionTaken === 'linq_tapback')).toEqual([]);
     expect(JSON.stringify(h.logs)).toContain('reaction_unsent');
   });
@@ -10962,6 +10993,7 @@ describe('a garbled coach reply sends nothing', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('no apology, no deferral, the failure recorded by name, and a redelivery never reruns the coach', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const turns = fakeTurnLedger();
@@ -10977,6 +11009,7 @@ describe('a garbled coach reply sends nothing', () => {
     expect(door.fetchSpy).not.toHaveBeenCalled();
     expect(apology.calls).toBe(0);
     expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+    expect(turns.nothingSent).toEqual([job().channel_message_id]);
     expect(turns.deferred).toEqual([]);
 
     const rerun = fakeCoach('should never run');

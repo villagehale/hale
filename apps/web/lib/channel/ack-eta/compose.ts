@@ -28,7 +28,7 @@ import type { AckTask } from './read';
 export const MAX_COMPOSE_ATTEMPTS = 2;
 
 /** A runaway ceiling, never a length rule: the writer decides how long the line is. */
-const MAX_TOKENS = 256;
+export const ACK_LINE_MAX_TOKENS = 256;
 
 export type AckLineProblem = 'empty' | 'carries_link' | 'asks_a_question' | AckMeaningProblem;
 
@@ -119,7 +119,7 @@ export function lateNoteUserMessage(
 }
 
 const lineSchema = z.object({ line: z.string() });
-const lineJsonSchema = {
+export const ACK_LINE_SCHEMA = {
   type: 'object',
   properties: { line: { type: 'string' } },
   required: ['line'],
@@ -127,6 +127,39 @@ const lineJsonSchema = {
 
 export const ACK_LINE_TOOL = 'ack_eta_line';
 export const LATE_NOTE_TOOL = 'ack_eta_late_note';
+
+/** One writer's draft, as facts. The eval replays exactly these. */
+export type AckDraft =
+  | { kind: 'ack'; input: { task: AckTask; withinMinutes: number; language: ReplyLanguage | null } }
+  | { kind: 'late_note'; facts: LateNoteFacts };
+
+/** The window the judge holds a draft to, from the same facts the writer was given. */
+export function draftWindow(draft: AckDraft): AckJudgeWindow {
+  if (draft.kind === 'ack') return { latestMinutes: draft.input.withinMinutes, requireTime: true };
+  return draft.facts.status === 'still_working'
+    ? { latestMinutes: draft.facts.newWithinMinutes, requireTime: true }
+    : { latestMinutes: null, requireTime: false };
+}
+
+/** The request one draft sends. Loading it calls no model; the eval prices and replays it. */
+export async function ackDraftRequest(draft: AckDraft, rejected: readonly RejectedAckLine[] = []) {
+  const skill = await loadCronSkill(draft.kind === 'ack' ? 'ack-eta' : 'ack-eta-miss');
+  return {
+    lane: pickLane(skill.meta.task),
+    system: skill.instructions,
+    userMessage:
+      draft.kind === 'ack'
+        ? ackUserMessage(draft.input, rejected)
+        : lateNoteUserMessage(draft.facts, rejected),
+    toolName: draft.kind === 'ack' ? ACK_LINE_TOOL : LATE_NOTE_TOOL,
+    toolDescription:
+      draft.kind === 'ack'
+        ? 'Return the one line the parent gets while the slow answer is coming.'
+        : 'Return the one note the parent gets when Hale is later than it said.',
+    toolSchema: ACK_LINE_SCHEMA,
+    maxTokens: ACK_LINE_MAX_TOKENS,
+  };
+}
 
 function unavailable(
   kind: 'ack' | 'late_note',
@@ -139,45 +172,38 @@ function unavailable(
 }
 
 /** One writer's draft-and-gate loop, shared by the ack and the late note. */
-async function composeGated(input: {
-  kind: 'ack' | 'late_note';
-  client: () => AgentClient;
-  skillName: string;
-  toolName: string;
-  toolDescription: string;
-  userMessage: (rejected: readonly RejectedAckLine[]) => string;
-  window: AckJudgeWindow;
-}): Promise<AckCompose> {
+async function composeGated(client: () => AgentClient, draft: AckDraft): Promise<AckCompose> {
   let resolved: AgentClient;
   try {
-    resolved = input.client();
+    resolved = client();
   } catch {
-    return unavailable(input.kind, 'client_unavailable');
+    return unavailable(draft.kind, 'client_unavailable');
   }
-  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-  try {
-    skill = await loadCronSkill(input.skillName);
-  } catch {
-    return unavailable(input.kind, 'skill_unavailable');
-  }
+  const window = draftWindow(draft);
   const rejected: RejectedAckLine[] = [];
   for (let attempt = 0; attempt < MAX_COMPOSE_ATTEMPTS; attempt += 1) {
+    let request: Awaited<ReturnType<typeof ackDraftRequest>>;
+    try {
+      request = await ackDraftRequest(draft, rejected);
+    } catch {
+      return unavailable(draft.kind, 'skill_unavailable');
+    }
     let raw: string;
     try {
       const { value } = await forceToolJson({
         client: resolved,
-        lane: pickLane(skill.meta.task),
-        system: skill.instructions,
-        userMessage: input.userMessage(rejected),
-        toolName: input.toolName,
-        toolDescription: input.toolDescription,
-        inputJsonSchema: lineJsonSchema,
+        lane: request.lane,
+        system: request.system,
+        userMessage: request.userMessage,
+        toolName: request.toolName,
+        toolDescription: request.toolDescription,
+        inputJsonSchema: request.toolSchema,
         schema: lineSchema,
-        maxTokens: MAX_TOKENS,
+        maxTokens: request.maxTokens,
       });
       raw = value.line;
     } catch {
-      return unavailable(input.kind, 'model_failed');
+      return unavailable(draft.kind, 'model_failed');
     }
     const line = plainText(raw);
     const problems: AckLineProblem[] = mechanicalProblems(line, attempt);
@@ -185,10 +211,10 @@ async function composeGated(input: {
     // or a question mark without a second model. A verdict that does not arrive sends
     // nothing, and nothing is substituted for the unchecked line.
     if (problems.length === 0) {
-      const judged = await judgeAckLine(resolved, line, input.window);
+      const judged = await judgeAckLine(resolved, line, window);
       if (judged.verdict === 'unjudged') {
         return unavailable(
-          input.kind,
+          draft.kind,
           judged.reason === 'skill_unavailable' ? 'judge_unavailable' : 'judge_failed',
         );
       }
@@ -198,7 +224,7 @@ async function composeGated(input: {
     rejected.push({ line, problems });
   }
   return unavailable(
-    input.kind,
+    draft.kind,
     'gate_exhausted',
     rejected.map((entry) => entry.problems.join('+')).join(' | '),
   );
@@ -207,30 +233,7 @@ async function composeGated(input: {
 /** The production writers, on a lazily resolved client like the holding line's. */
 export function createAckLineWriter(client: () => AgentClient): AckLineWriter {
   return {
-    ack(input) {
-      return composeGated({
-        kind: 'ack',
-        client,
-        skillName: 'ack-eta',
-        toolName: ACK_LINE_TOOL,
-        toolDescription: 'Return the one line the parent gets while the slow answer is coming.',
-        userMessage: (rejected) => ackUserMessage(input, rejected),
-        window: { latestMinutes: input.withinMinutes, requireTime: true },
-      });
-    },
-    lateNote(facts) {
-      return composeGated({
-        kind: 'late_note',
-        client,
-        skillName: 'ack-eta-miss',
-        toolName: LATE_NOTE_TOOL,
-        toolDescription: 'Return the one note the parent gets when Hale is later than it said.',
-        userMessage: (rejected) => lateNoteUserMessage(facts, rejected),
-        window:
-          facts.status === 'still_working'
-            ? { latestMinutes: facts.newWithinMinutes, requireTime: true }
-            : { latestMinutes: null, requireTime: false },
-      });
-    },
+    ack: (input) => composeGated(client, { kind: 'ack', input }),
+    lateNote: (facts) => composeGated(client, { kind: 'late_note', facts }),
   };
 }

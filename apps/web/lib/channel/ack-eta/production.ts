@@ -8,7 +8,7 @@ import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { pageOps } from '~/lib/monitoring/failure-page';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import { ACK_NOTE_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { AckEtaRouterPorts, AckUnwrittenPage } from './arm';
 import { type AckComposeFallback, createAckLineWriter } from './compose';
 import { ackEtaEnabled } from './flag';
@@ -33,7 +33,7 @@ async function pageUnwritten(
     // pageOps names its own failures; a throw here must not take the turn or tick with it.
     console.error(
       { stage: page.stage, err: err instanceof Error ? err.name : 'unknown' },
-      'ack eta: the #ops page did not go',
+      'ack eta: the pager threw',
     );
     return 'page_failed';
   }
@@ -53,7 +53,7 @@ let noteAnthropic: Anthropic | undefined;
 
 /** The sweep's client, built the first time a note is written (never on a quiet tick). */
 function noteClient(): AgentClient {
-  noteAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'notice' });
+  noteAnthropic ??= budgetedAnthropic(ACK_NOTE_CLIENT_OPTIONS, { stage: 'notice' });
   return noteAnthropic;
 }
 
@@ -72,6 +72,7 @@ async function noteRail(database: Database, parentUserId: string): Promise<AckSe
 export function ackDeadlinePorts(database: Database): AckDeadlinePorts {
   return {
     enabled: (familyId) => ackEtaEnabled(familyId),
+    clock: () => Date.now(),
     writer: createAckLineWriter(noteClient),
     rail: (parentUserId) => noteRail(database, parentUserId),
     phone: (parentUserId) => resolveSendablePhone(database, parentUserId),

@@ -1,7 +1,11 @@
 import { type AckPromiseOutcome, type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNotNull, isNull, lt, lte } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { TURN_ANSWERED_ACTION, TURN_LEDGER_TARGET } from '~/lib/channel/router/turn-ledger';
+import {
+  TURN_ANSWERED_ACTION,
+  TURN_LEDGER_TARGET,
+  TURN_NOTHING_SENT,
+} from '~/lib/channel/router/turn-ledger';
 import type { AckTask } from './read';
 
 /**
@@ -222,8 +226,9 @@ export async function settleAckPromise(
  * `answered`: the turn ledger has an answered row for that text (wiring.ts
  * auditTurnLedger), whichever path answered it: the turn itself, its re-drive, or a turn it
  * was folded into. `closed_unanswered`: the turn is over (its routed claim is written, see
- * route.ts `done`) and nothing answered it. `open`: neither, so the text is still being
- * worked on or waits in the queue for its next attempt.
+ * route.ts `done`) and nothing answered it, which includes an answered row marked
+ * {@link TURN_NOTHING_SENT}: that row stops a re-drive, but the parent heard nothing. `open`:
+ * neither, so the text is still being worked on or waits in the queue for its next attempt.
  *
  * The answered read is family-scoped and starts at the ask, so it rides the audit log's
  * (family_id, occurred_at) index.
@@ -235,7 +240,7 @@ export async function ackReplyState(
   promise: Pick<DueAckPromise, 'familyId' | 'inboundChannelMessageId' | 'askedAt'>,
 ): Promise<AckReplyState> {
   const answered = await database
-    .select({ id: schema.auditLog.id })
+    .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
@@ -245,9 +250,13 @@ export async function ackReplyState(
         eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
         eq(schema.auditLog.targetId, promise.inboundChannelMessageId),
       ),
-    )
-    .limit(1);
-  if (answered.length > 0) return 'answered';
+    );
+  const nothingSent = (after: unknown) =>
+    typeof after === 'object' &&
+    after !== null &&
+    (after as Record<string, unknown>).nothing_sent === TURN_NOTHING_SENT.nothing_sent;
+  if (answered.some((row) => !nothingSent(row.after))) return 'answered';
+  if (answered.length > 0) return 'closed_unanswered';
   const closed = await database
     .select({ id: schema.channelTurnAnswerClaims.id })
     .from(schema.channelTurnAnswerClaims)

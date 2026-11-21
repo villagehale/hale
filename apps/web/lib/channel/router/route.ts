@@ -1175,12 +1175,14 @@ async function routeChannelMessageInner(
   // AFTER the transport accepted the answer cannot make this turn answer a second time
   // on its way out. The durable claim stops the next ATTEMPT; this stops this one.
   let answered = false;
-  const claimAnswer = async () => {
+  const claimAnswer = async (reached: 'parent_reached' | 'nothing_sent' = 'parent_reached') => {
     answered = true;
     const claim = await deps.turns.recordAnswered({
       familyId: job.family_id,
       parentUserId: job.parent_user_id,
       channelMessageId: job.channel_message_id,
+      // Read only by the ack's deadline sweep, so flag off leaves the row as it was.
+      ...(reached === 'nothing_sent' && ackEtaEnabled(job.family_id) ? { nothingSent: true } : {}),
       folded:
         burst.kind === 'anchor'
           ? burst.members
@@ -2762,9 +2764,10 @@ async function runAgentTurn(
     /**
      * #973 · the durable terminal claim for a turn the coach chose to answer with
      * nothing. Without it the re-drive gate reads the turn as fresh and the coach runs
-     * again, repeating its tool writes. Nothing is sent.
+     * again, repeating its tool writes. Nothing is sent. The caller says whether the
+     * parent got anything: a tapback that landed is an answer, an empty turn is not.
      */
-    claimSilent?: () => Promise<void>;
+    claimSilent?: (reached: 'parent_reached' | 'nothing_sent') => Promise<void>;
     conversationId: string;
     /** What Hale is holding an answer for — the coach gets their subjects (see
      * ChannelTurn), and a coach that cannot run gets the choice sentence built from them. */
@@ -2843,7 +2846,7 @@ async function runAgentTurn(
       );
       // Claim the turn so a redelivery reads `answered` and never reruns the coach
       // (its tool writes already landed). No text goes out.
-      await args.claimSilent?.();
+      await args.claimSilent?.('nothing_sent');
       return finish({
         status: 'agent_silent',
         handler: null,
@@ -3157,7 +3160,7 @@ async function runAgentTurn(
         },
         'channel router: the reaction was the answer and landed; its ledger row did not - nothing more sent',
       );
-      await args.claimSilent?.();
+      await args.claimSilent?.('parent_reached');
       return finish({
         status: REACTED_ALONE,
         handler: null,
@@ -3172,7 +3175,7 @@ async function runAgentTurn(
         { outcome: 'reaction_unsent', reason: err.reason },
         'channel router: the reaction was the answer and did not land - nothing sent',
       );
-      await args.claimSilent?.();
+      await args.claimSilent?.('nothing_sent');
       return finish({
         status: 'agent_reaction_unsent',
         handler: null,
@@ -3275,7 +3278,7 @@ async function runAgentTurn(
     ) {
       // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
       // reads `answered` and never reruns it (#973's rule).
-      await args.claimSilent?.();
+      await args.claimSilent?.('nothing_sent');
     }
     // AN APOLOGY IS NOT AN ANSWER. The reply above claims the turn (turn-ledger.ts), so
     // `sms_turn_answered` is written and the re-drive stays quiet — correctly: the parent

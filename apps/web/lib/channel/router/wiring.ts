@@ -10,6 +10,7 @@ import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/
 import { recordSchoolBreak } from '~/lib/care/school-break/facts';
 import { createSchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { recordWeekdayCare } from '~/lib/care/weekday';
+import { ackEtaRouterPorts } from '~/lib/channel/ack-eta/production';
 import {
   defaultActivityPromisePorts,
   loadOpenActivityPromise,
@@ -113,7 +114,6 @@ import {
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
-import { ackEtaRouterPorts } from '~/lib/channel/ack-eta/production';
 import { createHoldingLine } from './holding-line';
 import { createHoldingTapback } from './holding-tapback';
 import {
@@ -142,6 +142,7 @@ import {
   TURN_FOLDED_ACTION,
   TURN_LEDGER_LOOKBACK_MS,
   TURN_LEDGER_TARGET,
+  TURN_NOTHING_SENT,
 } from './turn-ledger';
 
 /**
@@ -659,6 +660,7 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             actionTaken: TURN_ANSWERED_ACTION,
             targetTable: TURN_LEDGER_TARGET,
             targetId: input.channelMessageId,
+            ...(input.nothingSent ? { after: TURN_NOTHING_SENT } : {}),
           },
           // A folded text is answered by this same reply. Its claim is the fold's, so
           // only the anchor's claim above arbitrates; `into` names the turn that answered.
@@ -668,7 +670,10 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             actionTaken: TURN_ANSWERED_ACTION,
             targetTable: TURN_LEDGER_TARGET,
             targetId: memberId,
-            after: { into: input.channelMessageId },
+            after: {
+              into: input.channelMessageId,
+              ...(input.nothingSent ? TURN_NOTHING_SENT : {}),
+            },
           })),
         ]);
         return 'claimed';
