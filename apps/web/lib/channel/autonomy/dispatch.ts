@@ -187,9 +187,10 @@ export async function selectOpenAutonomyNotices(
   let justDo = 0;
   for (const row of executions) {
     if (!row.actionId) continue;
-    // The tier the action ran under, stamped on its row only while the policy was on.
+    // The tier the action ran under, stamped on its row only while the policy was on. Not an
+    // obligation, so never aged out; counted only inside the redrive window, like `open`.
     if (row.askTier === 'just_do' && askPolicyTiersEnabled(row.familyId)) {
-      justDo += 1;
+      if (row.occurredAt.getTime() >= since.getTime()) justDo += 1;
       continue;
     }
     const actionType = await actionTypeOf(database, row.actionId);

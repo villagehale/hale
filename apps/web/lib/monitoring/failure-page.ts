@@ -213,7 +213,13 @@ export const OPS_PAGE_VOCABULARY = {
   autonomy_acted_unwritten: { reason: ['no_client', 'model_failed', 'unparsed', 'invented'] },
   calendar_invite_unwritten: {
     method: ['REQUEST', 'CANCEL'],
-    reason: ['client_unavailable', 'skill_unavailable', 'model_failed'],
+    reason: [
+      'client_unavailable',
+      'skill_unavailable',
+      'model_failed',
+      'gate_exhausted',
+      'time_unjudged',
+    ],
   },
   calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },
   team_schedule_unwritten: { change: ['time', 'location', 'both', 'cancel'] },

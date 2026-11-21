@@ -89,11 +89,11 @@ export const ACTION_CLASSES_BY_KIND = {
 
 /**
  * Structured facts that can only ADD classes, so a fact can raise a tier and never lower it.
- * None is read from words by this code: both come from fields other code already set.
+ * None is read from words by this code: each comes from a field other code already set.
+ * Teen content is not one: the teen cap holds a teenager's private content before the
+ * policy is read (docs/ask-policy.md).
  */
 export interface AskFacts {
-  /** The event is a teenager's private content (rule #1). Adds `other_persons_info`. */
-  teenContent?: boolean;
   /**
    * The drafter's stored reading that the action commits the family to an enrolment, a
    * booking or a payment. Adds `register_or_book`.
@@ -113,7 +113,6 @@ export function isAskPolicyKind(value: string): value is ActionType {
 export function actionClassesFor(kind: ActionType, facts: AskFacts = {}): ActionClass[] {
   if (!isAskPolicyKind(kind)) return [];
   const classes = new Set<ActionClass>(ACTION_CLASSES_BY_KIND[kind]);
-  if (facts.teenContent === true) classes.add('other_persons_info');
   if (facts.commitsFamily === true) classes.add('register_or_book');
   return ACTION_CLASSES.filter((actionClass) => classes.has(actionClass));
 }

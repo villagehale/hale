@@ -60,13 +60,7 @@ const EXPECTED_TIER: Record<ActionType, AskTier> = {
   calendar_cancel: 'tell_after',
 };
 
-const FACT_SETS: readonly AskFacts[] = [
-  {},
-  { teenContent: true },
-  { commitsFamily: true },
-  { teenContent: true, commitsFamily: true },
-  { teenContent: false, commitsFamily: false },
-];
+const FACT_SETS: readonly AskFacts[] = [{}, { commitsFamily: true }, { commitsFamily: false }];
 
 const rank = (tier: AskTier): number => ASK_TIERS.indexOf(tier);
 
@@ -137,21 +131,14 @@ describe('facts', () => {
     }
   });
 
-  it.each(ALL_ACTION_TYPES)("a teen's private content makes %s ask first", (kind) => {
-    expect(actionClassesFor(kind, { teenContent: true })).toContain('other_persons_info');
-    expect(askTierFor(kind, { teenContent: true })).toBe('ask_first');
-  });
-
   it.each(ALL_ACTION_TYPES)('a commitment reading makes %s ask first', (kind) => {
     expect(actionClassesFor(kind, { commitsFamily: true })).toContain('register_or_book');
     expect(askTierFor(kind, { commitsFamily: true })).toBe('ask_first');
   });
 
-  it('false facts add nothing', () => {
-    expect(askTierFor('calendar_add', { teenContent: false, commitsFamily: false })).toBe(
-      'tell_after',
-    );
-    expect(askTierFor('add_to_digest_only', { teenContent: false })).toBe('just_do');
+  it('a false fact adds nothing', () => {
+    expect(askTierFor('calendar_add', { commitsFamily: false })).toBe('tell_after');
+    expect(askTierFor('add_to_digest_only', { commitsFamily: false })).toBe('just_do');
   });
 });
 

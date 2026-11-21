@@ -42,7 +42,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `ANTHROPIC_CREDIT_START_USD` | `packages/agent/src/credit-alert.ts:70` | a number of USD (config, not a flag) | start_not_configured, no page | n/a (config) | Noah |
 | `ANTHROPIC_SPEND_ALERT_USD` | `apps/web/lib/monitoring/spend.ts:40` (default at :16, fallback at :42) | a number of USD (config, not a flag) | 200 USD (code default) | n/a (config) | unassigned |
 | `ANY_PAGE_SPOT_WATCH_ENABLED` | `apps/web/lib/channel/spots/flag.ts:31` | `true` | OFF | `false` | Noah |
-| `ASK_POLICY_TIERS_ENABLED` | `apps/worker/src/orchestrator/autonomy-gate.ts` (`askPolicyTiersEnabled(familyId)`, read per family by the worker and the web; parsed `exact` in `packages/flags/src/catalog.ts`) | `true` | OFF | unset, or anything except exact `true` | Noah |
+| `ASK_POLICY_TIERS_ENABLED` | `apps/worker/src/orchestrator/autonomy-gate.ts` (`askPolicyTiersEnabled(familyId)`, read per family by the worker and the web; parsed `exact` in `packages/flags/src/catalog.ts`) | `true` | OFF | `false` (on the PostHog path, unset defers to PostHog) | Noah |
 | `AUTHORIZED_SIGNUP_ENABLED` | `apps/web/lib/signup/flag.ts:12` | `on` | OFF | empty, or `off` | Noah |
 | `AUDIT_LOG_AUDIENCE_ENABLED` | `apps/web/lib/privacy/audit-audience.ts:14` | `true` | OFF | `false` | Noah |
 | `AUTONOMOUS_EXECUTE_ENABLED` | `apps/worker/src/orchestrator/index.ts:73`; `apps/web/lib/channel/autonomy/notice.ts:55` | `true` (exact, untrimmed) | OFF | unset | Barton |

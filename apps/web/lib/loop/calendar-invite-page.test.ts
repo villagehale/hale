@@ -46,7 +46,13 @@ afterEach(() => {
 });
 
 describe('withInviteUnwrittenPage', () => {
-  it.each(['client_unavailable', 'skill_unavailable', 'model_failed'])(
+  it.each([
+    'client_unavailable',
+    'skill_unavailable',
+    'model_failed',
+    'gate_exhausted',
+    'time_unjudged',
+  ])(
     'policy on: a %s deferral returns the report untouched and pages #ops once',
     async (reason) => {
       vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
@@ -64,8 +70,8 @@ describe('withInviteUnwrittenPage', () => {
     },
   );
 
-  it.each(['time_unjudged', 'summary_too_long', 'summary_carries_destination', 'gate_exhausted'])(
-    'policy on: a %s deferral is bad data, not a writer failure, and pages no one',
+  it.each(['summary_too_long', 'summary_carries_destination'])(
+    'policy on: a %s deferral is held by design before any model call, and pages no one',
     async (reason) => {
       vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
       const { wrapped, pages } = harness(deferred(reason));

@@ -110,7 +110,7 @@ Each text is written by the model. When it cannot be written, nothing is sent an
 | the group plan's calendar report | `group-plan-calendar-report` | `group_plan_unwritten` (already) |
 | the Gmail draft notice | `gmail-draft-notice` | the failed-turn page (already; no draft is written without its notice) |
 
-`calendar_invite_unwritten` pages only when the model could not write the words (`client_unavailable`, `skill_unavailable`, `model_failed`). An unreadable zone or a summary that cannot be sent is a fact about the event, and is named on the invite leg instead.
+`calendar_invite_unwritten` pages for every deferral where the writer produced no sendable text: `client_unavailable`, `skill_unavailable`, `model_failed`, `gate_exhausted` (every draft refused) and `time_unjudged`. The time judge failing and an unreadable zone share `time_unjudged` on the invite leg, so both page. A summary that is too long or carries a destination is held by design before any model call, and does not page. Every invite sender that follows a calendar change is wrapped: the drain, the nudge cron's cancel re-drive, the group common-time plan, and an undo's withdrawal.
 
 ## Just do
 
@@ -158,13 +158,14 @@ The coach's other verbs:
 - A plan run can use the other parent's saved city login and card unless `PLAN_CITY_LOGIN_OWNER_ENABLED`.
 - The email to a provider after a plan options mismatch runs on the parent's model-read reply. It has no consent row and no reviewer.
 - Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind.
+- Across the flag flip, a parent's tap can land on an autonomous checkpoint of an ask-first kind. That tap writes no `action.approved_by_human` row, so the door hands the action back as a draft. The tap's job id is the action id, so a second tap is ignored until pg-boss archives the finished job. An approval that lands outside the action window has the same limit today.
 - A parent whose `send_email` grant predates the flag, and who was told Hale would email on its own, is not told it will ask again. Autonomous email cannot run today: the Gmail sender needs an actor.
 
 ## The switch
 
 - **Flag:** `ASK_POLICY_TIERS_ENABLED`, catalog key `ask-policy-tiers`. On only for the exact value `true`, read per family through `askPolicyTiersEnabled(familyId)` (`@hale/worker/autonomy-gate`).
 - **Off:** every path behaves as before, and nothing is stamped or paged.
-- **Kill:** set `false` (or unset) and redeploy hale-web.
+- **Kill:** set exactly `false` and redeploy hale-web. Unset is also off while the PostHog path is off. With the PostHog path on, only `false` (or `off`) overrides PostHog.
 - **PostHog:** a `pnpm posthog:sync-flags` creates catalog flags at 100%. While the PostHog path is on, keep this key out of a sync, or set the env to `false`, until Barton says go.
 - **New audit verb:** `action.gated.ask_first`.
 - **New page sites:** the five `*_unwritten` sites in the table above.
