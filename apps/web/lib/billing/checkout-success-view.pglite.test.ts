@@ -275,7 +275,7 @@ describe('checkoutViewFromSession on real billing rows', () => {
     const { familyId, parentUserId } = await seedFamily(test.database);
     await setName(parentUserId, 'Riley Parent');
     await inbound(familyId, parentUserId);
-    const created = nowSeconds() - 3700;
+    const created = nowSeconds() - 1200;
     const first = purchase(familyId, { created, subscriptionCreated: created + 10 });
     await startCheckout(familyId, parentUserId, first.created);
     await planRow(familyId, 'plus', first.subscriptionCreated + 5);
@@ -328,6 +328,25 @@ describe('checkoutViewFromSession on real billing rows', () => {
     expect(await view(twoDuplicate, { page })).toEqual({ state: 'under_review' });
     expect(post).toHaveBeenCalledTimes(2);
     expect(post.mock.calls[1]?.[0]).toContain(`ref ${two.familyId}.`);
+  });
+
+  it('names a page that did not leave in the server log and keeps the review state', async () => {
+    const { familyId, parentUserId } = await familyThatAlreadyPaid();
+    const second = purchase(familyId);
+    await startCheckout(familyId, parentUserId, second.created);
+    await applyEvent(completedEvent(second));
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const page = vi.fn().mockResolvedValue('page_not_configured');
+    const result = await view(second, { page });
+    const logged = warn.mock.calls.map((call) => [...call]);
+    warn.mockRestore();
+
+    expect(result).toEqual({ state: 'under_review' });
+    expect(logged).toContainEqual([
+      { familyId, transition: 'same_plan', page: 'page_not_configured' },
+      'checkout view: a family on a paid plan paid again',
+    ]);
   });
 
   it('names a different plan bought on top as other_plan and never shows it as an upgrade', async () => {
@@ -403,6 +422,32 @@ describe('checkoutViewFromSession on real billing rows', () => {
     expect(await view(p)).toMatchObject({ state: 'plan_active' });
   });
 
+  it('keeps waiting when the webhook commits between its plan read and its grant read', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await inbound(familyId, parentUserId);
+    const p = purchase(familyId);
+    await startCheckout(familyId, parentUserId, p.created);
+
+    const client = test.client as unknown as { query: (...args: unknown[]) => Promise<unknown> };
+    const realQuery = client.query.bind(client);
+    let committed = false;
+    const spy = vi.spyOn(client, 'query').mockImplementation(async (...args) => {
+      const result = await realQuery(...args);
+      const text = String(args[0]);
+      if (!committed && text.includes('"plan_tier"') && text.includes('from "families"')) {
+        committed = true;
+        await applyEvent(completedEvent(p));
+      }
+      return result;
+    });
+    const raced = await view(p);
+    spy.mockRestore();
+
+    expect(committed).toBe(true);
+    expect(raced).toEqual({ state: 'pending' });
+    expect(await view(p)).toMatchObject({ state: 'plan_active' });
+  });
+
   it('stops waiting when a grant landed and the plan has since dropped to free', async () => {
     const { familyId, p } = await activeFamily();
     const duplicateCancelled = subscriptionEvent(
@@ -456,6 +501,32 @@ describe('checkoutViewFromSession on real billing rows', () => {
     expect(await view({ ...p, expiresAt: nowSeconds() + 3600 })).toMatchObject({
       state: 'plan_active',
       firstName: 'Riley',
+    });
+  });
+
+  it('greets by name only in the half hour after paying', async () => {
+    const { familyId, parentUserId } = await seedFamily(test.database);
+    await setName(parentUserId, 'Riley Parent');
+    await inbound(familyId, parentUserId);
+    await verifiedChannel(familyId, parentUserId);
+    const now = nowSeconds();
+    const p = purchase(familyId, { created: now - 3700, subscriptionCreated: now - 3600 });
+    await startCheckout(familyId, parentUserId, p.created);
+    await applyEvent(completedEvent(p));
+    const env = {
+      BILLING_THREAD_NOTICES_ENABLED: 'true',
+      BILLING_THREAD_NOTICES_SINCE: new Date((now - 7200) * 1000).toISOString(),
+    };
+
+    expect(await view(p, { env })).toEqual({
+      state: 'plan_active',
+      firstName: null,
+      checkInDue: false,
+    });
+    expect(await view({ ...p, subscriptionCreated: now - 60 }, { env })).toEqual({
+      state: 'plan_active',
+      firstName: 'Riley',
+      checkInDue: true,
     });
   });
 

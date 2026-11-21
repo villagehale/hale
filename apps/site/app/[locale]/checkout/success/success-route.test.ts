@@ -256,6 +256,7 @@ describe('with the flag on', () => {
 
   describe('A: an existing family on its first paid plan', () => {
     it('says the plan and the name, inside an element replay does not record', async () => {
+      withUserAgent(IPHONE);
       stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
       const main = mainOf(await renderPage());
       expect(main).toContain('<h1 class="sp-h1">You’re on Plus.</h1>');
@@ -264,6 +265,32 @@ describe('with the flag on', () => {
       expect(main).toContain('Text Hale');
       expect(main).toContain('Open Hale');
       expect(main).not.toContain('Hale will check in');
+    });
+
+    it.each([
+      ['Windows', DESKTOP],
+      ['no user agent', null],
+    ])('offers no Text Hale door on %s, where it would open the new-visitor page', async (_name, ua) => {
+      if (ua) withUserAgent(ua);
+      stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+      const main = mainOf(await renderPage());
+      expect(main).toContain('Keep texting Hale like you do now.');
+      expect(main).toContain('Open Hale');
+      expect(main).not.toContain('Text Hale<');
+      expect(main).not.toContain('checkout_success');
+      expect(main).not.toContain('<svg');
+    });
+
+    it.each([
+      ['iPhone', IPHONE],
+      ['Android', ANDROID],
+      ['Mac', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15'],
+    ])('offers the Text Hale door on %s', async (_name, ua) => {
+      withUserAgent(ua);
+      stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+      const main = mainOf(await renderPage());
+      expect(main).toContain('data-cta-placement="checkout_success"');
+      expect(main).toContain('Text Hale');
     });
 
     it('says plain thanks with no name', async () => {
@@ -294,6 +321,7 @@ describe('with the flag on', () => {
   });
 
   it('B renders its final copy with the same buttons as A', async () => {
+    withUserAgent(IPHONE);
     stubFacts({ state: 'upgraded' }, { tier: 'family' });
     const main = mainOf(await renderPage());
     expect(main).toContain('<h1 class="sp-h1">You’re on Max now.</h1>');
@@ -302,6 +330,15 @@ describe('with the flag on', () => {
     );
     expect(main).toContain('Text Hale');
     expect(main).toContain('Open Hale');
+  });
+
+  it('B offers no Text Hale door where it cannot open their thread', async () => {
+    withUserAgent(DESKTOP);
+    stubFacts({ state: 'upgraded' }, { tier: 'family' });
+    const main = mainOf(await renderPage());
+    expect(main).toContain('You’re on Max now.');
+    expect(main).toContain('Open Hale');
+    expect(main).not.toContain('checkout_success');
   });
 
   it('C renders its final copy with Open Hale alone', async () => {

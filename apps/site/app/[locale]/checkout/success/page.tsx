@@ -90,7 +90,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const textHref = smsNumber ? buildSmsHref(smsNumber, null, intakePrefill(locale)) : null;
   const view = checkoutViewForPage(sessionId, facts);
-  const platform = view?.state === 'new_visitor' ? await requestPlatform() : 'unknown';
+  const platform = view ? await requestPlatform() : 'unknown';
 
   return (
     <>

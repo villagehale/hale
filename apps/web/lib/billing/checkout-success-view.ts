@@ -36,6 +36,8 @@ export interface SessionFacts {
   tier: 'plus' | 'family' | null;
   /** now < session.expires_at. Family rows are read only while this holds. */
   fresh: boolean;
+  /** Inside the half hour after the subscription began. Only then may the page greet the payer. */
+  justPaid: boolean;
   createdAt: number;
   familyId: string | null;
   subscriptionId: string | null;
@@ -69,6 +71,11 @@ const LIVE_SUBSCRIPTION = new Set<string | null>(['active', 'trialing', 'past_du
 const ENDED_SUBSCRIPTION = new Set<string | null>(['canceled', 'incomplete_expired']);
 /** Stops clock skew turning a real first purchase into a false duplicate. */
 const PURCHASE_CLOCK_SKEW_SECONDS = 60;
+/**
+ * The session id is the only key to this answer, and it is also the purchase id Google and
+ * Meta receive. So the name and the check-in last only as long as the buyer's own landing.
+ */
+const GREETING_WINDOW_SECONDS = 30 * 60;
 const STRICT_UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,16 +103,20 @@ export function sessionFactsFromStripe(
   const expiresAt = readNumber(raw.expires_at);
   const subscription = isRecord(raw.subscription) ? raw.subscription : null;
   const familyId = familyIdFromStripeEvent({ data: { object: raw } });
+  const subscriptionCreated = subscription ? readNumber(subscription.created) : null;
   return {
     id: readString(raw.id) ?? '',
     status: sessionStatus(raw.status),
     paymentStatus: readString(raw.payment_status),
     tier,
     fresh: expiresAt !== null && now.getTime() < expiresAt * 1000,
+    justPaid:
+      subscriptionCreated !== null &&
+      now.getTime() < (subscriptionCreated + GREETING_WINDOW_SECONDS) * 1000,
     createdAt: readNumber(raw.created) ?? 0,
     familyId: familyId && isUuid(familyId) ? familyId : null,
     subscriptionId: subscription ? readString(subscription.id) : readString(raw.subscription),
-    subscriptionCreated: subscription ? readNumber(subscription.created) : null,
+    subscriptionCreated,
     subscriptionStatus: subscription ? readString(subscription.status) : null,
   };
 }
@@ -222,6 +233,9 @@ async function purchaseWasRefused(
 async function loadFamilyFacts(database: Database, s: SessionFacts): Promise<FamilyFacts | null> {
   if (s.familyId === null || s.subscriptionCreated === null) return null;
   const familyId = s.familyId;
+  // The webhook commits the plan and its grant row together. Reading the grant first means
+  // Free after a seen grant is a real drop, never a plan read that raced that commit.
+  const grantLanded = await paidGrantLanded(database, familyId, s.subscriptionCreated);
   const [family] = await database
     .select({
       planTier: schema.families.planTier,
@@ -231,9 +245,8 @@ async function loadFamilyFacts(database: Database, s: SessionFacts): Promise<Fam
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) return null;
-  const [priorTier, grantLanded, purchaseRefused, payerId] = await Promise.all([
+  const [priorTier, purchaseRefused, payerId] = await Promise.all([
     priorPlanTier(database, familyId, s.subscriptionCreated),
-    paidGrantLanded(database, familyId, s.subscriptionCreated),
     purchaseWasRefused(database, familyId, s),
     resolveCheckoutPayer(database, familyId, s.createdAt),
   ]);
@@ -306,14 +319,19 @@ async function familyView(
   const family = await loadFamilyFacts(database, s);
   const state = familyDecidedState(s, family);
   if (state === 'under_review' && family && !family.purchaseRefused) {
-    await deps.page(database, {
+    const transition = family.priorTier === s.tier ? 'same_plan' : 'other_plan';
+    const page = await deps.page(database, {
       site: 'checkout_duplicate_payment',
-      facts: { transition: family.priorTier === s.tier ? 'same_plan' : 'other_plan' },
+      facts: { transition },
       ref: family.familyId,
     });
+    console.warn(
+      { familyId: family.familyId, transition, page },
+      'checkout view: a family on a paid plan paid again',
+    );
   }
   if (state !== 'plan_active') return { state };
-  const payerId = family?.payerId ?? null;
+  const payerId = s.justPaid ? (family?.payerId ?? null) : null;
   if (payerId === null) return { state, firstName: null, checkInDue: false };
   const [name, checkInDue] = await Promise.all([
     payerFirstName(database, payerId),

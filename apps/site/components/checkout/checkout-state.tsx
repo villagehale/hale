@@ -10,7 +10,7 @@ import {
   type CheckoutSuccessView,
   billingThreadNoticesEnabled,
 } from '~/lib/billing/checkout-success';
-import type { Platform } from '~/lib/chooser';
+import { type Platform, messagesCapable } from '~/lib/chooser';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
 
@@ -50,6 +50,8 @@ export function CheckoutState({
       {t('textHale')}
     </TextDoor>
   );
+  // Without a composer the door would be /text, the page that starts a new parent off.
+  const openThread = messagesCapable(platform) ? textHale(null) : null;
   const openHale = (
     <a className="sp-btn2" href={`${APP_URL}/settings#billing`}>
       {t('continue')}
@@ -94,7 +96,7 @@ export function CheckoutState({
               : null}
           </p>
           <div className="sp-cta">
-            {textHale(null)}
+            {openThread}
             {openHale}
           </div>
         </>
@@ -105,7 +107,7 @@ export function CheckoutState({
           {heading(t('upgradedHeading'))}
           <p className="sp-lede">{t('upgradedLede')}</p>
           <div className="sp-cta">
-            {textHale(null)}
+            {openThread}
             {openHale}
           </div>
         </>

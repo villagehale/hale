@@ -19,6 +19,7 @@ function session(over: Partial<SessionFacts> = {}): SessionFacts {
     paymentStatus: 'paid',
     tier: 'plus',
     fresh: true,
+    justPaid: true,
     createdAt: NOW_SECONDS - 120,
     familyId: FAMILY_ID,
     subscriptionId: 'sub_view',
@@ -93,6 +94,7 @@ describe('sessionFactsFromStripe', () => {
       paymentStatus: 'paid',
       tier: 'plus',
       fresh: true,
+      justPaid: true,
       createdAt: NOW_SECONDS - 300,
       familyId: FAMILY_ID,
       subscriptionId: 'sub_raw',
@@ -115,6 +117,22 @@ describe('sessionFactsFromStripe', () => {
     expect(sessionFactsFromStripe({ ...raw, expires_at: NOW_SECONDS + 1 }, 'plus', NOW).fresh).toBe(
       true,
     );
+  });
+
+  it('counts the half hour after the subscription began as just paid, and nothing else', () => {
+    const paidAt = (created: unknown) =>
+      sessionFactsFromStripe(
+        { ...raw, subscription: { id: 'sub_raw', created, status: 'active' } },
+        'plus',
+        NOW,
+      ).justPaid;
+    expect(paidAt(NOW_SECONDS - 1799)).toBe(true);
+    expect(paidAt(NOW_SECONDS - 1800)).toBe(false);
+    expect(paidAt(NOW_SECONDS - 86_000)).toBe(false);
+    expect(paidAt(undefined)).toBe(false);
+    expect(
+      sessionFactsFromStripe({ ...raw, subscription: 'sub_plain' }, 'plus', NOW).justPaid,
+    ).toBe(false);
   });
 
   it('reads a family id that is not a uuid as no family', () => {
