@@ -164,7 +164,11 @@ import {
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
-import { optOutHoldWriteStopsTurnEnabled, optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
+import {
+  optOutHoldUntilStopCommitsEnabled,
+  optOutHoldWriteStopsTurnEnabled,
+  optOutUnreadHoldTurnEnabled,
+} from './opt-out-turn-flags';
 import { type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -574,7 +578,7 @@ async function runIntakeTurn(
       const held = heldUnreadOutcome(settled, reading);
       if (held) return held;
       if (reading?.intent === 'stop') {
-        return handleStop(
+        return stopThenReleaseHold(
           database,
           {
             phoneE164,
@@ -585,6 +589,7 @@ async function runIntakeTurn(
             confirmation: reading.confirmation,
           },
           deps,
+          settled,
         );
       }
       return { status: 'rate_limited' };
@@ -631,7 +636,7 @@ async function runIntakeTurn(
     const held = heldUnreadOutcome(settled, reading);
     if (held) return held;
     if (reading?.intent === 'stop') {
-      return handleStop(
+      return stopThenReleaseHold(
         database,
         {
           phoneE164,
@@ -642,6 +647,7 @@ async function runIntakeTurn(
           confirmation: reading.confirmation,
         },
         deps,
+        settled,
       );
     }
     // A start re-enrols a number that stopped. Not a stopped number with a seat → the
@@ -4077,7 +4083,7 @@ export interface OptOutHoldPort {
  * read settles only the message it read; another unread text of the same number stays
  * held until it is read (opt-out-recovery.ts).
  */
-type HoldSettle = 'ok' | 'hold_unwritten';
+type HoldSettle = 'ok' | 'hold_unwritten' | 'kept_for_stop';
 
 /**
  * VIL-707. A failed read, or a hold that did not land, ends the turn when its flag is
@@ -4105,14 +4111,8 @@ async function settleOptOutHold(
   hold?: OptOutHoldPort,
 ): Promise<HoldSettle> {
   if (inbound.body.trim().length === 0) return 'ok';
-  const port: OptOutHoldPort = hold ?? {
-    hold: async (hash, providerMessageId, at) => {
-      await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
-    },
-    settled: async (providerMessageId) => {
-      await releaseHeldMessage(database, providerMessageId);
-    },
-  };
+  if (reading?.intent === 'stop' && optOutHoldUntilStopCommitsEnabled()) return 'kept_for_stop';
+  const port = optOutHoldPort(database, hold);
   try {
     if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
     else await port.settled(inbound.providerId);
@@ -4131,6 +4131,46 @@ async function settleOptOutHold(
     }
     return 'ok';
   }
+}
+
+function optOutHoldPort(database: Database, hold?: OptOutHoldPort): OptOutHoldPort {
+  return (
+    hold ?? {
+      hold: async (hash, providerMessageId, at) => {
+        await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
+      },
+      settled: async (providerMessageId) => {
+        await releaseHeldMessage(database, providerMessageId);
+      },
+    }
+  );
+}
+
+/**
+ * A hold kept for a stop goes only once {@link handleStop} has returned: until then it may
+ * be all that keeps a proactive send from a parent who said stop. A throw leaves the row
+ * for the provider's redelivery or the recovery sweep. handleStop is safe to run again, so
+ * a retry after only its ack failed gets here too.
+ */
+async function stopThenReleaseHold(
+  database: Database,
+  args: Parameters<typeof handleStop>[1],
+  deps: IntakeDeps,
+  settled: HoldSettle,
+): Promise<IntakeOutcome> {
+  const stopped = await handleStop(database, args, deps);
+  if (settled !== 'kept_for_stop') return stopped;
+  try {
+    await optOutHoldPort(database, deps.optOutHold).settled(args.inbound.providerId);
+  } catch (err) {
+    // Never rethrown: the stop is recorded, and a failed turn would send its ack again.
+    const name = err instanceof Error ? err.name : 'unknown';
+    console.warn(
+      { err: name },
+      'opt-out hold: release failed after a recorded stop - the row is read again',
+    );
+  }
+  return stopped;
 }
 
 /** What the provider says it already answered (always null on today's transports). */
