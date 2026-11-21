@@ -1,16 +1,32 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import type {
-  BrowserUsePlanResult,
-  PlanPayingToken,
-  PlanResumeToken,
+import {
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  PlanEngineThrew,
+  type PlanPayingToken,
+  type PlanResumeToken,
 } from '../browser-use/plan-engine';
+import { storeProviderSession } from '../browser-use/vault';
 import { recordSignupOffer } from '../store';
+import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
-import { type PlanOutcomeNotice, runDueSignupPlans } from './run';
-import { planTakenBack, requestStopForRunningPlans, savePlanResume } from './store';
+import type { PlanPrepFacts } from './prep';
+import { type PlanOutcomeNotice, type PlanSignupRunner, runDueSignupPlans } from './run';
+import {
+  approveSignupPlan,
+  cancelSignupPlan,
+  countRunningPlans,
+  loadConversablePlans,
+  planTakenBack,
+  requestStopForRunningPlans,
+  runPlanStop,
+  savePlanResume,
+} from './store';
 
 const scriptDb = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock('@hale/db', async (importOriginal) => ({
@@ -75,8 +91,54 @@ const PAID: BrowserUsePlanResult = {
   charged: { cents: 9800 },
 };
 
+/** A run that stopped at checkout and left its browser open for the parent. */
+const UNPAID: BrowserUsePlanResult = {
+  outcome: 'needs_human',
+  detail: 'no_saved_card',
+  choiceIndex: 0,
+  liveViewUrl: 'https://live.example-browser.test/session-1',
+  checkoutUrl: null,
+  holdExpiresAt: new Date(NOW.getTime() + 10 * 60_000),
+  cartTotalCents: 9800,
+  confirmationNumber: null,
+  opensAt: null,
+  amountChargedCents: null,
+  runId: 'run-1',
+  sessionId: 'bu-session-1',
+  costUsd: '0.0400',
+  sessionCostUsd: null,
+  browserId: 'browser-1',
+  charged: 'nothing',
+};
+/** The engine already closed this one's browser and read its cost. */
+const CLOSED: BrowserUsePlanResult = {
+  ...UNPAID,
+  liveViewUrl: null,
+  holdExpiresAt: null,
+  sessionCostUsd: '0.050000',
+};
+const OPEN_BROWSER: PlanResumeToken = {
+  phase: 'signup',
+  runId: 'run-1',
+  sessionId: 'bu-session-1',
+  browserId: 'browser-1',
+};
+const RELEASED_COST = '0.120000';
+const SITE_CHOICES = [
+  {
+    id: 'nov-21',
+    label: 'Nov 21',
+    starts_at: '2026-11-21',
+    price_cents: 12000,
+    waitlist: false,
+    billing_note: 'billed December',
+    provider_email: 'rec@example.test',
+  },
+];
+
 let db: TestDb;
 let messageSeq = 0;
+let phoneSeq = 0;
 const realArgv = process.argv;
 
 beforeAll(async () => {
@@ -88,10 +150,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.delete(schema.authorizedSignupOffers);
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {
   process.argv = realArgv;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.resetModules();
 });
@@ -141,6 +205,122 @@ async function runningPlan(resume: PlanResumeToken) {
     .set({ status: 'submitting', planResume: resume, planLeaseUntil: null })
     .where(eq(offers.id, plan.offerId));
   return plan;
+}
+
+/** A plan the next sweep claims and runs: an enrolled parent, a consent and a city login. */
+async function dueFamily() {
+  const seeded = await seedFamily(db.database);
+  phoneSeq += 1;
+  const phone = `+1202555${String(300 + phoneSeq).padStart(4, '0')}`;
+  await db.database.insert(schema.parentChannels).values({
+    userId: seeded.parentUserId,
+    familyId: seeded.familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: new Date(NOW.getTime() - 30 * 24 * 60 * 60_000),
+  });
+  const childId = await seedChild(db.database, seeded.familyId, 'Ada', 40, undefined, NOW);
+  const offer = await recordSignupOffer(db.database, {
+    familyId: seeded.familyId,
+    childId,
+    parentUserId: seeded.parentUserId,
+    activityKey: 'swim-preschool',
+    registrationUrl: AUTO_URL,
+    sessions: SESSIONS,
+    approvedPriceCents: null,
+    now: new Date(NOW.getTime() - 24 * 60 * 60_000),
+  });
+  if (!offer.ok) throw new Error(offer.reason);
+  messageSeq += 1;
+  const approved = await approveSignupPlan(db.database, {
+    offerId: offer.id,
+    familyId: seeded.familyId,
+    parentUserId: seeded.parentUserId,
+    messageId: `msg-plan-${messageSeq}`,
+    choiceIds: ['sat-0900'],
+    maxPriceCents: 10000,
+    opensAt: OPENS,
+    waiverAccepted: true,
+    now: new Date(NOW.getTime() - 20 * 60 * 60_000),
+  });
+  if (!approved.ok) throw new Error(approved.reason);
+  const stored = await storeProviderSession(db.database, {
+    familyId: seeded.familyId,
+    parentUserId: seeded.parentUserId,
+    providerHost: AUTO_HOST,
+    storageState: { cookies: [{ name: 'SID', value: 'c', domain: `.${AUTO_HOST}` }] },
+    capturedAt: new Date(NOW.getTime() - 60 * 60_000),
+  });
+  if (!stored.ok) throw new Error('the city login was not stored');
+  return { offerId: offer.id, familyId: seeded.familyId, parentUserId: seeded.parentUserId };
+}
+
+/** A run that ends as `ending`. `during` is what lands on the plan while the run is going. */
+function runEndingAt(ending: BrowserUsePlanResult, during: () => Promise<unknown>) {
+  return {
+    run: vi.fn(async (input: BrowserUsePlanInput) => {
+      await input.onCheckpoint(QUEUED);
+      await during();
+      return ending;
+    }),
+    release: vi.fn(async (_resume: PlanResumeToken) => RELEASED_COST),
+    settlePayment: vi.fn(async (): Promise<BrowserUsePlanResult> => {
+      throw new Error('no payment under way');
+    }),
+  };
+}
+
+const opsStop = () => requestStopForRunningPlans(db.database, { now: NOW });
+const nothingLands = async () => undefined;
+
+/** Sweep wiring that records every text a plan's end would send. */
+function hearing(runner: PlanSignupRunner) {
+  const notices: PlanOutcomeNotice[] = [];
+  const asks: PlanNoticePart[] = [];
+  return {
+    notices,
+    asks,
+    deps: {
+      runner,
+      autoHosts: [AUTO_HOST],
+      notifyParent: async (notice: PlanOutcomeNotice) => {
+        notices.push(notice);
+        return 'sent' as const;
+      },
+      prep: {
+        writer: {
+          write: async (facts: PlanPrepFacts) => ({
+            bubbles: [`ask for ${facts.kind}`],
+            card: facts.loginCard ? { title: 'New link', description: 'Swim' } : null,
+          }),
+        },
+        deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
+          asks.push(...input.parts);
+          return 'sent' as const;
+        },
+      },
+    },
+  };
+}
+
+const firstBody = (parts: readonly PlanNoticePart[]) => {
+  const first = parts[0];
+  return first?.type === 'link' ? first.url : first?.body;
+};
+
+async function finishedRow(offerId: string) {
+  const rows = await db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.targetId, offerId),
+        sql`${schema.auditLog.after}->>'step' = 'plan_finished'`,
+      ),
+    );
+  expect(rows).toHaveLength(1);
+  return rows[0]?.after as Record<string, unknown>;
 }
 
 async function offerRow(offerId: string) {
@@ -343,7 +523,7 @@ describe('an ops stop of every running plan', () => {
     ]);
   });
 
-  it('keeps the time of a take-back the parent already made', async () => {
+  it('also covers a plan the parent already took back, and keeps their time', async () => {
     const plan = await runningPlan(QUEUED);
     await db.database
       .update(offers)
@@ -351,12 +531,17 @@ describe('an ops stop of every running plan', () => {
       .where(eq(offers.id, plan.offerId));
 
     expect(await requestStopForRunningPlans(db.database, { now: NOW })).toEqual({
-      signup: 0,
+      signup: 1,
       paying: 0,
     });
 
     expect((await offerRow(plan.offerId)).planCancelRequestedAt).toEqual(OPENS);
-    expect(await stopRows(plan.offerId)).toEqual([]);
+    expect(await stopRows(plan.offerId)).toHaveLength(1);
+    expect(await requestStopForRunningPlans(db.database, { now: NEXT_SWEEP })).toEqual({
+      signup: 0,
+      paying: 0,
+    });
+    expect(await stopRows(plan.offerId)).toHaveLength(1);
   });
 
   it('with the run flag off the stop still lands, but no sweep lets the run go', async () => {
@@ -379,24 +564,15 @@ describe('an ops stop of every running plan', () => {
     expect(row.planCancelRequestedAt).toEqual(NOW);
   });
 
-  it('a stopped plan a sweep puts back before its open never runs at the open', async () => {
+  it('a stopped plan before its open is let go, never put back to planned', async () => {
     vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
     const plan = await runningPlan(UNSTARTED);
     await requestStopForRunningPlans(db.database, { now: NOW });
     const { runner, notices, deps } = sweepDeps();
 
-    await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
-    const returned = await offerRow(plan.offerId);
-    expect(returned.status).toBe('planned');
-    expect(returned.planCancelRequestedAt).toEqual(NOW);
+    const result = await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
 
-    const atOpen = await runDueSignupPlans(
-      db.database,
-      { now: new Date(OPENS.getTime() + 60_000) },
-      deps,
-    );
-
-    expect(atOpen.plans).toEqual([
+    expect(result.plans).toEqual([
       {
         offerId: plan.offerId,
         outcome: 'cancelled',
@@ -404,13 +580,279 @@ describe('an ops stop of every running plan', () => {
         notice: 'withheld',
       },
     ]);
+    expect((await offerRow(plan.offerId)).status).toBe('handed_back');
+    expect(
+      await loadConversablePlans(db.database, { familyId: plan.familyId, now: NEXT_SWEEP }),
+    ).toEqual([]);
     expect(runner.run).not.toHaveBeenCalled();
     expect(notices).toEqual([]);
-    expect((await offerRow(plan.offerId)).status).toBe('handed_back');
+
+    const notStopped = await runningPlan(UNSTARTED);
+    await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
+    expect((await offerRow(notStopped.offerId)).status).toBe('planned');
+  });
+});
+
+describe('a stop that lands while the run is going', () => {
+  const STOPPED_SUMMARY = {
+    outcome: 'cancelled',
+    detail: 'authorization_lapsed',
+    notice: 'withheld',
+  };
+
+  it.each<[string, BrowserUsePlanResult]>([
+    ['no saved card', UNPAID],
+    ['a security code', { ...UNPAID, detail: 'security_code' }],
+    ['a price change', { ...UNPAID, detail: 'price_change' }],
+    ['the spending cap', { ...UNPAID, detail: 'spending_cap' }],
+    ['the payment switch off', { ...UNPAID, detail: 'payment_off' }],
+    ['a login wall', { ...UNPAID, outcome: 'needs_login', detail: 'login_wall' }],
+    ['a waiver', { ...UNPAID, detail: 'waiver' }],
+    ['a form filled for the parent', { ...UNPAID, outcome: 'ready_for_parent', detail: 'none' }],
+    ['sold out', { ...CLOSED, outcome: 'sold_out', detail: 'none' }],
+    ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
+    ['not open yet', { ...CLOSED, outcome: 'not_open', detail: 'none' }],
+    ['a failed run', { ...CLOSED, outcome: 'error', detail: 'run_failed' }],
+  ])('ending at %s, the parent hears nothing and the browser is let go', async (_name, ending) => {
+    const plan = await dueFamily();
+    const runner = runEndingAt(ending, opsStop);
+    const stopped = hearing(runner);
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
+    expect(stopped.notices).toEqual([]);
+    expect(stopped.asks).toEqual([]);
+    const row = await offerRow(plan.offerId);
+    expect(row.status).toBe('handed_back');
+    expect(runner.release.mock.calls).toEqual(ending.liveViewUrl ? [[OPEN_BROWSER]] : []);
+    expect(Number(row.browserUseCostUsd)).toBe(
+      Number(ending.liveViewUrl ? RELEASED_COST : ending.sessionCostUsd),
+    );
+    expect(await finishedRow(plan.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      charged: 'nothing',
+      notice: 'withheld',
+      stoppedFrom: { outcome: ending.outcome, detail: ending.detail },
+    });
+
+    const control = await dueFamily();
+    const heard = hearing(runEndingAt(ending, nothingLands));
+    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+    expect(heard.notices.map((n) => [n.offerId, n.outcome, n.detail, n.liveViewUrl])).toEqual([
+      [control.offerId, ending.outcome, ending.detail, ending.liveViewUrl],
+    ]);
+  });
+
+  it('a run whose engine throws before any payment texts nobody', async () => {
+    const threw = () =>
+      new PlanEngineThrew(new TypeError('fetch failed'), {
+        runId: 'run-1',
+        sessionId: 'bu-session-1',
+        browserId: null,
+        sessionCostUsd: '0.010000',
+        reviewStarted: false,
+      });
+    const plan = await dueFamily();
+    const stopped = hearing({
+      ...runEndingAt(UNPAID, nothingLands),
+      run: async () => {
+        await opsStop();
+        throw threw();
+      },
+    });
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
+    expect(stopped.notices).toEqual([]);
+    expect(await finishedRow(plan.offerId)).toMatchObject({
+      stoppedFrom: { outcome: 'error', detail: 'engine_threw' },
+    });
+
+    const control = await dueFamily();
+    const heard = hearing({
+      ...runEndingAt(UNPAID, nothingLands),
+      run: async () => {
+        throw threw();
+      },
+    });
+    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+    expect(heard.notices.map((n) => [n.offerId, n.detail])).toEqual([
+      [control.offerId, 'engine_threw'],
+    ]);
+  });
+
+  it.each<[string, BrowserUsePlanResult, string]>([
+    [
+      'options that do not match',
+      { ...CLOSED, outcome: 'options_mismatch', detail: 'none', siteChoices: SITE_CHOICES },
+      'ask for options_mismatch',
+    ],
+    [
+      'a rejected password',
+      {
+        ...UNPAID,
+        outcome: 'needs_login',
+        detail: 'password_rejected',
+        passwordRejectionMessage: 'Password must include a number',
+        passwordRule: '8 characters and a number',
+      },
+      'ask for password_rejected',
+    ],
+  ])('ending at %s, nothing is asked and the plan is not parked', async (_name, ending, ask) => {
+    const plan = await dueFamily();
+    const runner = runEndingAt(ending, opsStop);
+    const stopped = hearing(runner);
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
+    expect(stopped.asks).toEqual([]);
+    expect(stopped.notices).toEqual([]);
+    const row = await offerRow(plan.offerId);
+    expect(row.status).toBe('handed_back');
+    expect(row.planAvailability).toBeNull();
+    expect(runner.release.mock.calls).toEqual(ending.liveViewUrl ? [[OPEN_BROWSER]] : []);
+    expect(await loadConversablePlans(db.database, { familyId: plan.familyId, now: NOW })).toEqual(
+      [],
+    );
+    expect((await countRunningPlans(db.database)).running).toEqual({ signup: 0, paying: 0 });
+
+    const control = await dueFamily();
+    const heard = hearing(runEndingAt(ending, nothingLands));
+    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+    expect(firstBody(heard.asks)).toBe(ask);
+    expect((await offerRow(control.offerId)).status).toBe('planned');
+  });
+
+  it('a review that may have placed the order still reaches the parent', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops-fixture');
+    const paged: string[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
+      paged.push(JSON.parse(init?.body ?? '{}').text);
+      return new Response('ok', { status: 200 });
+    });
+    const plan = await dueFamily();
+    const runner = runEndingAt(
+      { ...UNPAID, detail: 'review_placed_order', charged: 'unknown' },
+      opsStop,
+    );
+    const stopped = hearing(runner);
+
+    await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(stopped.notices.map((n) => [n.offerId, n.detail, n.charged, n.liveViewUrl])).toEqual([
+      [plan.offerId, 'review_placed_order', 'unknown', UNPAID.liveViewUrl],
+    ]);
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(paged).toEqual([
+      `Hale: ops page. site registration_review_placed_order. ref ${plan.offerId}.`,
+    ]);
+  });
+
+  it('a decline read from a payment already under way still reaches the parent', async () => {
+    const plan = await runningPlan(PAYING);
+    await opsStop();
+    const { notices, deps } = sweepDeps({
+      ...PAID,
+      outcome: 'payment_not_approved',
+      detail: 'card_declined',
+      confirmationNumber: null,
+      amountChargedCents: null,
+      charged: 'nothing',
+    });
+
+    await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
+
+    expect(notices.map((n) => [n.offerId, n.outcome, n.detail])).toEqual([
+      [plan.offerId, 'payment_not_approved', 'card_declined'],
+    ]);
+  });
+
+  it("a parent's own take-back during a run still hears how the run ended", async () => {
+    const plan = await dueFamily();
+    const runner = runEndingAt(UNPAID, () =>
+      cancelSignupPlan(db.database, {
+        offerId: plan.offerId,
+        familyId: plan.familyId,
+        actor: plan.parentUserId,
+        now: NOW,
+      }),
+    );
+    const parent = hearing(runner);
+
+    await runDueSignupPlans(db.database, { now: NOW }, parent.deps);
+
+    expect(parent.notices.map((n) => [n.offerId, n.detail, n.liveViewUrl])).toEqual([
+      [plan.offerId, 'no_saved_card', UNPAID.liveViewUrl],
+    ]);
+    expect(runner.release).not.toHaveBeenCalled();
+  });
+
+  it('a plan the parent took back before the stop also ends without a text', async () => {
+    const plan = await dueFamily();
+    const stopped = hearing(
+      runEndingAt(UNPAID, async () => {
+        await cancelSignupPlan(db.database, {
+          offerId: plan.offerId,
+          familyId: plan.familyId,
+          actor: plan.parentUserId,
+          now: NOW,
+        });
+        await opsStop();
+      }),
+    );
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
+    expect(stopped.notices).toEqual([]);
   });
 });
 
 describe('the stop-signup-plans script', () => {
+  it('with apply, marks every running plan once and reports the counts', async () => {
+    const signup = await runningPlan(QUEUED);
+    const paying = await runningPlan(PAYING);
+    const planned = await plannedOffer();
+
+    expect(await runPlanStop(db.database, { apply: true, now: NOW })).toEqual({
+      mode: 'apply',
+      stopped: { signup: 1, paying: 1 },
+      stillRunning: { signup: 1, paying: 1 },
+    });
+
+    for (const row of [signup, paying]) {
+      expect((await offerRow(row.offerId)).planCancelRequestedAt).toEqual(NOW);
+      expect(await stopRows(row.offerId)).toHaveLength(1);
+    }
+    expect((await offerRow(planned.offerId)).planCancelRequestedAt).toBeNull();
+    expect(await stopRows(planned.offerId)).toEqual([]);
+
+    expect(await runPlanStop(db.database, { apply: true, now: NEXT_SWEEP })).toEqual({
+      mode: 'apply',
+      stopped: { signup: 0, paying: 0 },
+      stillRunning: { signup: 1, paying: 1 },
+    });
+    expect((await offerRow(signup.offerId)).planCancelRequestedAt).toEqual(NOW);
+  });
+
+  it('without apply, reports what it would stop and writes nothing', async () => {
+    const signup = await runningPlan(QUEUED);
+    const before = await offerRow(signup.offerId);
+
+    expect(await runPlanStop(db.database, { apply: false, now: NOW })).toEqual({
+      mode: 'dry_run',
+      wouldStop: { signup: 1, paying: 0 },
+      stillRunning: { signup: 1, paying: 0 },
+    });
+
+    expect(await offerRow(signup.offerId)).toEqual(before);
+    expect(await stopRows(signup.offerId)).toEqual([]);
+  });
+
   it('by default prints counts only and writes nothing', async () => {
     const stopped = await runningPlan(PAYING);
     await requestStopForRunningPlans(db.database, { now: NOW });

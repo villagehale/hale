@@ -137,20 +137,23 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 
 ### Stop every running registration plan
 
-A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` applies a parent's take-back to every running plan at once: no payment starts after it, with no redeploy. It needs `DATABASE_URL`. Running it against Production needs Barton's go.
+A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment: none of them starts a payment after it, with no redeploy. It needs `DATABASE_URL`. Running it against Production needs Barton's go.
+
+**It covers day-before plans only.** A one-shot signup is not a plan, so the stop does not touch it, and a one-shot run can pay when `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` is on. To close that path, turn `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` off with the redeploy steps above. A one-shot run already going keeps the wallet it started with until it ends.
 
 Run it before you turn the flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off the sweep returns at once, so a checkpointed run is never let go and keeps its browser.
 
-1. `pnpm signup:stop-plans`. This is a dry run. It writes nothing and prints counts only: `wouldStop` is the running plans with no stop on them yet, and `stillRunning` is every running plan, by phase.
+1. `pnpm signup:stop-plans`. This is a dry run. It writes nothing and prints counts only: `wouldStop` is the running plans with no ops stop on them yet, and `stillRunning` is every running plan, by phase.
 2. With the flag still on, run `pnpm signup:stop-plans -- --apply`.
-3. Run the same `--apply` command once a minute until `stillRunning` is zero in both phases. While the flag is on, the sweep still claims plans as they come due, and each `--apply` stops those too. Running it again never changes an earlier stop. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
+3. Run the same `--apply` command once a minute until `stillRunning` is zero in both phases. Running it again never changes an earlier stop. While the flag is on, a sweep can still claim a plan as it comes due, and **that plan starts a real run**. Only a later `--apply`, read by the check before payment, keeps it from paying, so do not stop repeating early. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
 4. Turn `REGISTRATION_PLAN_RUN_ENABLED` off with the redeploy steps above.
 5. When the new deployment is Production, run the dry run once more. If `stillRunning` is not zero, a sweep claimed a plan just before the redeploy. Run `--apply`, turn the flag back on until the count is zero, then turn it off again.
 
-**What a parent hears.** The stop itself sends nothing, and there is no fixed line for it, so a parent whose plan was stopped hears nothing until someone follows up. Each stopped plan has one `plan_ops_stop` row in `audit_log`. Two things can still reach a parent, and both come from the run rather than the stop:
+**What a parent hears.** The stop sends nothing, and there is no fixed line for it, so a parent whose plan was stopped hears nothing until someone follows up. A run that ends after the stop sends no notice and asks nothing, and its browser is closed. To find those families, each stopped plan has one `plan_ops_stop` row in `audit_log`, and its `plan_finished` row keeps how the run really ended under `stoppedFrom`. Three things can still reach a parent:
 
-- A plan whose payment had started is still read, and the parent is told what it did. A plan whose checkout review had started may have placed the order, so the parent is told a charge may exist and #ops is paged.
-- A run already in progress when the stop lands can end on its own and send its usual notice, for example no saved card or a price change, with the live browser link. Hale does not pay in that case; the parent would finish it themselves.
+- A plan whose payment had started is still read, and the parent is told what it did, including a declined card. A plan whose checkout review may have placed the order tells the parent a charge may exist and pages #ops.
+- A plan a sweep claimed after the last `--apply` runs as usual until a later `--apply` marks it. If it ends first, its parent gets the usual notice, which is why step 3 repeats.
+- A run that had already ended when the stop landed still sends its usual notice.
 
 ## Rotating APP_ENCRYPTION_KEY
 

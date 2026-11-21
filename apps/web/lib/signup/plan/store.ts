@@ -1,5 +1,5 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -291,6 +291,20 @@ export async function claimDuePlan(
   return row ? claimedPlan(row, null) : null;
 }
 
+/** The audit step of an ops stop, written once per plan in the transaction that marks it. */
+const PLAN_OPS_STOP_STEP = 'plan_ops_stop';
+/**
+ * An ops stop is on this plan. A parent's take-back sets the same column, so this row is what
+ * tells them apart. Audit rows are immutable, so an ops stop is never undone.
+ */
+const hasOpsStop = sql`exists (
+  select 1 from ${schema.auditLog} ops
+  where ops.family_id = ${schema.authorizedSignupOffers.familyId}
+    and ops.target_id = ${schema.authorizedSignupOffers.id}::text
+    and ops.action_taken = 'authorized_signup_step'
+    and ops.after->>'step' = ${PLAN_OPS_STOP_STEP}
+)`;
+
 /**
  * Puts an unstarted plan back to `planned` while registration is still ahead.
  * A provider run, or a payment that may exist, stays where it is.
@@ -298,7 +312,8 @@ export async function claimDuePlan(
  * Without `offerId` this recovers abandoned claims only: a live lease belongs to
  * a sweep that may already be driving the plan, and a clock captured before
  * prep must not clear it. With `offerId` the sweep is letting go of the claim
- * it holds.
+ * it holds. A plan with an ops stop stays out of `planned`, where the parent could still set
+ * it: the sweep lets it go instead.
  */
 export async function releaseUnstartedPlansBeforeOpen(
   database: Database,
@@ -320,6 +335,7 @@ export async function releaseUnstartedPlansBeforeOpen(
         eq(offers.status, 'submitting'),
         gt(offers.planOpensAt, input.now),
         or(isNull(offers.planAlreadyOpen), eq(offers.planAlreadyOpen, false)),
+        not(hasOpsStop),
         sql`(
           ${offers.planResume} is null
           or (
@@ -532,9 +548,10 @@ function countByPhase(
 /**
  * {@link cancelSignupPlan}'s mark on every running plan at once: an incident stop that needs
  * no redeploy. No payment starts after it ({@link savePlanResume}) and a later sweep lets
- * each run go. A plan in `paying` is marked too; the sweep still reads what its payment did
- * and tells the parent. A plan already marked keeps its first time. Each mark and its one
- * audit row land together. Returns the plans marked by this call.
+ * each run go without a text, unless a charge may exist: a plan in `paying` is marked too,
+ * and the sweep still reads what its payment did and tells the parent. A plan the parent
+ * already took back keeps their time. Each mark and its one audit row land together.
+ * Returns the plans marked by this call.
  */
 export async function requestStopForRunningPlans(
   database: Database,
@@ -543,36 +560,94 @@ export async function requestStopForRunningPlans(
   const offers = schema.authorizedSignupOffers;
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    // Two stops at once would each read "no stop yet" and write a second audit row.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${PLAN_OPS_STOP_STEP}))`);
     const stopped = await tx
       .update(offers)
-      .set({ planCancelRequestedAt: input.now, updatedAt: input.now })
-      .where(and(isRunningPlan, isNull(offers.planCancelRequestedAt)))
+      .set({
+        planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
+        updatedAt: input.now,
+      })
+      .where(and(isRunningPlan, not(hasOpsStop)))
       .returning({ id: offers.id, familyId: offers.familyId, phase: resumePhase });
     for (const row of stopped) {
       await writePlanAudit(tx, {
         familyId: row.familyId,
         actor: 'system',
         offerId: row.id,
-        after: { step: 'plan_ops_stop', phase: row.phase },
+        after: { step: PLAN_OPS_STOP_STEP, phase: row.phase },
       });
     }
     return countByPhase(stopped);
   });
 }
 
-/** Every running plan by phase, and those with no stop on them yet. Reads only. */
+/** Every running plan by phase, and those with no ops stop on them yet. Reads only. */
 export async function countRunningPlans(
   database: Database,
 ): Promise<{ running: PlanPhaseCounts; notStopped: PlanPhaseCounts }> {
   const offers = schema.authorizedSignupOffers;
-  const rows = await database
-    .select({ phase: resumePhase, stoppedAt: offers.planCancelRequestedAt })
+  const running = await database.select({ phase: resumePhase }).from(offers).where(isRunningPlan);
+  const notStopped = await database
+    .select({ phase: resumePhase })
     .from(offers)
-    .where(isRunningPlan);
-  return {
-    running: countByPhase(rows),
-    notStopped: countByPhase(rows.filter((row) => row.stoppedAt === null)),
-  };
+    .where(and(isRunningPlan, not(hasOpsStop)));
+  return { running: countByPhase(running), notStopped: countByPhase(notStopped) };
+}
+
+export type PlanStopReport =
+  | { mode: 'dry_run'; wouldStop: PlanPhaseCounts; stillRunning: PlanPhaseCounts }
+  | { mode: 'apply'; stopped: PlanPhaseCounts; stillRunning: PlanPhaseCounts };
+
+/** The ops command. Its report is counts by phase, so it cannot name a family. */
+export async function runPlanStop(
+  database: Database,
+  input: { apply: boolean; now: Date },
+): Promise<PlanStopReport> {
+  if (!input.apply) {
+    const { running, notStopped } = await countRunningPlans(database);
+    return { mode: 'dry_run', wouldStop: notStopped, stillRunning: running };
+  }
+  const stopped = await requestStopForRunningPlans(database, { now: input.now });
+  const { running } = await countRunningPlans(database);
+  return { mode: 'apply', stopped, stillRunning: running };
+}
+
+/** An ops stop is on this plan, as opposed to only its parent's own take-back. */
+export async function planOpsStopped(
+  database: Database,
+  input: { offerId: string; familyId: string },
+): Promise<boolean> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select({ id: offers.id })
+    .from(offers)
+    .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId), hasOpsStop))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * {@link parkSignupPlan} for a run's own ending, unless an ops stop is on the plan. The row
+ * lock orders the two: a stop either committed before this read or waits and finds the plan
+ * no longer running, so a stopped plan is never parked for the parent to answer.
+ */
+export async function parkUnlessOpsStopped(
+  database: Database,
+  input: Parameters<typeof parkSignupPlan>[1],
+): Promise<'parked' | 'ops_stopped'> {
+  const offers = schema.authorizedSignupOffers;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx
+      .select({ id: offers.id })
+      .from(offers)
+      .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)))
+      .for('update');
+    if (await planOpsStopped(tx, input)) return 'ops_stopped';
+    await parkSignupPlan(tx, input);
+    return 'parked';
+  });
 }
 
 /**

@@ -53,9 +53,10 @@ import {
   claimDuePlan,
   claimResumablePlan,
   loadPlanConsent,
-  parkSignupPlan,
+  parkUnlessOpsStopped,
   planFieldsToType,
   planLapse,
+  planOpsStopped,
   planTakenBack,
   releaseUnstartedPlansBeforeOpen,
   savePlanResume,
@@ -270,7 +271,8 @@ async function runOnePlan(
     registrationPlanAtOpenEnabled() &&
     !plan.alreadyOpen &&
     now.getTime() < plan.opensAt.getTime() &&
-    !held
+    !held &&
+    !(plan.takenBack && (await planOpsStopped(database, plan)))
   ) {
     const released = await releaseUnstartedPlansBeforeOpen(database, {
       now,
@@ -341,10 +343,12 @@ async function runOnePlan(
     );
   };
   const end = async (
-    result: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
+    ending: Omit<PlanOutcomeNotice, 'offerId' | 'familyId' | 'parentUserId'> & {
       costUsd?: string | null;
       sessionCostUsd?: string | null;
       started?: boolean;
+      /** The browser this ending leaves open for the parent. */
+      openBrowser?: PlanResumeToken | null;
     },
   ): Promise<PlanRunSummary> => {
     // Ending before this sweep reached the engine: let go of the run an earlier one left going.
@@ -353,9 +357,26 @@ async function runOnePlan(
       offerId: plan.offerId,
       familyId: plan.familyId,
       from: 'submitting',
-      status: result.outcome === 'completed' ? 'completed' : 'handed_back',
+      status: ending.outcome === 'completed' ? 'completed' : 'handed_back',
       now,
     });
+    // Read after the mark, which puts the plan out of a stop's reach: a stop that committed
+    // first is seen here and none can land later. Only where no charge can exist: a payment
+    // that ran is always reported.
+    const opsStopped =
+      ending.charged === 'nothing' && !paymentMayExist && (await planOpsStopped(database, plan));
+    const result = opsStopped
+      ? {
+          ...ending,
+          outcome: 'cancelled' as const,
+          detail: 'authorization_lapsed' as const,
+          liveViewUrl: null,
+          holdExpiresAt: null,
+          sessionCostUsd: ending.openBrowser
+            ? await runner.release(ending.openBrowser)
+            : ending.sessionCostUsd,
+        }
+      : ending;
     // An allowance whose run never started is released; a started one keeps its
     // hold until the session's real cost replaces it.
     const started = result.started ?? held !== null;
@@ -368,7 +389,7 @@ async function runOnePlan(
         now,
       });
     }
-    const { costUsd, sessionCostUsd, started: _started, ...facts } = result;
+    const { costUsd, sessionCostUsd, started: _started, openBrowser: _open, ...facts } = result;
     const noticeFacts: PlanOutcomeNotice = {
       ...facts,
       offerId: plan.offerId,
@@ -399,6 +420,7 @@ async function runOnePlan(
       sessionCostUsd: sessionCostUsd ?? released,
       notice,
       host,
+      ...(opsStopped ? { stoppedFrom: { outcome: ending.outcome, detail: ending.detail } } : {}),
     });
     if (result.outcome === 'error') {
       noteRegistrationRunFailed({
@@ -471,7 +493,8 @@ async function runOnePlan(
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
     }
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
-      return parkAndTell(database, plan, result, now, host, deps);
+      const parked = await parkAndTell(database, plan, result, now, host, deps);
+      if (parked) return parked;
     }
     await pageIfReviewMayHavePlaced(result.charged, result.detail);
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
@@ -488,6 +511,15 @@ async function runOnePlan(
       costUsd: result.costUsd,
       sessionCostUsd: result.sessionCostUsd,
       started: result.sessionId !== null || result.runId !== null,
+      openBrowser:
+        result.liveViewUrl === null
+          ? null
+          : {
+              phase: 'signup',
+              runId: result.runId,
+              sessionId: result.sessionId,
+              browserId: result.browserId,
+            },
     });
   };
   const onStep: BrowserUsePlanInput['onStep'] = (step) =>
@@ -662,6 +694,7 @@ function askedStartFromAvailability(availability: Record<string, unknown> | null
   return typeof availability.askedStart === 'string' ? availability.askedStart : null;
 }
 
+/** Null when an ops stop is on the plan: nothing was parked and the parent was asked nothing. */
 async function parkAndTell(
   database: Database,
   plan: ClaimedPlan,
@@ -669,7 +702,7 @@ async function parkAndTell(
   now: Date,
   host: string | null,
   deps: PlanRunDeps,
-): Promise<PlanRunSummary> {
+): Promise<PlanRunSummary | null> {
   const passwordRejected = result.detail === 'password_rejected';
   if (passwordRejected) {
     await markCredentialsStale(database, {
@@ -689,7 +722,7 @@ async function parkAndTell(
             : null,
       }
     : null;
-  await parkSignupPlan(database, {
+  const parked = await parkUnlessOpsStopped(database, {
     offerId: plan.offerId,
     familyId: plan.familyId,
     availability: passwordRejected
@@ -701,6 +734,7 @@ async function parkAndTell(
         },
     now,
   });
+  if (parked === 'ops_stopped') return null;
   if (result.sessionCostUsd) {
     await recordBrowserUseCost(database, {
       offerId: plan.offerId,
