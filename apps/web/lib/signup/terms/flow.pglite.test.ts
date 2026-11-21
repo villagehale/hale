@@ -18,6 +18,7 @@ import { offerSignupFromFacts } from '../offer-from-facts';
 import { offerSignupTool } from '../offer-tool';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from '../plan/flag';
 import type { MismatchReader } from '../plan/mismatch-reader';
+import { createPlanNotifier } from '../plan/notice';
 import { recordPlanNotice } from '../plan/prep';
 import type { PlanReader, PlanReading } from '../plan/reader';
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from '../plan/run';
@@ -123,6 +124,17 @@ async function household(ageMonths = 62, postal: string | null = 'L3R 1A1') {
 }
 
 type Household = Awaited<ReturnType<typeof household>>;
+
+/** Slack #ops on the real page path: every text the webhook is posted. */
+function stubOps(): string[] {
+  const posted: string[] = [];
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops-fixture');
+  vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
+    posted.push(JSON.parse(init?.body ?? '{}').text);
+    return new Response('ok', { status: 200 });
+  });
+  return posted;
+}
 
 function writer() {
   const written: PlanReplyFacts[] = [];
@@ -355,17 +367,61 @@ describe('the ask', () => {
   });
 
   it('a text the writer cannot write stores nothing and pages #ops', async () => {
-    const posted: string[] = [];
-    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops-fixture');
-    vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
-      posted.push(JSON.parse(init?.body ?? '{}').text);
-      return new Response('ok', { status: 200 });
-    });
+    const posted = stubOps();
     const f = await household();
     const result = await ask(f, { writer: { write: async () => null } });
     expect(result).toEqual({ ok: false, reason: 'unwritten' });
     expect(await offerCount(f)).toBe(0);
     expect(posted.join(' ')).toContain('registration_text_unwritten');
+  });
+
+  it('a yes whose reply the writer cannot write sends nothing and pages #ops', async () => {
+    const posted = stubOps();
+    const f = await household();
+    await askedAndSent(f);
+    const turn = await yes(f, YES, { writer: { write: async () => null } });
+    expect(turn.result).toMatchObject({
+      claimed: true,
+      reply: null,
+      deliverOnThread: false,
+      unsent: 'reply_unwritten',
+    });
+    expect(posted.join(' ')).toContain('registration_text_unwritten');
+    expect(posted.join(' ')).toContain('moment reply');
+  });
+
+  it('a run notice the writer cannot write sends nothing and pages #ops', async () => {
+    const posted = stubOps();
+    const f = await household();
+    const offerId = await askedAndSent(f);
+    await yes(f, YES);
+    const row = await termsRow(offerId);
+    const send = vi.fn();
+    const notify = createPlanNotifier(db.database, {
+      writer: { write: async () => null },
+      transport: { send },
+      now: () => NOW,
+    });
+    const outcome = await notify({
+      offerId,
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      outcome: 'needs_human',
+      detail: 'cart_mismatch',
+      choiceIndex: 0,
+      cartTotalCents: 9760,
+      amountChargedCents: null,
+      charged: 'nothing',
+      confirmationNumber: null,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+      cartDifferences: ['price'],
+      terms: { shown: row?.shown as never, approved: row?.approved as never },
+    });
+    expect(outcome).toBe('failed');
+    expect(send).not.toHaveBeenCalled();
+    expect(posted.join(' ')).toContain('registration_text_unwritten');
+    expect(posted.join(' ')).toContain('moment run_notice');
   });
 
   it('a group offer_signup records nothing, and the same call 1:1 records a row', async () => {
@@ -738,6 +794,8 @@ describe('the run', () => {
     expect(inputs[0]?.binding?.childFirstName).toBe('Ada');
     expect(inputs[0]?.binding?.timeZone).toBe('America/Toronto');
     expect(inputs[0]?.maxPriceCents).toBe(8488);
+    // The receipt is armed only for a bound run while the flag is on.
+    expect(typeof inputs[0]?.onConfirmed).toBe('function');
   });
 
   it('keeps enforcing an approved plan after the flag goes off', async () => {
@@ -747,6 +805,8 @@ describe('the run', () => {
     const { deps, inputs } = sweepDeps();
     await sweep(deps, new Date(NOW.getTime() + 60_000));
     expect(inputs[0]?.binding?.approved.sessions[0]?.amount).toMatchObject({ cents: [8488] });
+    // The checks outlive the flag. The receipt does not.
+    expect(inputs[0]?.onConfirmed).toBeUndefined();
   });
 
   it('after an abort the offer is handed back and the next two sweeps claim nothing', async () => {
@@ -776,12 +836,7 @@ describe('the run', () => {
   });
 
   it('a plan with no terms row hands back and pages while the flag is on', async () => {
-    const posted: string[] = [];
-    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops-fixture');
-    vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
-      posted.push(JSON.parse(init?.body ?? '{}').text);
-      return new Response('ok', { status: 200 });
-    });
+    const posted = stubOps();
     const f = await household();
     const offerId = await approveAndClaimable(f);
     await db.database

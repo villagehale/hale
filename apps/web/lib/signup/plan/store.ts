@@ -191,6 +191,7 @@ export async function approveSignupPlan(
       opensAt: input.opensAt.toISOString(),
       waiverAccepted: input.waiverAccepted,
       host: new URL(allowed.href).hostname,
+      ...(bound ? { bound: true, hold: bound.approved.hold } : {}),
     },
   });
   return { ok: true };
