@@ -22,6 +22,7 @@ import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter } from '~/lib/testing/consent-double';
 import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import { joinTokenHash } from './code';
+import { JOIN_LINK_IN_THREAD } from './route';
 import { JOIN_LINK_TTL_MS } from './invites';
 
 /**
@@ -205,7 +206,7 @@ describe('minting the link · "add my partner", no number', () => {
 
     const minted = await text(h, PARENT_PHONE, 'add my partner');
 
-    expect(minted).toEqual({ status: 'join_link_minted', lineHeld: null });
+    expect(minted).toEqual({ status: 'join_link_minted' });
     expect(h.transport.sent).toHaveLength(1);
     expect(h.transport.sent[0]?.to).toBe(PARENT_PHONE);
     const body = h.transport.sent[0]?.body as string;
@@ -214,8 +215,11 @@ describe('minting the link · "add my partner", no number', () => {
     // that Hale never contacts a number a parent typed (CASL).
     expect(h.transport.sent.every((s) => s.to === PARENT_PHONE)).toBe(true);
     // The parent's own thread holds what Hale said, or C1 answers "did they get it?"
-    // having never seen the offer (channel/thread.ts).
-    expect(h.threaded.at(-1)?.body).toBe(body);
+    // having never seen the offer (channel/thread.ts). The coach re-reads that row next
+    // turn, so it keeps the line WITHOUT the capability.
+    const link = `https://www.villagehale.com/text?s=${mintedCode(h.transport)}`;
+    expect(h.threaded.at(-1)?.body).toBe(body.replace(link, JOIN_LINK_IN_THREAD));
+    expect(h.threaded.at(-1)?.body).not.toMatch(/join-[0-9a-f]{32}/);
   });
 
   it('stores only the DIGEST of the token, single-use and 7-day bounded', async () => {
@@ -449,15 +453,21 @@ describe('redeeming the link · the partner texts from their own phone', () => {
     expect(calls).toEqual(['join_welcome', 'join_accepted_ack']);
   });
 
-  it('records the join link and sends nothing while model copy is dark', async () => {
+  it('mints no link and sends nothing while model copy is dark', async () => {
     process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
     const h = harness();
     await seedFamily(h.fake);
 
-    const minted = await text(h, PARENT_PHONE, 'add my partner');
+    const held = await text(h, PARENT_PHONE, 'add my partner');
 
-    expect(minted).toEqual({ status: 'join_link_minted', lineHeld: 'flag_off' });
-    expect(inserts(h.fake, schema.joinInvites)).toHaveLength(1);
+    expect(held).toEqual({ status: 'join_link_held', lineHeld: 'flag_off' });
+    expect(inserts(h.fake, schema.joinInvites)).toHaveLength(0);
+    expect(
+      inserts(h.fake, schema.consentRecords).filter(
+        (r) => r.consentType === 'co_parent_access_grant',
+      ),
+    ).toHaveLength(0);
+    expect(auditActions(h.fake)).not.toContain('co_parent_join_link_minted');
     expect(h.transport.sent).toHaveLength(0);
   });
 });

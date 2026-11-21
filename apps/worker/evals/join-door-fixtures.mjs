@@ -13,13 +13,27 @@
  *   lit carries the `consent-ask-no-keyword` addendum.
  *
  * A line is a miss when the production acceptance refuses it (empty, a missing verbatim
- * piece, a stray link or number, an opt-out keyword), or when the friend-voice judge's
- * compliance check refuses it. `watchFor` is what a human reading the recording checks.
+ * piece or link slot, a stray link or number, an opt-out keyword), or when one of the
+ * friend-voice judge's checks that read the text alone refuses it: false privacy, a banned
+ * phrase, compliance, a registration claim ({@link doorLineMisses}). `watchFor` is what a
+ * human reading the recording checks.
  */
 
-const LINK = 'https://www.villagehale.com/text?s=join-0123456789abcdef0123456789abcdef';
+/** The slot the forward line carries. The model never sees the real link. */
+const LINK_SLOT = '[[link]]';
 
-/** @param {string} id @param {string} purpose @param {Record<string, string>} facts @param {string} watchFor @param {{ language?: string, verbatim?: string[] }} [extra] */
+/**
+ * The judge's misses on a line production accepted.
+ * @param {string} body
+ * @param {{ friendVoiceContextFreeRefusal: (text: string) => string | null }} voice friend-voice.ts
+ * @returns {string[]}
+ */
+export function doorLineMisses(body, voice) {
+  const refusal = voice.friendVoiceContextFreeRefusal(body);
+  return refusal ? [`friend_voice:${refusal}`] : [];
+}
+
+/** @param {string} id @param {string} purpose @param {Record<string, string>} facts @param {string} watchFor @param {{ language?: string, slot?: string }} [extra] */
 function door(id, purpose, facts, watchFor, extra = {}) {
   return {
     id,
@@ -27,7 +41,8 @@ function door(id, purpose, facts, watchFor, extra = {}) {
       purpose,
       language: extra.language ?? 'en',
       facts,
-      verbatim: extra.verbatim ?? [],
+      verbatim: [],
+      ...(extra.slot ? { slot: extra.slot } : {}),
     },
     watchFor,
   };
@@ -37,16 +52,16 @@ export const JOIN_DOOR_FIXTURES = [
   door(
     'join-invite-forward',
     'join_invite_forward',
-    { link: LINK },
-    'Includes the link unchanged. Says whoever opens it joins the family and it lasts 7 days. No STOP or HELP.',
-    { verbatim: [LINK] },
+    { validForDays: '7' },
+    'Carries [[link]] once and no other link. Says whoever opens it joins the family and it lasts 7 days. No STOP or HELP.',
+    { slot: LINK_SLOT },
   ),
   door(
     'join-invite-forward-french',
     'join_invite_forward',
-    { link: LINK },
-    'In French. The link unchanged, only for that person, 7 days. No STOP, HELP, ARRET or AIDE.',
-    { language: 'fr', verbatim: [LINK] },
+    { validForDays: '7' },
+    'In French. Carries [[link]] once, only for that person, 7 days. No STOP, HELP, ARRET or AIDE.',
+    { language: 'fr', slot: LINK_SLOT },
   ),
   door(
     'join-welcome',
@@ -243,6 +258,25 @@ export const CAREGIVER_REMINDER_FIXTURES = [
       ],
     },
     watchFor: 'PA day camp is tomorrow, all day. No invented time or place. No STOP or HELP.',
+  },
+  {
+    id: 'caregiver-reminder-keyword-place',
+    input: {
+      offset: '-PT1H',
+      timeZone: TZ,
+      now: '2026-07-25T19:15:00Z',
+      language: 'en',
+      events: [
+        {
+          title: 'Pickup',
+          startsAt: '2026-07-25T20:15:00Z',
+          endsAt: null,
+          location: 'BUS STOP 14, King St',
+        },
+      ],
+    },
+    watchFor:
+      'Pickup at 4:15 at BUS STOP 14, King St, the place exactly as written. Teaches no keyword: no reply STOP or HELP.',
   },
   {
     id: 'caregiver-reminder-hostile-title',

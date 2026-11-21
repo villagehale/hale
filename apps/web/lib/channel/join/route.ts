@@ -10,7 +10,13 @@ import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { joinLink } from './code';
-import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
+import {
+  JOIN_LINK_TTL_DAYS,
+  type JoinInvite,
+  loadOpenJoinInvite,
+  mintJoinInvite,
+  redeemJoinInvite,
+} from './invites';
 
 /**
  * The two ends of the forwardable co-parent link: where it is minted, and where it is
@@ -88,11 +94,13 @@ export interface JoinSeatTaken {
 }
 
 export type JoinOutcome =
-  | {
-      status: 'join_link_minted';
-      /** The forwardable line. Null when the parent was handed it. */
-      lineHeld: DoorLineHold | null;
-    }
+  /** The link exists and the parent was handed it. */
+  | { status: 'join_link_minted' }
+  /**
+   * The forward line was not written, so no link was minted: no invite, no grant, no
+   * audit row. `flag_off` is the dark flag; `unwritten` is a model that wrote nothing.
+   */
+  | { status: 'join_link_held'; lineHeld: DoorLineHold }
   | JoinSeatTaken
   /**
    * `supersededSessionId` is the other absence this path has to name: a link can arrive
@@ -170,6 +178,8 @@ async function sendThreaded(
   input: {
     to: string;
     body: string;
+    /** What the thread keeps when it must differ from the wire (a line carrying a token). */
+    threadBody?: string;
     familyId: string;
     parentUserId: string;
     category: 'caregiver' | 'intake' | 'co_parent_invite';
@@ -189,7 +199,7 @@ async function sendThreaded(
   await deps.threadMessage(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    body: input.body,
+    body: input.threadBody ?? input.body,
   });
 }
 
@@ -206,6 +216,15 @@ async function inviterRow(
   // store that skipped the default.
   return { name: row?.name ?? null, timeZone: row?.timezone ?? DEFAULT_TIMEZONE };
 }
+
+/** Where the forward line puts the link. The model never holds the token (it is a capability). */
+const JOIN_LINK_SLOT = '[[link]]';
+
+/**
+ * What the parent's thread keeps where the line carried the link, the way history withholds
+ * a live-view link: the coach re-reads the thread every turn. Model context only, never sent.
+ */
+export const JOIN_LINK_IN_THREAD = '[join link, not kept]';
 
 /**
  * "add my partner" — a parent asking for their co-parent, with no number to text.
@@ -236,6 +255,16 @@ export async function handleJoinRequest(
     now,
   });
 
+  // Written BEFORE the link exists. The model never holds the token, and a line nobody
+  // wrote leaves no invite, grant or audit row for a link nobody can ever receive.
+  const forward = await composeDoorLine({
+    purpose: 'join_invite_forward',
+    language: await familySpeechLanguage(database, owner.familyId),
+    facts: { validForDays: String(JOIN_LINK_TTL_DAYS) },
+    slot: JOIN_LINK_SLOT,
+  });
+  if (!forward.sent) return { status: 'join_link_held', lineHeld: forward.held };
+
   const { code } = await mintJoinInvite(database, {
     familyId: owner.familyId,
     invitedByUserId: owner.userId,
@@ -243,25 +272,16 @@ export async function handleJoinRequest(
     channelMessageId,
     now,
   });
-
-  const link = joinLink(code);
-  const forward = await composeDoorLine({
-    purpose: 'join_invite_forward',
-    language: await familySpeechLanguage(database, owner.familyId),
-    facts: { link },
-    verbatim: [link],
+  await sendThreaded(database, deps, {
+    to: args.phoneE164,
+    body: forward.body.replace(JOIN_LINK_SLOT, () => joinLink(code)),
+    threadBody: forward.body.replace(JOIN_LINK_SLOT, JOIN_LINK_IN_THREAD),
+    familyId: owner.familyId,
+    parentUserId: owner.userId,
+    category: 'caregiver',
+    now,
   });
-  if (forward.sent) {
-    await sendThreaded(database, deps, {
-      to: args.phoneE164,
-      body: forward.body,
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      category: 'caregiver',
-      now,
-    });
-  }
-  return { status: 'join_link_minted', lineHeld: lineHeld(forward) };
+  return { status: 'join_link_minted' };
 }
 
 /**

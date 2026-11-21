@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
-import { acceptSpokenLine, createSpokenLineWriter } from './spoken-line';
+import { acceptSpokenLine, acceptSpokenRequest, createSpokenLineWriter } from './spoken-line';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -58,6 +58,88 @@ describe('acceptSpokenLine: an addendum line names no opt-out keyword (VIL-706)'
   it('leaves a line without an addendum on the acceptance it had', () => {
     const text = 'Reply STOP anytime.';
     expect(acceptSpokenLine(text, [])).toBe(text);
+  });
+
+  it('keeps a place that holds a keyword as a word, and refuses one taught around it', () => {
+    const place = 'BUS STOP 14, King St';
+    const line = `Pickup at 4:15 at ${place}.`;
+    expect(acceptSpokenLine(line, [place], strict)).toBe(line);
+    expect(acceptSpokenLine('Pickup at 4:15.', [place], strict)).toBeNull();
+    expect(acceptSpokenLine(`${line} Reply STOP anytime.`, [place], strict)).toBeNull();
+  });
+
+  it('refuses a lowercase keyword taught as a reply', () => {
+    expect(acceptSpokenLine('You can reply stop anytime.', [], strict)).toBeNull();
+    const plain = 'Tell me if you want me to stop.';
+    expect(acceptSpokenLine(plain, [], strict)).toBe(plain);
+  });
+});
+
+describe('acceptSpokenLine: a slot the model writes for a link it never sees (VIL-706)', () => {
+  const SLOT = '[[link]]';
+  const line = `Forward this to them: ${SLOT} Only to them.`;
+
+  it('passes a line with the slot exactly once (positive control)', () => {
+    expect(acceptSpokenLine(line, [SLOT], { slot: SLOT })).toBe(line);
+  });
+
+  it.each([
+    ['no slot', 'Forward this to them. Only to them.'],
+    ['the slot twice', `${SLOT} and again ${SLOT}`],
+    ['another slot beside it', `${SLOT} from [[name]]`],
+    ['a changed slot', 'Forward this: [[ link ]]'],
+    ['a typed link', `${SLOT} or try villagehale.com/text`],
+    ['a word glued before it', `Forward this${SLOT} to them.`],
+    ['a word glued after it', `Forward ${SLOT}now.`],
+    ['a path glued after it', `Forward ${SLOT}/extra to them.`],
+    ['a sentence glued after its full stop', `Forward ${SLOT}.Only to them.`],
+  ])('refuses %s', (_name, text) => {
+    expect(acceptSpokenLine(text, [SLOT], { slot: SLOT })).toBeNull();
+  });
+
+  it.each([
+    `Here: ${SLOT}`,
+    `Forward ${SLOT}.`,
+    `Forward (${SLOT}), only to them.`,
+    `Forward ${SLOT}\nOnly to them.`,
+    `Want to forward ${SLOT}?`,
+  ])('keeps a link that stands clear of its neighbours: %s', (text) => {
+    expect(acceptSpokenLine(text, [SLOT], { slot: SLOT })).toBe(text);
+  });
+});
+
+describe('acceptSpokenRequest: one acceptance for the writer, the fixture and the eval', () => {
+  const taught = 'You can reply STOP anytime.';
+
+  it('refuses a keyword on a door-addendum line and on a line that asks for the refusal', () => {
+    expect(
+      acceptSpokenRequest(taught, {
+        purpose: 'join_welcome',
+        language: 'en',
+        addendum: 'door-line',
+      }),
+    ).toBeNull();
+    expect(
+      acceptSpokenRequest(taught, {
+        purpose: 'coparent_welcome',
+        language: 'en',
+        refuseOptOutKeyword: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('positive control: the same draft on a line that asks for neither keeps its acceptance', () => {
+    expect(acceptSpokenRequest(taught, { purpose: 'coparent_welcome', language: 'en' })).toBe(
+      taught,
+    );
+  });
+
+  it('reads a request slot as a required piece', () => {
+    const request = { purpose: 'join_invite_forward', language: 'en', slot: '[[link]]' };
+    expect(acceptSpokenRequest('Forward this. Only to them.', request)).toBeNull();
+    expect(acceptSpokenRequest('Forward [[link]] to them.', request)).toBe(
+      'Forward [[link]] to them.',
+    );
   });
 });
 
@@ -130,5 +212,28 @@ describe('the spoken-line writer: what an addendum changes in the request', () =
     expect(system).toContain('# Write the line');
     expect(system).not.toContain('# The join and caregiver doors');
     expect(system).not.toContain('# Reminding a caregiver where to be');
+  }, 30_000);
+
+  it('hands the model a slot as a verbatim piece and adds no link to the user turn', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const seen: Array<{ system: unknown; user: unknown }> = [];
+    const writer = createSpokenLineWriter(recordingDownClient(seen), {
+      page: async () => 'paged',
+    });
+
+    await writer.write({
+      purpose: 'join_invite_forward',
+      language: 'en',
+      facts: { validForDays: '7' },
+      slot: '[[link]]',
+      addendum: 'door-line',
+    });
+
+    expect(JSON.parse(String(seen[0]?.user))).toEqual({
+      purpose: 'join_invite_forward',
+      language: 'en',
+      facts: { validForDays: '7' },
+      verbatim: ['[[link]]'],
+    });
   }, 30_000);
 });

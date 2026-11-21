@@ -59,7 +59,7 @@ import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
 import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { speak } from '~/lib/channel/spoken-line';
+import { setSharedSpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -79,6 +79,7 @@ import { recordSignupOffer } from '~/lib/signup/store';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   INTRO_REPLY_FACTS,
   type IntroReplySituation,
@@ -1726,6 +1727,55 @@ describe('a caregiver never reaches the agent', () => {
     expect(out[0]?.relatedConversationId).toBeNull();
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
     process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  });
+
+  describe('with the scoped line held (VIL-706)', () => {
+    afterEach(() => {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+    });
+
+    it('dark: sends nothing, names flag_off, and a redelivery is already answered', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+      const turns = fakeTurnLedger();
+      const first = harness({ context: { role: 'nanny' }, turns });
+
+      const result = await routeChannelMessage(first.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: 'flag_off' });
+      expect(first.transport.sent).toEqual([]);
+      expect(ledgerRows(first.fake).filter((r) => r.direction === 'out')).toEqual([]);
+
+      const again = harness({ context: { role: 'nanny' }, turns });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(again.transport.sent).toEqual([]);
+    });
+
+    it('lit, the model wrote nothing: sends nothing, names unwritten, and a redelivery is already answered', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+      setSharedSpokenLineWriter({ write: async () => null });
+      const turns = fakeTurnLedger();
+      const first = harness({ context: { role: 'babysitter' }, turns });
+
+      const result = await routeChannelMessage(first.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: 'unwritten' });
+      expect(first.transport.sent).toEqual([]);
+
+      const again = harness({ context: { role: 'babysitter' }, turns });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(again.transport.sent).toEqual([]);
+    });
+
+    it('lit and written: the line goes out and no hold is named (positive control)', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+      const h = harness({ context: { role: 'grandparent' } });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: null });
+      expect(h.transport.sent).toHaveLength(1);
+    });
   });
 
   /** The legacy buckets role-scope.ts gives an empty scope. Anyone we cannot vouch for

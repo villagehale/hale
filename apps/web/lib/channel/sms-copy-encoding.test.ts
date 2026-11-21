@@ -267,19 +267,3 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     expect(body).not.toMatch(/https?:/i);
   });
 });
-
-/**
- * Skill audit P0 #4 — the copy paths that were still handing the job back.
- *
- * Founder doctrine, 2026-08-11: Hale never points a parent at the app in chat. The
- * thread IS the product, so "finish it in the app" is the work returned to the person
- * who texted to be rid of it — and it fired on exactly the messages where the job
- * mattered most: a turn that broke, an answer too long to send, a photo Hale could not
- * read. Each of these now carries what to do next IN the thread.
- *
- * SCOPED to the five the audit named. Three lines in `router/copy.ts` still carry a URL
- * and are deliberately not here: `nothingPendingReply` and `nothingToUndoReply` answer
- * "where do my records live", which is the doctrine's one stated exception, and
- * `capabilityReply` is a stub with no production caller (audit #21). Widening this to
- * the whole file is a founder call about that exception, not a test change.
- */

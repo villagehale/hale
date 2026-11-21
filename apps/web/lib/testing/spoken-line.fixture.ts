@@ -2,7 +2,7 @@ import { asksAboutEyeCare } from '~/lib/channel/off-domain/copy';
 import {
   type SpokenLineRequest,
   type SpokenLineWriter,
-  acceptSpokenLine,
+  acceptSpokenRequest,
 } from '~/lib/channel/spoken-line';
 
 /**
@@ -41,12 +41,8 @@ function scriptedLine(request: SpokenLineRequest): string | null {
   const { purpose, language } = request;
   const facts = request.facts ?? {};
   const text = render(purpose, language ?? null, facts);
-  // The production acceptance, addendum lines included (VIL-706).
-  return text === undefined
-    ? null
-    : acceptSpokenLine(text, request.verbatim, {
-        refuseOptOutKeyword: request.addendum !== undefined,
-      });
+  // The production acceptance, addendum lines and slots included (VIL-706).
+  return text === undefined ? null : acceptSpokenRequest(text, request);
 }
 
 /** Test stand-in: the scripted model restates a caregiver reminder's facts, in order. */
@@ -185,8 +181,8 @@ function render(
       );
     case 'join_invite_forward':
       return fr(language)
-        ? `Voilà - transfère ça et ils sont dans la famille: ${facts.link} Seulement à eux: qui l'ouvre rejoint ta famille. Valable 7 jours.`
-        : `Here you go - forward this to them and they're in: ${facts.link} Just to them, though: whoever opens it joins your family. Good for 7 days.`;
+        ? `Voilà - transfère ça et ils sont dans la famille: [[link]] Seulement à eux: qui l'ouvre rejoint ta famille. Valable ${facts.validForDays} jours.`
+        : `Here you go - forward this to them and they're in: [[link]] Just to them, though: whoever opens it joins your family. Good for ${facts.validForDays} days.`;
     case 'caregiver_welcome':
       return pick(
         language,

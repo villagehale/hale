@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as friendVoice from '~/lib/channel/intake/friend-voice';
 import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import { DOOR_LINE_PURPOSES, composeDoorLine, joinDoorModelCopyEnabled } from './door-line';
 import { type SpokenLineRequest, setSharedSpokenLineWriter } from './spoken-line';
@@ -93,5 +94,40 @@ describe('every door purpose', () => {
 
   it('the skill tells the model never to name an opt-out keyword', () => {
     expect(SKILL).toContain('Never name STOP, HELP, ARRET, AIDE, or any other word to reply with');
+  });
+
+  it('the skill takes the link as a slot and its lifetime as a fact, and states neither', () => {
+    expect(SKILL).toContain('`[[link]]`');
+    expect(SKILL).toContain('`facts.validForDays`');
+    expect(SKILL).not.toMatch(/\b7 days\b/);
+  });
+
+  it('the eval scores a door line with the judge checks that read the text alone', async () => {
+    const path = '../../../worker/evals/join-door-fixtures.mjs';
+    const { doorLineMisses } = (await import(/* @vite-ignore */ path)) as {
+      doorLineMisses: (body: string, voice: typeof friendVoice) => string[];
+    };
+    expect(doorLineMisses("You're registered for swim at 4.", friendVoice)).toEqual([
+      'friend_voice:registration_claim',
+    ]);
+    expect(
+      doorLineMisses(
+        'All booked, your spot is locked in and your data is never shared.',
+        friendVoice,
+      ),
+    ).toEqual(['friend_voice:registration_claim']);
+    expect(doorLineMisses('I never read your work email.', friendVoice)).toEqual([
+      'friend_voice:privacy',
+    ]);
+    expect(doorLineMisses('Reply with the number you want.', friendVoice)).toEqual([
+      'friend_voice:banned',
+    ]);
+    expect(doorLineMisses('Text STOP to leave.', friendVoice)).toEqual(['friend_voice:compliance']);
+    expect(
+      doorLineMisses(
+        "You're in - I'll text you the week's schedule and pickup reminders, and nothing else.",
+        friendVoice,
+      ),
+    ).toEqual([]);
   });
 });

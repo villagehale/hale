@@ -1,4 +1,14 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -12,8 +22,8 @@ import { describe, expect, it } from 'vitest';
  *
  * WHAT COUNTS AS A STOP/HELP STRING. An export whose value is a string written in the
  * source with STOP, HELP, ARRET or AIDE in it as a whole uppercase word: a string or
- * template constant, or a function that returns one (the shape `joinWelcome` had).
- * Lowercase "stop" in a sentence is a word, not a keyword.
+ * template constant, an exported object map or list holding one, or a function that
+ * returns one (the shape `joinWelcome` had). Lowercase "stop" in a sentence is a word.
  *
  * WHAT COUNTS AS A SEND PATH. Every non-test module under apps/web. A module that does
  * not send today can start tomorrow, and the import is the moment a keyword line could
@@ -26,7 +36,6 @@ import { describe, expect, it } from 'vitest';
  */
 
 const WEB_ROOT = fileURLToPath(new URL('../../', import.meta.url)).replace(/\/$/, '');
-const REPO_ROOT = resolve(WEB_ROOT, '../..');
 const SCAN_ROOTS = ['lib', 'app'];
 const SKIP_DIRS = new Set([
   'node_modules',
@@ -70,8 +79,7 @@ function isExported(node: ts.Node): boolean {
   );
 }
 
-/** The literal text of a string-valued expression, or null when it is not one. */
-function literalText(node: ts.Expression): string | null {
+function unwrapped(node: ts.Expression): ts.Expression {
   let expr = node;
   while (
     ts.isParenthesizedExpression(expr) ||
@@ -81,6 +89,12 @@ function literalText(node: ts.Expression): string | null {
   ) {
     expr = expr.expression;
   }
+  return expr;
+}
+
+/** The literal text of a string-valued expression, or null when it is not one. */
+function literalText(node: ts.Expression): string | null {
+  const expr = unwrapped(node);
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) return expr.text;
   if (ts.isTemplateExpression(expr)) {
     return [expr.head.text, ...expr.templateSpans.map((span) => span.literal.text)].join(' ');
@@ -101,6 +115,24 @@ function teaches(expr: ts.Expression | undefined): boolean {
   if (!expr) return false;
   const text = literalText(expr);
   return text !== null && KEYWORD.test(text);
+}
+
+/**
+ * Whether an exported constant's value teaches a keyword: a string, or an object map or
+ * list holding one at any depth. A function's returned object is not read. The one hit
+ * today is group onboarding's 1:1 connect-link line, whose `mustMention` still requires
+ * STOP: that line needs its own change (it re-keys its recordings), and reading it here
+ * would fail this guard until it lands.
+ */
+function constantTeaches(node: ts.Expression): boolean {
+  const expr = unwrapped(node);
+  if (ts.isObjectLiteralExpression(expr)) {
+    return expr.properties.some(
+      (p) => ts.isPropertyAssignment(p) && constantTeaches(p.initializer),
+    );
+  }
+  if (ts.isArrayLiteralExpression(expr)) return expr.elements.some(constantTeaches);
+  return teaches(expr);
 }
 
 /** Whether a function returns a string that teaches a keyword. */
@@ -127,7 +159,7 @@ function keywordExports(source: ts.SourceFile): Set<string> {
       for (const decl of statement.declarationList.declarations) {
         if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
         const init = decl.initializer;
-        if (teaches(init)) names.add(decl.name.text);
+        if (constantTeaches(init)) names.add(decl.name.text);
         else if (
           (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) &&
           functionTeaches(init)
@@ -240,9 +272,9 @@ function stemOf(file: string): string {
   return (file.split('/').pop() ?? file).replace(/\.tsx?$/, '');
 }
 
-function resolveSpec(fromFile: string, spec: string): string | null {
+function resolveSpec(fromFile: string, spec: string, webRoot: string): string | null {
   let base: string;
-  if (spec.startsWith('~/')) base = join(WEB_ROOT, spec.slice(2));
+  if (spec.startsWith('~/')) base = join(webRoot, spec.slice(2));
   else if (spec.startsWith('.')) base = resolve(dirname(fromFile), spec);
   else return null;
   for (const candidate of [
@@ -257,8 +289,12 @@ function resolveSpec(fromFile: string, spec: string): string | null {
   return null;
 }
 
-function violations(): string[] {
-  const files = SCAN_ROOTS.flatMap((root) => productFiles(join(WEB_ROOT, root)));
+function violations(webRoot: string = WEB_ROOT): string[] {
+  const repoRoot = resolve(webRoot, '../..');
+  const files = SCAN_ROOTS.flatMap((root) => {
+    const dir = join(webRoot, root);
+    return existsSync(dir) ? productFiles(dir) : [];
+  });
   const texts = new Map(files.map((file) => [file, readFileSync(file, 'utf8')] as const));
   const parsed = new Map<string, ts.SourceFile>();
   const ast = (file: string): ts.SourceFile => {
@@ -286,7 +322,7 @@ function violations(): string[] {
     const grown: string[] = [];
     for (const file of mentions(frontier.map(stemOf))) {
       for (const alias of reexports(ast(file))) {
-        const target = resolveSpec(file, alias.spec);
+        const target = resolveSpec(file, alias.spec, webRoot);
         const names = target && target !== file ? teaching.get(target) : undefined;
         if (!names) continue;
         const carried =
@@ -306,14 +342,14 @@ function violations(): string[] {
   const found: string[] = [];
   for (const file of mentions([...teaching.keys()].map(stemOf))) {
     for (const { spec, imported } of importedNames(ast(file))) {
-      const target = resolveSpec(file, spec);
+      const target = resolveSpec(file, spec, webRoot);
       if (!target || target === file) continue;
       const names = teaching.get(target);
       if (!names) continue;
       const hits = imported === '*' ? [...names] : names.has(imported) ? [imported] : [];
       for (const name of hits) {
         found.push(
-          `${relative(REPO_ROOT, file)} imports ${name} from ${relative(REPO_ROOT, target)}`,
+          `${relative(repoRoot, file)} imports ${name} from ${relative(repoRoot, target)}`,
         );
       }
     }
@@ -325,6 +361,38 @@ describe('a send path imports no string that teaches STOP or HELP', () => {
   it('finds no importer anywhere in apps/web', () => {
     expect(violations()).toEqual([]);
   }, 60_000);
+
+  it('positive control: the whole scan reports a real importer in a small tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stop-help-guard-'));
+    try {
+      const web = join(root, 'apps/web');
+      mkdirSync(join(web, 'lib/door'), { recursive: true });
+      const write = (name: string, text: string) =>
+        writeFileSync(join(web, 'lib/door', name), text);
+      write('copy.ts', 'export const WELCOME = "You\'re in. Reply STOP anytime.";\n');
+      write('quiet.ts', "export const QUIET = 'Tell me if you want me to stop.';\n");
+      write('map.ts', "export const LINES = { welcome: { en: 'Text HELP anytime.' } };\n");
+      write('list.ts', "export const NOTES = ['fine', 'Reply ARRET.'];\n");
+      write(
+        'send.ts',
+        [
+          "import { WELCOME } from './copy';",
+          "import { QUIET } from './quiet';",
+          "import { LINES } from '~/lib/door/map';",
+          "import { NOTES } from './list';",
+          'export const lines = [WELCOME, QUIET, LINES, NOTES];',
+        ].join('\n'),
+      );
+
+      expect(violations(web)).toEqual([
+        'apps/web/lib/door/send.ts imports LINES from apps/web/lib/door/map.ts',
+        'apps/web/lib/door/send.ts imports NOTES from apps/web/lib/door/list.ts',
+        'apps/web/lib/door/send.ts imports WELCOME from apps/web/lib/door/copy.ts',
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   it('positive control: the scan sees a keyword constant, a keyword function, and the real opt-out lines', () => {
     const fixture = parse(
@@ -338,10 +406,15 @@ describe('a send path imports no string that teaches STOP or HELP', () => {
         'export const help = (n: string) => `${n}: text HELP for help`;',
         "export const ARRET_FR = 'Répondez ARRET pour arrêter.';",
         "const PRIVATE = 'Reply STOP';",
+        "export const BY_LANGUAGE = { en: 'Reply STOP anytime.', fr: 'Répondez ARRET.' };",
+        "export const NESTED = { door: { en: ['Text HELP.'] } };",
+        "export const PLAIN_MAP = { en: 'Tell me if you want me to stop.' };",
       ].join('\n'),
     );
     expect([...keywordExports(fixture)].sort()).toEqual([
       'ARRET_FR',
+      'BY_LANGUAGE',
+      'NESTED',
       'WELCOME',
       'help',
       'joinWelcome',

@@ -709,7 +709,7 @@ async function handleCoParentInviteReply(
 
 /**
  * An inbound from a number that already owns a verified channel and has no open intake
- * conversation. Two people can be here: a CAREGIVER (who gets the one static line) or a
+ * conversation. Two people can be here: a CAREGIVER (who gets the one scoped line) or a
  * PARENT (who may be answering an invite confirmation, or starting one).
  *
  * Returns null when the message is none of those — the intake machine's existing

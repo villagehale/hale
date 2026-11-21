@@ -9,9 +9,10 @@ import { type SpokenLineRequest, speak } from '~/lib/channel/spoken-line';
  * template, skeleton or fallback sentence, and a line that names STOP, HELP, ARRET or
  * AIDE is refused like a stray link. A line the model does not write is not sent. The
  * writer has already paged #ops (`spoken_line_unwritten`) by the time it returns nothing,
- * so this module pages nobody a second time. The seat change is already recorded by the
+ * so this module pages nobody a second time. A seat change is already recorded by the
  * caller, and the caller names the held line in its outcome (`lineHeld`, `welcomeHeld`,
- * `inviterHeld`) instead of reporting a send.
+ * `inviterHeld`) instead of reporting a send. The join link is the one line written
+ * first: the model writes a `[[link]]` slot, and a held line leaves no link at all.
  *
  * Dark unless `JOIN_DOOR_MODEL_COPY_ENABLED` is exactly `true`. Dark, these lines are not
  * sent at all: the fixed sentences they replaced (two of which taught STOP) are deleted,
@@ -43,7 +44,8 @@ export type DoorLineHold = 'flag_off' | 'unwritten';
 
 export type ComposedDoorLine = { sent: true; body: string } | { sent: false; held: DoorLineHold };
 
-export interface DoorLineRequest extends Omit<SpokenLineRequest, 'purpose' | 'addendum'> {
+export interface DoorLineRequest
+  extends Omit<SpokenLineRequest, 'purpose' | 'addendum' | 'refuseOptOutKeyword'> {
   purpose: DoorLinePurpose;
 }
 

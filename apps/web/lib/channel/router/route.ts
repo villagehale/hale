@@ -4,9 +4,6 @@ import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
-import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
 import type {
   ActivityPromise,
@@ -93,13 +90,13 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
-import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
@@ -148,11 +145,14 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
+import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
+import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
-import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   expireEmailAlertOffer,
@@ -239,7 +239,7 @@ import { pageUnwrittenCrisis } from './unwritten-moment';
  * answers the next three questions, and the ORDER it answers them in is the whole
  * design:
  *
- *   1. WHO IS TALKING?   A caregiver is answered with M6's one static line and stops
+ *   1. WHO IS TALKING?   A caregiver is answered with M6's one scoped line and stops
  *      here. The webhook already refuses to enqueue a non-parent, so this is the second
  *      of two gates — deliberately, because the cost of the pair being wrong is a
  *      household agent answering a babysitter's question about a child (rule #1), and

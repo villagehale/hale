@@ -118,6 +118,51 @@ describe('VIL-706 · the door asks, lit, name no opt-out keyword', () => {
   const systemText = (system: unknown) =>
     (system as Array<{ text: string }>).map((block) => block.text).join('');
 
+  /**
+   * The client port handing back one fixed draft, so the writer's own acceptance runs on
+   * it. The model's wording is not what is under test; the refusal wired behind it is.
+   */
+  function draftClient(text: string) {
+    return (): AgentClient =>
+      ({
+        messages: {
+          create: async () => ({
+            // Both shapes, so the stub does not depend on which the lane's request uses.
+            content: [
+              { type: 'text', text: JSON.stringify({ text }) },
+              { type: 'tool_use', id: 'draft', name: 'consent_ask', input: { text } },
+            ],
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }) as unknown as AgentClient;
+  }
+
+  it('lit: the writer refuses a stranger draft that names a keyword, and logs why', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const writer = createConsentAskWriter(draftClient('Ana added you. Reply STOP anytime.'));
+    await expect(writer.write(STRANGER[0] as ConsentAsk)).resolves.toBeNull();
+    expect(JSON.stringify(logged.mock.calls)).toContain('names_opt_out_keyword');
+  });
+
+  it('lit: the writer passes a plain-words stranger draft (positive control)', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const plain = "Ana added you as their nanny. If you'd rather not hear from me, just say so.";
+    const writer = createConsentAskWriter(draftClient(plain));
+    await expect(writer.write(STRANGER[0] as ConsentAsk)).resolves.toBe(plain);
+  });
+
+  it('dark: the same keyword draft to a stranger keeps its acceptance', async () => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const draft = 'Ana added you. Reply STOP anytime.';
+    const writer = createConsentAskWriter(draftClient(draft));
+    await expect(writer.write(STRANGER[0] as ConsentAsk)).resolves.toBe(draft);
+  });
+
   it('lit, a stranger kind carries the no-keyword addendum after the skill', async () => {
     vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
     vi.spyOn(console, 'info').mockImplementation(() => {});

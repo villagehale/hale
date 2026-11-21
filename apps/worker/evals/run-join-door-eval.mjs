@@ -10,9 +10,10 @@
 //                      apps/web/lib/channel/consent-ask.ts (the four stranger kinds, lit)
 //
 // The model writes the whole text. A text is a miss when production would refuse it
-// (empty, a missing verbatim piece, a stray link or number, an opt-out keyword) or when
-// the friend-voice judge's compliance check refuses it. Nothing here reads a flag: each
-// request is built as the lit path builds it.
+// (empty, a missing verbatim piece or link slot, a stray link or number, an opt-out
+// keyword) or when one of the friend-voice judge's checks that read the text alone
+// refuses it (false privacy, a banned phrase, compliance, a registration claim). Nothing
+// here reads a flag: each request is built as the lit path builds it.
 //
 // RECORDING PENDING. The addenda moved these requests' bytes (VIL-706 moved the door
 // guidance out of spoken-line.md so the calendar-kid-notice and common-time recordings
@@ -33,6 +34,7 @@ import {
   CAREGIVER_REMINDER_FIXTURES,
   CONSENT_KEYWORDLESS_FIXTURES,
   JOIN_DOOR_FIXTURES,
+  doorLineMisses,
 } from './join-door-fixtures.mjs';
 import {
   REPO_ROOT,
@@ -65,16 +67,6 @@ const SPOKEN = {
 
 register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
-
-/** The user turn spoken-line.ts sends. The addendum is a system extra, never in here. */
-function spokenUserMessage(request) {
-  return JSON.stringify({
-    purpose: request.purpose,
-    language: request.language,
-    facts: request.facts ?? {},
-    verbatim: request.verbatim ?? [],
-  });
-}
 
 async function loadSubjects() {
   const agent = await importTs(AGENT_SRC);
@@ -121,16 +113,15 @@ function cases(s) {
       system: s.skills.spokenLine.instructions,
       systemExtras: [addendum.instructions],
       cacheTtl: s.agent.SPARSE_CACHE_TTL,
-      userMessage: spokenUserMessage(request),
+      userMessage: s.spoken.spokenLineUserMessage(request),
       ...SPOKEN,
     },
-    accept: (value) =>
-      s.spoken.acceptSpokenLine(String(value?.text ?? ''), request.verbatim, {
-        refuseOptOutKeyword: true,
-      }),
+    accept: (value) => s.spoken.acceptSpokenRequest(String(value?.text ?? ''), request),
   });
   return [
-    ...JOIN_DOOR_FIXTURES.map((f) => spokenCase(f.id, f.request, s.skills.doorLine, f.watchFor)),
+    ...JOIN_DOOR_FIXTURES.map((f) =>
+      spokenCase(f.id, { ...f.request, addendum: 'door-line' }, s.skills.doorLine, f.watchFor),
+    ),
     ...CAREGIVER_REMINDER_FIXTURES.map((f) =>
       spokenCase(
         f.id,
@@ -207,7 +198,7 @@ async function run(mode) {
     const failures = [];
     if (!unrecorded) {
       if (!body) failures.push('unwritten');
-      else if (s.voice.friendVoiceTeachesOptOut(body)) failures.push('friend_voice:compliance');
+      else failures.push(...doorLineMisses(body, s.voice));
     }
     results.push({ c, body, unrecorded, retried, failures });
   }

@@ -14,14 +14,20 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { fakeNoOpenQuestions } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { mintJoinInvite } from '~/lib/channel/join/invites';
-import { type JoinDeps, handleJoinArrival, handleJoinRequest } from '~/lib/channel/join/route';
+import { JOIN_LINK_TTL_MS, mintJoinInvite } from '~/lib/channel/join/invites';
+import {
+  JOIN_LINK_IN_THREAD,
+  type JoinDeps,
+  handleJoinArrival,
+  handleJoinRequest,
+} from '~/lib/channel/join/route';
 import {
   type SpokenLineRequest,
   type SpokenLineWriter,
   createSpokenLineWriter,
   setSharedSpokenLineWriter,
 } from '~/lib/channel/spoken-line';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
@@ -146,6 +152,34 @@ async function inviteAwaitingGran(familyId: string, parentUserId: string) {
   return invite;
 }
 
+const inviteRows = (familyId: string) =>
+  db.database
+    .select({ id: schema.joinInvites.id })
+    .from(schema.joinInvites)
+    .where(eq(schema.joinInvites.familyId, familyId));
+
+const grantRows = (familyId: string) =>
+  db.database
+    .select({ id: schema.consentRecords.id })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, 'co_parent_access_grant'),
+      ),
+    );
+
+const mintAuditRows = (familyId: string) =>
+  db.database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'co_parent_join_link_minted'),
+      ),
+    );
+
 beforeAll(async () => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   db = await createTestDb();
@@ -175,10 +209,17 @@ afterEach(() => {
 });
 
 describe('the join door', () => {
-  it('asks the writer for the forward line with the link verbatim, and sends what it wrote', async () => {
+  it('asks for the forward line with a slot, mints after it is written, and sends the real link', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database, 'Alder Family');
-    const { writer, calls } = recordingWriter();
-    setSharedSpokenLineWriter(writer);
+    const calls: SpokenLineRequest[] = [];
+    let invitesWhenWritten: number | null = null;
+    setSharedSpokenLineWriter({
+      async write(request) {
+        calls.push(request);
+        invitesWhenWritten = (await inviteRows(familyId)).length;
+        return scriptedSpokenLineWriter.write(request);
+      },
+    });
     const transport = new FakeTransport();
 
     const outcome = await handleJoinRequest(
@@ -192,17 +233,56 @@ describe('the join door', () => {
       joinDeps(transport),
     );
 
-    expect(outcome).toEqual({ status: 'join_link_minted', lineHeld: null });
+    expect(outcome).toEqual({ status: 'join_link_minted' });
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ purpose: 'join_invite_forward', addendum: 'door-line' });
-    const link = calls[0]?.verbatim?.[0] ?? '';
-    expect(link).toContain('join-');
-    expect(calls[0]?.facts).toEqual({ link });
-    expect(transport.sent).toEqual([{ to: PARENT, body: expect.stringContaining(link) }]);
+    expect(calls[0]).toMatchObject({
+      purpose: 'join_invite_forward',
+      addendum: 'door-line',
+      slot: '[[link]]',
+      facts: { validForDays: String(JOIN_LINK_TTL_MS / 86_400_000) },
+    });
+    // The model never holds the capability: no token in anything it was handed, and the
+    // invite does not exist yet at the moment it writes.
+    expect(JSON.stringify(calls[0])).not.toMatch(/join-[0-9a-f]{32}/);
+    expect(invitesWhenWritten).toBe(0);
+    expect(await inviteRows(familyId)).toHaveLength(1);
+    expect(transport.sent).toEqual([
+      {
+        to: PARENT,
+        body: expect.stringMatching(/https:\/\/www\.villagehale\.com\/text\?s=join-[0-9a-f]{32}/),
+      },
+    ]);
+    expect(transport.sent[0]?.body).not.toContain('[[link]]');
     expect(posted).toEqual([]);
   }, 30_000);
 
-  it('holds the forward line when the model writes nothing: nothing sent, named, one page', async () => {
+  it("the parent's thread keeps the forward line without the token, through the real writer", async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Aspen Family');
+    const transport = new FakeTransport();
+
+    await handleJoinRequest(
+      db.database,
+      {
+        owner: { userId: parentUserId, familyId },
+        phoneE164: PARENT,
+        inbound: inbound(transport, PARENT, 'add my partner'),
+        now: NOON,
+      },
+      { transport, threadMessage: threadProactiveMessage },
+    );
+
+    expect(transport.sent[0]?.body).toMatch(/join-[0-9a-f]{32}/);
+    const rows = await db.database
+      .select({ body: schema.messages.content })
+      .from(schema.messages)
+      .innerJoin(schema.conversations, eq(schema.messages.conversationId, schema.conversations.id))
+      .where(eq(schema.conversations.familyId, familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.body).toContain(JOIN_LINK_IN_THREAD);
+    expect(rows[0]?.body).not.toMatch(/join-[0-9a-f]{32}/);
+  }, 30_000);
+
+  it('holds the forward line when the model writes nothing: no link exists, nothing sent, one page', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database, 'Birch Family');
     setSharedSpokenLineWriter(downedWriter());
     const transport = new FakeTransport();
@@ -218,19 +298,16 @@ describe('the join door', () => {
       joinDeps(transport),
     );
 
-    expect(outcome).toEqual({ status: 'join_link_minted', lineHeld: 'unwritten' });
+    expect(outcome).toEqual({ status: 'join_link_held', lineHeld: 'unwritten' });
     expect(transport.sent).toEqual([]);
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('site spoken_line_unwritten.');
-    // The link itself was minted: the parent's request stands, only the words are held.
-    const invites = await db.database
-      .select({ id: schema.joinInvites.id })
-      .from(schema.joinInvites)
-      .where(eq(schema.joinInvites.familyId, familyId));
-    expect(invites).toHaveLength(1);
+    expect(await inviteRows(familyId)).toEqual([]);
+    expect(await grantRows(familyId)).toEqual([]);
+    expect(await mintAuditRows(familyId)).toEqual([]);
   }, 30_000);
 
-  it('dark: no writer call, nothing sent, and the outcome says flag_off', async () => {
+  it('dark: no writer call, no link, nothing sent, and the outcome says flag_off', async () => {
     vi.stubEnv(FLAG, '');
     const { familyId, parentUserId } = await seedFamily(db.database, 'Cedar Family');
     const { writer, calls } = recordingWriter();
@@ -248,10 +325,13 @@ describe('the join door', () => {
       joinDeps(transport),
     );
 
-    expect(outcome).toEqual({ status: 'join_link_minted', lineHeld: 'flag_off' });
+    expect(outcome).toEqual({ status: 'join_link_held', lineHeld: 'flag_off' });
     expect(calls).toEqual([]);
     expect(transport.sent).toEqual([]);
     expect(posted).toEqual([]);
+    expect(await inviteRows(familyId)).toEqual([]);
+    expect(await grantRows(familyId)).toEqual([]);
+    expect(await mintAuditRows(familyId)).toEqual([]);
   }, 30_000);
 
   it('the partner arrives: the welcome and the inviter ack are written from facts and sent', async () => {

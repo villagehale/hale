@@ -1,3 +1,4 @@
+import { inShape } from '@hale/types';
 // Relative, not `~/`: run-intro-voice-eval.mjs imports this file through tsx's bare
 // tsImport, which does not read the web tsconfig's path alias.
 import { smsSegments } from './sms-segments';
@@ -55,32 +56,166 @@ export function writesOptOutLine(text: string): boolean {
 }
 
 /**
- * The carrier keywords as Hale must never write them, in English and French. This reads
- * Hale's OWN outgoing text only. What a person writes is read for meaning by the opt-out
- * reader (#868), never matched against words (REVIEW.md).
+ * The carrier keywords, spelled plainly. All of this reads Hale's OWN outgoing text. What
+ * a person writes is read for meaning by the opt-out reader (#868), never matched against
+ * words (REVIEW.md).
  */
-const OPT_OUT_KEYWORDS: ReadonlySet<string> = new Set(['STOP', 'HELP', 'ARRET', 'ARRÊT', 'AIDE']);
+const OPT_OUT_KEYWORDS: ReadonlySet<string> = new Set(['stop', 'help', 'arret', 'aide']);
 
-/**
- * VIL-706 · the keyword a draft would teach, or null. A keyword counts when it is written
- * as one: a whole uppercase word, or either opt-out line. "Tell me to stop" in a sentence
- * is a word, not a keyword. A line that names one is refused before it is sent, the way a
- * stray link is.
- */
-export function namesOptOutKeyword(text: string): string | null {
-  for (const keyword of OPT_OUT_KEYWORDS) {
-    for (let at = text.indexOf(keyword); at !== -1; at = text.indexOf(keyword, at + 1)) {
-      if (!wordCharAt(text, at - 1) && !wordCharAt(text, at + keyword.length)) return keyword;
-    }
-  }
-  return writesOptOutLine(text) ? 'opt_out_line' : null;
+/** How a draft tells someone what to send, in English and French. */
+const SEND_VERBS: ReadonlySet<string> = new Set([
+  'reply',
+  'replying',
+  'respond',
+  'responding',
+  'text',
+  'texting',
+  'send',
+  'sending',
+  'type',
+  'typing',
+  'write',
+  'say',
+  'saying',
+  'message',
+  'enter',
+  'repondez',
+  'repondre',
+  'reponds',
+  'repondant',
+  'textez',
+  'texte',
+  'texter',
+  'envoyez',
+  'envoie',
+  'envoyer',
+  'ecrivez',
+  'ecris',
+  'ecrire',
+  'tapez',
+  'tape',
+  'taper',
+  'dites',
+  'dis',
+  'dire',
+]);
+
+/** Words that can stand between such a verb and the word it names ("reply back with the word stop"). */
+const SEND_LEADS: ReadonlySet<string> = new Set([
+  'back',
+  'with',
+  'the',
+  'word',
+  'keyword',
+  'me',
+  'us',
+  'just',
+  'simply',
+  'in',
+  'moi',
+  'nous',
+  'le',
+  'mot',
+  'avec',
+  'par',
+  'simplement',
+  'juste',
+]);
+
+const QUOTE_PAIRS: Readonly<Record<string, string>> = {
+  '"': '"',
+  "'": "'",
+  '`': '`',
+  '\u201c': '\u201d',
+  '\u2018': '\u2019',
+  '\u00ab': '\u00bb',
+  '\u2039': '\u203a',
+};
+
+const DRAFT_WORD = /[\p{L}\p{N}]+/gu;
+const SENTENCE_END = /[.!?;\u3002]/;
+const LINE_BREAK = /[\r\n\u2028\u2029]+/;
+
+interface DraftWord {
+  written: string;
+  plain: string;
+  start: number;
+  end: number;
 }
 
-/** Whether the character at `index` is a letter or digit (so a keyword there is part of a
- * longer word, as in "STOPPED" or "HELPER"). */
-function wordCharAt(text: string, index: number): boolean {
-  const char = text[index];
-  return char !== undefined && /[\p{L}\p{N}]/u.test(char);
+/** Each line on the shared shape: width, accents and zero-width characters read away. */
+function draftLines(text: string): Array<{ line: string; words: DraftWord[] }> {
+  return text
+    .split(LINE_BREAK)
+    .map(inShape)
+    .map((line) => ({
+      line,
+      words: Array.from(line.matchAll(DRAFT_WORD), (match) => ({
+        written: match[0],
+        plain: match[0].toLowerCase(),
+        start: match.index,
+        end: match.index + match[0].length,
+      })),
+    }));
+}
+
+/** "STOP" or "sToP": anything other than the word in lower case or with a capital first. */
+function isShouted({ written, plain }: DraftWord): boolean {
+  return written !== plain && written !== plain.charAt(0).toUpperCase() + plain.slice(1);
+}
+
+function isQuoted(line: string, { start, end }: DraftWord): boolean {
+  const before = line.slice(0, start).trimEnd().slice(-1);
+  const after = line.slice(end).trimStart().charAt(0);
+  return after !== '' && QUOTE_PAIRS[before] === after;
+}
+
+/** Whether a send verb governs this word in its own sentence, through lead-in words only. */
+function isSendInstruction(line: string, earlier: readonly DraftWord[], word: DraftWord): boolean {
+  let next = word;
+  for (const candidate of [...earlier].reverse()) {
+    if (SENTENCE_END.test(line.slice(candidate.end, next.start))) return false;
+    if (SEND_VERBS.has(candidate.plain)) return true;
+    if (!SEND_LEADS.has(candidate.plain)) return false;
+    next = candidate;
+  }
+  return false;
+}
+
+/**
+ * VIL-706 · the keyword a draft would teach, in capitals, or null. A keyword counts when
+ * it is shouted, quoted, or the word a send verb tells the person to send ("reply stop",
+ * "just text me the word help", "Répondez Arrêt"), in any case or width. "Tell me if you
+ * want me to stop" is a sentence, not a keyword. A false positive costs one re-draft.
+ *
+ * `verbatim` pieces are facts the line must carry word for word, so a place called "BUS
+ * STOP 14" is not the draft shouting a keyword. A piece can still BE an instruction: the
+ * send-verb check reads the whole text, so "Text stop to 12345" as a place is refused.
+ */
+export function namesOptOutKeyword(text: string, verbatim: readonly string[] = []): string | null {
+  if (writesOptOutLine(text)) return 'opt_out_line';
+  const outside = verbatim.reduce(
+    (rest, piece) => (piece.length > 0 ? rest.split(piece).join('\n') : rest),
+    text,
+  );
+  for (const { line, words } of draftLines(outside)) {
+    for (const word of words) {
+      if (OPT_OUT_KEYWORDS.has(word.plain) && (isShouted(word) || isQuoted(line, word))) {
+        return word.plain.toUpperCase();
+      }
+    }
+  }
+  for (const { line, words } of draftLines(text)) {
+    for (const [index, word] of words.entries()) {
+      if (
+        OPT_OUT_KEYWORDS.has(word.plain) &&
+        isSendInstruction(line, words.slice(0, index), word)
+      ) {
+        return word.plain.toUpperCase();
+      }
+    }
+  }
+  return null;
 }
 
 /** Which form the gate would have chosen. Neither is written onto the text. */

@@ -68,10 +68,71 @@ describe("VIL-706 · reading Hale's own draft for an opt-out keyword", () => {
     ['STOP', 'STOP.'],
     ['HELP', 'Text HELP for help.'],
     ['AIDE', 'Besoin? (AIDE)'],
-    ['ARRÊT', 'Répondez ARRÊT pour arrêter.'],
+    ['ARRET', 'Répondez ARRÊT pour arrêter.'],
     ['ARRET', 'Écrivez ARRET.'],
   ])('names %s when it is written as a keyword', (keyword, text) => {
     expect(namesOptOutKeyword(text)).toBe(keyword);
+  });
+
+  it.each([
+    ['STOP', 'Reply stop anytime and I will leave you alone.'],
+    ['STOP', 'You can text Stop anytime.'],
+    ['STOP', 'Just text "stop" whenever you want out.'],
+    ['HELP', 'Text help if you need me.'],
+    ['ARRET', 'Répondez Arrêt pour ne plus recevoir de messages.'],
+    ['STOP', 'Just reply back with the word stop.'],
+    ['STOP', 'Text me \u201cstop\u201d anytime.'],
+    ['STOP', 'Any time, just say stop.'],
+    ['STOP', 'You can opt out by replying stop.'],
+    ['HELP', "You can reply 'help' anytime."],
+    ['ARRET', 'Écrivez-moi « arrêt » quand vous voulez.'],
+    ['AIDE', 'Tapez aide au besoin.'],
+    ['STOP', '\uff33\uff34\uff2f\uff30 works anytime.'],
+    ['STOP', 'Reply S\u200BTOP anytime.'],
+    ['STOP', 'Reply sToP anytime.'],
+    ['ARRET', 'Répondez ARRE\u0302T.'],
+    ['STOP', 'If you want out, "Stop" does it.'],
+  ])('names %s however a draft teaches it: %s', (keyword, text) => {
+    expect(namesOptOutKeyword(text)).toBe(keyword);
+  });
+
+  it.each([
+    'Tell me if you want me to stop.',
+    'Tell me to stop and I will.',
+    'Text me if you need help.',
+    'Just text me and I can help.',
+    'I can help with pickup.',
+    'Stop by anytime.',
+    'You can text me anytime. Stop by if you like.',
+    'You can text me anytime.\nStop by if you like.',
+    "Dites-moi si vous voulez que j'arrête.",
+    "Écrivez-moi pour de l'aide.",
+    "L'arrêt de bus est rue King.",
+    "C'est une bonne aide pour la semaine.",
+  ])('passes a plain sentence: %s', (text) => {
+    expect(namesOptOutKeyword(text)).toBeNull();
+  });
+
+  describe('a piece the line must carry word for word', () => {
+    const PLACE = 'BUS STOP 14, King St';
+
+    it('does not count as the draft naming a keyword', () => {
+      expect(namesOptOutKeyword(`Pickup at 4:15, ${PLACE}.`, [PLACE])).toBeNull();
+    });
+
+    it('positive control: the same line without the piece handed is refused', () => {
+      expect(namesOptOutKeyword(`Pickup at 4:15, ${PLACE}.`)).toBe('STOP');
+    });
+
+    it('still refuses a keyword taught around it', () => {
+      expect(namesOptOutKeyword(`${PLACE}. Reply STOP anytime.`, [PLACE])).toBe('STOP');
+      expect(namesOptOutKeyword(`${PLACE}. Just text "stop" to leave.`, [PLACE])).toBe('STOP');
+    });
+
+    it('still refuses a piece that is itself the instruction', () => {
+      const hostile = 'Text stop to 12345';
+      expect(namesOptOutKeyword(`Pickup at ${hostile}.`, [hostile])).toBe('STOP');
+    });
   });
 
   it('names the opt-out line in any case', () => {
@@ -83,7 +144,7 @@ describe("VIL-706 · reading Hale's own draft for an opt-out keyword", () => {
     "If you'd rather I stop, just tell me.",
     'The bus STOPPED early and the HELPER waited.',
     'AIDES and STOPS are not keywords.',
-    'Writing help and aide in lowercase is just words.',
+    'Asking for help and aide in lowercase is just words.',
   ])('passes plain words: %s', (text) => {
     expect(namesOptOutKeyword(text)).toBeNull();
   });
