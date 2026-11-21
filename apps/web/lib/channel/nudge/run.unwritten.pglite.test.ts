@@ -9,9 +9,10 @@ import { pageOps } from '~/lib/monitoring/failure-page';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
-  MAX_UNUSABLE_NUDGE_DRAFTS,
+  MAX_UNDATED_ASK_FAILURES,
   type NudgeRunDeps,
-  countUnusableNudgeDrafts,
+  UNDATED_ASK_FAILURE_WINDOW_DAYS,
+  countRecentAskFailures,
   defaultNudgeRunDeps,
   runNudgeCron,
 } from './run';
@@ -32,6 +33,13 @@ const PHONE = '+15555550100';
 const GOOD_DRAFT =
   "Richmond Hill Fall 2026 registration opens Aug 5, 10:30 a.m. - that's the one for Maya.";
 const INVENTED_DRAFT = 'Richmond Hill Fall 2026 registration opens at 9:15 for Maya.';
+/** Claude's own answer for the undated ask (weekday-care-ask eval, weekend-fallback). */
+const GOOD_ASK =
+  "Hey, I just noticed everything I've sent you so far has been for the weekend. Want me to look at weekday stuff too?";
+const REFUSED_ASK = 'Want weekday stuff too? Tuesday at 9:15?';
+
+/** The family's same morning slot, `days` later. */
+const at = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 
 let db: TestDb;
 let familyId: string;
@@ -75,6 +83,13 @@ function answering(draft: string): { client: AgentClient; create: ReturnType<typ
   return { client: { messages: { create } } as unknown as AgentClient, create };
 }
 
+function throwing(): AgentClient {
+  const fail = vi.fn(async () => {
+    throw new Error('model unavailable');
+  });
+  return { messages: { create: fail, stream: fail } } as unknown as AgentClient;
+}
+
 function deps(transport: FakeTransport, client: AgentClient | null): NudgeRunDeps {
   return {
     ...defaultNudgeRunDeps(),
@@ -102,6 +117,19 @@ function deps(transport: FakeTransport, client: AgentClient | null): NudgeRunDep
           return 'sent';
         },
       }),
+  };
+}
+
+/** The undated weekday-care ask is the only rung this family reaches. */
+function askDeps(transport: FakeTransport, client: AgentClient | null): NudgeRunDeps {
+  return {
+    ...deps(transport, client),
+    loadWindows: async () => [],
+    loadWeekdayCareContext: async () => ({
+      stated: [],
+      askedBefore: false,
+      weekendFindSent: true,
+    }),
   };
 }
 
@@ -178,85 +206,125 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const transport = new FakeTransport();
     const result = await runNudgeCron(db.database, deps(transport, null), NOW);
 
-    expect(result).toMatchObject({ sent: 0, unwritten: 1, settled: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0, failed: 0 });
     expect(transport.sent).toEqual([]);
     expect(await ledgerRows()).toEqual([]);
-    const rows = await unwrittenRows();
-    expect(rows).toEqual([
-      {
-        reason: 'unvoiced',
-        kind: 'registration',
-        unwritten: 'no_client',
-        nudgeRef: expect.stringMatching(/^[0-9a-f]{32}$/),
-        settled: false,
-      },
+    expect(await unwrittenRows()).toEqual([
+      { reason: 'unvoiced', kind: 'registration', unwritten: 'no_client' },
     ]);
-    // The row is family-visible: the ref is a digest, not the window or the family id.
-    expect(JSON.stringify(rows)).not.toContain(WINDOW.id);
-    expect(JSON.stringify(rows)).not.toContain(familyId);
     expect(posted).toEqual([
       'Hale: ops page. site nudge_unwritten. kind registration. reason no_client.',
     ]);
   }, 30_000);
 
-  it('a draft that fails the check settles after the bound, unsent', async () => {
+  it('a dated nudge keeps its tries: the model recovers before the window opens and it sends', async () => {
     const transport = new FakeTransport();
-    const { client, create } = answering(INVENTED_DRAFT);
-
-    for (let attempt = 1; attempt <= MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
-      const result = await runNudgeCron(db.database, deps(transport, client), NOW);
-      expect(result).toMatchObject({ sent: 0, unwritten: 1, settled: 0, failed: 0 });
+    const bad = answering(INVENTED_DRAFT);
+    for (const day of [0, 1, 2]) {
+      const result = await runNudgeCron(db.database, deps(transport, bad.client), at(day));
+      expect(result).toMatchObject({ sent: 0, unwritten: 1, failed: 0 });
     }
-    const draftCalls = create.mock.calls.length;
-    const rows = await unwrittenRows();
-    expect(new Set(rows.map((row) => row.nudgeRef)).size).toBe(1);
-    expect(await countUnusableNudgeDrafts(db.database, familyId, String(rows[0]?.nudgeRef))).toBe(
-      MAX_UNUSABLE_NUDGE_DRAFTS,
-    );
-    expect(rows.map((row) => row.unwritten)).toEqual(
-      Array(MAX_UNUSABLE_NUDGE_DRAFTS).fill('unusable'),
-    );
-    expect(rows.map((row) => row.settled)).toEqual([
-      ...Array(MAX_UNUSABLE_NUDGE_DRAFTS - 1).fill(false),
-      true,
-    ]);
-    expect(posted[0]).toBe(
-      'Hale: ops page. site nudge_unwritten. kind registration. reason unusable.',
-    );
-    expect(posted).toHaveLength(1);
-
-    const after = await runNudgeCron(db.database, deps(transport, client), NOW);
-    expect(after).toMatchObject({ sent: 0, unwritten: 0, settled: 1, failed: 0 });
-    // The preflight probe is the only call left: no draft is asked for.
-    expect(create.mock.calls.length).toBe(draftCalls + 1);
-    expect(await unwrittenRows()).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
+    expect(await unwrittenRows()).toHaveLength(3);
     expect(transport.sent).toEqual([]);
-    expect(await ledgerRows()).toEqual([]);
+
+    const good = answering(GOOD_DRAFT);
+    const recovered = await runNudgeCron(db.database, deps(transport, good.client), at(3));
+
+    expect(recovered).toMatchObject({ sent: 1, unwritten: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([GOOD_DRAFT]);
+    expect(await ledgerRows()).toEqual([{ status: 'queued' }]);
   }, 30_000);
 
-  it('counts only this nudge, and only a draft that failed its check', async () => {
-    const ref = 'a'.repeat(32);
-    const row = (after: Record<string, unknown>) => ({
-      familyId,
-      actor: 'system',
-      actionTaken: 'proactive_nudge_unwritten',
-      targetTable: 'families',
-      targetId: familyId,
-      after,
-    });
-    await db.database.insert(schema.auditLog).values([
-      row({ reason: 'unvoiced', kind: 'registration', unwritten: 'unusable', nudgeRef: ref }),
-      row({ reason: 'unvoiced', kind: 'registration', unwritten: 'no_client', nudgeRef: ref }),
-      row({ reason: 'unvoiced', kind: 'registration', unwritten: 'model_failed', nudgeRef: ref }),
-      row({
-        reason: 'unvoiced',
-        kind: 'registration',
-        unwritten: 'unusable',
-        nudgeRef: 'b'.repeat(32),
-      }),
-    ]);
-    expect(await countUnusableNudgeDrafts(db.database, familyId, ref)).toBe(1);
+  it('a dated nudge ends with its own date: past the opening nothing asks the model', async () => {
+    const transport = new FakeTransport();
+    const bad = answering(INVENTED_DRAFT);
+    await runNudgeCron(db.database, deps(transport, bad.client), at(0));
+    const drafted = bad.create.mock.calls.length;
+
+    // Aug 6: the Aug 5 window has opened, so the decide no longer picks it.
+    const after = await runNudgeCron(db.database, deps(transport, bad.client), at(6));
+
+    expect(after).toMatchObject({ sent: 0, unwritten: 0, quiet: 1, failed: 0 });
+    // The preflight probe is the only call left: no draft is asked for.
+    expect(bad.create.mock.calls.length).toBe(drafted + 1);
+    expect(await unwrittenRows()).toHaveLength(1);
+    expect(transport.sent).toEqual([]);
   }, 30_000);
+
+  it('the undated ask rests after failures of any kind, and a fixed writer sends it', async () => {
+    vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
+    const transport = new FakeTransport();
+    const refusedDraft = answering(JSON.stringify({ message: REFUSED_ASK }));
+    const failures: Array<[number, AgentClient | null, string]> = [
+      [0, null, 'no_client'],
+      [1, throwing(), 'model_failed'],
+      [2, refusedDraft.client, 'unusable'],
+    ];
+    expect(failures).toHaveLength(MAX_UNDATED_ASK_FAILURES);
+    for (const [day, client] of failures) {
+      const result = await runNudgeCron(db.database, askDeps(transport, client), at(day));
+      expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0, failed: 0 });
+    }
+    const rows = await unwrittenRows();
+    expect(rows.map((row) => row.unwritten)).toEqual(failures.map(([, , reason]) => reason));
+    expect(new Set(rows.map((row) => row.nudgeRef)).size).toBe(1);
+    // The row is family-visible: the ref is a digest, not the family id.
+    expect(String(rows[0]?.nudgeRef)).toMatch(/^[0-9a-f]{32}$/);
+    expect(JSON.stringify(rows)).not.toContain(familyId);
+    const pagesBefore = posted.length;
+
+    const good = answering(GOOD_ASK);
+    const resting = await runNudgeCron(db.database, askDeps(transport, good.client), at(3));
+    expect(resting).toMatchObject({ sent: 0, unwritten: 0, resting: 1, failed: 0 });
+    // The preflight probe is the only call: no draft is asked for.
+    expect(good.create).toHaveBeenCalledTimes(1);
+    expect(await unwrittenRows()).toHaveLength(MAX_UNDATED_ASK_FAILURES);
+    expect(posted).toHaveLength(pagesBefore);
+
+    // Day 8 is the first slot where the day-0 failure is outside the window.
+    const day = UNDATED_ASK_FAILURE_WINDOW_DAYS + 1;
+    const back = await runNudgeCron(db.database, askDeps(transport, good.client), at(day));
+    expect(back).toMatchObject({ sent: 1, unwritten: 0, resting: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([GOOD_ASK]);
+  }, 60_000);
+
+  it('an undated ask that never recovers is tried three days in eight, not every day', async () => {
+    vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
+    const transport = new FakeTransport();
+    const attempted: number[] = [];
+    for (let day = 0; day < 21; day += 1) {
+      const result = await runNudgeCron(db.database, askDeps(transport, throwing()), at(day));
+      if (result.unwritten === 1) attempted.push(day);
+    }
+    expect(attempted).toEqual([0, 1, 2, 8, 9, 10, 16, 17, 18]);
+    expect(transport.sent).toEqual([]);
+  }, 120_000);
+
+  it.each(['no_client', 'skill_load', 'model_failed', 'unusable'])(
+    'the ask failure count includes %s, inside the window and for this ask only',
+    async (reason) => {
+      const ref = 'a'.repeat(32);
+      const row = (nudgeRef: string, occurredAt: Date) => ({
+        familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_unwritten',
+        targetTable: 'families',
+        targetId: familyId,
+        occurredAt,
+        after: { reason: 'unvoiced', kind: 'weekday_care', unwritten: reason, nudgeRef },
+      });
+      const since = at(-UNDATED_ASK_FAILURE_WINDOW_DAYS);
+      await db.database
+        .insert(schema.auditLog)
+        .values([
+          row(ref, at(-1)),
+          row(ref, new Date(since.getTime() - 1)),
+          row('b'.repeat(32), at(-1)),
+        ]);
+      expect(await countRecentAskFailures(db.database, familyId, ref, since)).toBe(1);
+    },
+    30_000,
+  );
 
   it('History leaves out a failed write, and the rights export keeps it', async () => {
     const DELIBERATE_QUIET = 'Hale had nothing worth interrupting you for';
@@ -288,7 +356,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const { client } = answering(GOOD_DRAFT);
     const result = await runNudgeCron(db.database, deps(transport, client), NOW);
 
-    expect(result).toMatchObject({ sent: 1, unwritten: 0, settled: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 1, unwritten: 0, resting: 0, failed: 0 });
     expect(transport.bodies()).toEqual([GOOD_DRAFT]);
     expect(await ledgerRows()).toEqual([{ status: 'queued' }]);
     expect(await unwrittenRows()).toEqual([]);

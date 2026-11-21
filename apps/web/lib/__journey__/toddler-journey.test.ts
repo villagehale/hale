@@ -590,7 +590,7 @@ async function runToddlerJourney(): Promise<Journey> {
     client: null,
     composeMessage: factNudgeWriter,
     page: async () => 'paged',
-    countUnusableDrafts: async () => 0,
+    countAskFailures: async () => 0,
     // MEM-10 · the REAL writer over the same store: a nudge that lands pays off the
     // intake radar's forward promise, and the journey is where that has to be true.
     fulfillCommitment,

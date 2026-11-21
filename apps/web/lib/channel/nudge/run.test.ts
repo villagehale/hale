@@ -15,13 +15,13 @@ import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
-import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice.js';
+import { NUDGE_OPT_OUT, type NudgeUnwrittenReason, composeNudgeMessage } from './nudge-voice.js';
 import {
-  MAX_UNUSABLE_NUDGE_DRAFTS,
+  MAX_UNDATED_ASK_FAILURES,
   type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
-  countUnusableNudgeDrafts,
+  countRecentAskFailures,
   defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
@@ -259,17 +259,16 @@ function harness(
       pages.push(page);
       return 'paged';
     },
-    // Mirrors prod: the count is read back off the audit rows this sweep wrote.
-    countUnusableDrafts: async (_db, familyId, nudgeRef) =>
+    // Mirrors prod: the count is read back off the audit rows this sweep wrote. The
+    // window itself is the pglite suite's subject; here every row is inside it.
+    countAskFailures: async (_db, familyId, nudgeRef) =>
       writes.filter((write) => {
-        const after = write.payload.after as
-          | { unwritten?: unknown; nudgeRef?: unknown }
-          | undefined;
+        const after = write.payload.after as { nudgeRef?: unknown } | undefined;
         return (
           write.table === schema.auditLog &&
           write.payload.familyId === familyId &&
-          after?.unwritten === 'unusable' &&
-          after.nudgeRef === nudgeRef
+          write.payload.actionTaken === 'proactive_nudge_unwritten' &&
+          after?.nudgeRef === nudgeRef
         );
       }).length,
     // The model writes the name ask; the harness answers with a marker per kind so a
@@ -333,30 +332,25 @@ function keepTheDirectSendPath() {
   vi.stubEnv('REGISTRATION_DATE_CHECK', 'off');
 }
 
-/**
- * A recommendation that used up its draft tries stays settled, and a different one picked
- * for the same send (the same week, or the same Saturday) still gets its own.
- */
-async function expectOwnDraftBudget(
-  h: Harness,
-  composeMessage: ReturnType<typeof vi.fn>,
-  different: RadarCandidate,
-) {
-  for (let attempt = 1; attempt <= MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
-    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result).toMatchObject({ unwritten: 1, settled: 0 });
-  }
-  const same = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-  expect(same).toMatchObject({ unwritten: 0, settled: 1 });
-  expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS);
+const failingWriter = (reason: NudgeUnwrittenReason = 'unusable') =>
+  vi.fn<NudgeRunDeps['composeMessage']>(async () => ({ unwritten: reason }));
 
-  const other = await runNudgeCron(
-    db(),
-    { ...h.deps, loadCandidates: async () => [different] },
-    FRIDAY_10AM,
-  );
-  expect(other).toMatchObject({ unwritten: 1, settled: 0 });
-  expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS + 1);
+/**
+ * A nudge with a date of its own has no count against it: it is tried at every slot, past
+ * the point an undated ask would rest, and the slot its writer works is the one it sends.
+ */
+async function expectTriedEverySlot(h: Harness, composeMessage: ReturnType<typeof failingWriter>) {
+  keepTheDirectSendPath();
+  const failedSlots = MAX_UNDATED_ASK_FAILURES + 2;
+  for (let slot = 1; slot <= failedSlots; slot += 1) {
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0 });
+    expect(composeMessage).toHaveBeenCalledTimes(slot);
+  }
+  composeMessage.mockResolvedValue({ message: 'Written once the model was back.' });
+  const back = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+  expect(back).toMatchObject({ sent: 1, unwritten: 0, resting: 0 });
+  expect(h.transport.bodies()).toEqual(['Written once the model was back.']);
 }
 
 function auditActions(writes: Harness['writes']): string[] {
@@ -633,15 +627,17 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result).toMatchObject({ sent: 0, quiet: 1, unwritten: 1, settled: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 0, quiet: 1, unwritten: 1, resting: 0, failed: 0 });
     expect(h.transport.sent).toEqual([]);
     expect(ledgerRows(h)).toEqual([]);
     expect(h.threaded).toEqual([]);
     expect(h.closed).toEqual([]);
     expect(unwrittenRows(h)).toHaveLength(1);
-    expect(unwrittenRows(h)[0]?.payload).toMatchObject({
-      familyId: 'fam-1',
-      after: { reason: 'unvoiced', kind: 'registration', unwritten: reason, settled: false },
+    expect(unwrittenRows(h)[0]?.payload.familyId).toBe('fam-1');
+    expect(unwrittenRows(h)[0]?.payload.after).toEqual({
+      reason: 'unvoiced',
+      kind: 'registration',
+      unwritten: reason,
     });
     expect(h.pages).toEqual([{ site: 'nudge_unwritten', facts: { kind: 'registration', reason } }]);
   });
@@ -679,102 +675,45 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     expect(result.held.no_watch_consent).toBe(1);
   });
 
-  it('tries a bad draft again at the next slot, then settles it unsent', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
-    const h = harness({ windows: [win()], composeMessage });
-
-    for (let attempt = 1; attempt <= MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
-      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-      expect(result).toMatchObject({ unwritten: 1, settled: 0 });
-      expect(composeMessage).toHaveBeenCalledTimes(attempt);
-    }
-    const flags = unwrittenRows(h).map(
-      (row) => (row.payload.after as { settled: boolean }).settled,
-    );
-    expect(flags).toEqual([...Array(MAX_UNUSABLE_NUDGE_DRAFTS - 1).fill(false), true]);
-
-    const pagesBefore = h.pages.length;
-    const after = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(after).toMatchObject({ sent: 0, unwritten: 0, settled: 1 });
-    expect(composeMessage).toHaveBeenCalledTimes(MAX_UNUSABLE_NUDGE_DRAFTS);
-    expect(unwrittenRows(h)).toHaveLength(MAX_UNUSABLE_NUDGE_DRAFTS);
-    expect(h.pages).toHaveLength(pagesBefore);
-    expect(h.transport.sent).toEqual([]);
-    expect(ledgerRows(h)).toEqual([]);
-  });
-
-  it('a settled nudge does not settle a different one', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
-    const h = harness({ windows: [win()], composeMessage });
-    for (let attempt = 0; attempt < MAX_UNUSABLE_NUDGE_DRAFTS; attempt += 1) {
-      await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    }
-    composeMessage.mockClear();
-    const other = await runNudgeCron(
-      db(),
-      {
-        ...h.deps,
-        loadWindows: async () => [win({ id: 'w-2' })],
-      },
-      FRIDAY_10AM,
-    );
-    expect(composeMessage).toHaveBeenCalledTimes(1);
-    expect(other).toMatchObject({ unwritten: 1, settled: 0 });
-  });
-
-  it.each(['no_client', 'skill_load', 'model_failed'] as const)(
-    '%s never spends a try: the outage ends and the nudge still goes',
+  it.each(REASONS)(
+    '%s: a registration nudge is tried at every slot and still goes',
     async (reason) => {
       vi.stubEnv('F14_ENABLED', 'true');
-      const composeMessage = vi.fn<NudgeRunDeps['composeMessage']>(async () => ({
-        unwritten: reason,
-      }));
-      const h = harness({ windows: [win()], composeMessage });
-      for (let run = 0; run < MAX_UNUSABLE_NUDGE_DRAFTS + 2; run += 1) {
-        const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-        expect(result).toMatchObject({ unwritten: 1, settled: 0 });
-      }
-      composeMessage.mockResolvedValue({ message: 'Written once the model was back.' });
-      const back = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-      expect(back.sent).toBe(1);
-      expect(h.transport.bodies()).toEqual(['Written once the model was back.']);
+      const composeMessage = failingWriter(reason);
+      await expectTriedEverySlot(harness({ windows: [win()], composeMessage }), composeMessage);
     },
   );
 
-  it('a different weather swap in the same week gets its own tries', async () => {
+  it('a weather swap is tried at every slot and still goes', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const composeMessage = failingWriter();
     const h = harness({
       candidates: [candidate({ id: 'swap-a', title: 'Library story time' })],
       weather: WET,
       composeMessage,
     });
-    await expectOwnDraftBudget(
-      h,
-      composeMessage,
-      candidate({ id: 'swap-b', title: 'Indoor climbing', venueName: 'Community Centre' }),
-    );
+    await expectTriedEverySlot(h, composeMessage);
+    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('weather_swap');
   });
 
-  it('a different session for the same Saturday gets its own tries', async () => {
+  it('an empty Saturday is tried at every slot and still goes', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
-    const saturdayPick = (id: string, title: string) =>
-      candidate({
-        id,
-        title,
-        source: 'web',
-        eventDate: SATURDAY,
-        sourceUrl: `https://tpl.example/${id}`,
-      });
+    const composeMessage = failingWriter();
     const h = harness({
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
-      candidates: [saturdayPick('sat-a', 'EarlyON Saturday')],
+      candidates: [
+        candidate({
+          id: 'sat-a',
+          title: 'EarlyON Saturday',
+          source: 'web',
+          eventDate: SATURDAY,
+          sourceUrl: 'https://tpl.example/sat-a',
+        }),
+      ],
       composeMessage,
     });
-    await expectOwnDraftBudget(h, composeMessage, saturdayPick('sat-b', 'Family craft hour'));
+    await expectTriedEverySlot(h, composeMessage);
+    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('empty_saturday');
   });
 
   it('positive control: a written nudge sends those words and pages nobody', async () => {
@@ -783,7 +722,7 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     const h = harness({ windows: [win()], composeMessage: async () => ({ message: line }) });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result).toMatchObject({ sent: 1, quiet: 0, unwritten: 0, settled: 0 });
+    expect(result).toMatchObject({ sent: 1, quiet: 0, unwritten: 0, resting: 0 });
     expect(h.transport.bodies()).toEqual([line]);
     expect(ledgerRows(h)).toHaveLength(1);
     expect(unwrittenRows(h)).toEqual([]);
@@ -794,7 +733,7 @@ describe('runNudgeCron — a nudge the model could not write', () => {
     const wired = defaultNudgeRunDeps();
     expect(wired.composeMessage).toBe(composeNudgeMessage);
     expect(wired.page).toBe(pageOps);
-    expect(wired.countUnusableDrafts).toBe(countUnusableNudgeDrafts);
+    expect(wired.countAskFailures).toBe(countRecentAskFailures);
   });
 });
 
@@ -1313,10 +1252,9 @@ describe('runNudgeCron — the weekday drop-in', () => {
    * decide between the weekend and the weekday rather than against a paperwork window. */
   const NO_REGION = [family({ areaCoarse: null })];
 
-  it('a different drop-in in the same week gets its own draft tries', async () => {
+  it('a drop-in is tried at every slot and still goes', async () => {
     armed();
-    keepTheDirectSendPath();
-    const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
+    const composeMessage = failingWriter();
     const h = harness({
       families: NO_REGION,
       children: SIX_MONTH_OLD,
@@ -1324,14 +1262,8 @@ describe('runNudgeCron — the weekday drop-in', () => {
       weekdayCare: AT_HOME,
       composeMessage,
     });
-    await expectOwnDraftBudget(h, composeMessage, {
-      ...(CIVIC[0] as RadarCandidate),
-      id: 'civic-2',
-      title: 'Family library hour',
-      venueName: 'Leaside Library',
-      eventDate: '2026-08-05',
-      sourceUrl: 'https://venue.example/library-hour',
-    });
+    await expectTriedEverySlot(h, composeMessage);
+    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('weekday_dropin');
   });
 
   it('sends the find and keys it apart from a weather swap', async () => {
@@ -1481,7 +1413,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
   const NO_REGION = [family({ areaCoarse: null })];
 
-  function ask(children: NudgeChildRow[]) {
+  function ask(children: NudgeChildRow[], composeMessage?: NudgeRunDeps['composeMessage']) {
     vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
     return harness({
@@ -1489,6 +1421,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
       children,
       candidates: CIVIC,
       weekdayCare: UNASKED,
+      composeMessage,
     });
   }
 
@@ -1530,6 +1463,39 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
+  /** Seven on FRIDAY_10AM: the one school-age child the named ask is for. */
+  const SCHOOLER: NudgeChildRow = {
+    id: 'child-sam',
+    name: 'Sam',
+    dateOfBirth: '2019-03-04',
+    dobPrecision: 'exact',
+  };
+
+  it.each([
+    ['weekend_fallback', TODDLER],
+    ['after_school_named', SCHOOLER],
+    ['after_school_household', TEEN],
+  ] as const)('%s has no date, so it rests after failing for any reason', async (prompt, child) => {
+    keepTheDirectSendPath();
+    const reasons: NudgeUnwrittenReason[] = ['no_client', 'model_failed', 'unusable'];
+    expect(reasons).toHaveLength(MAX_UNDATED_ASK_FAILURES);
+    const composeMessage = failingWriter();
+    for (const reason of reasons) composeMessage.mockResolvedValueOnce({ unwritten: reason });
+    const h = ask([child], composeMessage);
+    for (const _reason of reasons) {
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result).toMatchObject({ unwritten: 1, resting: 0 });
+    }
+    const asked = composeMessage.mock.calls[0]?.[0];
+    expect(asked?.kind === 'weekday_care' && asked.ask.prompt).toBe(prompt);
+
+    const rested = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(rested).toMatchObject({ sent: 0, quiet: 1, unwritten: 0, resting: 1 });
+    expect(composeMessage).toHaveBeenCalledTimes(MAX_UNDATED_ASK_FAILURES);
+    expect(h.transport.bodies()).toEqual([]);
+  });
+
   describe('VIL-685 · the winter-break question while weekday care itself is off', () => {
     const BREAK_KNOWN: WeekdayCareContext = {
       stated: [],
@@ -1554,6 +1520,22 @@ describe('runNudgeCron — the weekday-care ask', () => {
       });
       // No model in this harness: reaching the ask shows up as the unvoiced weekday ask.
       expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
+    });
+
+    it('a verified break has its own date, so it is tried at every slot', async () => {
+      vi.stubEnv('F14_ENABLED', 'true');
+      vi.stubEnv('SCHOOL_BREAK_ENABLED', 'true');
+      const composeMessage = failingWriter();
+      const h = harness({
+        families: NO_REGION,
+        children: [TODDLER],
+        candidates: CIVIC,
+        weekdayCare: BREAK_KNOWN,
+        composeMessage,
+      });
+      await expectTriedEverySlot(h, composeMessage);
+      const asked = composeMessage.mock.calls[0]?.[0];
+      expect(asked?.kind === 'weekday_care' && asked.ask.prompt).toBe('verified_break');
     });
 
     it('is silent when SCHOOL_BREAK_ENABLED=false', async () => {

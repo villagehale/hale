@@ -235,7 +235,7 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     client: null,
     composeMessage: factNudgeWriter,
     page: async () => 'paged',
-    countUnusableDrafts: async () => 0,
+    countAskFailures: async () => 0,
     recordActivityOffers,
     // The REAL ledger writer over the same store.
     fulfillCommitment,
