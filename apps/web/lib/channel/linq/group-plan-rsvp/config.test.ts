@@ -45,12 +45,13 @@ describe('LINQ_GROUP_PLAN_CALENDAR_ENABLED', () => {
       vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', off);
       expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     }
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', undefined);
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });
 
   it('a value left under the Preview-era name cannot light it in Prod', () => {
     vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', undefined);
     vi.stubEnv(PREVIEW_ERA_CALENDAR_ENV, 'true');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });
