@@ -407,6 +407,12 @@ describe('finding the family', () => {
     expect((await noticeRows())[0]?.lane).toBe('plan_change');
   });
 
+  it('a family id that is not a uuid is no family, not a thrown query', async () => {
+    const event = refundEvent({}, { metadata: { familyId: 'not-a-uuid' } });
+    await expect(record(event, { status: 'no_tier' })).resolves.toBe('no_family');
+    expect(await noticeRows()).toHaveLength(0);
+  });
+
   it('a refund whose customer matches no family records nothing', async () => {
     await expect(
       record(refundEvent({}, { customer: 'cus_unknown' }), { status: 'no_tier' }),

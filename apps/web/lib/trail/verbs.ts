@@ -508,6 +508,9 @@ export const AUDIT_VERBS = [
   'promo_join_family_created',
   'promo_join_verified',
   'billing_refunded',
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
   'upgrade_ask_sent',
   'upgrade_link_sent',
   'upgrade_declined',
@@ -1939,6 +1942,13 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
+  // VIL-735. Hidden from History; each adult's own copy carries their notices.
+  billing_notice_sent: { sentence: 'Hale texted you about your plan', family: 'done' },
+  billing_notice_send_failed: {
+    sentence: 'a text about your plan did not go through',
+    family: 'problem',
+  },
+  billing_notice_dropped: { sentence: 'Hale did not send a text about your plan', family: 'note' },
   billing_revoke_unresolved: {
     sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
     family: 'problem',
@@ -2402,6 +2412,10 @@ export const INTERNAL_TRAIL_VERBS = [
   'activity_deep_dispatched',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
+  // VIL-735. About one adult's payment: the other parent never sees it.
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

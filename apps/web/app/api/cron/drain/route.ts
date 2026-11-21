@@ -1,4 +1,5 @@
 import { NextResponse, after } from 'next/server';
+import type { BillingNoticeTickResult } from '~/lib/billing/notices/run';
 import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-recovery';
 import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery';
 import { cronRoute } from '~/lib/cron/auth';
@@ -38,6 +39,7 @@ export const maxDuration = 800;
  * success: a typo in a caller's slice would otherwise look exactly like an empty queue.
  */
 export const GET = cronRoute('drain', async (req: Request) => {
+  const startedAt = Date.now();
   const requested = new URL(req.url).searchParams.get('queues');
   const queues = requested ? requested.split(',') : undefined;
   const unknown = queues?.filter((queue) => !DRAINABLE_QUEUES.includes(queue));
@@ -121,6 +123,11 @@ export const GET = cronRoute('drain', async (req: Request) => {
     const anthropicCredit = preview
       ? { skipped: 'preview' as const }
       : await runAnthropicCreditLeg();
+    // VIL-735 · a text owed after a payment, cancel or refund. After the queues, so it
+    // takes nothing from a parent's inbound turn. Bounded by its own deadlines.
+    const billingNotices = preview
+      ? { skipped: 'preview' as const }
+      : await runBillingNoticeLeg(startedAt);
     return NextResponse.json(
       {
         ok: true,
@@ -131,6 +138,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         heldReminders,
         optOutRecovery,
         anthropicCredit,
+        billingNotices,
       },
       { status: 200 },
     );
@@ -228,6 +236,28 @@ async function runAnthropicCreditLeg(): Promise<
     console.error(
       { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
       'cron/drain anthropic credit leg failed',
+    );
+    return { skipped: 'tick_failed' };
+  }
+}
+
+async function runBillingNoticeLeg(
+  startedAt: number,
+): Promise<BillingNoticeTickResult | { skipped: 'tick_failed' }> {
+  try {
+    const { billingThreadNoticesArmedAt } = await import('~/lib/billing/flags');
+    if (billingThreadNoticesArmedAt() === null) return { skipped: 'flag_off' };
+    const { defaultBillingNoticeDeps, runBillingNoticeTick } = await import(
+      '~/lib/billing/notices/run'
+    );
+    const { db } = await import('~/lib/db');
+    const database = db();
+    return await runBillingNoticeTick(database, defaultBillingNoticeDeps(database, startedAt));
+  } catch (err) {
+    // The name only: a message from inside the leg may carry what it was writing.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain billing notice leg failed',
     );
     return { skipped: 'tick_failed' };
   }

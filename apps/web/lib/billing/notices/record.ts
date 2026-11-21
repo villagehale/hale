@@ -52,6 +52,8 @@ const SETTLE_MS = 10 * 60_000;
 /** Measured from Hale's own `created_at`, so a run of refunds cannot delay it forever. */
 const SETTLE_CEILING_MS = 60 * 60_000;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Verbs that carry `after.stripeEventId` and say what the first delivery did. */
 const OUTCOME_VERBS = [
   'family_plan_updated',
@@ -205,6 +207,8 @@ async function familyFor(
 ): Promise<string | null> {
   const named = familyIdFromStripeEvent(rawEvent);
   if (named) {
+    // Signed is not well-formed: this runs on events apply never queried a family for.
+    if (!UUID.test(named)) return null;
     const [row] = await database
       .select({ id: schema.families.id })
       .from(schema.families)
@@ -361,10 +365,7 @@ async function writeIntent(
       .update(schema.billingNotices)
       .set({ status: 'dropped', dropReason: 'before_arm', updatedAt: now })
       .where(eq(schema.billingNotices.id, open.id));
-    await writeNoticeAudit(tx, open, 'billing_notice_dropped', {
-      reason: 'before_arm',
-      attempts: open.attempts,
-    });
+    await writeNoticeAudit.dropped(tx, open, { reason: 'before_arm', attempts: open.attempts });
     open = undefined;
   }
 

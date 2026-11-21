@@ -31,12 +31,21 @@ export async function resolveNoticePayer(
       ? await paymentPayer(database, notice)
       : await planChangePayer(database, notice);
   if (parentUserId === null) return { status: 'payer_unresolved' };
+  return confirmPayerSeat(database, notice.familyId, parentUserId);
+}
+
+/** The payer must still hold a parent's seat in this family. */
+export async function confirmPayerSeat(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<NoticePayer> {
   const [seat] = await database
     .select({ role: schema.familyMembers.role })
     .from(schema.familyMembers)
     .where(
       and(
-        eq(schema.familyMembers.familyId, notice.familyId),
+        eq(schema.familyMembers.familyId, familyId),
         eq(schema.familyMembers.userId, parentUserId),
       ),
     )

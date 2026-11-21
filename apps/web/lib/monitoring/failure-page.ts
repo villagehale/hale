@@ -215,6 +215,7 @@ export const OPS_PAGE_VOCABULARY = {
       'plan_state_unsettled',
       'stale',
       'unrecorded',
+      'unexpected',
     ],
   },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
