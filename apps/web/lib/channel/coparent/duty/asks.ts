@@ -78,6 +78,7 @@ import {
   dutyDoorAccepted,
   dutyDoorAttempt,
   dutySendClaim,
+  dutySendScope,
   isLastDutySendTry,
   markDutySendAccepted,
   readDutyAskRows,
@@ -1740,7 +1741,9 @@ export async function sweepDutyAsks(
       result.skipped += 1;
       continue;
     }
-    offered.add(dutyAskKey(view.plan.sendLines[0], localYmd(now, view.timeZone)));
+    offered.add(
+      dutySendScope(family.id, dutyAskKey(view.plan.sendLines[0], localYmd(now, view.timeZone))),
+    );
     const delivered = await applyPlan(database, {
       familyId: family.id,
       now,

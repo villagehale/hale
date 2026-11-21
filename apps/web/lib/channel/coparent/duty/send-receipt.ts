@@ -91,6 +91,14 @@ function baseKeyOf(dedupeKey: string): string {
   return at === -1 ? dedupeKey : dedupeKey.slice(0, at);
 }
 
+/**
+ * One family's send. A key carries no family id, so another family's `<key>` and
+ * `<key>:<parent>` can coexist: every comparison across sends goes through this scope.
+ */
+export function dutySendScope(familyId: string, baseKey: string): string {
+  return `${familyId}:${baseKey}`;
+}
+
 export function isLastDutySendTry(attempt: number): boolean {
   return attempt >= COMPOSE_HOLD_MAX_ATTEMPTS;
 }
@@ -266,18 +274,19 @@ export async function settleDutySendFailure(
 }
 
 function isStranded(
-  rows: readonly DutySendRow[],
-  baseKey: string,
+  send: { scope: string; baseKey: string; rows: readonly DutySendRow[] },
   now: Date,
   offered: ReadonlySet<string>,
 ): boolean {
-  const state = attemptFrom(rows, baseKey, now);
+  const state = attemptFrom(send.rows, send.baseKey, now);
   if (state.kind === 'exhausted') {
-    return !rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED);
+    return !send.rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED);
   }
   if (state.kind !== 'try' || state.dueAt === null) return false;
   // Still planned: a hold or a model outage kept this sweep's try from leaving.
-  if ([...offered].some((key) => baseKey === key || baseKey.startsWith(`${key}:`))) return false;
+  if ([...offered].some((key) => send.scope === key || send.scope.startsWith(`${key}:`))) {
+    return false;
+  }
   return now.getTime() > state.dueAt.getTime() + DUTY_SWEEP_EVERY_MS;
 }
 
@@ -288,7 +297,7 @@ function keyStartsWith(prefix: string) {
 /**
  * The plan only offers what is still worth saying: a night-before text stops at quiet
  * hours and a parent's direct question is never offered again. A send with a retry due
- * through a whole sweep, that this sweep did not offer (`offered`: the asks it planned),
+ * through a whole sweep, that this sweep did not offer (`offered`: the scopes it planned),
  * was stranded, as was a crash on the last try. Run after the sweep's own sends.
  */
 export async function settleStrandedDutySends(
@@ -306,27 +315,32 @@ export async function settleStrandedDutySends(
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
-  const sends = new Map<string, DutySendRow[]>();
+  const sends = new Map<string, { scope: string; baseKey: string; rows: DutySendRow[] }>();
   for (const row of rows) {
     if (row.dedupeKey === null) continue;
     const baseKey = baseKeyOf(row.dedupeKey);
-    const group = sends.get(baseKey);
-    if (group) group.push(row);
-    else sends.set(baseKey, [row]);
+    const scope = dutySendScope(row.familyId, baseKey);
+    const send = sends.get(scope);
+    if (send) send.rows.push(row);
+    else sends.set(scope, { scope, baseKey, rows: [row] });
   }
-  const acceptedKeys = [...sends].filter(([, group]) => isAccepted(group)).map(([key]) => key);
-  const carriedByOtherDoor = (key: string) =>
-    acceptedKeys.some((done) => done.startsWith(`${key}:`) || key.startsWith(`${done}:`));
+  const acceptedScopes = [...sends.values()]
+    .filter((send) => isAccepted(send.rows))
+    .map((send) => send.scope);
+  const carriedByOtherDoor = (scope: string) =>
+    acceptedScopes.some((done) => done.startsWith(`${scope}:`) || scope.startsWith(`${done}:`));
   let dropped = 0;
   let surface: DutySendSurface = 'ack';
   let reason: ReturnType<typeof failureLabel> = 'send_refused';
-  for (const [baseKey, group] of sends) {
-    if (carriedByOtherDoor(baseKey)) continue;
-    if (!isStranded(group, baseKey, input.now, input.offered)) continue;
-    const failures = group.filter((row) => row.status === 'failed');
+  for (const send of sends.values()) {
+    if (carriedByOtherDoor(send.scope)) continue;
+    if (!isStranded(send, input.now, input.offered)) continue;
+    const failures = send.rows.filter((row) => row.status === 'failed');
     const last = failures.at(-1);
     if (!last) continue;
-    const rowSurface: DutySendSurface = baseKey.startsWith(DUTY_ACK_KEY_PREFIX) ? 'ack' : 'ask';
+    const rowSurface: DutySendSurface = send.baseKey.startsWith(DUTY_ACK_KEY_PREFIX)
+      ? 'ack'
+      : 'ask';
     await recordDutySendFailure(database, {
       familyId: last.familyId,
       claimId: last.id,

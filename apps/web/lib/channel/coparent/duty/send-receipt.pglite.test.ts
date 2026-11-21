@@ -29,6 +29,7 @@ import {
   COPARENT_SPLIT_DUTY_ENABLED_ENV,
 } from './flag';
 import { commitDutyUpdate } from './model';
+import { settleStrandedDutySends } from './send-receipt';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE_ONE = '+15555550101';
@@ -184,14 +185,15 @@ async function kidBlock(
   eventId: string,
   title: string,
   childId?: string,
+  start: Date = MONDAY,
 ) {
   await db.database.insert(schema.parentCalendarBlocks).values({
     integrationId,
     eventId,
     familyId: family.familyId,
     userId: family.parentUserId,
-    startAt: MONDAY,
-    endAt: new Date(MONDAY.getTime() + HOUR_MS),
+    startAt: start,
+    endAt: new Date(start.getTime() + HOUR_MS),
     kidRelated: true,
     title,
     calendarStanding: 'organizer',
@@ -201,20 +203,20 @@ async function kidBlock(
   });
 }
 
-async function nightBeforeFamily(name: string) {
+async function nightBeforeFamily(name: string, start: Date = MONDAY, at: Date = EVENING) {
   const family = await twoParents(name);
   await db.database
     .update(schema.families)
     .set({ linqGroupChatId: `chat-${name}` })
     .where(eq(schema.families.id, family.familyId));
-  await seedChild(db.database, family.familyId, 'Robin', 36, undefined, EVENING);
+  await seedChild(db.database, family.familyId, 'Robin', 36, undefined, at);
   const integrationId = await seedIntegration(
     db.database,
     family.familyId,
     family.parentUserId,
     'gcal',
   );
-  await kidBlock(family, integrationId, `evt-${name}`, 'Robin swim');
+  await kidBlock(family, integrationId, `evt-${name}`, 'Robin swim', undefined, start);
   await commitDutyUpdate(db.database, {
     mode: 'write',
     familyId: family.familyId,
@@ -226,7 +228,7 @@ async function nightBeforeFamily(name: string) {
     slot: { role: 'pickup', claim: 'self', name: null, userId: family.parentUserId, confidence: 1 },
     prior: null,
     source: 'text',
-    now: EVENING,
+    now: at,
     childId: null,
     question: false,
     askWhichKid: false,
@@ -1013,6 +1015,139 @@ describe('a duty send nothing will offer again', () => {
         },
       },
     ]);
+  });
+
+  it("one family's accepted group send does not hide another family's 1:1 leg", async () => {
+    const familyA = await seedFamily(db.database, 'Scope group');
+    const familyB = await seedFamily(db.database, 'Scope leg');
+    const at = new Date('2026-10-19T16:17:00.000Z');
+    const key = `duty_ask:night_before:evt-shared-${familyA.familyId}:pickup:2026-10-19`;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: familyA.familyId,
+      parentUserId: familyA.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'duty_ask',
+      dedupeKey: key,
+      providerMessageId: 'linq-scope-group',
+      status: 'sent',
+      createdAt: at,
+    });
+    await failedRow(familyB, {
+      dedupeKey: `${key}:${familyB.parentUserId}`,
+      errorCode: 'http_500',
+      createdAt: at,
+    });
+    const ops = pager();
+
+    await settleStrandedDutySends(db.database, {
+      now: later(2, at),
+      pager: ops.pager,
+      offered: new Set(),
+    });
+
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
+    ]);
+    expect(await sendAudits(familyB.familyId, 'duty_send_dropped')).toHaveLength(1);
+    expect(await sendAudits(familyA.familyId, 'duty_send_dropped')).toEqual([]);
+  });
+
+  it("one family's accepted 1:1 leg does not hide another family's group send", async () => {
+    const familyA = await seedFamily(db.database, 'Scope leg ok');
+    const familyB = await seedFamily(db.database, 'Scope group failed');
+    const at = new Date('2026-10-22T16:17:00.000Z');
+    const key = `duty_ask:night_before:evt-shared-${familyB.familyId}:pickup:2026-10-22`;
+    await db.database.insert(schema.channelMessages).values({
+      familyId: familyA.familyId,
+      parentUserId: familyA.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'duty_ask',
+      dedupeKey: `${key}:${familyA.parentUserId}`,
+      providerMessageId: 'linq-scope-leg',
+      status: 'sent',
+      createdAt: at,
+    });
+    await failedRow(familyB, { dedupeKey: key, errorCode: 'http_500', createdAt: at });
+    const ops = pager();
+
+    await settleStrandedDutySends(db.database, {
+      now: later(2, at),
+      pager: ops.pager,
+      offered: new Set(),
+    });
+
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
+    ]);
+    expect(await sendAudits(familyB.familyId, 'duty_send_dropped')).toHaveLength(1);
+  });
+
+  it('within one family, a send the other door carried is still skipped', async () => {
+    const family = await seedFamily(db.database, 'Scope same family');
+    const at = new Date('2026-10-29T16:17:00.000Z');
+    const key = `duty_ask:night_before:evt-same-${family.familyId}:pickup:2026-10-29`;
+    await failedRow(family, { dedupeKey: key, errorCode: 'http_500', createdAt: at });
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'out',
+      category: 'duty_ask',
+      dedupeKey: `${key}:${family.parentUserId}`,
+      providerMessageId: 'linq-scope-same',
+      status: 'sent',
+      createdAt: later(1, at),
+    });
+    const ops = pager();
+
+    await settleStrandedDutySends(db.database, {
+      now: later(3, at),
+      pager: ops.pager,
+      offered: new Set(),
+    });
+
+    expect(ops.pages).toEqual([]);
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([]);
+  });
+
+  it("another family's plan does not count as offering this family's send", async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
+    /** Sunday 25 Oct 2026, 18:00 in Toronto. */
+    const SUNDAY = new Date('2026-10-25T22:00:00.000Z');
+    const familyA = await nightBeforeFamily(
+      'scope-offered',
+      new Date('2026-10-26T19:00:00.000Z'),
+      SUNDAY,
+    );
+    const familyB = await seedFamily(db.database, 'Scope offered other');
+    const key = 'duty_ask:night_before:evt-scope-offered:pickup:2026-10-25';
+    await failedRow(familyB, {
+      dedupeKey: `${key}:${familyB.parentUserId}`,
+      errorCode: 'http_500',
+      createdAt: later(-2, SUNDAY),
+    });
+    const ops = pager();
+    const gate = vi.fn<DutySendPorts['gate']>(async () => onHold);
+
+    await sweepDutyAsks(db.database, {
+      now: SUNDAY,
+      ports: { ...ports(vi.fn<DutySendPorts['send']>(), 'chat-scope', ops.pager), gate },
+      replyClient: scriptedReply('unused'),
+      composeNight: async () => 'Model wording.',
+    });
+
+    expect(gate).toHaveBeenCalledWith(
+      expect.objectContaining({ familyId: familyA.familyId }),
+      expect.anything(),
+    );
+    expect(await outRows(familyA.familyId)).toEqual([]);
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
+    ]);
+    expect(await sendAudits(familyB.familyId, 'duty_send_dropped')).toHaveLength(1);
   });
 
   it('pages a crash on the last try and a crashed ack, with only the duty memory flag on', async () => {
