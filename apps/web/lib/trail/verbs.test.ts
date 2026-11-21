@@ -57,6 +57,11 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
       expect(isInternalTrailVerb(verb)).toBe(true);
       return;
     }
+    // VIL-728 · the loop guard's ops row is internal. Counts only, never a parent sentence.
+    if (verb === 'linq_group_loop_guard_quiet') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
     expect(family).not.toBe('neutral');
   });
 
