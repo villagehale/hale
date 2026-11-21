@@ -18,6 +18,7 @@ tools: []
 - `prerequisite`: `required` `yes` means the class needs something first, in `quote` when the page says what.
 - `priorChargeUnknown`: an earlier try at this class may have charged the card.
 - `unread`: what Hale could not confirm on the page, by name.
+- `runsNow`: true when registration is already open, so Hale would do this right away. Then do not name an opening time: say it is open now.
 
 ## At `offer`, and at `clarify` when the terms have to be sent again
 
