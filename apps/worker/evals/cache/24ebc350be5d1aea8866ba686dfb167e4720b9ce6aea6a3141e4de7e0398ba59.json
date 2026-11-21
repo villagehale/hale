@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is a time_vote picking Sunday, but the reading returned kind 'none' with no optionKey, so the vote was not recognized at all. The meaning was missed entirely.",
+    "score": 1
+  }
+}

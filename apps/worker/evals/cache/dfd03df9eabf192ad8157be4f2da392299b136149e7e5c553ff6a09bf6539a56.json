@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "The park camp link is up: it's $120 for the session, https://park.example/camp",
+    "options": [],
+    "why": "link_facts: public price and link only. Login, payment, and sign-up details left out and not to be repeated in the group."
+  },
+  "latencyMs": 1354
+}

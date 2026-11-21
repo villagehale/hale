@@ -5,18 +5,25 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-destination';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { linqGroupScenesEnabled } from '../config';
 import { GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL, type GroupPlanCalendarLineInput } from './calendar';
-import type { GroupPlanRsvpLineInput } from './facts';
-import type { GroupPollLineInput } from './poll-facts';
+import {
+  GROUP_PLAN_RSVP_VOICE_SKILL,
+  type GroupPlanRsvpLineInput,
+  type GroupPlanWhichLineInput,
+} from './facts';
+import { GROUP_POLL_VOICE_SKILL, type GroupPollLineInput } from './poll-facts';
 
 /**
  * VIL-442 (T15) — the model writes one group-plan line from facts. VIL-471
  * polls use the same composer with their own skill (`input.skill`).
  *
  * No fallback sentence. A line the model could not write is named
- * `voice_unavailable` / `model_failed` / `unusable` and nothing is sent.
+ * `voice_unavailable` / `model_failed` / `unusable` and nothing is sent. With the scenes on,
+ * #ops is paged for it (kept off the path a dark scenes flag leaves running as it always did).
  */
 
 export type GroupPlanRsvpVoiceSource = 'composed' | 'retry';
@@ -29,6 +36,7 @@ export type GroupPlanRsvpVoiceSkip =
 
 export type GroupLineInput =
   | GroupPlanRsvpLineInput
+  | GroupPlanWhichLineInput
   | GroupPollLineInput
   | GroupPlanCalendarLineInput;
 
@@ -87,11 +95,19 @@ function lineUsable(line: string, input: GroupLineInput): boolean {
   return true;
 }
 
+/** While the scenes flag is off, group plan and poll lines use the prompts they always used. */
+function voiceSkillName(skill: GroupLineInput['skill']): string {
+  if (linqGroupScenesEnabled()) return skill;
+  if (skill === GROUP_PLAN_RSVP_VOICE_SKILL) return 'group-plan-rsvp-voice-legacy';
+  if (skill === GROUP_POLL_VOICE_SKILL) return 'group-poll-voice-legacy';
+  return skill;
+}
+
 export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undefined {
   if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
-      const skill = await loadCronSkill(input.skill);
+      const skill = await loadCronSkill(voiceSkillName(input.skill));
       const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       const result = await forceToolJson({
         client,
@@ -110,13 +126,28 @@ export function productionGroupPlanRsvpComposer(): GroupPlanRsvpComposer | undef
   };
 }
 
+type GroupPlanLineResult =
+  | { status: 'composed'; source: GroupPlanRsvpVoiceSource; line: string }
+  | { status: 'skipped'; reason: GroupPlanRsvpVoiceSkip };
+
 export async function composeGroupPlanRsvpLine(
   input: GroupLineInput,
   composer: GroupPlanRsvpComposer | undefined,
-): Promise<
-  | { status: 'composed'; source: GroupPlanRsvpVoiceSource; line: string }
-  | { status: 'skipped'; reason: GroupPlanRsvpVoiceSkip }
-> {
+): Promise<GroupPlanLineResult> {
+  const result = await writeGroupPlanLine(input, composer);
+  if (result.status === 'skipped' && linqGroupScenesEnabled()) {
+    await sharedOpsPager.page({
+      site: 'group_plan_line_unwritten',
+      facts: { kind: input.kind, reason: result.reason },
+    });
+  }
+  return result;
+}
+
+async function writeGroupPlanLine(
+  input: GroupLineInput,
+  composer: GroupPlanRsvpComposer | undefined,
+): Promise<GroupPlanLineResult> {
   if (!composer) return { status: 'skipped', reason: 'voice_unavailable' };
   const attempt = async (prompt: 'full' | 'short'): Promise<{ line: string } | null> => {
     try {

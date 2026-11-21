@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a short, warm hold that fits the moment and invents no specifics, and it avoids naming the allergy, child, or diagnosis as watchFor requires. However, it promises a direct text, which is what watchFor flags as a concern, and it is somewhat generic in wording, so it does not fully reach the top score.",
+    "score": 3
+  }
+}

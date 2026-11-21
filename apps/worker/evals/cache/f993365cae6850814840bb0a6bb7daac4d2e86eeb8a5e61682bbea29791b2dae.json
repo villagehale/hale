@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Bao's yes is about the Sunday zoo trip, a different event, and the reading correctly marks samePlan false, so it should not count toward the picnic."
+  }
+}

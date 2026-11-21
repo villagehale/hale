@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Zoo is a different event, so planKey other is right and the picnic stays untouched. Intent rsvp with planKey other matches the message's meaning."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message uses only the public facts (price, two sessions, URL), names no child and no registration, and avoids claiming any booking. It reads plainly and fits the moment, though 'No sign-up or payment from me here' is slightly awkward and a little stiff.",
+    "score": 4
+  }
+}

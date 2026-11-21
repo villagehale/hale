@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about another family's calendar entry (a child's dentist appointment), which is a private question. The expected moment is private_question, but the reading returned kind 'none' instead of flagging it as a private question. Since the reading does not identify the expected moment, it fails the criterion, though it does not leak any private detail or invent a time.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks Hale to charge a card ending 4242 for $120, which is a payment request containing private financial detail. The reading correctly classifies it as private_question with no title, response, options, or starts copied from the message, so the card number is not leaked into any field.",
+    "score": 5
+  }
+}

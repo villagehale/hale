@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a form-style company voice ('Thank you for your message') and tells people what to type ('Please reply YES, NO or MAYBE'), which the rubric explicitly scores as a 1. It also fails to report the actual tally of three yes and one no for the Saturday picnic.",
+    "score": 1
+  }
+}

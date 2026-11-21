@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "I can't check what's in the snack from here, so please ask the organizer directly for the full ingredient list before Mira goes. I have her peanut allergy saved, so I'll make sure it's noted whenever the snack comes up.",
+    "options": [],
+    "why": "private_1to1: answered what facts hold (peanut allergy saved) and stated what Hale does not know (snack contents)."
+  },
+  "latencyMs": 2000
+}

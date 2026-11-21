@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Saturday picnic: Priya, Sam and Ana are in. Diego can't make it.",
+    "options": [],
+    "why": "rsvp_tally"
+  },
+  "latencyMs": 1747,
+  "usage": {
+    "input_tokens": 150,
+    "output_tokens": 59,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

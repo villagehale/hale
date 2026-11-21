@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "Here's the sign-up link for this family's spot: https://park.example/camp. Tell me when you've registered and I'll add it to the calendar.",
+    "options": [],
+    "why": "registration_1to1"
+  },
+  "latencyMs": 1204
+}

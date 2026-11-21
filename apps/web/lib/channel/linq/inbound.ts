@@ -54,6 +54,7 @@ import {
   linqGroupOnboardingV2Enabled,
   linqGroupPlanRsvpEnabled,
   linqGroupPollsEnabled,
+  linqGroupScenesEnabled,
   linqInboundConfigured,
   linqMissingInboundEnv,
   linqMultiFamilyGroupsEnabled,
@@ -102,6 +103,7 @@ import {
   groupExperienceTakesTheTurn,
 } from './group-experience';
 import type { GroupExperienceReader } from './group-experience/reading';
+import type { GroupExperienceTurnOutcome } from './group-experience/turn';
 import type { GroupExperienceComposer } from './group-experience/voice';
 import {
   holdTrueStrangerOnce,
@@ -124,6 +126,7 @@ import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
 import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
 import type { GroupPlanRsvpReader } from './group-plan-rsvp/reading';
 import { parseLinqTapback } from './group-plan-rsvp/reading';
+import type { PlanRef } from './group-plan-rsvp/plan-identity';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
 import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
@@ -158,6 +161,7 @@ import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
 import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
+import type { SharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import {
   LINQ_WEBHOOK_TIMEOUT_MS,
@@ -231,6 +235,8 @@ export async function handleLinqInboundRequest(
     groupVoice?: GroupOnboardingComposer;
     /** Test seam for VIL-456 shared-group lines. Production composes with the model. */
     sharedGroupVoice?: SharedGroupComposer;
+    /** Test seam for the shared-group read. Production uses the shared model reader. */
+    sharedGroupReader?: SharedGroupReader;
     /** Test seam for reading a roster reply. Production uses the model. */
     readGroupReply?: (text: string) => Promise<RosterReading>;
     /** Test seam for GET /chats/{id}. Production calls Linq. */
@@ -603,6 +609,9 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
     composer: deps.sharedGroupVoice,
     santaTurn: deps.secretSantaTurn,
     santaLine: deps.secretSantaLine,
+    reader: deps.sharedGroupReader,
+    carpoolReader: deps.carpoolReader,
+    carpoolVoice: deps.carpoolVoice,
   };
 }
 
@@ -634,6 +643,7 @@ async function privateCalendarReply(
       senderName: null,
       chatId: message.chatId,
       text: message.text,
+      sentAt: message.sentAt,
     },
   );
   if (!reply.handled) return null;
@@ -647,14 +657,32 @@ async function privateCalendarReply(
   };
 }
 
-async function tryGroupExperienceTurn(
+/**
+ * One group message's read state across the door. `done`: the group moment already read it.
+ * `planRead`: the VIL-442 reader, which runs first, already read it (it is never read twice).
+ * `lockAsked`: that reader read a lock on the open poll, so the group moment locks without
+ * reading the message again. `planRef`: the plan that reader resolved the message to, by id;
+ * the group moment binds the message to no other plan.
+ */
+interface GroupMessageRead {
+  done: boolean;
+  planRead?: boolean;
+  lockAsked?: boolean;
+  /** With `lockAsked`: the open poll's option key the lock named. */
+  lockChoice?: string;
+  planRef?: PlanRef;
+}
+
+async function runGroupExperience(
   deps: LinqDoorDeps,
   input: {
     chatId: string;
     senderHandle: string;
     text: string;
+    messageId: string;
   },
-): Promise<Response | null> {
+  read?: GroupMessageRead,
+): Promise<Extract<GroupExperienceTurnOutcome, { handled: true }> | null> {
   if (!groupExperienceTurnEnabled()) return null;
   const covering =
     (await familyIdForClaimedChat(deps.database, input.chatId)) ??
@@ -675,8 +703,11 @@ async function tryGroupExperienceTurn(
       database: deps.database,
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
+      listChatHandles: deps.listChatHandles,
       reader: deps.groupExperienceReader,
       composer: deps.groupExperienceComposer,
+      oneToOne: deps.oneToOne,
+      calendarComposer: deps.groupPlanRsvpComposer,
     },
     {
       chatId: input.chatId,
@@ -685,9 +716,34 @@ async function tryGroupExperienceTurn(
       senderFamilyId: mappedSender.status === 'same_family' ? mappedSender.familyId : null,
       coveringFamilyId: covering,
       text: input.text,
+      messageId: input.messageId,
+      ...(read?.lockAsked ? { decided: 'time_lock' as const } : {}),
+      ...(read?.lockAsked && read.lockChoice ? { lockChoice: read.lockChoice } : {}),
+      ...(read?.planRef ? { planRef: read.planRef } : {}),
     },
   );
-  if (!groupExperienceTakesTheTurn(result)) return null;
+  return groupExperienceTakesTheTurn(result) ? result : null;
+}
+
+/**
+ * VIL-399 — RSVP/time polls, a posted link, or a private question. With the scenes flag on,
+ * `read` carries one message's read state: `read.done` is set the first time, so a later step
+ * of the door never reads the same message again.
+ */
+async function tryGroupExperienceTurn(
+  deps: LinqDoorDeps,
+  input: {
+    chatId: string;
+    senderHandle: string;
+    text: string;
+    messageId: string;
+  },
+  read?: GroupMessageRead,
+): Promise<Response | null> {
+  if (read?.done) return null;
+  if (read) read.done = true;
+  const result = await runGroupExperience(deps, input, read);
+  if (!result) return null;
   deps.log.info({ outcome: result.outcome }, 'linq inbound: group experience');
   await deps.countOutcome(result.count);
   return json({
@@ -741,8 +797,11 @@ async function tryGroupPlanRsvpTurn(
     tapback: LinqTapback | null;
     tapbackMessageId?: string | null;
   },
+  read?: GroupMessageRead,
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
+  if (read?.planRead) return null;
+  if (read) read.planRead = true;
   const mappedSender = await mapGroupHandlesToFamily(deps.database, {
     sender: input.senderHandle,
     others: [],
@@ -768,6 +827,11 @@ async function tryGroupPlanRsvpTurn(
       secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
+  if (rsvp.handled && rsvp.outcome === 'group_poll_lock_asked' && read) {
+    read.lockAsked = true;
+    read.lockChoice = rsvp.lockChoice;
+  }
+  if (rsvp.handled && rsvp.planRef && read) read.planRef = rsvp.planRef;
   if (!groupPlanRsvpTakesTheTurn(rsvp)) return null;
   deps.log.info(
     { outcome: rsvp.outcome },
@@ -855,16 +919,23 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     linqMultiFamilyGroupsEnabled() &&
     secretSantaEnabled() &&
     (await chatHasCollectingDraw(deps.database, message.chatId));
+  const experienceRead: GroupMessageRead | undefined = linqGroupScenesEnabled()
+    ? { done: false }
+    : undefined;
   // A plan ask in a multi-family chat must run before the shared-group reader,
   // or it is handed back as a question and falls into the mixed-family hold.
   const rsvpFirst = santaCollecting
     ? null
-    : await tryGroupPlanRsvpTurn(deps, {
-        chatId: message.chatId,
-        senderHandle: message.senderHandle,
-        text: message.text,
-        tapback: null,
-      });
+    : await tryGroupPlanRsvpTurn(
+        deps,
+        {
+          chatId: message.chatId,
+          senderHandle: message.senderHandle,
+          text: message.text,
+          tapback: null,
+        },
+        experienceRead,
+      );
   if (rsvpFirst) return rsvpFirst;
 
   if (linqMultiFamilyGroupsEnabled()) {
@@ -903,6 +974,38 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
           const intent = await optOutIntentOf(text);
           return intent === 'stop' || intent === 'start' ? intent : 'none';
         },
+        // VIL-399: past seating, the duplicate check and a stopped member's guard, the
+        // group moments read before Hale's plain shared-chat answer.
+        ...(experienceRead
+          ? {
+              experience: async () => {
+                if (experienceRead.done) return null;
+                experienceRead.done = true;
+                const moment = await runGroupExperience(
+                  deps,
+                  {
+                    chatId: message.chatId,
+                    senderHandle: message.senderHandle,
+                    text: message.text,
+                    messageId: message.messageId,
+                  },
+                  experienceRead,
+                );
+                if (!moment) return null;
+                return {
+                  result: {
+                    handled: true as const,
+                    outcome: moment.outcome,
+                    count: moment.count,
+                    ...(moment.notice ? { notice: moment.notice } : {}),
+                  },
+                  // The asker was already texted 1:1 about their own question: one 1:1, not two.
+                  privateMove: moment.outcome === 'group_experience_1to1',
+                  textedFamilies: moment.texted ?? [],
+                };
+              },
+            }
+          : {}),
       },
     );
     if (shared.handled) {
@@ -936,7 +1039,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return claimGroupFromTrigger(deps, message, coparent);
   }
   if (coparent.type === 'route_member') {
-    return routeClaimedGroup(deps, message);
+    return routeClaimedGroup(deps, message, experienceRead);
   }
   if (coparent.type === 'done') {
     deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
@@ -947,18 +1050,27 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
   if (optOut !== 'stop') {
-    const experience = await tryGroupExperienceTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-    });
+    const experience = await tryGroupExperienceTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        messageId: message.messageId,
+      },
+      experienceRead,
+    );
     if (experience) return experience;
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
+    const rsvp = await tryGroupPlanRsvpTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      },
+      experienceRead,
+    );
     if (rsvp) return rsvp;
   }
 
@@ -1001,7 +1113,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome, hold: held });
   }
 
-  if (optOut) return routeClaimedGroup(deps, message);
+  if (optOut) return routeClaimedGroup(deps, message, experienceRead);
 
   const trigger = matchLinqGroupTrigger(message.text);
   if (trigger) return claimGroupFromTrigger(deps, message, mapped);
@@ -1016,10 +1128,14 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome: 'group_unclaimed' });
   }
 
-  return routeClaimedGroup(deps, message);
+  return routeClaimedGroup(deps, message, experienceRead);
 }
 
-async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+async function routeClaimedGroup(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  experienceRead?: GroupMessageRead,
+): Promise<Response> {
   const stopping = (await optOutIntentOf(message.text)) === 'stop';
   if (!stopping && !linqGroupOnboardingV2Enabled()) {
     const welcome = await retryMemberWelcome(deps.database, {
@@ -1034,18 +1150,27 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
     }
   }
   if (!stopping) {
-    const experience = await tryGroupExperienceTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-    });
+    const experience = await tryGroupExperienceTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        messageId: message.messageId,
+      },
+      experienceRead,
+    );
     if (experience) return experience;
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
+    const rsvp = await tryGroupPlanRsvpTurn(
+      deps,
+      {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        text: message.text,
+        tapback: null,
+      },
+      experienceRead,
+    );
     if (rsvp) return rsvp;
   }
   const mapped = await mapGroupHandlesToFamily(deps.database, {

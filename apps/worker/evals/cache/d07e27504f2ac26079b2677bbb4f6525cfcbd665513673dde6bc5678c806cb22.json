@@ -1,0 +1,12 @@
+{
+  "value": {
+    "kind": "private_question",
+    "title": null,
+    "response": null,
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 3150
+}

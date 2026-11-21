@@ -1,0 +1,28 @@
+{
+  "value": {
+    "intent": "rsvp",
+    "planTitle": null,
+    "startsAt": null,
+    "location": null,
+    "deadline": null,
+    "response": "yes",
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "low",
+    "planKey": "other",
+    "replacesPlanKey": null,
+    "addressed": false,
+    "pollQuestion": null,
+    "pollOptions": [],
+    "pollStarts": [],
+    "pollChoice": null
+  },
+  "latencyMs": 8139,
+  "usage": {
+    "input_tokens": 226,
+    "output_tokens": 539,
+    "cache_read_input_tokens": 3411,
+    "cache_creation_input_tokens": 3410
+  }
+}

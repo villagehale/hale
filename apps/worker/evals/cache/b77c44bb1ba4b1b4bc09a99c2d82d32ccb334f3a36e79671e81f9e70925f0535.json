@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a private family login, so the right moment is private_question. The reading says kind 'none', which is the wrong moment, and a private question read as none scores 1.",
+    "score": 1
+  }
+}

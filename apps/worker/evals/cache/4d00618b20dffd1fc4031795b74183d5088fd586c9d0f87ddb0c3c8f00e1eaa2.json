@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to see who is in for a different plan (the Sunday zoo trip), which is an opening of a new RSVP or plan, not a read of the open Saturday picnic. Hale returned kind none, but the expected moment was rsvp_open, so the reading misses the intent.",
+    "score": 1
+  }
+}

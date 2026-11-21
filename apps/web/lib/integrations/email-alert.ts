@@ -754,6 +754,7 @@ export async function alertParentForEmail(
         familyId,
         eventId: extraction.matchedEventRef.id,
         change: providerChange,
+        timeZone: input.timeZone,
         now,
       });
     } catch (err) {

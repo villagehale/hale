@@ -1,0 +1,13 @@
+{
+  "value": {
+    "kind": "rsvp_vote",
+    "title": null,
+    "samePlan": false,
+    "response": "yes",
+    "optionKey": null,
+    "options": [],
+    "starts": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1587
+}

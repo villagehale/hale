@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is form-like and company-voiced ('Thank you for your message') and tells people what to type ('Please reply YES, NO or MAYBE'), which the rubric explicitly scores as a 1. It also fails to use the specific facts (price, two sessions, 4 spots, link) and asks for a group reply, which the watchFor rules discourage.",
+    "score": 1
+  }
+}

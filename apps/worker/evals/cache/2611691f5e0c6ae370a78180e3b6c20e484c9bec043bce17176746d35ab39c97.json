@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Parfait Priya, je mets le pique-nique de samedi 31 octobre à 11h au parc sur ton calendrier. Tu veux que je le mette aussi pour ta famille, ou seulement pour toi ?",
+    "why": "calendar_ask"
+  },
+  "latencyMs": 1547
+}

@@ -1,0 +1,15 @@
+{
+  "value": {
+    "send": true,
+    "line": "Quick facts on the camp at park.example/camp: it's $120 for two sessions. No sign-up or payment from me here, just the details.",
+    "options": [],
+    "why": "link_facts: stated public price and sessions only; omitted the signup and child name per the rules."
+  },
+  "latencyMs": 1212,
+  "usage": {
+    "input_tokens": 115,
+    "output_tokens": 95,
+    "cache_read_input_tokens": 1771,
+    "cache_creation_input_tokens": 0
+  }
+}

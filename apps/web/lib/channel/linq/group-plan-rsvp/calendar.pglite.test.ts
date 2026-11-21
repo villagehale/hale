@@ -6,6 +6,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { DROP_SINGLE_OPEN_PLAN_INDEX, seedTextedHale } from '~/lib/testing/group-scenes';
 import { handleLinqInboundRequest } from '../inbound';
 import { postgresGroupPlanCalendarWriter, postgresGroupPlanHouseholds } from './calendar';
 import {
@@ -29,6 +30,7 @@ let db: TestDb;
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
+  await db.exec(DROP_SINGLE_OPEN_PLAN_INDEX);
 });
 
 afterAll(async () => {
@@ -36,6 +38,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
 });
 
@@ -45,7 +48,14 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-async function parent(input: { name: string; phone: string; chat?: string; language?: string }) {
+async function parent(input: {
+  name: string;
+  phone: string;
+  chat?: string;
+  language?: string;
+  /** False: this parent has never texted Hale 1:1. */
+  texted?: boolean;
+}) {
   const [family] = await db.database
     .insert(schema.families)
     .values({
@@ -78,6 +88,20 @@ async function parent(input: { name: string; phone: string; chat?: string; langu
     phoneE164Hash: phoneBlindIndex(input.phone),
     verifiedAt: NOW,
   });
+  if (input.texted !== false) {
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: userId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: `dm-${userId}`,
+      inGroup: false,
+      status: 'delivered',
+      sentAt: new Date(NOW.getTime() - 86_400_000),
+      createdAt: new Date(NOW.getTime() - 86_400_000),
+    });
+  }
   return { familyId, userId };
 }
 
@@ -235,6 +259,7 @@ describe('postgres household calendar copy', () => {
         return { providerMessageId: 'm' };
       },
       privateSend: {
+        mayOpen: async () => true,
         async send(line: object) {
           expect(line).not.toHaveProperty('chatId');
           privateCalls.push(line);
@@ -280,6 +305,9 @@ describe('postgres household calendar copy', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high' as const,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
       },
@@ -296,7 +324,7 @@ describe('postgres household calendar copy', () => {
     });
 
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -638,7 +666,7 @@ describe('the private reply and a tapback use the household language', () => {
     });
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -700,7 +728,7 @@ describe('the private reply and a tapback use the household language', () => {
     await store.setCalendarAskMessage(plan.id, priya.familyId, 'ask-msg');
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerCalendarTapback(
       {
         database: db.database,
@@ -764,7 +792,7 @@ describe('the private reply and a tapback use the household language', () => {
     const composer = fakeGroupPlanRsvpComposer();
     const words = 'Oui, mets-le sur notre calendrier';
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -817,7 +845,7 @@ describe('the private reply and a tapback use the household language', () => {
     await store.setCalendarAskMessage(plan.id, priya.familyId, 'ask-msg');
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerCalendarTapback(
       {
         database: db.database,
@@ -868,7 +896,7 @@ describe('the private reply and a tapback use the household language', () => {
     const words = 'Oui, on est partants';
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     await considerGroupPlanRsvp(
       {
         database: db.database,
@@ -886,6 +914,9 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         oneToOne: {
@@ -950,6 +981,7 @@ describe('the private reply and a tapback use the household language', () => {
       phoneE164Hash: phoneBlindIndex(phone),
       verifiedAt: NOW,
     });
+    await seedTextedHale(db.database, { familyId: homeId, userId, at: NOW });
     await db.database.insert(schema.linqGroupMembers).values({
       familyId: homeId,
       chatId: CHAT,
@@ -974,7 +1006,7 @@ describe('the private reply and a tapback use the household language', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     await considerGroupPlanRsvp(
       {
         database: db.database,
@@ -992,6 +1024,9 @@ describe('the private reply and a tapback use the household language', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         oneToOne: {
@@ -1060,7 +1095,7 @@ describe('a 1:1 reply reaches the calendar ask before ordinary intake', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_WEBHOOK_SECRET', secret);
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const body = JSON.stringify({
       api_version: 'v3',
       webhook_version: '2026-02-03',
@@ -1142,7 +1177,7 @@ describe('a claimed group with no member seat', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const yes = {
       intent: 'rsvp' as const,
       planTitle: null,
@@ -1154,6 +1189,9 @@ describe('a claimed group with no member seat', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high' as const,
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
     };
     await considerGroupPlanRsvp(
       {
@@ -1197,6 +1235,189 @@ describe('a claimed group with no member seat', () => {
   });
 });
 
+describe('Hale never opens a 1:1 cold', () => {
+  async function yesFrom(priya: { familyId: string; userId: string }) {
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    const sent: string[] = [];
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: NOW,
+        composer,
+        reader: {
+          read: async () => ({
+            intent: 'rsvp' as const,
+            planTitle: null,
+            startsAt: null,
+            location: null,
+            deadline: null,
+            response: 'yes' as const,
+            headcount: 1,
+            householdLabel: null,
+            coversNames: [],
+            confidence: 'high' as const,
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
+          }),
+        },
+        oneToOne: {
+          text: async ({ body }) => {
+            sent.push(body);
+            return { providerMessageId: 'priv-1', chatId: null };
+          },
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      { chatId: CHAT, senderHandle: PRIYA, senderUserId: priya.userId, text: 'in', tapback: null },
+    );
+    const consent = await store.loadCalendarConsent(plan.id, priya.familyId);
+    const withdrawn = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_calendar_withdrawn'));
+    return { sent, consent, withdrawn };
+  }
+
+  it('a yes from a parent who never texted Hale opens no ask and leaves no ask row', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT, texted: false });
+    const { sent, consent, withdrawn } = await yesFrom(priya);
+    expect(sent).toEqual([]);
+    expect(consent).toBeNull();
+    expect(withdrawn).toEqual([]);
+  });
+
+  it('the same yes from a parent who has texted Hale gets the ask (positive control)', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const { sent, consent } = await yesFrom(priya);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('calendar_ask');
+    expect(consent?.status).toBe('asked');
+  });
+});
+
+describe('a 1:1 reply that cannot be an answer to the open ask', () => {
+  const ASKED_AT = new Date(NOW.getTime() + 30_000);
+
+  async function openAsk(title: string) {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title,
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    await store.claimCalendarAsk({
+      planId: plan.id,
+      familyId: priya.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await askWasSent(store, { planId: plan.id, ...priya, messageId: 'ask-1', at: ASKED_AT });
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    const ports = {
+      database: db.database,
+      now: new Date(NOW.getTime() + 60_000),
+      composer: fakeGroupPlanRsvpComposer(),
+      consentReader: {
+        read: async () => ({ decision: 'ok' as const, confidence: 'high' as const }),
+      },
+      oneToOne: {
+        text: async () => ({ providerMessageId: 'priv-ok', chatId: PRIVATE_CHAT }),
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    };
+    const reply = (text: string, sentAt: Date | null) =>
+      considerPrivateCalendarReply(ports, {
+        senderUserId: priya.userId,
+        senderName: 'Priya',
+        chatId: PRIVATE_CHAT,
+        text,
+        sentAt,
+      });
+    const status = async () =>
+      (await store.loadCalendarConsent(plan.id, priya.familyId))?.status;
+    return { priya, store, reply, status };
+  }
+
+  it('a yes written before the ask went out does not answer it', async () => {
+    const { reply, status } = await openAsk('Saturday picnic');
+    const out = await reply('yes', new Date(ASKED_AT.getTime() - 5_000));
+    expect(out.handled).toBe(false);
+    expect(await status()).toBe('asked');
+    expect(await db.database.select().from(schema.familyEvents)).toHaveLength(0);
+  });
+
+  it('the same yes written after the ask answers it (positive control)', async () => {
+    const { reply, status } = await openAsk('Saturday picnic');
+    const out = await reply('yes', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(true);
+    expect(await status()).toBe('written');
+  });
+
+  it('a reply naming a closed plan by a word the open ask lacks does not answer it', async () => {
+    const { priya, reply, status } = await openAsk('Saturday picnic');
+    await db.database.insert(schema.linqGroupPlans).values({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'museum visit',
+      expectedCount: 0,
+      createdByUserId: priya.userId,
+      closedAt: NOW,
+    });
+    const out = await reply('yes the museum', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(false);
+    expect(await status()).toBe('asked');
+  });
+
+  it('a reply naming the open ask still answers it with a closed plan in the chat (positive control)', async () => {
+    const { priya, reply, status } = await openAsk('Saturday picnic');
+    await db.database.insert(schema.linqGroupPlans).values({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'museum visit',
+      expectedCount: 0,
+      createdByUserId: priya.userId,
+      closedAt: NOW,
+    });
+    const out = await reply('yes the picnic', new Date(ASKED_AT.getTime() + 5_000));
+    expect(out.handled).toBe(true);
+    expect(await status()).toBe('written');
+  });
+});
+
 describe('a 1:1 yes after Hale asked something else', () => {
   it('is not read as calendar consent, and is once the ask is the last line again', async () => {
     const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
@@ -1230,7 +1451,7 @@ describe('a 1:1 yes after Hale asked something else', () => {
       now: NOW,
     });
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reads: string[] = [];
     const ports = {
       database: db.database,
@@ -1327,7 +1548,7 @@ describe('a private reply among calendar asks', () => {
     });
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const quiet = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -1445,7 +1666,8 @@ describe('a private reply among calendar asks', () => {
       at: new Date(NOW.getTime() + 1_000),
     });
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    let sends = 0;
     const ports = {
       database: db.database,
       now: new Date(NOW.getTime() + 60_000),
@@ -1457,13 +1679,18 @@ describe('a private reply among calendar asks', () => {
             : { decision: 'not_this' as const, confidence: 'high' as const },
       },
       oneToOne: {
-        text: async () => ({ providerMessageId: 'priv-one', chatId: null }),
+        text: async () => {
+          sends += 1;
+          return { providerMessageId: `priv-${sends}`, chatId: null };
+        },
         link: async () => ({ providerMessageId: 'link' }),
       },
     };
+    const whichComposer = fakeGroupPlanRsvpComposer();
     const both = await considerPrivateCalendarReply(
       {
         ...ports,
+        composer: whichComposer,
         consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
       },
       {
@@ -1476,6 +1703,34 @@ describe('a private reply among calendar asks', () => {
     expect(both).toMatchObject({ handled: true, outcome: 'group_plan_calendar_unwritten' });
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    // Nothing named which one: Hale asks, in a model-written line naming both plans.
+    const which = whichComposer.calls.filter((call) => call.input.kind === 'calendar_which');
+    expect(which).toHaveLength(1);
+    expect(
+      (which[0]?.input.facts as { choices?: { title: string }[] }).choices?.map((c) => c.title),
+    ).toEqual(['Saturday picnic', 'Museum Saturday']);
+
+    // A bare yes the reader would give to the newest ask still binds nothing on its own.
+    const bare = await considerPrivateCalendarReply(
+      {
+        ...ports,
+        now: new Date(NOW.getTime() + 90_000),
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+      },
+      { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text: 'yes' },
+    );
+    expect(bare.handled).toBe(true);
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+
+    // The reader alone deciding exactly one of the asks, with no plan named, binds nothing.
+    const modelOnly = await considerPrivateCalendarReply(
+      { ...ports, now: new Date(NOW.getTime() + 100_000) },
+      { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text: 'yes please' },
+    );
+    expect(modelOnly.handled).toBe(true);
+    expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('asked');
+    expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
 
     const chosen = await considerPrivateCalendarReply(
       { ...ports, now: new Date(NOW.getTime() + 120_000) },
@@ -1489,6 +1744,354 @@ describe('a private reply among calendar asks', () => {
     expect(chosen.handled).toBe(true);
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('written');
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+  });
+});
+
+/** Priya holds two open calendar asks (picnic, then museum `gapMs` later, the last line). */
+async function twoOpenAsks(gapMs: number) {
+  const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+  const [other] = await db.database
+    .insert(schema.families)
+    .values({
+      displayName: 'Other chat',
+      provinceOrState: 'ON',
+      primaryLanguage: 'en',
+      linqGroupChatId: 'chat-museum',
+    })
+    .returning({ id: schema.families.id });
+  const otherId = other?.id as string;
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId: otherId, userId: priya.userId, role: 'co_parent' });
+  await db.database.insert(schema.linqGroupMembers).values({
+    familyId: priya.familyId,
+    chatId: CHAT,
+    userId: priya.userId,
+    phoneE164Encrypted: encryptString(PRIYA),
+    phoneE164Hash: phoneBlindIndex(PRIYA),
+    role: 'parent',
+    seatedAt: NOW,
+  });
+  const store = createPostgresGroupPlanRsvpStore(db.database);
+  const plan = (chatId: string, familyId: string, title: string) =>
+    store.createPlan({
+      chatId,
+      familyId,
+      title,
+      startsAt: new Date('2026-11-08T16:00:00.000Z'),
+      location: null,
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+  const picnic = await plan(CHAT, priya.familyId, 'Saturday picnic');
+  const museum = await plan('chat-museum', otherId, 'Museum Saturday');
+  const asks = [
+    { planId: picnic.id, familyId: priya.familyId, messageId: 'ask-picnic', at: NOW },
+    {
+      planId: museum.id,
+      familyId: otherId,
+      messageId: 'ask-museum',
+      at: new Date(NOW.getTime() + gapMs),
+    },
+  ];
+  for (const ask of asks) {
+    await store.claimCalendarAsk({
+      planId: ask.planId,
+      familyId: ask.familyId,
+      memberKey: 'priya',
+      displayName: 'Priya',
+      householdLabel: null,
+      now: NOW,
+    });
+    await askWasSent(store, { ...ask, userId: priya.userId });
+  }
+  vi.stubEnv('VERCEL_ENV', 'preview');
+  vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+  const ports = {
+    database: db.database,
+    now: new Date(NOW.getTime() + 120_000),
+    composer: fakeGroupPlanRsvpComposer(),
+    consentReader: { read: async () => ({ decision: 'ok' as const, confidence: 'high' as const }) },
+    oneToOne: {
+      text: async () => ({ providerMessageId: 'priv-one', chatId: null }),
+      link: async () => ({ providerMessageId: 'link' }),
+    },
+  };
+  const status = async () => ({
+    picnic: (await store.loadCalendarConsent(picnic.id, priya.familyId))?.status,
+    museum: (await store.loadCalendarConsent(museum.id, otherId))?.status,
+  });
+  return { priya, ports, status, store, museum, otherId };
+}
+
+describe('a 1:1 reply with several calendar asks open: only a named plan binds', () => {
+  it.each([
+    ['a bare yes, even long after the newest ask', 'yes'],
+    ['a positional reference', 'yes to the first one'],
+    ['a misspelled title', 'yes to the picnik'],
+    ['a translated title', 'oui pour le pique-nique'],
+  ])('%s binds nothing and Hale asks which', async (_label, text) => {
+    const { priya, ports, status } = await twoOpenAsks(60_000);
+    const reply = await considerPrivateCalendarReply(ports, {
+      senderUserId: priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+      text,
+    });
+    expect(reply.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
+    expect(
+      ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+    ).toHaveLength(1);
+  });
+
+  it('a reply naming the older plan answers that one only', async () => {
+    const { priya, ports, status } = await twoOpenAsks(60_000);
+    const named = await considerPrivateCalendarReply(ports, {
+      senderUserId: priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+      text: 'yes to the picnic',
+    });
+    expect(named.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'written', museum: 'asked' });
+  });
+});
+
+describe('the which-plan line names no plan', () => {
+  const WHICH_LINE = 'priv-one';
+
+  async function askedWhich() {
+    const asks = await twoOpenAsks(60_000);
+    const reply = {
+      senderUserId: asks.priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+    };
+    await considerPrivateCalendarReply(asks.ports, { ...reply, text: 'yes' });
+    expect(
+      asks.ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+    ).toHaveLength(1);
+    const thumbsUp = (messageId: string) =>
+      considerCalendarTapback(asks.ports, {
+        senderUserId: asks.priya.userId,
+        senderName: 'Priya',
+        messageId,
+        tapback: 'like',
+      });
+    const withdrawMuseum = () =>
+      asks.store.releaseCalendarAsk(asks.museum.id, asks.otherId, asks.priya.userId, 'send_failed');
+    const copies = async () => (await db.database.select().from(schema.familyEvents)).length;
+    return { ...asks, reply, thumbsUp, withdrawMuseum, copies };
+  }
+
+  it('a thumbs-up on the which-plan line leaves both asks open and writes nothing', async () => {
+    const { thumbsUp, status, copies } = await askedWhich();
+    const tap = await thumbsUp(WHICH_LINE);
+    expect(tap.handled).toBe(false);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
+    expect(await copies()).toBe(0);
+  });
+
+  it('a thumbs-up on a line that asked about one plan still writes that plan', async () => {
+    const { thumbsUp, status, copies } = await askedWhich();
+    const tap = await thumbsUp('ask-museum');
+    expect(tap.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'written' });
+    expect(await copies()).toBe(1);
+  });
+
+  it('a thumbs-up on it still binds nothing once one of its plans is withdrawn', async () => {
+    const { thumbsUp, withdrawMuseum, status, copies } = await askedWhich();
+    expect(await withdrawMuseum()).toBe(true);
+    const tap = await thumbsUp(WHICH_LINE);
+    expect(tap.handled).toBe(false);
+    expect((await status()).picnic).toBe('asked');
+    expect(await copies()).toBe(0);
+  });
+
+  it('with one of its plans withdrawn, a bare yes binds nothing and naming the plan does', async () => {
+    const { ports, reply, withdrawMuseum, status, copies } = await askedWhich();
+    expect(await withdrawMuseum()).toBe(true);
+    await considerPrivateCalendarReply(ports, { ...reply, text: 'yes' });
+    expect((await status()).picnic).toBe('asked');
+    expect(await copies()).toBe(0);
+
+    const named = await considerPrivateCalendarReply(ports, {
+      ...reply,
+      text: 'yes to the picnic',
+    });
+    expect(named.handled).toBe(true);
+    expect((await status()).picnic).toBe('written');
+    expect(await copies()).toBe(1);
+  });
+});
+
+describe('a which-plan line binds only the plans it asked about', () => {
+  const OK = { decision: 'ok' as const, confidence: 'high' as const };
+  const NOT_THIS = { decision: 'not_this' as const, confidence: 'high' as const };
+
+  /** Priya holds one open ask per title, oldest first, in one household chat. */
+  async function openAsksFor(titles: readonly string[]) {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const planIds = new Map<string, string>();
+    for (const [index, title] of titles.entries()) {
+      const plan = await store.createPlan({
+        chatId: CHAT,
+        familyId: priya.familyId,
+        title,
+        startsAt: new Date('2026-11-08T16:00:00.000Z'),
+        location: null,
+        rsvpDeadlineAt: null,
+        createdByUserId: priya.userId,
+        expected: [],
+        now: NOW,
+      });
+      planIds.set(title, plan.id);
+      await store.claimCalendarAsk({
+        planId: plan.id,
+        familyId: priya.familyId,
+        memberKey: 'priya',
+        displayName: 'Priya',
+        householdLabel: null,
+        now: NOW,
+      });
+      await askWasSent(store, {
+        planId: plan.id,
+        familyId: priya.familyId,
+        userId: priya.userId,
+        messageId: `ask-${index}`,
+        at: new Date(NOW.getTime() + index * 60_000),
+      });
+    }
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    let sends = 0;
+    const ports = {
+      database: db.database,
+      now: new Date(NOW.getTime() + 600_000),
+      composer: fakeGroupPlanRsvpComposer(),
+      consentReader: { read: async () => OK },
+      oneToOne: {
+        text: async () => {
+          sends += 1;
+          return { providerMessageId: `priv-${sends}`, chatId: null };
+        },
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    };
+    const idOf = (title: string) => planIds.get(title) as string;
+    const reply = (text: string, overrides: Partial<typeof ports> = {}) =>
+      considerPrivateCalendarReply(
+        { ...ports, ...overrides },
+        { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text },
+      );
+    /** A bare yes the reader places on every title but `left`: Hale asks which of those. */
+    const askWhichLeaving = async (left: string | null) => {
+      await reply('yes', {
+        consentReader: {
+          read: async (input: { ask: { title: string } }) =>
+            input.ask.title === left ? NOT_THIS : OK,
+        },
+      } as Partial<typeof ports>);
+      expect(
+        ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+      ).toHaveLength(1);
+    };
+    const statusOf = async (title: string) =>
+      (await store.loadCalendarConsent(idOf(title), priya.familyId))?.status;
+    const close = (title: string) =>
+      db.database
+        .update(schema.linqGroupPlans)
+        .set({ closedAt: NOW })
+        .where(eq(schema.linqGroupPlans.id, idOf(title)));
+    const withdraw = (title: string) =>
+      store.releaseCalendarAsk(idOf(title), priya.familyId, priya.userId, 'household_said_no');
+    const copies = async () => (await db.database.select().from(schema.familyEvents)).length;
+    return { ports, reply, askWhichLeaving, statusOf, close, withdraw, copies };
+  }
+
+  it('a stale ask it never named stays untouched when the reply names a closed candidate', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson', 'Soccer tournament']);
+    await asks.askWhichLeaving('Soccer tournament');
+    await asks.close('Soccer practice');
+    await asks.reply('yes, soccer practice');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('a reply naming the stale ask lands on nothing, not on a candidate sharing its word', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson', 'Soccer tournament']);
+    await asks.askWhichLeaving('Soccer tournament');
+    await asks.reply('yes to the soccer tournament');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with a candidate withdrawn, a word it shared with the other binds nothing', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Soccer tournament']);
+    await asks.askWhichLeaving(null);
+    expect(await asks.withdraw('Soccer practice')).toBe(true);
+    await asks.reply('yes, soccer');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with two candidates open, a reply naming one by its own word writes that one', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Soccer tournament']);
+    await asks.askWhichLeaving(null);
+    const named = await asks.reply('yes to the tournament');
+    expect(named.handled).toBe(true);
+    expect(await asks.statusOf('Soccer tournament')).toBe('written');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(1);
+  });
+
+  it('a line whose send returned no id has no candidates, so nothing binds', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.reply('yes', {
+      oneToOne: {
+        text: async () => ({ providerMessageId: null as unknown as string, chatId: null }),
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    } as Partial<typeof asks.ports>);
+    await asks.reply('yes to the piano');
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with the calendar flag off, a reply naming a candidate binds nothing', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.askWhichLeaving(null);
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'false');
+    const off = await asks.reply('yes to the piano');
+    expect(off.handled).toBe(false);
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('a line that asked about one plan takes a plain yes for that plan', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.askWhichLeaving('Soccer practice');
+    const yes = await asks.reply('yes');
+    expect(yes.handled).toBe(true);
+    expect(await asks.statusOf('Piano lesson')).toBe('written');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(1);
   });
 });
 
@@ -1507,6 +2110,9 @@ describe('a multi-family chat with no covering family', () => {
       householdLabel: null,
       coversNames: [] as string[],
       confidence: 'high' as const,
+      planKey: 'p1',
+      replacesPlanKey: null,
+      addressed: false,
     };
   }
 
@@ -1528,7 +2134,7 @@ describe('a multi-family chat with no covering family', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const started = await considerGroupPlanRsvp(
       {
         database: db.database,
@@ -1549,9 +2155,7 @@ describe('a multi-family chat with no covering family', () => {
     const plans = await db.database
       .select({ familyId: schema.linqGroupPlans.familyId, title: schema.linqGroupPlans.title })
       .from(schema.linqGroupPlans);
-    expect(plans).toEqual([
-      { familyId: priya.familyId, title: 'Riverdale Farm pumpkin walk' },
-    ]);
+    expect(plans).toEqual([{ familyId: priya.familyId, title: 'Riverdale Farm pumpkin walk' }]);
     expect(
       await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents),
     ).toEqual([]);
@@ -1574,6 +2178,9 @@ describe('a multi-family chat with no covering family', () => {
             householdLabel: null,
             coversNames: [],
             confidence: 'high',
+            planKey: 'p1',
+            replacesPlanKey: null,
+            addressed: false,
           }),
         },
         consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },

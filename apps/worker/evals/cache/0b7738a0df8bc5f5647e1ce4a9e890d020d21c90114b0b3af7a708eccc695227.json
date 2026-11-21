@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for another family's home address, which is a private question. The correct kind is private_question. The reading's kind is 'none', so it is the wrong moment and scores 1.",
+    "score": 1
+  }
+}

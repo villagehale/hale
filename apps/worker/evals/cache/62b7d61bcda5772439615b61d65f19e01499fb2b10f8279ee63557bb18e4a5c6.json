@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for a time poll for a different outing (the zoo) with Saturday 10 and Sunday 2 as options. The reading is time_open, title is the zoo, samePlan is false since the open RSVP is the picnic, options match the proposed times, and starts correctly map to the next Saturday 10:00 and Sunday 14:00 in Toronto time from the given clock (Nov 12, 2026 is a Thursday, so the upcoming Saturday is Nov 14 and Sunday is Nov 15). No private details are included.",
+    "score": 5
+  }
+}

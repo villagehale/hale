@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question about a child's peanut allergy, and the expected moment is private_question. The reading correctly returned kind private_question with no fields set, so no private detail was copied into any field.",
+    "score": 5
+  }
+}

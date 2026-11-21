@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a form-like company voice ('Thank you for your message') and tells people what to type ('Please reply YES, NO or MAYBE'), which the watchFor and the rubric explicitly forbid. It also fails to ask which of the two times works, instead asking a yes/no/maybe question that does not match the options Saturday 10 and Sunday 10.",
+    "score": 1
+  }
+}

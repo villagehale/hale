@@ -1,0 +1,13 @@
+{
+  "value": {
+    "send": true,
+    "line": "Hey all, Saturday picnic: are you in?",
+    "options": [
+      "Coming",
+      "Not this time",
+      "Maybe"
+    ],
+    "why": "rsvp_open"
+  },
+  "latencyMs": 1526
+}

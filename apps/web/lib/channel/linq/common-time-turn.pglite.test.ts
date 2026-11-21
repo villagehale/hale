@@ -749,3 +749,43 @@ describe('common time in a shared group', () => {
     expect(seen[0]?.clock).toBeUndefined();
   });
 });
+
+describe('a two-letter private name in a common-time line (VIL-689)', () => {
+  const LINE = 'Saturday morning works for almost everyone here';
+
+  async function withKidMo() {
+    const families = await threeFamilies();
+    await db.database
+      .insert(schema.children)
+      .values({ familyId: families.ada.familyId, name: 'Mo', dateOfBirth: '2021-03-01' });
+  }
+
+  it('scenes on: letters inside another word are not the name, so the line is sent', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await withKidMo();
+    const { reader } = findTime();
+    const wire = sender();
+    const out = await turn({ reader, write: writer(LINE).write }, wire);
+    expect(out).toMatchObject({ handled: true, outcome: 'common_time_proposed' });
+    expect(wire.texts).toEqual([LINE]);
+  });
+
+  it('scenes on: a line that says the name is held (positive control)', async () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    await withKidMo();
+    const { reader } = findTime();
+    const wire = sender();
+    const out = await turn({ reader, write: writer('Saturday works for Mo and everyone').write }, wire);
+    expect(out).toMatchObject({ handled: true, outcome: 'common_time_unsent' });
+    expect(wire.texts).toEqual([]);
+  });
+
+  it('scenes off: the same line is sent, as it always was', async () => {
+    await withKidMo();
+    const { reader } = findTime();
+    const wire = sender();
+    const out = await turn({ reader, write: writer(LINE).write }, wire);
+    expect(out).toMatchObject({ handled: true, outcome: 'common_time_proposed' });
+    expect(wire.texts).toEqual([LINE]);
+  });
+});

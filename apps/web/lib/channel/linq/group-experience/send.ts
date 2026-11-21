@@ -25,8 +25,13 @@ export async function sendGroupExperienceLine(
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
     listChatHandles?: ListChatHandles;
+    /**
+     * One group line per inbound message: a redelivered webhook claims the same key. Absent
+     * (LINQ_GROUP_SCENES_ENABLED off) the row is claimed with no key, as it always was.
+     */
+    dedupeKey?: string;
   },
-): Promise<{ providerMessageId: string }> {
+): Promise<{ providerMessageId: string } | { duplicate: true }> {
   const parentUserId = await primaryParentId(database, input.familyId);
   if (!parentUserId) throw new Error('group experience: covering family has no primary parent');
   const listChatHandles: ListChatHandles =
@@ -38,21 +43,26 @@ export async function sendGroupExperienceLine(
     listChatHandles,
   );
   if (!audience.allowed) throw new GroupExperienceHeld(audience.reason);
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId: input.familyId,
-      parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey: GROUP_EXPERIENCE_TEMPLATE,
-      providerChatId: input.chatId,
-      status: acceptedStatus('imessage'),
-      sentAt: input.now,
-    })
-    .returning({ id: schema.channelMessages.id });
-  if (!claimed) throw new Error('group experience: channel_messages insert returned no row');
+  const keyed = input.dedupeKey !== undefined;
+  const claim = database.insert(schema.channelMessages).values({
+    familyId: input.familyId,
+    parentUserId,
+    channel: 'imessage',
+    direction: 'out',
+    category: 'reply',
+    templateKey: GROUP_EXPERIENCE_TEMPLATE,
+    providerChatId: input.chatId,
+    status: acceptedStatus('imessage'),
+    sentAt: input.now,
+    ...(keyed ? { body: input.text, dedupeKey: input.dedupeKey } : {}),
+  });
+  const [claimed] = keyed
+    ? await claim.onConflictDoNothing().returning({ id: schema.channelMessages.id })
+    : await claim.returning({ id: schema.channelMessages.id });
+  if (!claimed) {
+    if (keyed) return { duplicate: true };
+    throw new Error('group experience: channel_messages insert returned no row');
+  }
   try {
     const sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
@@ -65,12 +75,21 @@ export async function sendGroupExperienceLine(
       .update(schema.channelMessages)
       .set({ providerMessageId: sent.providerMessageId })
       .where(eq(schema.channelMessages.id, claimed.id));
+    if (keyed) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: parentUserId,
+        actionTaken: 'sms_reply_sent',
+        targetTable: 'channel_messages',
+        targetId: claimed.id,
+      });
+    }
     return sent;
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
+      .set({ status: 'failed', errorCode: code, ...(keyed ? { dedupeKey: null } : {}) })
       .where(eq(schema.channelMessages.id, claimed.id));
     throw err;
   }

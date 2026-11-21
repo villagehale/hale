@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks for a time poll between Saturday 10 and Sunday 10 for the park; the reading is time_open with the correct two options, correct title, and starts resolved on the asker's clock (Nov 14 and Nov 15, 2026 at 10:00 in Toronto time, with now at Nov 12 so these are the upcoming Saturday and Sunday). No private details are present.",
+    "score": 5
+  }
+}

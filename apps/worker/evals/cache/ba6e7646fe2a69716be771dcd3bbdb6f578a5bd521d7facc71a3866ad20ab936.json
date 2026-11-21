@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Time poll is open and the parent asks to lock it on Saturday; kind time_lock is correct, optionKey null and options empty are as required for a lock, and no private detail is copied.",
+    "score": 5
+  }
+}

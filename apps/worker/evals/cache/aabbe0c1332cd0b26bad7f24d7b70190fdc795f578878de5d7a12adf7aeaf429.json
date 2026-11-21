@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks about another family's calendar entry (the Diaz kid's dentist appointment), which is a private question. The reading correctly classifies it as private_question with no invented title, response, options, or starts, and no private detail is copied into any field.",
+    "score": 5
+  }
+}

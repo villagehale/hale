@@ -105,6 +105,7 @@ register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const JUDGE_REASON_MAX_CHARS = 160;
+const PLAN_BINDING_INTENTS = ["start_tracking", "rsvp", "edit", "ask_tally"];
 const JUDGE_TOOL_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 const JUDGE_MAX_TOKENS = 440;
 
@@ -201,6 +202,9 @@ function suiteUsd({
 }
 
 function voiceInput(fixture, facts, tally) {
+  if (fixture.kind === "which_plan") {
+    return facts.groupPlanWhichLineInput({ language: "en", choices: fixture.choices });
+  }
   return facts.groupPlanRsvpLineInput({
     kind: fixture.kind,
     language: "en",
@@ -210,31 +214,6 @@ function voiceInput(fixture, facts, tally) {
   });
 }
 
-/** The exact tool shape productionGroupPlanRsvpComposer sends for this input. */
-function voiceToolSchema(questions) {
-  return questions === 1
-    ? {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          send: { type: "boolean" },
-          before: { type: "string" },
-          question: { type: "string" },
-          why: { type: "string" },
-        },
-        required: ["send", "before", "question"],
-      }
-    : {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          send: { type: "boolean" },
-          line: { type: "string" },
-          why: { type: "string" },
-        },
-        required: ["send", "line"],
-      };
-}
 
 /** The member-facing gate in voice.ts lineUsable. Shape only, never words. */
 function lineUsable(line, questions) {
@@ -360,11 +339,30 @@ async function main() {
       message: fixture.input,
       reading: value,
     });
+    // Which plan a message binds to (and replaces), and whether it spoke to Hale, are code's
+    // to act on, so those fields are checked themselves.
+    const planOk =
+      fixture.planKey === undefined ||
+      !PLAN_BINDING_INTENTS.includes(value.intent) ||
+      value.planKey === fixture.planKey;
+    const replacesOk =
+      fixture.replacesPlanKey === undefined || value.replacesPlanKey === fixture.replacesPlanKey;
+    const addressedOk = fixture.addressed === undefined || value.addressed === fixture.addressed;
+    // A plan's start is placed on the household clock; a missed day is a wrong calendar.
+    const startOk =
+      fixture.startsAt === undefined ||
+      (value.startsAt !== null &&
+        Date.parse(value.startsAt) === Date.parse(fixture.startsAt));
     const ok =
-      verdict.score >= JUDGE_MIN && fixture.accept.includes(value.intent);
+      verdict.score >= JUDGE_MIN &&
+      fixture.accept.includes(value.intent) &&
+      planOk &&
+      replacesOk &&
+      addressedOk &&
+      startOk;
     if (!ok) allPass = false;
     console.info(
-      `${ok ? "PASS" : "FAIL"}  read:${fixture.id}  intent=${value.intent} judge:${verdict.score}`,
+      `${ok ? "PASS" : "FAIL"}  read:${fixture.id}  intent=${value.intent} planKey=${value.planKey} replaces=${value.replacesPlanKey} addressed=${value.addressed} judge:${verdict.score}`,
     );
     if (!ok) console.info(`      · ${verdict.reason}`);
   }
@@ -378,16 +376,14 @@ async function main() {
       userMessage: JSON.stringify({ ...input, retry: false }),
       toolName: "send_group_line",
       toolDescription: "The one message Hale sends.",
-      toolSchema: voiceToolSchema(input.questions),
+      // The exact tool shape productionGroupPlanRsvpComposer sends.
+      toolSchema: voice.GROUP_PLAN_RSVP_VOICE_TOOL_SCHEMA,
       maxTokens: voice.GROUP_PLAN_RSVP_VOICE_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
-    const line =
-      input.questions === 1
-        ? [value.before, value.question].filter(Boolean).join(" ").trim()
-        : String(value.line ?? "").trim();
+    const line = String(value.line ?? "").trim();
     const usable = value.send === true && lineUsable(line, input.questions);
     const verdict = await voiceJudge(fixture.id, {
       situation: fixture.situation,

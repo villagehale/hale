@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Ada asks for a tally of the same picnic plan; intent ask_tally and samePlan true fit. Headcount 1 and coversNames empty are acceptable for a tally request, though planTitle null is slightly loose."
+  }
+}

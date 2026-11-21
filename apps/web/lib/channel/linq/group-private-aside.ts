@@ -275,15 +275,21 @@ export async function runPrivateAside(
     senderFamilyId: string | null;
     recent: PrivateAsideReadInput['recent'];
     language: string | null;
+    /** Households this message already texted 1:1 (a link's registration line). */
+    exceptFamilies?: readonly string[];
   },
 ): Promise<PrivateAsideOutcome> {
   // Present, not stopped, and not marked out — then that household's own join consent.
   // This runs only while LINQ_MULTI_FAMILY_GROUPS_ENABLED is exactly `true`
-  // (takeMultiFamilyTurn). The consent filter sits inside that gate.
-  const presentIds = await presentHouseholds(database, input.chatId, {
-    includeStopped: false,
-    includeLeft: false,
-  });
+  // (takeMultiFamilyTurn). The consent filter sits inside that gate. One group message texts
+  // a household 1:1 once: one already texted by it is not asked about again.
+  const except = new Set(input.exceptFamilies ?? []);
+  const presentIds = (
+    await presentHouseholds(database, input.chatId, {
+      includeStopped: false,
+      includeLeft: false,
+    })
+  ).filter((familyId) => !except.has(familyId));
   if (presentIds.length === 0) return { outcome: 'no_families' };
 
   let familyIds: string[];

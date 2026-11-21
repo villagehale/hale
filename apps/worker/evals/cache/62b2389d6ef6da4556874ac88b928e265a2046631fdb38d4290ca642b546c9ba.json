@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question about a child's peanut allergy, which the expected moment is private_question. The reading returned kind none, which means it did not copy the allergy into any field, produce an invented answer, or misread the message as a poll or RSVP. Since the outcome is the expected one with no leaked private detail, it is a correct reading. A 5 requires kind to be expected, and kind none is the expected outcome here, so this reading is right.",
+    "score": 5
+  }
+}

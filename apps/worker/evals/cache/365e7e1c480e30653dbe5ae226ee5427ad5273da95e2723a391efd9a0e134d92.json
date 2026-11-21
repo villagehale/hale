@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Priya asks where the open Saturday poll stands, which matches an ask_poll intent for the live poll; no new poll or vote is implied."
+  }
+}

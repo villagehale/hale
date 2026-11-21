@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected moment is rsvp_vote with response 'maybe', but the reading returned kind 'none', which is not an expected kind, so the score is 1.",
+    "score": 1
+  }
+}

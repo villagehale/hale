@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for a time poll for the zoo outing, which is expected as time_open, but the reading returned kind none, so it is the wrong moment.",
+    "score": 1
+  }
+}

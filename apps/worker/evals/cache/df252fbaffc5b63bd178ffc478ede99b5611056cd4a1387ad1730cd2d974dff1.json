@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to see who is in for a different plan, the Sunday zoo trip, which is a new event rather than the open Saturday picnic. The expected moment is rsvp_open, but the reading returned kind none, which does not match the expected moment.",
+    "score": 1
+  }
+}

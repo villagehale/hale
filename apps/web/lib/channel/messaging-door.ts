@@ -85,6 +85,29 @@ export async function resolveMessagingDoor(
   return { channel: 'imessage', chatId: withChat?.providerChatId ?? null };
 }
 
+/**
+ * Whether this parent has ever texted Hale one-to-one (an inbound row recorded as not a
+ * group). Hale opens a 1:1 only with someone who has: never with a person it knows only
+ * from a group chat.
+ */
+export async function textedHaleOneToOne(
+  database: Database,
+  parentUserId: string,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'in'),
+        eq(schema.channelMessages.inGroup, false),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 async function spokeIn(database: Database, parentUserId: string, chatId: string): Promise<boolean> {
   const [row] = await database
     .select({ id: schema.channelMessages.id })

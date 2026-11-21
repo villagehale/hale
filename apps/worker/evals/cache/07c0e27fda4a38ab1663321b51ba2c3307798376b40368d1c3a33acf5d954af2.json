@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks Hale to lock in the poll on Saturday; the reading is kind time_lock, which matches the expected moment. The optionKey 'a' points to the chosen option, and no private details are copied. The options and starts arrays are empty, but a lock action does not need them, so the reading is right for this moment.",
+    "score": 5
+  }
+}

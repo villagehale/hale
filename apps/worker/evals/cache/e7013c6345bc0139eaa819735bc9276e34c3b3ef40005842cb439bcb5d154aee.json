@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "This camp is $120 for two sessions, and the Baos already signed Zephyrina up for session 2.",
+    "options": [],
+    "why": "link_facts"
+  },
+  "latencyMs": 1708
+}

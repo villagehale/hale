@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -13,14 +14,21 @@ import { families } from './families.js';
 import { familyEvents } from './family-events.js';
 import { users } from './users.js';
 
+/** The which-plan line an ask was last put in, and every plan that line asked about. */
+export interface LinqGroupPlanWhichLine {
+  providerMessageId: string;
+  planIds: string[];
+}
+
 /**
  * VIL-442 (T15) — one live plan being RSVP-tracked in a Linq group chat.
  *
  * Any plan, not a birthday: a picnic, a museum Saturday, soccer, a class party.
  * The covering family is the household that claimed the chat (T22: one family's
  * plan covers everyone seated). `expected_count` is how many distinct people or
- * households Hale is waiting on. Closed rows stay; a chat has at most one live
- * plan.
+ * households Hale is waiting on. Closed rows stay. A chat has at most one live plan
+ * until the unique index below is replaced, which ships when LINQ_GROUP_SCENES_ENABLED is
+ * lit (VIL-689): a message then binds to a plan only by its id, never by being "the" open one.
  */
 export const linqGroupPlans = pgTable(
   'linq_group_plans',
@@ -193,6 +201,15 @@ export const linqGroupPlanCalendarConsents = pgTable(
     status: text('status').notNull(),
     /** Provider id of the private ask, so a tapback on some other message is not an OK. */
     askProviderMessageId: text('ask_provider_message_id'),
+    /**
+     * VIL-689 · the line's whole plan list, on each of its asks: withdrawing an ask deletes
+     * its row, and a word it shared with another plan must still name neither.
+     */
+    whichLine: jsonb('which_line').$type<LinqGroupPlanWhichLine>(),
+    /** VIL-689 · the parent whose OK wrote the copy: a moved-copy notice goes to them. */
+    decidedByUserId: uuid('decided_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     familyEventId: uuid('family_event_id').references(() => familyEvents.id, {
       onDelete: 'set null',
     }),

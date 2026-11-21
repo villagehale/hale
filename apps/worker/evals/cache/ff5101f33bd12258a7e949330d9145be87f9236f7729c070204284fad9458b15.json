@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Maya is joking about past wasps; chatter intent is right and no RSVP is implied. Minor issue: samePlan true is questionable since the message names no plan, but harmless."
+  }
+}

@@ -13,6 +13,16 @@ const LIVE_SATURDAY = {
   ],
 };
 
+const CLOCK = { now: '2026-11-12T11:00:00-05:00', timeZone: 'America/Toronto' };
+
+const LIVE_TIMES = {
+  question: 'zoo when?',
+  options: [
+    { key: 'o1', text: 'Saturday 10' },
+    { key: 'o2', text: 'Sunday 2' },
+  ],
+};
+
 export const GROUP_POLL_READ_FIXTURES = [
   {
     id: 'start-with-options',
@@ -22,7 +32,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'Hale can we vote Saturday — park or the pool?',
       tapback: null,
       senderName: 'Priya',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: null },
     },
@@ -36,7 +46,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'la piscine pour nous',
       tapback: null,
       senderName: 'Sam',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
@@ -50,7 +60,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'actually let us do the pool',
       tapback: null,
       senderName: 'Maya',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
@@ -63,7 +73,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'lol remember last time at the pool with the wasps',
       tapback: null,
       senderName: 'Maya',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
@@ -76,7 +86,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'where do we stand',
       tapback: null,
       senderName: 'Priya',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
@@ -90,7 +100,7 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'whatever works',
       tapback: null,
       senderName: 'Sam',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
@@ -104,11 +114,67 @@ export const GROUP_POLL_READ_FIXTURES = [
       text: 'Sam wants the pool',
       tapback: null,
       senderName: 'Maya',
-      plan: null,
+      plans: [],
       recent: [],
       polls: { live: LIVE_SATURDAY },
     },
     accept: ['chatter'],
+  },
+  {
+    id: 'lock-with-pick',
+    situation:
+      'A poll is open between Saturday 10 and Sunday 2. Someone says Sunday it is and asks Hale to lock it in: settle the poll now.',
+    input: {
+      text: 'Sunday it is, lock it in Hale',
+      tapback: null,
+      senderName: 'Bao',
+      plans: [],
+      recent: [],
+      polls: { live: LIVE_TIMES },
+    },
+    accept: ['close_poll'],
+    pollChoice: 'o2',
+  },
+  {
+    id: 'bare-lock',
+    situation:
+      'A poll is open between Saturday 10 and Sunday 2. Someone asks Hale to lock it in: settle the poll now with what is winning.',
+    input: {
+      text: 'lock it in Hale',
+      tapback: null,
+      senderName: 'Ada',
+      plans: [],
+      recent: [],
+      polls: { live: LIVE_TIMES },
+    },
+    accept: ['close_poll'],
+    pollChoice: null,
+  },
+  {
+    id: 'start-plan-time',
+    situation:
+      "A picnic is being counted. A parent asks the group to vote on that picnic's time: Saturday at 10 or Sunday at 2. Today is Thursday, November 12.",
+    input: {
+      text: 'Hale can we vote on the picnic time, Saturday 10 or Sunday 2?',
+      tapback: null,
+      senderName: 'Ada',
+      plans: [
+        {
+          key: 'p1',
+          title: 'picnic',
+          startsAt: null,
+          deadline: null,
+          yesNames: ['Bao'],
+          waitingNames: ['Ada'],
+        },
+      ],
+      recent: [],
+      polls: { live: null },
+      clock: CLOCK,
+    },
+    accept: ['start_poll'],
+    planKey: 'p1',
+    pollStarts: ['2026-11-14T10:00:00-05:00', '2026-11-15T14:00:00-05:00'],
   },
 ];
 

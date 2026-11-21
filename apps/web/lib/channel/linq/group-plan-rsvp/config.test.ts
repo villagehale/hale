@@ -3,6 +3,7 @@ import {
   linqGroupPlanRsvpCalendarEnabled,
   linqGroupPlanRsvpEnabled,
   linqGroupPollsEnabled,
+  linqGroupScenesEnabled,
 } from '../config';
 
 describe('LINQ_GROUP_PLAN_RSVP_ENABLED', () => {
@@ -26,32 +27,61 @@ describe('LINQ_GROUP_PLAN_RSVP_ENABLED', () => {
   });
 });
 
-describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
+const PREVIEW_ERA_CALENDAR_ENV = 'LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED';
+
+describe('LINQ_GROUP_PLAN_CALENDAR_ENABLED', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('counts only when the flag is exactly true and the deploy is preview', () => {
-    vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true\n');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'on');
+  it('counts only when both flags are exactly true, on every deploy (Barton 11-12: launch scope)', () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    for (const deploy of ['production', 'preview', 'development', '']) {
+      vi.stubEnv('VERCEL_ENV', deploy);
+      expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
+    }
+    for (const off of ['true\n', ' true', 'TRUE', 'on', 'false', '']) {
+      vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', off);
+      expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    }
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', undefined);
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'false');
+  });
+
+  it('stays dark while the scenes flag is off, whatever the calendar flag says', () => {
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    for (const off of ['true\n', 'on', 'false', '']) {
+      vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', off);
+      expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+    }
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', undefined);
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+  });
+
+  it('a value left under the Preview-era name cannot light it in Prod', () => {
     vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', undefined);
+    vi.stubEnv(PREVIEW_ERA_CALENDAR_ENV, 'true');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'development');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', '');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+  });
+});
+
+describe('LINQ_GROUP_SCENES_ENABLED', () => {
+  afterEach(() => {
     vi.unstubAllEnvs();
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
+  });
+
+  it('is on only for the exact value true', () => {
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', 'true');
+    expect(linqGroupScenesEnabled()).toBe(true);
+    for (const off of ['true\n', ' true', 'TRUE', 'on', '1', 'false', '']) {
+      vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', off);
+      expect(linqGroupScenesEnabled()).toBe(false);
+    }
+    vi.stubEnv('LINQ_GROUP_SCENES_ENABLED', undefined);
+    expect(linqGroupScenesEnabled()).toBe(false);
   });
 });
 

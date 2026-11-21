@@ -1,0 +1,19 @@
+{
+  "value": {
+    "kind": "time_open",
+    "title": "the zoo",
+    "samePlan": false,
+    "response": null,
+    "optionKey": null,
+    "options": [
+      "Saturday 10",
+      "Sunday 2"
+    ],
+    "starts": [
+      "2026-11-14T10:00:00-05:00",
+      "2026-11-15T14:00:00-05:00"
+    ],
+    "confidence": "high"
+  },
+  "latencyMs": 6731
+}

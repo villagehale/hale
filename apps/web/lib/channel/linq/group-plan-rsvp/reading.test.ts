@@ -17,7 +17,7 @@ describe('tapbackToVote', () => {
 });
 
 describe('readingFromTapback', () => {
-  it('is a high-confidence rsvp for a yes tapback, one head', () => {
+  it('is a high-confidence rsvp for a yes tapback, one head, naming no plan itself', () => {
     expect(readingFromTapback('like', 'Sam')).toEqual({
       intent: 'rsvp',
       planTitle: null,
@@ -29,6 +29,9 @@ describe('readingFromTapback', () => {
       householdLabel: null,
       coversNames: [],
       confidence: 'high',
+      planKey: null,
+      replacesPlanKey: null,
+      addressed: false,
     });
   });
 
@@ -38,25 +41,29 @@ describe('readingFromTapback', () => {
 });
 
 describe('groupPlanRsvpUserMessage', () => {
-  it('hands the skill the text, tapback, and live plan facts — no reply words', () => {
+  it('hands the skill the text, tapback, and the open plans by key — no ids, no reply words', () => {
     const payload = JSON.parse(
       groupPlanRsvpUserMessage({
         text: 'count the Chens in for Saturday',
         tapback: null,
         senderName: 'Maya',
-        plan: {
-          title: 'museum Saturday',
-          deadline: 'Friday',
-          yesNames: ['Priya'],
-          waitingNames: ['Sam'],
-        },
+        plans: [
+          {
+            key: 'p1',
+            title: 'museum Saturday',
+            startsAt: null,
+            deadline: 'Friday',
+            yesNames: ['Priya'],
+            waitingNames: ['Sam'],
+          },
+        ],
         recent: [{ from: 'member', text: 'museum Saturday?' }],
       }),
     ) as {
       text: string;
       tapback: null;
       senderName: string;
-      plan: { title: string; deadline: string; yesNames: string[]; waitingNames: string[] };
+      plans: unknown[];
       recent: { from: string; text: string }[];
       polls?: unknown;
     };
@@ -64,13 +71,18 @@ describe('groupPlanRsvpUserMessage', () => {
       text: 'count the Chens in for Saturday',
       tapback: null,
       senderName: 'Maya',
-      plan: {
-        title: 'museum Saturday',
-        deadline: 'Friday',
-        yesNames: ['Priya'],
-        waitingNames: ['Sam'],
-      },
+      plans: [
+        {
+          key: 'p1',
+          title: 'museum Saturday',
+          startsAt: null,
+          deadline: 'Friday',
+          yesNames: ['Priya'],
+          waitingNames: ['Sam'],
+        },
+      ],
       recent: [{ from: 'member', text: 'museum Saturday?' }],
+      clock: null,
     });
     expect(payload.polls).toBeUndefined();
   });
@@ -88,7 +100,7 @@ describe('groupPlanRsvpUserMessage', () => {
         text: 'the pool',
         tapback: null,
         senderName: 'Sam',
-        plan: null,
+        plans: [],
         recent: [],
         polls: { live },
       }),

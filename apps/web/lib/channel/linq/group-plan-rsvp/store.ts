@@ -1,10 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, notExists, sql } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
+import { linqGroupScenesEnabled } from '../config';
 import { readGroupMembership } from '../group-membership';
 import { postgresGroupPlanHouseholds } from './calendar';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { planIdOfGroupLine } from './plan-identity';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
 import {
   type PlanExpectedRow,
@@ -57,6 +59,8 @@ export interface CreatePlanInput {
   createdByUserId: string | null;
   expected: readonly ExpectedPerson[];
   now: Date;
+  /** An open plan in this chat the new event replaces, by id: it closes as superseded. */
+  replacesPlanId?: string | null;
 }
 
 export type CalendarConsentStatus = 'asked' | 'declined' | 'written';
@@ -70,6 +74,9 @@ export interface CalendarConsentRow {
   status: CalendarConsentStatus;
   familyEventId: string | null;
   askProviderMessageId: string | null;
+  whichLine: (typeof schema.linqGroupPlanCalendarConsents.$inferSelect)['whichLine'];
+  /** The parent whose OK wrote the copy; a moved-copy notice goes to them. */
+  decidedByUserId: string | null;
 }
 
 export interface ClaimCalendarAskInput {
@@ -90,10 +97,107 @@ export const CALENDAR_WITHDRAW_REASONS = [
 ] as const;
 export type CalendarWithdrawReason = (typeof CALENDAR_WITHDRAW_REASONS)[number];
 
+/**
+ * How long after its start a plan stays open. Past this, the event is over: the next read
+ * closes it, so a later RSVP, poll or lock in the chat never lands on it.
+ */
+export const GROUP_PLAN_PAST_AFTER_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * How long a plan with no time stays open with nobody touching it (no answer, no new time). A
+ * plan with no time is never known to be ahead, so a new event leaves it open; past this it is
+ * stale, and the next read closes it rather than keep showing it to the reader.
+ */
+export const GROUP_PLAN_UNTIMED_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Why a plan closed: its start passed, a plan with no time sat untouched, a new event in the
+ * same chat replaced it by id, or it opened for a line that never reached the group.
+ */
+export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded' | 'unsent';
+
+const SINGLE_OPEN_PLAN_INDEX = 'linq_group_plans_live_chat_uniq';
+
+/** How many of a chat's closed plans a 1:1 reply is checked against. */
+const CLOSED_PLAN_RIVALS = 25;
+
+/**
+ * The chat's one-open-plan unique index refused a second open plan. It stays until the
+ * migration that ships with LINQ_GROUP_SCENES_ENABLED replaces it.
+ */
+export function isSingleOpenPlanViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const pg = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+    if (
+      pg.code === '23505' &&
+      (pg.constraint === SINGLE_OPEN_PLAN_INDEX ||
+        pg.constraint_name === SINGLE_OPEN_PLAN_INDEX ||
+        current.message.includes(SINGLE_OPEN_PLAN_INDEX))
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/** Opens a plan, or null when the one-open-plan index still in place refuses a second. */
+export async function openPlanOrNone(
+  store: Pick<GroupPlanRsvpStore, 'createPlan'>,
+  input: CreatePlanInput,
+): Promise<GroupPlanRecord | null> {
+  try {
+    return await store.createPlan(input);
+  } catch (err) {
+    if (!isSingleOpenPlanViolation(err)) throw err;
+    console.warn(
+      { outcome: 'group_plan_second_open_blocked' },
+      'group plan: this chat has an open plan and the one-plan index is still in place',
+    );
+    return null;
+  }
+}
+
+/** The audit verb a moved calendar copy writes; the held notice re-drive reads it back. */
+export const GROUP_PLAN_CALENDAR_MOVED_VERB = 'linq_group_plan_calendar_moved';
+
+/** The audit verb of an OK ask quiet hours held; the morning re-drive reads it back. */
+export const GROUP_PLAN_CALENDAR_ASK_HELD_VERB = 'linq_group_plan_calendar_ask_held';
+
 export interface GroupPlanRsvpStore extends GroupPollStore {
   coveringFamily(chatId: string): Promise<{ familyId: string; timeZone: string } | null>;
+  /** The chat's one open plan: the read the path behind a dark scenes flag keeps using. */
   loadLivePlan(chatId: string): Promise<GroupPlanRecord | null>;
+  /**
+   * The chat's open plans, newest first, closing (and auditing) any whose start has passed.
+   * A message binds to one of them only by its id: never by being the only one, or the newest.
+   */
+  listOpenPlans(chatId: string, now: Date): Promise<GroupPlanRecord[]>;
+  /** This plan while it is open in this chat (a past one closes here first), else null. */
+  loadOpenPlan(chatId: string, planId: string, now: Date): Promise<GroupPlanRecord | null>;
+  /**
+   * Opens a plan. Other open plans stay open; only `replacesPlanId`, an open plan in the same
+   * chat, closes as superseded in the same step.
+   */
   createPlan(input: CreatePlanInput): Promise<GroupPlanRecord>;
+  /** The plan a Hale group line (by its provider message id) in this chat was about, or null. */
+  planOfGroupLine(
+    chatId: string,
+    providerMessageId: string,
+    templateKeys: readonly string[],
+  ): Promise<string | null>;
+  /** Moves an open plan's start. False when the plan is closed (nothing moves). */
+  setPlanStart(
+    planId: string,
+    startsAt: Date,
+    actorUserId: string | null,
+    now: Date,
+  ): Promise<boolean>;
+  /** Households whose copy of this plan Hale wrote to their calendar. */
+  listWrittenCalendarConsents(planId: string): Promise<CalendarConsentRow[]>;
   loadTally(
     planId: string,
   ): Promise<{ tally: PlanTally; rows: PlanTallyRow[]; expected: PlanExpectedRow[] }>;
@@ -118,6 +222,26 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   ): Promise<boolean>;
   listYesRsvps(planId: string): Promise<{ memberKey: string; userId: string | null }[]>;
   setCalendarAskMessage(planId: string, familyId: string, providerMessageId: string): Promise<void>;
+  /** Records a which-plan line on every ask it put to the parent. */
+  setCalendarWhichLine(
+    asks: readonly { planId: string; familyId: string }[],
+    providerMessageId: string,
+  ): Promise<void>;
+  /** The titles of these chats' most recently closed plans, newest first. */
+  closedPlanTitles(chatIds: readonly string[]): Promise<string[]>;
+  /** A parent's first name, to address a line to them. */
+  /** A calendar ask this household is owed waits for the morning re-drive. */
+  noteCalendarAskHeld(input: { planId: string; familyId: string }): Promise<void>;
+  /** The line that was to announce this new plan never landed: it closes as `unsent`. */
+  closeUnheardPlan(planId: string, now: Date): Promise<void>;
+  /**
+   * The parent a household's private notice goes to: `preferredUserId` while they still hold a
+   * parent seat in this family, otherwise the family's current primary parent.
+   */
+  currentParentOf(familyId: string, preferredUserId: string | null): Promise<string | null>;
+  parentFirstName(userId: string): Promise<string | null>;
+  /** The titles of these plans, closed ones included. A plan that no longer exists is absent. */
+  planTitles(planIds: readonly string[]): Promise<{ id: string; title: string }[]>;
   findCalendarAskByMessage(
     providerMessageId: string,
   ): Promise<{ plan: GroupPlanRecord; consent: CalendarConsentRow } | null>;
@@ -148,6 +272,14 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     familyEventId: string;
     actorUserId: string | null;
   }): Promise<void>;
+  /** A written copy now carries the plan's new time. Returns the audit row id: the notice's key. */
+  noteCalendarMoved(input: {
+    planId: string;
+    familyId: string;
+    familyEventId: string;
+    startsAt: Date;
+    actorUserId: string | null;
+  }): Promise<string>;
   noteCalendarAsked(input: {
     planId: string;
     familyId: string;
@@ -166,6 +298,34 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     actorUserId: string | null;
     now: Date;
   }): Promise<void>;
+}
+
+function consentRow(
+  row: typeof schema.linqGroupPlanCalendarConsents.$inferSelect,
+): CalendarConsentRow {
+  return {
+    planId: row.planId,
+    familyId: row.familyId,
+    memberKey: row.memberKey,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    status: row.status as CalendarConsentStatus,
+    familyEventId: row.familyEventId,
+    askProviderMessageId: row.askProviderMessageId,
+    whichLine: row.whichLine,
+    decidedByUserId: row.decidedByUserId,
+  };
+}
+
+function planClosedAudit(plan: { id: string; familyId: string }, reason: GroupPlanCloseReason) {
+  return {
+    familyId: plan.familyId,
+    actor: 'system',
+    actionTaken: 'linq_group_plan_closed',
+    targetTable: 'linq_group_plans',
+    targetId: plan.id,
+    after: { reason },
+  };
 }
 
 function flag(value: boolean): 'true' | 'false' {
@@ -234,6 +394,64 @@ export async function postgresSeatedExpected(
   });
 }
 
+function planRecord(row: typeof schema.linqGroupPlans.$inferSelect): GroupPlanRecord {
+  return {
+    id: row.id,
+    chatId: row.chatId,
+    familyId: row.familyId,
+    title: row.title,
+    startsAt: row.startsAt,
+    location: row.location,
+    rsvpDeadlineAt: row.rsvpDeadlineAt,
+    expectedCount: row.expectedCount,
+  };
+}
+
+async function closePastPlans(database: Database, chatId: string, now: Date): Promise<void> {
+  const pastBefore = new Date(now.getTime() - GROUP_PLAN_PAST_AFTER_MS);
+  const past = await database
+    .update(schema.linqGroupPlans)
+    .set({ closedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.linqGroupPlans.chatId, chatId),
+        isNull(schema.linqGroupPlans.closedAt),
+        lt(schema.linqGroupPlans.startsAt, pastBefore),
+      ),
+    )
+    .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+  for (const plan of past) {
+    await database.insert(schema.auditLog).values(planClosedAudit(plan, 'past'));
+  }
+  const idleBefore = new Date(now.getTime() - GROUP_PLAN_UNTIMED_IDLE_MS);
+  const idle = await database
+    .update(schema.linqGroupPlans)
+    .set({ closedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.linqGroupPlans.chatId, chatId),
+        isNull(schema.linqGroupPlans.closedAt),
+        isNull(schema.linqGroupPlans.startsAt),
+        lt(schema.linqGroupPlans.updatedAt, idleBefore),
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(schema.linqGroupPlanRsvps)
+            .where(
+              and(
+                eq(schema.linqGroupPlanRsvps.planId, schema.linqGroupPlans.id),
+                gte(schema.linqGroupPlanRsvps.updatedAt, idleBefore),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+  for (const plan of idle) {
+    await database.insert(schema.auditLog).values(planClosedAudit(plan, 'idle'));
+  }
+}
+
 export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanRsvpStore {
   return {
     ...createPostgresGroupPollStore(database),
@@ -262,21 +480,58 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)),
         )
         .limit(1);
-      if (!row || row.chatId !== chatId) return null;
-      return {
-        id: row.id,
-        chatId: row.chatId,
-        familyId: row.familyId,
-        title: row.title,
-        startsAt: row.startsAt,
-        location: row.location,
-        rsvpDeadlineAt: row.rsvpDeadlineAt,
-        expectedCount: row.expectedCount,
-      };
+      return row && row.chatId === chatId ? planRecord(row) : null;
+    },
+
+    async listOpenPlans(chatId, now) {
+      await closePastPlans(database, chatId, now);
+      const rows = await database
+        .select()
+        .from(schema.linqGroupPlans)
+        .where(
+          and(eq(schema.linqGroupPlans.chatId, chatId), isNull(schema.linqGroupPlans.closedAt)),
+        )
+        .orderBy(desc(schema.linqGroupPlans.createdAt));
+      return rows.filter((row) => row.chatId === chatId).map(planRecord);
+    },
+
+    async loadOpenPlan(chatId, planId, now) {
+      await closePastPlans(database, chatId, now);
+      const [row] = await database
+        .select()
+        .from(schema.linqGroupPlans)
+        .where(
+          and(
+            eq(schema.linqGroupPlans.id, planId),
+            eq(schema.linqGroupPlans.chatId, chatId),
+            isNull(schema.linqGroupPlans.closedAt),
+          ),
+        )
+        .limit(1);
+      return row && row.chatId === chatId ? planRecord(row) : null;
     },
 
     async createPlan(input) {
       return database.transaction(async (tx) => {
+        const superseded = input.replacesPlanId
+          ? await tx
+              .update(schema.linqGroupPlans)
+              .set({ closedAt: input.now, updatedAt: input.now })
+              .where(
+                and(
+                  eq(schema.linqGroupPlans.id, input.replacesPlanId),
+                  eq(schema.linqGroupPlans.chatId, input.chatId),
+                  isNull(schema.linqGroupPlans.closedAt),
+                ),
+              )
+              .returning({
+                id: schema.linqGroupPlans.id,
+                familyId: schema.linqGroupPlans.familyId,
+              })
+          : [];
+        for (const old of superseded) {
+          await tx.insert(schema.auditLog).values(planClosedAudit(old, 'superseded'));
+        }
         const [plan] = await tx
           .insert(schema.linqGroupPlans)
           .values({
@@ -324,6 +579,50 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           expectedCount: plan.expectedCount,
         };
       });
+    },
+
+    async planOfGroupLine(chatId, providerMessageId, templateKeys) {
+      return planIdOfGroupLine(database, { chatId, providerMessageId, templateKeys });
+    },
+
+    async setPlanStart(planId, startsAt, actorUserId, now) {
+      const [moved] = await database
+        .update(schema.linqGroupPlans)
+        .set({ startsAt, updatedAt: now })
+        .where(and(eq(schema.linqGroupPlans.id, planId), isNull(schema.linqGroupPlans.closedAt)))
+        .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+      if (!moved) return false;
+      await database.insert(schema.auditLog).values({
+        familyId: moved.familyId,
+        actor: actorUserId ?? 'system',
+        actionTaken: 'linq_group_plan_time_set',
+        targetTable: 'linq_group_plans',
+        targetId: moved.id,
+        after: { startsAt: startsAt.toISOString() },
+      });
+      return true;
+    },
+
+    async closeUnheardPlan(planId, now) {
+      const [closed] = await database
+        .update(schema.linqGroupPlans)
+        .set({ closedAt: now, updatedAt: now })
+        .where(and(eq(schema.linqGroupPlans.id, planId), isNull(schema.linqGroupPlans.closedAt)))
+        .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+      if (closed) await database.insert(schema.auditLog).values(planClosedAudit(closed, 'unsent'));
+    },
+
+    async listWrittenCalendarConsents(planId) {
+      const rows = await database
+        .select()
+        .from(schema.linqGroupPlanCalendarConsents)
+        .where(
+          and(
+            eq(schema.linqGroupPlanCalendarConsents.planId, planId),
+            eq(schema.linqGroupPlanCalendarConsents.status, 'written'),
+          ),
+        );
+      return rows.map(consentRow);
     },
 
     async loadTally(planId) {
@@ -509,6 +808,14 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
     },
 
     async listDueFollowups(now) {
+      if (linqGroupScenesEnabled()) {
+        // A nudge never goes out about an event that is over: the same close the chat reads do.
+        const chats = await database
+          .selectDistinct({ chatId: schema.linqGroupPlans.chatId })
+          .from(schema.linqGroupPlans)
+          .where(isNull(schema.linqGroupPlans.closedAt));
+        for (const { chatId } of chats) await closePastPlans(database, chatId, now);
+      }
       const plans = await database
         .select()
         .from(schema.linqGroupPlans)
@@ -559,16 +866,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         )
         .limit(1);
       if (!row || row.familyId !== familyId) return null;
-      return {
-        planId: row.planId,
-        familyId: row.familyId,
-        memberKey: row.memberKey,
-        displayName: row.displayName,
-        householdLabel: row.householdLabel,
-        status: row.status as CalendarConsentStatus,
-        familyEventId: row.familyEventId,
-        askProviderMessageId: row.askProviderMessageId,
-      };
+      return consentRow(row);
     },
 
     async claimCalendarAsk(input) {
@@ -644,13 +942,75 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         );
     },
 
-    async findCalendarAskByMessage(providerMessageId) {
+    async setCalendarWhichLine(asks, providerMessageId) {
+      const whichLine = { providerMessageId, planIds: asks.map((ask) => ask.planId) };
+      for (const ask of asks) {
+        await database
+          .update(schema.linqGroupPlanCalendarConsents)
+          .set({ whichLine, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.linqGroupPlanCalendarConsents.planId, ask.planId),
+              eq(schema.linqGroupPlanCalendarConsents.familyId, ask.familyId),
+            ),
+          );
+      }
+    },
+
+    async closedPlanTitles(chatIds) {
+      if (chatIds.length === 0) return [];
+      const rows = await database
+        .select({ title: schema.linqGroupPlans.title })
+        .from(schema.linqGroupPlans)
+        .where(
+          and(
+            inArray(schema.linqGroupPlans.chatId, [...chatIds]),
+            isNotNull(schema.linqGroupPlans.closedAt),
+          ),
+        )
+        .orderBy(desc(schema.linqGroupPlans.createdAt))
+        .limit(CLOSED_PLAN_RIVALS);
+      return rows.map((row) => row.title);
+    },
+
+    async currentParentOf(familyId, preferredUserId) {
+      const members = await database
+        .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId));
+      const parents = members.filter(
+        (member) => member.role === 'primary_parent' || member.role === 'co_parent',
+      );
+      if (preferredUserId && parents.some((member) => member.userId === preferredUserId)) {
+        return preferredUserId;
+      }
+      return parents.find((member) => member.role === 'primary_parent')?.userId ?? null;
+    },
+
+    async parentFirstName(userId) {
       const [row] = await database
+        .select({ name: schema.users.name })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId))
+        .limit(1);
+      return row?.name?.trim().split(/\s+/)[0] || null;
+    },
+
+    async planTitles(planIds) {
+      return database
+        .select({ id: schema.linqGroupPlans.id, title: schema.linqGroupPlans.title })
+        .from(schema.linqGroupPlans)
+        .where(inArray(schema.linqGroupPlans.id, [...planIds]));
+    },
+
+    async findCalendarAskByMessage(providerMessageId) {
+      const carriers = await database
         .select()
         .from(schema.linqGroupPlanCalendarConsents)
         .where(eq(schema.linqGroupPlanCalendarConsents.askProviderMessageId, providerMessageId))
-        .limit(1);
-      if (!row || row.status !== 'asked') return null;
+        .limit(2);
+      const [row] = carriers;
+      if (carriers.length !== 1 || !row || row.status !== 'asked') return null;
       const [plan] = await database
         .select()
         .from(schema.linqGroupPlans)
@@ -677,6 +1037,8 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           status: 'asked',
           familyEventId: row.familyEventId,
           askProviderMessageId: row.askProviderMessageId,
+          whichLine: row.whichLine,
+          decidedByUserId: row.decidedByUserId,
         },
       };
     },
@@ -732,6 +1094,8 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             status: row.status === 'declined' ? 'declined' : 'asked',
             familyEventId: row.familyEventId,
             askProviderMessageId: row.askProviderMessageId,
+            whichLine: row.whichLine,
+            decidedByUserId: row.decidedByUserId,
           },
         });
       }
@@ -786,6 +1150,32 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       });
     },
 
+    async noteCalendarMoved(input) {
+      const [row] = await database
+        .insert(schema.auditLog)
+        .values({
+          familyId: input.familyId,
+          actor: input.actorUserId ?? 'system',
+          actionTaken: GROUP_PLAN_CALENDAR_MOVED_VERB,
+          targetTable: 'linq_group_plans',
+          targetId: input.planId,
+          after: { familyEventId: input.familyEventId, startsAt: input.startsAt.toISOString() },
+        })
+        .returning({ id: schema.auditLog.id });
+      if (!row) throw new Error('noteCalendarMoved: audit_log insert returned no row');
+      return row.id;
+    },
+
+    async noteCalendarAskHeld(input) {
+      await database.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+        targetTable: 'linq_group_plans',
+        targetId: input.planId,
+      });
+    },
+
     async noteCalendarRemoved(input) {
       await database.insert(schema.auditLog).values({
         familyId: input.familyId,
@@ -835,6 +1225,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .set({
           status: 'written',
           familyEventId: input.familyEventId,
+          decidedByUserId: input.actorUserId,
           decidedAt: input.now,
           updatedAt: input.now,
         })

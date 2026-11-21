@@ -50,3 +50,28 @@ export function groupPlanRsvpLineInput(input: {
     questions,
   };
 }
+
+/**
+ * VIL-689 · a message could be about more than one open plan, and it spoke to Hale: one
+ * group line asking which plan, naming them. Nothing is recorded until someone says.
+ */
+export interface GroupPlanWhichLineInput {
+  skill: typeof GROUP_PLAN_RSVP_VOICE_SKILL;
+  kind: 'which_plan';
+  language: ReplyLanguage;
+  facts: { choices: { title: string; startsAt: string | null }[] };
+  questions: 1;
+}
+
+export function groupPlanWhichLineInput(input: {
+  language: ReplyLanguage;
+  choices: readonly { title: string; startsAt: string | null }[];
+}): GroupPlanWhichLineInput {
+  return {
+    skill: GROUP_PLAN_RSVP_VOICE_SKILL,
+    kind: 'which_plan',
+    language: input.language,
+    facts: { choices: input.choices.map((choice) => ({ ...choice })) },
+    questions: 1,
+  };
+}

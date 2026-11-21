@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gt, isNotNull, isNull, lt, lte } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import { resolveMessagingDoor, textedHaleOneToOne } from '~/lib/channel/messaging-door';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import {
   PROACTIVE_CATEGORY,
   assertProactiveSendAllowed,
@@ -26,16 +27,19 @@ import {
   type CarpoolSender,
   applyCarpoolReading,
   carpoolPlanKey,
+  keepWhatTheChatSaid,
   markAsked,
   markReminder,
   resolveCarpoolPickup,
+  saidInChat,
 } from './carpool-apply';
 import { decideCarpoolReminder, decideCarpoolTurn, localMinutesIn } from './carpool-cadence';
 import { type CarpoolReader, readingFromTapback, sharedCarpoolReader } from './carpool-reading';
 import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
-import { linqGroupCarpoolEnabled } from './config';
+import { linqGroupCarpoolEnabled, linqGroupScenesEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
+import { groupLineLeaksPrivate } from './group-experience/privacy';
 import type { ListChatHandles } from './roster';
 
 /**
@@ -314,7 +318,12 @@ async function persistPlan(
   }
   const [inserted] = await database
     .insert(schema.linqGroupCarpools)
-    .values(values)
+    .values({
+      ...values,
+      ...(linqGroupScenesEnabled()
+        ? { chatAudience: await carpoolChatAudience(database, input.chatId) }
+        : {}),
+    })
     .returning({ id: schema.linqGroupCarpools.id });
   if (!inserted) throw new Error('linq carpool: insert returned no row');
   noteTaskCompleted({ familyId: input.familyId, type: 'carpool', source: 'group' });
@@ -550,6 +559,235 @@ export async function considerCarpoolTurn(
   return { handled: true, outcome, ...(notice ? { notice } : {}) };
 }
 
+export type SharedCarpoolGroupSend = (line: {
+  text: string;
+  templateKey: string;
+  dedupeKey: string;
+}) => Promise<'sent' | 'already_sent' | 'declined' | 'failed' | string>;
+
+export interface SharedCarpoolTurnInput {
+  chatId: string;
+  senderHandle: string;
+  /** The sender's own Hale account and family: a guest changes nothing. */
+  senderUserId: string | null;
+  senderFamilyId: string | null;
+  /** The first name the sender gave in this chat, or null. */
+  senderName: string | null;
+  /** First names people gave in this chat. */
+  peopleNames: readonly string[];
+  text: string;
+  messageId: string;
+  now: Date;
+  /** Private terms of every household here (denyListForChat). */
+  deny: () => Promise<readonly string[]>;
+  sendGroup: SharedCarpoolGroupSend;
+  reader?: CarpoolReader;
+  voice?: CarpoolComposer;
+  recent?: readonly { from: 'hale' | 'member'; text: string }[];
+}
+
+/**
+ * VIL-689 · a ride in a chat several families share. Only a Hale family member in the chat
+ * changes a ride. The reader sees the chat text only, never a family's data, and code keeps
+ * a driver, kids, event or place only when a line in the chat says it (or the driver is the
+ * sender). The group hears a line only when Hale asks who drives, written from those facts
+ * and refused if it repeats any household's private term the chat has not said itself. The
+ * night-before reminder goes 1:1 to the driver only (runCarpoolReminders).
+ */
+export async function considerSharedCarpoolTurn(
+  database: Database,
+  input: SharedCarpoolTurnInput,
+): Promise<CarpoolTurnOutcome> {
+  if (!linqGroupCarpoolEnabled() || !linqGroupScenesEnabled()) {
+    return { handled: false, outcome: 'flag_off' };
+  }
+  if (!input.senderUserId || !input.senderFamilyId) {
+    return { handled: false, outcome: 'unknown_sender' };
+  }
+  const plans = await livePlans(database, input.chatId);
+  const sender = await senderOf(database, {
+    chatId: input.chatId,
+    senderHandle: input.senderHandle,
+    senderUserId: input.senderUserId,
+    senderName: input.senderName,
+  });
+  const recent =
+    input.recent ??
+    (await recentGroupLines(database, {
+      chatId: input.chatId,
+      now: input.now,
+      messageId: input.messageId,
+    }));
+  const lines = [input.text, ...recent.filter((line) => line.from === 'member').map((l) => l.text)];
+  const reader = input.reader ?? sharedCarpoolReader();
+  const raw = await reader.read({
+    text: input.text,
+    senderName: sender.name,
+    memberNames: input.peopleNames,
+    currentDriver: plans.length === 1 ? (plans[0]?.driverName ?? null) : null,
+    now: input.now,
+    timeZone: sender.timezone,
+    recent,
+  });
+  const reading = keepWhatTheChatSaid(raw, lines);
+  // A driver the chat never named is not a ride Hale can record.
+  if (!reading) return { handled: false, outcome: 'unchanged' };
+  const picked = pickCarpoolPlan(plans, reading, sender.timezone);
+  if (picked === 'ambiguous') return { handled: false, outcome: 'unchanged' };
+  if (reading.intent === 'chatter' || reading.intent === 'unclear') {
+    return { handled: false, outcome: 'unchanged' };
+  }
+  const existing = picked;
+  const next = applyCarpoolReading(existing, reading, sender, input.now);
+  if (!next) return { handled: false, outcome: 'unchanged' };
+
+  let turn = decideCarpoolTurn({
+    intent: reading.intent,
+    confidence: reading.confidence,
+    plan: next,
+    addressed: false,
+  });
+  if (turn.speak === 'addressed_status' && !next.driverName && !next.askedForDriverAt) {
+    turn = { speak: 'ask_driver' };
+  }
+  // A ride is filed under its driver's family when the driver is the sender (their own
+  // household here); otherwise it stays where it is, or is the sender's family's own. Never
+  // under another household in the chat that is not driving it.
+  const familyId =
+    next.driverUserId && next.driverUserId === input.senderUserId
+      ? input.senderFamilyId
+      : (existing?.familyId ?? input.senderFamilyId);
+  let stored = next;
+  let notice: 'sent' | 'not_sent' | undefined;
+  let outcome: Extract<CarpoolTurnOutcome, { handled: true }>['outcome'] =
+    reading.intent === 'cancel'
+      ? 'carpool_cancelled'
+      : reading.intent === 'driver_swap' ||
+          (reading.intent === 'driver_claim' &&
+            Boolean(existing?.driverName) &&
+            existing?.driverName !== next.driverName)
+        ? 'carpool_swapped'
+        : 'carpool_recorded';
+
+  if (turn.speak === 'ask_driver') {
+    const voice = input.voice ?? createCarpoolComposer({ database, familyId });
+    const line = await voice.compose({ kind: 'ask_driver', facts: voiceFacts(next, null) });
+    const deny = (await input.deny()).filter((term) => !saidInChat(term, lines));
+    const why = !line ? 'model' : groupLineLeaksPrivate(line, deny) ? 'private_leak' : null;
+    if (!line || why) {
+      // A model miss already paged from the carpool voice; a refused line did not.
+      if (why === 'private_leak') {
+        await sharedOpsPager.page({
+          site: 'group_carpool_line_unwritten',
+          facts: { kind: 'ask_driver', reason: 'private_leak' },
+        });
+      }
+      const id = await persistPlan(database, {
+        chatId: input.chatId,
+        familyId,
+        plan: next,
+        existingId: existing?.id ?? null,
+        askMessageId: existing?.askMessageId ?? null,
+        now: input.now,
+      });
+      await audit(database, familyId, 'group_line_unsent', { kind: 'ask_driver', why }, id);
+      return { handled: true, outcome: 'carpool_line_unsent', notice: 'not_sent' };
+    }
+    const sent = await input.sendGroup({
+      text: line,
+      templateKey: 'linq:carpool_ask_driver',
+      dedupeKey: `linq:carpool_ask_driver:${input.chatId}:${input.messageId}`,
+    });
+    notice = sent === 'sent' || sent === 'already_sent' ? 'sent' : 'not_sent';
+    if (notice === 'sent') {
+      stored = markAsked(next, input.now);
+      outcome = 'carpool_asked';
+    }
+  }
+
+  const id = await persistPlan(database, {
+    chatId: input.chatId,
+    familyId,
+    plan: stored,
+    existingId: existing?.id ?? null,
+    askMessageId: existing?.askMessageId ?? null,
+    now: input.now,
+  });
+  await audit(
+    database,
+    familyId,
+    outcome === 'carpool_cancelled' ? 'linq_carpool_cancelled' : 'linq_carpool_updated',
+    { intent: reading.intent, shared: true, reminderStatus: stored.reminderStatus },
+    id,
+  );
+  return { handled: true, outcome, ...(notice ? { notice } : {}) };
+}
+
+/** Roster statuses that mean a household group: one family's own chat, seated so far. */
+const HOUSEHOLD_ROSTER_STATUSES = ['confirmed', 'roles_proposed', 'partial'] as const;
+
+/**
+ * Whether a ride's chat is one household's group or a chat several families share. Household
+ * only on positive proof and with no live multi-family join: a family claimed this chat, or
+ * a roster with a family and a household status. Anything else (no roster, no family, mixed,
+ * refused, ejected, pending, a live join) is shared. Decided once when the ride is made
+ * (`chat_audience`).
+ */
+export async function carpoolChatAudience(
+  database: Database,
+  chatId: string,
+): Promise<'household' | 'shared'> {
+  const [join] = await database
+    .select({ id: schema.linqMultiFamilyJoins.id })
+    .from(schema.linqMultiFamilyJoins)
+    .where(
+      and(
+        eq(schema.linqMultiFamilyJoins.chatId, chatId),
+        isNull(schema.linqMultiFamilyJoins.leftAt),
+      ),
+    )
+    .limit(1);
+  if (join) return 'shared';
+  const [claimed] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (claimed) return 'household';
+  const [roster] = await database
+    .select({ id: schema.linqGroupRosters.id })
+    .from(schema.linqGroupRosters)
+    .where(
+      and(
+        eq(schema.linqGroupRosters.chatId, chatId),
+        isNotNull(schema.linqGroupRosters.familyId),
+        inArray(schema.linqGroupRosters.status, [...HOUSEHOLD_ROSTER_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return roster ? 'household' : 'shared';
+}
+
+/** A ride recorded as shared, or (scenes on) one whose chat reads as shared today. */
+async function isSharedRide(
+  database: Database,
+  row: { chatId: string; chatAudience: 'household' | 'shared' | null },
+): Promise<boolean> {
+  if (row.chatAudience) return row.chatAudience === 'shared';
+  return linqGroupScenesEnabled() && (await carpoolChatAudience(database, row.chatId)) === 'shared';
+}
+
+/** A driver leg that will never send: retrying it changes nothing, or could text twice. */
+function driverSkipIsFinal(reason: string): boolean {
+  return (
+    reason === 'driver_not_customer' ||
+    reason === 'no_driver_user' ||
+    reason === 'driver_group_claimed' ||
+    reason === 'driver_never_texted' ||
+    reason.startsWith('send_unknown')
+  );
+}
+
 export async function considerCarpoolTapback(
   database: Database,
   input: {
@@ -735,6 +973,68 @@ export async function runCarpoolReminders(
         .where(eq(schema.linqGroupCarpools.id, row.id));
 
     const voice = input.voice ?? createCarpoolComposer({ database, familyId: row.familyId });
+    // VIL-689 · a ride in a shared chat reminds its driver 1:1 only: one family's ride is
+    // never announced to the other families. `reminderGroupSentAt` is that reminder's
+    // generation mark here, as on the household path. A ride recorded as shared keeps this
+    // path even with the scenes flag off: a kill switch must not announce it to the group.
+    if (await isSharedRide(database, row)) {
+      triedDriverThisRun.add(row.id);
+      const driverSkipped = await deliverDriverLeg(database, {
+        rowId: row.id,
+        chatId: row.chatId,
+        groupSentAt: input.now,
+        plan,
+        now: input.now,
+        sendDriver,
+        voice,
+        strictGates: true,
+      });
+      if (driverSkipped === 'claimed_elsewhere') {
+        summary.skipped += 1;
+        continue;
+      }
+      if (driverSkipped !== null && !driverSkipIsFinal(driverSkipped)) {
+        // Nothing reached the driver and a later sweep can still try.
+        await release();
+        await audit(
+          database,
+          row.familyId,
+          'group_line_unsent',
+          { kind: 'night_before_driver', notice: driverSkipped, shared: true },
+          row.id,
+        );
+        summary.skipped += 1;
+        continue;
+      }
+      await persistPlan(database, {
+        chatId: row.chatId,
+        familyId: row.familyId,
+        plan: markReminder(plan, driverSkipped === null ? 'sent' : 'suppressed'),
+        existingId: row.id,
+        askMessageId: row.askMessageId,
+        now: input.now,
+      });
+      if (driverSkipped === null) {
+        await audit(
+          database,
+          row.familyId,
+          'linq_carpool_reminder_sent',
+          { driverSkipped: null, shared: true },
+          row.id,
+        );
+        summary.fired += 1;
+      } else {
+        await audit(
+          database,
+          row.familyId,
+          'linq_carpool_reminder_skipped',
+          { reason: driverSkipped, shared: true },
+          row.id,
+        );
+        summary.skipped += 1;
+      }
+      continue;
+    }
     const facts = voiceFacts(plan, null);
     const groupLine = await voice.compose({ kind: 'night_before_group', facts });
     if (!groupLine) {
@@ -796,11 +1096,13 @@ export async function runCarpoolReminders(
     triedDriverThisRun.add(row.id);
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      chatId: row.chatId,
       groupSentAt: input.now,
       plan,
       now: input.now,
       sendDriver,
       voice,
+      strictGates: linqGroupScenesEnabled(),
     });
 
     await persistPlan(database, {
@@ -846,13 +1148,21 @@ export async function runCarpoolReminders(
     if (!row.reminderGroupSentAt) continue;
     const driverSkipped = await deliverDriverLeg(database, {
       rowId: row.id,
+      chatId: row.chatId,
       groupSentAt: row.reminderGroupSentAt,
       plan,
       now: input.now,
       sendDriver,
       voice,
+      strictGates: linqGroupScenesEnabled() || row.chatAudience === 'shared',
     });
-    if (driverSkipped === 'claimed_elsewhere' || driverSkipped === 'driver_group_claimed') continue;
+    if (
+      driverSkipped === 'claimed_elsewhere' ||
+      driverSkipped === 'driver_group_claimed' ||
+      driverSkipped === 'driver_never_texted'
+    ) {
+      continue;
+    }
     await audit(
       database,
       row.familyId,
@@ -881,19 +1191,30 @@ async function deliverDriverLeg(
   database: Database,
   input: {
     rowId: string;
+    chatId: string;
     groupSentAt: Date;
     plan: CarpoolPlanState;
     now: Date;
     sendDriver: CarpoolDriverSend;
     voice: CarpoolComposer;
+    /** VIL-689 · the driver's own chat decides the first gate, and a cold 1:1 is refused. */
+    strictGates: boolean;
   },
 ): Promise<string | null> {
   const { plan } = input;
   if (!plan.driverHaleCustomer) return 'driver_not_customer';
   if (!plan.driverUserId) return 'no_driver_user';
-  // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
-  // starts a 1:1 with its members. Their driver hears it in the group only.
-  if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
+  if (input.strictGates) {
+    // Design (Sloane, #975) — once a family's Linq group is claimed Hale never
+    // starts a 1:1 with its members. Their driver hears it in that group only. A ride
+    // in any other chat is not that group's, so it falls to the texted-Hale gate below.
+    if (await driverFamilyClaimedChat(database, plan.driverUserId, input.chatId)) {
+      return 'driver_group_claimed';
+    }
+    // VIL-689 · never a cold text: whatever kind of chat the ride came from, the driver's 1:1
+    // goes only to someone who has texted Hale themselves.
+    if (!(await textedHaleOneToOne(database, plan.driverUserId))) return 'driver_never_texted';
+  } else if (await driverFamilyHasClaimedGroup(database, plan.driverUserId)) {
     return 'driver_group_claimed';
   }
   const claimAt = input.now;
@@ -958,6 +1279,19 @@ async function driverFamilyHasClaimedGroup(database: Database, userId: string): 
     .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
     .where(eq(schema.familyMembers.userId, userId));
   return rows.some((row) => Boolean(row.chatId));
+}
+
+async function driverFamilyClaimedChat(
+  database: Database,
+  userId: string,
+  chatId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.familyMembers)
+    .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
+    .where(eq(schema.familyMembers.userId, userId));
+  return rows.some((row) => row.chatId === chatId);
 }
 
 async function coveringParentUserId(database: Database, familyId: string): Promise<string | null> {

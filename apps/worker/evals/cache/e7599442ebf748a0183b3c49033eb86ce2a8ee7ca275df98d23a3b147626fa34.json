@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a private question about a child's allergy, and it is read as private_question. No fields are set, so the allergy detail is not copied anywhere.",
+    "score": 5
+  }
+}

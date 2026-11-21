@@ -5,6 +5,7 @@ import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type GroupHoldReason, groupAudienceAllows } from '../group-audience';
 import type { ListChatHandles } from '../roster';
 import { primaryParentId } from '../roster-ask';
+import { groupPlanLineDedupeKey } from './plan-identity';
 import { LinqSendError, listLinqParticipantHandles } from '../transport';
 
 /**
@@ -12,10 +13,10 @@ import { LinqSendError, listLinqParticipantHandles } from '../transport';
  * and (VIL-471) a group poll line.
  *
  * Claims the channel_messages row before Linq hears the line. A refusal marks
- * that same row failed. The covering family's primary parent owns the row on a
- * claimed household chat. A shared multi-family chat has no covering family;
- * the live plan's host household owns the row. That host is the sender who
- * opened the plan, never another family in the chat.
+ * that same row failed. With LINQ_GROUP_SCENES_ENABLED on, the row belongs to the household
+ * that owns what the line is about, which the caller names by id: the plan's host household
+ * for a tally or a follow-up, the poll's household for a poll line. A caller that names none
+ * (scenes off) keeps the covering family, or the chat's open plan or poll's household.
  *
  * Before the claim, the family-chat floor reads who is in the chat now: a tally, a
  * follow-up and a poll line are `event_logistics`. A refused verdict claims nothing,
@@ -28,6 +29,8 @@ export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
 export const GROUP_PLAN_CALENDAR_ASK_TEMPLATE = 'linq:group_plan_calendar_ask';
 export const GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE = 'linq:group_plan_calendar_written';
 export const GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE = 'linq:group_plan_calendar_removed';
+export const GROUP_PLAN_CALENDAR_MOVED_TEMPLATE = 'linq:group_plan_calendar_moved';
+export const GROUP_PLAN_CALENDAR_WHICH_TEMPLATE = 'linq:group_plan_calendar_which';
 
 export class GroupPlanRsvpHeld extends Error {
   constructor(readonly reason: GroupHoldReason) {
@@ -64,6 +67,10 @@ export async function sendGroupPlanRsvpLine(
   database: Database,
   input: {
     chatId: string;
+    /** The household that owns the plan or poll this line is about. Absent with scenes off. */
+    familyId?: string;
+    /** The plan this line is about, when it is about one: a reaction on it resolves to it. */
+    planId?: string | null;
     text: string;
     templateKey:
       | typeof GROUP_PLAN_RSVP_TEMPLATE
@@ -76,7 +83,9 @@ export async function sendGroupPlanRsvpLine(
     listChatHandles?: ListChatHandles;
   },
 ): Promise<{ providerMessageId: string }> {
-  const family = await ledgerFamilyForGroupPlanLine(database, input.chatId);
+  const family = input.familyId
+    ? { id: input.familyId }
+    : await ledgerFamilyForGroupPlanLine(database, input.chatId);
   if (!family) {
     console.warn({ outcome: 'no_covering_family' }, 'group plan rsvp: send not ledgered');
     throw new Error('group plan rsvp: no covering family');
@@ -111,7 +120,12 @@ export async function sendGroupPlanRsvpLine(
       direction: 'out',
       category: 'reply',
       templateKey: input.templateKey,
-      dedupeKey: `${input.templateKey}:${input.chatId}:${input.now.toISOString()}`,
+      dedupeKey: groupPlanLineDedupeKey({
+        templateKey: input.templateKey,
+        chatId: input.chatId,
+        planId: input.planId ?? null,
+        now: input.now,
+      }),
       providerChatId: input.chatId,
       status: acceptedStatus('imessage'),
       sentAt: input.now,

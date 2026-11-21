@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The expected kind is private_question, since the parent asked for a family login in a shared chat. The reading returned 'none', so it treats a private question as nothing, which the rubric scores as a 1.",
+    "score": 1
+  }
+}

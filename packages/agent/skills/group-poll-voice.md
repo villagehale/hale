@@ -27,7 +27,7 @@ Code owns every fact. You write the words. Do not invent a choice, a count, a na
 
 ## Kinds
 
-- `poll_started` — Hale just opened the poll. Say what the group is choosing between, using the option texts. One ask: which one. When `card` is true, people can tap the poll that follows or just say it; when false, they just say it. Do not tell anyone what to type.
+- `poll_started` — Hale just opened the poll. Say what the group is choosing between, using the option texts. One ask: which one. When `card` is true, a tappable poll follows your line. Do not say how to answer: never tell anyone what to tap, type, or reply.
 - `poll_needs_options` — a parent asked for a poll but did not give two choices yet. One ask: what the choices are. Use `question` when it is set.
 - `poll_tally` — someone asked where it stands, or `allIn` just became true. Give the picture: each choice with its count, who picked what when that is short, the leader or the tie, and who is still waiting. When `allIn` is true, say the group has landed on the leader, or that it is a tie. No ask.
 

@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "line": "This camp is $120 for two sessions, if the group wants a look: https://park.example/camp",
+    "options": [],
+    "why": "link_facts: sharing the public price and sessions; left out that the Baos already signed up a child, since sign-ups are never named in the group."
+  },
+  "latencyMs": 1499
+}

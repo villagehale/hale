@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is a form-like company voice (\"Thank you for your message\") and explicitly tells people what to type (\"Please reply YES, NO or MAYBE\"), which the watchFor and rubric forbid. It also has no warm, specific tone for the Saturday picnic moment and does not reference the poll card.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reading is rsvp_vote, which is expected. The response 'maybe' matches the message ('maybe, depends on Leo's nap'). Other fields are null/empty as appropriate since no new event or time was named. The nap mention is a child's routine detail, but the reading does not copy it into any field, so no private detail leaks.",
+    "score": 5
+  }
+}

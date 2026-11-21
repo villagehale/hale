@@ -1,0 +1,8 @@
+{
+  "value": {
+    "send": true,
+    "line": "Priya, les Patel viennent au pique-nique de samedi le 31 octobre à 11 h au parc. Tu veux que je l'ajoute à votre calendrier ?",
+    "why": "calendar_ask"
+  },
+  "latencyMs": 1814
+}

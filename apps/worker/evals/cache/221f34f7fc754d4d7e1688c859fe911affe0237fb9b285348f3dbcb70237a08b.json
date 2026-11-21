@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": false,
+    "line": "",
+    "options": [],
+    "why": "The facts include a login, a payment card, and a family's private credentials. Those must never go in a group line, and the only public fact I can safely state is the link itself, so I'll stay quiet rather than post half of it."
+  },
+  "latencyMs": 1500
+}

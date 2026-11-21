@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { linqGroupScenesEnabled } from '../config';
 import type { GroupPollRecord, GroupPollStore, NativeCardOption } from './poll-store';
 import { pollOptionsFrom, withCardIds } from './poll-store';
 import { tallyGroupPoll } from './poll-tally';
@@ -11,6 +12,11 @@ import type {
   GroupPlanRecord,
   GroupPlanRsvpStore,
   UpsertRsvpInput,
+} from './store';
+import {
+  GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+  GROUP_PLAN_PAST_AFTER_MS,
+  GROUP_PLAN_UNTIMED_IDLE_MS,
 } from './store';
 import {
   type PlanExpectedRow,
@@ -48,6 +54,8 @@ interface MemoryPlan extends GroupPlanRecord {
   rsvps: Map<string, MemoryRsvp>;
   followups: MemoryFollowup[];
   closedAt: Date | null;
+  /** The plan's last change or answer: a plan with no time closes once this is stale. */
+  touchedAt: Date;
 }
 
 interface MemoryPoll extends GroupPollRecord {
@@ -67,6 +75,8 @@ export interface MemoryGroupPlanWorld {
   /** Household zones Hale knows, keyed by family id. Absent means unknown. */
   householdZones: Map<string, string>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
+  /** Hale group lines about a plan, keyed by provider message id. */
+  planLines: Map<string, { chatId: string; planId: string }>;
 }
 
 export function createMemoryWorld(): MemoryGroupPlanWorld {
@@ -79,6 +89,7 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     consents: new Map(),
     householdZones: new Map(),
     audits: [],
+    planLines: new Map(),
   };
 }
 
@@ -111,6 +122,14 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
     async pollForCard(chatId, providerMessageId) {
       const poll = live(chatId);
       return poll && poll.providerMessageId === providerMessageId ? copyPoll(poll) : null;
+    },
+
+    async closePoll(pollId, _actorUserId, now) {
+      const poll = world.polls.get(pollId);
+      if (!poll || poll.closedAt) return false;
+      poll.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_poll_closed', after: { reason: 'locked' } });
+      return true;
     },
 
     async createPoll(input) {
@@ -195,6 +214,23 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
 
 export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): GroupPlanRsvpStore {
   const plansById = () => [...world.plans.values()];
+  const closePast = (chatId: string, now: Date) => {
+    const pastBefore = now.getTime() - GROUP_PLAN_PAST_AFTER_MS;
+    const idleBefore = now.getTime() - GROUP_PLAN_UNTIMED_IDLE_MS;
+    for (const row of plansById()) {
+      if (row.chatId !== chatId || row.closedAt !== null) continue;
+      const reason = row.startsAt
+        ? row.startsAt.getTime() < pastBefore
+          ? 'past'
+          : null
+        : row.touchedAt.getTime() < idleBefore
+          ? 'idle'
+          : null;
+      if (!reason) continue;
+      row.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason } });
+    }
+  };
 
   return {
     ...createMemoryGroupPollStore(world),
@@ -208,7 +244,59 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return plan ? { ...plan } : null;
     },
 
+    async listOpenPlans(chatId, now) {
+      closePast(chatId, now);
+      return plansById()
+        .filter((row) => row.chatId === chatId && row.closedAt === null)
+        .reverse()
+        .map((row) => ({ ...row }));
+    },
+
+    async loadOpenPlan(chatId, planId, now) {
+      closePast(chatId, now);
+      const plan = world.plans.get(planId);
+      return plan && plan.chatId === chatId && plan.closedAt === null ? { ...plan } : null;
+    },
+
+    async planOfGroupLine(chatId, providerMessageId, _templateKeys) {
+      const line = world.planLines.get(providerMessageId);
+      return line && line.chatId === chatId ? line.planId : null;
+    },
+
+    async setPlanStart(planId, startsAt, _actorUserId, _now) {
+      const plan = world.plans.get(planId);
+      if (!plan || plan.closedAt) return false;
+      plan.startsAt = startsAt;
+      world.audits.push({
+        actionTaken: 'linq_group_plan_time_set',
+        after: { startsAt: startsAt.toISOString() },
+      });
+      return true;
+    },
+
+    async closeUnheardPlan(planId, now) {
+      const plan = world.plans.get(planId);
+      if (!plan || plan.closedAt) return;
+      plan.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason: 'unsent' } });
+    },
+
+    async listWrittenCalendarConsents(planId) {
+      return [...world.consents.values()].filter(
+        (row) => row.planId === planId && row.status === 'written',
+      );
+    },
+
     async createPlan(input: CreatePlanInput) {
+      for (const old of plansById()) {
+        if (old.id !== input.replacesPlanId) continue;
+        if (old.chatId !== input.chatId || old.closedAt !== null) continue;
+        old.closedAt = input.now;
+        world.audits.push({
+          actionTaken: 'linq_group_plan_closed',
+          after: { reason: 'superseded' },
+        });
+      }
       const plan: MemoryPlan = {
         id: randomUUID(),
         chatId: input.chatId,
@@ -222,6 +310,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         rsvps: new Map(),
         followups: [],
         closedAt: null,
+        touchedAt: input.now,
       };
       world.plans.set(plan.id, plan);
       world.audits.push({
@@ -255,6 +344,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       const prior = plan.rsvps.get(input.memberKey);
       const edited =
         !!prior && (prior.response !== input.response || prior.headcount !== input.headcount);
+      plan.touchedAt = input.now;
       plan.rsvps.set(input.memberKey, {
         memberKey: input.memberKey,
         displayName: input.displayName,
@@ -313,6 +403,9 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
 
     async listDueFollowups(now) {
       const due: { plan: GroupPlanRecord; timeZone: string; waitingNames: string[] }[] = [];
+      if (linqGroupScenesEnabled()) {
+        for (const chatId of new Set(plansById().map((row) => row.chatId))) closePast(chatId, now);
+      }
       for (const plan of plansById()) {
         if (plan.closedAt) continue;
         if (plan.rsvpDeadlineAt && plan.rsvpDeadlineAt.getTime() > now.getTime()) continue;
@@ -345,6 +438,8 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         status: 'asked' satisfies CalendarConsentStatus,
         familyEventId: null,
         askProviderMessageId: null,
+        whichLine: null,
+        decidedByUserId: null,
       };
       world.consents.set(key, row);
       return true;
@@ -375,12 +470,41 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       if (row) row.askProviderMessageId = providerMessageId;
     },
 
+    async setCalendarWhichLine(asks, providerMessageId) {
+      const whichLine = { providerMessageId, planIds: asks.map((ask) => ask.planId) };
+      for (const ask of asks) {
+        const row = world.consents.get(consentKey(ask.planId, ask.familyId));
+        if (row) row.whichLine = whichLine;
+      }
+    },
+
+    async currentParentOf(_familyId, preferredUserId) {
+      return preferredUserId;
+    },
+
+    async parentFirstName() {
+      return null;
+    },
+
+    async closedPlanTitles(chatIds) {
+      return plansById()
+        .filter((row) => chatIds.includes(row.chatId) && row.closedAt !== null)
+        .map((row) => row.title);
+    },
+
+    async planTitles(planIds) {
+      return planIds.flatMap((id) => {
+        const plan = world.plans.get(id);
+        return plan ? [{ id, title: plan.title }] : [];
+      });
+    },
+
     async findCalendarAskByMessage(providerMessageId) {
-      const row = [...world.consents.values()].find(
-        (consent) =>
-          consent.askProviderMessageId === providerMessageId && consent.status === 'asked',
+      const carriers = [...world.consents.values()].filter(
+        (consent) => consent.askProviderMessageId === providerMessageId,
       );
-      if (!row) return null;
+      const [row] = carriers;
+      if (carriers.length !== 1 || !row || row.status !== 'asked') return null;
       const plan = world.plans.get(row.planId);
       if (!plan || plan.closedAt) return null;
       return { plan: { ...plan }, consent: row };
@@ -425,11 +549,28 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
           status: 'declined',
           familyEventId: null,
           askProviderMessageId: null,
+          whichLine: null,
+          decidedByUserId: null,
         });
       }
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_declined',
         after: { familyId: input.familyId, restored: true },
+      });
+    },
+
+    async noteCalendarMoved(input) {
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_moved',
+        after: { familyEventId: input.familyEventId, startsAt: input.startsAt.toISOString() },
+      });
+      return randomUUID();
+    },
+
+    async noteCalendarAskHeld(input) {
+      world.audits.push({
+        actionTaken: GROUP_PLAN_CALENDAR_ASK_HELD_VERB,
+        after: { familyId: input.familyId },
       });
     },
 
@@ -461,6 +602,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       if (row) {
         row.status = 'written';
         row.familyEventId = input.familyEventId;
+        row.decidedByUserId = input.actorUserId;
       }
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_written',

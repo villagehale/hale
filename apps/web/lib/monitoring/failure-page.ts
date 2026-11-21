@@ -176,6 +176,46 @@ export const OPS_PAGE_ROUTE = 'ops:page';
  */
 export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
+  /** VIL-689 · a plan, poll or private calendar line in the group scenes the model could not
+   * write. Nothing was sent. One claim per kind (OPS_PAGE_PER_KIND). */
+  group_plan_line_unwritten: {
+    kind: [
+      'tracking_started',
+      'tally',
+      'follow_up',
+      'which_plan',
+      'poll_started',
+      'poll_needs_options',
+      'poll_tally',
+      'calendar_ask',
+      'calendar_written',
+      'calendar_removed',
+      'calendar_moved',
+      'calendar_which',
+    ],
+    reason: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable'],
+  },
+  /** VIL-689 · a group-moment line the model could not write, or wrote with a private term. */
+  group_moment_line_unwritten: {
+    kind: [
+      'hello',
+      'rsvp_open',
+      'rsvp_tally',
+      'time_open',
+      'time_lock',
+      'time_tie',
+      'link_facts',
+      'registration_1to1',
+      'private_hold',
+      'private_1to1',
+      'mail_notice',
+      'calendar_placed',
+    ],
+    reason: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'private_leak'],
+  },
+  /** VIL-689 · a shared-chat ask for a driver refused for repeating a private term. A model
+   * miss on the same ask pages from the carpool voice. */
+  group_carpool_line_unwritten: { kind: ['ask_driver'], reason: ['private_leak'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
   shared_group_unwritten: {
@@ -267,10 +307,20 @@ function isPerRefPage(page: OpsPage): page is Extract<OpsPage, { site: OpsPagePe
   return (OPS_PAGE_PER_REF as readonly string[]).includes(page.site);
 }
 
-/** The claim's identifier: the site, and for a per-row site its row too. */
+/** Sites paged once per kind per hour: one kind's failure never hides another's. */
+const OPS_PAGE_PER_KIND = ['group_plan_line_unwritten', 'group_moment_line_unwritten'] as const;
+
+function isPerKindPage(
+  page: OpsPage,
+): page is Extract<OpsPage, { site: (typeof OPS_PAGE_PER_KIND)[number] }> {
+  return (OPS_PAGE_PER_KIND as readonly string[]).includes(page.site);
+}
+
+/** The claim's identifier: the site, and for a per-row or per-kind site that row or kind too. */
 function opsPageClaimKey(page: OpsPage): string {
   const site = failureCategory(page.site);
-  return isPerRefPage(page) ? `${site}:${uuidOr(page.ref, 'redacted')}` : site;
+  if (isPerRefPage(page)) return `${site}:${uuidOr(page.ref, 'redacted')}`;
+  return isPerKindPage(page) ? `${site}:${failureCategory(page.facts.kind)}` : site;
 }
 
 /** Same vocabulary as CrisisPageOutcome. A page that did not leave is its own outcome,
