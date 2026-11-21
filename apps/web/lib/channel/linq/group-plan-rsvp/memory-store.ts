@@ -270,6 +270,13 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       return true;
     },
 
+    async closeUnheardPlan(planId, now) {
+      const plan = world.plans.get(planId);
+      if (!plan || plan.closedAt) return;
+      plan.closedAt = now;
+      world.audits.push({ actionTaken: 'linq_group_plan_closed', after: { reason: 'unsent' } });
+    },
+
     async listWrittenCalendarConsents(planId) {
       return [...world.consents.values()].filter(
         (row) => row.planId === planId && row.status === 'written',

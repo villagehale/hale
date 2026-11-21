@@ -111,10 +111,10 @@ export const GROUP_PLAN_PAST_AFTER_MS = 12 * 60 * 60 * 1000;
 export const GROUP_PLAN_UNTIMED_IDLE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
- * Why a plan closed: its start passed, a plan with no time sat untouched, or a new event in the
- * same chat replaced it by id.
+ * Why a plan closed: its start passed, a plan with no time sat untouched, a new event in the
+ * same chat replaced it by id, or it opened for a line that never reached the group.
  */
-export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded';
+export type GroupPlanCloseReason = 'past' | 'idle' | 'superseded' | 'unsent';
 
 const SINGLE_OPEN_PLAN_INDEX = 'linq_group_plans_live_chat_uniq';
 
@@ -227,6 +227,8 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   /** The titles of these chats' most recently closed plans, newest first. */
   closedPlanTitles(chatIds: readonly string[]): Promise<string[]>;
   /** A parent's first name, to address a line to them. */
+  /** The line that was to announce this new plan never landed: it closes as `unsent`. */
+  closeUnheardPlan(planId: string, now: Date): Promise<void>;
   /**
    * The parent a household's private notice goes to: `preferredUserId` while they still hold a
    * parent seat in this family, otherwise the family's current primary parent.
@@ -594,6 +596,15 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         after: { startsAt: startsAt.toISOString() },
       });
       return true;
+    },
+
+    async closeUnheardPlan(planId, now) {
+      const [closed] = await database
+        .update(schema.linqGroupPlans)
+        .set({ closedAt: now, updatedAt: now })
+        .where(and(eq(schema.linqGroupPlans.id, planId), isNull(schema.linqGroupPlans.closedAt)))
+        .returning({ id: schema.linqGroupPlans.id, familyId: schema.linqGroupPlans.familyId });
+      if (closed) await database.insert(schema.auditLog).values(planClosedAudit(closed, 'unsent'));
     },
 
     async listWrittenCalendarConsents(planId) {

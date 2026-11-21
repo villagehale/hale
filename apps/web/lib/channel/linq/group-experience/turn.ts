@@ -1,4 +1,5 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import {
   groupLinkCardsEnabled,
   groupPollsEnabled,
@@ -320,12 +321,31 @@ async function speak(
   );
 }
 
+/** One group line per inbound message: a redelivered webhook claims the same key. */
+function groupLineKey(input: GroupExperienceTurnInput): string {
+  return `${GROUP_EXPERIENCE_TEMPLATE}:${input.chatId}:${input.messageId}`;
+}
+
+/** This message already had its group line, so a redelivery of it opens nothing more. */
+async function alreadySpoke(
+  ports: GroupExperienceTurnPorts,
+  input: GroupExperienceTurnInput,
+): Promise<boolean> {
+  if (ports.sendLine) return false;
+  const [row] = await ports.database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(eq(schema.channelMessages.dedupeKey, groupLineKey(input)))
+    .limit(1);
+  return Boolean(row);
+}
+
 async function sendGroup(
   ports: GroupExperienceTurnPorts,
   input: GroupExperienceTurnInput,
   text: string,
 ): Promise<'sent' | 'not_sent'> {
-  const dedupeKey = `${GROUP_EXPERIENCE_TEMPLATE}:${input.chatId}:${input.messageId}`;
+  const dedupeKey = groupLineKey(input);
   try {
     if (ports.sendLine) {
       await ports.sendLine({ chatId: input.chatId, text, dedupeKey });
@@ -451,18 +471,23 @@ async function openRsvp(
 ): Promise<GroupExperienceTurnOutcome> {
   const card = ports.pollCard ?? postgresExperiencePollCard(ports.database);
   const target = await planFor(input, plans, reading);
+  // A who's-in line collects answers, so it is said only for a plan that can hold them.
+  if (target.status === 'none') return noPlanToCollect();
+  if (await alreadySpoke(ports, input)) {
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: 'not_sent' },
+    };
+  }
   const spoken = await speak(
     ports,
     input,
     'rsvp_open',
     {
       card: card.enabled() && linqPollsEnabled(),
-      title:
-        target.status === 'live'
-          ? target.plan.title
-          : target.status === 'new'
-            ? target.title
-            : null,
+      title: target.status === 'live' ? target.plan.title : target.title,
     },
     1,
     'group',
@@ -476,23 +501,19 @@ async function openRsvp(
       notice: { skipped: spoken.reason },
     };
   }
+  const plan =
+    target.status === 'live' ? target.plan : await openPlan(input, ports, plans, target.title);
+  if (!plan) return noPlanToCollect();
   const notice = await sendGroup(ports, input, spoken.line);
   if (notice !== 'sent') {
+    // Nobody heard it, so nothing should be collecting answers for it.
+    if (target.status === 'new') await plans.closeUnheardPlan(plan.id, input.now);
     return {
       handled: true,
       outcome: 'group_experience_line_unsent',
       count: 'ignored',
       notice: { skipped: 'not_sent' },
     };
-  }
-  const plan =
-    target.status === 'live'
-      ? target.plan
-      : target.status === 'new'
-        ? await openPlan(input, ports, plans, target.title)
-        : null;
-  if (!plan) {
-    return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
   }
   const options = spoken.options.map((text, index) => ({
     key: optionKeyAt(index),
@@ -526,6 +547,15 @@ async function openRsvp(
     notice: 'sent',
     card: cardResult,
   };
+}
+
+/** No plan can hold the answers (a guest, or the one-open-plan index): nothing is asked. */
+function noPlanToCollect(): GroupExperienceTurnOutcome {
+  console.info(
+    { outcome: 'group_rsvp_no_plan' },
+    'group experience: no plan to hold the answers, no line',
+  );
+  return { handled: false };
 }
 
 async function tallyRsvp(
