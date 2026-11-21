@@ -205,6 +205,18 @@ export const OPS_PAGE_VOCABULARY = {
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
+  // VIL-717. No ack (or late note) was sent because the model could not write one.
+  ack_eta_unwritten: {
+    stage: ['read', 'ack', 'late_note'],
+    reason: [
+      'client_unavailable',
+      'skill_unavailable',
+      'model_failed',
+      'judge_unavailable',
+      'judge_failed',
+      'gate_exhausted',
+    ],
+  },
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
   inbound_canary_failed: {
     stage: [

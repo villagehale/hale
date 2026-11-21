@@ -48,6 +48,11 @@ const NOT_IN_FAMILY_EXPORT = [
   'tool_refused',
   // That one adult's own 1:1 ask went on the deep queue (VIL-682).
   'activity_deep_dispatched',
+  // VIL-717. That one adult's own slow ask was given a time, how that time was kept, and the
+  // note that told them it was missed.
+  'ack_eta_promised',
+  'ack_eta_deadline',
+  'ack_eta_late_note_sent',
   // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
   'linq_secret_santa_draw_sent',
   'linq_secret_santa_noted',
@@ -58,6 +63,7 @@ const OWN_ROWS_IN_EXPORT = [
   'crisis_unanswered',
   'opt_out_hold_read',
   'opt_out_hold_cleared',
+  'ack_eta_late_note_sent',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {

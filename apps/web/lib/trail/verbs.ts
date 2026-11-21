@@ -566,6 +566,11 @@ export const AUDIT_VERBS = [
   'activity_followup_sent',
   // VIL-682 · whether a promise went on the deep queue at question time.
   'activity_deep_dispatched',
+  // VIL-717 · a slow ask's ack stated a time (the promise), how that promise was settled
+  // when its time came, and the one late note when the answer did not come in time.
+  'ack_eta_promised',
+  'ack_eta_deadline',
+  'ack_eta_late_note_sent',
   'activity_followup_shared',
   'village_intro_card_sent',
   'village_intro_accepted',
@@ -2130,6 +2135,23 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale started a closer look at an activity question',
     family: 'note',
   },
+  // VIL-717. Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide
+  // export: all three are about one adult's own ask, and carry that adult as their audience.
+  // The ack itself is the reply row History already shows.
+  ack_eta_promised: {
+    sentence: 'Hale told you when to expect an answer',
+    family: 'note',
+  },
+  ack_eta_deadline: {
+    sentence: 'Hale checked whether an answer it promised went out in time',
+    family: 'note',
+  },
+  // The note itself: Hale said it was later than it had told you. 'done' because the row is
+  // the message going out, whatever it said about the wait.
+  ack_eta_late_note_sent: {
+    sentence: 'Hale told you an answer was taking longer than it said',
+    family: 'done',
+  },
   // Historical. Follow-ups used to put the rest of a schedule on a public page. The
   // verb stays so those audit rows still read. 'done' because the row records something
   // Hale finished, not something it is waiting on.
@@ -2400,6 +2422,11 @@ export const INTERNAL_TRAIL_VERBS = [
   'sms_turn_folded',
   // VIL-682. Queue bookkeeping for one adult's question; the answer is the visible row.
   'activity_deep_dispatched',
+  // VIL-717. The promised time, its settling and the late note, for one adult's own ask; the
+  // ack is the visible row.
+  'ack_eta_promised',
+  'ack_eta_deadline',
+  'ack_eta_late_note_sent',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
 ] as const satisfies readonly AuditVerb[];

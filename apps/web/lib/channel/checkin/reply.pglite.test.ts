@@ -24,6 +24,7 @@ import { CHECK_IN_ASK_TEMPLATE_KEY, CHECK_IN_STEP_DOWN_TEMPLATE_KEY } from './co
 import { NOTE_RETENTION_DAYS, purgeExpiredCheckInNotes } from './notes';
 import { eveningCheckInQuestion, handleEveningCheckInReply } from './reply';
 import type { EveningRequestReader } from './request';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 /**
  * The evening answer, against real Postgres and through the PRODUCTION reader.
@@ -562,6 +563,7 @@ describe('a diary answer through the real router', () => {
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+      ackEta: quietAckEtaPorts(),
       sendParentReaction: async () => ({ status: 'sent' }),
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),

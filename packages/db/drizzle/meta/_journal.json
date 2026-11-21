@@ -1674,6 +1674,13 @@
       "when": 1794365900000,
       "tag": "0258_family_timezone_resolved",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1795182925259,
+      "tag": "0262_ack_promises",
+      "breakpoints": true
     }
   ]
 }
