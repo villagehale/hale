@@ -221,6 +221,8 @@ export const OPS_PAGE_VOCABULARY = {
       'model_failed',
       'gate_exhausted',
       'time_unjudged',
+      'summary_too_long',
+      'summary_carries_destination',
     ],
   },
   calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },

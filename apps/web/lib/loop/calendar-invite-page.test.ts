@@ -52,6 +52,8 @@ describe('withInviteUnwrittenPage', () => {
     'model_failed',
     'gate_exhausted',
     'time_unjudged',
+    'summary_too_long',
+    'summary_carries_destination',
   ])(
     'policy on: a %s deferral returns the report untouched and pages #ops once',
     async (reason) => {
@@ -70,15 +72,12 @@ describe('withInviteUnwrittenPage', () => {
     },
   );
 
-  it.each(['summary_too_long', 'summary_carries_destination'])(
-    'policy on: a %s deferral is held by design before any model call, and pages no one',
-    async (reason) => {
-      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
-      const { wrapped, pages } = harness(deferred(reason));
-      await wrapped.send(REQUEST);
-      expect(pages).toEqual([]);
-    },
-  );
+  it('policy on: a deferral outside the writer vocabulary pages no one', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const { wrapped, pages } = harness(deferred('not_a_writer_reason'));
+    await wrapped.send(REQUEST);
+    expect(pages).toEqual([]);
+  });
 
   it('policy on: every parent texted, or a report with no parent legs, pages no one', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');

@@ -9,11 +9,11 @@ import type { OpsPager } from '~/lib/monitoring/failure-page';
  * family, #ops is told. A decorator on the invite port: the report comes back untouched, so
  * nothing here can change a placement or its invite.
  *
- * Pages for every deferral where the writer produced no sendable text: no client, no skill,
- * a failed call, every draft refused (`gate_exhausted`), or the time unjudged. The time
- * judge's failure and an unreadable zone share `time_unjudged` on the leg, and a missed
- * model failure costs more than a rare page for a bad zone. A summary that is too long or
- * carries a destination is held by design before any model call, and does not page.
+ * Pages for every deferral that left the parent without the text: no client, no skill, a
+ * failed call, every draft refused (`gate_exhausted`), the time unjudged, or a summary held
+ * before the model was called (too long, or carrying a destination). The time judge's failure
+ * and an unreadable zone share `time_unjudged` on the leg, and a missed model failure costs
+ * more than a rare page for a bad zone.
  */
 
 const WRITER_FAILURES = [
@@ -22,6 +22,8 @@ const WRITER_FAILURES = [
   'model_failed',
   'gate_exhausted',
   'time_unjudged',
+  'summary_too_long',
+  'summary_carries_destination',
 ] as const;
 type WriterFailure = (typeof WRITER_FAILURES)[number];
 
