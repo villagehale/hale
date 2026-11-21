@@ -7,6 +7,7 @@ import {
   type Skill,
   defineTool,
   invokeTool,
+  markUntrusted,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -23,6 +24,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
+import { coachEmailReader } from './read-email-tool';
 import {
   CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
@@ -2591,6 +2593,52 @@ describe('a reply written after read_email (VIL-628)', () => {
   it('positive control: the date and times the parent asked about survive the runtime', async () => {
     const answer = 'The form is due 2026-11-20, and the trip runs 9:30-11:30. Bring a lunch.';
     expect((await respond({ read: true, answer })).reply).toBe(answer);
+  });
+
+  it('with the untrusted mark on, a code the email split with < is still cut', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const handed: unknown[] = [];
+    const p = ports({
+      emailReader: coachEmailReader({
+        alertedSource: async () => ({
+          kind: 'gmail',
+          eventId: null,
+          gmailMessageId: 'gm-1',
+          private: false,
+        }),
+        familyChildren: async () => [],
+        gmailConnection: async () => ({ id: 'integration-1' }),
+        accessToken: async () => 'token-1',
+        fetchBody: async () => 'Field trip is Friday. Enter code 48<29<13 to sign.',
+      }),
+      runAgent: async (args) => {
+        const read = args.tools.find((tool) => tool.name === 'read_email');
+        if (!read) throw new Error('read_email was not offered');
+        handed.push(
+          await invokeTool(read, { gmailMessageId: 'gm-1' }, args.toolContext, args.guardDeps),
+        );
+        return answering('The trip is Friday. Enter code 48 29 13 to sign.')(args);
+      },
+    });
+    try {
+      const { reply } = await channelCoachRuntime(p).respond(turn('what did the school say?'), []);
+      expect(reply).toBe('The trip is Friday.');
+      expect(handed).toEqual([
+        {
+          read: true,
+          body: markUntrusted(
+            'email',
+            'body',
+            'Field trip is Friday. Enter code 48<29<13 to sign.',
+          ),
+          truncated: false,
+        },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
   });
 
   it("Hale's own site survives a read turn (positive control)", async () => {
