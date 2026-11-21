@@ -1,8 +1,13 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadClaimShadowContext } from '~/lib/channel/reconcile/candidate-rows';
+import { createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
+import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   type BrowserUsePlanInput,
@@ -839,6 +844,62 @@ describe('a stop that lands while the run is going', () => {
 
     expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
     expect(stopped.notices).toEqual([]);
+  });
+});
+
+describe('what a stopped run lets Hale tell its parent', () => {
+  const CANCELLED = 'That registration was cancelled.';
+  const noShadow: ClaimShadow = {
+    sweep: () => 'off',
+    coachTurn: () => 'off',
+    dispatch: () => 'off',
+  };
+  /** The real claim gate on the family's real rows; only the reader's answer is scripted. */
+  const claimGate = (familyId: string) =>
+    refuseUnbackedSend(
+      db.database,
+      { familyId, body: CANCELLED, now: NOW, lane: 'activity_followup' },
+      noShadow,
+      createClaimEnforcer({
+        enforces: () => true,
+        reader: scriptedClaimReader(() => [{ segment: 0, kind: 'cancelled', row: 'x1' }]),
+        loadContext: loadClaimShadowContext,
+      }),
+    );
+
+  it.each<[string, BrowserUsePlanResult]>([
+    ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
+    ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
+    ['payment details entered', { ...CLOSED, outcome: 'error', detail: 'payment_boundary' }],
+    [
+      'the check before payment',
+      { ...CLOSED, outcome: 'cancelled', detail: 'authorization_lapsed' },
+    ],
+  ])('ending at %s, "cancelled" stays unbacked after a stop', async (_name, ending) => {
+    const stopped = await dueFamily();
+    await runDueSignupPlans(db.database, { now: NOW }, hearing(runEndingAt(ending, opsStop)).deps);
+    expect(await finishedRow(stopped.offerId)).toMatchObject({
+      charged: 'nothing',
+      stoppedFrom: { outcome: ending.outcome, detail: ending.detail },
+    });
+    expect(await claimGate(stopped.familyId)).toEqual(['no_cancel_record']);
+
+    const tookBack = await dueFamily();
+    const parentTakesBack = () =>
+      cancelSignupPlan(db.database, {
+        offerId: tookBack.offerId,
+        familyId: tookBack.familyId,
+        actor: tookBack.parentUserId,
+        now: NOW,
+      });
+    await runDueSignupPlans(
+      db.database,
+      { now: NOW },
+      hearing(runEndingAt(ending, parentTakesBack)).deps,
+    );
+    expect(await finishedRow(tookBack.offerId)).toMatchObject({ charged: 'nothing' });
+    expect(await finishedRow(tookBack.offerId)).not.toHaveProperty('stoppedFrom');
+    expect(await claimGate(tookBack.familyId)).toEqual([]);
   });
 });
 
