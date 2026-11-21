@@ -11,25 +11,52 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
+import { asked, scriptedMemoryScreen } from './scripted-memory-screen.fixture';
 import { handleParentMemory } from './store';
 
 const NOW = new Date('2026-10-09T15:00:00.000Z');
 const ARRIVED = new Date('2026-10-03T14:00:00.000Z');
 const ON = { FAMILY_MEMORY_KINDS_ENABLED: 'true' };
-const OPENING = 'Here is what I have.';
-const CLOSING = 'Wrong or old?';
+const WRITTEN = 'Here is what I remember about your family.';
 
-function frameClient(): AgentClient {
-  return {
+interface Composed {
+  purpose?: string;
+  audience: string;
+  facts: string[];
+}
+
+/**
+ * The model at its client port: it records what the composer handed it and returns one
+ * fixed answer. No judgement is under test here; what is under test is which facts, with
+ * which provenance, reach the writer of the list (VIL-429, VIL-723). The list's own words
+ * are the model's, so no line is asserted.
+ */
+function capturingClient(): { client: AgentClient; composed: Composed[] } {
+  const composed: Composed[] = [];
+  const client = {
     messages: {
-      create: vi.fn(async () => ({
-        content: [{ type: 'text', text: JSON.stringify({ opening: OPENING, closing: CLOSING }) }],
-        usage: { input_tokens: 12, output_tokens: 8 },
-        stop_reason: 'end_turn',
-      })),
+      create: vi.fn(async (request: { messages: Array<{ content: unknown }> }) => {
+        const first = request.messages[0]?.content;
+        const text =
+          typeof first === 'string'
+            ? first
+            : ((first as Array<{ type: string; text?: string }>).find(
+                (block) => block.type === 'text',
+              )?.text ?? '{}');
+        composed.push(JSON.parse(text) as Composed);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ text: WRITTEN }) }],
+          usage: { input_tokens: 12, output_tokens: 8 },
+          stop_reason: 'end_turn',
+        };
+      }),
     },
   } as unknown as AgentClient;
+  return { client, composed };
 }
+
+/** Scripted: the screen read "what do you know about us" as a list (the eval reads words). */
+const LISTING = scriptedMemoryScreen({ request: () => asked('list') });
 
 describe('VIL-429 · a connector fact says where Hale saw it', () => {
   let db: TestDb;
@@ -134,18 +161,37 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
       inGroup: false,
       chatId: 'chat-direct',
     },
-  ): Promise<string | null> {
+  ): Promise<{
+    reply: string | null;
+    outcome: string;
+    onlyToAsker: boolean;
+    purpose: string | undefined;
+    facts: string[];
+  }> {
+    const { client, composed } = capturingClient();
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
-      body: 'what do you know',
+      body: 'what do you know about us?',
       now: NOW,
       inboundChannelMessageId: door ? await seedInbound(familyId, parentUserId, door) : null,
       env: ON,
-      replyClient: frameClient(),
+      replyClient: client,
+      screen: LISTING,
     });
-    return result.reply;
+    expect(composed).toHaveLength(1);
+    return {
+      reply: result.reply,
+      outcome: result.outcome,
+      onlyToAsker: result.onlyToAsker,
+      purpose: composed[0]?.purpose,
+      facts: composed[0]?.facts ?? [],
+    };
   }
+
+  const MAIL_LINE =
+    "soccer_day: Thursdays (source: Hale's own guess; seen: an email from Northside Rec, Oct 3; kept until they change it)";
+  const SWIM_LINE = "swimming: saturday (source: Hale's own guess; kept until they change it)";
 
   async function mailFamily() {
     const seeded = await seedFamily(db.database);
@@ -162,17 +208,15 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
 
   it('names the sender and the day for the parent whose mailbox it was', async () => {
     const { familyId, parentUserId } = await mailFamily();
-    const reply = await recall(familyId, parentUserId);
-    const lines = (reply ?? '').split('\n');
-    expect(lines[0]).toBe(OPENING);
-    expect(lines.at(-1)).toBe(CLOSING);
-    expect(lines.slice(1, -1).sort()).toEqual([
-      '- soccer_day: I think Thursdays (from the Northside Rec email on Oct 3)',
-      '- swimming: I think saturday (for now)',
-    ]);
-    expect(reply).not.toContain('SUBJECT_LINE_NEVER_SHOWN');
-    expect(reply).not.toContain('BODY_NEVER_SHOWN');
-    expect(reply).not.toContain('programs@');
+    const read = await recall(familyId, parentUserId);
+    expect(read.purpose).toBe('memory_list');
+    expect(read.reply).toBe(WRITTEN);
+    expect(read.onlyToAsker).toBe(false);
+    expect([...read.facts].sort()).toEqual([MAIL_LINE, SWIM_LINE]);
+    const handed = JSON.stringify(read.facts);
+    expect(handed).not.toContain('SUBJECT_LINE_NEVER_SHOWN');
+    expect(handed).not.toContain('BODY_NEVER_SHOWN');
+    expect(handed).not.toContain('programs@');
   });
 
   it('never lists a Gmail fact without its source', async () => {
@@ -180,31 +224,24 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
     // The sender is unreadable, so no label can be built.
     const blank = await seedEvent(familyId, 'gmail', { subject: 'no sender' });
     await seedInferred(familyId, 'pool_day', 'Mondays', blank);
-    const reply = await recall(familyId, parentUserId);
-    expect(reply).toContain('soccer_day');
-    for (const line of (reply ?? '').split('\n').filter((l) => l.startsWith('- '))) {
-      if (line.includes('soccer_day') || line.includes('pool_day')) {
-        expect(line).toMatch(/from the .+ email on /);
-      }
-    }
-    expect(reply).not.toContain('pool_day');
+    const { facts } = await recall(familyId, parentUserId);
+    expect(facts).toContain(MAIL_LINE);
+    expect(JSON.stringify(facts)).not.toContain('pool_day');
   });
 
   it("leaves a Gmail fact out for a co-parent, because the mailbox is the other adult's", async () => {
     const { familyId } = await mailFamily();
     const coParent = await seedCoParent(familyId);
-    const reply = await recall(familyId, coParent);
-    expect(reply).toContain('- swimming: I think saturday (for now)');
-    expect(reply).not.toContain('soccer_day');
-    expect(reply).not.toContain('Northside');
+    const { facts } = await recall(familyId, coParent);
+    expect(facts).toEqual([SWIM_LINE]);
+    expect(JSON.stringify(facts)).not.toContain('Northside');
   });
 
   it('leaves out a fact whose email Hale no longer holds', async () => {
     const { familyId, parentUserId, mail } = await mailFamily();
     await db.database.delete(schema.events).where(eq(schema.events.id, mail));
-    const reply = await recall(familyId, parentUserId);
-    expect(reply).toContain('swimming');
-    expect(reply).not.toContain('soccer_day');
+    const { facts } = await recall(familyId, parentUserId);
+    expect(facts).toEqual([SWIM_LINE]);
   });
 
   async function calendarFamily() {
@@ -221,22 +258,21 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
   }
 
   const CALENDAR_LINE =
-    '- soccer_day: I think Thursdays (from Soccer practice on your calendar, Oct 2)';
+    "soccer_day: Thursdays (source: Hale's own guess; seen: Soccer practice on their calendar, Oct 2; kept until they change it)";
 
   it('names a calendar event by title and day for the parent whose calendar it is', async () => {
     const { familyId, parentUserId } = await calendarFamily();
-    const reply = await recall(familyId, parentUserId);
-    expect(reply).toContain(CALENDAR_LINE);
-    expect(reply).not.toContain('DESCRIPTION_NEVER_SHOWN');
+    const { facts } = await recall(familyId, parentUserId);
+    expect(facts).toContain(CALENDAR_LINE);
+    expect(JSON.stringify(facts)).not.toContain('DESCRIPTION_NEVER_SHOWN');
   });
 
   it("leaves a calendar fact out for a co-parent, because the calendar is the other adult's", async () => {
     const { familyId, parentUserId, coParent, event } = await calendarFamily();
     await seedInferred(familyId, 'swimming', 'saturday');
-    const reply = await recall(familyId, coParent);
-    expect(reply).toContain('- swimming: I think saturday (for now)');
-    expect(reply).not.toContain('soccer_day');
-    expect(reply).not.toContain('Soccer practice');
+    const { facts } = await recall(familyId, coParent);
+    expect(facts).toEqual([SWIM_LINE]);
+    expect(JSON.stringify(facts)).not.toContain('Soccer practice');
 
     const read = (readerUserId: string) =>
       loadFactSources(db.database, {
@@ -275,29 +311,34 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
     });
   });
 
-  it('treats any turn not recorded as one-to-one as a group, and withholds every source', async () => {
+  it('never says the list in a group: a group turn answers the asker alone, and an unplaced turn says no value', async () => {
     const { familyId, parentUserId } = await mailFamily();
+    // A group turn: the list is written for the asker and goes only to their phone
+    // (router `onlyToAsker`), so it reads as their own 1:1, sources included.
     const groupOfFamilies = await recall(familyId, parentUserId, {
       inGroup: true,
       chatId: 'chat-not-the-household-group',
     });
-    expect(groupOfFamilies).toContain('swimming');
-    expect(groupOfFamilies).not.toContain('soccer_day');
-    expect(groupOfFamilies).not.toContain('Northside');
+    expect(groupOfFamilies.onlyToAsker).toBe(true);
+    expect(groupOfFamilies.purpose).toBe('memory_list');
+    expect([...groupOfFamilies.facts].sort()).toEqual([MAIL_LINE, SWIM_LINE]);
 
+    // A turn the door could not place: nobody knows who reads it, so no value is handed
+    // to the writer at all; it says the list is theirs to ask for one to one.
     for (const door of [{ inGroup: null, chatId: null }, null]) {
-      const reply = await recall(familyId, parentUserId, door);
-      expect(reply).toContain('swimming');
-      expect(reply).not.toContain('soccer_day');
+      const unplaced = await recall(familyId, parentUserId, door);
+      expect(unplaced.outcome).toBe('recall_withheld');
+      expect(unplaced.purpose).toBe('memory_list_private');
+      expect(unplaced.facts).toEqual([]);
+      expect(unplaced.onlyToAsker).toBe(false);
     }
 
     const direct = await recall(familyId, parentUserId, {
       inGroup: false,
       chatId: 'chat-not-the-household-group',
     });
-    expect(direct).toContain(
-      '- soccer_day: I think Thursdays (from the Northside Rec email on Oct 3)',
-    );
+    expect(direct.onlyToAsker).toBe(false);
+    expect(direct.facts).toContain(MAIL_LINE);
   });
 
   it('withholds a source in the group thread, from a teen item, and from no reader', async () => {

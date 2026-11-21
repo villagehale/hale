@@ -65,6 +65,28 @@ process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'false';
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
+// Regex judge path: the meaning-screen sweep is its own eval (run-meaning-screen-eval.mjs).
+// The flag is read through @hale/flags, never process.env: a lit sweep would grade a
+// different judge than the one CI replays, so the run refuses rather than re-keying.
+const SWEEP_FLAG_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'meaning-screen',
+  'flag.ts',
+);
+
+async function refuseLitSweep() {
+  const { modelReadSweepEnabled } = await importTs(SWEEP_FLAG_SRC);
+  if (!modelReadSweepEnabled()) return;
+  console.error(
+    'friend-marks: MODEL_READ_SWEEP_ENABLED is lit; this suite grades the regex judge. Unset it. nothing run.',
+  );
+  process.exit(2);
+}
+
 function inputFor(voice, fixture) {
   const base = voice.nameAskVoiceInput(
     fixture.over.parentWords,
@@ -142,6 +164,7 @@ async function estimate() {
 
 async function record() {
   assertRunFlags(['--env-file', '--max-usd']);
+  await refuseLitSweep();
   if (process.argv.includes('--live')) {
     const cap = readCapUsd();
     if (cap === null || cap > HARD_CAP_USD) {

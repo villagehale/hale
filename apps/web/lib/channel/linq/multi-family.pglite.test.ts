@@ -492,6 +492,52 @@ describe('multi-family zero-setup', () => {
     expect(own.slice.calendar[0]).toMatch(/\d{1,2}:\d{2}/);
   });
 
+  it('with the kinds flag on, a fact a parent forgot no longer feeds the private slice but still blocks group text (VIL-723)', async () => {
+    const homes = await threeFamilies();
+    const wire = sender();
+    // The family has spoken in the shared thread, so its own slice is readable.
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: ADA,
+        text: 'Hale, Saturday swim?',
+        providerMessageId: 'in-ask-forgot',
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      {
+        listHandles: listOf(SEVEN),
+        reader: reading('question'),
+        composer: fakeSharedGroupComposer(),
+      },
+    );
+    // Retired, as a parent's forget retires it (valid_until set, nothing superseding it).
+    await db.database
+      .update(schema.familyMemoryFacts)
+      .set({ validUntil: NOW })
+      .where(eq(schema.familyMemoryFacts.familyId, homes.ada.familyId));
+    const own = () =>
+      readFamilySliceForAudience(db.database, {
+        chatId: CHAT,
+        dataFamilyId: homes.ada.familyId,
+        audience: homes.ada.familyId,
+      });
+
+    vi.stubEnv('FAMILY_MEMORY_KINDS_ENABLED', 'true');
+    const lit = await own();
+    expect(lit.reason).toBe('present');
+    expect(lit.slice.memory).not.toContain(MEMORY);
+    expect(lit.slice.retiredMemory).toEqual([MEMORY]);
+
+    // Off, the slice is read exactly as before: every key, nothing split out.
+    vi.stubEnv('FAMILY_MEMORY_KINDS_ENABLED', 'TRUE');
+    const dark = await own();
+    expect(dark.slice.memory).toEqual([MEMORY]);
+    expect(dark.slice.retiredMemory).toBeUndefined();
+  });
+
   it('introduces once when Hale is added, then a family can leave without a phrase', async () => {
     const homes = await threeFamilies();
     const wire = sender();

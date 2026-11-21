@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { writeFact } from '~/lib/memory/facts';
 import { noteDutyBurden } from './burden';
 import { projectDutyOnFamilyEvent } from './calendar';
@@ -29,6 +31,15 @@ export function readDutyUndo(text: string): DutyUndo | null {
   const name = match?.[1];
   if (!name) return null;
   return { kind: 'reassign', name: name.charAt(0).toUpperCase() + name.slice(1) };
+}
+
+async function dutyUndoForApply(text: string): Promise<DutyUndo | null> {
+  if (!modelReadSweepEnabled()) return readDutyUndo(text);
+  const reading = await sharedMeaningScreen().read({ screen: 'duty_undo', text });
+  if (!reading) return null;
+  if (reading.kind === 'clear') return { kind: 'clear' };
+  if (reading.kind === 'reassign' && reading.name) return { kind: 'reassign', name: reading.name };
+  return null;
 }
 
 export interface DutyUndoResult {
@@ -73,7 +84,7 @@ export async function applyDutyUndo(
     spoken: null,
   });
   if (!coparentDutyMemoryEnabled()) return skipped('flag_off');
-  const parsed = readDutyUndo(input.text);
+  const parsed = await dutyUndoForApply(input.text);
   if (!parsed) return skipped('not_undo');
   if (input.parentCount < 2) return skipped('single_parent');
 

@@ -8,7 +8,7 @@ import {
   type ReplyCopyCheck,
   type ReplyCopyFailure,
   type ReplyCopyLanguage,
-  validateReplyCopy,
+  validateReplyCopySweep,
 } from './validate';
 
 /**
@@ -22,6 +22,8 @@ import {
  */
 
 const MAX_TOKENS = 320;
+/** The most a caller may raise the budget to (a family-memory list, VIL-723). */
+const MAX_TOKENS_CEILING = 2048;
 
 /** First balanced `{…}` in a model answer, or null. Kept local so this module
  * does not import the voice composer (that graph reaches the worker reviewer). */
@@ -61,6 +63,10 @@ export interface ReplyCopyRequest {
   /** Locked closing sentence. Required for `frame`. */
   fallbackClosing?: string;
   skill?: Skill;
+  /** A skill other than `reply-copy`, loaded by name (rule #2). Ignored when `skill` is set. */
+  skillName?: string;
+  /** Output budget. Absent: the short-line default. Clamped to a ceiling. */
+  maxTokens?: number;
 }
 
 export interface ReplyCopyResult {
@@ -154,6 +160,11 @@ async function auditFallback(
   }
 }
 
+function outputBudget(requested: number | undefined): number {
+  if (requested === undefined || !Number.isFinite(requested) || requested <= 0) return MAX_TOKENS;
+  return Math.min(Math.floor(requested), MAX_TOKENS_CEILING);
+}
+
 function held(reason: ReplyCopyResult['reason']): ReplyCopyResult {
   return { source: 'held', text: '', closing: null, reason };
 }
@@ -161,7 +172,7 @@ function held(reason: ReplyCopyResult['reason']): ReplyCopyResult {
 export async function composeReplyCopy(request: ReplyCopyRequest): Promise<ReplyCopyResult> {
   let skill: Skill;
   try {
-    skill = request.skill ?? (await loadCronSkill('reply-copy'));
+    skill = request.skill ?? (await loadCronSkill(request.skillName ?? 'reply-copy'));
   } catch (err) {
     console.error({ err, familyId: request.familyId }, 'reply-copy: skill load failed');
     const audited = await auditFallback(
@@ -200,7 +211,7 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
           tools: [],
           client: request.client,
           maxSteps: 1,
-          maxTokens: MAX_TOKENS,
+          maxTokens: outputBudget(request.maxTokens),
           toolContext: { familyId: request.familyId, actor: 'system' },
           guardDeps,
         });
@@ -211,12 +222,18 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
         if (!parsed) {
           reason = 'parse';
         } else if ('opening' in parsed) {
-          const openFail = validateReplyCopy(parsed.opening, checkFor(request, 'opening'));
-          const closeFail = validateReplyCopy(parsed.closing, checkFor(request, 'closing'));
+          const openFail = await validateReplyCopySweep(
+            parsed.opening,
+            checkFor(request, 'opening'),
+          );
+          const closeFail = await validateReplyCopySweep(
+            parsed.closing,
+            checkFor(request, 'closing'),
+          );
           if (openFail || closeFail) reason = openFail ?? closeFail;
           else kept = { text: parsed.opening, closing: parsed.closing };
         } else {
-          const failure = validateReplyCopy(parsed.text, checkFor(request, 'prose'));
+          const failure = await validateReplyCopySweep(parsed.text, checkFor(request, 'prose'));
           if (failure) reason = failure;
           else kept = { text: parsed.text, closing: null };
         }

@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
 import { familyMemoryKindsHandler } from './handler';
+import { asked, refsFor, scriptedMemoryScreen } from './scripted-memory-screen.fixture';
 import {
   handleParentMemory,
   loadRecommendationMemory,
@@ -30,6 +31,32 @@ function scriptedReply(payload: Record<string, string>): AgentClient {
     },
   } as unknown as AgentClient;
 }
+
+/** The context the composer handed the model on its first call (its first user turn). */
+function firstContext(client: AgentClient): { purpose?: string; facts: string[] } {
+  const create = client.messages.create as unknown as {
+    mock: { calls: Array<[{ messages: Array<{ content: unknown }> }]> };
+  };
+  const content = create.mock.calls[0]?.[0].messages[0]?.content;
+  const text =
+    typeof content === 'string'
+      ? content
+      : ((content as Array<{ type: string; text?: string }>).find((b) => b.type === 'text')?.text ??
+        '{}');
+  return JSON.parse(text) as { purpose?: string; facts: string[] };
+}
+
+// The screen's readings are scripted per test: how the model reads real wording, in any
+// language, is the meaning-screen eval (rule #8). What these tests hold is what is acted on.
+const FORGET_SWIMMING = scriptedMemoryScreen({
+  request: () => asked('forget', { target: 'swimming' }),
+  target: (_text, facts) => ({ hit: true, refs: refsFor(facts, 'swimming') }),
+});
+const CORRECT_SWIMMING = scriptedMemoryScreen({
+  request: () => asked('correct', { target: 'swimming', value: 'not for us' }),
+  target: (_text, facts) => ({ hit: true, refs: refsFor(facts, 'swimming'), value: 'not for us' }),
+});
+const LISTING = scriptedMemoryScreen({ request: () => asked('list') });
 
 describe('migration 0141 backfill', () => {
   let db: TestDb;
@@ -206,6 +233,7 @@ describe('family memory kinds', () => {
       inboundChannelMessageId: inbound?.id ?? null,
       env: ON,
       sendGroup,
+      screen: FORGET_SWIMMING,
     });
 
     expect(result).toMatchObject({
@@ -260,6 +288,7 @@ describe('family memory kinds', () => {
         category: 'reply',
         status: 'delivered',
         providerChatId: `one-${familyId}`,
+        inGroup: false,
       })
       .returning({ id: schema.channelMessages.id });
 
@@ -267,12 +296,13 @@ describe('family memory kinds', () => {
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
-      body: 'correct swimming: not for us',
+      body: 'swimming is not for us any more',
       now: NOW,
       inboundChannelMessageId: inbound?.id ?? null,
       env: LOCKED,
       sendGroup,
       replyClient: scriptedReply({ text: modelReply }),
+      screen: CORRECT_SWIMMING,
     });
 
     expect(result.corrected).toBe(1);
@@ -375,7 +405,7 @@ describe('family memory kinds', () => {
     expect(second.signalCount).toBe(1);
   });
 
-  it('answers what do you know with the locked list and leaves teens and receipts out', async () => {
+  it('writes what do you know from the facts, and leaves teens and receipts out of them', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     const teen = await seedChild(db.database, familyId, 'Noa', 170, undefined, NOW);
     await writeFact(db.database, {
@@ -438,29 +468,43 @@ describe('family memory kinds', () => {
       sourcedAt: NOW,
       signalCount: 0,
     });
-    const opening = 'Here is what I have for your family.';
-    const closing = 'Wrong or old?';
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerChatId: `one-${familyId}`,
+        inGroup: false,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const written = 'Here is what I remember: swimming, saturday (my guess), and midtown.';
+    const client = scriptedReply({ text: written });
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
-      body: 'what do you know',
+      body: 'what do you know about us?',
       now: NOW,
-      inboundChannelMessageId: null,
+      inboundChannelMessageId: inbound?.id ?? null,
       env: LOCKED,
-      replyClient: scriptedReply({ opening, closing }),
+      replyClient: client,
+      screen: LISTING,
     });
-    expect(result.reply).toBe(
-      [
-        opening,
-        '- swimming: I think saturday (for now)',
-        '- district: midtown (lasting, you told me)',
-        closing,
-      ].join('\n'),
-    );
-    expect(result.reply).not.toContain('SECRET_TEEN');
-    expect(result.reply).not.toContain('Noa');
-    expect(result.reply).not.toContain('health_checkpoint');
-    expect(result.reply).not.toMatch(/reply stop|unsubscribe/i);
+    // Every word is the model's; code hands it the facts with where each came from.
+    expect(result).toMatchObject({ claimed: true, outcome: 'recalled', reply: written });
+    const context = firstContext(client);
+    expect(context.purpose).toBe('memory_list');
+    expect([...context.facts].sort()).toEqual([
+      'district: midtown (source: the parent told Hale; kept until they change it)',
+      "swimming: saturday (source: Hale's own guess; seen once)",
+    ]);
+    const handed = JSON.stringify(context);
+    expect(handed).not.toContain('SECRET_TEEN');
+    expect(handed).not.toContain('Noa');
+    expect(handed).not.toContain('health_checkpoint');
   });
 
   it('lists one-offs in recall and hides an expired temporary', async () => {

@@ -51,7 +51,7 @@ const ALLOWED: Record<string, string> = {
   'apps/web/lib/channel/intake/cold-start/ledger.ts': 'Hale’s own stop-asking record',
   'apps/web/lib/channel/linq/logistics-poll.ts': 'the household logistics poll, shared by R7',
   'apps/web/lib/channel/linq/multi-family.ts':
-    'FOLLOW-UP (VIL-599): fact keys feed the group deny list (wants every key) and the private aside (wants a reader); not yet split',
+    'FOLLOW-UP (VIL-599): fact keys feed the group deny list (every key) and the private aside (live keys only while FAMILY_MEMORY_KINDS_ENABLED is on, VIL-723; still wants a reader)',
   'apps/worker/src/tools/registry.ts':
     'Reviewer verification tools on namespaced keys; they return booleans, not fact text',
 };

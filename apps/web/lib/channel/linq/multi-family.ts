@@ -26,6 +26,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
+import { familyMemoryKindsEnabled } from '~/lib/memory/kinds';
 import { type FamilyAvailability, composeCommonTime, familyClock } from './common-time';
 import {
   type CommonTimePlanPorts,
@@ -93,7 +94,14 @@ export type PrivateFamilySurface = (typeof PRIVATE_FAMILY_SURFACES)[number];
 
 export interface FamilyPrivateSlice {
   familyId: string;
+  /** Keys of the family's live memory facts: what a private aside may be written from. */
   memory: string[];
+  /**
+   * Keys of facts no longer live (a parent forgot one, a writer retired one), for the deny
+   * lists only: refusing more group text is safe, writing from a forgotten fact is not
+   * (VIL-723). Absent: none were split out (the kinds flag is off, or a test slice).
+   */
+  retiredMemory?: string[];
   calendar: string[];
   email: string[];
   children: string[];
@@ -937,6 +945,7 @@ async function readFamilyPrivateSlice(
       .select({
         familyId: schema.familyMemoryFacts.familyId,
         factKey: schema.familyMemoryFacts.factKey,
+        validUntil: schema.familyMemoryFacts.validUntil,
       })
       .from(schema.familyMemoryFacts)
       .where(eq(schema.familyMemoryFacts.familyId, familyId)),
@@ -979,10 +988,26 @@ async function readFamilyPrivateSlice(
       ? zoneRows[0].timezone
       : DEFAULT_TIMEZONE;
 
+  // With the kinds flag on, a fact a parent forgot (or a writer retired) no longer feeds
+  // the private aside; its key still blocks group text. Off: every key, as before.
+  const ownFacts = facts.filter((row) => row.familyId === familyId);
+  const splitRetired = familyMemoryKindsEnabled();
+  const liveKeys = new Set(
+    ownFacts.filter((row) => !splitRetired || row.validUntil === null).map((row) => row.factKey),
+  );
   return {
     familyId: familyId,
     children: kids.filter((row) => row.familyId === familyId).map((row) => row.name),
-    memory: facts.filter((row) => row.familyId === familyId).map((row) => row.factKey),
+    memory: splitRetired ? [...liveKeys] : ownFacts.map((row) => row.factKey),
+    ...(splitRetired
+      ? {
+          retiredMemory: [
+            ...new Set(
+              ownFacts.filter((row) => !liveKeys.has(row.factKey)).map((row) => row.factKey),
+            ),
+          ],
+        }
+      : {}),
     // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
     // one parent's own Google mirror is excluded by the household-row predicate.
     calendar: events
@@ -1019,7 +1044,13 @@ async function denyListForChat(database: Database, chatId: string): Promise<stri
   const tokens: string[] = [];
   for (const familyId of households) {
     const slice = await readFamilyPrivateSlice(database, familyId);
-    tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
+    tokens.push(
+      ...slice.children,
+      ...slice.memory,
+      ...(slice.retiredMemory ?? []),
+      ...slice.email,
+      ...slice.signups,
+    );
     // Calendar titles block leaks too; the clock suffix is not a deny token.
     tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));
   }

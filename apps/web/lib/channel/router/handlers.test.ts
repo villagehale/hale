@@ -1029,8 +1029,8 @@ describe('the shipped order', () => {
       // Explicit signup sentence only. Ahead of registration so that reader
       // cannot swallow "sign us up", and it never claims a bare yes.
       'authorized_signup',
-      // Exact memory phrases only, and only with the kinds flag on. Flag off
-      // claims nothing, so a bare yes never lands here.
+      // What the parent asked of Hale's memory, read by the model (any wording,
+      // any language), and only with the kinds flag on. Flag off claims nothing.
       'family_memory_kinds',
       'registration',
       'rec_morning',

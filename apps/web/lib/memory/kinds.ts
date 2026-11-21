@@ -12,16 +12,12 @@
  */
 
 import { isEnabled } from '@hale/flags';
-// Relative on purpose. The coach eval loads this file through context.ts, and
-// the tsx loader there cannot resolve the web app's `~` alias.
-import { copyLanguage } from '../channel/language';
 
 export const FAMILY_MEMORY_KINDS_ENABLED_ENV = 'FAMILY_MEMORY_KINDS_ENABLED';
 
 export type MemoryKind = 'lasting' | 'temporary' | 'one_off';
 export type MemorySource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
 export type PromotionSignal = 'repeat_ask' | 'booking' | 'positive_feedback';
-export type MemoryKindLanguage = 'en' | 'fr';
 
 export type MemoryKindEnv = Record<string, string | undefined>;
 
@@ -43,290 +39,12 @@ const LASTING_KEYS = new Set([
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TERM_MS = 120 * 24 * 60 * 60 * 1000;
 
-/**
- * Locked parent-facing copy. ASCII only. `{token}` is filled before a send.
- * French is tu/vous-neutral except where the sentence itself is fixed.
- */
-export const MEMORY_KIND_COPY = {
-  en: {
-    recall:
-      'Here\'s what I have for your family:\n{list}\nWrong or old? Text "correct <key>: <value>" or "forget <key>".',
-    forgotten: 'Done, I forgot {key}.',
-    corrected: 'Got it. {key} is now {value}.',
-    nothing:
-      'I didn\'t find anything to forget there. Text "what do you know" to see what I have, then "forget <key>".',
-    refused: 'I keep that one, it\'s a record. Text "what do you know" to see what can be changed.',
-  },
-  fr: {
-    recall:
-      'Voici ce que j\'ai sur la famille :\n{list}\nPour changer : "corrige <cle> : <valeur>" ou "oublie <cle>".',
-    forgotten: "C'est oublie : {key}.",
-    corrected: "C'est corrige : {key} est maintenant {value}.",
-    nothing: 'Rien a oublier de ce cote. "que sais-tu" montre ce que j\'ai, puis "oublie <cle>".',
-    refused: 'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
-  },
-} as const;
-
-/** Lines and variants the six keys above do not hold on their own. */
-export const MEMORY_KIND_LINES = {
-  en: {
-    recallEmpty: "I don't have anything saved about your family yet.",
-    parent: '- {key}: {value} ({term}, you told me)',
-    calendar: '- {key}: {value} ({term}, from your calendar)',
-    inferred: '- {key}: I think {value} (for now)',
-    inferredEmail: '- {key}: I think {value} (from the {from} email on {on})',
-    inferredCalendar: '- {key}: I think {value} (from {title} on your calendar, {on})',
-    calendarTitled: '- {key}: {value} ({term}, from {title} on your calendar, {on})',
-    termLasting: 'lasting',
-    termTemporary: 'for now',
-    forgottenMany: 'Done, I forgot {n} things.',
-  },
-  fr: {
-    recallEmpty: "Je n'ai encore rien note sur la famille.",
-    parent: '- {key} : {value} ({term}, dit par un parent)',
-    calendar: '- {key} : {value} ({term}, vu dans le calendrier)',
-    inferred: "- {key} : je crois que {value} (pour l'instant)",
-    inferredEmail: '- {key} : je crois que {value} (vu dans le courriel de {from}, le {on})',
-    inferredCalendar: '- {key} : je crois que {value} (vu dans le calendrier : {title}, le {on})',
-    calendarTitled: '- {key} : {value} ({term}, vu dans le calendrier : {title}, le {on})',
-    termLasting: 'durable',
-    termTemporary: "pour l'instant",
-    forgottenMany: "C'est oublie : {n} elements.",
-  },
-} as const;
-
-export const MEMORY_RECALL_LINES_PER_BUBBLE = 10;
-
-export type MemoryKindCopyKey = keyof (typeof MEMORY_KIND_COPY)['en'];
-
 export function familyMemoryKindsEnabled(env: MemoryKindEnv = process.env): boolean {
   return isEnabled('family-memory-kinds', undefined, env);
 }
 
-export function memoryKindBodies(): string[] {
-  const bodies: string[] = [];
-  for (const language of ['en', 'fr'] as const) {
-    for (const key of Object.keys(MEMORY_KIND_COPY.en) as MemoryKindCopyKey[]) {
-      bodies.push(MEMORY_KIND_COPY[language][key]);
-    }
-    for (const key of Object.keys(
-      MEMORY_KIND_LINES.en,
-    ) as (keyof (typeof MEMORY_KIND_LINES)['en'])[]) {
-      bodies.push(MEMORY_KIND_LINES[language][key]);
-    }
-  }
-  return bodies;
-}
-
 const MEMORY_TOKEN = /\{[a-zA-Z]+\}/;
 const MEMORY_BANNED = /reply stop|unsubscribe|\b(booked|enrolled|signed up)\b/i;
-
-export class MemoryKindCopyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'MemoryKindCopyError';
-  }
-}
-
-function fillMemory(
-  template: string,
-  params: Record<string, string | null | undefined>,
-  required: readonly string[],
-  _language: MemoryKindLanguage,
-): string {
-  const bag = new Map<string, string>();
-  for (const key of required) {
-    const value = params[key]?.trim();
-    if (!value || /[{}]/.test(value)) throw new MemoryKindCopyError(`missing ${key}`);
-    bag.set(key, value);
-  }
-  const rendered = template.replace(/\{([a-zA-Z]+)\}/g, (_match, key: string) => {
-    const value = bag.get(key);
-    if (!value) throw new MemoryKindCopyError(`missing ${key}`);
-    return value;
-  });
-  if (MEMORY_TOKEN.test(rendered)) throw new MemoryKindCopyError('unrendered');
-  if (MEMORY_BANNED.test(rendered)) throw new MemoryKindCopyError('banned');
-  return rendered;
-}
-
-/** Where a connector fact was seen, already worded as data: `on` is the reader's day. */
-export type MemoryRecallSeenIn =
-  | { kind: 'email'; from: string; on: string }
-  | { kind: 'calendar'; title: string; on: string };
-
-export interface MemoryRecallItem {
-  key: string;
-  value: string;
-  source: MemorySource;
-  kind: MemoryKind;
-  /** Null when the fact did not come from Gmail or Calendar. */
-  seenIn: MemoryRecallSeenIn | null;
-}
-
-function recallParts(language: MemoryKindLanguage): { header: string; footer: string } {
-  const [header, footer] = MEMORY_KIND_COPY[language].recall.split('\n{list}\n');
-  if (!header || !footer) throw new MemoryKindCopyError('recall');
-  return { header, footer };
-}
-
-function recallTerm(language: MemoryKindLanguage, kind: MemoryKind): string {
-  return kind === 'lasting'
-    ? MEMORY_KIND_LINES[language].termLasting
-    : MEMORY_KIND_LINES[language].termTemporary;
-}
-
-function recallLine(language: MemoryKindLanguage, item: MemoryRecallItem): string {
-  const key = item.key.trim();
-  const value = item.value.replace(/\s+/g, ' ').trim();
-  const seen = item.seenIn;
-  if (seen?.kind === 'email') {
-    return fillMemory(
-      MEMORY_KIND_LINES[language].inferredEmail,
-      { key, value, from: seen.from, on: seen.on },
-      ['key', 'value', 'from', 'on'],
-      language,
-    );
-  }
-  if (seen?.kind === 'calendar') {
-    return item.source === 'calendar'
-      ? fillMemory(
-          MEMORY_KIND_LINES[language].calendarTitled,
-          { key, value, term: recallTerm(language, item.kind), title: seen.title, on: seen.on },
-          ['key', 'value', 'term', 'title', 'on'],
-          language,
-        )
-      : fillMemory(
-          MEMORY_KIND_LINES[language].inferredCalendar,
-          { key, value, title: seen.title, on: seen.on },
-          ['key', 'value', 'title', 'on'],
-          language,
-        );
-  }
-  if (item.source === 'inferred') {
-    return fillMemory(
-      MEMORY_KIND_LINES[language].inferred,
-      { key, value },
-      ['key', 'value'],
-      language,
-    );
-  }
-  const template =
-    item.source === 'calendar'
-      ? MEMORY_KIND_LINES[language].calendar
-      : MEMORY_KIND_LINES[language].parent;
-  return fillMemory(
-    template,
-    { key, value, term: recallTerm(language, item.kind) },
-    ['key', 'value', 'term'],
-    language,
-  );
-}
-
-export interface MemoryRecallParts {
-  /** Set when there is nothing to list. The header, lines, and footer are then empty. */
-  empty: string | null;
-  header: string;
-  lines: string[];
-  footer: string;
-}
-
-/**
- * The locked recall, split so a model may rewrite only the opening and the
- * closing. The lines themselves stay the locked list. Receipts are dropped.
- */
-export function memoryRecallParts(
-  language: MemoryKindLanguage,
-  items: readonly MemoryRecallItem[],
-): MemoryRecallParts {
-  const visible = items.filter(
-    (item) =>
-      item.source !== 'receipt' && item.key.trim().length > 0 && item.value.trim().length > 0,
-  );
-  if (visible.length === 0) {
-    return { empty: MEMORY_KIND_LINES[language].recallEmpty, header: '', lines: [], footer: '' };
-  }
-  const { header, footer } = recallParts(language);
-  return {
-    empty: null,
-    header,
-    lines: visible.map((item) => recallLine(language, item)),
-    footer,
-  };
-}
-
-/** Newest first. At most ten lines a bubble. Header on the first, footer on the last. */
-export function paginateMemoryRecall(
-  header: string,
-  lines: readonly string[],
-  footer: string,
-): string[] {
-  const bubbles: string[] = [];
-  for (let index = 0; index < lines.length; index += MEMORY_RECALL_LINES_PER_BUBBLE) {
-    const page = lines.slice(index, index + MEMORY_RECALL_LINES_PER_BUBBLE);
-    const parts: string[] = [];
-    if (index === 0 && header) parts.push(header);
-    parts.push(...page);
-    if (index + MEMORY_RECALL_LINES_PER_BUBBLE >= lines.length && footer) parts.push(footer);
-    bubbles.push(parts.join('\n'));
-  }
-  return bubbles;
-}
-
-/**
- * Newest first. At most ten lines a bubble. The header is only on the first
- * bubble and the "wrong or old" line only on the last. An empty list is its
- * own sentence. Receipts are dropped. Inferred rows always say "I think".
- */
-export function renderMemoryRecall(
-  language: MemoryKindLanguage,
-  items: readonly MemoryRecallItem[],
-): string[] {
-  const parts = memoryRecallParts(language, items);
-  if (parts.empty) return [parts.empty];
-  return paginateMemoryRecall(parts.header, parts.lines, parts.footer);
-}
-
-export function renderMemoryForgotten(
-  language: MemoryKindLanguage,
-  keys: readonly string[],
-): string {
-  if (keys.length === 1 && keys[0]) {
-    return fillMemory(MEMORY_KIND_COPY[language].forgotten, { key: keys[0] }, ['key'], language);
-  }
-  if (keys.length > 1) {
-    return fillMemory(
-      MEMORY_KIND_LINES[language].forgottenMany,
-      { n: String(keys.length) },
-      ['n'],
-      language,
-    );
-  }
-  throw new MemoryKindCopyError('missing key');
-}
-
-export function renderMemoryCorrected(
-  language: MemoryKindLanguage,
-  key: string,
-  value: string,
-): string {
-  return fillMemory(
-    MEMORY_KIND_COPY[language].corrected,
-    { key, value },
-    ['key', 'value'],
-    language,
-  );
-}
-
-export function memoryKindCopy(language: MemoryKindLanguage, key: MemoryKindCopyKey): string {
-  return MEMORY_KIND_COPY[language][key];
-}
-
-export function memoryKindLanguage(
-  primaryLanguage: string | null | undefined,
-): MemoryKindLanguage | null {
-  return copyLanguage(primaryLanguage);
-}
 
 /**
  * The only way a placeholder may be handed to a transport. The kinds flag is
@@ -537,46 +255,11 @@ export function toFamilyMemoryExportFact(row: {
   };
 }
 
-export interface MemoryParentIntent {
-  kind: 'recall' | 'forget' | 'correct';
-  /** Forget target. Null means the latest belief ("forget that"). */
-  needle: string | null;
-  factKey: string | null;
-  value: string | null;
-}
-
-const RECALL =
-  /^(?:what do you know(?: about us)?|what does hale know|que sais-tu(?: de nous)?|que sais tu(?: de nous)?)\??$/i;
-const FORGET = /^(?:forget|oublie)(?:\s+(.+))?$/i;
-const CORRECT = /^(?:correct|corrige)\s+([a-z0-9_]{1,80})\s*(?::|to|a)\s+(\S(?:.*\S)?)$/i;
-const FORGET_LATEST = new Set(['that', 'this', 'ca', 'cela', 'it']);
-
 /**
- * Deterministic. No model. A sentence that is not one of these shapes is
- * not claimed, so the coach still answers it.
+ * Whether a booking's own title touches an inferred one-off, for a promotion signal.
+ * Never a reader of a parent's words: which fact a parent means is the model's
+ * `memory_target` read (request.ts), not a substring of what they typed.
  */
-export function parseMemoryParentIntent(body: string): MemoryParentIntent | null {
-  const text = body.trim().replace(/\s+/g, ' ');
-  if (!text || text.length > 240) return null;
-  if (RECALL.test(text)) return { kind: 'recall', needle: null, factKey: null, value: null };
-  const correction = CORRECT.exec(text);
-  if (correction?.[1] && correction[2]) {
-    return {
-      kind: 'correct',
-      needle: null,
-      factKey: correction[1].toLowerCase(),
-      value: correction[2].slice(0, 200),
-    };
-  }
-  const forget = FORGET.exec(text);
-  if (!forget) return null;
-  const rest = forget[1]?.trim().toLowerCase() ?? '';
-  if (!rest || FORGET_LATEST.has(rest)) {
-    return { kind: 'forget', needle: null, factKey: null, value: null };
-  }
-  return { kind: 'forget', needle: rest, factKey: null, value: null };
-}
-
 export function memoryTextOverlaps(factKey: string, factValue: unknown, needle: string): boolean {
   const n = normMemoryKey(needle);
   if (n.length < 4) return false;

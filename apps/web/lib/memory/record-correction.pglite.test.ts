@@ -8,6 +8,7 @@ import { readFamilyPlace } from '~/lib/channel/off-domain/place';
 import { loadAgentContext } from '~/lib/coach/context';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
+import { asked, refsFor, scriptedMemoryScreen } from './scripted-memory-screen.fixture';
 import { handleParentMemory } from './store';
 
 /**
@@ -153,14 +154,23 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     const { familyId, parentUserId } = await family();
     await marked(familyId, null, 'home_city', { text: 'Saskatoon', record: 'place' }, 150);
 
+    // The screen's reading is scripted; the model's reading of real wording is the eval.
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
-      body: 'correct home_city: Regina',
+      body: 'we live in Regina now, not Saskatoon',
       now: NOW,
       inboundChannelMessageId: null,
       env: LOCKED,
       replyClient: scriptedReply({ text: 'Got it.' }),
+      screen: scriptedMemoryScreen({
+        request: () => asked('correct', { target: 'where we live', value: 'Regina' }),
+        target: (_text, facts) => ({
+          hit: true,
+          refs: refsFor(facts, 'home_city'),
+          value: 'Regina',
+        }),
+      }),
     });
     expect(result.corrected).toBe(1);
 

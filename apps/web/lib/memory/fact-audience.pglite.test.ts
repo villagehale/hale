@@ -19,6 +19,12 @@ import {
 } from '~/lib/testing/pglite';
 import { commitClassifiedMemory } from './classify-write';
 import { type FactHeard, writeFact } from './facts';
+import {
+  type MemoryScreenScript,
+  asked,
+  refsFor,
+  scriptedMemoryScreen,
+} from './scripted-memory-screen.fixture';
 import { handleParentMemory, recallFamilyMemory } from './store';
 import { runFamilySynthesis } from './synthesis';
 
@@ -30,6 +36,25 @@ import { runFamilySynthesis } from './synthesis';
  */
 
 const NOW = new Date('2026-11-08T15:00:00.000Z');
+
+/**
+ * What the meaning screen reads a forget or a correction as, scripted per command: the
+ * model's own reading of real wording is the meaning-screen eval. What is under test is
+ * which facts the read is shown for this sender, and what is acted on.
+ */
+function forgetting(key: string): MemoryScreenScript {
+  return {
+    request: () => asked('forget', { target: key }),
+    target: (_text, facts) => ({ hit: true, refs: refsFor(facts, key) }),
+  };
+}
+
+function correcting(key: string, value: string): MemoryScreenScript {
+  return {
+    request: () => asked('correct', { target: key, value }),
+    target: (_text, facts) => ({ hit: true, refs: refsFor(facts, key), value, key }),
+  };
+}
 
 let db: TestDb;
 
@@ -169,11 +194,12 @@ describe('a fact records who said it', () => {
       await handleParentMemory(db.database, {
         familyId,
         parentUserId: b,
-        body: `correct ${factKey}: not for us`,
+        body: `${factKey} is not for us`,
         now: NOW,
         inboundChannelMessageId: inbound?.id ?? null,
         env: { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
         replyClient: null,
+        screen: scriptedMemoryScreen(correcting(factKey, 'not for us')),
       });
       const [row] = await db.database
         .select({
@@ -316,7 +342,12 @@ async function inboundFrom(familyId: string, parentUserId: string): Promise<stri
   return row.id;
 }
 
-async function texted(familyId: string, parentUserId: string, body: string) {
+async function texted(
+  familyId: string,
+  parentUserId: string,
+  body: string,
+  script: MemoryScreenScript,
+) {
   return handleParentMemory(db.database, {
     familyId,
     parentUserId,
@@ -325,6 +356,7 @@ async function texted(familyId: string, parentUserId: string, body: string) {
     inboundChannelMessageId: await inboundFrom(familyId, parentUserId),
     env: { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
     replyClient: null,
+    screen: scriptedMemoryScreen(script),
   });
 }
 
@@ -352,7 +384,7 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     await fact(familyId, 'piano', { in: 'family', userId: b });
     await fact(familyId, 'violin', { in: 'family', userId: a });
 
-    const held = await texted(familyId, a, 'forget swimming');
+    const held = await texted(familyId, a, 'forget swimming', forgetting('swimming'));
     expect([held.outcome, held.forgotten, held.groupSync.skipped]).toEqual([
       'nothing',
       0,
@@ -360,11 +392,11 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     ]);
     expect(await live(familyId, 'swimming')).toHaveLength(1);
 
-    expect((await texted(familyId, a, 'forget skating')).forgotten).toBe(1);
+    expect((await texted(familyId, a, 'forget skating', forgetting('skating'))).forgotten).toBe(1);
     expect(await live(familyId, 'skating')).toHaveLength(0);
-    expect((await texted(familyId, a, 'forget piano')).forgotten).toBe(1);
+    expect((await texted(familyId, a, 'forget piano', forgetting('piano'))).forgotten).toBe(1);
     expect(await live(familyId, 'piano')).toHaveLength(0);
-    expect((await texted(familyId, b, 'forget violin')).forgotten).toBe(1);
+    expect((await texted(familyId, b, 'forget violin', forgetting('violin'))).forgotten).toBe(1);
     expect(await live(familyId, 'violin')).toHaveLength(0);
   });
 
@@ -374,12 +406,18 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     await fact(familyId, 'piano', { in: 'family', userId: b });
 
     // Control: A's own fact is in A's scope, so the correction supersedes it.
-    expect((await texted(familyId, a, 'correct skating: tuesdays')).corrected).toBe(1);
+    expect(
+      (await texted(familyId, a, 'skating is tuesdays now', correcting('skating', 'tuesdays')))
+        .corrected,
+    ).toBe(1);
     expect(await live(familyId, 'skating')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
 
     // A write closes only rows in its own scope: A's word lands in A's scope and the
     // household's row stays live, so B keeps the value and nothing is lost across adults.
-    expect((await texted(familyId, a, 'correct piano: tuesdays')).corrected).toBe(1);
+    expect(
+      (await texted(familyId, a, 'piano is tuesdays now', correcting('piano', 'tuesdays')))
+        .corrected,
+    ).toBe(1);
     const piano = await live(familyId, 'piano');
     expect(piano).toHaveLength(2);
     expect(piano).toContainEqual({ factValue: 'tuesdays', sourceUserId: a });
@@ -397,7 +435,10 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     // Two adults: the unrecorded row is held back from both, so A's correction cannot
     // see it and leaves it live.
     const { familyId, a } = await seedHousehold();
-    expect((await texted(familyId, a, 'correct legacy_pref: tuesdays')).corrected).toBe(1);
+    expect(
+      (await texted(familyId, a, 'that one is tuesdays', correcting('legacy_pref', 'tuesdays')))
+        .corrected,
+    ).toBe(1);
     const shared = await live(familyId, 'legacy_pref');
     expect(shared).toHaveLength(2);
     expect(shared).toContainEqual({
@@ -408,7 +449,14 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     const solo = await seedFamily(db.database);
     await fact(solo.familyId, 'legacy_pref', 'unrecorded');
     expect(
-      (await texted(solo.familyId, solo.parentUserId, 'correct legacy_pref: tuesdays')).corrected,
+      (
+        await texted(
+          solo.familyId,
+          solo.parentUserId,
+          'that one is tuesdays',
+          correcting('legacy_pref', 'tuesdays'),
+        )
+      ).corrected,
     ).toBe(1);
     expect(await live(solo.familyId, 'legacy_pref')).toEqual([
       { factValue: 'tuesdays', sourceUserId: solo.parentUserId },
@@ -460,8 +508,9 @@ describe("a fact's live identity includes whose private fact it is", () => {
     await fact(hidden.familyId, 'swimming', { in: 'one_to_one', userId: hidden.b });
     const empty = await seedHousehold();
 
-    const onHidden = await texted(hidden.familyId, hidden.a, 'correct swimming: tuesdays');
-    const onEmpty = await texted(empty.familyId, empty.a, 'correct swimming: tuesdays');
+    const swimTuesdays = correcting('swimming', 'tuesdays');
+    const onHidden = await texted(hidden.familyId, hidden.a, 'swim is tuesdays now', swimTuesdays);
+    const onEmpty = await texted(empty.familyId, empty.a, 'swim is tuesdays now', swimTuesdays);
     // Positive control: the empty key is corrected and answered, so equality says something.
     expect([onEmpty.outcome, onEmpty.corrected]).toEqual(['corrected', 1]);
     // The reply is the model's, written from (outcome, key, value) alone; with no model
@@ -480,7 +529,7 @@ describe("a fact's live identity includes whose private fact it is", () => {
   it('afterwards each adult’s 1:1 reads their own value, and the group reads neither', async () => {
     const { familyId, a, b } = await seedHousehold();
     await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
-    await texted(familyId, a, 'correct swimming: tuesdays');
+    await texted(familyId, a, 'swim is tuesdays now', correcting('swimming', 'tuesdays'));
 
     const swimming = (facts: { factKey: string; factValue: unknown }[]) =>
       facts.filter((f) => f.factKey === 'swimming').map((f) => f.factValue);

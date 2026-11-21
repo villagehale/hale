@@ -11,6 +11,8 @@ process.env.CLAIM_READER_MODE ??= 'off';
 // reader unless it hands its own (deps.optOutReader) or installs another.
 import { setSharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { scriptedOptOutReader } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
+import { setSharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
+import { unreadMeaningScreen } from '~/lib/channel/meaning-screen/scripted-reader.fixture';
 import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
 import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
 import { scriptedRecMorningTopicPicker } from '~/lib/channel/rec-morning/scripted-topic-picker.fixture';
@@ -22,3 +24,4 @@ setSharedOptOutReader(scriptedOptOutReader);
 setSharedSpokenLineWriter(scriptedSpokenLineWriter);
 setSharedRecMorningReader(scriptedRecMorningReader);
 setSharedRecMorningTopicPicker(scriptedRecMorningTopicPicker);
+setSharedMeaningScreen(unreadMeaningScreen);

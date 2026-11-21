@@ -7,7 +7,13 @@ import type { FamilyPrivateSlice } from '../multi-family';
 export function privateDenyTokens(slices: readonly FamilyPrivateSlice[]): string[] {
   const out: string[] = [];
   for (const slice of slices) {
-    for (const value of [...slice.memory, ...slice.calendar, ...slice.email, ...slice.signups]) {
+    for (const value of [
+      ...slice.memory,
+      ...(slice.retiredMemory ?? []),
+      ...slice.calendar,
+      ...slice.email,
+      ...slice.signups,
+    ]) {
       const token = value.trim();
       if (token.length >= 3) out.push(token);
     }

@@ -6,7 +6,7 @@ import {
   recordedSeatGrant,
   unlessSeatGrantChanged,
 } from '~/lib/channel/caregiver/invites';
-import { matchConnectorRequest } from '~/lib/channel/connect/detect';
+import { matchConnectorRequestSweep } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
@@ -42,7 +42,7 @@ import {
   groupCalendarReceipt,
   groupGmailReceipt,
   groupWelcome,
-  matchBothFreeAsk,
+  matchBothFreeAskSweep,
 } from './group-coparent-copy';
 import { liveSeatBlocksPrivileged, nonParentWithoutLiveSeat } from './group-members';
 import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
@@ -386,8 +386,8 @@ async function answerDoneStep(
   language: ReplyLanguage | null,
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect | null> {
-  const asked = matchConnectorRequest(message.text);
-  const bothFree = matchBothFreeAsk(message.text);
+  const asked = await matchConnectorRequestSweep(message.text);
+  const bothFree = await matchBothFreeAskSweep(message.text);
   if (asked !== 'gmail' && asked !== 'gcal' && !bothFree) return null;
   const recorded = await ports.recordInbound(message, sender);
   if (!recorded) {

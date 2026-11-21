@@ -4,6 +4,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb, seedChild } from '~/lib/testing/pglite';
+import { MODEL_READ_SWEEP_ENABLED_ENV } from '~/lib/channel/meaning-screen/flag';
+import type { MeaningScreenReading } from '~/lib/channel/meaning-screen/read';
+import {
+  blankMeaningReading,
+  scriptedMeaningScreen,
+} from '~/lib/channel/meaning-screen/scripted-reader.fixture';
 import { queueActivityDecisionFromReply } from './activity-decision';
 import {
   deliverFamilyOutbound,
@@ -1319,41 +1325,76 @@ describe('a 1:1 decision syncs the group', () => {
     expect(http.bodies()).not.toContain('music');
   });
 
-  it('reads a 1:1 sentence only when the kid is on the family', async () => {
+  it('reads a 1:1 sentence for its meaning, and queues it only when the kid is on the family', async () => {
+    vi.stubEnv(MODEL_READ_SWEEP_ENABLED_ENV, 'true');
     const seeded = await seedHousehold(GROUP);
     await db.database.insert(schema.children).values({
       familyId: seeded.familyId,
       name: 'Maya',
       dateOfBirth: '2022-04-01',
     });
-    const queued = await queueActivityDecisionFromReply(db.database, {
-      familyId: seeded.familyId,
-      parentUserId: seeded.parentUserId,
-      originChatId: PERSONAL,
-      body: 'picked swim for maya, Tuesday at 4:00',
-      now: NOW,
+    // Scripted per text: the model's reading of these words is the meaning-screen eval.
+    const readings: Record<string, Partial<MeaningScreenReading>> = {
+      'on prend la natation pour maya, mardi 16 h': {
+        hit: true,
+        decision: 'picked',
+        activity: 'natation',
+        kid: 'maya',
+        day: 'mardi',
+        time: '16 h',
+      },
+      'swim for Theo, Tuesday at 4:00': {
+        hit: true,
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Theo',
+        day: 'Tuesday',
+        time: '4:00',
+      },
+      'should we pick swim for Maya, Tuesday at 4:00?': { decision: 'none' },
+    };
+    const reads: string[] = [];
+    const screen = scriptedMeaningScreen((input) => {
+      reads.push(input.text);
+      const reading = readings[input.text];
+      return reading ? blankMeaningReading(reading) : null;
     });
-    expect(queued).toBe('queued');
+    const queue = (body: string, originChatId: string = PERSONAL) =>
+      queueActivityDecisionFromReply(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        originChatId,
+        body,
+        now: NOW,
+        screen,
+      });
+
+    expect(await queue('on prend la natation pour maya, mardi 16 h')).toEqual({
+      status: 'queued',
+    });
     const [row] = await db.database
       .select({ kid: schema.groupDecisionSync.kid, activity: schema.groupDecisionSync.activity })
       .from(schema.groupDecisionSync);
-    expect(row).toEqual({ kid: 'Maya', activity: 'swim' });
-    const unknown = await queueActivityDecisionFromReply(db.database, {
-      familyId: seeded.familyId,
-      parentUserId: seeded.parentUserId,
-      originChatId: PERSONAL,
-      body: 'picked swim for Tuesday, Tuesday at 4:00',
-      now: NOW,
+    expect(row).toEqual({ kid: 'Maya', activity: 'natation' });
+    expect(await queue('swim for Theo, Tuesday at 4:00')).toEqual({
+      status: 'skipped',
+      reason: 'unknown_kid',
     });
-    expect(unknown).toBe('skipped');
-    const question = await queueActivityDecisionFromReply(db.database, {
-      familyId: seeded.familyId,
-      parentUserId: seeded.parentUserId,
-      originChatId: PERSONAL,
-      body: 'picked swim for Maya, Tuesday at 4:00?',
-      now: NOW,
+    expect(await queue('should we pick swim for Maya, Tuesday at 4:00?')).toEqual({
+      status: 'skipped',
+      reason: 'not_a_decision',
     });
-    expect(question).toBe('skipped');
+    expect(await queue('a text the screen could not read')).toEqual({
+      status: 'skipped',
+      reason: 'unread',
+    });
+    // Typed in the group itself: nothing to mirror, and no model read is paid for.
+    const before = reads.length;
+    expect(await queue('on prend la natation pour maya, mardi 16 h', GROUP)).toEqual({
+      status: 'skipped',
+      reason: 'no_group',
+    });
+    expect(reads).toHaveLength(before);
   });
 });
 

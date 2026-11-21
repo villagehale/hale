@@ -149,6 +149,7 @@ export const FLAGS = [
   exact('memory-synthesis-apply', 'MEMORY_SYNTHESIS_APPLY'),
   exact('mid-activity-ask', 'MID_ACTIVITY_ASK_ENABLED'),
   exact('mid-activity-signup-tool', 'MID_ACTIVITY_SIGNUP_TOOL_ENABLED'),
+  exact('model-read-sweep', 'MODEL_READ_SWEEP_ENABLED'),
   exact('next-day-checkback', 'NEXT_DAY_CHECKBACK_ENABLED', {
     parser: 'trimmed-not-false',
     default: true,

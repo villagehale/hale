@@ -491,6 +491,10 @@
     "file": "match-team-schedule.md",
     "sha256": "ed9f91ba8b0dc45106ee55a095b2ae2814d8498f499456f2a223758fb3f18af3"
   },
+  "meaning-screen.md": {
+    "file": "meaning-screen.md",
+    "sha256": "593a63a95991fd2aea5f332842a5a77170cccee7b07e81b7a6a4b87f85d1c117"
+  },
   "medical-answer.md": {
     "file": "medical-answer.md",
     "sha256": "42c9056d114af9f096468fb555c325359c42d220365cae592abdc4d864feceb9"
@@ -506,6 +510,10 @@
   "medical-symptom.md": {
     "file": "medical-symptom.md",
     "sha256": "ef7b7494d7943f38554945a450181da54f19431360d77a6e928ad6df0be4c9a4"
+  },
+  "memory-reply.md": {
+    "file": "memory-reply.md",
+    "sha256": "dd39190b2726208f6d965543f09e40d00341bfaebcd2420106b5ed005140ea56"
   },
   "moment-reply.md": {
     "file": "moment-reply.md",
