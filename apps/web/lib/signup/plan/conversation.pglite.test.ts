@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -2367,6 +2367,126 @@ describe('when the site options do not match', () => {
       }),
     );
     expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'emailed' });
+  });
+
+  describe('with the ask policy on, an email to the provider needs a recorded yes', () => {
+    const YES_STEP = 'provider_email_yes';
+
+    async function yesRows(offerId: string) {
+      const rows = await db.database
+        .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.targetId, offerId),
+            eq(schema.auditLog.actionTaken, 'authorized_signup_step'),
+          ),
+        );
+      return rows.filter((row) => (row.after as { step?: unknown }).step === YES_STEP);
+    }
+
+    const emailPick: MismatchReader = { read: vi.fn(async () => ({ verdict: 'email' as const })) };
+
+    it('writes the yes, naming the parent and their message, before the email leaves', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const f = await mismatched();
+      const atSend: Awaited<ReturnType<typeof yesRows>>[] = [];
+      const sendProviderEmail = vi.fn(async () => {
+        atSend.push(await yesRows(f.offerId));
+      });
+      const { planWriter } = fakes(APPROVE);
+      const parentTurn = turn(f, 'email them');
+      await runAuthorizedSignup(db.database, parentTurn, {
+        planWriter,
+        mismatchReader: emailPick,
+        sendProviderEmail,
+      });
+      expect(sendProviderEmail).toHaveBeenCalledTimes(1);
+      expect(atSend).toEqual([
+        [
+          {
+            actor: f.parentUserId,
+            after: {
+              step: YES_STEP,
+              messageId: parentTurn.inboundChannelMessageId,
+              host: 'register.example-rec.test',
+              boundBy: 'newest',
+            },
+          },
+        ],
+      ]);
+      expect((await offer(f.offerId)).planAvailability).toMatchObject({ kind: 'emailed' });
+    });
+
+    it('sends nothing when the yes cannot be written', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const f = await mismatched();
+      await db.database.execute(sql`
+        CREATE FUNCTION refuse_provider_yes() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.after->>'step' = 'provider_email_yes' THEN
+            RAISE EXCEPTION 'audit write refused';
+          END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql
+      `);
+      await db.database.execute(sql`
+        CREATE TRIGGER refuse_provider_yes BEFORE INSERT ON audit_log
+        FOR EACH ROW EXECUTE FUNCTION refuse_provider_yes()
+      `);
+      const sendProviderEmail = vi.fn(async () => undefined);
+      const { planWriter } = fakes(APPROVE);
+      try {
+        await expect(
+          runAuthorizedSignup(db.database, turn(f, 'email them'), {
+            planWriter,
+            mismatchReader: emailPick,
+            sendProviderEmail,
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await db.database.execute(sql`DROP TRIGGER refuse_provider_yes ON audit_log`);
+        await db.database.execute(sql`DROP FUNCTION refuse_provider_yes`);
+      }
+      expect(sendProviderEmail).not.toHaveBeenCalled();
+      expect((await offer(f.offerId)).planAvailability).toMatchObject({
+        kind: 'options_mismatch',
+      });
+    });
+
+    it('sends nothing for a yes with no stored message to anchor it', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const f = await mismatched();
+      const sendProviderEmail = vi.fn(async () => undefined);
+      const { planWriter, written } = fakes(APPROVE);
+      await runAuthorizedSignup(
+        db.database,
+        { ...turn(f, 'email them'), inboundChannelMessageId: null },
+        { planWriter, mismatchReader: emailPick, sendProviderEmail },
+      );
+      expect(sendProviderEmail).not.toHaveBeenCalled();
+      expect(await yesRows(f.offerId)).toEqual([]);
+      expect(written.map((facts) => [facts.moment, facts.refusal])).toEqual([
+        ['refused', 'not_stored'],
+      ]);
+      expect((await offer(f.offerId)).planAvailability).toMatchObject({
+        kind: 'options_mismatch',
+      });
+    });
+
+    it('positive control, policy off: the email goes as it does today, with no new row', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+      const f = await mismatched();
+      const sendProviderEmail = vi.fn(async () => undefined);
+      const { planWriter } = fakes(APPROVE);
+      await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+        planWriter,
+        mismatchReader: emailPick,
+        sendProviderEmail,
+      });
+      expect(sendProviderEmail).toHaveBeenCalledTimes(1);
+      expect(await yesRows(f.offerId)).toEqual([]);
+    });
   });
 
   it("a co-parent's pick parks nothing and sends no email from anyone's Gmail", async () => {
