@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { markUntrusted } from '@hale/agent';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { redactEventPayload } from '../redaction/redact.js';
 import { runClassifier } from './classifier.js';
 import { dedupHashFor } from './dedup.js';
 
@@ -159,6 +161,47 @@ describe('runClassifier — the input it sends is redacted by the callee (rule #
         rawContent: JSON.stringify(payload),
       },
       { client },
+    );
+  });
+});
+
+describe('runClassifier — untrusted field marking (VIL-560)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['gmail', 'email'],
+    ['gcal', 'calendar'],
+    ['channel_sms', 'other'],
+  ] as const)(
+    'flag on: a %s signal is marked as %s, around the redacted text',
+    async (source, label) => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+      const { client, create } = capturingClient();
+
+      await runClassifier(
+        { familyId: FAMILY_ID, source, payload, childNames: [CHILD_NAME] },
+        { client },
+      );
+
+      const redacted = JSON.stringify(redactEventPayload(payload, [CHILD_NAME]));
+      expect(capturedSignal(create).raw_content).toBe(markUntrusted(label, 'payload', redacted));
+      expect(capturedSignal(create).raw_content).not.toContain(CHILD_NAME);
+    },
+  );
+
+  it('flag off: raw_content is the redacted text, unmarked', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+    const { client, create } = capturingClient();
+
+    await runClassifier(
+      { familyId: FAMILY_ID, source: 'gcal', payload, childNames: [CHILD_NAME] },
+      { client },
+    );
+
+    expect(capturedSignal(create).raw_content).toBe(
+      JSON.stringify(redactEventPayload(payload, [CHILD_NAME])),
     );
   });
 });

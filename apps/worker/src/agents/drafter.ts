@@ -41,6 +41,8 @@ const drafterOutputJsonSchema = {
 
 interface DrafterRunInput {
   familyId: string;
+  /** Where the event came from (`events.source`): the label on its untrusted fields. */
+  source: string;
   event: {
     eventId: string;
     eventType: string;
@@ -69,7 +71,7 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
       ...input.event,
       payload: presentUntrustedTree(
         isEnabled('untrusted-field-marking'),
-        untrustedSourceFor(input.event.eventType),
+        untrustedSourceFor(input.source),
         input.event.payload,
       ),
     },

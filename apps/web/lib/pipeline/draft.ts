@@ -35,6 +35,8 @@ const draftOutputJsonSchema = {
 
 export interface DraftInput {
   familyId: string;
+  /** Where the event came from (`events.source`): the label on its untrusted fields. */
+  source: string;
   event: { eventId: string; eventType: string; payload: Record<string, unknown> };
   actionType: ActionType;
   memorySlice?: { relevantFacts: unknown[]; relevantEpisodes: unknown[] };
@@ -56,7 +58,7 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
       ...input.event,
       payload: presentUntrustedTree(
         isEnabled('untrusted-field-marking'),
-        untrustedSourceFor(input.event.eventType),
+        untrustedSourceFor(input.source),
         input.event.payload,
       ),
     },

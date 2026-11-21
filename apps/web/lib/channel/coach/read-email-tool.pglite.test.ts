@@ -1,4 +1,4 @@
-import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
+import { GuardrailError, defineTool, invokeTool, markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -91,6 +91,26 @@ describe('read_email · production reader', () => {
     ).resolves.toEqual({ read: true, body: BODY, truncated: false });
     expect(fetched).toEqual(['gm-1:token-1']);
   });
+
+  it.each([
+    ['off', '', BODY],
+    ['on', 'true', markUntrusted('email', 'body', BODY)],
+  ])(
+    'with the marking flag %s, the coach gets the body in its exact form',
+    async (_state, env, expected) => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', env);
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const { familyId, parentUserId } = await seedFamily(db.database);
+      await connectGmail(familyId, parentUserId);
+      const conversationId = await alert(familyId, parentUserId, 'gm-mark');
+      const { reader: r } = reader(async () => BODY);
+
+      await expect(
+        r.read({ familyId, parentUserId, conversationId, gmailMessageId: 'gm-mark' }),
+      ).resolves.toEqual({ read: true, body: expected, truncated: false });
+      vi.unstubAllEnvs();
+    },
+  );
 
   it('refuses an id this conversation never carried, even one alerted to the other parent', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});

@@ -1,4 +1,10 @@
-import { type AgentClient, SPARSE_CACHE_TTL, pickLane, presentUntrusted } from '@hale/agent';
+import {
+  type AgentClient,
+  SPARSE_CACHE_TTL,
+  neutralizeUntrustedClosers,
+  pickLane,
+  presentUntrusted,
+} from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
@@ -220,7 +226,8 @@ export function emailAlertNoticeUserMessage(
       : facts,
   );
   if (body == null || body === '') return factsJson;
-  const handed = body.slice(0, EMAIL_ALERT_NOTICE_BODY_MAX_CHARS);
+  const cut = body.slice(0, EMAIL_ALERT_NOTICE_BODY_MAX_CHARS);
+  const handed = marked ? neutralizeUntrustedClosers(cut) : cut;
   return `${factsJson}\n\n${EMAIL_ALERT_BODY_PREAMBLE}\n${EMAIL_ALERT_BODY_OPEN}\n${handed}\n${EMAIL_ALERT_BODY_CLOSE}`;
 }
 
