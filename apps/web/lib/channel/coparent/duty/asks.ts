@@ -40,7 +40,6 @@ import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
   type CadencePlan,
-  DUTY_OPEN_FACT_KEY,
   type DutyOccasion,
   type OpenDutyQuestion,
   addCalendarDays,
@@ -75,6 +74,7 @@ import { type DutyNightFacts, composeDutyNight } from './night-compose';
 import {
   DUTY_ASK_KEY_PREFIX,
   type DutySendAttempt,
+  type OpenDutyFact,
   defaultDutyPager,
   dutyDoorAccepted,
   dutyDoorAttempt,
@@ -106,7 +106,7 @@ import { defaultTravelTimeClient } from './travel';
  * `email` is dropped by the planner, including a party invite.
  */
 
-export { DUTY_OPEN_FACT_KEY };
+export const DUTY_OPEN_FACT_KEY = 'duty-ask/open';
 export const DUTY_REASK_PREFIX = 'duty-ask/reask/';
 export const DUTY_STOP_ASKING_KEY = 'duty-ask/stop-asking';
 export const DUTY_STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
@@ -306,6 +306,30 @@ function readOpen(value: unknown): OpenDutyQuestion | null {
     peerEventKey: typeof row.peerEventKey === 'string' ? row.peerEventKey : null,
     split: row.split === true,
   };
+}
+
+/** The household's open duty question and when that fact was written. */
+export async function readOpenDutyFact(
+  database: Database,
+  familyId: string,
+): Promise<OpenDutyFact | null> {
+  const [fact] = await database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+      validFrom: schema.familyMemoryFacts.validFrom,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, DUTY_OPEN_FACT_KEY),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .limit(1);
+  const open = fact ? readOpen(fact.factValue) : null;
+  return fact && open ? { open, validFrom: fact.validFrom } : null;
 }
 
 function reaskKey(eventKey: string, role: DutyRole): string {
@@ -1738,7 +1762,12 @@ export async function sweepDutyAsks(
   const pager = input.ports?.pager ?? defaultDutyPager(database);
   if (!coparentDutySendsArmed() && !coparentSplitDutyArmed()) {
     if (coparentDutyMemoryEnabled()) {
-      await settleStrandedDutySends(database, { now, pager, offered: new Set() });
+      await settleStrandedDutySends(database, {
+        now,
+        pager,
+        offered: new Set(),
+        readOpenQuestion: (familyId) => readOpenDutyFact(database, familyId),
+      });
     }
     return emptyDutySweep(false);
   }
@@ -1795,7 +1824,12 @@ export async function sweepDutyAsks(
     else if (delivered.status === 'held') result.held += 1;
     else result.skipped += 1;
   }
-  await settleStrandedDutySends(database, { now, pager, offered });
+  await settleStrandedDutySends(database, {
+    now,
+    pager,
+    offered,
+    readOpenQuestion: (familyId) => readOpenDutyFact(database, familyId),
+  });
   return result;
 }
 

@@ -23,6 +23,7 @@ import {
   deliverDutyDirectLines,
   deliverDutyGroupLine,
   planFamilyDutyAsks,
+  readOpenDutyFact,
   sweepDutyAsks,
 } from './asks';
 import {
@@ -94,6 +95,15 @@ const HOUR_MS = 60 * 60_000;
 const later = (hours: number, from: Date = EVENING) => new Date(from.getTime() + hours * HOUR_MS);
 const refused = () => new LinqSendError('http_400', 400, true);
 const timedOut = () => new LinqSendError('timeout', 0, false);
+
+function settleStranded(now: Date, opsPager: ReturnType<typeof pager>['pager']) {
+  return settleStrandedDutySends(db.database, {
+    now,
+    pager: opsPager,
+    offered: new Set(),
+    readOpenQuestion: (familyId) => readOpenDutyFact(db.database, familyId),
+  });
+}
 
 function pager() {
   const pages: OpsPage[] = [];
@@ -1383,11 +1393,7 @@ describe('a duty send nothing will offer again', () => {
     });
     const ops = pager();
 
-    await settleStrandedDutySends(db.database, {
-      now: later(2, at),
-      pager: ops.pager,
-      offered: new Set(),
-    });
+    await settleStranded(later(2, at), ops.pager);
 
     expect(ops.pages).toEqual([
       { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
@@ -1415,11 +1421,7 @@ describe('a duty send nothing will offer again', () => {
     await failedRow(familyB, { dedupeKey: key, errorCode: 'http_500', createdAt: at });
     const ops = pager();
 
-    await settleStrandedDutySends(db.database, {
-      now: later(2, at),
-      pager: ops.pager,
-      offered: new Set(),
-    });
+    await settleStranded(later(2, at), ops.pager);
 
     expect(ops.pages).toEqual([
       { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },
@@ -1445,11 +1447,7 @@ describe('a duty send nothing will offer again', () => {
     });
     const ops = pager();
 
-    await settleStrandedDutySends(db.database, {
-      now: later(3, at),
-      pager: ops.pager,
-      offered: new Set(),
-    });
+    await settleStranded(later(3, at), ops.pager);
 
     expect(ops.pages).toEqual([]);
     expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([]);
@@ -1642,11 +1640,7 @@ describe('a duty send nothing will offer again', () => {
       }
       const ops = pager();
 
-      await settleStrandedDutySends(db.database, {
-        now: later(2, at),
-        pager: ops.pager,
-        offered: new Set(),
-      });
+      await settleStranded(later(2, at), ops.pager);
 
       expect(ops.pages).toEqual([
         { site: 'duty_unsent', facts: { surface: 'ask', reason: 'send_refused' }, count: 1 },

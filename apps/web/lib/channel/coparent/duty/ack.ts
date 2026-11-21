@@ -11,10 +11,13 @@ import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import {
   LinqSendError,
   SEND_TIMEOUT_MS,
-  isLinqRateLimit,
   listLinqParticipantHandles,
 } from '~/lib/channel/linq/transport';
-import { reactToLinqMessage, refusalStopsRetry } from '~/lib/channel/outbound-transport';
+import {
+  reactToLinqMessage,
+  refusalIsRateLimit,
+  refusalStopsRetry,
+} from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
@@ -47,7 +50,7 @@ import {
 /** A further tapback is only for a failure that can clear by itself, and only while one
  * whole send still lands before Linq stops waiting on this webhook (`answerBy`). */
 function tapbackMayRetry(err: LinqSendError, answerBy: Date | undefined, nowMs: number): boolean {
-  if (refusalStopsRetry(err) || isLinqRateLimit(err)) return false;
+  if (refusalStopsRetry(err) || refusalIsRateLimit(err)) return false;
   return answerBy !== undefined && nowMs + SEND_TIMEOUT_MS <= answerBy.getTime();
 }
 

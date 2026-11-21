@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -9,7 +9,7 @@ import {
   nextComposeHold,
 } from '~/lib/loop/reminders/schedule';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
-import { DUTY_OPEN_FACT_KEY } from './cadence';
+import type { OpenDutyQuestion } from './cadence';
 
 /**
  * A duty row says 'sent' only once Linq has accepted the text. Until then it is a 'failed'
@@ -77,6 +77,12 @@ const SEND_ROW = {
   providerMessageId: schema.channelMessages.providerMessageId,
   createdAt: schema.channelMessages.createdAt,
 };
+
+/** The household's open duty question and when that fact was written. */
+export interface OpenDutyFact {
+  open: OpenDutyQuestion;
+  validFrom: Date;
+}
 
 export interface DutySendRow {
   id: string;
@@ -353,9 +359,9 @@ function keyStartsWith(prefix: string) {
  * earlier ask on the same events and says nothing about this one.
  */
 async function splitAskAnswered(
-  database: Database,
   send: OneDutySend,
   sends: ReadonlyMap<string, OneDutySend>,
+  readOpenQuestion: (familyId: string) => Promise<OpenDutyFact | null>,
 ): Promise<boolean> {
   const leg = send.rows[0];
   if (!leg) return false;
@@ -368,29 +374,10 @@ async function splitAskAnswered(
     .flatMap((other) => other.rows.filter(rowAccepted))
     .map((row) => row.createdAt.getTime());
   if (reachedAt.length === 0) return false;
-  const [fact] = await database
-    .select({
-      value: schema.familyMemoryFacts.factValue,
-      validFrom: schema.familyMemoryFacts.validFrom,
-    })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, leg.familyId),
-        eq(schema.familyMemoryFacts.factType, 'logistic'),
-        eq(schema.familyMemoryFacts.factKey, DUTY_OPEN_FACT_KEY),
-        isNull(schema.familyMemoryFacts.validUntil),
-      ),
-    )
-    .limit(1);
+  const fact = await readOpenQuestion(leg.familyId);
   if (!fact || fact.validFrom.getTime() < Math.min(...reachedAt)) return false;
-  const open = fact.value as {
-    status?: string;
-    split?: boolean;
-    eventKey?: string;
-    peerEventKey?: string | null;
-  };
-  if (open.status !== 'stepped_down' || open.split !== true) return false;
+  const { open } = fact;
+  if (open.status !== 'stepped_down' || !open.split) return false;
   return [open.eventKey, open.peerEventKey].some(
     (eventKey) => eventKey && askKey.startsWith(`${SPLIT_ASK_KEY_PREFIX}${eventKey}:`),
   );
@@ -404,7 +391,12 @@ async function splitAskAnswered(
  */
 export async function settleStrandedDutySends(
   database: Database,
-  input: { now: Date; pager: OpsPager; offered: ReadonlySet<string> },
+  input: {
+    now: Date;
+    pager: OpsPager;
+    offered: ReadonlySet<string>;
+    readOpenQuestion: (familyId: string) => Promise<OpenDutyFact | null>;
+  },
 ): Promise<void> {
   const rows = await database
     .select(SEND_ROW)
@@ -443,7 +435,8 @@ export async function settleStrandedDutySends(
     const rowSurface: DutySendSurface = send.baseKey.startsWith(DUTY_ACK_KEY_PREFIX)
       ? 'ack'
       : 'ask';
-    const answered = rowSurface === 'ask' && (await splitAskAnswered(database, send, sends));
+    const answered =
+      rowSurface === 'ask' && (await splitAskAnswered(send, sends, input.readOpenQuestion));
     await recordDutySendFailure(database, {
       familyId: last.familyId,
       claimId: last.id,
