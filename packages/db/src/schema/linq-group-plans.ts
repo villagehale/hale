@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -12,6 +13,12 @@ import {
 import { families } from './families.js';
 import { familyEvents } from './family-events.js';
 import { users } from './users.js';
+
+/** The which-plan line an ask was last put in, and every plan that line asked about. */
+export interface LinqGroupPlanWhichLine {
+  providerMessageId: string;
+  planIds: string[];
+}
 
 /**
  * VIL-442 (T15) — one live plan being RSVP-tracked in a Linq group chat.
@@ -193,6 +200,11 @@ export const linqGroupPlanCalendarConsents = pgTable(
     status: text('status').notNull(),
     /** Provider id of the private ask, so a tapback on some other message is not an OK. */
     askProviderMessageId: text('ask_provider_message_id'),
+    /**
+     * VIL-689 · the line's whole plan list, on each of its asks: withdrawing an ask deletes
+     * its row, and a word it shared with another plan must still name neither.
+     */
+    whichLine: jsonb('which_line').$type<LinqGroupPlanWhichLine>(),
     familyEventId: uuid('family_event_id').references(() => familyEvents.id, {
       onDelete: 'set null',
     }),

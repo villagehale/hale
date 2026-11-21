@@ -1458,6 +1458,7 @@ describe('a private reply among calendar asks', () => {
     });
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    let sends = 0;
     const ports = {
       database: db.database,
       now: new Date(NOW.getTime() + 60_000),
@@ -1469,7 +1470,10 @@ describe('a private reply among calendar asks', () => {
             : { decision: 'not_this' as const, confidence: 'high' as const },
       },
       oneToOne: {
-        text: async () => ({ providerMessageId: 'priv-one', chatId: null }),
+        text: async () => {
+          sends += 1;
+          return { providerMessageId: `priv-${sends}`, chatId: null };
+        },
         link: async () => ({ providerMessageId: 'link' }),
       },
     };
@@ -1702,8 +1706,7 @@ describe('the which-plan line names no plan', () => {
   it('with one of its plans withdrawn, a bare yes binds nothing and naming the plan does', async () => {
     const { ports, reply, withdrawMuseum, status, copies } = await askedWhich();
     expect(await withdrawMuseum()).toBe(true);
-    const bare = await considerPrivateCalendarReply(ports, { ...reply, text: 'yes' });
-    expect(bare.handled).toBe(false);
+    await considerPrivateCalendarReply(ports, { ...reply, text: 'yes' });
     expect((await status()).picnic).toBe('asked');
     expect(await copies()).toBe(0);
 
@@ -1714,6 +1717,172 @@ describe('the which-plan line names no plan', () => {
     expect(named.handled).toBe(true);
     expect((await status()).picnic).toBe('written');
     expect(await copies()).toBe(1);
+  });
+});
+
+describe('a which-plan line binds only the plans it asked about', () => {
+  const OK = { decision: 'ok' as const, confidence: 'high' as const };
+  const NOT_THIS = { decision: 'not_this' as const, confidence: 'high' as const };
+
+  /** Priya holds one open ask per title, oldest first, in one household chat. */
+  async function openAsksFor(titles: readonly string[]) {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: priya.familyId,
+      chatId: CHAT,
+      userId: priya.userId,
+      phoneE164Encrypted: encryptString(PRIYA),
+      phoneE164Hash: phoneBlindIndex(PRIYA),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const planIds = new Map<string, string>();
+    for (const [index, title] of titles.entries()) {
+      const plan = await store.createPlan({
+        chatId: CHAT,
+        familyId: priya.familyId,
+        title,
+        startsAt: new Date('2026-11-08T16:00:00.000Z'),
+        location: null,
+        rsvpDeadlineAt: null,
+        createdByUserId: priya.userId,
+        expected: [],
+        now: NOW,
+      });
+      planIds.set(title, plan.id);
+      await store.claimCalendarAsk({
+        planId: plan.id,
+        familyId: priya.familyId,
+        memberKey: 'priya',
+        displayName: 'Priya',
+        householdLabel: null,
+        now: NOW,
+      });
+      await askWasSent(store, {
+        planId: plan.id,
+        familyId: priya.familyId,
+        userId: priya.userId,
+        messageId: `ask-${index}`,
+        at: new Date(NOW.getTime() + index * 60_000),
+      });
+    }
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
+    let sends = 0;
+    const ports = {
+      database: db.database,
+      now: new Date(NOW.getTime() + 600_000),
+      composer: fakeGroupPlanRsvpComposer(),
+      consentReader: { read: async () => OK },
+      oneToOne: {
+        text: async () => {
+          sends += 1;
+          return { providerMessageId: `priv-${sends}`, chatId: null };
+        },
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    };
+    const idOf = (title: string) => planIds.get(title) as string;
+    const reply = (text: string, overrides: Partial<typeof ports> = {}) =>
+      considerPrivateCalendarReply(
+        { ...ports, ...overrides },
+        { senderUserId: priya.userId, senderName: 'Priya', chatId: PRIVATE_CHAT, text },
+      );
+    /** A bare yes the reader places on every title but `left`: Hale asks which of those. */
+    const askWhichLeaving = async (left: string | null) => {
+      await reply('yes', {
+        consentReader: {
+          read: async (input: { ask: { title: string } }) =>
+            input.ask.title === left ? NOT_THIS : OK,
+        },
+      } as Partial<typeof ports>);
+      expect(
+        ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+      ).toHaveLength(1);
+    };
+    const statusOf = async (title: string) =>
+      (await store.loadCalendarConsent(idOf(title), priya.familyId))?.status;
+    const close = (title: string) =>
+      db.database
+        .update(schema.linqGroupPlans)
+        .set({ closedAt: NOW })
+        .where(eq(schema.linqGroupPlans.id, idOf(title)));
+    const withdraw = (title: string) =>
+      store.releaseCalendarAsk(idOf(title), priya.familyId, priya.userId, 'household_said_no');
+    const copies = async () => (await db.database.select().from(schema.familyEvents)).length;
+    return { ports, reply, askWhichLeaving, statusOf, close, withdraw, copies };
+  }
+
+  it('a stale ask it never named stays untouched when the reply names a closed candidate', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson', 'Soccer tournament']);
+    await asks.askWhichLeaving('Soccer tournament');
+    await asks.close('Soccer practice');
+    await asks.reply('yes, soccer practice');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('a reply naming the stale ask lands on nothing, not on a candidate sharing its word', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson', 'Soccer tournament']);
+    await asks.askWhichLeaving('Soccer tournament');
+    await asks.reply('yes to the soccer tournament');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with a candidate withdrawn, a word it shared with the other binds nothing', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Soccer tournament']);
+    await asks.askWhichLeaving(null);
+    expect(await asks.withdraw('Soccer practice')).toBe(true);
+    await asks.reply('yes, soccer');
+    expect(await asks.statusOf('Soccer tournament')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with two candidates open, a reply naming one by its own word writes that one', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Soccer tournament']);
+    await asks.askWhichLeaving(null);
+    const named = await asks.reply('yes to the tournament');
+    expect(named.handled).toBe(true);
+    expect(await asks.statusOf('Soccer tournament')).toBe('written');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(1);
+  });
+
+  it('a line whose send returned no id has no candidates, so nothing binds', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.reply('yes', {
+      oneToOne: {
+        text: async () => ({ providerMessageId: null as unknown as string, chatId: null }),
+        link: async () => ({ providerMessageId: 'link' }),
+      },
+    } as Partial<typeof asks.ports>);
+    await asks.reply('yes to the piano');
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('with the calendar flag off, a reply naming a candidate binds nothing', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.askWhichLeaving(null);
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'false');
+    const off = await asks.reply('yes to the piano');
+    expect(off.handled).toBe(false);
+    expect(await asks.statusOf('Piano lesson')).toBe('asked');
+    expect(await asks.copies()).toBe(0);
+  });
+
+  it('a line that asked about one plan takes a plain yes for that plan', async () => {
+    const asks = await openAsksFor(['Soccer practice', 'Piano lesson']);
+    await asks.askWhichLeaving('Soccer practice');
+    const yes = await asks.reply('yes');
+    expect(yes.handled).toBe(true);
+    expect(await asks.statusOf('Piano lesson')).toBe('written');
+    expect(await asks.statusOf('Soccer practice')).toBe('asked');
+    expect(await asks.copies()).toBe(1);
   });
 });
 

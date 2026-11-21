@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
-import { namesFacts } from '~/lib/signup/parent-quote';
+import { namesByOwnWord } from '~/lib/signup/parent-quote';
 import {
   linqGroupPlanRsvpCalendarEnabled,
   linqGroupPlanRsvpEnabled,
@@ -382,18 +382,58 @@ type PrivateCalendarCandidate = Awaited<
 >[number];
 
 /**
- * One ask is that ask. Several asks: a reply binds only an ask its words name, by a whole
- * word of the plan's title (code-checked), and only when the reader also reads a decision
- * on it. The model alone never picks among several asks: a decision with no ask named, or
- * with more than one named, is `ambiguous` and Hale asks which one. No decision on any
- * ask leaves the turn to the 1:1 door. Right after a which-plan line, even a lone ask must
- * be named: that line asked about several plans, so a bare yes is not an answer to it.
+ * What a 1:1 reply may answer. `open` is the asks it can bind. `linePlans` is every plan Hale's
+ * last line put to the parent, including any since closed, answered or withdrawn.
+ */
+interface CalendarReplyScope {
+  open: PrivateCalendarCandidate[];
+  linePlans: { id: string; title: string }[];
+}
+
+/**
+ * After a which-plan line, only that line's plans: an ask it never mentioned is not reopened.
+ * A line with no provider id, or one naming a plan that no longer exists, binds nothing.
+ * Otherwise an open ask is answerable while Hale's last 1:1 line is one of the asks, and a
+ * decline stays readable.
+ */
+async function calendarReplyScope(
+  store: ReturnType<typeof createPostgresGroupPlanRsvpStore>,
+  listed: PrivateCalendarCandidate[],
+  lastLine: Awaited<ReturnType<typeof lastOneToOneLine>>,
+): Promise<CalendarReplyScope> {
+  const lastLineId = lastLine?.providerMessageId ?? null;
+  if (lastLine?.templateKey !== GROUP_PLAN_CALENDAR_WHICH_TEMPLATE) {
+    const askIsLastLine =
+      lastLineId !== null &&
+      listed.some(
+        (item) =>
+          item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLineId,
+      );
+    const open = listed.filter((item) => item.consent.status === 'declined' || askIsLastLine);
+    return { open, linePlans: open.map((item) => ({ id: item.plan.id, title: item.plan.title })) };
+  }
+  const open =
+    lastLineId === null
+      ? []
+      : listed.filter((item) => item.consent.whichLine?.providerMessageId === lastLineId);
+  const planIds = open[0]?.consent.whichLine?.planIds;
+  if (!planIds) return { open: [], linePlans: [] };
+  const linePlans = await store.planTitles(planIds);
+  return linePlans.length === planIds.length ? { open, linePlans } : { open: [], linePlans: [] };
+}
+
+/**
+ * A line that put one plan to the parent is answered by a plain reply. Otherwise a reply binds
+ * only a plan it names by a title word no other plan of that line, and no other open ask, has
+ * (code-checked), and only when the reader also reads a decision on it. Naming a plan that is
+ * no longer open binds nothing. A decision with no plan named is `ambiguous`, and Hale asks
+ * which: the model alone never picks. No decision on any ask leaves the turn to the 1:1 door.
  */
 async function pickPrivateCalendarAsk(
   ports: GroupPlanRsvpInboundPorts,
   input: { senderName: string | null; text: string },
-  open: PrivateCalendarCandidate[],
-  afterWhich: boolean,
+  { open, linePlans }: CalendarReplyScope,
+  listed: PrivateCalendarCandidate[],
 ): Promise<
   | { kind: 'none' }
   | { kind: 'ambiguous'; candidates: PrivateCalendarCandidate[] }
@@ -405,14 +445,20 @@ async function pickPrivateCalendarAsk(
     }
 > {
   const only = open[0];
-  if (open.length === 0 || !only) return { kind: 'none' };
-  if (open.length === 1 && !afterWhich) {
+  if (!only) return { kind: 'none' };
+  if (open.length === 1 && linePlans.length === 1) {
     return { kind: 'one', plan: only.plan, consent: only.consent };
   }
-  const named = open.filter((item) =>
-    namesFacts(input.text, { activity: item.plan.title, host: '' }),
+  const everyPlan = [...linePlans, ...listed.map((item) => item.plan)];
+  const namedPlans = linePlans.filter((plan) =>
+    namesByOwnWord(
+      input.text,
+      plan.title,
+      everyPlan.filter((other) => other.id !== plan.id).map((other) => other.title),
+    ),
   );
-  if (open.length === 1 && named.length === 0) return { kind: 'none' };
+  const named = open.filter((item) => namedPlans.some((plan) => plan.id === item.plan.id));
+  if (named.length < namedPlans.length) return { kind: 'none' };
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const hits: { item: PrivateCalendarCandidate; reading: CalendarConsentReading }[] = [];
   for (const item of named.length > 0 ? named : open) {
@@ -444,9 +490,8 @@ async function pickPrivateCalendarAsk(
 
 /**
  * The reply could answer more than one ask: one model-written 1:1 question naming those
- * plans. Its id is never stored on an ask, because a reaction on it names no plan; the
- * ledger's template marks it, so the parent's next reply (naming one) is still read
- * against the open asks. Nothing is written or withdrawn here.
+ * plans, recorded on each of them as their which-plan line. It is never their ask line, so a
+ * reaction on it names no plan. Nothing is written or withdrawn here.
  */
 async function askWhichCalendarPlan(
   ports: GroupPlanRsvpInboundPorts,
@@ -495,6 +540,12 @@ async function askWhichCalendarPlan(
     kind: 'calendar_which',
   });
   if (sent.status !== 'sent') return { skipped: sent.reason };
+  if (sent.providerMessageId) {
+    await store.setCalendarWhichLine(
+      candidates.map((item) => ({ planId: item.plan.id, familyId: item.consent.familyId })),
+      sent.providerMessageId,
+    );
+  }
   await ports.database.insert(schema.auditLog).values({
     familyId: first.consent.familyId,
     actor: input.senderUserId,
@@ -523,29 +574,24 @@ export async function considerPrivateCalendarReply(
   if (!linqGroupPlanRsvpCalendarEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const listed = await store.listOpenCalendarAsks(input.senderUserId);
-  const lastLine = listed.some((item) => item.consent.status === 'asked')
-    ? await lastOneToOneLine(ports.database, {
-        parentUserId: input.senderUserId,
-        chatId: input.chatId,
-      })
-    : null;
-  const afterWhich = lastLine?.templateKey === GROUP_PLAN_CALENDAR_WHICH_TEMPLATE;
-  const lastLineId = lastLine?.providerMessageId ?? null;
-  const askIsLastLine =
-    afterWhich ||
-    (lastLineId !== null &&
-      listed.some(
-        (item) =>
-          item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLineId,
-      ));
-  const open = listed.filter((item) => item.consent.status === 'declined' || askIsLastLine);
-  if (open.length < listed.length) {
+  const lastLine =
+    listed.length > 0
+      ? await lastOneToOneLine(ports.database, {
+          parentUserId: input.senderUserId,
+          chatId: input.chatId,
+        })
+      : null;
+  const scope = await calendarReplyScope(store, listed, lastLine);
+  if (scope.open.length < listed.length) {
     console.info(
-      { outcome: 'group_plan_calendar_ask_not_last_line', count: listed.length - open.length },
+      {
+        outcome: 'group_plan_calendar_ask_not_last_line',
+        count: listed.length - scope.open.length,
+      },
       'group plan calendar: 1:1 reply left to the 1:1 door',
     );
   }
-  const picked = await pickPrivateCalendarAsk(ports, input, open, afterWhich);
+  const picked = await pickPrivateCalendarAsk(ports, input, scope, listed);
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {
     const which = await askWhichCalendarPlan(ports, store, input, picked.candidates);

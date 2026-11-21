@@ -418,6 +418,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         status: 'asked' satisfies CalendarConsentStatus,
         familyEventId: null,
         askProviderMessageId: null,
+        whichLine: null,
       };
       world.consents.set(key, row);
       return true;
@@ -446,6 +447,21 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
     async setCalendarAskMessage(planId, familyId, providerMessageId) {
       const row = world.consents.get(consentKey(planId, familyId));
       if (row) row.askProviderMessageId = providerMessageId;
+    },
+
+    async setCalendarWhichLine(asks, providerMessageId) {
+      const whichLine = { providerMessageId, planIds: asks.map((ask) => ask.planId) };
+      for (const ask of asks) {
+        const row = world.consents.get(consentKey(ask.planId, ask.familyId));
+        if (row) row.whichLine = whichLine;
+      }
+    },
+
+    async planTitles(planIds) {
+      return planIds.flatMap((id) => {
+        const plan = world.plans.get(id);
+        return plan ? [{ id, title: plan.title }] : [];
+      });
     },
 
     async findCalendarAskByMessage(providerMessageId) {
@@ -498,6 +514,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
           status: 'declined',
           familyEventId: null,
           askProviderMessageId: null,
+          whichLine: null,
         });
       }
       world.audits.push({

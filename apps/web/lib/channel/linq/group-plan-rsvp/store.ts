@@ -73,6 +73,7 @@ export interface CalendarConsentRow {
   status: CalendarConsentStatus;
   familyEventId: string | null;
   askProviderMessageId: string | null;
+  whichLine: (typeof schema.linqGroupPlanCalendarConsents.$inferSelect)['whichLine'];
 }
 
 export interface ClaimCalendarAskInput {
@@ -168,6 +169,13 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   ): Promise<boolean>;
   listYesRsvps(planId: string): Promise<{ memberKey: string; userId: string | null }[]>;
   setCalendarAskMessage(planId: string, familyId: string, providerMessageId: string): Promise<void>;
+  /** Records a which-plan line on every ask it put to the parent. */
+  setCalendarWhichLine(
+    asks: readonly { planId: string; familyId: string }[],
+    providerMessageId: string,
+  ): Promise<void>;
+  /** The titles of these plans, closed ones included. A plan that no longer exists is absent. */
+  planTitles(planIds: readonly string[]): Promise<{ id: string; title: string }[]>;
   findCalendarAskByMessage(
     providerMessageId: string,
   ): Promise<{ plan: GroupPlanRecord; consent: CalendarConsentRow } | null>;
@@ -238,6 +246,7 @@ function consentRow(
     status: row.status as CalendarConsentStatus,
     familyEventId: row.familyEventId,
     askProviderMessageId: row.askProviderMessageId,
+    whichLine: row.whichLine,
   };
 }
 
@@ -838,6 +847,28 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         );
     },
 
+    async setCalendarWhichLine(asks, providerMessageId) {
+      const whichLine = { providerMessageId, planIds: asks.map((ask) => ask.planId) };
+      for (const ask of asks) {
+        await database
+          .update(schema.linqGroupPlanCalendarConsents)
+          .set({ whichLine, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.linqGroupPlanCalendarConsents.planId, ask.planId),
+              eq(schema.linqGroupPlanCalendarConsents.familyId, ask.familyId),
+            ),
+          );
+      }
+    },
+
+    async planTitles(planIds) {
+      return database
+        .select({ id: schema.linqGroupPlans.id, title: schema.linqGroupPlans.title })
+        .from(schema.linqGroupPlans)
+        .where(inArray(schema.linqGroupPlans.id, [...planIds]));
+    },
+
     async findCalendarAskByMessage(providerMessageId) {
       const carriers = await database
         .select()
@@ -872,6 +903,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           status: 'asked',
           familyEventId: row.familyEventId,
           askProviderMessageId: row.askProviderMessageId,
+          whichLine: row.whichLine,
         },
       };
     },
@@ -927,6 +959,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             status: row.status === 'declined' ? 'declined' : 'asked',
             familyEventId: row.familyEventId,
             askProviderMessageId: row.askProviderMessageId,
+            whichLine: row.whichLine,
           },
         });
       }

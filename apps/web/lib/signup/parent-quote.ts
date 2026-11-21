@@ -82,3 +82,15 @@ export function namesFacts(
   const names = [facts.activity ?? '', ...providerLabels(facts.host)].map(words);
   return names.some((name) => nameWritten(name, said));
 }
+
+/**
+ * {@link namesFacts} for a name among rivals: only a word no rival also has can name it, so
+ * a word two plans share names neither of them.
+ */
+export function namesByOwnWord(text: string, name: string, rivals: readonly string[]): boolean {
+  const taken = new Set(rivals.flatMap(words));
+  return nameWritten(
+    words(name).filter((word) => !taken.has(word)),
+    words(text),
+  );
+}
