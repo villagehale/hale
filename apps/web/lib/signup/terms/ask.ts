@@ -129,12 +129,13 @@ export async function prepareTermsAsk(
       };
     }),
   };
+  const alreadyOpen = future === null && (stated !== null || read.pageOpensAt === null);
   return {
     kind: 'ask',
     shown,
-    writer: writerTerms(shown),
+    writer: writerTerms(shown, { runsNow: alreadyOpen }),
     opensAt,
-    alreadyOpen: future === null && (stated !== null || read.pageOpensAt === null),
+    alreadyOpen,
   };
 }
 

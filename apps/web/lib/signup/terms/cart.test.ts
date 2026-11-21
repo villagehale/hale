@@ -97,6 +97,11 @@ describe('compareCart', () => {
     ).toEqual(['session']);
   });
 
+  it('a cart time with no leading zero is the same time, and another time is not', () => {
+    expect(compareCart(bound(), cart({ session_time: '9:30' }), who, 'cart')).toEqual([]);
+    expect(compareCart(bound(), cart({ session_time: '9:45' }), who, 'cart')).toEqual(['session']);
+  });
+
   it('an offset start compares in the portal zone', () => {
     expect(compareCart(bound({ startsAt: '2026-03-28T13:30:00Z' }), cart(), who, 'cart')).toEqual(
       [],
@@ -175,6 +180,10 @@ describe('compareCart', () => {
     expect(
       compareCart(plusTax(1300), cart({ totalCents: 37999, taxCents: null }), who, 'final'),
     ).toEqual(['unread']);
+  });
+
+  it('a zero cart on a paid binding stops at the cart', () => {
+    expect(compareCart(bound(), cart({ totalCents: 0 }), who, 'cart')).toEqual(['price']);
   });
 
   it('a parent limit under the bound rate never lets the rate pass', () => {

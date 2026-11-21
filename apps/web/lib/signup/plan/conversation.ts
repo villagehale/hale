@@ -435,8 +435,12 @@ async function approveOnTerms(
     taxBound: taxBoundFor(new URL(plan.registrationUrl).hostname),
     timeZone,
   });
+  const opensNow = plan.alreadyOpen || plan.opensAt.getTime() <= input.now.getTime();
   if (bound.kind === 'terms_unsent') {
-    return reply(database, input, deps, plan, 'offer', { terms: writerTerms(shown), boundBy });
+    return reply(database, input, deps, plan, 'offer', {
+      terms: writerTerms(shown, { runsNow: opensNow }),
+      boundBy,
+    });
   }
   if (bound.kind === 'outside_band') {
     await markOffer(database, {
@@ -476,7 +480,7 @@ async function approveOnTerms(
     seasonKey = slot.seasonKey;
   }
   const approved = { ...bound.approved, seasonKey };
-  const alreadyOpen = plan.alreadyOpen || plan.opensAt.getTime() <= input.now.getTime();
+  const alreadyOpen = opensNow;
   const stored = await approveSignupPlan(database, {
     offerId: plan.offerId,
     familyId: input.familyId,
@@ -599,6 +603,12 @@ async function pickAsNewAsk(
   if (!stored.ok) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
   }
+  await writePlanAudit(database, {
+    familyId: input.familyId,
+    actor: input.parentUserId,
+    offerId: plan.offerId,
+    after: { step: 'plan_pick_new_ask', nextOffer: stored.id, host: plan.providerHost },
+  });
   const next: ConversablePlan = {
     ...plan,
     offerId: stored.id,
@@ -611,7 +621,10 @@ async function pickAsNewAsk(
     lastAskedSeq: null,
     createdAt: input.now,
   };
-  return reply(database, input, deps, next, 'offer', { terms: writerTerms(shown), boundBy });
+  return reply(database, input, deps, next, 'offer', {
+    terms: writerTerms(shown, { runsNow: true }),
+    boundBy,
+  });
 }
 
 /** The one session of an offer recorded from a site's option. */

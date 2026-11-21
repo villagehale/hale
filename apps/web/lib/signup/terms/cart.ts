@@ -75,7 +75,13 @@ function comparesWhen(
   if (wall === null || cart.session_date === null) return 'unread';
   if (cart.session_date !== wall.date) return 'session';
   if (cart.session_time === null || wall.time === null) return bound.sharesDate ? 'session' : null;
-  return cart.session_time === wall.time ? null : 'session';
+  return wallTime(cart.session_time) === wall.time ? null : 'session';
+}
+
+/** A cart's `9:30` is `09:30`. Anything else stays what it is, and differs. */
+function wallTime(time: string): string {
+  const parts = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+  return parts?.[1] && parts[2] ? `${parts[1].padStart(2, '0')}:${parts[2]}` : time;
 }
 
 /** The tax allowed on one rate: this province's, within a cent, or up to the ceiling. */

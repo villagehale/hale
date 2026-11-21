@@ -1,7 +1,7 @@
 import { invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { holdSender, releaseHeldMessage } from '~/lib/channel/intake/opt-out-hold';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -25,6 +25,12 @@ describe('offer_signup coach verb', () => {
   });
   afterAll(async () => {
     await db.close();
+  });
+  beforeEach(() => {
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('records an offer from chat facts the parent already wrote', async () => {
