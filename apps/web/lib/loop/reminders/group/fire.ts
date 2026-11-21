@@ -128,14 +128,17 @@ const SEND_UNCONFIRMED = 'send_unconfirmed';
 
 /**
  * VIL-734 · what #ops hears about a reminder that closed failed. Null: nobody needs paging,
- * because the member stopped Hale, or {@link pageUnwritten} already said so.
+ * because the member stopped Hale, or {@link pageUnwritten} already said so. A reminder
+ * always has its chat, so `missing_chat_id` here is Linq's 2xx with an unreadable receipt.
  */
 function unsentPageReason(
   reason: string | null,
 ): 'send_refused' | 'send_unconfirmed' | 'no_what' | 'no_ledger_owner' | null {
   if (reason === 'unwritten' || reason === 'member_opted_out') return null;
   if (reason === 'no_what' || reason === 'no_ledger_owner') return reason;
-  if (reason === SEND_UNCONFIRMED || reason === 'unknown') return 'send_unconfirmed';
+  if (reason === SEND_UNCONFIRMED || reason === 'unknown' || reason === 'missing_chat_id') {
+    return 'send_unconfirmed';
+  }
   return reason !== null && AMBIGUOUS_SEND_CODES.has(reason) ? 'send_unconfirmed' : 'send_refused';
 }
 

@@ -1806,6 +1806,28 @@ describe('when a group reminder is due', () => {
       ]);
     });
 
+    it('pages a 1:1 text Linq took with an unreadable receipt as unconfirmed', async () => {
+      vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+      await seedHousehold();
+      await setFor(PRIYA);
+      const pages: OpsPage[] = [];
+      const tookItNoReceipt = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        oneToOne: {
+          send: refusedWith(new LinqSendError('missing_chat_id', 201, false)),
+        },
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, tookItNoReceipt)).toMatchObject({
+        failed: 1,
+      });
+
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+      ]);
+    });
+
     it('pages a send a dead tick left with no answer from Linq', async () => {
       vi.stubEnv('LOOP_SEND_ENABLED', 'true');
       const home = await seedHousehold();

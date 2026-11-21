@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport, type OutboundMessage } from '~/lib/channel/intake/transport';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import type { ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -158,6 +158,7 @@ function harness(
       threaded.push(input.body);
       return 'conv-1';
     },
+    clock: () => NOW,
     pager: {
       page: async (page) => {
         pages.push(page);
@@ -414,6 +415,43 @@ describe('the driver text, flag on', () => {
     ]);
   });
 
+  it('never resends a text Linq took but answered with an unreadable receipt', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
+    const { changeId } = await seedChange();
+    let linqCalls = 0;
+    const tookItNoMessageId = (async () => {
+      linqCalls += 1;
+      return Response.json({ chat: { id: 'chat-new' } }, { status: 201 });
+    }) as typeof fetch;
+    const h = harness();
+    const ports = { ...h.ports, transport: createLinqPhoneTransport({ fetch: tookItNoMessageId }) };
+
+    await firstTry(changeId, ports);
+    await tick(ports, at(5));
+    await tick(ports, at(60));
+
+    expect(linqCalls).toBe(1);
+    expect(h.compose.calls).toBe(1);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'send_unconfirmed', sentAt: null },
+    ]);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+    ]);
+  });
+
+  it('positive control: a local missing-chat refusal before any send is still retried', async () => {
+    const { changeId } = await seedChange();
+    const h = harness({ script: [new LinqSendError('missing_chat_id', 400, false), 'accept'] });
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+
+    expect(h.transport.tried).toBe(2);
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+  });
+
   it('closes a send a dead run left unanswered, without sending it again', async () => {
     const { changeId } = await seedChange();
     await db.database.insert(schema.channelMessages).values({
@@ -527,6 +565,25 @@ describe('the driver text, flag on', () => {
     expect(h.pages).toEqual([
       { site: 'team_schedule_driver_unsent', facts: { reason: 'event_started' }, count: 1 },
     ]);
+  });
+
+  it('does not send a retry whose event started while the model was writing it', async () => {
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused()] });
+    await firstTry(changeId, h.ports);
+
+    const ports = { ...h.ports, clock: () => new Date(NEW_START.getTime() + MIN) };
+    await tick(ports, at(5));
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'event_started' }, count: 1 },
+    ]);
+    expect(await driverAudit()).toContainEqual({
+      action: 'team_schedule_driver_unsent',
+      after: { reason: 'event_started', attempts: 1 },
+    });
   });
 
   it('waits out quiet hours with no model call, then sends the retry', async () => {
@@ -649,6 +706,52 @@ describe('the driver text, flag on', () => {
     expect(await tick(h.ports, at(6))).toMatchObject({ sent: 1, waiting: 0 });
     expect(h.transport.bodies()).toHaveLength(6);
     expect(h.pages).toEqual([]);
+  });
+
+  it('does not let quiet-hours holds use up the retries of a driver who can be texted', async () => {
+    const changes: string[] = [];
+    for (let index = 0; index < 6; index += 1) {
+      changes.push((await seedChange()).changeId);
+    }
+    let quietLeft = 0;
+    const h = harness({
+      script: changes.map(() => refused()),
+      gate: () => {
+        if (quietLeft === 0) return { allowed: true, optOut: 'short' };
+        quietLeft -= 1;
+        return { allowed: false, reason: 'quiet_hours' };
+      },
+    });
+    for (const changeId of changes) await firstTry(changeId, h.ports);
+
+    quietLeft = 5;
+    expect(await tick(h.ports, at(5))).toMatchObject({ sent: 1, waiting: 5 });
+
+    expect(h.compose.calls).toBe(7);
+    expect(h.transport.bodies()).toHaveLength(1);
+  });
+
+  it('when the cap bites, the driver whose event starts soonest goes first', async () => {
+    const seeded: Array<{ changeId: string; eventId: string }> = [];
+    for (let index = 0; index < 6; index += 1) seeded.push(await seedChange());
+    const soonest = seeded[5];
+    if (!soonest) throw new Error('expected six changes');
+    const earlier = new Date(NEW_START.getTime() - 60 * MIN);
+    await db.database
+      .update(schema.familyEvents)
+      .set({ startsAt: earlier })
+      .where(eq(schema.familyEvents.id, soonest.eventId));
+    await db.database
+      .update(schema.teamScheduleChanges)
+      .set({ newStartsAt: earlier })
+      .where(eq(schema.teamScheduleChanges.id, soonest.changeId));
+    const h = harness({ script: seeded.map(() => refused()) });
+    for (const { changeId } of seeded) await firstTry(changeId, h.ports);
+
+    await tick(h.ports, at(5));
+
+    const retried = (await ledger()).map((row) => row.dedupeKey);
+    expect(retried).toContain(legKey(soonest.changeId, 2));
   });
 
   it('two overlapping ticks send one retry', async () => {

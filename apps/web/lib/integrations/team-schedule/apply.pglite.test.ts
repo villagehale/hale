@@ -164,6 +164,7 @@ function ports(over: {
       transport,
       sendChat: async () => ({ providerMessageId: 'chat-out-1' }),
       threadMessage: async () => 'conv-1',
+      clock: () => NOW,
       pager: { page: async () => 'paged' },
     },
   };

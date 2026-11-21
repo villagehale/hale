@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
@@ -14,12 +14,12 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import {
-  AMBIGUOUS_SEND_CODES,
   type ResolvedOutbound,
   failedSendPatch,
   readSendRefusal,
   refusalStopsRetry,
   sendLinqChatMessage,
+  sendMayHaveLanded,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -68,6 +68,8 @@ export interface DriverNotifyPorts {
   /** The Linq 1:1 send, for a driver whose door is an iMessage chat. */
   sendChat: typeof sendLinqChatMessage;
   threadMessage: typeof threadProactiveMessage;
+  /** The time now. A compose can outlast the run's own start time. */
+  clock(): Date;
   /** #ops, when a driver's text reached them on no try. */
   pager: OpsPager;
 }
@@ -618,7 +620,7 @@ async function settleFailedDriverSend(
   now: Date,
 ): Promise<'retrying' | 'closed'> {
   const refusal = readSendRefusal(err);
-  if (!refusal || AMBIGUOUS_SEND_CODES.has(refusal.code)) {
+  if (!refusal || sendMayHaveLanded(err)) {
     return closeDriverLeg(
       database,
       leg,
@@ -652,7 +654,7 @@ async function sendDriverAttempt(
   database: Database,
   leg: DriverLeg,
   notice: DriverNotice,
-  turn: { attempt: number; previous: OpenAttempt | null },
+  turn: { attempt: number } & ({ previous: null } | { previous: OpenAttempt; startsAt: Date }),
   ports: DriverNotifyPorts,
   now: Date,
 ): Promise<DriverLegOutcome> {
@@ -722,6 +724,15 @@ async function sendDriverAttempt(
     );
     if (!turn.previous) return 'held';
     return settleHeldRetry(database, leg, turn.previous, verdict.reason, ports.pager);
+  }
+  if (turn.previous && ports.clock() >= turn.startsAt) {
+    return closeDriverLeg(
+      database,
+      leg,
+      turn.previous,
+      { code: SEND_RETRIES_EXHAUSTED, reason: 'event_started', page: 'event_started' },
+      ports.pager,
+    );
   }
 
   const [claimed] = await writeAttempt(DRIVER_IN_FLIGHT);
@@ -812,6 +823,7 @@ async function retryDriverLeg(
   },
   ports: DriverNotifyPorts,
   now: Date,
+  budget: { composes: number },
 ): Promise<DriverLegOutcome> {
   const { change, event } = context;
   if (!changeStillStands(change, event)) {
@@ -843,6 +855,9 @@ async function retryDriverLeg(
     now,
   });
   if (!verdict.allowed) return settleHeldRetry(database, leg, open, verdict.reason, ports.pager);
+  // Spent only on a real compose, so a held leg never takes a slot from one that can go.
+  if (budget.composes === 0) return 'waiting';
+  budget.composes -= 1;
 
   const [child] = event.childId
     ? await database
@@ -855,7 +870,7 @@ async function retryDriverLeg(
     database,
     leg,
     driverNotice(change, event, child?.name ?? null),
-    { attempt: open.attempts + 1, previous: open },
+    { attempt: open.attempts + 1, previous: open, startsAt },
     ports,
     now,
   );
@@ -883,9 +898,11 @@ export async function retryTeamScheduleDrivers(
         ),
       ),
     )
-    .orderBy(asc(schema.teamScheduleChanges.createdAt));
+    .orderBy(
+      sql`coalesce(${schema.teamScheduleChanges.newStartsAt}, ${schema.teamScheduleChanges.originalStartsAt})`,
+    );
   const summary = { sent: 0, retrying: 0, closed: 0, waiting: 0, failed: 0 };
-  let retries = 0;
+  const budget = { composes: DRIVER_RETRY_MAX_PER_TICK };
   for (const change of changes) {
     // The feature's own kill switch stops what is queued, not only what is new.
     if (!teamScheduleChangesActive(change.familyId)) continue;
@@ -922,13 +939,6 @@ export async function retryTeamScheduleDrivers(
         const step = driverLegStep(await driverAttempts(database, leg.key), input.now);
         if (step.kind === 'waiting') summary.waiting += 1;
         if (step.kind !== 'died' && step.kind !== 'exhausted' && step.kind !== 'due') continue;
-        if (step.kind === 'due') {
-          if (retries >= DRIVER_RETRY_MAX_PER_TICK) {
-            summary.waiting += 1;
-            continue;
-          }
-          retries += 1;
-        }
         const ports = input.portsFor(change.familyId);
         let outcome: DriverLegOutcome;
         if (step.kind === 'died') {
@@ -959,6 +969,7 @@ export async function retryTeamScheduleDrivers(
             { change, event },
             ports,
             input.now,
+            budget,
           );
         }
         if (outcome !== 'held' && outcome !== 'lost') summary[outcome] += 1;
@@ -990,6 +1001,7 @@ export function productionDriverNotifyPorts(
     transport,
     sendChat: sendLinqChatMessage,
     threadMessage: threadProactiveMessage,
+    clock: () => new Date(),
     pager: {
       async page(page) {
         const { pageOps } = await import('~/lib/monitoring/failure-page');
