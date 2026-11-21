@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import type {
   CalendarInviteReport,
   CalendarInviteRequest,
@@ -154,7 +155,19 @@ export async function reportGroupPlan(
       language: plan.language,
     });
     if (!input) return 'no_link';
-    const messages = await ports.compose(input);
+    let messages: string[] | null;
+    try {
+      messages = await ports.compose(input);
+    } catch (err) {
+      // VIL-719 · a skill that will not load or a client that cannot be built left the text
+      // unwritten. With the ask policy on it pages like any other unwritten text.
+      if (!askPolicyTiersEnabled(plan.familyId)) throw err;
+      console.error(
+        { familyId: plan.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'group plan report: the writer could not run, nothing sent',
+      );
+      messages = null;
+    }
     if (!messages || messages.length === 0) {
       await ports.unsent(plan);
       return 'unwritten';

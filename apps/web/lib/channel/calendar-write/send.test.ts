@@ -222,3 +222,38 @@ describe('VIL-454 production ports build no transport up front', () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe('VIL-719 a notice whose writer could not start', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  function noClientPorts() {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    return ports({ compose: productionCalendarWriteNoticePorts({} as Database).compose });
+  }
+
+  it('policy on: a model client that cannot be built is unwritten, and #ops is paged', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const p = noClientPorts();
+    expect(await withCalendarWriteNotice(fakePlacement(), p).sync(REQUEST)).toEqual(WRITTEN);
+    expect(p.send).not.toHaveBeenCalled();
+    expect(p.pager.page).toHaveBeenCalledTimes(1);
+    expect(p.pager.page).toHaveBeenCalledWith({
+      site: 'calendar_write_notice_unwritten',
+      facts: { op: 'create' },
+      ref: 'e1',
+    });
+  });
+
+  it('policy off: the same failure stays a named error and pages no one, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const p = noClientPorts();
+    expect(await noticeAfterSync(REQUEST, WRITTEN, p)).toBe('errored');
+    expect(p.send).not.toHaveBeenCalled();
+    expect(p.pager.page).not.toHaveBeenCalled();
+  });
+});

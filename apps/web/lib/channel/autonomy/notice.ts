@@ -311,7 +311,19 @@ async function sendAutonomyNotice(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const written = await ports.compose(input.context);
+  let written: AutonomyNoticeText;
+  try {
+    written = await ports.compose(input.context);
+  } catch (err) {
+    // VIL-719 · a skill that will not load left the text unwritten. With the ask policy on
+    // it is a named skip, so the pass carries on and ops hears of it.
+    if (!askPolicyTiersEnabled(familyId)) throw err;
+    console.error(
+      { familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'autonomy notice: the writer could not run, nothing sent',
+    );
+    written = { skipped: 'skill_unavailable' };
+  }
   if ('skipped' in written) {
     // VIL-719 · an on-its-own text is the tell-after for something Hale already did. When it
     // cannot be written, nothing is sent, the notice stays owed, and ops hears of it. A text

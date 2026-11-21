@@ -1,6 +1,8 @@
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import type { CalendarInviteReport, CalendarInviteRequest } from '@hale/worker/executor';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { composeGroupPlanReport } from './report';
 import {
   type GroupPlan,
   type GroupPlanReportPorts,
@@ -8,6 +10,12 @@ import {
   reportGroupPlan,
   withGroupPlanReport,
 } from './send';
+
+vi.mock('~/lib/cron/skill', () => ({
+  loadCronSkill: vi.fn(async () => {
+    throw new Error('skill file missing');
+  }),
+}));
 
 /**
  * VIL-443 (T17) 2/2 — the decorator on the executor's invite port. Every way it ends is a
@@ -320,5 +328,48 @@ describe('VIL-443 production ports', () => {
     const sender = withGroupPlanReport(inner, productionGroupPlanReportPorts({} as Database));
     expect(await sender.send(REQUEST)).toEqual({ status: 'reported', parents: [] });
     expect(inner.send).toHaveBeenCalledWith(REQUEST);
+  });
+});
+
+describe('VIL-719 a group text the composer could not write', () => {
+  function quietLogs() {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  }
+
+  it('policy on: a skill that will not load is unwritten, so #ops is paged and nothing goes out', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    quietLogs();
+    const inner = innerSender();
+    const p = ports({ compose: (input) => composeGroupPlanReport({} as AgentClient, input) });
+    expect(await withGroupPlanReport(inner, p).send(REQUEST)).toEqual({
+      status: 'group_reported',
+      outcome: 'unwritten',
+    });
+    expect(p.unsent).toHaveBeenCalledTimes(1);
+    expect(p.unsent).toHaveBeenCalledWith(PLAN);
+    expect(p.send).not.toHaveBeenCalled();
+    expect(inner.send).not.toHaveBeenCalled();
+  });
+
+  it('policy on: a model client that cannot be built is unwritten too', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    quietLogs();
+    const p = ports({ compose: productionGroupPlanReportPorts({} as Database).compose });
+    expect(await reportGroupPlan(PLAN, p)).toBe('unwritten');
+    expect(p.unsent).toHaveBeenCalledWith(PLAN);
+    expect(p.send).not.toHaveBeenCalled();
+  });
+
+  it('policy off: the same failure stays a named error and pages no one, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    quietLogs();
+    const p = ports({ compose: productionGroupPlanReportPorts({} as Database).compose });
+    expect(await reportGroupPlan(PLAN, p)).toBe('errored');
+    expect(p.unsent).not.toHaveBeenCalled();
+    expect(p.send).not.toHaveBeenCalled();
   });
 });

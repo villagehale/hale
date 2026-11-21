@@ -910,6 +910,65 @@ describe('VIL-719 the ask policy on the on-its-own and turn-on texts', () => {
     expect(await messageRows(parent.familyId)).toEqual([]);
   });
 
+  it('policy on: a writer that could not run is unwritten: owed, and #ops is paged', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const parent = await seedParent();
+    const consentRecordId = await grant(
+      parent.familyId,
+      parent.parentUserId,
+      'calendar_add',
+      new Date(MORNING.getTime() - 60_000),
+    );
+    await db.database.insert(schema.auditLog).values({
+      familyId: parent.familyId,
+      actor: 'system',
+      actionTaken: 'autonomy_armed_notice_sent',
+      targetTable: 'consent_records',
+      targetId: consentRecordId,
+      after: { dedupeKey: `autonomy_armed:${consentRecordId}` },
+    });
+    const actionId = await recordActed(parent.familyId, 'calendar_add', {
+      payload: { title: 'swim' },
+      askTier: 'tell_after',
+    });
+    const { sendPorts, transport, pages } = ports(async () => {
+      throw new Error('skill file missing');
+    });
+
+    const result = await dispatchAutonomyNotices(
+      db.database,
+      { now: MORNING, familyId: parent.familyId, slot: 'now' },
+      sendPorts,
+    );
+
+    expect(result.composeSkipped).toBe(1);
+    expect(transport.bodies()).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'autonomy_acted_unwritten', facts: { reason: 'skill_unavailable' }, ref: actionId },
+    ]);
+    expect(await messageRows(parent.familyId)).toEqual([]);
+  });
+
+  it('policy off: a writer that could not run escapes the pass and pages no one, as on main', async () => {
+    const parent = await seedParent();
+    await grant(parent.familyId, parent.parentUserId, 'calendar_add');
+    await recordActed(parent.familyId, 'calendar_add', { payload: { title: 'swim' } });
+    const { sendPorts, transport, pages } = ports(async () => {
+      throw new Error('skill file missing');
+    });
+
+    await expect(
+      dispatchAutonomyNotices(
+        db.database,
+        { now: MORNING, familyId: parent.familyId, slot: 'now' },
+        sendPorts,
+      ),
+    ).rejects.toThrow('skill file missing');
+    expect(transport.bodies()).toEqual([]);
+    expect(pages).toEqual([]);
+  });
+
   it('policy off: the same unwritten text pages no one, as before', async () => {
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'calendar_add');

@@ -26,16 +26,7 @@ export async function composeAutonomyNotice(
   client: AgentClient | null = voiceClient(),
 ): Promise<AutonomyNoticeText> {
   if (!client) return { skipped: 'no_client' };
-  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-  try {
-    skill = await loadCronSkill(AUTONOMY_NOTICE_SKILL);
-  } catch (err) {
-    console.error(
-      { err: err instanceof Error ? err.name : 'unknown' },
-      'autonomy notice: skill load failed, nothing sent',
-    );
-    return { skipped: 'skill_unavailable' };
-  }
+  const skill = await loadCronSkill(AUTONOMY_NOTICE_SKILL);
   let value: unknown;
   try {
     const result = await forceToolJson({
