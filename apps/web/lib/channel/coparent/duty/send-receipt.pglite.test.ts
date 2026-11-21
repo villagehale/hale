@@ -1,8 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { PROACTIVE_CADENCE_ENV } from '~/lib/channel/proactive/flag';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
@@ -30,6 +31,8 @@ import { commitDutyUpdate } from './model';
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE_ONE = '+15555550101';
 const PHONE_TWO = '+15555550102';
+const PHONE_THREE = '+15555550103';
+const PHONE_FOUR = '+15555550104';
 
 let db: TestDb;
 
@@ -40,6 +43,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.close();
+});
+
+// With the decider live an ask waits in its queue and never reaches this send path.
+beforeEach(() => {
+  vi.stubEnv(PROACTIVE_CADENCE_ENV, 'off');
 });
 
 afterEach(() => {
@@ -110,7 +118,7 @@ async function outRows(familyId: string) {
 
 async function sendAudits(familyId: string, verb: string) {
   return db.database
-    .select({ after: schema.auditLog.after })
+    .select({ audience: schema.auditLog.audience, after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(and(eq(schema.auditLog.familyId, familyId), eq(schema.auditLog.actionTaken, verb)));
 }
@@ -212,11 +220,14 @@ async function nightBeforeFamily(name: string) {
 }
 
 /** Two overlapping kids, no family group: the split ask goes to each parent on a 1:1. */
-async function splitFamilyOnOneToOnes(name: string) {
+async function splitFamilyOnOneToOnes(
+  name: string,
+  phones: readonly [string, string] = [PHONE_ONE, PHONE_TWO],
+) {
   const family = await twoParents(name);
   for (const [userId, phone] of [
-    [family.parentUserId, PHONE_ONE],
-    [family.secondUserId, PHONE_TWO],
+    [family.parentUserId, phones[0]],
+    [family.secondUserId, phones[1]],
   ] as const) {
     await db.database.insert(schema.parentChannels).values({
       userId,
@@ -417,9 +428,10 @@ describe('a duty ask is sent only once Linq accepts it', () => {
     expect(await sendAudits(family.familyId, 'duty_send_failed')).toHaveLength(3);
     expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
       {
+        audience: null,
         after: {
           surface: 'ask',
-          failure: 'http_500',
+          failure: 'send_refused',
           attempts: 4,
           reason: 'send_retries_exhausted',
         },
@@ -550,6 +562,73 @@ describe('a duty ask is sent only once Linq accepts it', () => {
     });
     if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
     expect(view.open?.unanswered).toBe(1);
+    expect(await sendAudits(family.familyId, 'duty_send_failed')).toEqual([
+      {
+        audience: family.secondUserId,
+        after: { surface: 'ask', failure: 'send_refused', attempts: 1 },
+      },
+    ]);
+  });
+
+  it("on 1:1s, reads each parent's gate, so a retry never texts a parent now on hold", async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('direct-held', [PHONE_THREE, PHONE_FOUR]);
+    const plan = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: AFTERNOON,
+      bubbleLeaving: false,
+    });
+    if ('skipped' in plan) throw new Error(`plan skipped: ${plan.skipped}`);
+    const heldUser = plan.render.parentIds[1];
+    const heldPhone = heldUser === family.parentUserId ? PHONE_THREE : PHONE_FOUR;
+    const otherPhone = heldPhone === PHONE_THREE ? PHONE_FOUR : PHONE_THREE;
+    let onHold = false;
+    let refusals = 1;
+    let accepted = 0;
+    const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async (input) => {
+      if (input.to === heldPhone && refusals > 0) {
+        refusals -= 1;
+        throw refused();
+      }
+      accepted += 1;
+      return { providerMessageId: `linq-held-${accepted}` };
+    });
+    const gate: DutySendPorts['gate'] = async (request) =>
+      onHold && request.parentUserId === heldUser
+        ? { allowed: false, reason: 'opt_out_unread' }
+        : { allowed: true, optOut: 'short' };
+    const sendPorts: DutySendPorts = {
+      ...ports(
+        vi.fn(async () => ({ providerMessageId: 'unused' })),
+        'unused',
+        pager().pager,
+      ),
+      target: async () => ({ channel: 'legacy' }),
+      gate,
+      sendDirect,
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply('Who drives Robin to hockey and who drives Casey to dance?'),
+      });
+
+    await sweep(AFTERNOON);
+    onHold = true;
+    await sweep(later(1, AFTERNOON));
+
+    const toEach = sendDirect.mock.calls.map((call) => call[0].to);
+    expect(toEach.filter((to) => to === otherPhone)).toHaveLength(1);
+    expect(toEach.filter((to) => to === heldPhone)).toHaveLength(1);
+    const view = await planFamilyDutyAsks(db.database, {
+      familyId: family.familyId,
+      now: later(1, AFTERNOON),
+      bubbleLeaving: false,
+    });
+    if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
+    expect(view.open?.unanswered).toBe(1);
   });
 });
 
@@ -574,6 +653,17 @@ describe('a duty ack is sent only once Linq accepts it', () => {
     expect(rows).toHaveLength(4);
     expect(rows.every((row) => row.status === 'failed' && row.errorCode === 'http_500')).toBe(true);
     expect(vi.mocked(client.messages.create).mock.calls).toHaveLength(4);
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([
+      {
+        audience: family.parentUserId,
+        after: {
+          surface: 'ack',
+          failure: 'send_refused',
+          attempts: 4,
+          reason: 'send_retries_exhausted',
+        },
+      },
+    ]);
     expect(ops.pages).toEqual([
       { site: 'duty_unsent', facts: { surface: 'ack', reason: 'send_refused' }, count: 1 },
     ]);
@@ -632,6 +722,9 @@ describe('a duty ack is sent only once Linq accepts it', () => {
 
 describe('with the duty flags off', () => {
   it('neither sweep nor ack sends, claims or pages anything', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'false');
+    vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'false');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
     const family = await nightBeforeFamily('flags-off');
     const send = vi.fn<DutySendPorts['send']>();
     const ops = pager();

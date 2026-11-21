@@ -16,6 +16,7 @@ import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   PROACTIVE_QUIET_HOURS,
+  type ProactiveHoldReason,
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
   assertProactiveSendAllowed,
@@ -1324,6 +1325,7 @@ export async function deliverDutyGroupLine(
       now: input.now,
       pager: ports.pager ?? defaultDutyPager(database),
       drop,
+      audience: null,
     });
     return { status: 'not_sent', reason: drop ?? code };
   }
@@ -1362,19 +1364,10 @@ async function deliverDutyDirectLines(
 ): Promise<DutyDelivery> {
   if (!ports.sendDirect) return { status: 'skipped', reason: 'no_group' };
   if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
-  const verdict = await ports.gate(
-    {
-      familyId: input.familyId,
-      parentUserId: input.parentUserIds[0] ?? '',
-      kind: 'duty_ask',
-      now: input.now,
-    },
-    ports.gatePorts(database),
-  );
-  if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
-  const body = withOptOut(input.text, verdict.optOut);
   const pager = ports.pager ?? defaultDutyPager(database);
+  const gatePorts = ports.gatePorts(database);
   const stopped: DutySendAttempt[] = [];
+  let held: ProactiveHoldReason | null = null;
   let acceptedNow: string | null = null;
   let acceptedEarlier: string | null = null;
   let retrying = false;
@@ -1393,6 +1386,15 @@ async function deliverDutyDirectLines(
       if (attempt.kind === 'wait' || attempt.kind === 'in_flight') retrying = true;
       continue;
     }
+    const verdict = await ports.gate(
+      { familyId: input.familyId, parentUserId, kind: 'duty_ask', now: input.now },
+      gatePorts,
+    );
+    if (!verdict.allowed) {
+      held ??= verdict.reason;
+      continue;
+    }
+    const body = withOptOut(input.text, verdict.optOut);
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({
@@ -1427,6 +1429,7 @@ async function deliverDutyDirectLines(
         now: input.now,
         pager,
         drop,
+        audience: parentUserId,
       });
       if (drop) dropped = true;
       else retrying = true;
@@ -1442,9 +1445,10 @@ async function deliverDutyDirectLines(
   // The lines are noted once, when the last parent's outcome is known: a parent still being
   // retried keeps them planned, and the parent Linq already accepted is not texted again.
   if (retrying) return { status: 'not_sent', reason: 'send_retrying' };
-  const reached = acceptedNow ?? (dropped ? acceptedEarlier : null);
+  const reached = acceptedNow ?? (dropped || held ? acceptedEarlier : null);
   if (reached) return { status: 'sent', chatId: reached };
   if (dropped) return { status: 'not_sent', reason: SEND_RETRIES_EXHAUSTED };
+  if (held) return { status: 'held', reason: held };
   return stopped.length > 0 ? dutySendStopped(stopped) : { status: 'skipped', reason: 'no_group' };
 }
 

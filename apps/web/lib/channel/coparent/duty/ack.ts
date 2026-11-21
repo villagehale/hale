@@ -201,6 +201,7 @@ export async function acknowledgeDutyWrite(input: {
       surface: 'ack',
       now: input.now,
       pager,
+      audience: input.actorUserId,
     } as const;
 
     try {

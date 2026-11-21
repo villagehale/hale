@@ -134,7 +134,11 @@ export function defaultDutyPager(database: Database): OpsPager {
   };
 }
 
-/** The row names the failure. A `drop` ends the send: audited as dropped, and #ops paged. */
+/**
+ * The ledger row names Linq's own code. The immutable audit row and the #ops page carry
+ * only the closed label. A `drop` ends the send: audited as dropped, and #ops paged. A
+ * send to one adult is that adult's row (`audience`), not a family-wide one.
+ */
 export async function settleDutySendFailure(
   database: Database,
   input: {
@@ -146,26 +150,35 @@ export async function settleDutySendFailure(
     now: Date;
     pager: OpsPager;
     drop: DutySendDrop | null;
+    audience: string | null;
   },
 ): Promise<void> {
+  const failure = dutySendMayHaveLeft(input.code) ? 'not_confirmed' : 'send_refused';
   await database.transaction(async (tx) => {
     await tx
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: input.code })
       .where(eq(schema.channelMessages.id, input.claimId));
-    await tx.insert(schema.auditLog).values({
+    const audit = {
       familyId: input.familyId,
       actor: 'system',
-      actionTaken: input.drop ? 'duty_send_dropped' : 'duty_send_failed',
       targetTable: 'channel_messages',
       targetId: input.claimId,
+      audience: input.audience,
       after: {
         surface: input.surface,
-        failure: input.code,
+        failure,
         attempts: input.attempt,
         ...(input.drop ? { reason: input.drop } : {}),
       },
-    });
+    };
+    await tx
+      .insert(schema.auditLog)
+      .values(
+        input.drop
+          ? { ...audit, actionTaken: 'duty_send_dropped' }
+          : { ...audit, actionTaken: 'duty_send_failed' },
+      );
   });
   console.error(
     { familyId: input.familyId, surface: input.surface, code: input.code, attempt: input.attempt },
@@ -174,10 +187,7 @@ export async function settleDutySendFailure(
   if (!input.drop) return;
   await input.pager.page({
     site: 'duty_unsent',
-    facts: {
-      surface: input.surface,
-      reason: dutySendMayHaveLeft(input.code) ? 'not_confirmed' : 'send_refused',
-    },
+    facts: { surface: input.surface, reason: failure },
     count: 1,
   });
 }
