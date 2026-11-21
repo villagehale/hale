@@ -13,9 +13,8 @@ import {
   dispatchLoopMessage,
 } from '~/lib/channel/dispatch';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
-import { linqFromE164 } from '~/lib/channel/linq/config';
-import { LinqSendError, findLinqDirectChat } from '~/lib/channel/linq/transport';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
 import type { BillingClaimFacts } from '~/lib/channel/reconcile/billing-text';
 import type { LoopMessage } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
@@ -157,11 +156,7 @@ export function defaultBillingNoticeDeps(
     pager: failurePageOpsPager(() => database),
     subscriptions: stripeSubscriptionReaderFromEnv(),
     charges: stripeChargeLookupFromEnv(),
-    findDirectChat: async (phone) => {
-      const from = linqFromE164();
-      if (!from) throw new LinqSendError('not_configured', 0, true);
-      return findLinqDirectChat({ from, to: phone });
-    },
+    findDirectChat: (phone) => findHaleDirectChat(phone),
     compose: ({ facts, claimFacts, familyId, signal }) =>
       composeBillingNotice({
         client: voiceClient(),

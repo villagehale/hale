@@ -176,6 +176,7 @@ describe('GET /api/cron/drain', () => {
       heldReminders: { held: 0 },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
       anthropicCredit: { skipped: 'flag_off' },
+      billingNotices: { skipped: 'flag_off' },
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
   });
