@@ -338,6 +338,12 @@ export const PAYMENT_ENV_ONLY = [
     type: 'boolean' as const,
     note: 'env-only; exact `true`; refund and dispute webhooks revoke the tier, checkout waits for an applied billing event, reconcile pages #ops; nothing in PostHog may turn this on',
   },
+  {
+    env: 'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; a full refund of the charge that paid the current period drops the plan AND cancels that subscription in Stripe; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
 ] as const;
 
 export function getFlag(key: string): FlagSpec {

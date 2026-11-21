@@ -6,6 +6,7 @@ import {
   plusPriceIdsFromEnv,
   promoMaxPriceIdsFromEnv,
 } from '~/lib/billing/prices';
+import type { OtherSubscriptions, PeriodStanding } from '~/lib/billing/stripe-charge-context';
 
 /**
  * Stripe billing webhook contract (B18).
@@ -33,13 +34,17 @@ import {
  *   invoice.paid                      → metadata.tier, else the invoice line's price
  *   customer.subscription.updated     → tier of the active price after the change
  *   customer.subscription.deleted     → 'free' (subscription ended → downgrade)
- *   charge.refunded (full)            → 'free', unless a live subscription remains
- *   charge.dispute.created            → 'free', unless a live subscription remains
+ *   charge.refunded (full)            → 'free' once the charge is tied to a subscription
+ *                                       that has ended and nothing else is paid
+ *   charge.dispute.created            → the same; a dispute never cancels anything
  *   (any other event type)            → null (not a tier-affecting event)
  *
  * Refund and dispute revocation runs only when STRIPE_BILLING_REVOKE_ENABLED
  * is exactly `true`. Verification still requires STRIPE_WEBHOOK_SECRET and
- * does not wait on that flag.
+ * does not wait on that flag. With STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED also
+ * exactly `true`, a full refund of the charge that paid a live subscription's
+ * current period ends that subscription in Stripe and then drops the plan:
+ * {@link refundOutcome} and {@link disputeOutcome} hold the whole decision.
  *
  * ── Which family an event targets ──
  *   We thread the family id through Stripe metadata at checkout creation
@@ -417,7 +422,13 @@ export function paidTierToken(value: string | null): PaidTier | null {
   return null;
 }
 
-const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
+export const LIVE_SUBSCRIPTION: ReadonlySet<string> = new Set(['active', 'trialing', 'past_due']);
+
+/** Terminal in Stripe. `unpaid` and `paused` are not here: both can come back. */
+export const ENDED_SUBSCRIPTION: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
+
+/** Stripe documents search as up to an hour behind during an outage. */
+export const SEARCH_SETTLE_SECONDS = 3600;
 
 export type ChargeRevokeDecision =
   | { action: 'ignore' }
@@ -429,11 +440,9 @@ export type ChargeRevokeDecision =
     };
 
 /**
- * Candidate only. A partial refund keeps the tier. A subscription that is
- * still active, trialing, or past_due keeps the tier. A full refund or a
- * dispute is a revoke candidate. applyChargeRevoke does not drop a family
- * that still has a subscription unless this charge is tied to that
- * subscription and it is not live. An unexpanded invoice id is not enough.
+ * Candidate only. A partial refund keeps the tier. A full refund or a dispute
+ * is a revoke candidate. {@link refundOutcome} and {@link disputeOutcome} make
+ * the decision once the charge is tied to a subscription.
  */
 export function chargeRevokeDecision(payload: unknown): ChargeRevokeDecision {
   if (!isRecord(payload)) return { action: 'ignore' };
@@ -461,6 +470,159 @@ export function chargeRevokeDecision(payload: unknown): ChargeRevokeDecision {
   }
 
   return { action: 'ignore' };
+}
+
+export type RevokeKeepReason =
+  | 'partial_refund'
+  | 'active_subscription'
+  | 'subscription_not_ended'
+  | 'older_invoice'
+  | 'duplicate_subscription'
+  | 'already_free';
+
+export type RevokeUnresolvedReason =
+  | 'subscription_unresolved'
+  | 'current_period_unproven'
+  | 'surviving_plan_unmapped'
+  | 'dispute_plan_kept';
+
+export type RevokeOutcome =
+  | { action: 'keep'; reason: RevokeKeepReason; setTier?: PlanTier }
+  | { action: 'drop'; cancelSubscriptionIds: readonly string[] }
+  | { action: 'unresolved'; reason: RevokeUnresolvedReason }
+  | { action: 'wait' }
+  /** This row depends on the family's other subscriptions: call again with `other`. */
+  | { action: 'needs_scan' };
+
+/** What the charge proved, read from Stripe as it is now and from the family row. */
+export interface RevokeFacts {
+  flagOn: boolean;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  subscriptionCreated: number | null;
+  namesAnotherFamily: boolean;
+  periodStanding: PeriodStanding | null;
+  planTier: PlanTier;
+  /** A hint only. It never proves that this charge paid that subscription. */
+  storedSubscriptionId: string | null;
+  /** The wall clock: an event's own `created` never advances across redeliveries. */
+  nowSeconds: number;
+  other: OtherSubscriptions | null;
+  priceTierMap: PriceTierMap;
+}
+
+const keep = (reason: RevokeKeepReason, setTier?: PlanTier): RevokeOutcome =>
+  setTier ? { action: 'keep', reason, setTier } : { action: 'keep', reason };
+
+const unresolved = (reason: RevokeUnresolvedReason): RevokeOutcome => ({
+  action: 'unresolved',
+  reason,
+});
+
+/** A null `created` counts as settled: only an already-expanded payload has none. */
+export function withinSearchSettle(created: number | null, nowSeconds: number): boolean {
+  return created !== null && nowSeconds - created < SEARCH_SETTLE_SECONDS;
+}
+
+function settling(facts: RevokeFacts): boolean {
+  return withinSearchSettle(facts.subscriptionCreated, facts.nowSeconds);
+}
+
+function storedNamesAnother(facts: RevokeFacts): boolean {
+  return facts.storedSubscriptionId !== null && facts.storedSubscriptionId !== facts.subscriptionId;
+}
+
+/**
+ * The tier the family still pays for after a refunded duplicate. Grants are
+ * last-writer-wins, so a refunded Max duplicate would otherwise leave a family on
+ * Max while paying only for Plus.
+ */
+function keepSurvivingPlan(
+  facts: RevokeFacts,
+  other: OtherSubscriptions,
+  reason: RevokeKeepReason,
+): RevokeOutcome {
+  if (!facts.flagOn) return keep(reason);
+  const tiers = new Set(
+    other.paid.map((row) => (row.priceId ? (facts.priceTierMap[row.priceId] ?? null) : null)),
+  );
+  const [tier] = tiers;
+  if (other.truncated || tiers.size !== 1 || !tier) return unresolved('surviving_plan_unmapped');
+  if (tier === facts.planTier || facts.planTier === 'free') return keep(reason);
+  return keep(reason, tier);
+}
+
+/**
+ * The refund decision. With the flag off it never asks to cancel anything, and it drops a
+ * family only when the charge is proven to have paid a subscription that has ended and
+ * nothing else is paid.
+ */
+export function refundOutcome(facts: RevokeFacts & { partial: boolean }): RevokeOutcome {
+  if (facts.partial) return keep('partial_refund');
+  const { subscriptionId, subscriptionStatus: status } = facts;
+  if (subscriptionId === null || status === null || facts.namesAnotherFamily) {
+    return unresolved('subscription_unresolved');
+  }
+
+  if (ENDED_SUBSCRIPTION.has(status)) {
+    if (facts.planTier === 'free') return keep('already_free');
+    const { other } = facts;
+    if (other === null) return { action: 'needs_scan' };
+    // Nothing may be cancelled with the flag off, so a refunded sibling still bills.
+    const refundedCountsAsPaid = !facts.flagOn && other.refundedIds.length > 0;
+    if (other.paid.length > 0 || other.truncated || refundedCountsAsPaid) {
+      return keepSurvivingPlan(facts, other, 'active_subscription');
+    }
+    if (!facts.flagOn && storedNamesAnother(facts)) return unresolved('subscription_unresolved');
+    if (settling(facts)) return { action: 'wait' };
+    return { action: 'drop', cancelSubscriptionIds: other.refundedIds };
+  }
+
+  const live = LIVE_SUBSCRIPTION.has(status);
+  if (!facts.flagOn) return keep(live ? 'active_subscription' : 'subscription_not_ended');
+  if (live) {
+    const period = facts.periodStanding ?? 'unproven';
+    if (period === 'older') return keep('older_invoice');
+    if (period === 'unproven') return unresolved('current_period_unproven');
+  }
+  const { other } = facts;
+  if (other === null) return { action: 'needs_scan' };
+  if (other.paid.length > 0 || other.truncated) {
+    return keepSurvivingPlan(facts, other, 'duplicate_subscription');
+  }
+  if (settling(facts)) return { action: 'wait' };
+  return { action: 'drop', cancelSubscriptionIds: [subscriptionId, ...other.refundedIds] };
+}
+
+/**
+ * The dispute decision. A bank-initiated dispute is not a refund, so it never cancels and
+ * never reads as one: a family with a subscription that has not ended keeps the plan and
+ * #ops decides.
+ */
+export function disputeOutcome(facts: RevokeFacts): RevokeOutcome {
+  const noneCancelled: RevokeOutcome = { action: 'drop', cancelSubscriptionIds: [] };
+  const paidElsewhere = (other: OtherSubscriptions) =>
+    other.paid.length > 0 || other.refundedIds.length > 0 || other.truncated;
+
+  if (facts.namesAnotherFamily) return unresolved('subscription_unresolved');
+  if (facts.subscriptionId === null || facts.subscriptionStatus === null) {
+    if (facts.storedSubscriptionId !== null) return unresolved('subscription_unresolved');
+    if (facts.other === null) return { action: 'needs_scan' };
+    return paidElsewhere(facts.other) ? unresolved('dispute_plan_kept') : noneCancelled;
+  }
+  if (!ENDED_SUBSCRIPTION.has(facts.subscriptionStatus)) return unresolved('dispute_plan_kept');
+  if (facts.other === null) return { action: 'needs_scan' };
+  if (paidElsewhere(facts.other)) return unresolved('dispute_plan_kept');
+  if (storedNamesAnother(facts)) return unresolved('subscription_unresolved');
+  if (settling(facts)) return { action: 'wait' };
+  return noneCancelled;
+}
+
+/** `created` on a subscription event's object, in unix seconds. */
+export function subscriptionCreatedFromStripeEvent(payload: unknown): number | null {
+  if (!isRecord(payload) || !isRecord(payload.data) || !isRecord(payload.data.object)) return null;
+  const created = payload.data.object.created;
+  return typeof created === 'number' ? created : null;
 }
 
 /** Subscription id on a charge or dispute, when Stripe expanded it. */

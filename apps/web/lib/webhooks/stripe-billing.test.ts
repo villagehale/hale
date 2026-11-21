@@ -2,8 +2,10 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   type PriceTierMap,
+  type RevokeFacts,
   chargeRevokeDecision,
   checkoutPriceIdFromEnv,
+  disputeOutcome,
   eventIdFromStripeEvent,
   familyIdFromStripeEvent,
   isStripeCheckoutConfigured,
@@ -11,6 +13,7 @@ import {
   paymentLinkTierOptionsFromEnv,
   planTierFromStripeEvent,
   priceTierMapFromEnv,
+  refundOutcome,
   stripeRefsFromStripeEvent,
   verifyStripeBillingSignature,
 } from './stripe-billing.js';
@@ -237,6 +240,325 @@ describe('chargeRevokeDecision', () => {
       data: { object: { subscription: { id: 'sub_1', status: 'canceled' } } },
     };
     expect(chargeRevokeDecision(dispute)).toEqual({ action: 'revoke', kind: 'dispute' });
+  });
+});
+
+describe('refund and dispute outcomes', () => {
+  const NOW = 1_780_000_000;
+  const SETTLED = NOW - 30 * 86_400;
+  const NOTHING = { paid: [], refundedIds: [], truncated: false };
+  const PLUS_SIBLING = {
+    paid: [{ id: 'sub_b', priceId: 'p_plus' }],
+    refundedIds: [],
+    truncated: false,
+  };
+  const MAX_SIBLING = {
+    paid: [{ id: 'sub_b', priceId: 'p_max' }],
+    refundedIds: [],
+    truncated: false,
+  };
+  const REFUNDED_SIBLING = { paid: [], refundedIds: ['sub_b'], truncated: false };
+  const TIERS: PriceTierMap = { p_plus: 'plus', p_max: 'family' };
+
+  const facts = (over: Partial<RevokeFacts> = {}): RevokeFacts => ({
+    flagOn: false,
+    subscriptionId: 'sub_s',
+    subscriptionStatus: 'active',
+    subscriptionCreated: SETTLED,
+    namesAnotherFamily: false,
+    periodStanding: 'current',
+    planTier: 'plus',
+    storedSubscriptionId: 'sub_s',
+    nowSeconds: NOW,
+    other: NOTHING,
+    priceTierMap: TIERS,
+    ...over,
+  });
+  const ENDED = { subscriptionStatus: 'canceled' };
+  const ON = { flagOn: true };
+
+  describe('refundOutcome', () => {
+    it.each([
+      ['row 1: partial refund', { partial: true }, { action: 'keep', reason: 'partial_refund' }],
+      [
+        'row 2: no subscription',
+        { subscriptionId: null, subscriptionStatus: null },
+        { action: 'unresolved', reason: 'subscription_unresolved' },
+      ],
+      [
+        'row 2: S names another family',
+        { namesAnotherFamily: true, ...ENDED },
+        { action: 'unresolved', reason: 'subscription_unresolved' },
+      ],
+      [
+        'row 2: an id with no status proves nothing',
+        { subscriptionStatus: null },
+        { action: 'unresolved', reason: 'subscription_unresolved' },
+      ],
+      [
+        'row 3a: ended, already free',
+        { ...ENDED, planTier: 'free', other: null },
+        { action: 'keep', reason: 'already_free' },
+      ],
+      [
+        'row 3b: ended, another paid subscription',
+        { ...ENDED, other: PLUS_SIBLING },
+        { action: 'keep', reason: 'active_subscription' },
+      ],
+      [
+        'row 3b: a truncated scan counts as paid',
+        { ...ENDED, other: { ...NOTHING, truncated: true } },
+        { action: 'keep', reason: 'active_subscription' },
+      ],
+      [
+        'row 3c: ended, nothing else, stored is S',
+        ENDED,
+        { action: 'drop', cancelSubscriptionIds: [] },
+      ],
+      [
+        'row 3c: ended, nothing else, nothing stored',
+        { ...ENDED, storedSubscriptionId: null },
+        { action: 'drop', cancelSubscriptionIds: [] },
+      ],
+      [
+        'row 3d: ended, stored names another, flag off',
+        { ...ENDED, storedSubscriptionId: 'sub_other' },
+        { action: 'unresolved', reason: 'subscription_unresolved' },
+      ],
+      [
+        'row 3e: ended, stored names another, flag on',
+        { ...ENDED, ...ON, storedSubscriptionId: 'sub_other' },
+        { action: 'drop', cancelSubscriptionIds: [] },
+      ],
+      ['row 4: live, flag off', { other: null }, { action: 'keep', reason: 'active_subscription' }],
+      [
+        'row 4: stalled, flag off',
+        { subscriptionStatus: 'unpaid', other: null },
+        { action: 'keep', reason: 'subscription_not_ended' },
+      ],
+      [
+        'row 5a: live, older invoice',
+        { ...ON, periodStanding: 'older', other: null },
+        { action: 'keep', reason: 'older_invoice' },
+      ],
+      [
+        'row 5b: live, period unproven',
+        { ...ON, periodStanding: 'unproven', other: null },
+        { action: 'unresolved', reason: 'current_period_unproven' },
+      ],
+      [
+        'row 5b: a null standing on a live subscription reads as unproven',
+        { ...ON, periodStanding: null, other: null },
+        { action: 'unresolved', reason: 'current_period_unproven' },
+      ],
+      [
+        'row 5c: current, another paid subscription',
+        { ...ON, other: PLUS_SIBLING },
+        { action: 'keep', reason: 'duplicate_subscription' },
+      ],
+      [
+        'row 5c: stalled, another paid subscription',
+        { ...ON, subscriptionStatus: 'unpaid', periodStanding: 'older', other: PLUS_SIBLING },
+        { action: 'keep', reason: 'duplicate_subscription' },
+      ],
+      ['row 5d: current, nothing else', ON, { action: 'drop', cancelSubscriptionIds: ['sub_s'] }],
+      [
+        'row 5d: stalled ends whichever period the charge paid',
+        { ...ON, subscriptionStatus: 'paused', periodStanding: 'older' },
+        { action: 'drop', cancelSubscriptionIds: ['sub_s'] },
+      ],
+    ] as const)('%s', (_name, over, expected) => {
+      const { partial, ...rest } = over as Partial<RevokeFacts> & { partial?: boolean };
+      expect(refundOutcome({ ...facts(rest), partial: partial === true })).toEqual(expected);
+    });
+
+    it('asks for the scan only on the rows that use it', () => {
+      const scan = { action: 'needs_scan' };
+      const outcome = (over: Partial<RevokeFacts>) =>
+        refundOutcome({ ...facts({ ...over, other: null }), partial: false });
+      expect(outcome(ENDED)).toEqual(scan);
+      expect(outcome({ ...ENDED, ...ON, storedSubscriptionId: 'sub_other' })).toEqual(scan);
+      expect(outcome(ON)).toEqual(scan);
+      expect(outcome({ ...ON, subscriptionStatus: 'unpaid' })).toEqual(scan);
+    });
+
+    it('with the flag on, a refunded sibling is not paid and every drop cancels it', () => {
+      expect(
+        refundOutcome({ ...facts({ ...ON, other: REFUNDED_SIBLING }), partial: false }),
+      ).toEqual({ action: 'drop', cancelSubscriptionIds: ['sub_s', 'sub_b'] });
+      expect(
+        refundOutcome({ ...facts({ ...ON, ...ENDED, other: REFUNDED_SIBLING }), partial: false }),
+      ).toEqual({ action: 'drop', cancelSubscriptionIds: ['sub_b'] });
+    });
+
+    it('with the flag off, a refunded sibling counts as paid so nothing is cancelled', () => {
+      expect(
+        refundOutcome({ ...facts({ ...ENDED, other: REFUNDED_SIBLING }), partial: false }),
+      ).toEqual({
+        action: 'keep',
+        reason: 'active_subscription',
+      });
+    });
+
+    it('waits while a subscription that would drop is younger than the search index', () => {
+      const young = { subscriptionCreated: NOW - 600 };
+      expect(refundOutcome({ ...facts({ ...ON, ...young }), partial: false })).toEqual({
+        action: 'wait',
+      });
+      expect(refundOutcome({ ...facts({ ...ENDED, ...young }), partial: false })).toEqual({
+        action: 'wait',
+      });
+    });
+
+    it('decides at exactly the settle boundary, and a null created counts as settled', () => {
+      expect(
+        refundOutcome({ ...facts({ ...ON, subscriptionCreated: NOW - 3600 }), partial: false }),
+      ).toEqual({ action: 'drop', cancelSubscriptionIds: ['sub_s'] });
+      expect(
+        refundOutcome({ ...facts({ ...ON, subscriptionCreated: NOW - 3599 }), partial: false }),
+      ).toEqual({ action: 'wait' });
+      expect(
+        refundOutcome({ ...facts({ ...ON, subscriptionCreated: null }), partial: false }),
+      ).toEqual({ action: 'drop', cancelSubscriptionIds: ['sub_s'] });
+    });
+
+    it('a young subscription that keeps the plan does not wait', () => {
+      expect(
+        refundOutcome({
+          ...facts({ ...ON, subscriptionCreated: NOW - 60, other: PLUS_SIBLING }),
+          partial: false,
+        }),
+      ).toEqual({ action: 'keep', reason: 'duplicate_subscription' });
+    });
+
+    describe('the surviving tier, flag on', () => {
+      it('moves the family to the tier it still pays for', () => {
+        expect(
+          refundOutcome({
+            ...facts({ ...ON, planTier: 'family', other: PLUS_SIBLING }),
+            partial: false,
+          }),
+        ).toEqual({ action: 'keep', reason: 'duplicate_subscription', setTier: 'plus' });
+        expect(
+          refundOutcome({
+            ...facts({ ...ON, ...ENDED, planTier: 'plus', other: MAX_SIBLING }),
+            partial: false,
+          }),
+        ).toEqual({ action: 'keep', reason: 'active_subscription', setTier: 'family' });
+      });
+
+      it('writes nothing when the tier already matches or the family is on free', () => {
+        expect(refundOutcome({ ...facts({ ...ON, other: PLUS_SIBLING }), partial: false })).toEqual(
+          { action: 'keep', reason: 'duplicate_subscription' },
+        );
+        expect(
+          refundOutcome({
+            ...facts({ ...ON, planTier: 'free', other: MAX_SIBLING }),
+            partial: false,
+          }),
+        ).toEqual({ action: 'keep', reason: 'duplicate_subscription' });
+      });
+
+      it.each([
+        [
+          'an unknown price',
+          { paid: [{ id: 'sub_b', priceId: 'p_unknown' }], refundedIds: [], truncated: false },
+        ],
+        ['no price', { paid: [{ id: 'sub_b', priceId: null }], refundedIds: [], truncated: false }],
+        [
+          'mixed tiers',
+          {
+            paid: [
+              { id: 'sub_b', priceId: 'p_plus' },
+              { id: 'sub_c', priceId: 'p_max' },
+            ],
+            refundedIds: [],
+            truncated: false,
+          },
+        ],
+        [
+          'a truncated scan',
+          { paid: [{ id: 'sub_b', priceId: 'p_plus' }], refundedIds: [], truncated: true },
+        ],
+      ])('pages instead of guessing on %s', (_name, other) => {
+        expect(refundOutcome({ ...facts({ ...ON, other }), partial: false })).toEqual({
+          action: 'unresolved',
+          reason: 'surviving_plan_unmapped',
+        });
+      });
+
+      it('makes no tier write with the flag off', () => {
+        expect(
+          refundOutcome({
+            ...facts({ ...ENDED, planTier: 'family', other: PLUS_SIBLING }),
+            partial: false,
+          }),
+        ).toEqual({ action: 'keep', reason: 'active_subscription' });
+      });
+    });
+  });
+
+  describe('disputeOutcome', () => {
+    const KEPT = { action: 'unresolved', reason: 'dispute_plan_kept' };
+    const UNRESOLVED = { action: 'unresolved', reason: 'subscription_unresolved' };
+    const NO_SUB = { subscriptionId: null, subscriptionStatus: null, periodStanding: null };
+
+    it.each([
+      ['D1: live', { other: null }, KEPT],
+      ['D1: stalled', { subscriptionStatus: 'unpaid', other: null }, KEPT],
+      ['D2: ended, another paid', { ...ENDED, other: PLUS_SIBLING }, KEPT],
+      ['D2: ended, a refunded sibling still bills', { ...ENDED, other: REFUNDED_SIBLING }, KEPT],
+      ['D2: ended, truncated scan', { ...ENDED, other: { ...NOTHING, truncated: true } }, KEPT],
+      ['D3: ended, stored is S', ENDED, { action: 'drop', cancelSubscriptionIds: [] }],
+      [
+        'D3: ended, nothing stored',
+        { ...ENDED, storedSubscriptionId: null },
+        { action: 'drop', cancelSubscriptionIds: [] },
+      ],
+      [
+        'D4: ended, stored names another',
+        { ...ENDED, storedSubscriptionId: 'sub_other' },
+        UNRESOLVED,
+      ],
+      ['D5: no S, stored present', { ...NO_SUB, other: null }, UNRESOLVED],
+      [
+        'D6: no S, nothing stored, nothing paid',
+        { ...NO_SUB, storedSubscriptionId: null },
+        { action: 'drop', cancelSubscriptionIds: [] },
+      ],
+      [
+        'D7: no S, nothing stored, paid found',
+        { ...NO_SUB, storedSubscriptionId: null, other: PLUS_SIBLING },
+        KEPT,
+      ],
+      ['S names another family', { ...ENDED, namesAnotherFamily: true }, UNRESOLVED],
+    ] as const)('%s', (_name, over, expected) => {
+      expect(disputeOutcome(facts(over as Partial<RevokeFacts>))).toEqual(expected);
+    });
+
+    it('D3 waits for a young subscription, D6 has none to age', () => {
+      expect(disputeOutcome(facts({ ...ENDED, subscriptionCreated: NOW - 60 }))).toEqual({
+        action: 'wait',
+      });
+      expect(
+        disputeOutcome(facts({ ...NO_SUB, storedSubscriptionId: null, subscriptionCreated: null })),
+      ).toEqual({ action: 'drop', cancelSubscriptionIds: [] });
+    });
+
+    it('asks for the scan only on the rows that use it', () => {
+      const scan = { action: 'needs_scan' };
+      expect(disputeOutcome(facts({ ...ENDED, other: null }))).toEqual(scan);
+      expect(disputeOutcome(facts({ ...NO_SUB, storedSubscriptionId: null, other: null }))).toEqual(
+        scan,
+      );
+    });
+
+    it('never cancels anything, with the flag on or off', () => {
+      for (const flagOn of [true, false]) {
+        const outcome = disputeOutcome(facts({ ...ENDED, flagOn }));
+        expect(outcome).toEqual({ action: 'drop', cancelSubscriptionIds: [] });
+      }
+    });
   });
 });
 
