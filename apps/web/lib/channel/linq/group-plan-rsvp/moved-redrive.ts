@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { schema } from '@hale/db';
+import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import {
   MAX_REDRIVE_PER_RUN,
   REDRIVE_MAX_AGE_MS,
@@ -7,6 +7,7 @@ import {
   redriveParentTimeZone,
 } from '~/lib/channel/redrive-slot';
 import { linqGroupPlanRsvpCalendarEnabled, linqGroupPlanRsvpEnabled } from '../config';
+import { copyIsLive } from '../group-plan-invites';
 import { householdInChat, postgresGroupPlanHouseholds } from './calendar';
 import { movedNoticeDedupeKey, sendMovedNotice } from './calendar-turn';
 import {
@@ -45,17 +46,6 @@ export interface MovedNoticeRedriveResult {
   asksSent: number;
   /** Off with the calendar step: nothing read. */
   dark: boolean;
-}
-
-/** Whether this household's copy is still on its calendar. */
-async function copyOnCalendar(database: Database, familyEventId: string | null): Promise<boolean> {
-  if (!familyEventId) return false;
-  const [copy] = await database
-    .select({ id: schema.familyEvents.id })
-    .from(schema.familyEvents)
-    .where(and(eq(schema.familyEvents.id, familyEventId), isNull(schema.familyEvents.deletedAt)))
-    .limit(1);
-  return Boolean(copy);
 }
 
 export async function runGroupPlanMovedNoticeRedrive(
@@ -134,7 +124,8 @@ export async function runGroupPlanMovedNoticeRedrive(
       !plan ||
       plan.closedAt ||
       row?.status !== 'written' ||
-      !(await copyOnCalendar(database, row.familyEventId)) ||
+      !row.familyEventId ||
+      !(await copyIsLive(database, row.familyEventId)) ||
       !(await householdInChat(database, plan.chatId, move.familyId))
     ) {
       result.skipped += 1;

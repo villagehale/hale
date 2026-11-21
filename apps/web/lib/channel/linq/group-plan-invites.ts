@@ -361,6 +361,17 @@ export async function moveLiveCopy(
   return moved ? { status: 'written', familyEventId: moved.id } : { status: 'gone' };
 }
 
+/** Whether this copy is still on its family's calendar: a parent may have taken it off. */
+export async function copyIsLive(database: Database, familyEventId: string): Promise<boolean> {
+  const fe = schema.familyEvents;
+  const [copy] = await database
+    .select({ id: fe.id })
+    .from(fe)
+    .where(and(eq(fe.id, familyEventId), isNull(fe.deletedAt)))
+    .limit(1);
+  return Boolean(copy);
+}
+
 /** Which copies exist (live or not) for these families — lets a cancel find every copy. */
 export async function existingCopyFamilies(
   database: Database,
