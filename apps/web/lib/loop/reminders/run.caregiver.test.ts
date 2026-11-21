@@ -435,6 +435,7 @@ describe("VIL-706 · lit, a caregiver's reminder is written from facts", () => {
           place_1: 'Stouffville Public School',
         },
         verbatim: ['Stouffville Public School'],
+        mayRepeat: ['Swim class'],
         addendum: 'caregiver-reminder',
       },
     ]);

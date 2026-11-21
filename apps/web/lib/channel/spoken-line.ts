@@ -37,6 +37,14 @@ export interface SpokenLineRequest {
   /** Strings that must survive unchanged: a url, a phone line, a claim phrase. */
   verbatim?: readonly string[];
   /**
+   * Facts the line may repeat as written, like a calendar title. Unlike `verbatim` the
+   * line need not carry one. A capitalised or quoted keyword inside one is that fact's
+   * word rather than the draft teaching it ("BUS STOP pickup"), and nothing else about
+   * the acceptance changes: a contact in one is still refused, and so is one that is
+   * itself an instruction to send a keyword.
+   */
+  mayRepeat?: readonly string[];
+  /**
    * A placeholder the line must carry exactly once, for a link the model is never handed
    * (a live join link is a capability). It reaches the model as a verbatim piece, and the
    * caller puts the link there after the line is accepted.
@@ -74,22 +82,30 @@ const outputJsonSchema = {
  *
  * `refuseOptOutKeyword` (VIL-706) is set for a line that carries an addendum, or asks for
  * it. Such a line is also refused when it names STOP, HELP, ARRET or AIDE as a keyword, or
- * writes an opt-out line ({@link namesOptOutKeyword}); the verbatim pieces are read as
- * facts there, so a place called "BUS STOP 14" still goes out. Other lines keep the
- * acceptance they had. `slot` must appear exactly once, with no other `[[…]]` beside it
- * and nothing glued to it, because a word on the link's end would change the link.
+ * writes an opt-out line ({@link namesOptOutKeyword}); `keywordFacts` (the verbatim pieces
+ * unless a request names more) are read as facts there, so a place called "BUS STOP 14"
+ * still goes out. Other lines keep the acceptance they had. `slot` must appear exactly
+ * once, with no other `[[…]]` beside it and nothing glued to it, because a word on the
+ * link's end would change the link.
  */
 export function acceptSpokenLine(
   text: string,
   verbatim: readonly string[] | undefined,
-  options: { refuseOptOutKeyword?: boolean; slot?: string } = {},
+  options: {
+    refuseOptOutKeyword?: boolean;
+    slot?: string;
+    keywordFacts?: readonly string[];
+  } = {},
 ): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
   if (verbatim?.some((piece) => piece.length > 0 && !body.includes(piece))) return null;
   if (options.slot !== undefined && !carriesSlotOnce(body, options.slot)) return null;
   if (contactsOutside(body, verbatim ?? []).length > 0) return null;
-  if (options.refuseOptOutKeyword && namesOptOutKeyword(body, verbatim ?? []) !== null) {
+  if (
+    options.refuseOptOutKeyword &&
+    namesOptOutKeyword(body, options.keywordFacts ?? verbatim ?? []) !== null
+  ) {
     return null;
   }
   return body;
@@ -123,10 +139,17 @@ export function spokenLineUserMessage(request: SpokenLineRequest): string {
   });
 }
 
+/** What the keyword check reads as the facts' own words on this request. The eval scores
+ * a draft with these taken out, so a judge cannot refuse the line for a fact it must say. */
+export function keywordFactPieces(request: SpokenLineRequest): readonly string[] {
+  return [...requestVerbatim(request), ...(request.mayRepeat ?? [])];
+}
+
 /** The one acceptance for a request's draft: the writer, the scripted writer and the eval. */
 export function acceptSpokenRequest(text: string, request: SpokenLineRequest): string | null {
   return acceptSpokenLine(text, requestVerbatim(request), {
     refuseOptOutKeyword: request.addendum !== undefined || request.refuseOptOutKeyword === true,
+    keywordFacts: keywordFactPieces(request),
     ...(request.slot === undefined ? {} : { slot: request.slot }),
   });
 }

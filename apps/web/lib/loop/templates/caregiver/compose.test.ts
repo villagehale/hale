@@ -1,9 +1,28 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { createSpokenLineWriter } from '~/lib/channel/spoken-line';
+import { acceptSpokenRequest, createSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { caregiverReminderModelCopyEnabled, caregiverReminderRequest } from './compose';
 
 const TZ = 'America/Toronto';
+
+/** The client port handing back one fixed draft, so the real writer's acceptance runs. */
+function writerDrafting(text: string) {
+  const client = (): AgentClient =>
+    ({
+      messages: {
+        create: async () => ({
+          // Both shapes, so the stub does not depend on which the lane's request uses.
+          content: [
+            { type: 'text', text: JSON.stringify({ text }) },
+            { type: 'tool_use', id: 'draft', name: 'spoken_line', input: { text } },
+          ],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+      },
+    }) as unknown as AgentClient;
+  return createSpokenLineWriter(client, { page: async () => 'paged' });
+}
 
 describe('caregiverReminderModelCopyEnabled', () => {
   it('is on only for the exact value true', () => {
@@ -69,6 +88,7 @@ describe('caregiverReminderRequest', () => {
         place_3: 'Memorial Park',
       },
       verbatim: ['Memorial Park'],
+      mayRepeat: ['Swim class', 'PA day camp', 'Soccer'],
       addendum: 'caregiver-reminder',
     });
   });
@@ -115,25 +135,6 @@ describe('a place that holds a keyword as a word', () => {
     ],
   });
 
-  /** The client port handing back one fixed draft, so the real writer's acceptance runs. */
-  function writerDrafting(text: string) {
-    const client = (): AgentClient =>
-      ({
-        messages: {
-          create: async () => ({
-            // Both shapes, so the stub does not depend on which the lane's request uses.
-            content: [
-              { type: 'text', text: JSON.stringify({ text }) },
-              { type: 'tool_use', id: 'draft', name: 'spoken_line', input: { text } },
-            ],
-            stop_reason: 'end_turn',
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-        },
-      }) as unknown as AgentClient;
-    return createSpokenLineWriter(client, { page: async () => 'paged' });
-  }
-
   it('sends a faithful draft', async () => {
     const draft = `Pickup at 4:15 today at ${PLACE}.`;
     await expect(writerDrafting(draft).write(request)).resolves.toBe(draft);
@@ -150,5 +151,60 @@ describe('a place that holds a keyword as a word', () => {
     const taught = `Pickup at 4:15 at ${PLACE}. Reply STOP to leave.`;
     await expect(writerDrafting(taught).write(request)).resolves.toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe('an event title that holds a keyword as a word', () => {
+  const requestFor = (title: string) =>
+    caregiverReminderRequest({
+      offset: '-PT1H',
+      timeZone: TZ,
+      now: new Date('2026-07-25T19:15:00Z'),
+      language: 'en',
+      events: [
+        {
+          title,
+          startsAt: new Date('2026-07-25T20:15:00Z'),
+          endsAt: null,
+          location: 'Memorial Park',
+        },
+      ],
+    });
+
+  it.each([
+    'BUS STOP pickup',
+    'HELP at the bake sale',
+    'Teacher AIDE meeting',
+    'PIT STOP with Grandma',
+  ])('sends a draft that repeats "%s" as written', async (title) => {
+    const draft = `${title} is today at 4:15 PM at Memorial Park.`;
+    expect(acceptSpokenRequest(draft, requestFor(title))).toBe(draft);
+    await expect(writerDrafting(draft).write(requestFor(title))).resolves.toBe(draft);
+  });
+
+  it('positive control: the same draft is refused when that title is not the event', () => {
+    const draft = 'BUS STOP pickup is today at 4:15 PM at Memorial Park.';
+    expect(acceptSpokenRequest(draft, requestFor('Swim class'))).toBeNull();
+  });
+
+  it('still refuses a keyword taught around the title', () => {
+    const draft = 'BUS STOP pickup is today at 4:15 PM at Memorial Park. Reply STOP to leave.';
+    expect(acceptSpokenRequest(draft, requestFor('BUS STOP pickup'))).toBeNull();
+  });
+
+  it.each([
+    'Reply STOP if you cannot make it',
+    'Text HELP to skip this one',
+    'You can opt out with the word stop',
+  ])('refuses a title that is itself the instruction: %s', (title) => {
+    const draft = `${title}, today at 4:15 PM at Memorial Park.`;
+    expect(acceptSpokenRequest(draft, requestFor(title))).toBeNull();
+  });
+
+  it('does not let a title carry a contact past the contact check', () => {
+    const title = 'Pickup, call 416-555-0100';
+    expect(
+      acceptSpokenRequest(`${title}, today at 4:15 PM at Memorial Park.`, requestFor(title)),
+    ).toBeNull();
   });
 });

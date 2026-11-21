@@ -12,8 +12,9 @@
 // The model writes the whole text. A text is a miss when production would refuse it
 // (empty, a missing verbatim piece or link slot, a stray link or number, an opt-out
 // keyword) or when one of the friend-voice judge's checks that read the text alone
-// refuses it (false privacy, a banned phrase, compliance, a registration claim). Nothing
-// here reads a flag: each request is built as the lit path builds it.
+// refuses it (false privacy, a banned phrase, compliance, a registration claim), read with
+// the request's own facts (a place, a title) taken out. Nothing here reads a flag: each
+// request is built as the lit path builds it.
 //
 // RECORDING PENDING. The addenda moved these requests' bytes (VIL-706 moved the door
 // guidance out of spoken-line.md so the calendar-kid-notice and common-time recordings
@@ -117,6 +118,7 @@ function cases(s) {
       ...SPOKEN,
     },
     accept: (value) => s.spoken.acceptSpokenRequest(String(value?.text ?? ''), request),
+    factPieces: s.spoken.keywordFactPieces(request),
   });
   return [
     ...JOIN_DOOR_FIXTURES.map((f) =>
@@ -198,7 +200,7 @@ async function run(mode) {
     const failures = [];
     if (!unrecorded) {
       if (!body) failures.push('unwritten');
-      else failures.push(...doorLineMisses(body, s.voice));
+      else failures.push(...doorLineMisses(body, s.voice, c.factPieces ?? []));
     }
     results.push({ c, body, unrecorded, retried, failures });
   }

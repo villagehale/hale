@@ -32,7 +32,9 @@ export interface CaregiverReminderFactEvent {
  * The request for one caregiver batch. Facts only, every one of them already cleared for
  * this caregiver upstream: the event's name as the calendar has it, its day and time in
  * the recipient's zone, and where to be. No child, no roster, no note, no link. Each place
- * rides as verbatim, so an address arrives exactly as written or the line is refused.
+ * rides as verbatim, so an address arrives exactly as written or the line is refused. Each
+ * title rides as `mayRepeat`, so a "BUS STOP pickup" the model repeats is not refused as a
+ * keyword it was taught, while a title that is itself a reply instruction still is.
  */
 export function caregiverReminderRequest(args: {
   offset: CaregiverReminderPayload['offset'];
@@ -46,9 +48,12 @@ export function caregiverReminderRequest(args: {
     count: String(args.events.length),
   };
   const places: string[] = [];
+  const titles: string[] = [];
   args.events.forEach((event, index) => {
     const n = index + 1;
-    facts[`event_${n}`] = event.title.trim();
+    const title = event.title.trim();
+    facts[`event_${n}`] = title;
+    if (title && !titles.includes(title)) titles.push(title);
     facts[`date_${n}`] = localDateFact(event.startsAt, args.timeZone);
     const day = relativeDay(event.startsAt, args.now, args.timeZone);
     if (day) facts[`day_${n}`] = day;
@@ -72,6 +77,7 @@ export function caregiverReminderRequest(args: {
     language: args.language,
     facts,
     verbatim: places,
+    mayRepeat: titles,
     addendum: 'caregiver-reminder',
   };
 }

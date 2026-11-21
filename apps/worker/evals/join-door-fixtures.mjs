@@ -23,13 +23,21 @@
 const LINK_SLOT = '[[link]]';
 
 /**
- * The judge's misses on a line production accepted.
+ * The judge's misses on a line production accepted. `factPieces` are the request's own
+ * words (spoken-line.ts `keywordFactPieces`): the judge reads the draft without them, so a
+ * place like BUS STOP 14 is not scored as Hale saying STOP, and a keyword added around it
+ * still is.
  * @param {string} body
  * @param {{ friendVoiceContextFreeRefusal: (text: string) => string | null }} voice friend-voice.ts
+ * @param {readonly string[]} [factPieces]
  * @returns {string[]}
  */
-export function doorLineMisses(body, voice) {
-  const refusal = voice.friendVoiceContextFreeRefusal(body);
+export function doorLineMisses(body, voice, factPieces = []) {
+  const draft = factPieces.reduce(
+    (rest, piece) => (piece.length > 0 ? rest.split(piece).join('\n') : rest),
+    body,
+  );
+  const refusal = voice.friendVoiceContextFreeRefusal(draft);
   return refusal ? [`friend_voice:${refusal}`] : [];
 }
 
@@ -92,13 +100,13 @@ export const JOIN_DOOR_FIXTURES = [
     'caregiver-welcome',
     'caregiver_welcome',
     { role: 'grandparent' },
-    'They get the week schedule and pickup reminders, and nothing else. No STOP or HELP.',
+    'They get a reminder the evening before and about an hour before what they help with, and nothing else. No STOP or HELP.',
   ),
   door(
     'caregiver-welcome-nanny-french',
     'caregiver_welcome',
     { role: 'nanny' },
-    'In French. Schedule and pickup reminders, nothing else. No STOP, HELP, ARRET or AIDE.',
+    'In French. Reminders the evening before and an hour before, nothing else. No STOP, HELP, ARRET or AIDE.',
     { language: 'fr' },
   ),
   door(
@@ -165,13 +173,13 @@ export const JOIN_DOOR_FIXTURES = [
     'caregiver-scoped-reply',
     'caregiver_scoped_reply',
     { parentName: 'Sam' },
-    'Only the schedule here; take it to Sam. Repeats nothing they asked. No STOP or HELP.',
+    'Only reminders here; take it to Sam. Repeats nothing they asked. No STOP or HELP.',
   ),
   door(
     'caregiver-scoped-reply-unnamed',
     'caregiver_scoped_reply',
     { parentName: '' },
-    'Only the schedule here; take it to the parents. No name invented. No STOP or HELP.',
+    'Only reminders here; take it to the parents. No name invented. No STOP or HELP.',
   ),
 ];
 
