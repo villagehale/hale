@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type BindInput, bindApproval } from './bind';
+import { signupTermsApprovedSchema } from './store';
 import type { SignupTermsShown } from './types';
 
 const shown = (over: Partial<SignupTermsShown> = {}): SignupTermsShown => ({
@@ -31,6 +32,7 @@ const input = (over: Partial<BindInput> = {}): BindInput => ({
   shown: shown(),
   askedMessageId: 'm-1',
   sessions: [{ id: 's-1', label: 'Sat 9:30', startsAt: '2026-03-28T09:30:00' }],
+  activityLabel: null,
   choiceIds: ['s-1'],
   limitWrittenCents: null,
   prerequisiteMet: null,
@@ -241,8 +243,78 @@ describe('bindApproval', () => {
     ]);
   });
 
-  it('a program with no name falls back to the session label', () => {
+  it('with no program name on the page, the name bound is the offer activity', () => {
+    const got = bindApproval(
+      input({
+        shown: shown({ program: { courseIds: [], name: null } }),
+        activityLabel: 'Parent & Tot Swim',
+      }),
+    );
+    expect(got.kind === 'bound' && got.approved.sessions[0]?.program).toEqual({
+      courseIds: [],
+      name: 'Parent & Tot Swim',
+    });
+  });
+
+  it('a name the page gave wins over the activity', () => {
+    const got = bindApproval(input({ activityLabel: 'Speaking class' }));
+    expect(got.kind === 'bound' && got.approved.sessions[0]?.program.name).toBe(
+      'Get Ready Public Speaking',
+    );
+  });
+
+  it('with neither, no name is bound: a session label is not a class name', () => {
     const got = bindApproval(input({ shown: shown({ program: { courseIds: [], name: null } }) }));
-    expect(got.kind === 'bound' && got.approved.sessions[0]?.program.name).toBe('Sat 9:30');
+    expect(got.kind === 'bound' && got.approved.sessions[0]?.program.name).toBeNull();
+  });
+
+  describe('a class free for residents and paid for others', () => {
+    const pair = shown({
+      residency: 'unknown',
+      sessions: [
+        {
+          sessionId: 's-1',
+          rates: [
+            { rate: 'resident', cents: 0 },
+            { rate: 'non_resident', cents: 4000 },
+          ],
+          tax: 'included',
+          source: 'course_model',
+        },
+      ],
+    });
+
+    it('binds both rates while residency is unknown, in a row the store can read back', () => {
+      const got = bindApproval(input({ shown: pair }));
+      expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({
+        kind: 'exact',
+        cents: [0, 4000],
+        currency: 'cad',
+        plusTax: null,
+        limitCents: null,
+      });
+      expect(got.kind === 'bound' && got.approved.maxCents).toBe(4000);
+      expect(
+        got.kind === 'bound' && signupTermsApprovedSchema.safeParse(got.approved).success,
+      ).toBe(true);
+    });
+
+    it('binds the free rate alone for a known resident', () => {
+      const got = bindApproval(input({ shown: { ...pair, residency: 'resident' } }));
+      expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({ kind: 'free' });
+    });
+
+    it('a stored amount of only zero cents is not an exact price', () => {
+      const got = bindApproval(input({ shown: pair }));
+      if (got.kind !== 'bound') throw new Error('not bound');
+      const zeroes = {
+        ...got.approved,
+        sessions: got.approved.sessions.map((session) => ({
+          ...session,
+          amount: { ...session.amount, cents: [0] },
+        })),
+      };
+      expect(signupTermsApprovedSchema.safeParse(zeroes).success).toBe(false);
+    });
   });
 });

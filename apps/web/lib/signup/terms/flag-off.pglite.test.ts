@@ -262,6 +262,7 @@ describe('with the flag off', () => {
             freeSessionIds: [],
             prerequisiteRequired: false,
             prerequisiteQuote: null,
+            prerequisiteAsked: false,
           },
         },
       }),

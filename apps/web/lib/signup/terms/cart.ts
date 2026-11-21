@@ -58,11 +58,12 @@ function comparesProgram(
   bound: SignupTermsApprovedSession,
   cart: CartForCompare,
 ): CartDifference | null {
-  if (cart.provider_course_id !== null) {
+  // Only a page's own ids can be compared with a cart's code. With none, the name decides.
+  if (cart.provider_course_id !== null && bound.program.courseIds.length > 0) {
     const shown = foldWords(cart.provider_course_id);
     return bound.program.courseIds.some((id) => foldWords(id) === shown) ? null : 'session';
   }
-  if (cart.session_label === null) return 'unread';
+  if (cart.session_label === null || bound.program.name === null) return 'unread';
   return foldWords(cart.session_label) === foldWords(bound.program.name) ? null : 'session';
 }
 
@@ -90,6 +91,12 @@ function taxFits(rate: number, tax: number, bound: SignupTermsTaxBound): boolean
     return Math.abs(tax - Math.round((rate * bound.basisPoints) / 10_000)) <= 1;
   }
   return tax * 10_000 <= rate * bound.basisPoints;
+}
+
+/** This total, on this amount, is a $0 order: a free class, or the free rate of a pair. */
+export function chargesNothing(amount: SignupTermsAmount, total: number | null): boolean {
+  if (total !== 0) return false;
+  return amount.kind === 'free' || (amount.kind === 'exact' && amount.cents.includes(0));
 }
 
 /** The highest total this amount can pass with: the rate, tax included. */
@@ -133,6 +140,7 @@ function comparesAmount(
   const total = cart.totalCents;
   if (total === null) return 'unread';
   if (amount.kind === 'free') return total === 0 ? null : 'price';
+  if (chargesNothing(amount, total)) return null;
   if (cart.currency === null || amount.currency === null) return 'unread';
   if (cart.currency !== amount.currency) return 'price';
   if (stage === 'cart') return total > 0 && total <= mostAllowedCents(amount) ? null : 'price';

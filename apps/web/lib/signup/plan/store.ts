@@ -18,7 +18,9 @@ import {
   loadPendingOffer,
   loadSignupIdentity,
 } from '../store';
+import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
 import { registrationPreflightEnabled } from '../terms/flag';
+import { loadSignupTerms } from '../terms/store';
 import type { SignupTermsApproved } from '../terms/types';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
@@ -524,7 +526,7 @@ export async function cancelSignupPlan(
     .update(offers)
     .set({ status: 'handed_back', planCancelRequestedAt: input.now, updatedAt: input.now })
     .where(and(ours, eq(offers.status, 'planned')))
-    .returning({ id: offers.id });
+    .returning({ id: offers.id, availability: offers.planAvailability });
   if (rows.length > 0) {
     await writePlanAudit(database, {
       familyId: input.familyId,
@@ -532,6 +534,8 @@ export async function cancelSignupPlan(
       offerId: input.offerId,
       after: { step: 'plan_cancelled' },
     });
+    // A parked plan's run reached the provider, so its sign-up stays spent.
+    if (rows[0]?.availability === null) await giveBackSeasonSlot(database, input);
     return 'cancelled';
   }
   const [running] = await database
@@ -553,6 +557,25 @@ export async function cancelSignupPlan(
   return phase === 'paying' ? 'paying' : 'cancel_requested';
 }
 
+/** The season sign-up a yes took, back to the family: no run of this plan reached a provider. */
+async function giveBackSeasonSlot(
+  database: Database,
+  input: { offerId: string; familyId: string; now: Date },
+): Promise<void> {
+  if (!signupHelpSlotReleaseEnabled()) return;
+  const read = await loadSignupTerms(database, {
+    offerId: input.offerId,
+    familyId: input.familyId,
+  });
+  const seasonKey = read.status === 'read' ? read.row.approved?.seasonKey : null;
+  if (!seasonKey) return;
+  await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey,
+    now: input.now,
+  });
+}
+
 /**
  * A family's offer the day-before conversation can still act on: before its open, or
  * `running` while its run is going and the parent has not taken it back yet.
@@ -560,6 +583,7 @@ export async function cancelSignupPlan(
 export interface ConversablePlan extends AskOrder {
   offerId: string;
   childId: string;
+  activityKey: string;
   /** The parent Hale asked: only their words may set the plan or take it back. */
   parentUserId: string;
   status: 'pending' | 'planned' | 'running';
@@ -636,6 +660,7 @@ export async function loadConversablePlans(
       {
         offerId: row.id,
         childId: row.childId,
+        activityKey: row.activityKey,
         parentUserId: row.parentUserId,
         lastAskedSeq: row.lastAskedSeq,
         createdAt: row.createdAt,

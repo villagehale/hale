@@ -20,6 +20,8 @@ export interface BindInput {
   /** The row that carried the offer's text. Null: no send of it is known to have gone. */
   askedMessageId: string | null;
   sessions: readonly { id: string; label: string; startsAt: string }[];
+  /** The offer's own name for the class: the program name when the page gave none. */
+  activityLabel: string | null;
   choiceIds: readonly string[];
   /** An amount of money the parent wrote in this yes, else null. */
   limitWrittenCents: number | null;
@@ -109,7 +111,7 @@ export function bindApproval(input: BindInput): BindResult {
       sessionId: session.id,
       program: {
         courseIds: input.shown.program.courseIds,
-        name: input.shown.program.name ?? session.label,
+        name: input.shown.program.name ?? input.activityLabel,
       },
       startsAt: session.startsAt,
       sharesDate:

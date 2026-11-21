@@ -85,6 +85,7 @@ import {
   reserveBrowserUseAllowance,
 } from './store';
 import { registrationPreflightEnabled } from './terms/flag';
+import { someOfferHasTerms } from './terms/store';
 import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -265,10 +266,15 @@ export async function runAuthorizedSignup(
     return { ...UNCLAIMED, outcome: 'opt_out_unread' };
   }
   // VIL-715: a registration's terms are the asker's alone, so a yes counts only in their own
-  // thread. In a group no ask is read and none moves; the coach takes the turn.
+  // thread. In a group no ask is read and none moves; the coach takes the turn. That holds for
+  // any ask with terms, after the flag goes off too.
   if (
     asks.length > 0 &&
-    registrationPreflightEnabled(input.familyId) &&
+    (registrationPreflightEnabled(input.familyId) ||
+      (await someOfferHasTerms(database, {
+        familyId: input.familyId,
+        offerIds: asks.map((ask) => ask.offerId),
+      }))) &&
     (await yesThread(database, input)) !== 'private'
   ) {
     console.info({ outcome: 'asks_held_for_private' }, 'signup asks: not in their own thread');
@@ -388,8 +394,12 @@ async function runOneShotAsk(
   }
 
   // VIL-715: with pre-flight on nothing runs inside a text turn, and an ask carried no terms
-  // to bind. It goes back with the link, and a new ask is the way to try again.
-  if (registrationPreflightEnabled(input.familyId)) {
+  // to bind. An ask that has terms is never a one-shot either, after the flag goes off too.
+  // It goes back with the link, and a new ask is the way to try again.
+  if (
+    registrationPreflightEnabled(input.familyId) ||
+    (await someOfferHasTerms(database, { familyId: input.familyId, offerIds: [offer.id] }))
+  ) {
     await markFromPending(database, input, offer.id, null);
     return replyFor(database, input, reportDeps, door, {
       offerId: offer.id,

@@ -14,7 +14,7 @@ import type {
 import { storeProviderSession } from '../browser-use/vault';
 import type { SignupConsentReader } from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
-import { offerSignupFromFacts } from '../offer-from-facts';
+import { activityKeyFor, offerSignupFromFacts } from '../offer-from-facts';
 import { offerSignupTool } from '../offer-tool';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from '../plan/flag';
 import type { MismatchReader } from '../plan/mismatch-reader';
@@ -22,11 +22,12 @@ import { createPlanNotifier } from '../plan/notice';
 import { recordPlanNotice } from '../plan/prep';
 import type { PlanReader, PlanReading } from '../plan/reader';
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from '../plan/run';
-import { parkSignupPlan } from '../plan/store';
+import { cancelSignupPlan, parkSignupPlan } from '../plan/store';
 import type { PlanReplyFacts, PlanReplyWriter } from '../plan/writer';
 import { runAuthorizedSignup } from '../run';
 import { sentSignupText } from '../sent-text.fixture';
 import { recordSignupOffer } from '../store';
+import { compareCart } from './cart';
 import type { DobReader } from './dob-reader';
 import type { PreflightReader, SignupPreflightRead } from './read-page';
 import { termsAskStamp } from './store';
@@ -619,7 +620,11 @@ describe('the yes', () => {
       now: NOW,
     });
     const notTheirs: DobReader = {
-      read: vi.fn(async () => ({ said: 'March 21, 2021', date: '2021-03-21' })),
+      read: vi.fn(async () => ({
+        said: 'March 21, 2021',
+        date: '2021-03-21',
+        otherPerson: false,
+      })),
     };
     await yes(f, { verdict: 'unrelated' }, { body: 'she is five', dobReader: notTheirs });
     const before = await db.database
@@ -629,7 +634,11 @@ describe('the yes', () => {
     expect(before[0]?.precision).toBe('derived');
 
     const theirs: DobReader = {
-      read: vi.fn(async () => ({ said: 'March 21, 2021', date: '2021-03-21' })),
+      read: vi.fn(async () => ({
+        said: 'March 21, 2021',
+        date: '2021-03-21',
+        otherPerson: false,
+      })),
     };
     const turn = await yes(
       f,
@@ -661,7 +670,7 @@ describe('the yes', () => {
       now: NOW,
     });
     const reader: DobReader = {
-      read: vi.fn(async () => ({ said: 'June 1, 2016', date: '2016-06-01' })),
+      read: vi.fn(async () => ({ said: 'June 1, 2016', date: '2016-06-01', otherPerson: false })),
     };
     const turn = await yes(f, YES, { body: 'She was born June 1, 2016', dobReader: reader });
     expect((await offerRow(offerId)).status).toBe('handed_back');
@@ -684,7 +693,9 @@ describe('the yes', () => {
       kind: 'ask_dob',
       now: NOW,
     });
-    const reader: DobReader = { read: vi.fn(async () => ({ said: null, date: null })) };
+    const reader: DobReader = {
+      read: vi.fn(async () => ({ said: null, date: null, otherPerson: false })),
+    };
     const turn = await yes(f, YES, { dobReader: reader });
     expect(turn.result.outcome).toBe('plan_approved');
     expect((await termsRow(offerId))?.approved?.hold).toBe('age_unconfirmed');
@@ -764,6 +775,333 @@ describe('the yes', () => {
     const turn = await yes(f, YES);
     expect(turn.result.outcome).toBe('plan_refused');
     expect(turn.written.at(-1)).toMatchObject({ moment: 'refused', refusal: 'season_cap' });
+    expect((await offerRow(offerId)).status).toBe('pending');
+  });
+});
+
+describe('the yes, against what happened since the ask', () => {
+  const unknownCharge = (f: Household, offerId: string) =>
+    db.database.insert(schema.auditLog).values({
+      familyId: f.familyId,
+      actor: f.parentUserId,
+      actionTaken: 'authorized_signup_step',
+      targetTable: 'authorized_signup_offers',
+      targetId: offerId,
+      after: { step: 'plan_finished', charged: 'unknown' },
+    });
+
+  it('a charge that went unknown after this ask was made holds the yes', async () => {
+    const f = await household();
+    const earlier = await askedAndSent(f);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'planned', planMaxPriceCents: 8488 })
+      .where(eq(schema.authorizedSignupOffers.id, earlier));
+    // A second ask on the class is made while the first is still clean.
+    const second = await askedAndSent(f);
+    expect((await termsRow(second))?.shown.priorChargeUnknown).toBe(false);
+    await unknownCharge(f, earlier);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'handed_back' })
+      .where(eq(schema.authorizedSignupOffers.id, earlier));
+    const turn = await yes(f, YES);
+    expect(turn.result.outcome).toBe('plan_approved');
+    expect((await termsRow(second))?.approved?.hold).toBe('prior_charge_unknown');
+    expect(turn.written.at(-1)?.terms?.hold).toBe('prior_charge_unknown');
+  });
+
+  describe('the question about what the class needs', () => {
+    const NEEDS = PAGE.replace('"PrerequisiteEvents":false', '"PrerequisiteEvents":true');
+
+    /** The router's send of a reply: its stamp, then the row that recorded it. */
+    const sendReply = async (f: Household, turn: { result: { stamp?: unknown } }) => {
+      const stamp = turn.result.stamp as
+        | (() => Promise<(id: string) => Promise<unknown>>)
+        | undefined;
+      if (!stamp) throw new Error('that reply carries no stamp');
+      const keep = await stamp();
+      await keep(await sentSignupText(db.database, f));
+    };
+    const toldAsked = (turn: { planReader: PlanReader }) =>
+      (turn.planReader.read as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.offer.terms
+        ?.prerequisiteAsked;
+
+    it('a plain yes to that question counts, once Hale asked it', async () => {
+      const f = await household();
+      const offerId = await askedAndSent(f, { page: NEEDS });
+      // The first yes is to the ask itself: it says nothing about the prerequisite.
+      const first = await yes(f, YES);
+      expect(toldAsked(first)).toBe(false);
+      expect(first.result.outcome).toBe('plan_clarify');
+      expect((await offerRow(offerId)).status).toBe('pending');
+      await sendReply(f, first);
+      // The reader is told, so a plain yes reads as the answer to that question.
+      const second = await yes(f, { ...YES, prerequisiteMet: true });
+      expect(toldAsked(second)).toBe(true);
+      expect(second.result.outcome).toBe('plan_approved');
+      expect((await termsRow(offerId))?.approved?.prerequisiteConfirmed).toBe(true);
+    });
+
+    it('a question that never reached them is not the one a yes answers', async () => {
+      const f = await household();
+      await askedAndSent(f, { page: NEEDS });
+      await yes(f, YES);
+      // Its send failed: no stamp was kept, so nothing says the parent saw the question.
+      const again = await yes(f, YES);
+      expect(toldAsked(again)).toBe(false);
+    });
+
+    it('another question sent after it means a later yes does not answer it', async () => {
+      const f = await household();
+      await askedAndSent(f, { page: NEEDS });
+      await sendReply(f, await yes(f, YES));
+      const between = await yes(f, {
+        verdict: 'unclear',
+        question: 'Which session do you want?',
+        named: null,
+      });
+      await sendReply(f, between);
+      const after = await yes(f, YES);
+      expect(toldAsked(after)).toBe(false);
+      expect(after.result.outcome).toBe('plan_clarify');
+    });
+
+    it('a no ends the ask instead of asking again', async () => {
+      const f = await household();
+      const offerId = await askedAndSent(f, { page: NEEDS });
+      await sendReply(f, await yes(f, YES));
+      const turn = await yes(f, { ...YES, prerequisiteMet: false });
+      expect(turn.result.outcome).toBe('plan_declined');
+      expect((await offerRow(offerId)).status).toBe('handed_back');
+      expect((await termsRow(offerId))?.approved).toBeNull();
+    });
+  });
+
+  it("a date given for a sibling is stored nowhere, and Hale asks for this child's", async () => {
+    const f = await household();
+    await db.database
+      .update(schema.children)
+      .set({ dobPrecision: 'derived' })
+      .where(eq(schema.children.id, f.childId));
+    const [before] = await db.database
+      .select({ dob: schema.children.dateOfBirth })
+      .from(schema.children)
+      .where(eq(schema.children.id, f.childId));
+    const offerId = await askedAndSent(f);
+    await recordPlanNotice(db.database, {
+      familyId: f.familyId,
+      offerId,
+      providerHost: HOST,
+      kind: 'ask_dob',
+      now: NOW,
+    });
+    const read = vi.fn(async () => ({ said: null, date: null, otherPerson: true }));
+    const turn = await yes(
+      f,
+      { verdict: 'unrelated' },
+      { body: 'her brother was born March 21, 2019', dobReader: { read } },
+    );
+    expect(read).toHaveBeenCalledWith({
+      text: 'her brother was born March 21, 2019',
+      childFirstName: 'Ada',
+    });
+    expect(turn.result.outcome).toBe('plan_clarify');
+    expect(turn.written.at(-1)?.question).toContain("this child's date of birth");
+    const [after] = await db.database
+      .select({ dob: schema.children.dateOfBirth, precision: schema.children.dobPrecision })
+      .from(schema.children)
+      .where(eq(schema.children.id, f.childId));
+    expect(after).toEqual({ dob: before?.dob, precision: 'derived' });
+    expect((await offerRow(offerId)).status).toBe('pending');
+  });
+
+  it('on a page with no course model, the class is bound by the offer name', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f, { page: '<html><body>Swim class</body></html>' });
+    const turn = await yes(f, { ...YES, limitWrittenCents: 8488 });
+    expect(turn.result.outcome).toBe('plan_approved');
+    const session = (await termsRow(offerId))?.approved?.sessions[0];
+    if (!session) throw new Error('no bound session');
+    expect(session.program).toEqual({ courseIds: [], name: 'Get Ready Public Speaking' });
+    const cart = {
+      provider_course_id: 'SW-881',
+      session_label: 'Get Ready Public Speaking',
+      session_date: '2026-03-28',
+      session_time: '09:30',
+      participant_first_name: 'Ada',
+      line_count: 1,
+      quantity: 1,
+      totalCents: 8488,
+      taxCents: 0,
+      feesCents: 0,
+      currency: 'cad',
+    };
+    const who = { childFirstName: 'Ada', timeZone: 'America/Toronto' };
+    expect(compareCart(session, cart, who, 'cart')).toEqual([]);
+    expect(compareCart(session, { ...cart, session_label: 'Chess' }, who, 'cart')).toEqual([
+      'session',
+    ]);
+  });
+
+  describe('a season sign-up on a plan taken back', () => {
+    const seasoned = async () => {
+      vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+      vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true');
+      const f = await household();
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schema.users.id, f.parentUserId));
+      const offerId = await askedAndSent(f);
+      await yes(f, YES);
+      return { f, offerId };
+    };
+    const attempted = async (f: Household) =>
+      (
+        await db.database
+          .select({ attempted: schema.familySignupHelpSeasons.attempted })
+          .from(schema.familySignupHelpSeasons)
+          .where(eq(schema.familySignupHelpSeasons.familyId, f.familyId))
+      )[0]?.attempted;
+    const cancel = (f: Household, offerId: string) =>
+      cancelSignupPlan(db.database, {
+        offerId,
+        familyId: f.familyId,
+        actor: f.parentUserId,
+        now: NOW,
+      });
+
+    it('comes back when the plan never started', async () => {
+      const { f, offerId } = await seasoned();
+      expect(await attempted(f)).toBe(1);
+      expect(await cancel(f, offerId)).toBe('cancelled');
+      expect((await offerRow(offerId)).status).toBe('handed_back');
+      expect(await attempted(f)).toBe(0);
+    });
+
+    it('stays spent when a run of the plan reached the provider', async () => {
+      const { f, offerId } = await seasoned();
+      await parkSignupPlan(db.database, {
+        offerId,
+        familyId: f.familyId,
+        availability: { kind: 'options_mismatch', choices: [], askedStart: 'Sat 9:30' },
+        now: NOW,
+      });
+      expect(await cancel(f, offerId)).toBe('cancelled');
+      expect(await attempted(f)).toBe(1);
+    });
+
+    it('stays spent while the release switch is off', async () => {
+      const { f, offerId } = await seasoned();
+      vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', '');
+      expect(await cancel(f, offerId)).toBe('cancelled');
+      expect(await attempted(f)).toBe(1);
+    });
+  });
+});
+
+describe('an ask with terms, after the flag goes off', () => {
+  beforeEach(async () => {
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'handed_back' })
+      .where(eq(schema.authorizedSignupOffers.status, 'planned'));
+  });
+
+  it('a yes binds its terms and holds, and the run carries them', async () => {
+    const f = await household();
+    await db.database
+      .update(schema.children)
+      .set({ dobPrecision: 'derived' })
+      .where(eq(schema.children.id, f.childId));
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() - 60_000) });
+    await recordPlanNotice(db.database, {
+      familyId: f.familyId,
+      offerId,
+      providerHost: HOST,
+      kind: 'ask_dob',
+      now: NOW,
+    });
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    const reader: DobReader = {
+      read: vi.fn(async () => ({ said: null, date: null, otherPerson: false })),
+    };
+    const turn = await yes(f, YES, { dobReader: reader });
+    expect(turn.result.outcome).toBe('plan_approved');
+    const terms = await termsRow(offerId);
+    expect(terms?.approved?.hold).toBe('age_unconfirmed');
+    const { deps, inputs } = sweepDeps();
+    await sweep(deps, new Date(NOW.getTime() + 60_000));
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.binding?.approved.hold).toBe('age_unconfirmed');
+  });
+
+  it('with no terms row the ask is the one of today (positive control)', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() + 60_000) });
+    await db.database
+      .delete(schema.authorizedSignupTerms)
+      .where(eq(schema.authorizedSignupTerms.offerId, offerId));
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    const turn = await yes(f, YES);
+    expect(turn.result.outcome).toBe('plan_approved');
+    expect(await termsRow(offerId)).toBeNull();
+    expect((await offerRow(offerId)).status).toBe('planned');
+  });
+
+  it('past its open it goes back, and never runs as a one-shot', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() + 60_000) });
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ planOpensAt: new Date(NOW.getTime() - 60_000), planAlreadyOpen: false })
+      .where(eq(schema.authorizedSignupOffers.id, offerId));
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    const offered = await offerRow(offerId);
+    const browserUseSignup = {
+      run: vi.fn(async () => {
+        throw new Error('a one-shot run must not start on an ask with terms');
+      }),
+    };
+    const consentReader: SignupConsentReader = {
+      read: vi.fn(async () => ({
+        verdict: 'consent' as const,
+        sessionId: 's-1',
+        approvedPriceCents: 8488,
+        activityKey: activityKeyFor(offered.registrationUrl),
+        said: 'yes',
+      })),
+    } as never;
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        body: 'yes',
+        inboundChannelMessageId: await inbound(f, false),
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        consentReader,
+        outcomeWriter: { write: async () => 'not this way, here is the link' },
+        browserUseSignup: browserUseSignup as never,
+        browser: null,
+      },
+    );
+    expect(browserUseSignup.run).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ claimed: true, outcome: 'error' });
+    expect((await offerRow(offerId)).status).toBe('handed_back');
+  });
+
+  it('a yes in a group still moves nothing', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f);
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    const turn = await yes(f, YES, { inGroup: true });
+    expect(turn.result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
+    expect(turn.planReader.read).not.toHaveBeenCalled();
     expect((await offerRow(offerId)).status).toBe('pending');
   });
 });
@@ -875,6 +1213,41 @@ describe('the run', () => {
     await sweep(deps, new Date(NOW.getTime() + 60_000));
     expect(inputs).toHaveLength(0);
     expect(notices[0]).toMatchObject({ detail: 'terms_unreadable' });
+  });
+
+  it('a class free for residents and paid for others reaches the run on its yes', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() - 60_000) });
+    const row = await termsRow(offerId);
+    if (!row) throw new Error('no terms');
+    await db.database
+      .update(schema.authorizedSignupTerms)
+      .set({
+        shown: {
+          ...row.shown,
+          residency: 'unknown',
+          sessions: [
+            {
+              sessionId: 's-1',
+              rates: [
+                { rate: 'resident', cents: 0 },
+                { rate: 'non_resident', cents: 4000 },
+              ],
+              tax: 'included',
+              source: 'course_model',
+            },
+          ],
+        },
+      })
+      .where(eq(schema.authorizedSignupTerms.offerId, offerId));
+    const turn = await yes(f, { ...YES, maxPriceCents: 4000 });
+    expect(turn.result.outcome).toBe('plan_approved');
+    const { deps, inputs, notices } = sweepDeps();
+    await sweep(deps, new Date(NOW.getTime() + 60_000));
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.binding?.approved.sessions[0]?.amount).toMatchObject({ cents: [0, 4000] });
+    expect(inputs[0]?.maxPriceCents).toBe(4000);
+    expect(notices[0]?.detail).toBe('cart_mismatch');
   });
 
   it('gives a season slot back when no run reached the provider', async () => {

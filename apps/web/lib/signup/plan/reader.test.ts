@@ -433,6 +433,7 @@ describe('what an approval may rest on', () => {
       freeSessionIds: ['sun-1000'],
       prerequisiteRequired: true,
       prerequisiteQuote: 'Must have completed Level 1',
+      prerequisiteAsked: false,
     };
     const OFFER_T: PlanReadOffer = {
       ...OFFER,
@@ -470,6 +471,35 @@ describe('what an approval may rest on', () => {
       });
     });
 
+    it('a limit written with a decimal comma binds on both paths', () => {
+      const text = 'Oui, pas plus de 80,50 $';
+      // The model left the bound price in: their own number is still the limit.
+      expect(toPlanReading(yes({ said: 'Oui' }), OFFER_T, text)).toMatchObject({
+        verdict: 'approve',
+        maxPriceCents: 8488,
+        limitWrittenCents: 8050,
+      });
+      // The model read the number they wrote: it is theirs, so it holds.
+      expect(toPlanReading(yes({ said: 'Oui', maxPriceCents: 8050 }), OFFER_T, text)).toMatchObject(
+        { verdict: 'approve', maxPriceCents: 8050, limitWrittenCents: 8050 },
+      );
+    });
+
+    it.each([
+      ['yes, no more than 60 bucks', 6000],
+      ['yes, max €60', 6000],
+    ])('a limit in any money form today reads still binds: %s', (text, limit) => {
+      expect(toPlanReading(yes({ said: 'yes' }), OFFER_T, text)).toMatchObject({
+        limitWrittenCents: limit,
+      });
+    });
+
+    it('an ask with no terms reads money as it always has', () => {
+      const text = 'Oui, pas plus de 80,50 $';
+      const plain: PlanReadOffer = { ...OFFER_T, terms: undefined };
+      expect(toPlanReading(yes({ said: 'Oui', maxPriceCents: 8050 }), plain, text)).toBeNull();
+    });
+
     it('a $0 maximum holds only for a free session', () => {
       expect(
         toPlanReading(yes({ choiceIds: ['sun-1000'], maxPriceCents: 0 }), OFFER_T, 'yes'),
@@ -478,6 +508,14 @@ describe('what an approval may rest on', () => {
         toPlanReading(yes({ choiceIds: ['sat-0900'], maxPriceCents: 0 }), OFFER_T, 'yes'),
       ).toBeNull();
       expect(toPlanReading(raw({ maxPriceCents: 0 }), OFFER, YES)).toBeNull();
+    });
+
+    it('the reader is told when the last text asked the prerequisite question', () => {
+      const asked = signupPlanReadUserMessage({
+        text: 'yes',
+        offer: { ...OFFER_T, terms: { ...TERMS, prerequisiteAsked: true } },
+      });
+      expect(JSON.parse(asked).offer.terms.prerequisiteAsked).toBe(true);
     });
 
     it('the prerequisite answer counts only in the parent words', () => {

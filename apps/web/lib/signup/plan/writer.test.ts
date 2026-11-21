@@ -226,6 +226,20 @@ describe('the gate on a text that states terms', () => {
     expect(planReplyViolations('Ada, $84.88 or $97.60. Want it?', both)).toEqual([]);
   });
 
+  it('a rate of zero beside a paid one is said in words, and the paid one must be there', () => {
+    const pair = withTerms({
+      residency: 'unknown',
+      rates: [
+        { rate: 'resident', cents: 0 },
+        { rate: 'non_resident', cents: 4000 },
+      ],
+    });
+    expect(planReplyViolations('Free for residents, $40.00 otherwise. Want it?', pair)).toEqual([]);
+    expect(planReplyViolations('It is free for residents. Want it?', pair)).toContain(
+      'missing price: every price in terms.rates has to be in the text',
+    );
+  });
+
   it('allows a figure and a clock from the refund quote', () => {
     const facts = withTerms({ refund: 'Refunds until 5:00 pm less a $10.00 fee' });
     expect(

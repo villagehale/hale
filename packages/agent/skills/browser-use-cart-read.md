@@ -18,3 +18,7 @@ Hale compares the cart with what the parent approved, so copy these off the cart
 - `quantity`: the quantity on this line.
 
 Return `cart_read` as null only when you never reached a cart.
+
+## A choice with no end time
+
+When a choice's `ends_at` is null, the site listed no end time for it. Match that choice on `starts_at` alone.

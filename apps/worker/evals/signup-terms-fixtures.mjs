@@ -120,6 +120,17 @@ export const SIGNUP_TERMS_WRITER_FIXTURES = [
     'Says Hale could not confirm the age fit and will stop at checkout for them to finish.',
   ),
   offer(
+    'offer-free-or-paid',
+    {
+      residency: 'unknown',
+      rates: [
+        { rate: 'resident', cents: 0 },
+        { rate: 'non_resident', cents: 4000 },
+      ],
+    },
+    'Says it is free for residents and $40.00 for non-residents, and that the site picks from their account.',
+  ),
+  offer(
     'offer-prior-charge',
     { priorChargeUnknown: true },
     'Says an earlier try may have gone through, to check their card and email first, and that Hale will stop at checkout this time.',
@@ -223,6 +234,7 @@ const READ_TERMS = {
   freeSessionIds: [],
   prerequisiteRequired: false,
   prerequisiteQuote: null,
+  prerequisiteAsked: false,
 };
 
 export const SIGNUP_TERMS_READ_FIXTURES = [
@@ -271,6 +283,40 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     expect: { verdict: 'approve', prerequisiteMet: null },
   },
   {
+    id: 'read-prerequisite-asked-yes',
+    text: 'yes',
+    offer: {
+      ...READ_OFFER,
+      terms: {
+        ...READ_TERMS,
+        prerequisiteRequired: true,
+        prerequisiteQuote: 'Must have completed Level 1.',
+        prerequisiteAsked: true,
+      },
+    },
+    expect: { verdict: 'approve', prerequisiteMet: true },
+  },
+  {
+    id: 'read-prerequisite-asked-no',
+    text: "no she hasn't done it",
+    offer: {
+      ...READ_OFFER,
+      terms: {
+        ...READ_TERMS,
+        prerequisiteRequired: true,
+        prerequisiteQuote: 'Must have completed Level 1.',
+        prerequisiteAsked: true,
+      },
+    },
+    expect: { verdict: 'take_back' },
+  },
+  {
+    id: 'read-limit-french-comma',
+    text: 'oui, pas plus de 90,50 $',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 9050, limitWrittenCents: 9050 },
+  },
+  {
     id: 'read-free',
     text: 'yes sign her up',
     offer: { ...READ_OFFER, terms: { ...READ_TERMS, boundCents: [], freeSessionIds: ['s-1'] } },
@@ -304,4 +350,10 @@ export const SIGNUP_TERMS_DOB_FIXTURES = [
   { id: 'dob-iso', text: '2021-11-05', expect: '2021-11-05' },
   { id: 'dob-age-only', text: 'she is about four', expect: null },
   { id: 'dob-no-year', text: 'her birthday is March 21', expect: null },
+  { id: 'dob-sibling', text: 'her brother was born March 21, 2019', expect: null },
+  {
+    id: 'dob-named-with-sibling',
+    text: 'Ada was born March 21, 2022 and her brother Leo on June 2, 2019',
+    expect: '2022-03-21',
+  },
 ];

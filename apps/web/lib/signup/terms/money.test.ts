@@ -16,6 +16,10 @@ describe('moneyCentsWritten', () => {
     ['$84.88 CAD', [8488]],
     ['resident $84.88 or $97.60 non-resident', [8488, 9760]],
     ['the 2027 $98 session', [9800]],
+    ['pas plus de 80,50 $', [8050]],
+    ['up to 100 bucks', [10000]],
+    ['max €90', [9000]],
+    ['£45.50', [4550]],
   ])('reads %s', (text, expected) => {
     expect(moneyCentsWritten(text)).toEqual(expected);
   });

@@ -1,5 +1,5 @@
 import type { AuthorizedSignupPlanResume } from '@hale/db';
-import { compareCart } from '../terms/cart';
+import { chargesNothing, compareCart } from '../terms/cart';
 import type { CartDifference, CartRead, SignupTermsApproved } from '../terms/types';
 import { BrowserUseApiError } from './client';
 import {
@@ -149,6 +149,11 @@ export interface PlanBinding {
   timeZone: string;
   /** The env-only switch for a $0 order, on for this family. Never arms a paid checkout. */
   freeCheckoutEnabled: boolean;
+  /**
+   * Whether an earlier run on this class for this child may have charged, read at the moment
+   * of asking: one can end with an unknown charge after the yes, and the card must not pay twice.
+   */
+  priorChargeNow: () => Promise<boolean>;
 }
 
 export interface BrowserUsePlanInput
@@ -284,7 +289,8 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
       rank: rank + 1,
       label: labels && choice.label.trim() ? choice.label.trim() : undefined,
       starts_at: choice.startsAt,
-      ends_at: choice.endsAt,
+      // On a bound run, a session whose end is its start has no known end. Unbound: as today.
+      ends_at: input.binding && choice.endsAt === choice.startsAt ? null : choice.endsAt,
     })),
   };
 }
@@ -530,14 +536,15 @@ async function drivePlan(
       if (differences.length > 0) {
         return { ...checkout, detail: 'cart_mismatch', cartDifferences: differences };
       }
-      if (input.binding.approved.hold) {
-        return { ...checkout, detail: input.binding.approved.hold };
-      }
+      const hold =
+        input.binding.approved.hold ??
+        ((await input.binding.priorChargeNow()) ? ('prior_charge_unknown' as const) : null);
+      if (hold) return { ...checkout, detail: hold };
     }
     if (total === null || (!input.binding && (total <= 0 || total > input.maxPriceCents))) {
       return { ...checkout, detail: 'price_change' };
     }
-    const free = bound?.amount.kind === 'free';
+    const free = bound !== null && chargesNothing(bound.amount, total);
     if (!free && !output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
     if (!free && output.security_code_required) return { ...checkout, detail: 'security_code' };
     const cap = await input.checkSpendingCap(total);
@@ -636,6 +643,9 @@ async function drivePlan(
         ...stop('cancelled', 'authorization_lapsed', choiceIndex),
         costUsd: reviewed.costUsd,
       };
+    }
+    if (input.binding && (await input.binding.priorChargeNow())) {
+      return { ...reviewed, detail: 'prior_charge_unknown', cartTotalCents: final.totalCents };
     }
     const ready: BrowserUsePlanResult = { ...reviewed, cartTotalCents: final.totalCents };
     return await payWithSavedCard(input, deps, tracker, ready, {

@@ -225,7 +225,7 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
       facts.terms &&
       !facts.terms.free &&
       facts.moment === 'offer' &&
-      facts.terms.rates.some((rate) => !written.includes(rate.cents))
+      facts.terms.rates.some((rate) => rate.cents > 0 && !written.includes(rate.cents))
     ) {
       out.push('missing price: every price in terms.rates has to be in the text');
     }

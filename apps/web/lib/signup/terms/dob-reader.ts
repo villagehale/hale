@@ -7,9 +7,10 @@ import { quotesParentWords } from '../parent-quote';
 
 /**
  * VIL-715 · the child's date of birth, from the parent's answer to Hale asking for it.
- * The model reads it; code holds it to the parent's own words: their quote is copied whole,
- * carries the date's day and year, and the date is a real day in the past. Anything else
- * reads as no date, and the turn carries on as usual.
+ * The model reads it, for this child by name; code holds it to the parent's own words: their
+ * quote is copied whole, carries the date's day and year, and the date is a real day in the
+ * past. A date the model reads as someone else's is never stored. Anything else reads as no
+ * date, and the turn carries on as usual.
  */
 export const SIGNUP_DOB_READ_SKILL = 'signup-dob-read';
 export const SIGNUP_DOB_READ_TOOL = 'signup_dob_read';
@@ -18,7 +19,11 @@ export const SIGNUP_DOB_READ_TOOL_DESCRIPTION =
 export const SIGNUP_DOB_READ_MAX_TOKENS = 400;
 
 export const signupDobReadSchema = z
-  .object({ said: z.string().nullable(), date: z.string().nullable() })
+  .object({
+    said: z.string().nullable(),
+    date: z.string().nullable(),
+    otherPerson: z.boolean(),
+  })
   .strict();
 
 export const SIGNUP_DOB_READ_TOOL_SCHEMA = {
@@ -27,12 +32,21 @@ export const SIGNUP_DOB_READ_TOOL_SCHEMA = {
   properties: {
     said: { type: ['string', 'null'] },
     date: { type: ['string', 'null'] },
+    otherPerson: { type: 'boolean' },
   },
-  required: ['said', 'date'],
+  required: ['said', 'date', 'otherPerson'],
 } as const;
 
 export interface DobReader {
-  read(input: { text: string }): Promise<z.infer<typeof signupDobReadSchema> | null>;
+  read(input: {
+    text: string;
+    /** The child Hale asked about. A date given for anyone else is not theirs. */
+    childFirstName: string;
+  }): Promise<z.infer<typeof signupDobReadSchema> | null>;
+}
+
+export function signupDobReadUserMessage(input: { text: string; childFirstName: string }): string {
+  return JSON.stringify({ child_first_name: input.childFirstName, text: input.text });
 }
 
 /** The date, once the parent's own words back it. Pure. */
@@ -41,7 +55,7 @@ export function acceptDobReading(
   text: string,
   now: Date,
 ): string | null {
-  if (raw.said === null || raw.date === null) return null;
+  if (raw.otherPerson || raw.said === null || raw.date === null) return null;
   const date = acceptCalendarDate(raw.date);
   if (date === null || !quotesParentWords(text, raw.said)) return null;
   if (new Date(`${date}T12:00:00Z`).getTime() >= now.getTime()) return null;
@@ -67,7 +81,7 @@ export function createDobReader(
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
-          userMessage: JSON.stringify({ text: input.text }),
+          userMessage: signupDobReadUserMessage(input),
           toolName: SIGNUP_DOB_READ_TOOL,
           toolDescription: SIGNUP_DOB_READ_TOOL_DESCRIPTION,
           inputJsonSchema: SIGNUP_DOB_READ_TOOL_SCHEMA,

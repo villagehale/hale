@@ -33,6 +33,7 @@ import {
   type SignupTermsRead,
   type SignupTermsRow,
   loadSignupTerms,
+  prerequisiteAskStamp,
   priorChargeUnknown,
   termsAskStamp,
 } from '../terms/store';
@@ -136,9 +137,10 @@ export async function runPlanAsk(
   if (plan.availability && plan.availability.kind === 'options_mismatch') {
     return runMismatchTurn(database, input, deps, plan, place);
   }
-  // VIL-715: a pending ask under pre-flight is read, and bound, against its stored terms.
+  // VIL-715: a pending ask that has terms is read, and bound, against them, whatever the flag
+  // says now. The flag decides only what a new ask is, and what an ask with no row does.
   const termsRead =
-    plan.status === 'pending' && registrationPreflightEnabled(input.familyId)
+    plan.status === 'pending'
       ? await loadSignupTerms(database, { offerId: plan.offerId, familyId: input.familyId })
       : null;
   const terms = termsRead?.status === 'read' ? termsRead.row : null;
@@ -159,7 +161,15 @@ export async function runPlanAsk(
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
       asksWaiver: await hasPlanNotice(database, plan.offerId, 'ask_waiver'),
-      ...(terms ? { terms: planReadTerms(terms.shown) } : {}),
+      ...(terms
+        ? {
+            terms: planReadTerms(terms.shown, {
+              prerequisiteAsked:
+                terms.prerequisiteAskedSeq !== null &&
+                terms.prerequisiteAskedSeq === plan.lastAskedSeq,
+            }),
+          }
+        : {}),
     },
   });
   if (!reading) return stopped('plan_unread', plan);
@@ -248,7 +258,10 @@ export async function runPlanAsk(
       }
     }
   }
-  if (termsRead !== null) {
+  if (
+    termsRead !== null &&
+    (termsRead.status !== 'none' || registrationPreflightEnabled(input.familyId))
+  ) {
     return approveOnTerms(database, input, deps, plan, termsRead, reading, boundBy);
   }
   const approved = await approveSignupPlan(database, {
@@ -279,6 +292,8 @@ const TERMS_CONFIRM_QUESTION = 'Now that Hale has the date of birth, should it g
 const TERMS_LIMIT_QUESTION =
   'The class costs more than the limit they gave. Should Hale go up to the class price?';
 const TERMS_AMOUNT_QUESTION = 'What is the most Hale may pay for this?';
+const TERMS_DOB_OTHER_QUESTION =
+  "The date they gave is someone else's. What is this child's date of birth?";
 const termsPrerequisiteQuestion = (quote: string | null) =>
   quote
     ? `The class says: "${quote}". Has the child done that?`
@@ -288,6 +303,7 @@ async function childAgeRow(database: Database, familyId: string, childId: string
   const [child] = await database
     .select({
       id: schema.children.id,
+      name: schema.children.name,
       dateOfBirth: schema.children.dateOfBirth,
       dobPrecision: schema.children.dobPrecision,
     })
@@ -303,10 +319,11 @@ async function termsZone(database: Database, plan: ConversablePlan, parentUserId
 }
 
 /**
- * VIL-715 · while Hale's ask for a date of birth stands, a reply that states one is stored
- * as the exact date, in the parent's own words, and the age check runs again. A child now
- * outside the band closes the offer. Otherwise Hale asks them to confirm. Null: no date in
- * this message, and the turn goes on as usual.
+ * VIL-715 · while Hale's ask for a date of birth stands, a reply that states this child's
+ * is stored as the exact date, in the parent's own words, and the age check runs again. A
+ * child now outside the band closes the offer. Otherwise Hale asks them to confirm. A date
+ * given for someone else is stored nowhere, and Hale asks for this child's. Null: no date
+ * in this message, and the turn goes on as usual.
  */
 async function runDobTurn(
   database: Database,
@@ -319,7 +336,13 @@ async function runDobTurn(
   const child = await childAgeRow(database, input.familyId, plan.childId);
   if (!child || child.dobPrecision === 'exact') return null;
   const reader = deps.dobReader ?? createDobReader(() => resolveReplyClient(undefined));
-  const raw = await reader.read({ text: input.body });
+  const raw = await reader.read({ text: input.body, childFirstName: child.name });
+  if (raw?.otherPerson) {
+    return reply(database, input, deps, plan, 'clarify', {
+      question: TERMS_DOB_OTHER_QUESTION,
+      boundBy: 'newest',
+    });
+  }
   const date = raw ? acceptDobReading(raw, input.body, input.now) : null;
   if (date === null) return null;
   await database
@@ -416,7 +439,18 @@ async function approveOnTerms(
     });
     return reply(database, input, deps, plan, 'refused', { refusal: 'no_terms', boundBy });
   }
-  const { shown, askedMessageId } = termsRead.row;
+  const { askedMessageId } = termsRead.row;
+  // An earlier run may have ended with an unknown charge since the ask was made.
+  const shown: SignupTermsShown = {
+    ...termsRead.row.shown,
+    priorChargeUnknown:
+      termsRead.row.shown.priorChargeUnknown ||
+      (await priorChargeUnknown(database, {
+        familyId: input.familyId,
+        childId: plan.childId,
+        activityKey: plan.activityKey,
+      })),
+  };
   const child = await childAgeRow(database, input.familyId, plan.childId);
   if (!child) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'missing_detail', boundBy });
@@ -426,6 +460,7 @@ async function approveOnTerms(
     shown,
     askedMessageId,
     sessions: plan.sessions,
+    activityLabel: plan.activityLabel,
     choiceIds: reading.choiceIds,
     limitWrittenCents: reading.limitWrittenCents ?? null,
     prerequisiteMet: reading.prerequisiteMet ?? null,
@@ -459,12 +494,27 @@ async function approveOnTerms(
     });
   }
   if (bound.kind === 'clarify') {
+    // A no to what the class needs answers the ask: asking it again would never end.
+    if (bound.reason === 'prerequisite' && reading.prerequisiteMet === false) {
+      await markOffer(database, {
+        offerId: plan.offerId,
+        familyId: input.familyId,
+        from: 'pending',
+        status: 'handed_back',
+        messageId,
+        now: input.now,
+      });
+      return reply(database, input, deps, plan, 'declined', { boundBy });
+    }
+    if (bound.reason === 'prerequisite') {
+      return reply(database, input, deps, plan, 'clarify', {
+        question: termsPrerequisiteQuestion(shown.prerequisite.quote),
+        asksPrerequisite: true,
+        boundBy,
+      });
+    }
     const question =
-      bound.reason === 'prerequisite'
-        ? termsPrerequisiteQuestion(shown.prerequisite.quote)
-        : bound.reason === 'limit_below_rate'
-          ? TERMS_LIMIT_QUESTION
-          : TERMS_AMOUNT_QUESTION;
+      bound.reason === 'limit_below_rate' ? TERMS_LIMIT_QUESTION : TERMS_AMOUNT_QUESTION;
     return reply(database, input, deps, plan, 'clarify', { question, boundBy });
   }
   let seasonKey: string | null = null;
@@ -530,19 +580,6 @@ async function pickAsNewAsk(
   if (!choice?.starts_at) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'choices', boundBy });
   }
-  const [row] = await database
-    .select({ activityKey: schema.authorizedSignupOffers.activityKey })
-    .from(schema.authorizedSignupOffers)
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, plan.offerId),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-      ),
-    )
-    .limit(1);
-  if (!row) {
-    return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
-  }
   await markOffer(database, {
     offerId: plan.offerId,
     familyId: input.familyId,
@@ -550,6 +587,8 @@ async function pickAsNewAsk(
     status: 'handed_back',
     now: input.now,
   });
+  // The site lists no end time. A session whose end is its start reads as "end not known":
+  // the bound run is told so, and matches this one on its start (`planFacts`).
   const session: SignupSession = {
     id: SITE_OPTION_SESSION_ID,
     label: choice.label,
@@ -575,7 +614,7 @@ async function pickAsNewAsk(
     priorChargeUnknown: await priorChargeUnknown(database, {
       familyId: input.familyId,
       childId: plan.childId,
-      activityKey: row.activityKey,
+      activityKey: plan.activityKey,
     }),
     sessions: [
       {
@@ -590,7 +629,7 @@ async function pickAsNewAsk(
     familyId: input.familyId,
     childId: plan.childId,
     parentUserId: input.parentUserId,
-    activityKey: row.activityKey,
+    activityKey: plan.activityKey,
     activityLabel: plan.activityLabel,
     registrationUrl: plan.registrationUrl,
     sessions: [session],
@@ -684,7 +723,7 @@ async function runMismatchTurn(
     });
     return reply(database, input, deps, plan, 'approved', { boundBy });
   }
-  if (registrationPreflightEnabled(input.familyId)) {
+  if (await askIsOnTerms(database, input.familyId, plan.offerId)) {
     if (reading.verdict === 'option') {
       const choice = parsed.find((item) => item.id === reading.choiceId);
       return pickAsNewAsk(database, input, deps, plan, choice, boundBy);
@@ -736,6 +775,16 @@ async function runMismatchTurn(
     now: input.now,
   });
   return reply(database, input, deps, plan, 'approved', { boundBy });
+}
+
+/** An ask made under pre-flight stays on its terms after the flag goes off. */
+async function askIsOnTerms(
+  database: Database,
+  familyId: string,
+  offerId: string,
+): Promise<boolean> {
+  if (registrationPreflightEnabled(familyId)) return true;
+  return (await loadSignupTerms(database, { offerId, familyId })).status !== 'none';
 }
 
 function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
@@ -811,6 +860,8 @@ async function reply(
     terms?: PlanReplyTerms;
     /** A refusal that sends the parent nowhere: the class does not fit this child. */
     noLink?: boolean;
+    /** This text asks whether the child has what the class needs. */
+    asksPrerequisite?: boolean;
   },
 ): Promise<SignupRunResult> {
   const choices = extra.choiceIds
@@ -853,7 +904,7 @@ async function reply(
   });
   if (text === null) {
     console.warn({ outcome }, 'signup plans: reply unwritten');
-    if (registrationPreflightEnabled(input.familyId)) {
+    if (await askIsOnTerms(database, input.familyId, plan.offerId)) {
       await pageOps(database, {
         site: 'registration_text_unwritten',
         facts: { moment: moment === 'offer' ? 'offer' : 'reply' },
@@ -881,6 +932,11 @@ async function reply(
     reply: planReplyBody(text, link),
     deliverOnThread: true,
     // Only the text that carries the terms records them as received.
-    stamp: moment === 'offer' ? termsAskStamp(database, asked) : askStamp(database, asked),
+    stamp:
+      moment === 'offer'
+        ? termsAskStamp(database, asked)
+        : extra.asksPrerequisite
+          ? prerequisiteAskStamp(database, asked)
+          : askStamp(database, asked),
   };
 }

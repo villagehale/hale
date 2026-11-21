@@ -254,10 +254,19 @@ export type SendStamp = () => Promise<(channelMessageId: string) => Promise<AskS
  * started first, though the carrier may deliver the other first. The window is one carrier
  * call, and both texts are Hale's about the parent's own asks.
  */
-export function askStamp(database: Database, asks: AskedAbout): SendStamp {
+export function askStamp(
+  database: Database,
+  asks: AskedAbout,
+  /** Runs after this send's number was kept, with that number. */
+  onKept?: (seq: number) => Promise<void>,
+): SendStamp {
   return async () => {
     const seq = await markAskInFlight(database, asks);
-    return (channelMessageId) => keepAskNumber(database, asks, seq, channelMessageId);
+    return async (channelMessageId) => {
+      const outcome = await keepAskNumber(database, asks, seq, channelMessageId);
+      if (outcome === 'stamped') await onKept?.(seq);
+      return outcome;
+    };
   };
 }
 

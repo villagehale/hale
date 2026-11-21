@@ -182,7 +182,7 @@ async function main() {
       tag: `signup-terms:dob:${fixture.id}`,
       lane: agent.pickLane(dobSkill.meta.task),
       system: dobSkill.instructions,
-      userMessage: JSON.stringify({ text: fixture.text }),
+      userMessage: dob.signupDobReadUserMessage({ text: fixture.text, childFirstName: 'Ada' }),
       toolName: dob.SIGNUP_DOB_READ_TOOL,
       toolDescription: dob.SIGNUP_DOB_READ_TOOL_DESCRIPTION,
       toolSchema: dob.SIGNUP_DOB_READ_TOOL_SCHEMA,

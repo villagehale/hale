@@ -199,6 +199,7 @@ const binding = (over: Partial<PlanBinding> = {}): PlanBinding => ({
   childFirstName: 'Ada',
   timeZone: 'America/Toronto',
   freeCheckoutEnabled: false,
+  priorChargeNow: async () => false,
   ...over,
 });
 
@@ -358,6 +359,78 @@ describe('a bound plan run', () => {
     expect(result.liveViewUrl).toBe(LIVE);
   });
 
+  describe('an earlier run that may have charged, read again at the run', () => {
+    it('found at the cart: stops there, before the review and the card', async () => {
+      const h = harness({ plan: CHECKOUT, payment: PAID });
+      const { value } = input({ binding: binding({ priorChargeNow: async () => true }) });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+      if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+      expect(result.outcome).toBe('needs_human');
+      expect(result.detail).toBe('prior_charge_unknown');
+      expect(result.charged).toBe('nothing');
+      expect(result.liveViewUrl).toBe(LIVE);
+    });
+
+    it('found after the review, just before the card: no payment run', async () => {
+      const h = harness({ plan: CHECKOUT, payment: PAID });
+      const answers = [false, true];
+      const priorChargeNow = vi.fn(async () => answers.shift() ?? true);
+      const { value } = input({ binding: binding({ priorChargeNow }) });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(priorChargeNow).toHaveBeenCalledTimes(2);
+      expect(h.skills()).toEqual([
+        '# skill browser-use-plan-signup',
+        '# skill browser-use-checkout-review',
+      ]);
+      if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+      expect(result.detail).toBe('prior_charge_unknown');
+      expect(result.charged).toBe('nothing');
+    });
+
+    it('none found: the run pays (positive control)', async () => {
+      const h = harness({ plan: CHECKOUT, payment: PAID });
+      const priorChargeNow = vi.fn(async () => false);
+      const { value } = input({ binding: binding({ priorChargeNow }) });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(result.outcome).toBe('completed');
+      expect(priorChargeNow).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('a session the site listed with no end time', () => {
+    const noEnd = [
+      { label: 'Sun 10:00', startsAt: '2026-12-05T09:30:00', endsAt: '2026-12-05T09:30:00' },
+    ];
+    const factsOf = (task: unknown) => {
+      const text = String(task);
+      const at = text.indexOf('"choices"');
+      return text.slice(at, at + 200);
+    };
+
+    it('a bound run is told the end is not known', async () => {
+      const h = harness({ plan: CHECKOUT, payment: PAID });
+      const { value } = input({ choices: noEnd });
+      await runBrowserUsePlanSignup(value, h.deps);
+      const facts = factsOf((h.created()[0] as { task: unknown }).task);
+      expect(facts).toContain('"ends_at": null');
+      expect(facts).not.toContain('"ends_at": "2026-12-05T09:30:00"');
+    });
+
+    it('an unbound run sends the times it always sent', async () => {
+      const h = harness({
+        plan: { ...CHECKOUT, cart_read: undefined },
+        review: { ...REVIEW, cart_read: undefined },
+        payment: PAID,
+      });
+      const { value } = input({ choices: noEnd, binding: null });
+      await runBrowserUsePlanSignup(value, h.deps);
+      expect(factsOf((h.created()[0] as { task: unknown }).task)).toContain(
+        '"ends_at": "2026-12-05T09:30:00"',
+      );
+    });
+  });
+
   it('with no binding the run is the run of today', async () => {
     const h = harness({
       plan: { ...CHECKOUT, cart_total_cents: 9760, cart_read: undefined },
@@ -459,6 +532,69 @@ describe('the free path', () => {
     expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
     if (result.outcome === 'checkpointed') throw new Error('checkpointed');
     expect(result.detail).toBe('payment_off');
+  });
+
+  describe('a class free for residents and paid for others', () => {
+    const pair = (over: Partial<PlanBinding> = {}) =>
+      binding({
+        approved: approved({
+          maxCents: 4000,
+          sessions: [
+            {
+              ...(approved().sessions[0] as SignupTermsApproved['sessions'][number]),
+              amount: {
+                kind: 'exact',
+                cents: [0, 4000],
+                currency: 'cad',
+                plusTax: null,
+                limitCents: null,
+              },
+            },
+          ],
+        }),
+        freeCheckoutEnabled: true,
+        ...over,
+      });
+
+    it('a $0 cart takes the free path, with no card and no currency', async () => {
+      const h = harness({ plan: FREE_CHECKOUT, review: FREE_REVIEW, payment: FREE_PLACED });
+      const { value } = input({ binding: pair(), maxPriceCents: 4000, paymentEnabled: false });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(h.skills()).toEqual([
+        '# skill browser-use-plan-signup',
+        '# skill browser-use-free-review',
+        '# skill browser-use-free-checkout',
+      ]);
+      if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+      expect(result.outcome).toBe('completed');
+      expect(result.charged).toEqual({ cents: 0 });
+    });
+
+    it('the paid rate is a paid checkout, and the free switch does not arm it', async () => {
+      const h = harness({
+        plan: { ...CHECKOUT, cart_total_cents: 4000 },
+        review: { ...REVIEW, total_cents: 4000 },
+        payment: { ...PAID, amount_charged_cents: 4000 },
+      });
+      const { value } = input({ binding: pair(), maxPriceCents: 4000, paymentEnabled: false });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+      if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+      expect(result.detail).toBe('payment_off');
+      expect(result.charged).toBe('nothing');
+    });
+
+    it('the paid rate pays when the payment switch is on', async () => {
+      const h = harness({
+        plan: { ...CHECKOUT, cart_total_cents: 4000 },
+        review: { ...REVIEW, total_cents: 4000 },
+        payment: { ...PAID, amount_charged_cents: 4000 },
+      });
+      const { value } = input({ binding: pair(), maxPriceCents: 4000, paymentEnabled: true });
+      const result = await runBrowserUsePlanSignup(value, h.deps);
+      expect(result.outcome).toBe('completed');
+      expect(result.outcome === 'completed' && result.charged).toEqual({ cents: 4000 });
+    });
   });
 
   it('a paid binding never takes the free path on a zero cart', async () => {

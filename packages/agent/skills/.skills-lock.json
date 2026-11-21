@@ -45,7 +45,7 @@
   },
   "browser-use-cart-read.md": {
     "file": "browser-use-cart-read.md",
-    "sha256": "43dc015a24c5b7d7df2d68f3615ef8e27d80045bd8ff655d78bf84df6a1be576"
+    "sha256": "b4e5771ab1acd70e88a44f53ba3296a1c8fd539da446a0d3775c213f24c7ed9f"
   },
   "browser-use-checkout-review.md": {
     "file": "browser-use-checkout-review.md",
@@ -701,7 +701,7 @@
   },
   "signup-dob-read.md": {
     "file": "signup-dob-read.md",
-    "sha256": "3160d6db07af7052fdfb8ad07374d40db3621dc75c54f9f0f8e6c0d19c611150"
+    "sha256": "79a6a0205fed1fa9dad84918d0164e56456765ea4d9ddcc42e6c95954ea86146"
   },
   "signup-mismatch-read.md": {
     "file": "signup-mismatch-read.md",
@@ -721,7 +721,7 @@
   },
   "signup-plan-read-terms.md": {
     "file": "signup-plan-read-terms.md",
-    "sha256": "2a57df86805ef612432149bc42e5617abdb25dccecef4989d95cf2503c6a72ee"
+    "sha256": "94021985660f93c33ba0feabb18b9598ebec2778e76d6bc59a6136c80cd699aa"
   },
   "signup-plan-read.md": {
     "file": "signup-plan-read.md",
@@ -733,7 +733,7 @@
   },
   "signup-plan-terms.md": {
     "file": "signup-plan-terms.md",
-    "sha256": "c334adb106d77d76f671ba94bb51f83d5d3d0314f08bc1b0be33c7a938cb0e62"
+    "sha256": "be48178e24bc7baf05a2769b50140716f4d728a6698632f6627c7c436a3d663e"
   },
   "signup-preflight-read.md": {
     "file": "signup-preflight-read.md",

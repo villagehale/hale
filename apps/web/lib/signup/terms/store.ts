@@ -55,7 +55,11 @@ export const signupTermsShownSchema = z.object({
 const amountSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('exact'),
-    cents: z.array(z.number().int().positive()).min(1),
+    // A 0 is one rate of a free-or-paid pair. All zeros is `free`, and never stored as this.
+    cents: z
+      .array(z.number().int().nonnegative())
+      .min(1)
+      .refine((rates) => rates.some((cents) => cents > 0)),
     currency: currencySchema,
     plusTax: z
       .object({ kind: z.enum(['rate', 'ceiling']), basisPoints: z.number().int().positive() })
@@ -76,7 +80,7 @@ export const signupTermsApprovedSchema = z.object({
     .array(
       z.object({
         sessionId: z.string(),
-        program: z.object({ courseIds: z.array(z.string()), name: z.string() }),
+        program: z.object({ courseIds: z.array(z.string()), name: z.string().nullable() }),
         startsAt: z.string(),
         sharesDate: z.boolean(),
         amount: amountSchema,
@@ -96,6 +100,8 @@ export interface SignupTermsRow {
   shown: SignupTermsShown;
   approved: SignupTermsApproved | null;
   askedMessageId: string | null;
+  /** The number of the text that asked about the prerequisite. See {@link prerequisiteAskStamp}. */
+  prerequisiteAskedSeq: number | null;
 }
 
 /**
@@ -107,21 +113,41 @@ export type SignupTermsRead =
   | { status: 'unreadable' }
   | { status: 'read'; row: SignupTermsRow };
 
+/** Preview shares the Prod database and does not migrate: there, this table can be absent. */
+function isMissingTable(err: unknown): boolean {
+  const fields = err as { code?: string; cause?: { code?: string } } | null;
+  return fields?.code === '42P01' || fields?.cause?.code === '42P01';
+}
+
 export async function loadSignupTerms(
   database: Database,
   input: { offerId: string; familyId: string },
 ): Promise<SignupTermsRead> {
   const terms = schema.authorizedSignupTerms;
-  const [row] = await database
-    .select({
-      offerId: terms.offerId,
-      shown: terms.shown,
-      approved: terms.approved,
-      askedMessageId: terms.askedMessageId,
-    })
-    .from(terms)
-    .where(and(eq(terms.offerId, input.offerId), eq(terms.familyId, input.familyId)))
-    .limit(1);
+  let rows: {
+    offerId: string;
+    shown: unknown;
+    approved: unknown;
+    askedMessageId: string | null;
+    prerequisiteAskedSeq: number | null;
+  }[];
+  try {
+    rows = await database
+      .select({
+        offerId: terms.offerId,
+        shown: terms.shown,
+        approved: terms.approved,
+        askedMessageId: terms.askedMessageId,
+        prerequisiteAskedSeq: terms.prerequisiteAskedSeq,
+      })
+      .from(terms)
+      .where(and(eq(terms.offerId, input.offerId), eq(terms.familyId, input.familyId)))
+      .limit(1);
+  } catch (err) {
+    if (isMissingTable(err)) return { status: 'none' };
+    throw err;
+  }
+  const [row] = rows;
   if (!row) return { status: 'none' };
   const shown = signupTermsShownSchema.safeParse(row.shown);
   const approved = row.approved === null ? null : signupTermsApprovedSchema.safeParse(row.approved);
@@ -135,6 +161,7 @@ export async function loadSignupTerms(
       shown: shown.data,
       approved: approved === null ? null : (approved.data as SignupTermsApproved),
       askedMessageId: row.askedMessageId,
+      prerequisiteAskedSeq: row.prerequisiteAskedSeq,
     },
   };
 }
@@ -164,6 +191,55 @@ export function termsAskStamp(database: Database, asks: AskedAbout): SendStamp {
       return kept;
     };
   };
+}
+
+/** Whether any of these offers carries a terms row, whatever the flag says now. */
+export async function someOfferHasTerms(
+  database: Database,
+  input: { familyId: string; offerIds: readonly string[] },
+): Promise<boolean> {
+  if (input.offerIds.length === 0) return false;
+  const terms = schema.authorizedSignupTerms;
+  try {
+    const [row] = await database
+      .select({ id: terms.id })
+      .from(terms)
+      .where(and(eq(terms.familyId, input.familyId), inArray(terms.offerId, [...input.offerIds])))
+      .limit(1);
+    return row !== undefined;
+  } catch (err) {
+    if (isMissingTable(err)) return false;
+    throw err;
+  }
+}
+
+/**
+ * The stamp for the text that asks whether the child has what the class needs. Once that
+ * text is kept, its number goes on the terms row: while it stays this offer's last asked
+ * number, the parent's plain yes answers that question. A write that fails loses only that:
+ * the question is asked once more.
+ */
+export function prerequisiteAskStamp(database: Database, asks: AskedAbout): SendStamp {
+  return askStamp(database, asks, async (seq) => {
+    const terms = schema.authorizedSignupTerms;
+    try {
+      await database
+        .update(terms)
+        .set({ prerequisiteAskedSeq: seq })
+        .where(
+          and(
+            eq(terms.familyId, asks.familyId),
+            inArray(terms.offerId, [...asks.offerIds]),
+            isNull(terms.approvedAt),
+          ),
+        );
+    } catch (err) {
+      console.warn(
+        { error: err instanceof Error ? err.name : 'unknown' },
+        'signup terms: the prerequisite question was not recorded',
+      );
+    }
+  });
 }
 
 /**

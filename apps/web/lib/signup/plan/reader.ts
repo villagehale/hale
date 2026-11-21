@@ -4,6 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
+import { moneyCentsWritten } from '../terms/money';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -58,6 +59,8 @@ export interface PlanReadTerms {
   freeSessionIds: string[];
   prerequisiteRequired: boolean;
   prerequisiteQuote: string | null;
+  /** The last text Hale sent about this ask asked whether the child has it. */
+  prerequisiteAsked: boolean;
 }
 
 /**
@@ -236,6 +239,14 @@ export function moneyWritten(text: string): number[] {
 }
 
 /**
+ * The amounts of money in the parent's words. On an ask with terms, one parser reads the
+ * limit and the maximum, a decimal comma included. Without terms, the read of today.
+ */
+function parentMoney(text: string, offer: Pick<PlanReadOffer, 'terms'>): number[] {
+  return offer.terms ? moneyCentsWritten(text) : moneyWritten(text);
+}
+
+/**
  * A maximum holds on Hale's own stored facts — the highest price stated for the sessions
  * the parent chose, or a price they already accepted — on an amount of money they wrote,
  * or on a bare number they wrote that is a price Hale's offer stated. Never on the activity
@@ -253,7 +264,7 @@ function maxSupported(
   if (stated.length > 0 && maxPriceCents === Math.max(...stated)) return true;
   if (offer.terms?.boundCents.includes(maxPriceCents)) return true;
   if (offer.approvedPriceCents !== null && maxPriceCents === offer.approvedPriceCents) return true;
-  if (moneyWritten(text).includes(maxPriceCents)) return true;
+  if (parentMoney(text, offer).includes(maxPriceCents)) return true;
   const offered = [
     offer.approvedPriceCents,
     ...offer.sessions.map((session) => session.priceCents),
@@ -350,7 +361,7 @@ export function toPlanReading(
       ...(offer.terms
         ? {
             prerequisiteMet: prerequisiteAnswer(raw, text),
-            limitWrittenCents: limitWritten(max, text),
+            limitWrittenCents: limitWritten(max, parentMoney(text, offer)),
           }
         : {}),
     };
@@ -370,8 +381,7 @@ function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
  * widen what they said: with no match, the smallest amount they wrote is the limit, and a
  * limit under the price makes Hale ask.
  */
-function limitWritten(max: number, text: string): number | null {
-  const written = moneyWritten(text);
+function limitWritten(max: number, written: readonly number[]): number | null {
   if (written.length === 0) return null;
   return written.includes(max) ? max : Math.min(...written);
 }

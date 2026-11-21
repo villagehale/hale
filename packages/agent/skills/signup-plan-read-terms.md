@@ -12,10 +12,13 @@ tools: []
 - `boundCents`: the prices the text stated, in cents. A plain yes accepts them: set `maxPriceCents` to the highest of them for the sessions chosen. Do not ask for a maximum.
 - `freeSessionIds`: sessions that cost nothing. A yes to only these has `maxPriceCents` 0.
 - `prerequisiteRequired`: the class needs something first, and the text asked about it. `prerequisiteQuote` is the page's words for it.
+- `prerequisiteAsked`: true when the last text Hale sent about this ask was the question of whether the child has what the class needs. Their message is the answer to that question.
 
 When the parent writes an amount of money of their own, put it in `maxPriceCents` as usual.
 
 Two more fields:
 
-- `prerequisiteSaid`: the parent's own words, copied whole, that say whether the child has what the class needs. Null when they said nothing about it. A bare yes says nothing about it.
+- `prerequisiteSaid`: the parent's own words, copied whole, that say whether the child has what the class needs. Null when they said nothing about it. A bare yes says nothing about it, unless `prerequisiteAsked` is true: then their yes is the answer, and `prerequisiteSaid` is that yes.
 - `prerequisiteMet`: true only when those words say the child has it, false when they say the child does not, null otherwise.
+
+When `prerequisiteAsked` is true and they say the child has not done it, the verdict is `take_back`: Hale will not register this child for this class.

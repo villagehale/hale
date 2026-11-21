@@ -178,7 +178,10 @@ export function writerTerms(
 }
 
 /** What the plan reader is told the ask stated. */
-export function planReadTerms(shown: SignupTermsShown): PlanReadTerms {
+export function planReadTerms(
+  shown: SignupTermsShown,
+  context: { prerequisiteAsked: boolean },
+): PlanReadTerms {
   const boundCents = [
     ...new Set(
       shown.sessions.flatMap((session) =>
@@ -197,6 +200,7 @@ export function planReadTerms(shown: SignupTermsShown): PlanReadTerms {
       .map((session) => session.sessionId),
     prerequisiteRequired: shown.prerequisite.required === 'yes',
     prerequisiteQuote: shown.prerequisite.quote,
+    prerequisiteAsked: context.prerequisiteAsked,
   };
 }
 

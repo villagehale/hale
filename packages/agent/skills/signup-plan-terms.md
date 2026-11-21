@@ -24,7 +24,7 @@ tools: []
 
 This text is what the parent says yes to, so it carries the terms. Say:
 
-- The price. When `rates` holds one price, say it. When it holds a resident and a non-resident price and `residency` is `unknown`, give both, and say the site picks from their account. Write every price in `rates`, with its cents. `free`: say it is free, and state no price.
+- The price. When `rates` holds one price, say it. When it holds a resident and a non-resident price and `residency` is `unknown`, give both, and say the site picks from their account. Write every price in `rates`, with its cents. A rate of 0 is free: say it is free for that group, with no figure. `free`: say it is free, and state no price.
 - That tax is added, when `tax` is `plus_tax`.
 - The refund policy, in the provider's words, kept short, when `refund` is there. When it is null, say plainly that Hale could not find one, so they say yes knowing that.
 - When `ageFit` is `unknown`, that Hale could not confirm the age fit and will stop at checkout for them to finish.

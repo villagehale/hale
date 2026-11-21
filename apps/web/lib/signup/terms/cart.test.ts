@@ -199,6 +199,57 @@ describe('compareCart', () => {
     expect(compareCart(ceiling, cart({ totalCents: 10001 }), who, 'final')).toEqual(['price']);
   });
 
+  it('a cart code is compared only when the page gave ids to compare it with', () => {
+    const noIds = bound({ program: { courseIds: [], name: 'Parent & Tot Swim' } });
+    const line = { provider_course_id: 'SW-881', session_label: 'Parent & Tot Swim' };
+    expect(compareCart(noIds, cart(line), who, 'cart')).toEqual([]);
+    expect(
+      compareCart(noIds, cart({ ...line, session_label: 'Chess: Preschool' }), who, 'cart'),
+    ).toEqual(['session']);
+  });
+
+  it('a binding with neither ids nor a name cannot pass a cart', () => {
+    const blind = bound({ program: { courseIds: [], name: null } });
+    expect(compareCart(blind, cart({ session_label: 'Anything' }), who, 'cart')).toEqual([
+      'unread',
+    ]);
+  });
+
+  describe('a class free at one rate and paid at the other', () => {
+    const pair = bound({
+      amount: { kind: 'exact', cents: [0, 4000], currency: 'cad', plusTax: null, limitCents: null },
+    });
+
+    it('passes a $0 cart, with no currency to read, at both stages', () => {
+      const zero = cart({ totalCents: 0, currency: null, taxCents: null, feesCents: null });
+      expect(compareCart(pair, zero, who, 'cart')).toEqual([]);
+      expect(compareCart(pair, zero, who, 'final')).toEqual([]);
+    });
+
+    it('passes the paid rate and nothing else', () => {
+      expect(compareCart(pair, cart({ totalCents: 4000 }), who, 'cart')).toEqual([]);
+      expect(compareCart(pair, cart({ totalCents: 4000 }), who, 'final')).toEqual([]);
+      expect(compareCart(pair, cart({ totalCents: 2000 }), who, 'final')).toEqual(['price']);
+      expect(compareCart(pair, cart({ totalCents: 4001 }), who, 'cart')).toEqual(['price']);
+    });
+
+    it('a limit the parent wrote still stops the paid rate, and not the free one', () => {
+      const limited = bound({
+        amount: {
+          kind: 'exact',
+          cents: [0, 4000],
+          currency: 'cad',
+          plusTax: null,
+          limitCents: 1000,
+        },
+      });
+      expect(compareCart(limited, cart({ totalCents: 4000 }), who, 'final')).toEqual(['price']);
+      expect(compareCart(limited, cart({ totalCents: 0, currency: null }), who, 'final')).toEqual(
+        [],
+      );
+    });
+  });
+
   it('a free binding passes on exactly zero, with no currency, and stops on one cent', () => {
     const free = bound({ amount: { kind: 'free' } });
     expect(

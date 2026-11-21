@@ -44,7 +44,7 @@ import {
 import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
 import { termsTimeZone } from '../terms/ask';
 import { registrationFreeCheckoutEnabled, registrationPreflightEnabled } from '../terms/flag';
-import { type SignupTermsRow, loadSignupTerms } from '../terms/store';
+import { type SignupTermsRow, loadSignupTerms, priorChargeUnknown } from '../terms/store';
 import type { CartDifference } from '../terms/types';
 import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
@@ -696,6 +696,12 @@ async function runOnePlan(
         childFirstName: identity.childFirstName ?? '',
         timeZone: termsTimeZone(host, await parentTimeZone(database, plan.parentUserId)),
         freeCheckoutEnabled: registrationFreeCheckoutEnabled(plan.familyId),
+        priorChargeNow: () =>
+          priorChargeUnknown(database, {
+            familyId: plan.familyId,
+            childId: plan.childId,
+            activityKey: plan.activityKey,
+          }),
       }
     : null;
   return carry(() =>

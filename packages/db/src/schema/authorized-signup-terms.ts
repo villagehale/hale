@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   check,
   index,
   jsonb,
@@ -70,7 +71,10 @@ export interface SignupTermsTaxBound {
 export type SignupTermsAmount =
   | {
       kind: 'exact';
-      /** The rates this approval allows, in cents. */
+      /**
+       * The rates this approval allows, in cents. A 0 beside a paid rate is a class free at
+       * one rate and paid at the other, with the family's rate unknown: never all zeros.
+       */
       cents: number[];
       currency: 'cad' | 'usd' | null;
       plusTax: SignupTermsTaxBound | null;
@@ -83,7 +87,8 @@ export type SignupTermsAmount =
 
 export interface SignupTermsApprovedSession {
   sessionId: string;
-  program: { courseIds: string[]; name: string };
+  /** The name is the page's, else the offer's activity. Null when neither gave one. */
+  program: { courseIds: string[]; name: string | null };
   startsAt: string;
   /** Another offered session starts on the same day, so a missing cart time cannot pass. */
   sharesDate: boolean;
@@ -141,6 +146,11 @@ export const authorizedSignupTerms = pgTable(
     askedMessageId: uuid('asked_message_id').references(() => channelMessages.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The ask number of the text that asked whether the child has what the class needs.
+     * While it is still this offer's last asked number, a plain yes answers that question.
+     */
+    prerequisiteAskedSeq: bigint('prerequisite_asked_seq', { mode: 'number' }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
