@@ -511,7 +511,13 @@ describe('with the flag on', () => {
         { state: 'new_visitor' },
       ]) {
         stubFacts(view);
-        expect(await renderPage()).not.toContain('href="sms:');
+        const html = await renderPage();
+        expect(html).not.toContain('href="sms:');
+        if (ua !== DESKTOP) {
+          expect(mainOf(html)).toMatch(
+            /<a href="\/text"[^>]*data-cta-placement="checkout_success"/,
+          );
+        }
       }
     }
   });
