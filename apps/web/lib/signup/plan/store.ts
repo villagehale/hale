@@ -492,6 +492,13 @@ export async function cancelSignupPlan(
     .update(offers)
     .set({
       planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
+      // A plan parked on its takeover card holds the lease to the card's end with no sweep
+      // driving it: the next sweep lets it go. A lease a sweep took since then stays its own.
+      planLeaseUntil: sql`case
+        when ${offers.planResume}->>'phase' = 'takeover'
+          and ${offers.planResume}->>'doneAt' is null
+          and ${offers.planLeaseUntil} = (${offers.planResume}->>'expiresAt')::timestamptz
+        then null else ${offers.planLeaseUntil} end`,
       updatedAt: input.now,
     })
     .where(and(ours, eq(offers.status, 'submitting'), isNotNull(offers.planResume)))

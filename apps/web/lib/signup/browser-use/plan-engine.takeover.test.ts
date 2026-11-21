@@ -343,6 +343,40 @@ describe('VIL-718 · picking the session back up after the parent is done', () =
     );
   });
 
+  it('a later sweep waits on the assisted turn already queued instead of opening a second browser', async () => {
+    const ready = {
+      outcome: 'ready_for_parent',
+      detail: 'none',
+      choice_index: 0,
+      page_url: 'https://register.example-rec.test/Enroll',
+      fee_cents: 9800,
+      submitted: false,
+      payment_details_entered: false,
+    };
+    const { deps, log } = setup({ queued: JSON.stringify(ready), assisted: true });
+    const { input } = plan({
+      mode: 'assisted',
+      takeover: true,
+      resume: {
+        phase: 'signup',
+        runId: 'run-q1',
+        sessionId: 'bu-session-1',
+        browserId: 'browser-1',
+        takeover: { purpose: 'sign_in', round: 1 },
+      },
+    });
+    const result = await runBrowserUseAssistedSignup(input, deps);
+    expect(log.some((r) => r.method === 'POST' && r.path === '/runs')).toBe(false);
+    expect(log.some((r) => r.method === 'POST' && r.path.endsWith('/queue'))).toBe(false);
+    expect(log.some((r) => r.method === 'GET' && r.path === '/runs/run-q1/status')).toBe(true);
+    expect(result).toMatchObject({
+      outcome: 'ready_for_parent',
+      choiceIndex: 0,
+      liveViewUrl: LIVE,
+      sessionId: 'bu-session-1',
+    });
+  });
+
   it('the assisted engine picks the same session back up too', async () => {
     const ready = {
       outcome: 'ready_for_parent',

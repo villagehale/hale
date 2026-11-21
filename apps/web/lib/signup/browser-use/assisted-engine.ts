@@ -152,7 +152,14 @@ async function driveAssisted(
   });
   let runId: string | null = null;
   try {
-    if (input.takeoverResume) {
+    if (input.resume?.phase === 'signup' && input.resume.runId) {
+      // VIL-718 · only the turn queued after a takeover checkpoints here. A sweep that dies
+      // waiting on it leaves it going: a new run would open a second browser on the account.
+      runId = input.resume.runId;
+      tracker.runId = runId;
+      tracker.sessionId = input.resume.sessionId;
+      tracker.browserId = input.resume.browserId;
+    } else if (input.takeoverResume) {
       // VIL-718 · the parent finished a takeover: the next turn of the same session. Tracked
       // before anything can throw, so a throw still stops the parent's browser.
       const resume = input.takeoverResume;

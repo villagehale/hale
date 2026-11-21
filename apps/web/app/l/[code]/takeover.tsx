@@ -163,13 +163,7 @@ export function TakeoverScreen({ code, host, title, description, smsHref }: Take
       {description ? <p style={{ opacity: 0.7, margin: 0, maxWidth: 520 }}>{description}</p> : null}
       {liveUrl ? (
         <>
-          <iframe
-            src={liveUrl}
-            title={TAKEOVER_PAGE_COPY.frameTitle(host)}
-            style={frame}
-            referrerPolicy="no-referrer"
-            allow="clipboard-read; clipboard-write"
-          />
+          <TakeoverFrame liveUrl={liveUrl} host={host} />
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
             <a href={liveUrl} target="_blank" rel="noreferrer noopener" style={secondaryButton}>
               {TAKEOVER_PAGE_COPY.fullScreen}
@@ -190,6 +184,19 @@ export function TakeoverScreen({ code, host, title, description, smsHref }: Take
         </p>
       ) : null}
     </main>
+  );
+}
+
+/** The live browser. `autoplay` is all it needs: the vendor's frame gets no clipboard access. */
+export function TakeoverFrame({ liveUrl, host }: { liveUrl: string; host: string }) {
+  return (
+    <iframe
+      src={liveUrl}
+      title={TAKEOVER_PAGE_COPY.frameTitle(host)}
+      style={frame}
+      referrerPolicy="no-referrer"
+      allow="autoplay"
+    />
   );
 }
 

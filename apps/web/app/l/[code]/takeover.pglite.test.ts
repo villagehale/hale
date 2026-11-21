@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROVIDER_CREDENTIALS_ENABLED_ENV } from '~/lib/signup/credentials/flag';
@@ -28,7 +29,7 @@ import { POST as saveLogin } from '../../api/signup/l/[code]/route';
 import { POST as done } from '../../api/signup/l/[code]/done/route';
 import { POST as live } from '../../api/signup/l/[code]/live/route';
 import ProviderLoginPage, { generateMetadata } from './page';
-import { takeoverAnswer } from './takeover';
+import { TakeoverFrame, takeoverAnswer } from './takeover';
 
 const NOW = new Date();
 const HOST = 'register.example-rec.test';
@@ -285,6 +286,16 @@ describe('POST /api/signup/l/<code>/live and /done', () => {
       .from(schema.providerSignupCredentials)
       .where(eq(schema.providerSignupCredentials.familyId, familyId));
     expect(saved).toEqual([]);
+  });
+});
+
+describe('the live view frame', () => {
+  it('lets the stream play and gives the provider frame no clipboard access', () => {
+    const html = renderToStaticMarkup(createElement(TakeoverFrame, { liveUrl: LIVE, host: HOST }));
+    expect(html).toContain(`src="${LIVE}"`);
+    expect(html).toContain('allow="autoplay"');
+    expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).not.toContain('clipboard');
   });
 });
 

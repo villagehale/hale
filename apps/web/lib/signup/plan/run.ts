@@ -66,6 +66,7 @@ import {
   writePlanAudit,
 } from './store';
 import {
+  type TakeoverDeps,
   type TakeoverStop,
   isTakeoverStop,
   offerTakeover,
@@ -108,11 +109,13 @@ export const PLAN_RUN_ALLOWANCE_USD =
   SIGNUP_RUN_MAX_COST_USD + CHECKOUT_REVIEW_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
 
 /**
- * VIL-718 · with the takeover link on, a plan may run one more turn after the parent's step,
- * so its hold covers that turn's cap too. Off, the hold is what it was.
+ * VIL-718 · with the takeover link on, a plan may run one more turn after each step the parent
+ * takes, so its hold covers the cap of every turn it can ask for. Off, the hold is what it was.
  */
 export function planRunAllowanceUsd(takeover: boolean): number {
-  return PLAN_RUN_ALLOWANCE_USD + (takeover ? TAKEOVER_RESUME_RUN_MAX_COST_USD : 0);
+  return (
+    PLAN_RUN_ALLOWANCE_USD + (takeover ? TAKEOVER_MAX_ROUNDS * TAKEOVER_RESUME_RUN_MAX_COST_USD : 0)
+  );
 }
 
 export interface PlanSignupRunner {
@@ -186,8 +189,8 @@ export interface PlanRunDeps {
   autoHosts?: readonly string[];
   /** Event notices (rejected password, mismatched options). Undefined uses env wiring. */
   prep?: PlanPrepDeps;
-  /** VIL-718 · the takeover texts and their 1:1 door. Undefined uses env wiring. */
-  takeover?: PlanPrepDeps;
+  /** VIL-718 · the takeover texts, their 1:1 door and clock. Undefined uses env wiring. */
+  takeover?: TakeoverDeps;
 }
 
 export type PlanRunSummary =
@@ -301,7 +304,8 @@ async function runOnePlan(
   const now = sweep.now;
   const held = holdsRun(plan.resume) ? plan.resume : null;
   // VIL-718 · a plan parked on a takeover link, and the last takeover this plan asked for.
-  // A takeover already in flight finishes either way: the flag only stops new ones.
+  // With the flag off a parked plan still ends: a done already stamped resumes, and a card
+  // still open (its page and routes now answer gone) closes honestly when it runs out.
   const takeoverOn = takeoverLinkEnabled();
   const parked = plan.resume?.phase === 'takeover' ? plan.resume : null;
   const lastTakeover: { purpose: TakeoverPurpose; round: number } | null = parked
@@ -562,7 +566,6 @@ async function runOnePlan(
         round: (lastTakeover?.round ?? 0) + 1,
         mode: takeoverMode,
         host: factsHost,
-        now,
       },
       takeoverDeps(),
     );
@@ -660,25 +663,30 @@ async function runOnePlan(
   const onStep: BrowserUsePlanInput['onStep'] = (step) =>
     audit({ ...step, step: `plan_${step.step}`, host });
 
-  // VIL-718 · the takeover's link ran out before the parent tapped done: let the browser go
-  // and say so. Nothing retries it. A done that landed while this sweep claimed the plan wins.
+  // VIL-718 · the takeover's link ran out before the parent tapped done, or the parent took the
+  // plan back: let the browser go. Nothing retries it. A done that landed while this sweep
+  // claimed the plan wins. A lapse already stamped is a sweep that died before its close.
   if (parked && !parked.doneAt) {
-    const lapsed = await lapseTakeover(database, {
-      offerId: plan.offerId,
-      familyId: plan.familyId,
-      loginLinkId: parked.loginLinkId,
-      now,
-    });
+    const lapsed =
+      parked.lapsedAt !== null ||
+      (await lapseTakeover(database, {
+        offerId: plan.offerId,
+        familyId: plan.familyId,
+        loginLinkId: parked.loginLinkId,
+        actor: plan.parentUserId,
+        after: {
+          step: 'plan_takeover_lapsed',
+          purpose: parked.purpose,
+          round: parked.round,
+          host,
+        },
+        now,
+      }));
     if (!lapsed) {
       await letGoOfTakeover(database, { offerId: plan.offerId, familyId: plan.familyId });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: 'takeover' };
     }
-    await audit({
-      step: 'plan_takeover_lapsed',
-      purpose: parked.purpose,
-      round: parked.round,
-      host,
-    });
+    if (plan.takenBack) return handBack('authorization_lapsed', 'cancelled');
     return endUnfinished(parked.purpose, 'ran_out', { sessionCostUsd: null, charged: 'nothing' });
   }
   // The card may already be charged: read the payment before any check may end the plan.
@@ -766,8 +774,11 @@ async function runOnePlan(
       'signup plans: city login belongs to the other parent',
     );
   }
-  // A takeover the parent finished signed in on the browser itself: no saved login is needed.
-  if (!stored && !credentials && !parked) return handBack('no_provider_session', 'needs_login');
+  // After a takeover the parent is signed in on the browser itself: no saved login is needed,
+  // on the sweep that picks the session up or on any sweep that waits on that turn after it.
+  if (!stored && !credentials && !lastTakeover) {
+    return handBack('no_provider_session', 'needs_login');
+  }
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {
       offerId: plan.offerId,

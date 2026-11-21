@@ -66,10 +66,11 @@ export type FinishTakeover =
   | { ok: false; reason: 'unknown' | 'expired' | 'used' | 'not_waiting' };
 
 /**
- * The parent tapped done. In one transaction the card is spent (single use) and the plan's
- * token is stamped `doneAt` with its lease cleared, so the next minute's sweep queues the next
- * turn of the same session. Both or neither: a card whose plan already lapsed, or was let go,
- * is not spent here and answers `not_waiting`. One audit row (rule #6): the host and the step.
+ * The parent tapped done. In one transaction the card is spent (single use), the plan's token
+ * is stamped `doneAt` with its lease cleared, so the next minute's sweep queues the next turn
+ * of the same session, and the audit row is written (rule #6): the host and the step. All or
+ * nothing: a card whose plan already lapsed, was let go or was taken back is not spent here
+ * and answers `not_waiting`.
  */
 export async function finishTakeover(
   database: Database,
@@ -104,20 +105,25 @@ export async function finishTakeover(
           planLeaseUntil: null,
           updatedAt: input.now,
         })
-        .where(waiting({ offerId: link.offerId, familyId: link.familyId, loginLinkId: link.id }))
+        .where(
+          and(
+            waiting({ offerId: link.offerId, familyId: link.familyId, loginLinkId: link.id }),
+            isNull(offers.planCancelRequestedAt),
+          ),
+        )
         .returning({ id: offers.id });
       if (resumed.length === 0) throw new TakeoverNotWaiting('plan not waiting');
+      await writePlanAudit(tx, {
+        familyId: link.familyId,
+        actor: link.parentUserId,
+        offerId: link.offerId,
+        after: { step: 'plan_takeover_done', purpose, host: link.providerHost },
+      });
     });
   } catch (err) {
     if (err instanceof TakeoverNotWaiting) return { ok: false, reason: 'not_waiting' };
     throw err;
   }
-  await writePlanAudit(database, {
-    familyId: link.familyId,
-    actor: link.parentUserId,
-    offerId: link.offerId,
-    after: { step: 'plan_takeover_done', purpose, host: link.providerHost },
-  });
   return {
     ok: true,
     offerId: link.offerId,
@@ -128,13 +134,21 @@ export async function finishTakeover(
 }
 
 /**
- * The sweep found the takeover's link ran out before a done. Stamps `lapsedAt` and spends the
- * card in one transaction. False when the parent's done landed first: that plan is resumed,
- * not ended.
+ * The sweep found the takeover's link ran out before a done. Stamps `lapsedAt`, spends the
+ * card and writes the audit row in one transaction, so a sweep that dies right after leaves a
+ * lapse the next sweep can finish. False when the parent's done landed first: that plan is
+ * resumed, not ended.
  */
 export async function lapseTakeover(
   database: Database,
-  input: { offerId: string; familyId: string; loginLinkId: string; now: Date },
+  input: {
+    offerId: string;
+    familyId: string;
+    loginLinkId: string;
+    actor: string;
+    after: Record<string, unknown>;
+    now: Date;
+  },
 ): Promise<boolean> {
   const links = schema.providerLoginLinks;
   const offers = schema.authorizedSignupOffers;
@@ -156,6 +170,12 @@ export async function lapseTakeover(
           isNull(links.consumedAt),
         ),
       );
+    await writePlanAudit(tx, {
+      familyId: input.familyId,
+      actor: input.actor,
+      offerId: input.offerId,
+      after: input.after,
+    });
     return true;
   });
 }

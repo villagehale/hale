@@ -56,6 +56,12 @@ export type TakeoverOffer =
   /** Written, but a part did not reach the parent. The link is spent. */
   | { status: 'undelivered'; delivery: 'failed' | 'withheld' };
 
+/** The takeover's writer and door, and the clock the time left on its link is counted from. */
+export interface TakeoverDeps extends PlanPrepDeps {
+  /** When the text goes. The sweep's `now` is when it began, often minutes before the stop. */
+  now: () => Date;
+}
+
 /** The facts every takeover text shares. The session is the plan's first choice. */
 async function baseFacts(
   database: Database,
@@ -91,11 +97,11 @@ export async function offerTakeover(
     round: number;
     mode: 'auto' | 'assisted';
     host: string;
-    now: Date;
   },
-  deps: PlanPrepDeps,
+  deps: TakeoverDeps,
 ): Promise<TakeoverOffer> {
-  const { plan, stop, purpose, now } = input;
+  const { plan, stop, purpose } = input;
+  const now = deps.now();
   const window = takeoverWindow({
     now,
     browserEndsAt:
@@ -158,15 +164,24 @@ export async function offerTakeover(
     await consumeLoginLink(database, { id: link.id, now });
     return { status: 'not_offered', why: 'not_parked' };
   }
-  const delivered = await deps.deliver({
-    familyId: plan.familyId,
-    parentUserId: plan.parentUserId,
-    offerId: plan.offerId,
-    kind: 'takeover',
-    noticeKey: `${plan.offerId}:takeover:${input.round}`,
-    parts: withLinkBubbles(bubbles, link, 0),
-    now,
-  });
+  // A door that throws has not sent: the plan must not sit parked on a card nobody got.
+  const delivered = await deps
+    .deliver({
+      familyId: plan.familyId,
+      parentUserId: plan.parentUserId,
+      offerId: plan.offerId,
+      kind: 'takeover',
+      noticeKey: `${plan.offerId}:takeover:${input.round}`,
+      parts: withLinkBubbles(bubbles, link, 0),
+      now,
+    })
+    .catch((err: unknown) => {
+      console.warn(
+        { offerId: plan.offerId, purpose, error: err instanceof Error ? err.name : 'unknown' },
+        'takeover: the door threw',
+      );
+      return 'failed' as const;
+    });
   if (delivered !== 'sent') {
     await consumeLoginLink(database, { id: link.id, now });
     console.warn({ offerId: plan.offerId, purpose, delivered }, 'takeover: the link did not go');
@@ -241,11 +256,12 @@ export async function tellTakeoverUnfinished(
 }
 
 /** Real wiring: the takeover skill's writer and the same 1:1 door as the plan notices. */
-export function takeoverDepsFromEnv(database: Database): PlanPrepDeps {
+export function takeoverDepsFromEnv(database: Database): TakeoverDeps {
   return {
     writer: createProviderNoticeWriter(() => resolveReplyClient(undefined), {
       skill: SIGNUP_TAKEOVER_NOTICE_SKILL,
     }),
     deliver: createPlanPrepDeliver(database, { transport: createOutboundTransport() }),
+    now: () => new Date(),
   };
 }

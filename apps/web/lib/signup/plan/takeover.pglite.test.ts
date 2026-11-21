@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -25,7 +25,7 @@ import {
   type PlanRunDeps,
   runDueSignupPlans,
 } from './run';
-import { approveSignupPlan } from './store';
+import { approveSignupPlan, cancelSignupPlan } from './store';
 
 // VIL-718 · the takeover link on the plan lane, over the real DDL. The Browser Use engine is
 // its own tested unit (plan-engine.takeover.test.ts); here a stand-in runner returns the stops
@@ -175,7 +175,7 @@ const PAID: BrowserUsePlanResult = {
 };
 
 /** A runner that returns each result in turn and records what it was asked. */
-function runnerReturning(...results: BrowserUsePlanResult[]) {
+function runnerReturning(...results: Array<BrowserUsePlanResult | BrowserUsePlanCheckpoint>) {
   const inputs: BrowserUsePlanInput[] = [];
   const released: PlanResumeToken[] = [];
   const runner = {
@@ -183,7 +183,7 @@ function runnerReturning(...results: BrowserUsePlanResult[]) {
       inputs.push(input);
       const next = results.shift();
       if (!next) throw new Error('no more runs scripted');
-      return next as BrowserUsePlanResult | BrowserUsePlanCheckpoint;
+      return next;
     }),
     release: vi.fn(async (resume: PlanResumeToken) => {
       released.push(resume);
@@ -198,7 +198,12 @@ function runnerReturning(...results: BrowserUsePlanResult[]) {
 
 /** Stand-in writer and door for the takeover texts: they record what they were given. */
 function takeoverDoor(
-  options: { unwritten?: boolean; delivery?: 'sent' | 'failed' | 'withheld' } = {},
+  options: {
+    unwritten?: boolean;
+    delivery?: 'sent' | 'failed' | 'withheld' | 'throws';
+    /** When the text goes: the moment the run stopped, not when the sweep began. */
+    now?: Date;
+  } = {},
 ) {
   const facts: PlanPrepFacts[] = [];
   const parts: PlanNoticePart[][] = [];
@@ -220,8 +225,10 @@ function takeoverDoor(
       },
       deliver: async (input: { parts: readonly PlanNoticePart[] }) => {
         parts.push([...input.parts]);
+        if (options.delivery === 'throws') throw new Error('the door threw');
         return options.delivery ?? ('sent' as const);
       },
+      now: () => options.now ?? NOW,
     },
   };
 }
@@ -300,11 +307,12 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
       outcome: 'checkpointed',
       phase: 'takeover',
     });
-    // The run was told the link is on, and its allowance covers the turn after the parent's step.
+    // The run was told the link is on, and its allowance covers every turn after a parent's
+    // step: the three takeovers a plan may ask for, at $2 a turn.
     expect(inputs[0]?.takeover).toBe(true);
     expect(inputs[0]?.takeoverResume).toBeNull();
     expect((await offerRow(family.offerId))?.browserUseCostUsd).toBe(
-      (PLAN_RUN_ALLOWANCE_USD + 2).toFixed(6),
+      (PLAN_RUN_ALLOWANCE_USD + 3 * 2).toFixed(6),
     );
     // The model's bubbles, the one Hale card after the first, never the live view itself.
     expect(sent.map((part) => (part.type === 'link' ? 'CARD' : part.body))).toEqual([
@@ -485,6 +493,8 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
         offerId: family.offerId,
         familyId: family.familyId,
         loginLinkId: token.loginLinkId,
+        actor: family.parentUserId,
+        after: { step: 'plan_takeover_lapsed', purpose: 'captcha', round: 1, host: HOST },
         now: tapped,
       }),
     ).toBe(false);
@@ -503,6 +513,8 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
         offerId: family.offerId,
         familyId: family.familyId,
         loginLinkId: token.loginLinkId,
+        actor: family.parentUserId,
+        after: { step: 'plan_takeover_lapsed', purpose: 'captcha', round: 1, host: HOST },
         now: at,
       }),
     ).toBe(true);
@@ -589,7 +601,7 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
     // Round 2: the resumed run stops at a code.
     at = new Date(at.getTime() + 60_000);
     const second = runnerReturning(stopAt('needs_login', 'verification_code', at, 'run-q1'));
-    const secondDoor = takeoverDoor();
+    const secondDoor = takeoverDoor({ now: at });
     await runDueSignupPlans(db.database, { now: at }, sweepDeps(second.runner, secondDoor).deps);
     expect(((await offerRow(family.offerId))?.planResume as TakeoverToken).round).toBe(2);
     expect(secondDoor.facts[0]?.takeover).toMatchObject({ purpose: 'code' });
@@ -601,7 +613,7 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
     // Round 3: a passkey.
     at = new Date(at.getTime() + 60_000);
     const third = runnerReturning(stopAt('needs_login', 'passkey', at, 'run-q2'));
-    const thirdDoor = takeoverDoor();
+    const thirdDoor = takeoverDoor({ now: at });
     await runDueSignupPlans(db.database, { now: at }, sweepDeps(third.runner, thirdDoor).deps);
     expect(((await offerRow(family.offerId))?.planResume as TakeoverToken).round).toBe(3);
     expect(
@@ -611,7 +623,7 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
     // A fourth step: the plan has asked as often as it may.
     at = new Date(at.getTime() + 60_000);
     const fourth = runnerReturning(stopAt('needs_login', 'login_wall', at, 'run-q3'));
-    const fourthDoor = takeoverDoor();
+    const fourthDoor = takeoverDoor({ now: at });
     const result = await runDueSignupPlans(
       db.database,
       { now: at },
@@ -625,6 +637,200 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
       takeover: { purpose: 'sign_in', ended: 'again' },
     });
     expect(fourth.released).toHaveLength(1);
+  });
+
+  it('counts the minutes it tells the parent from when the run stopped, not when the sweep began', async () => {
+    const family = await plannedFamily();
+    // The run stopped eight minutes into the sweep; the browser's keepAlive starts there.
+    const stopped = new Date(NOW.getTime() + 8 * 60_000);
+    const { runner } = runnerReturning(stopAt('needs_human', 'captcha', stopped));
+    const door = takeoverDoor({ now: stopped });
+    await runDueSignupPlans(db.database, { now: NOW }, sweepDeps(runner, door).deps);
+
+    // 15 minutes of browser, less the 2 kept for the resume: 13 from the stop, whatever the sweep did.
+    expect(door.facts[0]?.takeover).toMatchObject({ purpose: 'captcha', minutes: 13 });
+    const [row] = await linkRows(family.familyId);
+    expect(row?.expiresAt.toISOString()).toBe(
+      new Date(stopped.getTime() + 13 * 60_000).toISOString(),
+    );
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_takeover',
+      minutes: 13,
+    });
+  });
+
+  it('a sweep that died right after the lapse: the next one finishes the close instead of looping', async () => {
+    const { family } = await parkedCaptcha();
+    const [link] = await linkRows(family.familyId);
+    const late = new Date(NOW.getTime() + 14 * 60_000);
+    // The dead sweep stamped the lapse and never reached the close.
+    expect(
+      await lapseTakeover(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        loginLinkId: link?.id as string,
+        actor: family.parentUserId,
+        after: { step: 'plan_takeover_lapsed', purpose: 'captcha', round: 1, host: HOST },
+        now: late,
+      }),
+    ).toBe(true);
+
+    const { runner, released } = runnerReturning();
+    const door = takeoverDoor();
+    const next = new Date(late.getTime() + 60_000);
+    const result = await runDueSignupPlans(
+      db.database,
+      { now: next },
+      sweepDeps(runner, door).deps,
+    );
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'takeover_unfinished',
+      notice: 'sent',
+    });
+    expect(door.facts.map((f) => f.kind)).toEqual(['takeover_unfinished']);
+    expect(released).toHaveLength(1);
+    expect(runner.run).not.toHaveBeenCalled();
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    // One lapse on the trail, though two sweeps touched it.
+    expect(
+      (await steps(family.offerId)).filter((s) => s.step === 'plan_takeover_lapsed'),
+    ).toHaveLength(1);
+  });
+
+  it('a plan taken back while the parent holds the card is let go by the next sweep, with no text', async () => {
+    const { family, code } = await parkedCaptcha();
+    const at = new Date(NOW.getTime() + 2 * 60_000);
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: at,
+      }),
+    ).toBe('cancel_requested');
+
+    // A done after the take-back resumes nothing: the plan is no longer waiting on it.
+    expect(await finishTakeover(db.database, { code, now: at })).toEqual({
+      ok: false,
+      reason: 'not_waiting',
+    });
+
+    const { runner, released } = runnerReturning();
+    const door = takeoverDoor();
+    const swept = sweepDeps(runner, door);
+    // The next minute, long before the card would have run out.
+    const next = new Date(at.getTime() + 60_000);
+    const result = await runDueSignupPlans(db.database, { now: next }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(door.facts).toEqual([]);
+    expect(swept.notices).toEqual([]);
+    expect(released).toHaveLength(1);
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(await takeoverLiveView(db.database, code, next)).toEqual({ ok: false, reason: 'used' });
+  });
+
+  it('a take-back never clears the lease of a sweep that is already driving the plan', async () => {
+    const { family, code } = await parkedCaptcha();
+    const tapped = new Date(NOW.getTime() + 60_000);
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+    // A sweep has claimed the done plan and holds its own lease.
+    const held = new Date(tapped.getTime() + 15 * 60_000);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ planLeaseUntil: held })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+
+    await cancelSignupPlan(db.database, {
+      offerId: family.offerId,
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      now: tapped,
+    });
+    expect((await offerRow(family.offerId))?.planLeaseUntil?.toISOString()).toBe(
+      held.toISOString(),
+    );
+  });
+
+  it('a resumed run that outlasts its sweep is still waited on when the saved login has gone', async () => {
+    const { family, code } = await parkedCaptcha();
+    const tapped = new Date(NOW.getTime() + 60_000);
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+    const goingToken: PlanResumeToken = {
+      phase: 'signup',
+      runId: 'run-q1',
+      sessionId: 'bu-session-1',
+      browserId: 'browser-1',
+      takeover: { purpose: 'captcha', round: 1 },
+    };
+    const first = runnerReturning({ outcome: 'checkpointed', resume: goingToken });
+    await runDueSignupPlans(db.database, { now: tapped }, sweepDeps(first.runner).deps);
+
+    // The parent signed in on the browser itself; the saved session Hale started from is gone.
+    await db.database
+      .update(schema.providerSignupSessions)
+      .set({ expiresAt: tapped })
+      .where(eq(schema.providerSignupSessions.familyId, family.familyId));
+
+    const second = runnerReturning(PAID);
+    const result = await runDueSignupPlans(
+      db.database,
+      { now: new Date(tapped.getTime() + 60_000) },
+      sweepDeps(second.runner).deps,
+    );
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+    });
+    expect(second.inputs[0]?.resume).toEqual(goingToken);
+  });
+
+  it('a done whose audit row cannot be written is not a done: the card stays open', async () => {
+    const { family, code } = await parkedCaptcha();
+    const tapped = new Date(NOW.getTime() + 60_000);
+    await db.database.execute(
+      sql.raw(`create function refuse_takeover_done() returns trigger language plpgsql as $$
+        begin raise exception 'audit refused'; end $$`),
+    );
+    await db.database.execute(
+      sql.raw(`create trigger refuse_takeover_done before insert on audit_log for each row
+        when (new.after->>'step' = 'plan_takeover_done') execute function refuse_takeover_done()`),
+    );
+    try {
+      await expect(finishTakeover(db.database, { code, now: tapped })).rejects.toThrow();
+      expect(await takeoverLiveView(db.database, code, tapped)).toMatchObject({ ok: true });
+      expect((await offerRow(family.offerId))?.planResume).toMatchObject({ doneAt: null });
+    } finally {
+      await db.database.execute(sql.raw('drop trigger refuse_takeover_done on audit_log'));
+      await db.database.execute(sql.raw('drop function refuse_takeover_done'));
+    }
+    // The positive control: with the audit writable the same tap goes through.
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+  });
+
+  it('a send that throws is a send that failed: the card is spent and the run ends as it always has', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const door = takeoverDoor({ delivery: 'throws' });
+    const swept = sweepDeps(runner, door);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'captcha',
+      notice: 'sent',
+    });
+    const [row] = await linkRows(family.familyId);
+    expect(row?.consumedAt).toEqual(NOW);
+    expect(row?.browserHandleCiphertext).toBeNull();
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    expect(released).toHaveLength(1);
+    expect(swept.notices).toHaveLength(1);
   });
 });
 
