@@ -504,6 +504,10 @@ export const REQUIRED_CHECKS = {
 //     + the ICS feed), not an external shared calendar that commits the co-parent.
 //     A placement is family-scoped, reversible (UNDO), visible to the co-parent, and
 //     approved by a single parent's YES — so it is not gated by two-parent consent.
+//     Since VIL-454 a placement also has a Google leg: with no approving parent (an
+//     autonomous pass) it writes to the family's one scoped Google connection, which
+//     can be the co-parent's own calendar. docs/ask-policy.md records that as an open
+//     question for the ask policy; the membership here is unchanged.
 //
 // All other action types touch only the acting parent's surface (their email
 // thread, their order, their form) or internal-only state (digest), so they are
