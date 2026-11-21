@@ -619,6 +619,39 @@ describe('channelCoachRuntime', () => {
     expect(seen[2]).not.toContain(addendum);
   });
 
+  it('adds the no-keyword addendum to every turn only with NO_STOP_KEYWORD_COPY_ENABLED on (VIL-744)', async () => {
+    const addendum = (await loadCronSkill('coach-no-stop-keyword')).instructions;
+    const disk = await loadCronSkill('coach-channel-sms');
+    const seen: string[] = [];
+    const p = ports({
+      loadSkill: async () => disk,
+      runAgent: async (args) => {
+        seen.push(promptOf(args));
+        return answering('ok.')(args);
+      },
+    });
+    try {
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'false');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
+      await channelCoachRuntime(p).respond(turn(), []);
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    const [darkDirect, darkGroup, litDirect, litGroup] = seen;
+    expect(darkDirect).toContain('STOP ends these texts');
+    expect(darkDirect).not.toContain(addendum);
+    expect(darkGroup).not.toContain(addendum);
+    expect(litDirect).toContain(addendum);
+    expect(litGroup).toContain(addendum);
+    expect(litDirect?.replace(`\n\n${addendum}`, '')).toBe(darkDirect);
+    expect(litGroup?.replace(`\n\n${addendum}`, '')).toBe(darkGroup);
+    expect(addendum).toContain('When they doubt you');
+    expect(addendum).toContain('STOP');
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
