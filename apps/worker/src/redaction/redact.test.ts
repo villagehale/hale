@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertNoPII, redactEventPayload, redactText } from './redact.js';
+import { assertNoPII, EMAIL_RE, redactEventPayload, redactText } from './redact.js';
 
 /**
  * The redactor is the rule-#1 gate for the shadow eval: it strips family PII from
@@ -162,8 +162,42 @@ describe('the address pass', () => {
     }
   });
 
-  it('returns on a long run of address characters', { timeout: 15_000 }, () => {
-    const long = 'a'.repeat(200_000);
-    expect(redactText(long, [])).toBe(long);
+  /** The pattern's guards alone, sticky: true at a position where a match may begin. */
+  function guardsOf(pattern: RegExp): RegExp {
+    const opening = pattern.source.indexOf(String.raw`[\w.+-]+@`);
+    if (opening < 0) throw new Error('no address opening in the pattern');
+    return new RegExp(pattern.source.slice(0, opening), 'y');
+  }
+
+  /** The starts the guards admit on `text`, and the work of them: one for each start and
+   * one for each character the pattern's opening repeat then reads. A count, so a loaded
+   * machine cannot move it the way it moves a clock. */
+  function startWork(guards: RegExp, text: string): { starts: number; work: number } {
+    const opening = /[\w.+-]*/y;
+    let starts = 0;
+    let work = 0;
+    for (let at = 0; at <= text.length; at += 1) {
+      guards.lastIndex = at;
+      if (!guards.test(text)) continue;
+      opening.lastIndex = at;
+      starts += 1;
+      work += 1 + (opening.exec(text) as RegExpExecArray)[0].length;
+    }
+    return { starts, work };
+  }
+
+  it('starts once in a run of address characters, however long it is', () => {
+    expect(startWork(guardsOf(EMAIL_RE), 'a'.repeat(2_000)).starts).toBe(1);
+    expect(startWork(guardsOf(EMAIL_RE), 'a'.repeat(4_000)).starts).toBe(1);
+  });
+
+  it.each(['a', 'a+', 'a@b.ca+'])('does work proportional to a run of %j', (piece) => {
+    const work = (copies: number) => startWork(guardsOf(EMAIL_RE), piece.repeat(copies)).work;
+    expect(work(4_000) / work(2_000)).toBeLessThan(2.1);
+  });
+
+  it('counts the pattern as it was going quadratic (positive control)', () => {
+    const work = (copies: number) => startWork(guardsOf(EVERY_START), 'a'.repeat(copies)).work;
+    expect(work(4_000) / work(2_000)).toBeGreaterThan(3);
   });
 });

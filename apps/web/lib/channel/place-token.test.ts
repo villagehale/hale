@@ -241,14 +241,60 @@ describe('trace mask', () => {
   });
 });
 
-describe('scrub cost on a long input', () => {
-  it('returns on a long run of spaced single digits', { timeout: 15_000 }, () => {
-    const long = '1 '.repeat(100_000);
-    expect(scrubPlaceTokens(long, '[x]')).toBe(long);
-  });
+/**
+ * Cost as a count of steps, which a loaded machine cannot move the way it moves a clock.
+ * Linear work doubles when the input doubles; a nested walk quadruples.
+ */
+describe('scrub cost, counted', () => {
+  const SCANS = ['filter', 'find', 'findIndex', 'includes', 'indexOf', 'some'] as const;
+  type Scan = (this: unknown[], ...args: unknown[]) => unknown;
 
-  it('returns on a long run of separate ZIPs', { timeout: 15_000 }, () => {
-    expect(scrubPlaceTokens('99999 a '.repeat(25_000), '[x]')).toBe('[x] a '.repeat(25_000));
+  /** Every read of a typed character while `run` goes: each index of the array the walk
+   * builds with Array.from, and each element a nested array scan steps over. */
+  function charVisits(run: () => void): number {
+    let visits = 0;
+    const realFrom = Array.from;
+    const scanners = Array.prototype as unknown as Record<string, Scan>;
+    const realScanners = SCANS.map((name) => [name, scanners[name] as Scan] as const);
+    Array.from = ((...args: Parameters<typeof realFrom>) =>
+      new Proxy(realFrom(...args), {
+        get(target, key, receiver) {
+          if (typeof key === 'string' && /^\d+$/.test(key)) visits += 1;
+          return Reflect.get(target, key, receiver);
+        },
+      })) as typeof Array.from;
+    for (const [name, scanner] of realScanners) {
+      scanners[name] = function (this: unknown[], ...args: unknown[]) {
+        visits += this.length;
+        return scanner.apply(this, args);
+      };
+    }
+    try {
+      run();
+    } finally {
+      Array.from = realFrom;
+      for (const [name, scanner] of realScanners) scanners[name] = scanner;
+    }
+    return visits;
+  }
+
+  it.each([
+    ['separate ZIPs', '99999 a '],
+    ['ZIPs typed one digit at a time', '9 9 9 9 9 a '],
+  ])('walks the text a fixed number of times over %s', (_label, piece) => {
+    const visits = (copies: number): number => {
+      let scrubbed = '';
+      const count = charVisits(() => {
+        scrubbed = scrubPlaceTokens(piece.repeat(copies), '[x]');
+      });
+      expect(scrubbed).toBe('[x] a '.repeat(copies));
+      return count;
+    };
+    const base = visits(250);
+    // Positive control: the count saw the walk, at least one read per typed character.
+    expect(base).toBeGreaterThan(piece.length * 250);
+    // A few reads at the text's two ends do not double, so the ratio is a shade over 2.
+    expect(visits(500) / base).toBeLessThan(2.1);
   });
 });
 
@@ -274,9 +320,46 @@ describe('the ZIP pattern', () => {
   const offsets = (pattern: RegExp, text: string) =>
     Array.from(text.matchAll(pattern), (m) => [m.index, m[0]]);
 
+  const zip = PLACE_TOKENS.find((p) => p.source.includes(String.raw`\d{5}(?:-\d{4})?`));
+  if (!zip) throw new Error('no ZIP pattern in PLACE_TOKENS');
+
+  /** The pattern's guards alone, sticky: true at a position where a match may begin. */
+  function guardsOf(pattern: RegExp): RegExp {
+    const opening = pattern.source.indexOf(String.raw`(?:\d+ )*`);
+    if (opening < 0) throw new Error('no digit-run opening in the ZIP pattern');
+    return new RegExp(pattern.source.slice(0, opening), 'iy');
+  }
+
+  /** The starts the guards admit on `text`, and the work of them: one for each start and
+   * one for each character the pattern's opening repeat then reads. */
+  function startWork(guards: RegExp, text: string): { starts: number; work: number } {
+    const opening = /(?:\d+ )*\d*/y;
+    let starts = 0;
+    let work = 0;
+    for (let at = 0; at <= text.length; at += 1) {
+      guards.lastIndex = at;
+      if (!guards.test(text)) continue;
+      opening.lastIndex = at;
+      starts += 1;
+      work += 1 + (opening.exec(text) as RegExpExecArray)[0].length;
+    }
+    return { starts, work };
+  }
+
+  it('admits two starts in a spaced digit run, however long it is', () => {
+    expect(startWork(guardsOf(zip), '1 '.repeat(1_000)).starts).toBe(2);
+    expect(startWork(guardsOf(zip), '1 '.repeat(2_000)).starts).toBe(2);
+  });
+
+  it('does work proportional to a spaced digit run', () => {
+    const work = (pattern: RegExp, copies: number) =>
+      startWork(guardsOf(pattern), '1 '.repeat(copies)).work;
+    expect(work(zip, 4_000) / work(zip, 2_000)).toBeLessThan(2.1);
+    // Positive control: the same count sees the pattern as it was go quadratic.
+    expect(work(EVERY_START, 4_000) / work(EVERY_START, 2_000)).toBeGreaterThan(3);
+  });
+
   it('takes the same matches as trying every start', () => {
-    const zip = PLACE_TOKENS.find((p) => p.source.includes(String.raw`\d{5}(?:-\d{4})?`));
-    if (!zip) throw new Error('no ZIP pattern in PLACE_TOKENS');
     expect(zip.source).not.toBe(EVERY_START.source);
 
     const next = seeded(620);

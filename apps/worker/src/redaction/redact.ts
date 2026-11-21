@@ -17,7 +17,7 @@ import { placeTokensIn, scrubPlaceTokens } from '@hale/types';
  * stopped there. Any other start in the run would rescan it (quadratic) and find nothing
  * the first start did not.
  */
-const EMAIL_RE = /(?:(?<![\w.+-])|(?=\+)(?<=@[\w.-]+))[\w.+-]+@[\w-]+\.[\w.-]+/g;
+export const EMAIL_RE = /(?:(?<![\w.+-])|(?=\+)(?<=@[\w.-]+))[\w.+-]+@[\w-]+\.[\w.-]+/g;
 // ISO-ish date: YYYY-MM-DD.
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 // NANP phone: optional +1, 3-3-4 with common separators.
