@@ -3,13 +3,12 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
-import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
+import { NUDGE_OPT_OUT } from './shell';
 import {
   WEEKDAY_ASK_MAX_TOKENS,
   WEEKDAY_ASK_TOOL,
@@ -35,9 +34,9 @@ import {
 
 const VOICE_MAX_TOKENS = 300;
 
-// Re-exported so every existing importer keeps its import path: these moved to ./shell
+// Re-exported so every existing importer keeps its import path: this moved to ./shell
 // only to break the cycle between this file and the static health renderer.
-export { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT };
+export { NUDGE_OPT_OUT };
 
 export interface NudgeVoice {
   message: string;
@@ -167,20 +166,17 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded, free of the opt-out line,
- * and inside the segment budget. The budget still reserves the old line so a message
- * that used to fit still fits; the line itself is not appended. */
+/** Whether a composed message may be sent as-is: grounded and free of the opt-out line.
+ * Its length is the model's to choose (Dec 1 rule 2); VOICE_MAX_TOKENS bounds a runaway. */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
-  if (message.includes(NUDGE_OPT_OUT)) return false;
-  return smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
+  return !message.includes(NUDGE_OPT_OUT);
 }
 
 /**
  * Why a nudge has no text: four problems with four different fixes. A missing key or the
  * voice kill switch, a deploy without its skill, a provider that did not answer, and an
- * answer that came back but could not be used. Only the last says anything about this
- * nudge, so it is the only one the sweep counts against it (run.ts).
+ * answer that came back but could not be used. Named on the audit row and the #ops page.
  */
 export type NudgeUnwrittenReason = 'no_client' | 'skill_load' | 'model_failed' | 'unusable';
 
@@ -225,9 +221,6 @@ async function composeEmptySaturday(
   if (!voice) return { unwritten: reason === 'unavailable' ? 'model_failed' : 'unusable' };
   if (!usableNudgeMessage(voice.message, nudge)) return { unwritten: 'unusable' };
   const linked = withActivityLink(voice.message, nudge.url);
-  if (smsSegments(`${linked}\n\n${NUDGE_OPT_OUT}`) > MAX_NUDGE_SEGMENTS) {
-    return { unwritten: 'unusable' };
-  }
   if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return { unwritten: 'unusable' };
   return { message: linked };
 }
@@ -273,8 +266,8 @@ async function composeWeekdayCareAsk(
       { err: err instanceof Error ? err.constructor.name : 'unknown', familyId: deps.familyId },
       'nudge: weekday ask model call failed - unvoiced',
     );
-    // An answer that came back with nothing usable is a bad draft and spends one of this
-    // ask's tries. Only a call that did not come back at all is an outage.
+    // An answer that came back with nothing usable is a bad draft. Only a call that did
+    // not come back at all is an outage.
     return { unwritten: err instanceof StructuredOutputError ? 'unusable' : 'model_failed' };
   }
   const read = readWeekdayAsk(value, nudge.ask);
@@ -327,7 +320,7 @@ export async function composeNudgeMessage(
   if (!usableNudgeMessage(voice.message, nudge)) {
     console.error(
       { familyId: deps.familyId },
-      'nudge: composed message failed the grounding/budget check - unvoiced',
+      'nudge: composed message failed the grounding check - unvoiced',
     );
     return { unwritten: 'unusable' };
   }

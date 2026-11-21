@@ -20,10 +20,8 @@ vi.mock('~/lib/cron/skill', async (importOriginal) => {
   };
 });
 import type { AgentClient } from '@hale/agent';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import type { Nudge } from './nudge-decide.js';
 import {
-  MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
   type VoicedNudge,
   composeNudgeMessage,
@@ -41,8 +39,8 @@ import {
  *
  * What is proved:
  *   - the model is handed the decision's facts and no internal identifiers;
- *   - a message that invents a time or a link, writes the opt-out line itself, or
- *     blows the segment budget once the opt-out is appended, is REJECTED;
+ *   - a message that invents a time or a link, or writes the opt-out line itself, is
+ *     REJECTED, and its length is never a reason (Dec 1 rule 2);
  *   - when the model cannot write it, nothing is written: there is no fixed sentence.
  */
 
@@ -193,10 +191,9 @@ describe('usableNudgeMessage', () => {
     expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
   });
 
-  it('rejects a message that blows the segment budget once the opt-out is appended', () => {
+  it('never refuses a grounded message for its length', () => {
     const long = 'Library story time suits Maya. '.repeat(20);
-    expect(smsSegments(`${long}\n\n${NUDGE_OPT_OUT}`)).toBeGreaterThan(MAX_NUDGE_SEGMENTS);
-    expect(usableNudgeMessage(long, SWAP)).toBe(false);
+    expect(usableNudgeMessage(long, SWAP)).toBe(true);
   });
 });
 
@@ -382,6 +379,17 @@ describe('composeNudgeMessage — when the model cannot write it, nothing is wri
     expect(written).toEqual({ unwritten: 'unusable' });
   });
 
+  it('a correct draft naming a child outside the SMS alphabet goes out word for word', async () => {
+    const draft =
+      'Zoë could do Library story time at Riverdale Library on Saturday, since the weekend forecast is wet and it is free, indoors and easy to drop into.';
+    const written = await composeNudgeMessage({ ...SWAP, kidNames: ['Zoë'] } as VoicedNudge, {
+      familyId: 'fam-1',
+      database: agentRunsDb,
+      client: answering(JSON.stringify({ message: draft })),
+    });
+    expect(written).toEqual({ message: draft });
+  });
+
   it('a model call that throws is named apart from a bad draft', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const written = await composeNudgeMessage(REGISTRATION, {
@@ -440,6 +448,17 @@ describe('composeNudgeMessage — empty Saturday', () => {
       client: answering(JSON.stringify({ message: draft })),
     });
     expect(written).toEqual({ unwritten: 'unusable' });
+  });
+
+  it('a correct draft is not refused for its length once the link is on it', async () => {
+    const draft =
+      'Zoë could make Fanous Lantern Craft at North York Central Library on Saturday at 2:00 p.m.';
+    const written = await composeNudgeMessage({ ...SATURDAY, kidName: 'Zoë' } as VoicedNudge, {
+      familyId: 'fam-1',
+      database: agentRunsDb,
+      client: answering(JSON.stringify({ message: draft })),
+    });
+    expect(written).toEqual({ message: `${draft} https://tpl.example/lantern` });
   });
 
   it('positive control: a good draft goes out word for word, with its link', async () => {
