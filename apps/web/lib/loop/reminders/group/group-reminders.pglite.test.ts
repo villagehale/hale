@@ -1896,6 +1896,83 @@ describe('when a group reminder is due', () => {
       expect(pages).toEqual([]);
     });
 
+    /** Every send refused for now, on a tick each time the last claim has gone stale. */
+    async function refusedUntil(until: Date, pages: OpsPage[], from = THURSDAY_FOUR) {
+      const portsAt = (now: Date) => ({
+        ...tickPorts(now).ports,
+        send: refusedWith(new LinqSendError('http_503', 503, false)),
+        pager: pagerInto(pages),
+      });
+      expect(await runGroupReminderTick(db.database, portsAt(from))).toMatchObject({
+        retrying: 1,
+      });
+      expect(pages).toEqual([]);
+      for (let at = from.getTime(); at <= until.getTime(); at += SENDING_STALE_MS + 60_000) {
+        await runGroupReminderTick(db.database, portsAt(new Date(at + SENDING_STALE_MS + 60_000)));
+      }
+    }
+
+    it('pages a reminder Linq refused on every try until it was too late', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS), pages);
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'retries_ran_out' }, count: 1 },
+      ]);
+    });
+
+    it('pages a reminder Linq refused until quiet hours closed the day', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      // 20:55 in New York: the first retry lands after the 21:00 quiet start.
+      const lateEvening = new Date('2026-10-30T00:55:00.000Z');
+      await db.database.update(schema.groupReminders).set({ deliverAt: lateEvening });
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(lateEvening, pages, lateEvening);
+
+      expect(await onlyReminder()).toMatchObject({
+        status: 'dropped',
+        statusReason: 'quiet_hours',
+      });
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'retries_ran_out' }, count: 1 },
+      ]);
+    });
+
+    it('positive control: a reminder no tick ever tried is dropped as missed, unpaged', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const afterTheGap = new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS + 60_000);
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(afterTheGap).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ dropped: 1 });
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([]);
+    });
+
+    it('with the flag off, a reminder refused until too late pages nobody', async () => {
+      vi.stubEnv(UNSENT_PAGE_ENV, 'true\n');
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS), pages);
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([]);
+    });
+
     it('does not page a member who stopped Hale as it was being sent', async () => {
       vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
       await seedHousehold();

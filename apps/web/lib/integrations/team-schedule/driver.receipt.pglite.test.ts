@@ -2,12 +2,23 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
 import { FakeTransport, type OutboundMessage } from '~/lib/channel/intake/transport';
-import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import {
+  GARBLED_TEXT,
+  LinqSendError,
+  createLinqPhoneTransport,
+} from '~/lib/channel/linq/transport';
 import type { ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { type DriverNotifyPorts, notifyDrivers, retryTeamScheduleDrivers } from './driver';
+import {
+  DRIVER_RETRY_BUDGET_MS,
+  type DriverNotifyPorts,
+  notifyDrivers,
+  retryTeamScheduleDrivers,
+} from './driver';
 
 /**
  * VIL-734 · a driver's schedule-change text is on the ledger as sent only once Linq took it,
@@ -169,13 +180,18 @@ function harness(
   return { ports, transport, compose, pages, threaded, chatSends };
 }
 
-function firstTry(changeId: string, ports: DriverNotifyPorts, now = NOW) {
+function firstTry(
+  changeId: string,
+  ports: DriverNotifyPorts,
+  now = NOW,
+  drivers = [{ userId: family.parentUserId }],
+) {
   return notifyDrivers(
     db.database,
     {
       changeId,
       familyId: family.familyId,
-      drivers: [{ userId: family.parentUserId }],
+      drivers,
       change: 'time',
       kid: null,
       team: 'Team practice',
@@ -224,6 +240,7 @@ async function driverAudit() {
           'team_schedule_driver_sent',
           'team_schedule_driver_send_failed',
           'team_schedule_driver_unsent',
+          'team_schedule_driver_unreachable',
         ]),
       ),
     );
@@ -572,7 +589,15 @@ describe('the driver text, flag on', () => {
     const h = harness({ script: [refused()] });
     await firstTry(changeId, h.ports);
 
-    const ports = { ...h.ports, clock: () => new Date(NEW_START.getTime() + MIN) };
+    let written = false;
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      composeDriver: async (input) => {
+        written = true;
+        return h.ports.composeDriver(input);
+      },
+      clock: () => (written ? new Date(NEW_START.getTime() + MIN) : at(5)),
+    };
     await tick(ports, at(5));
 
     expect(h.compose.calls).toBe(2);
@@ -627,7 +652,7 @@ describe('the driver text, flag on', () => {
     expect(h.transport.tried).toBe(1);
     expect(h.pages).toEqual([]);
     expect(await driverAudit()).toContainEqual({
-      action: 'team_schedule_driver_unsent',
+      action: 'team_schedule_driver_unreachable',
       after: { reason: 'held:not_enrolled', attempts: 1 },
     });
   });
@@ -675,8 +700,24 @@ describe('the driver text, flag on', () => {
       { status: 'failed', errorCode: 'no_send_target', sentAt: null },
     ]);
     expect(await driverAudit()).toEqual([
-      { action: 'team_schedule_driver_unsent', after: { reason: 'no_send_target', attempts: 1 } },
+      {
+        action: 'team_schedule_driver_unreachable',
+        after: { reason: 'no_send_target', attempts: 1 },
+      },
     ]);
+    const [row] = await db.database
+      .select({
+        audience: schema.auditLog.audience,
+        targetTable: schema.auditLog.targetTable,
+        targetId: schema.auditLog.targetId,
+      })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, family.familyId));
+    expect(row).toEqual({
+      audience: family.parentUserId,
+      targetTable: 'users',
+      targetId: family.parentUserId,
+    });
     expect(h.pages).toEqual([]);
   });
 
@@ -767,6 +808,259 @@ describe('the driver text, flag on', () => {
       legKey(changeId, 1),
       legKey(changeId, 2),
     ]);
+  });
+
+  it.each([
+    ['carrying a code', '3007'],
+    ['with no code', null],
+  ])('never resends a text Linq took after a failed receipt %s', async (_name, code) => {
+    const { changeId } = await seedChange();
+    const h = harness();
+
+    await firstTry(changeId, h.ports);
+    expect(
+      await applyDeliveryStatus(db.database, {
+        providerMessageId: 'fake-out-1',
+        rawStatus: 'failed',
+        errorCode: code,
+      }),
+    ).toBe('updated');
+    await tick(h.ports, at(6));
+    await tick(h.ports, at(60));
+
+    expect(h.transport.tried).toBe(1);
+    expect(h.compose.calls).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      {
+        status: 'failed',
+        errorCode: code,
+        providerMessageId: 'fake-out-1',
+        dedupeKey: legKey(changeId, 1),
+      },
+    ]);
+    expect(await driverAudit()).toEqual([
+      { action: 'team_schedule_driver_sent', after: { attempt: 1, channel: 'sms' } },
+    ]);
+  });
+
+  it('waits out an operator pause, then sends the retry once it lifts', async () => {
+    const { changeId } = await seedChange();
+    let paused = false;
+    const h = harness({
+      script: [refused(), 'accept'],
+      gate: () =>
+        paused ? { allowed: false, reason: 'sends_paused' } : { allowed: true, optOut: 'short' },
+    });
+    await firstTry(changeId, h.ports);
+
+    paused = true;
+    expect(await tick(h.ports, at(5))).toMatchObject({ waiting: 1, closed: 0 });
+    await tick(h.ports, at(6));
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+
+    paused = false;
+    await tick(h.ports, at(30));
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'queued', errorCode: null, dedupeKey: legKey(changeId, 2) },
+    ]);
+  });
+
+  it('closes and pages a retry a long pause kept held, before it leaves the sweep', async () => {
+    const { changeId } = await seedChange();
+    let paused = false;
+    const h = harness({
+      script: [refused()],
+      gate: () =>
+        paused ? { allowed: false, reason: 'sends_paused' } : { allowed: true, optOut: 'short' },
+    });
+    await firstTry(changeId, h.ports);
+
+    paused = true;
+    await tick(h.ports, at(22 * 60));
+    expect(h.pages).toEqual([]);
+    expect((await ledger())[0]?.errorCode).toBe('http_503');
+
+    await tick(h.ports, at(23 * 60));
+    await tick(h.ports, at(23 * 60 + 1));
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'held_too_long' }, count: 1 },
+    ]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'send_retries_exhausted' },
+    ]);
+    expect(await driverAudit()).toContainEqual({
+      action: 'team_schedule_driver_unsent',
+      after: { reason: 'held:sends_paused', attempts: 1 },
+    });
+  });
+
+  it('asks the model again after a garbled draft, and sends the clean one', async () => {
+    const { changeId } = await seedChange();
+    const h = harness({ script: [new LinqSendError(GARBLED_TEXT, 0, true), 'accept'] });
+
+    await firstTry(changeId, h.ports);
+    expect(h.pages).toEqual([]);
+    await tick(h.ports, at(5));
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+    expect(h.pages).toEqual([]);
+  });
+
+  it('pages a draft garbled on every try as unwritten', async () => {
+    const { changeId } = await seedChange();
+    const garbled = () => new LinqSendError(GARBLED_TEXT, 0, true);
+    const h = harness({ script: [garbled(), garbled(), garbled(), garbled()] });
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+    await tick(h.ports, at(15));
+    await tick(h.ports, at(35));
+
+    expect(h.compose.calls).toBe(4);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'unwritten' }, count: 1 },
+    ]);
+  });
+
+  it('closes a leg whose driver came off the event, with no text and no page', async () => {
+    const { changeId, eventId } = await seedChange();
+    const h = harness({ script: [refused()] });
+    await firstTry(changeId, h.ports);
+
+    await db.database
+      .update(schema.familyEvents)
+      .set({ dutyOwnerUserId: null })
+      .where(eq(schema.familyEvents.id, eventId));
+    await tick(h.ports, at(5));
+    await tick(h.ports, at(30));
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'send_retries_exhausted' },
+    ]);
+    expect(await driverAudit()).toContainEqual({
+      action: 'team_schedule_driver_unsent',
+      after: { reason: 'superseded', attempts: 1 },
+    });
+  });
+
+  it('closes the leg of a carpool driver seated only in the group once replaced', async () => {
+    const { changeId } = await seedChange();
+    const [other] = await db.database
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Other Driver' })
+      .returning({ id: schema.users.id });
+    if (!other) throw new Error('no user');
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: family.familyId,
+      chatId: 'chat-team',
+      userId: other.id,
+      phoneE164Encrypted: 'not-read-here',
+      phoneE164Hash: `hash-${other.id}`,
+      role: 'other_family',
+    });
+    const [carpool] = await db.database
+      .insert(schema.linqGroupCarpools)
+      .values({
+        chatId: 'chat-team',
+        familyId: family.familyId,
+        planKey: `team:${changeId}`,
+        pickupAt: START,
+        driverUserId: other.id,
+        status: 'assigned',
+      })
+      .returning({ id: schema.linqGroupCarpools.id });
+    if (!carpool) throw new Error('no carpool');
+    const h = harness({ script: [refused()] });
+    await firstTry(changeId, h.ports, NOW, [{ userId: other.id }]);
+
+    await db.database
+      .update(schema.linqGroupCarpools)
+      .set({ driverUserId: null, status: 'open' })
+      .where(eq(schema.linqGroupCarpools.id, carpool.id));
+    await tick(h.ports, at(5));
+
+    expect(h.compose.calls).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'send_retries_exhausted' },
+    ]);
+  });
+
+  it.each(['true', 'false'])(
+    "keeps a retry closed by the driver's own stop off the other parent (audience read %s)",
+    async (lit) => {
+      vi.stubEnv('AUDIT_LOG_AUDIENCE_ENABLED', lit);
+      const { changeId } = await seedChange();
+      const [second] = await db.database
+        .insert(schema.users)
+        .values({ email: `${randomUUID()}@example.test`, name: 'Second Parent' })
+        .returning({ id: schema.users.id });
+      if (!second) throw new Error('no user');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: family.familyId, userId: second.id, role: 'co_parent' });
+      let stopped = false;
+      const h = harness({
+        script: [refused()],
+        gate: () =>
+          stopped ? { allowed: false, reason: 'not_enrolled' } : { allowed: true, optOut: 'short' },
+      });
+      await firstTry(changeId, h.ports);
+      stopped = true;
+      await tick(h.ports, at(5));
+
+      const trailFor = async (actorUserId: string) =>
+        (
+          await assembleFamilyExport(db.database, family.familyId, { actorUserId, now: at(6) })
+        ).trail.map((row) => row.summary);
+
+      const others = await trailFor(second.id);
+      expect(others).toContain(
+        'Hale could not reach the driver about a schedule change and will try again',
+      );
+      expect(others).not.toContain('Hale could not reach the driver about a schedule change');
+      expect(others).not.toContain('Hale did not text you about a schedule change');
+      expect(await trailFor(family.parentUserId)).toContain(
+        'Hale did not text you about a schedule change',
+      );
+    },
+  );
+
+  it('starts no further retry once the tick has spent its time budget', async () => {
+    const changes = [(await seedChange()).changeId, (await seedChange()).changeId];
+    const h = harness({ script: changes.map(() => refused()) });
+    for (const changeId of changes) await firstTry(changeId, h.ports);
+
+    let clockNow = at(5);
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      clock: () => clockNow,
+      composeDriver: async (input) => {
+        clockNow = new Date(at(5).getTime() + DRIVER_RETRY_BUDGET_MS);
+        return h.ports.composeDriver(input);
+      },
+    };
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 1, waiting: 1 });
+    expect(h.compose.calls).toBe(3);
+
+    expect(await tick(h.ports, at(6))).toMatchObject({ sent: 1, waiting: 0 });
+    expect(h.transport.bodies()).toHaveLength(2);
   });
 });
 

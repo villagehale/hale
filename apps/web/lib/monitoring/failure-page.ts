@@ -199,11 +199,11 @@ export const OPS_PAGE_VOCABULARY = {
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
   /** VIL-734 · a driver's schedule-change text that reached them on no try. */
   team_schedule_driver_unsent: {
-    reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started'],
+    reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started', 'held_too_long'],
   },
-  /** VIL-734 · a group reminder that closed failed: nothing reached the person who asked. */
+  /** VIL-734 · a group reminder that closed unsent: nothing reached the person who asked. */
   group_reminder_unsent: {
-    reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner'],
+    reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner', 'retries_ran_out'],
   },
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},

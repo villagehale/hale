@@ -125,17 +125,28 @@ async function committed(database: Database, row: GroupReminderRow): Promise<boo
 }
 
 const SEND_UNCONFIRMED = 'send_unconfirmed';
+/** A tick tried it and could not send it, and its time ran out before another could. */
+const RETRIES_RAN_OUT = 'retries_ran_out';
 
 /**
- * VIL-734 · what #ops hears about a reminder that closed failed. Null: nobody needs paging,
- * because the member stopped Hale, or {@link pageUnwritten} already said so. A reminder
- * always has its chat, so `missing_chat_id` here is Linq's 2xx with an unreadable receipt.
+ * VIL-734 · what #ops hears about a reminder that closed without reaching anyone. Null: the
+ * model could not write it and {@link pageUnwritten} already said so. A member's STOP never
+ * gets here: it cancels the row, so the close is lost. A reminder always has its chat, so
+ * `missing_chat_id` here is Linq's 2xx with an unreadable receipt.
  */
 function unsentPageReason(
   reason: string | null,
-): 'send_refused' | 'send_unconfirmed' | 'no_what' | 'no_ledger_owner' | null {
-  if (reason === 'unwritten' || reason === 'member_opted_out') return null;
-  if (reason === 'no_what' || reason === 'no_ledger_owner') return reason;
+):
+  | 'send_refused'
+  | 'send_unconfirmed'
+  | 'no_what'
+  | 'no_ledger_owner'
+  | typeof RETRIES_RAN_OUT
+  | null {
+  if (reason === 'unwritten') return null;
+  if (reason === 'no_what' || reason === 'no_ledger_owner' || reason === RETRIES_RAN_OUT) {
+    return reason;
+  }
   if (reason === SEND_UNCONFIRMED || reason === 'unknown' || reason === 'missing_chat_id') {
     return 'send_unconfirmed';
   }
@@ -360,6 +371,8 @@ async function fireOne(
   database: Database,
   row: GroupReminderRow,
   ports: GroupReminderTickPorts & { voice: GroupReminderVoice },
+  /** An earlier tick claimed this row and could not finish it. */
+  triedBefore: boolean,
 ): Promise<FireOutcome> {
   const now = ports.now;
   const pager = ports.pager ?? defaultPager(database);
@@ -410,7 +423,20 @@ async function fireOne(
     return 'retrying';
   }
   if (decision.kind === 'drop') {
-    return close(database, row, { status: 'dropped', reason: decision.reason, now }, pager);
+    const outcome = await close(
+      database,
+      row,
+      { status: 'dropped', reason: decision.reason, now },
+      pager,
+    );
+    if (
+      outcome === 'dropped' &&
+      triedBefore &&
+      (decision.reason === 'missed' || decision.reason === 'quiet_hours')
+    ) {
+      await pageUnsent(pager, RETRIES_RAN_OUT);
+    }
+    return outcome;
   }
   if (!row.what) return close(database, row, { status: 'failed', reason: 'no_what', now }, pager);
 
@@ -522,7 +548,7 @@ export async function runGroupReminderTick(
     if (!row) continue;
     let outcome: FireOutcome;
     try {
-      outcome = await fireOne(database, row, { ...ports, voice });
+      outcome = await fireOne(database, row, { ...ports, voice }, candidate.status !== 'scheduled');
     } catch (err) {
       console.error(
         {

@@ -2,8 +2,9 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { carpoolReminderFireAt } from '~/lib/channel/linq/carpool-cadence';
+import { GARBLED_TEXT } from '~/lib/channel/linq/transport';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -119,7 +120,9 @@ export async function loadAffectedDrivers(
     ids.add(sameDay[0].driverUserId);
   } else if (sameDay.length > 1) {
     const closest = sameDay.reduce((best, row) => {
-      const bestDelta = Math.abs((best.pickupAt?.getTime() ?? 0) - input.originalStartsAt.getTime());
+      const bestDelta = Math.abs(
+        (best.pickupAt?.getTime() ?? 0) - input.originalStartsAt.getTime(),
+      );
       const rowDelta = Math.abs((row.pickupAt?.getTime() ?? 0) - input.originalStartsAt.getTime());
       return rowDelta < bestDelta ? row : best;
     });
@@ -423,7 +426,9 @@ export async function notifyDrivers(
  * answers: only Linq's accept writes an accepted status and `sent_at`. A refusal goes again
  * on the reminder backoff (VIL-730), each time a fresh model compose through the gate, and
  * the last try pages #ops. A send with no answer may have landed, so it is never made again.
- * Nothing is ever sent in place of the model's text.
+ * Nor is one Linq took and a receipt later reported failed: that row keeps Linq's id, and
+ * the delivery-health rate page is what reports receipts. Nothing is ever sent in place of
+ * the model's text.
  */
 const DRIVER_IN_FLIGHT = 'send_in_flight';
 const DRIVER_UNCONFIRMED = 'send_unconfirmed';
@@ -435,8 +440,14 @@ const DRIVER_IN_FLIGHT_STALE_MS = 10 * 60_000;
 /** Past the whole backoff and a night of quiet hours. */
 const DRIVER_RETRY_LOOKBACK_MS = 24 * 60 * 60_000;
 
+/** A retry still held this late would leave the sweep unseen: it closes and pages instead. */
+const DRIVER_RETRY_GIVE_UP_MS = DRIVER_RETRY_LOOKBACK_MS - 60 * 60_000;
+
 /** Each retry is a model call, and the drain runs this leg before the queues. */
 const DRIVER_RETRY_MAX_PER_TICK = 5;
+
+/** No new compose starts past this, so a slow model cannot hold up the queues behind it. */
+export const DRIVER_RETRY_BUDGET_MS = 20_000;
 
 /** No try follows a row carrying one of these. */
 const DRIVER_CLOSED_CODES: ReadonlySet<string> = new Set([
@@ -446,7 +457,12 @@ const DRIVER_CLOSED_CODES: ReadonlySet<string> = new Set([
   'no_send_target',
 ]);
 
-type DriverUnsentReason = 'send_refused' | 'send_unconfirmed' | 'unwritten' | 'event_started';
+type DriverUnsentReason =
+  | 'send_refused'
+  | 'send_unconfirmed'
+  | 'unwritten'
+  | 'event_started'
+  | 'held_too_long';
 
 interface DriverLeg {
   key: string;
@@ -476,32 +492,68 @@ function driverLegKey(changeId: string, userId: string): string {
   return `${TEAM_SCHEDULE_DRIVER_TEMPLATE_KEY}:${changeId}:${userId}`;
 }
 
-async function driverAttempts(database: Database, legKey: string) {
-  const keys = Array.from(
-    { length: COMPOSE_HOLD_MAX_ATTEMPTS },
-    (_, index) => `${legKey}:${index + 1}`,
-  );
-  const rows = await database
+function attemptKeys(legKey: string): string[] {
+  return Array.from({ length: COMPOSE_HOLD_MAX_ATTEMPTS }, (_, index) => `${legKey}:${index + 1}`);
+}
+
+function attemptRows(database: Database, keys: string[]) {
+  return database
     .select({
       id: schema.channelMessages.id,
       dedupeKey: schema.channelMessages.dedupeKey,
-      status: schema.channelMessages.status,
       errorCode: schema.channelMessages.errorCode,
+      providerMessageId: schema.channelMessages.providerMessageId,
       createdAt: schema.channelMessages.createdAt,
     })
     .from(schema.channelMessages)
     .where(inArray(schema.channelMessages.dedupeKey, keys));
+}
+
+type DriverAttempt = Awaited<ReturnType<typeof attemptRows>>[number];
+
+function inAttemptOrder(keys: readonly string[], rows: readonly DriverAttempt[]): DriverAttempt[] {
   return keys.flatMap((key) => rows.filter((row) => row.dedupeKey === key));
 }
 
-function driverLegStep(
-  attempts: Awaited<ReturnType<typeof driverAttempts>>,
-  now: Date,
-): DriverLegStep {
+async function driverAttempts(database: Database, legKey: string): Promise<DriverAttempt[]> {
+  const keys = attemptKeys(legKey);
+  return inAttemptOrder(keys, await attemptRows(database, keys));
+}
+
+/**
+ * Every leg of this change with a try on the ledger, whoever drives today: a leg outlives
+ * its driver being reassigned. A driver is a family adult or someone seated in its group.
+ */
+async function driverLegsOnLedger(
+  database: Database,
+  change: Pick<schema.TeamScheduleChange, 'id' | 'familyId'>,
+  drivers: readonly TeamScheduleDriver[],
+): Promise<Array<{ userId: string; attempts: DriverAttempt[] }>> {
+  const members = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, change.familyId));
+  const seated = await database
+    .select({ userId: schema.linqGroupMembers.userId })
+    .from(schema.linqGroupMembers)
+    .where(eq(schema.linqGroupMembers.familyId, change.familyId));
+  const legs = [...new Set([...drivers, ...members, ...seated].map((row) => row.userId))].map(
+    (userId) => ({ userId, keys: attemptKeys(driverLegKey(change.id, userId)) }),
+  );
+  const rows = await attemptRows(
+    database,
+    legs.flatMap((leg) => leg.keys),
+  );
+  return legs.flatMap(({ userId, keys }) => {
+    const attempts = inAttemptOrder(keys, rows);
+    return attempts.length > 0 ? [{ userId, attempts }] : [];
+  });
+}
+
+function driverLegStep(attempts: readonly DriverAttempt[], now: Date): DriverLegStep {
   const latest = attempts.at(-1);
   if (!latest) return { kind: 'idle' };
-  const accepted: readonly string[] = SENT_STATUSES;
-  if (attempts.some((row) => accepted.includes(row.status))) return { kind: 'closed' };
+  if (attempts.some((row) => row.providerMessageId !== null)) return { kind: 'closed' };
   const code = latest.errorCode;
   if (code === null || DRIVER_CLOSED_CODES.has(code)) return { kind: 'closed' };
   const open = { id: latest.id, code, attempts: attempts.length };
@@ -514,14 +566,42 @@ function driverLegStep(
   return now < hold.nextTryAt ? { kind: 'waiting' } : { kind: 'due', open };
 }
 
+/**
+ * A leg that ended on this adult's own standing: they stopped Hale, gave no consent, or left
+ * no number. The row is theirs alone. As a family row it would tell every other parent seat
+ * that this adult stopped Hale.
+ */
+function driverUnreachableAudit(
+  familyId: string,
+  userId: string,
+  after: { reason: string; attempts: number },
+) {
+  return {
+    familyId,
+    actor: 'system',
+    actionTaken: 'team_schedule_driver_unreachable',
+    audience: userId,
+    targetTable: 'users',
+    targetId: userId,
+    after,
+  };
+}
+
+/** A draft that could not be used is the model's failure, not a Linq refusal. */
+function unsentPageFor(code: string): DriverUnsentReason {
+  return code === DRIVER_UNWRITTEN || code === GARBLED_TEXT ? 'unwritten' : 'send_refused';
+}
+
 /** Only the run that flips the row writes the audit row and pages. */
 async function closeDriverLeg(
   database: Database,
   leg: DriverLeg,
   open: OpenAttempt,
-  close: { code: string; reason: string; page: DriverUnsentReason | null },
+  close: { code: string; reason: string; page: DriverUnsentReason | null; ownStanding?: true },
   pager: OpsPager,
 ): Promise<'closed'> {
+  const after = { reason: close.reason, attempts: open.attempts };
+  const ownFamilyId = close.ownStanding ? await driverFamily(database, leg) : null;
   const won = await database.transaction(async (tx) => {
     const [row] = await tx
       .update(schema.channelMessages)
@@ -535,14 +615,18 @@ async function closeDriverLeg(
       )
       .returning({ id: schema.channelMessages.id });
     if (!row) return false;
-    await tx.insert(schema.auditLog).values({
-      familyId: leg.familyId,
-      actor: 'system',
-      actionTaken: 'team_schedule_driver_unsent',
-      targetTable: 'channel_messages',
-      targetId: open.id,
-      after: { reason: close.reason, attempts: open.attempts },
-    });
+    await tx.insert(schema.auditLog).values(
+      ownFamilyId
+        ? driverUnreachableAudit(ownFamilyId, leg.userId, after)
+        : {
+            familyId: leg.familyId,
+            actor: 'system',
+            actionTaken: 'team_schedule_driver_unsent',
+            targetTable: 'channel_messages',
+            targetId: open.id,
+            after,
+          },
+    );
     return true;
   });
   if (!won) return 'closed';
@@ -565,7 +649,6 @@ async function holdDriverLeg(
   database: Database,
   leg: DriverLeg,
   open: OpenAttempt,
-  page: DriverUnsentReason,
   pager: OpsPager,
   now: Date,
 ): Promise<'retrying' | 'closed'> {
@@ -574,7 +657,7 @@ async function holdDriverLeg(
       database,
       leg,
       open,
-      { code: SEND_RETRIES_EXHAUSTED, reason: open.code, page },
+      { code: SEND_RETRIES_EXHAUSTED, reason: open.code, page: unsentPageFor(open.code) },
       pager,
     );
   }
@@ -593,20 +676,34 @@ async function holdDriverLeg(
   return 'retrying';
 }
 
-/** Quiet hours wait: the sweep offers it again. Any other hold ends the retry, unpaged. */
+/**
+ * Quiet hours and an operator pause wait: the sweep offers it again, until the leg would
+ * leave the sweep's window, which closes it and pages. Every other hold is this adult's own
+ * stop or consent, which ends the retry, unpaged.
+ */
 async function settleHeldRetry(
   database: Database,
   leg: DriverLeg,
   open: OpenAttempt,
   reason: ProactiveHoldReason,
   pager: OpsPager,
+  lastChance: boolean,
 ): Promise<'waiting' | 'closed'> {
-  if (reason === 'quiet_hours') return 'waiting';
+  if (reason === 'quiet_hours' || reason === 'sends_paused') {
+    if (!lastChance) return 'waiting';
+    return closeDriverLeg(
+      database,
+      leg,
+      open,
+      { code: SEND_RETRIES_EXHAUSTED, reason: `held:${reason}`, page: 'held_too_long' },
+      pager,
+    );
+  }
   return closeDriverLeg(
     database,
     leg,
     open,
-    { code: SEND_RETRIES_EXHAUSTED, reason: `held:${reason}`, page: null },
+    { code: SEND_RETRIES_EXHAUSTED, reason: `held:${reason}`, page: null, ownStanding: true },
     pager,
   );
 }
@@ -638,7 +735,8 @@ async function settleFailedDriverSend(
     .set({ errorCode: refusal.code })
     .where(eq(schema.channelMessages.id, claim.id));
   const open = { id: claim.id, code: refusal.code, attempts: claim.attempt };
-  if (refusalStopsRetry(err)) {
+  // Permanent at the send seam, but a garbled draft is the model's: a new compose can fix it.
+  if (refusalStopsRetry(err) && refusal.code !== GARBLED_TEXT) {
     return closeDriverLeg(
       database,
       leg,
@@ -647,7 +745,7 @@ async function settleFailedDriverSend(
       pager,
     );
   }
-  return holdDriverLeg(database, leg, open, 'send_refused', pager, now);
+  return holdDriverLeg(database, leg, open, pager, now);
 }
 
 async function sendDriverAttempt(
@@ -693,14 +791,12 @@ async function sendDriverAttempt(
     const code = door.channel === 'imessage' ? 'no_chat' : 'no_send_target';
     const [row] = await writeAttempt(code);
     if (!row) return 'lost';
-    await database.insert(schema.auditLog).values({
-      familyId: leg.familyId,
-      actor: 'system',
-      actionTaken: 'team_schedule_driver_unsent',
-      targetTable: 'channel_messages',
-      targetId: row.id,
-      after: { reason: code, attempts: turn.attempt },
-    });
+    await database.insert(schema.auditLog).values(
+      driverUnreachableAudit(driverFamilyId, leg.userId, {
+        reason: code,
+        attempts: turn.attempt,
+      }),
+    );
     console.info({ familyId: driverFamilyId, outcome: code }, 'team schedule: driver unreachable');
     return 'closed';
   }
@@ -710,7 +806,7 @@ async function sendDriverAttempt(
     const [row] = await writeAttempt(DRIVER_UNWRITTEN);
     if (!row) return 'lost';
     const open = { id: row.id, code: DRIVER_UNWRITTEN, attempts: turn.attempt };
-    return holdDriverLeg(database, leg, open, 'unwritten', ports.pager, now);
+    return holdDriverLeg(database, leg, open, ports.pager, now);
   }
   const verdict = await ports.gate({
     familyId: driverFamilyId,
@@ -723,7 +819,7 @@ async function sendDriverAttempt(
       'team schedule: driver held by the outbound gate',
     );
     if (!turn.previous) return 'held';
-    return settleHeldRetry(database, leg, turn.previous, verdict.reason, ports.pager);
+    return settleHeldRetry(database, leg, turn.previous, verdict.reason, ports.pager, false);
   }
   if (turn.previous && ports.clock() >= turn.startsAt) {
     return closeDriverLeg(
@@ -854,9 +950,20 @@ async function retryDriverLeg(
     parentUserId: leg.userId,
     now,
   });
-  if (!verdict.allowed) return settleHeldRetry(database, leg, open, verdict.reason, ports.pager);
+  if (!verdict.allowed) {
+    const sinceChange = now.getTime() - (change.effectsAppliedAt ?? change.createdAt).getTime();
+    return settleHeldRetry(
+      database,
+      leg,
+      open,
+      verdict.reason,
+      ports.pager,
+      sinceChange >= DRIVER_RETRY_GIVE_UP_MS,
+    );
+  }
   // Spent only on a real compose, so a held leg never takes a slot from one that can go.
   if (budget.composes === 0) return 'waiting';
+  if (ports.clock().getTime() - now.getTime() >= DRIVER_RETRY_BUDGET_MS) return 'waiting';
   budget.composes -= 1;
 
   const [child] = event.childId
@@ -929,14 +1036,15 @@ export async function retryTeamScheduleDrivers(
       originalStartsAt: change.originalStartsAt,
       timeZone: change.timeZone,
     });
-    for (const driver of drivers) {
+    const stillDriving = new Set(drivers.map((driver) => driver.userId));
+    for (const { userId, attempts } of await driverLegsOnLedger(database, change, drivers)) {
       const leg = {
-        key: driverLegKey(change.id, driver.userId),
+        key: driverLegKey(change.id, userId),
         familyId: change.familyId,
-        userId: driver.userId,
+        userId,
       };
       try {
-        const step = driverLegStep(await driverAttempts(database, leg.key), input.now);
+        const step = driverLegStep(attempts, input.now);
         if (step.kind === 'waiting') summary.waiting += 1;
         if (step.kind !== 'died' && step.kind !== 'exhausted' && step.kind !== 'due') continue;
         const ports = input.portsFor(change.familyId);
@@ -949,6 +1057,14 @@ export async function retryTeamScheduleDrivers(
             { code: DRIVER_UNCONFIRMED, reason: DRIVER_UNCONFIRMED, page: 'send_unconfirmed' },
             ports.pager,
           );
+        } else if (!stillDriving.has(userId)) {
+          outcome = await closeDriverLeg(
+            database,
+            leg,
+            step.open,
+            { code: SEND_RETRIES_EXHAUSTED, reason: 'superseded', page: null },
+            ports.pager,
+          );
         } else if (step.kind === 'exhausted') {
           outcome = await closeDriverLeg(
             database,
@@ -957,7 +1073,7 @@ export async function retryTeamScheduleDrivers(
             {
               code: SEND_RETRIES_EXHAUSTED,
               reason: step.open.code,
-              page: step.open.code === DRIVER_UNWRITTEN ? 'unwritten' : 'send_refused',
+              page: unsentPageFor(step.open.code),
             },
             ports.pager,
           );
