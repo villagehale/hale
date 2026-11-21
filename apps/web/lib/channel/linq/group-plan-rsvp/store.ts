@@ -839,12 +839,13 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
     },
 
     async findCalendarAskByMessage(providerMessageId) {
-      const [row] = await database
+      const carriers = await database
         .select()
         .from(schema.linqGroupPlanCalendarConsents)
         .where(eq(schema.linqGroupPlanCalendarConsents.askProviderMessageId, providerMessageId))
-        .limit(1);
-      if (!row || row.status !== 'asked') return null;
+        .limit(2);
+      const [row] = carriers;
+      if (carriers.length !== 1 || !row || row.status !== 'asked') return null;
       const [plan] = await database
         .select()
         .from(schema.linqGroupPlans)

@@ -1610,7 +1610,7 @@ async function twoOpenAsks(gapMs: number) {
     picnic: (await store.loadCalendarConsent(picnic.id, priya.familyId))?.status,
     museum: (await store.loadCalendarConsent(museum.id, otherId))?.status,
   });
-  return { priya, ports, status };
+  return { priya, ports, status, store, museum, otherId };
 }
 
 describe('a 1:1 reply with several calendar asks open: only a named plan binds', () => {
@@ -1644,6 +1644,76 @@ describe('a 1:1 reply with several calendar asks open: only a named plan binds',
     });
     expect(named.handled).toBe(true);
     expect(await status()).toEqual({ picnic: 'written', museum: 'asked' });
+  });
+});
+
+describe('the which-plan line names no plan', () => {
+  const WHICH_LINE = 'priv-one';
+
+  async function askedWhich() {
+    const asks = await twoOpenAsks(60_000);
+    const reply = {
+      senderUserId: asks.priya.userId,
+      senderName: 'Priya',
+      chatId: PRIVATE_CHAT,
+    };
+    await considerPrivateCalendarReply(asks.ports, { ...reply, text: 'yes' });
+    expect(
+      asks.ports.composer.calls.filter((call) => call.input.kind === 'calendar_which'),
+    ).toHaveLength(1);
+    const thumbsUp = (messageId: string) =>
+      considerCalendarTapback(asks.ports, {
+        senderUserId: asks.priya.userId,
+        senderName: 'Priya',
+        messageId,
+        tapback: 'like',
+      });
+    const withdrawMuseum = () =>
+      asks.store.releaseCalendarAsk(asks.museum.id, asks.otherId, asks.priya.userId, 'send_failed');
+    const copies = async () => (await db.database.select().from(schema.familyEvents)).length;
+    return { ...asks, reply, thumbsUp, withdrawMuseum, copies };
+  }
+
+  it('a thumbs-up on the which-plan line leaves both asks open and writes nothing', async () => {
+    const { thumbsUp, status, copies } = await askedWhich();
+    const tap = await thumbsUp(WHICH_LINE);
+    expect(tap.handled).toBe(false);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'asked' });
+    expect(await copies()).toBe(0);
+  });
+
+  it('a thumbs-up on a line that asked about one plan still writes that plan', async () => {
+    const { thumbsUp, status, copies } = await askedWhich();
+    const tap = await thumbsUp('ask-museum');
+    expect(tap.handled).toBe(true);
+    expect(await status()).toEqual({ picnic: 'asked', museum: 'written' });
+    expect(await copies()).toBe(1);
+  });
+
+  it('a thumbs-up on it still binds nothing once one of its plans is withdrawn', async () => {
+    const { thumbsUp, withdrawMuseum, status, copies } = await askedWhich();
+    expect(await withdrawMuseum()).toBe(true);
+    const tap = await thumbsUp(WHICH_LINE);
+    expect(tap.handled).toBe(false);
+    expect((await status()).picnic).toBe('asked');
+    expect(await copies()).toBe(0);
+  });
+
+  it('with one of its plans withdrawn, a bare yes binds nothing and naming the plan does', async () => {
+    const { ports, reply, withdrawMuseum, status, copies } = await askedWhich();
+    expect(await withdrawMuseum()).toBe(true);
+    const bare = await considerPrivateCalendarReply(ports, { ...reply, text: 'yes' });
+    expect(bare.handled).toBe(false);
+    expect((await status()).picnic).toBe('asked');
+    expect(await copies()).toBe(0);
+
+    const named = await considerPrivateCalendarReply(ports, {
+      ...reply,
+      text: 'yes to the picnic',
+    });
+    expect(named.handled).toBe(true);
+    expect((await status()).picnic).toBe('written');
+    expect(await copies()).toBe(1);
   });
 });
 

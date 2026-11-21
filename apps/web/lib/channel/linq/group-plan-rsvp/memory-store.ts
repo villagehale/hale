@@ -449,11 +449,11 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
     },
 
     async findCalendarAskByMessage(providerMessageId) {
-      const row = [...world.consents.values()].find(
-        (consent) =>
-          consent.askProviderMessageId === providerMessageId && consent.status === 'asked',
+      const carriers = [...world.consents.values()].filter(
+        (consent) => consent.askProviderMessageId === providerMessageId,
       );
-      if (!row) return null;
+      const [row] = carriers;
+      if (carriers.length !== 1 || !row || row.status !== 'asked') return null;
       const plan = world.plans.get(row.planId);
       if (!plan || plan.closedAt) return null;
       return { plan: { ...plan }, consent: row };

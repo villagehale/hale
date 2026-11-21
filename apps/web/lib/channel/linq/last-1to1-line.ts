@@ -3,20 +3,23 @@ import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 
 /**
- * The provider id of the newest line Hale sent this parent in their own 1:1, or
- * null when none reached the provider. A reply answers this line, so an ask that
- * is not this line is not what the reply answers.
+ * The newest line Hale sent this parent in their own 1:1, or null when none reached
+ * the provider. A reply answers this line, so an ask that is not this line is not
+ * what the reply answers.
  *
  * A row in another chat (a group line) is not this thread. A row with no chat id
  * is a 1:1 send whose chat the provider did not echo, so it still counts. A failed
  * or suppressed row never reached the parent.
  */
-export async function lastOneToOneLineId(
+export async function lastOneToOneLine(
   database: Database,
   input: { parentUserId: string; chatId: string },
-): Promise<string | null> {
+): Promise<{ providerMessageId: string | null; templateKey: string | null } | null> {
   const [row] = await database
-    .select({ providerMessageId: schema.channelMessages.providerMessageId })
+    .select({
+      providerMessageId: schema.channelMessages.providerMessageId,
+      templateKey: schema.channelMessages.templateKey,
+    })
     .from(schema.channelMessages)
     .where(
       and(
@@ -33,5 +36,5 @@ export async function lastOneToOneLineId(
     )
     .orderBy(desc(schema.channelMessages.createdAt))
     .limit(1);
-  return row?.providerMessageId ?? null;
+  return row ?? null;
 }

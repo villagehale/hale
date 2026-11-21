@@ -11,7 +11,7 @@ import {
 } from '../config';
 import { type OneToOneSend, sendHouseholdPrivateLine } from '../connect-link-1to1';
 import { familySpeechLanguage } from '../family-outbound';
-import { lastOneToOneLineId } from '../last-1to1-line';
+import { lastOneToOneLine } from '../last-1to1-line';
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
@@ -386,12 +386,14 @@ type PrivateCalendarCandidate = Awaited<
  * word of the plan's title (code-checked), and only when the reader also reads a decision
  * on it. The model alone never picks among several asks: a decision with no ask named, or
  * with more than one named, is `ambiguous` and Hale asks which one. No decision on any
- * ask leaves the turn to the 1:1 door.
+ * ask leaves the turn to the 1:1 door. Right after a which-plan line, even a lone ask must
+ * be named: that line asked about several plans, so a bare yes is not an answer to it.
  */
 async function pickPrivateCalendarAsk(
   ports: GroupPlanRsvpInboundPorts,
   input: { senderName: string | null; text: string },
   open: PrivateCalendarCandidate[],
+  afterWhich: boolean,
 ): Promise<
   | { kind: 'none' }
   | { kind: 'ambiguous'; candidates: PrivateCalendarCandidate[] }
@@ -404,10 +406,13 @@ async function pickPrivateCalendarAsk(
 > {
   const only = open[0];
   if (open.length === 0 || !only) return { kind: 'none' };
-  if (open.length === 1) return { kind: 'one', plan: only.plan, consent: only.consent };
+  if (open.length === 1 && !afterWhich) {
+    return { kind: 'one', plan: only.plan, consent: only.consent };
+  }
   const named = open.filter((item) =>
     namesFacts(input.text, { activity: item.plan.title, host: '' }),
   );
+  if (open.length === 1 && named.length === 0) return { kind: 'none' };
   const reader = ports.consentReader ?? sharedCalendarConsentReader();
   const hits: { item: PrivateCalendarCandidate; reading: CalendarConsentReading }[] = [];
   for (const item of named.length > 0 ? named : open) {
@@ -439,8 +444,9 @@ async function pickPrivateCalendarAsk(
 
 /**
  * The reply could answer more than one ask: one model-written 1:1 question naming those
- * plans. Each of them then counts that question as its last line, so the parent's next
- * reply (naming one) is read against them. Nothing is written or withdrawn here.
+ * plans. Its id is never stored on an ask, because a reaction on it names no plan; the
+ * ledger's template marks it, so the parent's next reply (naming one) is still read
+ * against the open asks. Nothing is written or withdrawn here.
  */
 async function askWhichCalendarPlan(
   ports: GroupPlanRsvpInboundPorts,
@@ -489,15 +495,6 @@ async function askWhichCalendarPlan(
     kind: 'calendar_which',
   });
   if (sent.status !== 'sent') return { skipped: sent.reason };
-  if (sent.providerMessageId) {
-    for (const item of candidates) {
-      await store.setCalendarAskMessage(
-        item.plan.id,
-        item.consent.familyId,
-        sent.providerMessageId,
-      );
-    }
-  }
   await ports.database.insert(schema.auditLog).values({
     familyId: first.consent.familyId,
     actor: input.senderUserId,
@@ -527,16 +524,20 @@ export async function considerPrivateCalendarReply(
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const listed = await store.listOpenCalendarAsks(input.senderUserId);
   const lastLine = listed.some((item) => item.consent.status === 'asked')
-    ? await lastOneToOneLineId(ports.database, {
+    ? await lastOneToOneLine(ports.database, {
         parentUserId: input.senderUserId,
         chatId: input.chatId,
       })
     : null;
+  const afterWhich = lastLine?.templateKey === GROUP_PLAN_CALENDAR_WHICH_TEMPLATE;
+  const lastLineId = lastLine?.providerMessageId ?? null;
   const askIsLastLine =
-    lastLine !== null &&
-    listed.some(
-      (item) => item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLine,
-    );
+    afterWhich ||
+    (lastLineId !== null &&
+      listed.some(
+        (item) =>
+          item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLineId,
+      ));
   const open = listed.filter((item) => item.consent.status === 'declined' || askIsLastLine);
   if (open.length < listed.length) {
     console.info(
@@ -544,7 +545,7 @@ export async function considerPrivateCalendarReply(
       'group plan calendar: 1:1 reply left to the 1:1 door',
     );
   }
-  const picked = await pickPrivateCalendarAsk(ports, input, open);
+  const picked = await pickPrivateCalendarAsk(ports, input, open, afterWhich);
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {
     const which = await askWhichCalendarPlan(ports, store, input, picked.candidates);
