@@ -59,12 +59,12 @@ const TEXT_SCHEMA = {
 const JUDGE_SYSTEM = judgePrompt('registration-note');
 
 /**
- * Cached-only expected-fail list (VIL-554). These four drafts are recorded against the skill
- * as it is on main, and the judge is right on each: the writer offered to change a kept
- * morning, repeated "may not have loaded", claimed "everything else is set", and ended the
- * card with a question. These are writer misses to fix in the product, not in the judge. A
- * listed case that passes turns the check red, so the list cannot go stale. Live runs
- * ignore it: every case must pass.
+ * Cached-only expected-fail list (VIL-694). These four drafts are recorded against the
+ * skill as it was on main, and the judge is right on each: the writer offered to change a
+ * kept morning, repeated "may not have loaded", claimed "everything else is set", and ended
+ * the card with a question. The skill now forbids those. They come off this list once the
+ * one recording after that change passes. A listed case that passes turns the check red,
+ * so the list cannot go stale. Live runs ignore it: every case must pass.
  */
 export const EXPECTED_FAIL = Object.freeze([
   'course-refused-different-season',
@@ -579,7 +579,7 @@ async function main() {
   const handedOk = kept === NOTE_HANDED.length;
   console.info(`broken-mode calibration (must fail): ${brokenOk ? 'PASS' : 'FAIL'}`);
   console.info(`handed calibration (must pass): ${handedOk ? 'PASS' : 'FAIL'}`);
-  const gate = expectedFailGate(results, cachedOnly ? EXPECTED_FAIL : [], knownIds, 'VIL-554');
+  const gate = expectedFailGate(results, cachedOnly ? EXPECTED_FAIL : [], knownIds, 'VIL-694');
   for (const line of gate.lines) console.info(line);
   const failed = results.filter((r) => r.failed).length;
   console.info(

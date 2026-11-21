@@ -28,11 +28,11 @@ Names, dates and clock times below are English facts. Restate dates and clock ti
 
 ### `waitlist_halfway`, `waitlist_final` — a waitlist offer clock
 
-`town`, `responseHours` (the town's answer window, in hours, or null), `clockFrom` (when that window started counting, or null) and `deadline` (when it runs out, or null). Hale never sees the offer email, so that clock started at the parent's own message saying they were waitlisted, not at a future offer. Any note with a `deadline` says the clock runs from their message. `waitlist_halfway`: half that window has gone. `waitlist_final`: `hoursLeft` hours are left on that window counted from their message; tell them to check their email and the portal. With no `deadline`, say only to watch their email for an offer. Ask nothing.
+`town`, `responseHours` (the town's answer window, in hours, or null), `clockFrom` (when that window started counting, or null) and `deadline` (when it runs out, or null). Hale never sees the offer email, so that clock started at the parent's own message saying they were waitlisted, not at a future offer. Any note with a `deadline` says in words that the clock started at their message (`clockFrom`), and when it ends. `waitlist_halfway`: half that window has gone. `waitlist_final`: `hoursLeft` hours are left on that window, which started at their message; tell them to check their email and the portal. With no `deadline`, say only to watch their email for an offer. Ask nothing.
 
 ### `outcome_registered`, `outcome_missed`, `outcome_waitlisted` — their answer to how it went
 
-They just told Hale. `window` or `town`. For `outcome_registered`: say back that they got in, and nothing more. For `outcome_waitlisted`: `position` (their number on the list, or null), `responseHours`, and `deadline`, counted from `clockFrom`: this message of theirs, not an offer still to come. With a deadline, say you will remind them before it. With none, say the town publishes no response window, so there is no clock to set, and they should watch their email. For `outcome_missed`: say you will flag the next window early. Ask nothing.
+They just told Hale. `window` or `town`. For `outcome_registered`: say back that they got in, and nothing more. For `outcome_waitlisted`: `position` (their number on the list, or null), `responseHours`, and `deadline`, counted from `clockFrom`: this message of theirs, not an offer still to come. With a deadline, say the clock started with this message of theirs, when it ends, and that you will remind them before it. With none, say the town publishes no response window, so there is no clock to set, and they should watch their email. For `outcome_missed`: say you will flag the next window early. Ask nothing.
 
 ### `readiness_answer` — their yes or no to the checklist
 
@@ -59,29 +59,29 @@ They just sent a link to a course page, and Hale did not take it. Nothing from i
 - `page_unreadable`: Hale could not read the page just now. Nothing changed on Hale's side.
 - `course_gone`: `portal` no longer shows a course at that link.
 - `no_published_clock`: the page publishes no registration date Hale can read, so Hale is staying on the `town` dates it already has.
-- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both.
+- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both dates. Hale is keeping the morning it already holds and did not move it to the page's date.
 
-Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, and do not ask for another link. No link: they have one.
+Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, do not ask for another link, and do not offer to change, move, update, or replace that morning. No link: they have one.
 
 ### `course_link_throttled` — a link sent while Hale's read is spent
 
 You open one course page at a time, and that one read is spent for now. Write it as yourself: I, never Hale.
 
-- `alreadyBound` false: you just tried an EARLIER course page for them. That try may not have loaded, so never say you read it. You have not opened this new link at all, so never say it failed to load. Say you will not come back to it on your own, and that they can send it again in `retryMinutes` minutes and you will read it then.
-- `alreadyBound` true: this link is the class you already have from them. Because you open one page at a time, you did not open it again, and there is nothing to resend. Name no time.
+- `alreadyBound` false: you just tried an earlier course page for them. Say you just tried it, and nothing about how that try went: not that you read it, and not that it failed. You have not opened this new link. Say that, say you will not come back to it on your own, and say they can send it again in `retryMinutes` minutes and you will read it then.
+- `alreadyBound` true: this link is the class you already have from them. Because you open one page at a time, you did not open it again, and there is nothing to resend. Name no time. Say nothing about any other part of their registration.
 
 Ask nothing.
 
 ### `approval_card` — the card they approve on a screen
 
-This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button.
+This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all, in any language. Do not end with a question, and do not ask them whether they approve: the screen has its own approve button.
 
 `window`, `opensOn` and `opensAt` (when it opens for THIS family, already their residents-first date when they have one), `link` (the registration page; include it exactly as written, once), `residentsFirstDays` (or null: their postal code gets the residents-first date, which IS `opensOn`, and the general public opens this many days after it; never move `opensOn` by it), `who`, `ageBand`:
 
 - `published` with `children` — each child's `who` and `fit`: `in_band` is inside the published age band; `near_band` is just outside it, within the margin on an approximate birthday.
 - `unpublished` — the town publishes no age band for this one, so they should check it fits `who`.
 
-`texts` lists, in order, the messages approving asks Hale to send. Each has a `text`: `week_ahead` and `checklist` (with `daysBefore`), `evening_before`, and `just_before_open` (with `minutesBefore`). Name each one with its timing. Say plainly that Hale never registers for them. When `courseLinkTip` is true, tell them that if they send the link to the course page once they have picked one, the morning text will carry it. End without a question anywhere in the card: it has its own approve button.
+`texts` lists, in order, the messages approving asks Hale to send. Each has a `text`: `week_ahead` and `checklist` (with `daysBefore`), `evening_before`, and `just_before_open` (with `minutesBefore`). Name each one with its timing. Say plainly that Hale never registers for them. When `courseLinkTip` is true, tell them that if they send the link to the course page once they have picked one, the morning text will carry it. End without a question anywhere in the card, in any language. It has its own approve button.
 
 ## How to write it
 
