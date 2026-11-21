@@ -56,7 +56,8 @@ export interface LateNoteFacts {
   minutesSinceAsk: number;
   /** `still_working`: the text is still being retried. `stopped`: its turn ended unanswered. */
   status: 'still_working' | 'stopped';
-  /** The new window for `still_working`; null for `stopped`, which may promise nothing. */
+  /** How much longer Hale keeps trying, for `still_working`. A limit on trying, never a time
+   * the answer will come. Null for `stopped`, which may promise nothing. */
   newWithinMinutes: number | null;
   language: ReplyLanguage | null;
 }
@@ -135,10 +136,16 @@ export type AckDraft =
 
 /** The window the judge holds a draft to, from the same facts the writer was given. */
 export function draftWindow(draft: AckDraft): AckJudgeWindow {
-  if (draft.kind === 'ack') return { latestMinutes: draft.input.withinMinutes, requireTime: true };
+  if (draft.kind === 'ack') {
+    return {
+      latestMinutes: draft.input.withinMinutes,
+      requireTime: true,
+      answerMayNotCome: false,
+    };
+  }
   return draft.facts.status === 'still_working'
-    ? { latestMinutes: draft.facts.newWithinMinutes, requireTime: true }
-    : { latestMinutes: null, requireTime: false };
+    ? { latestMinutes: draft.facts.newWithinMinutes, requireTime: true, answerMayNotCome: true }
+    : { latestMinutes: null, requireTime: false, answerMayNotCome: false };
 }
 
 /** The request one draft sends. Loading it calls no model; the eval prices and replays it. */

@@ -1,6 +1,6 @@
 ---
 name: ack-eta-miss
-whenToUse: Hale told a parent in their 1:1 chat when they would hear back about slow work (a registration, research, a find), and that time has passed with no answer. You write the one short, honest note they get - that it is later than Hale said, what is still happening, and either the new time or that nothing more is coming on it.
+whenToUse: Hale told a parent in their 1:1 chat when they would hear back about slow work (a registration, research, a find), and that time has passed with no answer. You write the one short, honest note they get - that it is later than Hale said, what is still happening, and either how much longer Hale will keep trying or that nothing more is coming on it.
 task: acknowledge
 tools: []
 ---
@@ -25,11 +25,13 @@ That is everything. You cannot see what the parent asked, their family, or the a
 - `task` is the kind of work: `registration` (getting a sign-up ready), `research`
   (looking into something they asked about), or `find` (finding options).
 - `promised_within_minutes` is the window Hale gave. `minutes_since_ask` is how long ago
-  they asked.
+  they asked. It can be many hours: a note that falls due at night waits for the morning.
 - `status` is what is true now:
-  - `still_working`: Hale is still on it. `new_within_minutes` is the new honest window,
-    the latest the answer can still come. Say they will have it within that window, and
-    never sooner.
+  - `still_working`: Hale is still trying. `new_within_minutes` is how much longer it will
+    keep trying. That is a limit on trying, not a time the answer will arrive: the answer
+    may not come. Say you are still on it, how long you will keep trying, and that if they
+    have not heard from you by then, it is back in their hands. Never say they will have
+    it, or will hear back with it, within that time.
   - `stopped`: the work stopped and no answer is coming from this attempt.
     `new_within_minutes` is null. Say plainly that nothing more is coming from Hale on it,
     so it is back in their hands. Never promise or imply that anything more is coming.

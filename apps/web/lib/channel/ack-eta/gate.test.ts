@@ -27,14 +27,42 @@ describe('ackMeaningProblems', () => {
     breaks_window: 'no',
     claims_done: 'no',
     points_at_an_app: 'no',
+    promises_answer: 'no',
   };
 
   it('refuses an ack that gives no time, but not a stopped note, which may promise none', () => {
     const silent = { ...clear, says_when: 'no' as const };
-    expect(ackMeaningProblems(silent, { latestMinutes: 5, requireTime: true })).toEqual([
-      'no_time',
-    ]);
-    expect(ackMeaningProblems(silent, { latestMinutes: null, requireTime: false })).toEqual([]);
+    expect(
+      ackMeaningProblems(silent, { latestMinutes: 5, requireTime: true, answerMayNotCome: false }),
+    ).toEqual(['no_time']);
+    expect(
+      ackMeaningProblems(silent, {
+        latestMinutes: null,
+        requireTime: false,
+        answerMayNotCome: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it('refuses a still-working note that promises the answer, but not an ack that does', () => {
+    const promised = { ...clear, promises_answer: 'yes' as const };
+    expect(
+      ackMeaningProblems(promised, {
+        latestMinutes: 180,
+        requireTime: true,
+        answerMayNotCome: true,
+      }),
+    ).toEqual(['promises_the_answer']);
+    expect(
+      ackMeaningProblems(promised, {
+        latestMinutes: 5,
+        requireTime: true,
+        answerMayNotCome: false,
+      }),
+    ).toEqual([]);
+    expect(
+      ackMeaningProblems(clear, { latestMinutes: 180, requireTime: true, answerMayNotCome: true }),
+    ).toEqual([]);
   });
 
   it('names every problem the verdict raises', () => {
@@ -44,11 +72,10 @@ describe('ackMeaningProblems', () => {
       breaks_window: 'yes',
       claims_done: 'yes',
       points_at_an_app: 'yes',
+      promises_answer: 'yes',
     };
-    expect(ackMeaningProblems(bad, { latestMinutes: 5, requireTime: true })).toEqual([
-      'time_outside_window',
-      'claims_done',
-      'points_at_the_app',
-    ]);
+    expect(
+      ackMeaningProblems(bad, { latestMinutes: 5, requireTime: true, answerMayNotCome: true }),
+    ).toEqual(['time_outside_window', 'claims_done', 'points_at_the_app', 'promises_the_answer']);
   });
 });

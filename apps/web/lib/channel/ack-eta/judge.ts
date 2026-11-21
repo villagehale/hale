@@ -7,24 +7,29 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 /**
  * VIL-717 · the meaning gate on an ack and on a late note: does its timing keep to the
  * window it was given, does it claim the work is done, does it point at an app or a
- * website. In whatever language the line is written, read by a model (skill
- * `ack-eta-judge`), never by a word list. The judge does not rewrite and supplies no line.
+ * website, does it promise an answer that may not come. In whatever language the line is
+ * written, read by a model (skill `ack-eta-judge`), never by a word list. The judge does
+ * not rewrite and supplies no line.
  *
  * `unjudged` is a named fault (rule #11): no verdict, so nothing is sent.
  */
 
 /** What the gate needs from the facts. `latestMinutes` null means no time may be promised;
- * `requireTime` means a line that gives no timing is refused (an ack must say when). */
+ * `requireTime` means a line that gives no timing is refused (an ack must say when);
+ * `answerMayNotCome` means the line may say how long Hale keeps trying but never that the
+ * answer will arrive (a still-working note: past the retry ceiling no answer comes). */
 export interface AckJudgeWindow {
   latestMinutes: number | null;
   requireTime: boolean;
+  answerMayNotCome: boolean;
 }
 
 export type AckMeaningProblem =
   | 'no_time'
   | 'time_outside_window'
   | 'claims_done'
-  | 'points_at_the_app';
+  | 'points_at_the_app'
+  | 'promises_the_answer';
 
 export type AckJudge =
   | { verdict: 'clear' }
@@ -47,7 +52,8 @@ export const ACK_JUDGE_SCHEMA: Anthropic.Tool.InputSchema = {
     },
     says_when: {
       ...YES_NO,
-      description: 'yes when the line says when, or how soon, the parent will hear back.',
+      description:
+        'yes when the line says when, or how soon, the parent will hear back, or how long Hale will keep trying.',
     },
     breaks_window: {
       ...YES_NO,
@@ -62,8 +68,20 @@ export const ACK_JUDGE_SCHEMA: Anthropic.Tool.InputSchema = {
       ...YES_NO,
       description: 'yes when the line sends the parent to an app, a website, or another screen.',
     },
+    promises_answer: {
+      ...YES_NO,
+      description:
+        'yes when the line tells the parent, as a certainty, that they will get the result or hear back with it by some point.',
+    },
   },
-  required: ['reason', 'says_when', 'breaks_window', 'claims_done', 'points_at_an_app'],
+  required: [
+    'reason',
+    'says_when',
+    'breaks_window',
+    'claims_done',
+    'points_at_an_app',
+    'promises_answer',
+  ],
   additionalProperties: false,
 };
 
@@ -73,6 +91,7 @@ const verdictSchema = z.object({
   breaks_window: z.enum(['yes', 'no']),
   claims_done: z.enum(['yes', 'no']),
   points_at_an_app: z.enum(['yes', 'no']),
+  promises_answer: z.enum(['yes', 'no']),
 });
 
 export type AckJudgeVerdict = z.infer<typeof verdictSchema>;
@@ -106,6 +125,9 @@ export function ackMeaningProblems(
   if (verdict.breaks_window === 'yes') problems.push('time_outside_window');
   if (verdict.claims_done === 'yes') problems.push('claims_done');
   if (verdict.points_at_an_app === 'yes') problems.push('points_at_the_app');
+  if (window.answerMayNotCome && verdict.promises_answer === 'yes') {
+    problems.push('promises_the_answer');
+  }
   return problems;
 }
 

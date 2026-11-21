@@ -58,7 +58,13 @@ function assertCorpus() {
     }
   }
   const named = new Set(ACK_JUDGE_FIXTURES.flatMap((f) => f.expect));
-  for (const problem of ['no_time', 'time_outside_window', 'claims_done', 'points_at_the_app']) {
+  for (const problem of [
+    'no_time',
+    'time_outside_window',
+    'claims_done',
+    'points_at_the_app',
+    'promises_the_answer',
+  ]) {
     if (!named.has(problem)) throw new Error(`judge corpus never expects ${problem}`);
   }
   if (!ACK_JUDGE_FIXTURES.some((f) => f.expect.length === 0)) {
@@ -154,7 +160,11 @@ async function runJudged(mode) {
   }
 
   for (const f of ACK_JUDGE_FIXTURES) {
-    const window = { latestMinutes: f.latestMinutes, requireTime: f.requireTime };
+    const window = {
+      latestMinutes: f.latestMinutes,
+      requireTime: f.requireTime,
+      answerMayNotCome: f.answerMayNotCome === true,
+    };
     const problems = await verdict(judge, f.line, window, ctx);
     const expected = broken ? (f.expect.length === 0 ? ['claims_done'] : []) : f.expect;
     const problem = gradeAckJudge(problems, expected);
