@@ -59,7 +59,7 @@ They just sent a link to a course page, and Hale did not take it. Nothing from i
 - `page_unreadable`: Hale could not read the page just now. Nothing changed on Hale's side.
 - `course_gone`: `portal` no longer shows a course at that link.
 - `no_published_clock`: the page publishes no registration date Hale can read, so Hale is staying on the `town` dates it already has.
-- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both dates. Hale is keeping the morning it already holds, and cannot move that morning.
+- `different_season`: the page opens `pageOpens` and the `town` morning Hale is holding is `haleHas`. That looks like a different season, so Hale left things as they were. Name both dates. Hale is keeping the morning it already holds and did not move it to the page's date.
 
 Say why in a plain clause, never an apology with no next step. Then the one ask this note may make, and only that one: for `page_unreadable`, to send the same link again, and nothing else; for every reason except `no_published_clock` and `different_season`, to send the course page from `portal` instead. For `no_published_clock` and `different_season`, Hale keeps the morning it already has: ask nothing, do not ask for another link, and do not offer to change, move, update, or replace that morning. No link: they have one.
 
