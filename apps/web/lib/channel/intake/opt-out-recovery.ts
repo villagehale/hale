@@ -26,7 +26,13 @@ import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/pr
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
-import { MESSAGE_HOLD, placeHold, releaseHeldMessage } from './opt-out-hold';
+import {
+  MESSAGE_HOLD,
+  STOP_PENDING_HOLD,
+  placeHold,
+  releaseHeldMessage,
+  releaseStoppedMessage,
+} from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import { optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
 import {
@@ -57,7 +63,9 @@ import type { ChannelTransport } from './transport';
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
  * that number alone, silently: a stop read late is applied at once and nothing is texted
  * to the number, day or night. Its owner already said stop; only a text they send later,
- * which the live path answers, opens the thread again.
+ * which the live path answers, opens the thread again. A row marked as a pending stop was
+ * already read as one on a live turn whose stop did not record: it is retried as a stop
+ * and never read again.
  *
  * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
@@ -272,10 +280,13 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
-  if (row.kind !== MESSAGE_HOLD) return 'held_for_operator';
+  const stopPending = row.kind === STOP_PENDING_HOLD;
+  if (row.kind !== MESSAGE_HOLD && !stopPending) return 'held_for_operator';
   // A reply to this text was sent: nothing is read, and nothing is sent again. One still
-  // leaving is waited for; one that never left is not a reply.
-  const reply = await crisisReplyState(database, row.providerMessageId, now);
+  // leaving is waited for; one that never left is not a reply. A pending stop still runs.
+  const reply = stopPending
+    ? 'unanswered'
+    : await crisisReplyState(database, row.providerMessageId, now);
   if (reply === 'in_flight') return 'crisis_reply_in_flight';
   if (reply === 'answered') {
     await releaseHeldMessage(database, row.providerMessageId);
@@ -290,7 +301,7 @@ async function recoverRow(
       // and the failure-page sweep pages it as "not in ledger".
       return 'unrecorded';
     }
-    await releaseHeldMessage(database, row.providerMessageId);
+    await releaseRow(database, row);
     return 'no_channel';
   }
 
@@ -298,7 +309,10 @@ async function recoverRow(
   // text is never handed to the model again: the reply is written from what was read then.
   const crisis = await crisisClaimFor(database, row.providerMessageId);
   let outcome: HeldReadOutcome;
-  if (crisis) {
+  if (stopPending) {
+    // Already read as a stop on a live turn: retried as one, never handed to the model.
+    outcome = await lateStop(database, deps, row, held);
+  } else if (crisis) {
     const { language, situation, who } = crisis;
     outcome = await lateCrisis(database, deps, row, held, crisis.kind, {
       language,
@@ -335,8 +349,19 @@ async function recoverRow(
     // is the record, as on the live path.
     console.info({ outcome }, 'opt-out recovery: held text read for a sender with no family');
   }
-  await releaseHeldMessage(database, row.providerMessageId);
+  await releaseRow(database, row);
   return outcome;
+}
+
+/** Keyed on the kind this pass claimed, so a stop marked pending meanwhile is not released
+ * by a read of the ordinary text it was. */
+function releaseRow(database: Database, row: HeldRow): Promise<'released' | 'not_held'> {
+  return row.kind === STOP_PENDING_HOLD
+    ? releaseStoppedMessage(database, {
+        phoneHash: row.phoneHash,
+        providerMessageId: row.providerMessageId,
+      })
+    : releaseHeldMessage(database, row.providerMessageId);
 }
 
 /**

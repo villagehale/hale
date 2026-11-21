@@ -6,7 +6,11 @@ import { threadIfParent } from '~/lib/channel/thread';
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { failurePageCrisisPager, pageFailureAlerts } from '~/lib/monitoring/failure-page';
+import {
+  failurePageCrisisPager,
+  noteCrisisReplySent,
+  pageFailureAlerts,
+} from '~/lib/monitoring/failure-page';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -19,9 +23,9 @@ import {
   fakeSilentAnswerComposer,
 } from './fakes';
 import { type IntakeDeps, handleInboundSms } from './machine';
-import { holdSender, isSenderHeld } from './opt-out-hold';
-import type { OptOutReading } from './opt-out-reader';
-import { recoverHeldOptOutReads } from './opt-out-recovery';
+import { MESSAGE_HOLD, clearCollisionHold, holdSender, isSenderHeld } from './opt-out-hold';
+import type { OptOutReader, OptOutReading } from './opt-out-reader';
+import { type OptOutRecoveryDeps, recoverHeldOptOutReads } from './opt-out-recovery';
 import { OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV } from './opt-out-turn-flags';
 import { createSession, loadOpenSession } from './session';
 import { FakeTransport } from './transport';
@@ -151,26 +155,45 @@ function delivery(transport: FakeTransport, text: string) {
 
 const REFUSED = 'refused for the test';
 
-/** A real database fault on one table's updates, not a mock of the code that writes it. */
-async function withUpdatesRefused<T>(
-  table: 'parent_channels' | 'sms_intake_sessions',
+/** A real database fault on one table's writes, not a mock of the code that writes it. */
+async function withRefused<T>(
+  operation: 'update' | 'delete',
+  table: 'parent_channels' | 'sms_intake_sessions' | 'opt_out_held_messages',
   run: () => Promise<T>,
 ): Promise<T> {
   await db.exec(`
-    create function refuse_update() returns trigger language plpgsql
+    create function refuse_write() returns trigger language plpgsql
       as $$ begin raise exception '${REFUSED}'; end $$;
-    create trigger refuse_update before update on ${table}
-      for each row execute function refuse_update();
+    create trigger refuse_write before ${operation} on ${table}
+      for each row execute function refuse_write();
   `);
   try {
     return await run();
   } finally {
-    await db.exec(`drop trigger refuse_update on ${table}; drop function refuse_update();`);
+    await db.exec(`drop trigger refuse_write on ${table}; drop function refuse_write();`);
   }
 }
 
 const withRevokeRefused = <T>(run: () => Promise<T>): Promise<T> =>
-  withUpdatesRefused('parent_channels', run);
+  withRefused('update', 'parent_channels', run);
+
+const unusedWriter: SaidLineWriter = {
+  write: async () => {
+    throw new Error('a stop is never written by the crisis writer');
+  },
+};
+
+function sweepDeps(reader: OptOutReader, transport: FakeTransport, now: Date): OptOutRecoveryDeps {
+  return {
+    reader,
+    transport,
+    saidLine: unusedWriter,
+    threadMessage: threadIfParent,
+    crisisPager: failurePageCrisisPager(db.database, { now, post: async () => 'sent' }),
+    preflight: async () => ({ proceed: true, health: null }),
+    now,
+  };
+}
 
 async function channelRevoked(parentUserId: string): Promise<boolean> {
   const [row] = await db.database
@@ -352,23 +375,10 @@ describe('the hold a failed stop leaves', () => {
     expect(await isSenderHeld(db.database, HASH())).toBe(true);
 
     const sweepTransport = new FakeTransport();
-    const unusedWriter: SaidLineWriter = {
-      write: async () => {
-        throw new Error('a stop is never written by the crisis writer');
-      },
-    };
-    const result = await recoverHeldOptOutReads(db.database, {
-      reader: { read: async () => STOP },
-      transport: sweepTransport,
-      saidLine: unusedWriter,
-      threadMessage: threadIfParent,
-      crisisPager: failurePageCrisisPager(db.database, {
-        now: NOW,
-        post: async () => 'sent',
-      }),
-      preflight: async () => ({ proceed: true, health: null }),
-      now: NOW,
-    });
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps({ read: async () => STOP }, sweepTransport, NOW),
+    );
 
     expect(result.outcomes.already_stopped).toBe(1);
     expect(await isSenderHeld(db.database, HASH())).toBe(false);
@@ -383,17 +393,12 @@ describe('the hold a failed stop leaves', () => {
     const family = await heldParent(text);
     const transport = new FakeTransport();
 
-    const outcome = await handleInboundSms(
-      db.database,
-      delivery(transport, text),
-      intakeDeps(STOP, transport, allowed(), {
-        optOutHold: {
-          hold: async () => {},
-          settled: async () => {
-            throw new Error('hold store down');
-          },
-        },
-      }),
+    const outcome = await withRefused('delete', 'opt_out_held_messages', () =>
+      handleInboundSms(
+        db.database,
+        delivery(transport, text),
+        intakeDeps(STOP, transport, allowed()),
+      ),
     );
 
     expect(outcome).toEqual({ status: 'stopped', ack: 'sent' });
@@ -416,7 +421,7 @@ describe('a reading that is not a stop', () => {
     const transport = new FakeTransport();
 
     await expect(
-      withUpdatesRefused('sms_intake_sessions', () =>
+      withRefused('update', 'sms_intake_sessions', () =>
         handleInboundSms(
           db.database,
           delivery(transport, text),
@@ -425,6 +430,190 @@ describe('a reading that is not a stop', () => {
       ),
     ).rejects.toThrow(REFUSED);
 
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+});
+
+describe('a stop read live that could not be recorded', () => {
+  const LATER = new Date(NOW.getTime() + 16 * 60_000);
+
+  async function failedLiveStop(text: string): Promise<void> {
+    const failing = new FakeTransport();
+    await expect(
+      withRevokeRefused(() =>
+        handleInboundSms(
+          db.database,
+          delivery(failing, text),
+          intakeDeps(STOP, failing, allowed()),
+        ),
+      ),
+    ).rejects.toThrow(REFUSED);
+  }
+
+  function readerOf(reading: OptOutReading): { reader: OptOutReader; asked: () => number } {
+    let asked = 0;
+    return {
+      reader: {
+        read: async () => {
+          asked += 1;
+          return reading;
+        },
+      },
+      asked: () => asked,
+    };
+  }
+
+  it('is recorded by the sweep without asking the model again, through a failed attempt', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = ownText();
+    const family = await heldParent(text);
+    await failedLiveStop(text);
+    const model = readerOf(NONE);
+    const transport = new FakeTransport();
+
+    const refused = await withRevokeRefused(() =>
+      recoverHeldOptOutReads(db.database, sweepDeps(model.reader, transport, NOW)),
+    );
+
+    expect(refused.outcomes.stop_failed).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+
+    const later = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, transport, LATER),
+    );
+
+    expect(later.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    expect(model.asked()).toBe(0);
+    expect(transport.sent).toEqual([]);
+  }, 30_000);
+
+  it('is not released by a redelivery the model reads as ordinary', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const text = ownText();
+    const family = await heldParent(text);
+    await failedLiveStop(text);
+    // Past the read cache, so the redelivery gets a fresh model read of the same words.
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 61_000);
+    const model = readerOf(NONE);
+    const redelivered = new FakeTransport();
+
+    await handleInboundSms(
+      db.database,
+      delivery(redelivered, text),
+      intakeDeps(NONE, redelivered, allowed(), { optOutReader: model.reader }),
+    );
+
+    expect(model.asked()).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+
+    const swept = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, new FakeTransport(), NOW),
+    );
+
+    expect(swept.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it('is released without a stop when the holder verified the number again after it', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const text = ownText();
+    const family = await heldParent(text);
+    await failedLiveStop(text);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ verifiedAt: NOW })
+      .where(eq(schema.parentChannels.userId, family.parentUserId));
+    const model = readerOf(NONE);
+
+    const swept = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, new FakeTransport(), NOW),
+    );
+
+    expect(swept.outcomes.stop_superseded).toBe(1);
+    expect(model.asked()).toBe(0);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it('cannot be cleared by the operator path', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const text = ownText();
+    await heldParent(text);
+    await failedLiveStop(text);
+
+    expect(await clearCollisionHold(db.database, HELD_ID)).toBe('not_a_collision_hold');
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+  }, 30_000);
+
+  it('still runs when marking the stop pending fails, and releases afterwards', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const text = ownText();
+    const family = await heldParent(text);
+    const transport = new FakeTransport();
+
+    const outcome = await withRefused('update', 'opt_out_held_messages', () =>
+      handleInboundSms(
+        db.database,
+        delivery(transport, text),
+        intakeDeps(STOP, transport, allowed()),
+      ),
+    );
+
+    expect(outcome).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    expect(transport.bodies()).toEqual([CONFIRMATION]);
+  }, 30_000);
+
+  it("never touches another number's hold on the same provider id", async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const text = ownText();
+    await heldParent(text);
+    const otherNumber = '+15555550192';
+    const transport = new FakeTransport();
+
+    const outcome = await handleInboundSms(
+      db.database,
+      transport.inbound(otherNumber, text, { providerId: HELD_ID, receivedAt: SENT_AT }),
+      intakeDeps(STOP, transport, allowed()),
+    );
+
+    expect(outcome).toEqual({ status: 'stopped', ack: 'sent' });
+    expect(transport.sent.map((sent) => sent.to)).toEqual([otherNumber]);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+    const [row] = await db.database
+      .select({ kind: schema.optOutHeldMessages.kind })
+      .from(schema.optOutHeldMessages)
+      .where(eq(schema.optOutHeldMessages.providerMessageId, HELD_ID));
+    expect(row?.kind).toBe(MESSAGE_HOLD);
+  }, 30_000);
+
+  it('still runs when a crisis reply to the same text was already sent', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const text = ownText();
+    const family = await heldParent(text);
+    await failedLiveStop(text);
+    expect(await noteCrisisReplySent(db.database, HELD_ID, NOW)).toBe('marked');
+    const model = readerOf(NONE);
+
+    const swept = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, new FakeTransport(), NOW),
+    );
+
+    expect(swept.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(swept.outcomes.crisis_already_answered).toBe(0);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
     expect(await isSenderHeld(db.database, HASH())).toBe(false);
   }, 30_000);
 });
