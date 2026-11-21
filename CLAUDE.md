@@ -30,6 +30,31 @@ Hale is a **planner for your kids' year** (**Find what's on. Hear how it went.**
 
 11. **An injected effect is required, or its absence is a first-class outcome.** Any dependency that sends, writes, enqueues, notifies or executes must be non-nullable — or, if it may genuinely be absent, its absence must be LOGGED and named in the return value (the channel adapters' `skipped: 'not_configured'`, the push channel's `disabled`, the dispatch's `channel_unavailable`). Never a silent no-op, and never folded into a bucket that means something else. Three of the eight P0s in the toddler audit were one shape — `transport: ChannelTransport | null` plus a result variant meaning "did the work, sent nothing" — so a caller that wants to compose without sending models that explicitly and visibly, not by withholding a dependency (VIL-262/267).
 
+## Dec 1 launch hard rules
+
+These sit on top of the Hale-specific hard rules above. If they conflict, this section wins. Only Barton's own quoted words approve a product or flag decision; record it in the Linear ticket.
+
+1. **Every message a human receives is fully AI-composed from facts.** No templates, skeletons, code-assembled prefixes, or fallbacks. **If the model cannot write it, send nothing** (and page #ops). The only exception is the OTP login text. This covers parents, caregivers, co-parents, and anyone else Hale texts.
+2. **No word lists, regex, or keyword matching to understand parent intent.** Use the model's meaning read. No character caps.
+3. **Linq only, never Twilio.**
+4. **No STOP or HELP** in messages or on the site.
+5. **No Sunday week-ahead** (retired). Use only the night-before and 1-hour-before reminders.
+6. **No referral program, no gift-a-year.**
+7. **Report registration honestly:** say "registered" only after the provider's confirmation.
+8. **Promo flags, Meta CAPI, payment flows A–F, and the weekly proactive cap stay off** until Barton says go in his own words.
+9. **Never print secrets.** Never run tests or evals with Production secrets loaded (no Prod `DATABASE_URL`, `SUPABASE_*`, `STRIPE_*`, `LINQ_*`, or Production `ANTHROPIC_API_KEY`). Paid evals use `ANTHROPIC_API_KEY_TEST` only. Develop with `--cached-only` / `--dry`, one paid run per PR, re-record only failures, and put `Eval spend: $X.XX` in the PR body.
+10. **Every new behavior ships behind a default-off flag** declared in `@hale/flags`, on only for the exact value `true`. No direct `process.env` flag reads. Test with the flag on and off.
+11. **Never use GitHub stacked PRs.** Never push to `main`. Do not merge; Barton reviews and merges after `scripts/ci/merge-ready.mjs` says ready, one PR at a time.
+12. **Group privacy:** say only what every member present may hear. Health and payment details only in DMs. One parent's inbox content is never shown to another parent.
+13. Raising a guard-test allowlist is forbidden (counts only go down) unless Barton's own words are in the PR body. Prompts load through `loadPrompt`, never inline. New DB-query tests use pglite. If a migration is needed, pick the number with `pnpm db:next-migration` after fetching `origin/main`.
+
+## Mac setup (Claude Code on a fresh clone)
+
+- Clone `villagehale/hale`, check out the ticket's branch (or `main` for unstarted work), then `pnpm install`.
+- Copy `.env.example` to `.env.local` and fill **local/dev values only**. Never load a Production env dump or `vercel env pull` from production into the shell that runs tests.
+- Run only the tests you touched, one job at a time: `cd apps/web && pnpm exec vitest run --maxWorkers=1 <files>`. For web typecheck, use `NODE_OPTIONS=--max-old-space-size=8192`.
+- Evals: `pnpm --filter @hale/worker eval:<name>` with `--cached-only` or `--dry` first. Do not record a paid eval unless Barton says so for that PR.
+
 ## Stack reminder
 
 - Language: TypeScript 5.x strict
