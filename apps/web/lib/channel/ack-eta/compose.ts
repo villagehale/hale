@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { QUESTION_MARKS, type ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, linkAttemptKind, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -73,9 +73,9 @@ export interface AckLineWriter {
 
 /**
  * Mechanical reasons a line cannot go out, fed back on the next attempt. A link and a
- * question mark are facts about Hale's own line in any language: an ack asks nothing, and a
- * question in it would invite a bare yes that another lane could claim. Everything about
- * meaning is the judge's.
+ * question mark are facts about Hale's own line: an ack asks nothing, and a question in it
+ * would invite a bare yes that another lane could claim. Everything about meaning is the
+ * judge's.
  */
 export function mechanicalProblems(line: string, attempt: number): AckLineProblem[] {
   if (line === '') return ['empty'];
@@ -84,7 +84,7 @@ export function mechanicalProblems(line: string, attempt: number): AckLineProble
     noteLinkGate('ack-eta', linkAttemptKind(attempt + 1, MAX_COMPOSE_ATTEMPTS));
     found.push('carries_link');
   }
-  if (line.includes('?') || line.includes('？')) found.push('asks_a_question');
+  if ([...line].some((char) => QUESTION_MARKS.has(char))) found.push('asks_a_question');
   return found;
 }
 

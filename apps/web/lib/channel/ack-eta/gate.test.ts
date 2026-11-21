@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { plainText } from '~/lib/channel/coach/reply';
 import { mechanicalProblems } from './compose';
 import { type AckJudgeVerdict, ackMeaningProblems } from './judge';
 
@@ -14,9 +15,11 @@ describe('mechanicalProblems', () => {
     ['On it, back to you within five minutes.', []],
     ['On it. Want me to look wider?', ['asks_a_question']],
     ['我在查，五分钟内回复你？', ['asks_a_question']],
+    ['أبحث الآن، هل تريد أن أوسّع البحث؟', ['asks_a_question']],
+    ['أعمل على ذلك وسأعود إليك خلال خمس دقائق.', []],
     ['On it, details at example.com soon.', ['carries_link']],
   ])('%j -> %j', (line, expected) => {
-    expect(mechanicalProblems(line, 0)).toEqual(expected);
+    expect(mechanicalProblems(plainText(line), 0)).toEqual(expected);
   });
 });
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
+  QUESTION_MARKS,
   type ReplyLanguage,
   acceptReplyLanguage,
   certainLanguageHint,
@@ -1496,9 +1497,6 @@ export function assembleFriendBody(
   if (typeof link === 'string' && link.startsWith('https://')) body = `${body}\n${link}`;
   return body;
 }
-
-/** Question marks in every script the parent may write in: ? (Latin), ？ (CJK full-width), ؟ (Arabic). */
-const QUESTION_MARKS = new Set(['?', '\uFF1F', '\u061F']);
 
 function questionMarks(text: string): number {
   const prose = text.replace(/https?:\/\/\S+/g, '');

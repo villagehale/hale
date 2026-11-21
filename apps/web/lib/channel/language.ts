@@ -57,3 +57,9 @@ export function localeFor(language: ReplyLanguage | null | undefined): string {
   if (tag === 'fr') return 'fr-CA';
   return tag;
 }
+
+/**
+ * The question marks a gate on Hale's own line can read as characters: ? (Latin), ？ (CJK
+ * full-width), ؟ (Arabic script). Greek's mark is a semicolon, so it cannot be one of them.
+ */
+export const QUESTION_MARKS: ReadonlySet<string> = new Set(['?', '\uFF1F', '\u061F']);
