@@ -24,8 +24,9 @@ import { LinqSendError } from './transport';
 /**
  * Group onboarding v2 — say one who's-who line into the group.
  *
- * The model writes it (`composeVoice`, skill `group-onboarding-voice`); code owns the
- * facts and the ledger. Claim, send, stamp: the `channel_messages` row is the claim, so a
+ * The model writes it (`composeVoice`, skill `group-onboarding-voice`, or `group-join-intro`
+ * for the VIL-727 join intro, named by the line's `skill`); code owns the facts and the
+ * ledger. Claim, send, stamp: the `channel_messages` row is the claim, so a
  * line goes out at most once per dedupe key, and `sms_reply_sent` is audited only after
  * it lands. A line the model could not write is retried once, then `group_line_unsent`:
  * nothing is sent, Slack #ops is paged, and the claim is not spent so the next inbound
@@ -97,11 +98,41 @@ function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: strin
   return null;
 }
 
-function lineUsable(line: string, input: GroupOnboardingLine): boolean {
+/** Question marks in Hale's own line, the full-width one included (a CJK question). */
+function questionMarks(line: string): number {
+  return [...line].filter((ch) => ch === '?' || ch === '？').length;
+}
+
+/**
+ * A token from a household's private slice (a kid's name, a memory value, a mail subject)
+ * in Hale's own line. A shared group is read by every household, so a line carrying one
+ * is not sent; the same check `sharedLineUsable` runs on every shared-group line.
+ */
+function carriesDenied(line: string, deny: readonly string[]): boolean {
+  const folded = line.toLowerCase();
+  return deny.some((token) => {
+    const needle = token.trim();
+    return needle.length >= 3 && folded.includes(needle.toLowerCase());
+  });
+}
+
+function lineUsable(
+  line: string,
+  input: GroupOnboardingLine,
+  deny: readonly string[] = [],
+): boolean {
   // VIL-438: the member welcome has no word or punctuation gate. Whether it carries
   // the facts is the model's (and the eval judge's) call, not a string match.
   if (hasLinkShape(line)) noteLinkGate('group-onboarding', 'refused');
   if (input.kind === 'member_welcome') return line.trim().length > 0 && !hasLinkShape(line);
+  if (input.kind === 'join_intro') {
+    // VIL-727: one ask per message (voice rule 5), so an intro that asks has exactly one
+    // question and one that does not ask has none. Whether it carries the claims, and
+    // nothing beyond them, is the model's and the eval judge's call.
+    if (line.trim().length === 0 || questionMarks(line) !== input.questions) return false;
+    if (hasLinkShape(line) || carriesDenied(line, deny)) return false;
+    return input.mustMention.every((slot) => line.includes(slot));
+  }
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
   if (hasLinkShape(line)) return false;
@@ -121,7 +152,7 @@ function productionComposer(
   if (!process.env.ANTHROPIC_API_KEY || !isEnabled('voice')) return undefined;
   return {
     async compose(input, options) {
-      const skill = await loadCronSkill('group-onboarding-voice');
+      const skill = await loadCronSkill(input.skill);
       const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       if (scope) {
         const composed = await composeVoice({
@@ -189,6 +220,7 @@ async function speak(
   language: ReplyLanguage,
   parentWords: string | null,
   scope: { familyId: string; database: Database } | undefined,
+  deny: readonly string[] = [],
 ): Promise<SpokenGroupLine> {
   const input = groupOnboardingLineInput(request, language, { parentWords });
   const composer = voice ?? productionComposer(scope);
@@ -200,7 +232,7 @@ async function speak(
   for (const prompt of ['full', 'short'] as const) {
     try {
       const composed = await composer.compose(input, { prompt });
-      if (lineUsable(composed.line, input)) {
+      if (lineUsable(composed.line, input, deny)) {
         return {
           body: composed.line,
           source: prompt === 'full' ? 'composed' : 'retry',
@@ -239,6 +271,8 @@ export async function composeOnboardingLine(
     parentWords?: string | null;
     templateKey: string;
     voice: GroupOnboardingComposer | undefined;
+    /** Private tokens of every household present, for a line a shared group reads. */
+    deny?: readonly string[];
   },
 ): Promise<
   | { body: string; source: GroupLineSource }
@@ -254,6 +288,7 @@ export async function composeOnboardingLine(
       familyId: input.familyId,
       database,
     },
+    input.deny ?? [],
   );
   if (spoken.source === 'unsent') {
     const fallback = spoken.fallback ?? 'unusable';

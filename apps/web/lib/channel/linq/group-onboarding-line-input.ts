@@ -9,6 +9,82 @@ import type { ReplyLanguage } from '../language';
 
 export const GROUP_ONBOARDING_SKILL = 'group-onboarding-voice';
 
+/**
+ * VIL-727 — the join intro has a skill of its own, so the onboarding lines' prompt (and
+ * every recording keyed on it) is unchanged.
+ */
+export const GROUP_JOIN_INTRO_SKILL = 'group-join-intro';
+
+export type GroupOnboardingSkill = typeof GROUP_ONBOARDING_SKILL | typeof GROUP_JOIN_INTRO_SKILL;
+
+/**
+ * VIL-727 — the ground rules a join intro may state, in the order they are said. Code
+ * decides which of them are true for the behaviour that ships today
+ * ({@link groupJoinIntroClaims}); one that is not true is left out of the list, so the
+ * model never hears it and cannot say it.
+ */
+export const GROUP_JOIN_INTRO_CLAIMS = [
+  'reads_this_chat',
+  'email_never_shown',
+  'speaks_when_called',
+  'private_goes_direct',
+  'anyone_can_remove',
+] as const;
+
+export type GroupJoinIntroClaim = (typeof GROUP_JOIN_INTRO_CLAIMS)[number];
+
+/**
+ * Who the intro asks, if anyone: each person who they are in this family (a household
+ * group with people Hale has not asked yet), who they are and which kid they are with (a
+ * group several families share), or nobody (everyone here is already known).
+ */
+export type GroupJoinIntroAsk = 'none' | 'who_in_family' | 'who_and_kid';
+
+export type GroupJoinIntroAudience = 'household' | 'shared';
+
+/**
+ * Apple lets a member remove someone from a group iMessage only when the group has four
+ * or more people, all on Apple devices (support.apple.com/108303). A Linq line is only
+ * ever in an iMessage group, and Hale is one of the four, so it takes three other people.
+ */
+export const MIN_OTHER_PEOPLE_TO_REMOVE_HALE = 3;
+
+/**
+ * The claims that are true today, in their fixed order. Pure: the caller reads the flags
+ * and counts the people.
+ *
+ * - `reads_this_chat`: Hale reads every message in a group it is in (the opt-out read, the
+ *   turn read and the roster read all see each one).
+ * - `email_never_shown`: a group turn never gets mail (VIL-439 drops inbox items and
+ *   inbox-built memory before the model runs). The one exception is the provider
+ *   time-change notice (`GROUP_MAIL_NOTICE_ENABLED`), which posts a fact read from mail
+ *   into the household group, so while it is live the claim is left out.
+ * - `speaks_when_called` and `private_goes_direct`: a household group is answered only on
+ *   the AI turn read (addressed, or a question only Hale could answer), and that turn's
+ *   coach keeps private things out of the group; dark, Hale is silent there and neither
+ *   claim is made. A shared group's turn is always the model's read, and private things
+ *   go to that family's own 1:1 (VIL-457) or are never read.
+ * - `anyone_can_remove`: {@link MIN_OTHER_PEOPLE_TO_REMOVE_HALE}. `otherPeople` counts
+ *   the numbers code knows, so a member on an email handle is not counted: a low count
+ *   leaves the claim out rather than risk saying it in a group too small for it.
+ */
+export function groupJoinIntroClaims(input: {
+  audience: GroupJoinIntroAudience;
+  otherPeople: number;
+  turnReaderLive: boolean;
+  mailNoticeLive: boolean;
+}): GroupJoinIntroClaim[] {
+  const answersWhenCalled = input.audience === 'shared' || input.turnReaderLive;
+  const holds: Record<GroupJoinIntroClaim, boolean> = {
+    reads_this_chat: true,
+    email_never_shown: !input.mailNoticeLive,
+    speaks_when_called: answersWhenCalled,
+    private_goes_direct: answersWhenCalled,
+    anyone_can_remove: input.otherPeople >= MIN_OTHER_PEOPLE_TO_REMOVE_HALE,
+  };
+  return GROUP_JOIN_INTRO_CLAIMS.filter((claim) => holds[claim]);
+}
+
 export type RoleWordKey =
   | 'mom'
   | 'dad'
@@ -44,12 +120,26 @@ export type GroupOnboardingRequest =
       /** VIL-438 (T22): first message to someone a parent added. Facts only. */
       kind: 'member_welcome';
       adderName: string | null;
+    }
+  | {
+      /**
+       * VIL-727: what Hale says when it joins a group: who it is, the ground rules that
+       * are true today, and (when someone has not been asked yet) who they are.
+       */
+      kind: 'join_intro';
+      audience: GroupJoinIntroAudience;
+      /** A household group: the parent Hale is there for. Never set for a shared group. */
+      knownParentName: string | null;
+      /** A shared group: who added Hale, when known. No household is named as the owner. */
+      adderName: string | null;
+      claims: readonly GroupJoinIntroClaim[];
+      ask: GroupJoinIntroAsk;
     };
 
 export type GroupOnboardingKind = GroupOnboardingRequest['kind'];
 
 export interface GroupOnboardingLine {
-  skill: typeof GROUP_ONBOARDING_SKILL;
+  skill: GroupOnboardingSkill;
   kind: GroupOnboardingKind;
   language: ReplyLanguage;
   address: 'vous' | 'tu';
@@ -172,5 +262,26 @@ export function groupOnboardingLineInput(
         mustMention: [],
         wayOut: true,
       };
+    case 'join_intro': {
+      // VIL-727. Facts only: whose family a household group is (a shared group names no
+      // household), who added Hale to a shared group, the ground rules code checked are
+      // true today, and whether to ask who people are. Nothing about any child, plan, or
+      // inbox is here, so nothing about them can be said to everyone in the chat.
+      const household = request.audience === 'household';
+      return {
+        ...base,
+        skill: GROUP_JOIN_INTRO_SKILL,
+        facts: {
+          audience: request.audience,
+          knownParentName: household ? request.knownParentName : null,
+          adderName: household ? null : request.adderName,
+          claims: [...request.claims],
+          ask: request.ask,
+        },
+        questions: request.ask === 'none' ? 0 : 1,
+        // Hale's own name, as roster_ask carries it, and the parent a household group is for.
+        mustMention: ['Hale', ...(household ? named(request.knownParentName) : [])],
+      };
+    }
   }
 }

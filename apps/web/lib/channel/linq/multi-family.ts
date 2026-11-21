@@ -17,6 +17,7 @@ import {
   withSharedListLock,
 } from '~/lib/channel/lists/shared-group-lists';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { readParentCopyLanguage } from '~/lib/channel/parent-language';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { type SpokenLineRequest, speak as speakLine } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -34,7 +35,11 @@ import {
   latestCommonTimeProposal,
   placePickedTime,
 } from './common-time-plan';
-import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
+import {
+  groupJoinIntroEnabled,
+  linqGroupCommonTimeEnabled,
+  linqMultiFamilyGroupsEnabled,
+} from './config';
 import { linqChatAuditKey } from './family-audit';
 import {
   FREE_BUSY_CONSENT,
@@ -42,6 +47,8 @@ import {
   latestFreeBusyRows,
   withdrawFreeBusyConsent,
 } from './free-busy-consent';
+import { liveGroupJoinIntroClaims } from './group-join-intro';
+import { type GroupOnboardingComposer, composeOnboardingLine } from './group-onboarding-voice';
 import type { GroupFamilyDirectory } from './group-plan-invites';
 import {
   type PrivateAsideModel,
@@ -154,6 +161,8 @@ export interface MultiFamilyTurnPorts {
   santaTurn?: SecretSantaTurnModel;
   /** VIL-686: writes the Secret Santa group lines. Production: the secret-santa-line skill. */
   santaLine?: SecretSantaLineWriter;
+  /** VIL-727: writes the join intro. Production: the group-join-intro skill. */
+  joinIntroVoice?: GroupOnboardingComposer;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -1153,6 +1162,63 @@ async function speak(
     text: spoken.body,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
+    now: input.now,
+    send: input.ports.send,
+  });
+}
+
+/**
+ * VIL-727 — lit, Hale's first line in a group several families share is the join intro.
+ * Every household hears it, so it names none of them: only who added Hale (the one fact
+ * the old intro had), the ground rules that are true today, and one ask, who each person
+ * is and which kid they are with. It clears the same deny list every shared line clears,
+ * and takes the same once-per-chat claim (`INTRO_TEMPLATE`), so a chat that already heard
+ * the old intro never hears a second one. Nothing has been said in the chat yet, so the
+ * language is the host parent's. A line the model cannot write sends nothing: the
+ * composer audits `group_line_unsent` and pages #ops.
+ */
+async function speakJoinIntro(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    adderName: string | null;
+    otherPeople: number;
+    now: Date;
+    ports: MultiFamilyTurnPorts;
+  },
+): Promise<NoticeResult> {
+  const deny = await denyListForChat(database, input.chatId);
+  const language =
+    input.ports.language ??
+    (await readParentCopyLanguage(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+    }));
+  const spoken = await composeOnboardingLine(database, {
+    familyId: input.familyId,
+    request: {
+      kind: 'join_intro',
+      audience: 'shared',
+      knownParentName: null,
+      adderName: input.adderName,
+      claims: liveGroupJoinIntroClaims({ audience: 'shared', otherPeople: input.otherPeople }),
+      ask: 'who_and_kid',
+    },
+    language,
+    templateKey: INTRO_TEMPLATE,
+    voice: input.ports.joinIntroVoice,
+    deny,
+  });
+  if ('outcome' in spoken) return 'refused_text';
+  return deliverShared(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    chatId: input.chatId,
+    text: spoken.body,
+    templateKey: INTRO_TEMPLATE,
+    dedupeKey: `${INTRO_TEMPLATE}:${input.chatId}`,
     now: input.now,
     send: input.ports.send,
   });
@@ -2207,19 +2273,30 @@ export async function noticeSharedGroupAdded(
         now: input.now,
       })
     : null;
-  const notice = await speak(database, {
-    familyId: host.familyId,
-    parentUserId: host.parentUserId,
-    chatId: input.chatId,
-    request: { kind: 'intro', adderFirstName: adder?.firstName ?? null },
-    language: ports.language ?? 'en',
-    parentWords: null,
-    threadTexts: [],
-    templateKey: INTRO_TEMPLATE,
-    dedupeKey: `${INTRO_TEMPLATE}:${input.chatId}`,
-    now: input.now,
-    ports,
-  });
+  const notice = groupJoinIntroEnabled()
+    ? await speakJoinIntro(database, {
+        familyId: host.familyId,
+        parentUserId: host.parentUserId,
+        chatId: input.chatId,
+        adderName: adder?.firstName ?? null,
+        // A STOP tombstone keeps no number: that person left, so only live numbers count.
+        otherPeople: people.filter((row) => row.phoneE164Encrypted !== null).length,
+        now: input.now,
+        ports,
+      })
+    : await speak(database, {
+        familyId: host.familyId,
+        parentUserId: host.parentUserId,
+        chatId: input.chatId,
+        request: { kind: 'intro', adderFirstName: adder?.firstName ?? null },
+        language: ports.language ?? 'en',
+        parentWords: null,
+        threadTexts: [],
+        templateKey: INTRO_TEMPLATE,
+        dedupeKey: `${INTRO_TEMPLATE}:${input.chatId}`,
+        now: input.now,
+        ports,
+      });
   return {
     handled: true,
     outcome: 'intro',

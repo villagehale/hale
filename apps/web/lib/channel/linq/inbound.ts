@@ -47,6 +47,7 @@ import type { CarpoolComposer } from './carpool-voice';
 import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
   groupExperienceTurnEnabled,
+  groupJoinIntroEnabled,
   groupPollsEnabled,
   linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
@@ -103,6 +104,7 @@ import {
 } from './group-experience';
 import type { GroupExperienceReader } from './group-experience/reading';
 import type { GroupExperienceComposer } from './group-experience/voice';
+import { introduceOrAskRoster } from './group-join-intro';
 import {
   holdTrueStrangerOnce,
   retryMemberWelcome,
@@ -154,7 +156,7 @@ import {
 } from './payload';
 import { isYearFindPollNone, lookupLinqPollOption } from './poll';
 import { type ListChatHandles, ensureRoster, groupRosterTrigger, startGroupRoster } from './roster';
-import { askParticipantAdded, askRoster, sayNoFamilyYet } from './roster-ask';
+import { askParticipantAdded, sayNoFamilyYet } from './roster-ask';
 import type { RosterReading } from './roster-reading';
 import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './roster-stop';
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
@@ -601,6 +603,8 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
     send: deps.sendGroupText,
     listHandles: deps.listChatHandles,
     composer: deps.sharedGroupVoice,
+    // VIL-727: the join intro is an onboarding-composer line in a shared group too.
+    joinIntroVoice: deps.groupVoice,
     santaTurn: deps.secretSantaTurn,
     santaLine: deps.secretSantaLine,
   };
@@ -1389,7 +1393,8 @@ async function claimGroupFromTrigger(
       await deps.countOutcome('intake');
       return json({ outcome: 'group_claimed', claim: claim.status, roster: roster.outcome });
     }
-    const ask = await askRoster(deps.database, { chatId: message.chatId, ...ports });
+    // VIL-727: lit, the line Hale says on the claim is the join intro; dark, roster_ask.
+    const ask = await introduceOrAskRoster(deps.database, { chatId: message.chatId, ...ports });
     deps.log.info(
       { outcome: 'group_claimed', claim: claim.status, roster: roster.outcome, ask: ask.outcome },
       'linq inbound: group claim',
@@ -1586,9 +1591,12 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       now: ports.now,
       listHandles: ports.listHandles,
     });
+    // VIL-727: lit, Hale's join line is the intro, also where everyone is already known
+    // (`confirmed`, where dark says nothing). Dark, only an askable roster is asked.
     const said =
-      roster.outcome === 'roster_matched' && roster.status === 'roles_proposed'
-        ? await askRoster(deps.database, { chatId: rosterTrigger.chatId, ...ports })
+      roster.outcome === 'roster_matched' &&
+      (roster.status === 'roles_proposed' || groupJoinIntroEnabled())
+        ? await introduceOrAskRoster(deps.database, { chatId: rosterTrigger.chatId, ...ports })
         : roster.outcome === 'roster_no_family'
           ? await sayNoFamilyYet(deps.database, { chatId: rosterTrigger.chatId, ...ports })
           : null;

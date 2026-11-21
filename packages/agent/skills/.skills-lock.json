@@ -319,6 +319,10 @@
     "file": "group-experience-voice.md",
     "sha256": "fe8caaaf6895d8ff9afa467a0aa493009c59b402e306aca6a2ab62ae93a4054e"
   },
+  "group-join-intro.md": {
+    "file": "group-join-intro.md",
+    "sha256": "647caff2dec3d1fb7a89fc14210a9e1aaacb6c75842a38699a6803a4f6cb4ad3"
+  },
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
