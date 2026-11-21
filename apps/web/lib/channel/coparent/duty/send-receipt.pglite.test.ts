@@ -20,6 +20,7 @@ import { acknowledgeDutyWrite } from './ack';
 import {
   type DutyDirectTarget,
   type DutySendPorts,
+  defaultDutySendPorts,
   deliverDutyDirectLines,
   deliverDutyGroupLine,
   planFamilyDutyAsks,
@@ -64,6 +65,9 @@ const PHONE_TWENTY_FIVE = '+15555550125';
 const PHONE_TWENTY_SIX = '+15555550126';
 const PHONE_TWENTY_SEVEN = '+15555550127';
 const PHONE_TWENTY_EIGHT = '+15555550128';
+const PHONE_TWENTY_NINE = '+15555550129';
+const PHONE_THIRTY = '+15555550130';
+const HALE_LINE = '+15555550100';
 
 let db: TestDb;
 
@@ -380,6 +384,43 @@ function observingFetch(familyId: string) {
     return new Response(JSON.stringify({ message: { id: 'out-air' } }), { status: 201 });
   });
   return { fetch: fetchMock as unknown as typeof fetch, during };
+}
+
+/**
+ * Linq as its docs state it: a key it has seen "returns the original response instead of
+ * sending again". `loseAnswerTo`: that number's first send lands, then the answer is lost.
+ */
+function keyHonouringLinq(loseAnswerTo: string) {
+  const chats = new Map<string, string>();
+  const firstAnswer = new Map<string, string>();
+  const posts: Array<{ to: string; key: string; bubble: boolean; messageId: string }> = [];
+  let lost = false;
+  const fetchFake = async (url: RequestInfo | URL, init?: RequestInit) => {
+    const { pathname, searchParams } = new URL(String(url));
+    if (init?.method === 'GET') {
+      const chatId = chats.get(searchParams.get('to') ?? '');
+      return Response.json({ chats: chatId ? [{ id: chatId, is_group: false }] : [] });
+    }
+    const { to, message } = JSON.parse(String(init?.body));
+    const phone: string = to?.[0] ?? [...chats].find(([, id]) => pathname.includes(`/${id}/`))?.[0];
+    const key: string = message.idempotency_key;
+    const seen = firstAnswer.get(key);
+    const messageId = seen ?? `linq-wire-${firstAnswer.size + 1}`;
+    firstAnswer.set(key, messageId);
+    posts.push({ to: phone, key, bubble: !seen, messageId });
+    if (!chats.has(phone)) chats.set(phone, `chat-wire-${chats.size + 1}`);
+    if (!seen && phone === loseAnswerTo && !lost) {
+      lost = true;
+      throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    }
+    return Response.json(
+      pathname.endsWith('/messages')
+        ? { message: { id: messageId } }
+        : { chat: { id: chats.get(phone), message: { id: messageId } } },
+      { status: 201 },
+    );
+  };
+  return { fetch: fetchFake as typeof fetch, posts };
 }
 
 describe('a duty ask is sent only once Linq accepts it', () => {
@@ -1195,6 +1236,45 @@ describe('one ask across sweeps', () => {
       '1 unanswered',
     );
     expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({ unanswered: 1 });
+  });
+
+  it('a plain-text resend that landed with its answer lost is not texted again', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', HALE_LINE);
+    const family = await splitFamilyOnOneToOnes('plain-resend', [PHONE_TWENTY_NINE, PHONE_THIRTY]);
+    const linq = keyHonouringLinq(PHONE_TWENTY_NINE);
+    const realDirect = defaultDutySendPorts().sendDirect;
+    if (!realDirect) throw new Error('the default ports have no 1:1 door');
+    const sendPorts = directPorts(
+      (input) => realDirect({ ...input, fetch: linq.fetch }),
+      onlyFamily(family.familyId),
+    );
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(`${SPLIT_TEXT} https://example.test/rink`),
+      });
+
+    await sweep(AFTERNOON);
+    await sweep(later(1, AFTERNOON));
+
+    const toFirst = linq.posts.filter((post) => post.to === PHONE_TWENTY_NINE);
+    expect(toFirst.map((post) => post.bubble)).toEqual([true, false]);
+    expect(toFirst[1]?.key).toBe(toFirst[0]?.key);
+    expect(
+      linq.posts.filter((post) => post.to === PHONE_THIRTY).map((post) => post.bubble),
+    ).toEqual([true]);
+    const legs = (await outRows(family.familyId)).filter(
+      (row) => row.parentUserId === family.parentUserId,
+    );
+    expect(legs.map((row) => [row.status, row.errorCode])).toEqual([
+      ['failed', 'unconfirmed:timeout'],
+      ['sent', null],
+    ]);
+    expect(legs[1]?.providerMessageId).toBe(toFirst[0]?.messageId);
   });
 
   describe('a throw after the first parent was accepted, before the question was noted', () => {
