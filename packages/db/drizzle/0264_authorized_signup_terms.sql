@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS "authorized_signup_terms" (
     AND ("approved" IS NULL) = ("approving_message_id" IS NULL)
   )
 );--> statement-breakpoint
+ALTER TABLE "authorized_signup_terms" ADD COLUMN IF NOT EXISTS "prerequisite_asked_seq" bigint;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "authorized_signup_terms_offer_uniq"
   ON "authorized_signup_terms" ("offer_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "authorized_signup_terms_family_idx"
