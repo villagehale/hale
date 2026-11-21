@@ -231,6 +231,7 @@ describe('VIL-399 a private question goes to the asking household only', () => {
 
   it("positive control: the asker's own household hears it 1:1", async () => {
     const fresh = await twoFamilies();
+    await seedTextedHale(db.database, { ...fresh.b, at: NOW });
     const w = wire();
     const out = await considerGroupExperience(
       {

@@ -145,6 +145,7 @@ export async function considerGroupExperience(
       settleCalendar: calendarSettle(ports, input.chatId),
       moveCalendar: calendarMove(ports, input.chatId),
       mayOpenOneToOne: (familyId) => mayOpenLinkOneToOne(ports.database, input.chatId, familyId),
+      mayAnswerOneToOne: (userId) => textedHaleOneToOne(ports.database, userId),
       sendOneToOne:
         ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now, ports.oneToOne),
       privateSlices: async (familyIds) => {

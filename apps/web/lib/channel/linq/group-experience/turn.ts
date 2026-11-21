@@ -58,7 +58,9 @@ export type GroupExperienceTurnOutcome =
         | 'group_experience_line_unsent'
         | 'group_experience_1to1';
       count: 'ignored' | 'intake';
-      notice?: 'sent' | { skipped: GroupExperienceVoiceSkip | 'not_sent' | 'asker_unknown' };
+      notice?:
+        | 'sent'
+        | { skipped: GroupExperienceVoiceSkip | 'not_sent' | 'asker_unknown' | 'never_texted' };
       card?: 'sent' | { skipped: string };
       /** Households this turn texted 1:1. */
       texted?: string[];
@@ -130,6 +132,11 @@ export interface GroupExperienceTurnPorts {
    * (or owns it) and its parent has texted Hale themselves. Absent: no link 1:1 is sent.
    */
   mayOpenOneToOne?: (familyId: string) => Promise<boolean>;
+  /**
+   * Whether Hale may answer this asker 1:1: an answer there is Hale opening the thread, so only
+   * with a parent who has texted Hale themselves. Absent: no private answer is sent.
+   */
+  mayAnswerOneToOne?: (userId: string) => Promise<boolean>;
   /** The asking household's own slice, for its 1:1 answer only. */
   privateSlices?: (familyIds: readonly string[]) => Promise<FamilyPrivateSlice[]>;
   /** Terms no group line may carry. Production: every household's, via denyListForChat. */
@@ -1038,20 +1045,22 @@ async function movePrivate(
       notice: { skipped: 'asker_unknown' },
     };
   }
-  const spoken = await speak(ports, input, 'private_hold', {}, 0, 'group', deny);
-  if (spoken.status === 'composed') {
-    const notice = await sendGroup(ports, input, spoken.line);
-    if (notice !== 'sent') {
-      return {
-        handled: true,
-        outcome: 'group_experience_line_unsent',
-        count: 'ignored',
-        notice: { skipped: 'not_sent' },
-      };
-    }
-  } else {
-    // Model miss or a private leak: stay quiet in the group, still try 1:1.
+  if (!input.senderUserId || !(await ports.mayAnswerOneToOne?.(input.senderUserId))) {
+    console.info(
+      { outcome: 'group_experience_private_never_texted' },
+      'group experience: this asker has not texted Hale 1:1, no private answer and no promise',
+    );
+    return {
+      handled: true,
+      outcome: 'group_experience_line_unsent',
+      count: 'ignored',
+      notice: { skipped: 'never_texted' },
+    };
   }
+  // The group line is a courtesy: a model miss, a leak or a held send never costs the answer.
+  const spoken = await speak(ports, input, 'private_hold', {}, 0, 'group', deny);
+  const heldInGroup =
+    spoken.status === 'composed' && (await sendGroup(ports, input, spoken.line)) === 'sent';
   const slices = ports.privateSlices ? await ports.privateSlices([targetFamilyId]) : [];
   const own = slices[0];
   const oneToOne = await speak(
@@ -1083,12 +1092,21 @@ async function movePrivate(
       dedupeKey: `group-private:${input.chatId}:${targetFamilyId}:${input.now.toISOString()}`,
       askerUserId: input.senderUserId,
     });
-    return {
-      handled: true,
-      outcome: delivered === 'sent' ? 'group_experience_1to1' : 'group_experience_spoken',
-      count: 'intake',
-      notice: 'sent',
-    };
+    if (delivered === 'sent') {
+      return {
+        handled: true,
+        outcome: 'group_experience_1to1',
+        count: 'intake',
+        notice: heldInGroup ? 'sent' : { skipped: 'not_sent' },
+      };
+    }
   }
-  return { handled: true, outcome: 'group_experience_spoken', count: 'intake' };
+  return heldInGroup
+    ? { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' }
+    : {
+        handled: true,
+        outcome: 'group_experience_line_unsent',
+        count: 'ignored',
+        notice: { skipped: 'not_sent' },
+      };
 }

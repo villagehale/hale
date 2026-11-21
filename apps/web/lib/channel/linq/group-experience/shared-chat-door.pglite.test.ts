@@ -200,7 +200,8 @@ describe('VIL-399 group moments in a chat several families share', () => {
   });
 
   it('a private question moves to the asker 1:1 and is not answered in the group', async () => {
-    await seedFamily(PARENT_A, 'Ada');
+    const asker = await seedFamily(PARENT_A, 'Ada');
+    await seedTextedHale(db.database, { ...asker, at: NOW });
     await seedFamily(PARENT_B, 'Bao');
     const out = await say(
       'does the snack have peanuts? Mira is allergic',
@@ -210,6 +211,22 @@ describe('VIL-399 group moments in a chat several families share', () => {
     expect(out.group).toEqual(['moment:private_hold']);
     expect(out.dm).toEqual([PARENT_A]);
     expect(out.reads).toHaveLength(1);
+  });
+
+  it('an asker who never texted Hale gets no cold 1:1 and no group promise of one', async () => {
+    await seedFamily(PARENT_A, 'Ada');
+    await seedFamily(PARENT_B, 'Bao');
+    const out = await say(
+      'does the snack have peanuts? Mira is allergic',
+      'question',
+      'private_question',
+    );
+    expect(out.dm).toEqual([]);
+    expect(out.group).toEqual([]);
+    expect(out.body).toMatchObject({
+      outcome: 'group_experience_line_unsent',
+      notice: { skipped: 'never_texted' },
+    });
   });
 
   it('positive control: plain chatter for neither still gets the shared answer once', async () => {

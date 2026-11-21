@@ -277,6 +277,7 @@ describe('takeGroupExperienceTurn', () => {
           oneToOne.push({ familyId: input.familyId, text: input.text });
           return 'sent';
         },
+        mayAnswerOneToOne: async () => true,
         privateSlices: async () => [
           {
             familyId: FAMILY,
@@ -294,6 +295,52 @@ describe('takeGroupExperienceTurn', () => {
     expect(result).toMatchObject({ handled: true, outcome: 'group_experience_1to1' });
     expect(group).toEqual(['I will text you.']);
     expect(oneToOne).toEqual([{ familyId: FAMILY, text: 'Noted on Mira.' }]);
+  });
+
+  it('a held group line does not cost the asker their private answer', async () => {
+    vi.stubEnv('GROUP_PRIVATE_QUESTION_ENABLED', 'true');
+    const oneToOne: string[] = [];
+    const result = await takeGroupExperienceTurn(
+      {
+        chatId: CHAT,
+        familyId: FAMILY,
+        senderHandle: '+15555550111',
+        senderUserId: 'user-1',
+        senderName: 'Priya',
+        senderFamilyId: FAMILY,
+        text: 'does the snack have peanuts?',
+        messageId: 'm-held',
+        language: 'en',
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      {
+        database: {} as never,
+        reader: { read: async () => reading({ kind: 'private_question' }) },
+        composer: fakeGroupExperienceComposer({
+          body: (input) => (input.kind === 'private_hold' ? 'I will text you.' : 'Your answer.'),
+        }),
+        store: memoryStore(),
+        plans: stubPlans(),
+        sendLine: async () => {
+          throw new Error('held by the family-chat floor');
+        },
+        sendOneToOne: async (input) => {
+          oneToOne.push(input.text);
+          return 'sent';
+        },
+        mayAnswerOneToOne: async () => true,
+        privateSlices: async () => [],
+        deny: async () => [],
+        households: async () => [FAMILY],
+      },
+    );
+    expect(oneToOne).toEqual(['Your answer.']);
+    expect(result).toMatchObject({
+      handled: true,
+      outcome: 'group_experience_1to1',
+      notice: { skipped: 'not_sent' },
+    });
   });
 
   it('refuses a group line that repeats a deny-list term', async () => {
@@ -324,6 +371,7 @@ describe('takeGroupExperienceTurn', () => {
           return { providerMessageId: 'g1' };
         },
         sendOneToOne: async () => 'sent',
+        mayAnswerOneToOne: async () => true,
         privateSlices: async () => [],
         deny: async () => ['peanut allergy'],
         households: async () => [FAMILY],

@@ -337,7 +337,8 @@ describe("P4: a co-parent's private question", () => {
   it('is answered 1:1 to the co-parent who asked', async () => {
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
-    await addUser(a.familyId, COPARENT_A, 'Cy', 'co_parent');
+    const coParentId = await addUser(a.familyId, COPARENT_A, 'Cy', 'co_parent');
+    await seedTextedHale(db.database, { familyId: a.familyId, userId: coParentId, at: NOW });
     const out = await door({
       text: 'does the snack have peanuts? our kid is allergic',
       from: COPARENT_A,
