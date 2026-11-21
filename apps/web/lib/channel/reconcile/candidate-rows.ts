@@ -237,6 +237,10 @@ async function recipient(
  * kid-judged mirrors of that parent's Google Calendar, the rows the reminder cron writes
  * their reminders from (familyEventForParent, CLAIM_READ_OWN_MIRRORS_ENABLED). Every other
  * read, a group turn included, gets household rows only (view.ts's own predicate).
+ *
+ * Mirrors sort after every household row, so they fill only the slots household rows
+ * leave and can never displace a row the household-only read offers. The one-to-one read
+ * asks for one row past the cap, so the candidate builder names an overflow in `capped`.
  */
 async function calendarRows(
   database: Database,
@@ -261,8 +265,11 @@ async function calendarRows(
         gte(schema.familyEvents.startsAt, now),
       ),
     )
-    .orderBy(asc(schema.familyEvents.startsAt))
-    .limit(CLAIM_ROW_SLOTS.e);
+    .orderBy(
+      ...(recipientUserId === null ? [] : [sql`${schema.familyEvents.googleEventId} is not null`]),
+      asc(schema.familyEvents.startsAt),
+    )
+    .limit(recipientUserId === null ? CLAIM_ROW_SLOTS.e : CLAIM_ROW_SLOTS.e + 1);
   return rows.map((row) => ({
     familyId,
     source: 'calendar',

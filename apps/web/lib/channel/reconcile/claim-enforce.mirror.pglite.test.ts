@@ -6,7 +6,7 @@ import { fakeChannel } from '~/lib/channel/fakes';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { loadClaimShadowContext } from './candidate-rows';
-import type { ClaimRowAlias } from './candidates';
+import { CLAIM_ROW_SLOTS, type ClaimRowAlias } from './candidates';
 import { bindDispatchClaimEnforce, createClaimEnforcer } from './claim-enforce';
 import type { ClaimReader } from './claim-reader';
 import { segmentSentences } from './sentences';
@@ -30,6 +30,7 @@ const STARTS = new Date('2026-11-20T15:00:00Z');
 const ZONE = 'America/Toronto';
 const TITLE = 'Swim lesson';
 const REMINDER = `Heads up: ${TITLE} is tomorrow at 10:00 AM.`;
+const HOUR_MS = 3_600_000;
 
 let db: TestDb;
 let seq = 0;
@@ -77,28 +78,39 @@ async function mirror(
   familyId: string,
   createdBy: string,
   title: string,
-  verdict: 'kid' | 'adult' = 'kid',
+  verdict: 'kid' | 'adult' | 'unsure' | null = 'kid',
+  fields: { startsAt?: Date; deletedAt?: Date } = {},
 ) {
-  const [judged] = await db.database
-    .insert(schema.kidRelevanceVerdicts)
-    .values({
-      familyId,
-      source: 'google_calendar',
-      itemKey: `g-mirror-${title}`,
-      inputHash: 'h',
-      verdict,
-      decidedBy: 'model',
-    })
-    .returning({ id: schema.kidRelevanceVerdicts.id });
+  const [judged] =
+    verdict === null
+      ? []
+      : await db.database
+          .insert(schema.kidRelevanceVerdicts)
+          .values({
+            familyId,
+            source: 'google_calendar',
+            itemKey: `g-mirror-${title}`,
+            inputHash: 'h',
+            verdict,
+            decidedBy: 'model',
+          })
+          .returning({ id: schema.kidRelevanceVerdicts.id });
   await db.database.insert(schema.familyEvents).values({
     familyId,
     title,
-    startsAt: STARTS,
+    startsAt: fields.startsAt ?? STARTS,
     source: 'parent',
     googleEventId: `g-mirror-${title}`,
     createdBy,
-    kidVerdictId: judged?.id as string,
+    kidVerdictId: judged?.id ?? null,
+    deletedAt: fields.deletedAt ?? null,
   });
+}
+
+async function householdRow(familyId: string, title: string, startsAt: Date) {
+  await db.database
+    .insert(schema.familyEvents)
+    .values({ familyId, title, startsAt, source: 'parent' });
 }
 
 /** Cites the offered calendar row whose label is the event's title, else `none`. */
@@ -212,6 +224,57 @@ describe('dispatch claim enforce · a reminder about the recipient’s own calen
       status: 'unbacked',
     });
     expect(reader.offered).toEqual([[]]);
+  });
+
+  const NOT_OFFERED: [string, 'kid' | 'unsure' | null, { deletedAt?: Date }][] = [
+    ['soft-deleted', 'kid', { deletedAt: NOW }],
+    ['unjudged', null, {}],
+    ['judged unsure', 'unsure', {}],
+  ];
+  it.each(NOT_OFFERED)('an own mirror that is %s is not offered', async (_, verdict, fields) => {
+    const { familyId, owner } = await seed();
+    await mirror(familyId, owner, TITLE, verdict, fields);
+    const reader = citesTitledRow(TITLE);
+    expect(await decide(reader, { familyId, parentUserId: owner })).toMatchObject({
+      status: 'unbacked',
+    });
+    expect(reader.offered).toEqual([[]]);
+  });
+
+  it('earlier own mirrors filling every slot never push out a household row', async () => {
+    const { familyId, owner } = await seed();
+    const earlier = new Date(STARTS.getTime() - HOUR_MS);
+    for (let i = 0; i < CLAIM_ROW_SLOTS.e; i += 1) {
+      await mirror(familyId, owner, `Earlier ${i}`, 'kid', { startsAt: earlier });
+    }
+    await householdRow(familyId, TITLE, STARTS);
+    const reader = citesTitledRow(TITLE);
+    expect(await decide(reader, { familyId, parentUserId: owner })).toEqual({ status: 'clean' });
+    expect(reader.offered[0]).toContain(TITLE);
+  });
+
+  it('own mirrors take only the slots household rows leave, and the overflow is named', async () => {
+    const { familyId, owner } = await seed();
+    const later = new Date(STARTS.getTime() + 24 * HOUR_MS);
+    for (let i = 0; i < CLAIM_ROW_SLOTS.e - 1; i += 1) {
+      await householdRow(familyId, `Household ${i}`, later);
+    }
+    await mirror(familyId, owner, TITLE);
+    await mirror(familyId, owner, 'Dentist', 'kid', { startsAt: later });
+    const reader = citesTitledRow('Dentist');
+    expect(await decide(reader, { familyId, parentUserId: owner })).toMatchObject({
+      status: 'unbacked',
+      refusal: {
+        candidates: {
+          offered: { calendar: CLAIM_ROW_SLOTS.e },
+          capped: [{ slot: 'e', dropped: 1 }],
+        },
+      },
+    });
+    expect(reader.offered[0]).toHaveLength(CLAIM_ROW_SLOTS.e);
+    expect(reader.offered[0]).toContain(TITLE);
+    expect(reader.offered[0]).toContain('Household 0');
+    expect(reader.offered[0]).not.toContain('Dentist');
   });
 });
 
