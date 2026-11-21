@@ -75,9 +75,12 @@ import {
   DUTY_ASK_KEY_PREFIX,
   type DutySendAttempt,
   defaultDutyPager,
+  dutyDoorAccepted,
+  dutyDoorAttempt,
   dutySendClaim,
   isLastDutySendTry,
   markDutySendAccepted,
+  readDutyAskRows,
   readDutySendAttempt,
   settleDutySendFailure,
   settleStrandedDutySends,
@@ -1376,6 +1379,13 @@ async function dutyDirectReach(
   if (!ports.sendDirect) {
     return { targets: [], askedAlready: false, stopped: { status: 'skipped', reason: 'no_group' } };
   }
+  const rows = await readDutyAskRows(database, input);
+  if (dutyDoorAccepted(rows, input.dedupeKey)) {
+    return { targets: [], askedAlready: true, stopped: { status: 'skipped', reason: 'deduped' } };
+  }
+  const askedAlready = input.parentUserIds.some((id) =>
+    dutyDoorAccepted(rows, `${input.dedupeKey}:${id}`),
+  );
   const gatePorts = ports.gatePorts(database);
   const targets: DutyDirectTarget[] = [];
   const closed: DutySendAttempt[] = [];
@@ -1384,11 +1394,7 @@ async function dutyDirectReach(
     const phone = await resolveSendablePhone(database, parentUserId);
     if (!phone) continue;
     const sendKey = `${input.dedupeKey}:${parentUserId}`;
-    const attempt = await readDutySendAttempt(database, {
-      familyId: input.familyId,
-      dedupeKey: sendKey,
-      now: input.now,
-    });
+    const attempt = dutyDoorAttempt(rows, sendKey, input.now);
     if (attempt.kind !== 'try') {
       closed.push(attempt);
       continue;
@@ -1414,7 +1420,7 @@ async function dutyDirectReach(
     : closed.length > 0
       ? dutySendStopped(closed)
       : { status: 'skipped', reason: 'no_group' };
-  return { targets, askedAlready: closed.some((row) => row.kind === 'accepted'), stopped };
+  return { targets, askedAlready, stopped };
 }
 
 /** The same model-written split ask, to each parent on Linq 1:1 when there is no group. */
@@ -1695,10 +1701,13 @@ export async function sweepDutyAsks(
   const now = input.now ?? new Date();
   const pager = input.ports?.pager ?? defaultDutyPager(database);
   if (!coparentDutySendsArmed() && !coparentSplitDutyArmed()) {
-    if (coparentDutyMemoryEnabled()) await settleStrandedDutySends(database, { now, pager });
+    if (coparentDutyMemoryEnabled()) {
+      await settleStrandedDutySends(database, { now, pager, offered: new Set() });
+    }
     return emptyDutySweep(false);
   }
   const result = emptyDutySweep(true);
+  const offered = new Set<string>();
   const families = await database
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families);
@@ -1731,6 +1740,7 @@ export async function sweepDutyAsks(
       result.skipped += 1;
       continue;
     }
+    offered.add(dutyAskKey(view.plan.sendLines[0], localYmd(now, view.timeZone)));
     const delivered = await applyPlan(database, {
       familyId: family.id,
       now,
@@ -1747,7 +1757,7 @@ export async function sweepDutyAsks(
     else if (delivered.status === 'held') result.held += 1;
     else result.skipped += 1;
   }
-  await settleStrandedDutySends(database, { now, pager });
+  await settleStrandedDutySends(database, { now, pager, offered });
   return result;
 }
 

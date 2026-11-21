@@ -41,6 +41,12 @@ const PHONE_SEVEN = '+15555550107';
 const PHONE_EIGHT = '+15555550108';
 const PHONE_NINE = '+15555550109';
 const PHONE_TEN = '+15555550110';
+const PHONE_ELEVEN = '+15555550111';
+const PHONE_TWELVE = '+15555550112';
+const PHONE_THIRTEEN = '+15555550113';
+const PHONE_FOURTEEN = '+15555550114';
+const PHONE_FIFTEEN = '+15555550115';
+const PHONE_SIXTEEN = '+15555550116';
 
 let db: TestDb;
 
@@ -634,35 +640,35 @@ describe('a split ask on 1:1s', () => {
   });
 });
 
+const onHold = { allowed: false, reason: 'opt_out_unread' } as const;
+const allowed = { allowed: true, optOut: 'short' } as const;
+const SPLIT_TEXT = 'Who drives Robin to hockey and who drives Casey to dance?';
+
+function directPorts(
+  sendDirect: NonNullable<DutySendPorts['sendDirect']>,
+  gate: DutySendPorts['gate'],
+): DutySendPorts {
+  return {
+    ...ports(
+      vi.fn(async () => ({ providerMessageId: 'unused' })),
+      'unused',
+      pager().pager,
+    ),
+    target: async () => ({ channel: 'legacy' }),
+    gate,
+    sendDirect,
+  };
+}
+
+function accepting() {
+  let accepted = 0;
+  return vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async () => {
+    accepted += 1;
+    return { providerMessageId: `linq-gated-${accepted}` };
+  });
+}
+
 describe('each parent is gated at the moment of sending', () => {
-  const onHold = { allowed: false, reason: 'opt_out_unread' } as const;
-  const allowed = { allowed: true, optOut: 'short' } as const;
-  const SPLIT_TEXT = 'Who drives Robin to hockey and who drives Casey to dance?';
-
-  function directPorts(
-    sendDirect: NonNullable<DutySendPorts['sendDirect']>,
-    gate: DutySendPorts['gate'],
-  ): DutySendPorts {
-    return {
-      ...ports(
-        vi.fn(async () => ({ providerMessageId: 'unused' })),
-        'unused',
-        pager().pager,
-      ),
-      target: async () => ({ channel: 'legacy' }),
-      gate,
-      sendDirect,
-    };
-  }
-
-  function accepting() {
-    let accepted = 0;
-    return vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async () => {
-      accepted += 1;
-      return { providerMessageId: `linq-gated-${accepted}` };
-    });
-  }
-
   it('a parent held during the compose is not texted, and the other still is', async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
     vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
@@ -800,6 +806,156 @@ describe('each parent is gated at the moment of sending', () => {
   });
 });
 
+describe('one ask across sweeps', () => {
+  const openAt = async (familyId: string, now: Date) => {
+    const view = await planFamilyDutyAsks(db.database, { familyId, now, bubbleLeaving: false });
+    if ('skipped' in view) throw new Error(`plan skipped: ${view.skipped}`);
+    return view.open;
+  };
+  const onlyFamily =
+    (familyId: string): DutySendPorts['gate'] =>
+    async (request) =>
+      request.familyId === familyId ? allowed : onHold;
+
+  it('never reaches the group after the 1:1 door carried the ask', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('door-group-first', [PHONE_ELEVEN, PHONE_TWELVE]);
+    let door: 'group' | 'legacy' = 'group';
+    const send = vi.fn<DutySendPorts['send']>().mockRejectedValue(refused());
+    const sendDirect = accepting();
+    const sendPorts: DutySendPorts = {
+      ...directPorts(sendDirect, onlyFamily(family.familyId)),
+      send,
+      target: async () =>
+        door === 'group'
+          ? { channel: 'group', chatId: 'chat-door', familyId: family.familyId }
+          : { channel: 'legacy' },
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    await sweep(AFTERNOON);
+    door = 'legacy';
+    await sweep(later(1, AFTERNOON));
+    door = 'group';
+    await sweep(later(2, AFTERNOON));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(sendDirect.mock.calls.map((call) => call[0].to).sort()).toEqual([
+      PHONE_ELEVEN,
+      PHONE_TWELVE,
+    ]);
+  });
+
+  it('never reaches a parent on a 1:1 after the group carried the ask', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('door-group-ok', [PHONE_THIRTEEN, PHONE_FOURTEEN]);
+    let door: 'group' | 'legacy' = 'group';
+    const send = vi
+      .fn<DutySendPorts['send']>()
+      .mockResolvedValue({ providerMessageId: 'linq-door-group' });
+    const sendDirect = accepting();
+    const sendPorts: DutySendPorts = {
+      ...directPorts(sendDirect, onlyFamily(family.familyId)),
+      send,
+      target: async () =>
+        door === 'group'
+          ? { channel: 'group', chatId: 'chat-door-ok', familyId: family.familyId }
+          : { channel: 'legacy' },
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply(SPLIT_TEXT),
+      });
+
+    await sweep(AFTERNOON);
+    door = 'legacy';
+    await sweep(later(1, AFTERNOON));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(sendDirect).not.toHaveBeenCalled();
+  });
+
+  it('a hold while the plan still offers the ask does not end it', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
+    const family = await nightBeforeFamily('hold-offered');
+    /** Sunday 27 Sep 2026, 17:10 in Toronto: the first sweep of the night-before window. */
+    const FIRST_TRY = new Date('2026-09-27T21:10:00.000Z');
+    let paused = false;
+    const send = vi
+      .fn<DutySendPorts['send']>()
+      .mockRejectedValueOnce(refused())
+      .mockResolvedValueOnce({ providerMessageId: 'linq-after-hold' });
+    const ops = pager();
+    const sendPorts: DutySendPorts = {
+      ...ports(send, 'chat-hold-offered', ops.pager),
+      gate: async (request) =>
+        request.familyId === family.familyId && !paused
+          ? allowed
+          : { allowed: false, reason: 'sends_paused' },
+    };
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, {
+        now,
+        ports: sendPorts,
+        replyClient: scriptedReply('unused'),
+        composeNight: async () => 'Model wording.',
+      });
+
+    await sweep(FIRST_TRY);
+    paused = true;
+    await sweep(later(1, FIRST_TRY));
+    await sweep(later(2, FIRST_TRY));
+    paused = false;
+    await sweep(later(3, FIRST_TRY));
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect((await outRows(family.familyId)).map((row) => row.status)).toEqual(['failed', 'sent']);
+    expect(ops.pages).toEqual([]);
+    expect(await sendAudits(family.familyId, 'duty_send_dropped')).toEqual([]);
+  });
+
+  it('counts a parent reached earlier even when their channel is revoked since', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('door-revoked', [PHONE_FIFTEEN, PHONE_SIXTEEN]);
+    let refusals = 1;
+    const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async (input) => {
+      if (input.to === PHONE_SIXTEEN && refusals > 0) {
+        refusals -= 1;
+        throw refused();
+      }
+      return { providerMessageId: `linq-revoked-${input.sendKey}` };
+    });
+    const sendPorts = directPorts(sendDirect, onlyFamily(family.familyId));
+    const client = scriptedReply(SPLIT_TEXT);
+    const sweep = (now: Date) =>
+      sweepDutyAsks(db.database, { now, ports: sendPorts, replyClient: client });
+
+    await sweep(AFTERNOON);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: AFTERNOON })
+      .where(eq(schema.parentChannels.userId, family.parentUserId));
+    await sweep(later(1, AFTERNOON));
+
+    expect(sendDirect.mock.calls.filter((call) => call[0].to === PHONE_SIXTEEN)).toHaveLength(2);
+    expect(JSON.stringify(vi.mocked(client.messages.create).mock.calls.at(-1))).not.toContain(
+      '1 unanswered',
+    );
+    expect(await openAt(family.familyId, later(1, AFTERNOON))).toMatchObject({ unanswered: 1 });
+  });
+});
+
 describe('a duty send nothing will offer again', () => {
   /** Monday 5 Oct 2026, 20:17 in Toronto: the last sweep before quiet hours. */
   const REFUSED_AT = new Date('2026-10-06T00:17:00.000Z');
@@ -898,13 +1054,9 @@ describe('a duty send nothing will offer again', () => {
       ports: ports(vi.fn<DutySendPorts['send']>(), 'chat-stranded', ops.pager),
     });
 
-    expect(ops.pages).toHaveLength(2);
-    expect(ops.pages).toEqual(
-      expect.arrayContaining([
-        { site: 'duty_unsent', facts: { surface: 'ask', reason: 'not_confirmed' }, count: 1 },
-        { site: 'duty_unsent', facts: { surface: 'ack', reason: 'not_confirmed' }, count: 1 },
-      ]),
-    );
+    expect(ops.pages).toEqual([
+      { site: 'duty_unsent', facts: { surface: 'ask', reason: 'not_confirmed' }, count: 2 },
+    ]);
     expect(await sendAudits(family.familyId, 'duty_send_dropped')).toHaveLength(2);
   });
 });

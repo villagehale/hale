@@ -67,7 +67,7 @@ const SEND_ROW = {
   createdAt: schema.channelMessages.createdAt,
 };
 
-interface DutySendRow {
+export interface DutySendRow {
   id: string;
   familyId: string;
   parentUserId: string;
@@ -99,14 +99,27 @@ export function dutySendClaim(now: Date) {
   return { status: 'failed', errorCode: DUTY_SEND_IN_FLIGHT, createdAt: now } as const;
 }
 
-function attemptFrom(rows: readonly DutySendRow[], baseKey: string, now: Date): DutySendAttempt {
-  // A provider id means Linq took the text, even if a later receipt flipped the row to
-  // 'failed'. That is a failed delivery, not a refusal, and is never sent again.
-  const accepted = rows.some(
+/**
+ * A provider id means Linq took the text, even if a later receipt flipped the row to
+ * 'failed'. That is a failed delivery, not a refusal, and is never sent again.
+ */
+function isAccepted(rows: readonly DutySendRow[]): boolean {
+  return rows.some(
     (row) =>
       row.providerMessageId !== null || (SENT_STATUSES as readonly string[]).includes(row.status),
   );
-  if (accepted) return { kind: 'accepted' };
+}
+
+/** One door's rows: its key and that key's retries. */
+function doorRows(rows: readonly DutySendRow[], doorKey: string): DutySendRow[] {
+  const retries = `${doorKey}${RETRY_INFIX}`;
+  return rows.filter(
+    (row) => row.dedupeKey === doorKey || row.dedupeKey?.startsWith(retries) === true,
+  );
+}
+
+function attemptFrom(rows: readonly DutySendRow[], baseKey: string, now: Date): DutySendAttempt {
+  if (isAccepted(rows)) return { kind: 'accepted' };
   if (rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED)) return { kind: 'exhausted' };
   const running = rows.some(
     (row) =>
@@ -129,25 +142,44 @@ function attemptFrom(rows: readonly DutySendRow[], baseKey: string, now: Date): 
   };
 }
 
-export async function readDutySendAttempt(
+/** Every row of one ask, through either door: the group (`<key>`) or a 1:1 (`<key>:<parent>`). */
+export async function readDutyAskRows(
   database: Database,
-  input: { familyId: string; dedupeKey: string; now: Date },
-): Promise<DutySendAttempt> {
-  const prefix = `${input.dedupeKey}${RETRY_INFIX}`;
-  const rows = await database
+  input: { familyId: string; dedupeKey: string },
+): Promise<DutySendRow[]> {
+  const prefix = `${input.dedupeKey}:`;
+  return database
     .select(SEND_ROW)
     .from(schema.channelMessages)
     .where(
       and(
         eq(schema.channelMessages.familyId, input.familyId),
-        or(
-          eq(schema.channelMessages.dedupeKey, input.dedupeKey),
-          sql`left(${schema.channelMessages.dedupeKey}, ${prefix.length}) = ${prefix}`,
-        ),
+        or(eq(schema.channelMessages.dedupeKey, input.dedupeKey), keyStartsWith(prefix)),
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
-  return attemptFrom(rows, input.dedupeKey, input.now);
+}
+
+export function dutyDoorAccepted(rows: readonly DutySendRow[], doorKey: string): boolean {
+  return isAccepted(doorRows(rows, doorKey));
+}
+
+export function dutyDoorAttempt(
+  rows: readonly DutySendRow[],
+  doorKey: string,
+  now: Date,
+): DutySendAttempt {
+  return attemptFrom(doorRows(rows, doorKey), doorKey, now);
+}
+
+/** The group door. A 1:1 that already carried this ask ends it here too. */
+export async function readDutySendAttempt(
+  database: Database,
+  input: { familyId: string; dedupeKey: string; now: Date },
+): Promise<DutySendAttempt> {
+  const rows = await readDutyAskRows(database, input);
+  if (isAccepted(rows)) return { kind: 'accepted' };
+  return dutyDoorAttempt(rows, input.dedupeKey, input.now);
 }
 
 export async function markDutySendAccepted(
@@ -233,14 +265,20 @@ export async function settleDutySendFailure(
   });
 }
 
-function isStranded(rows: readonly DutySendRow[], baseKey: string, now: Date): boolean {
+function isStranded(
+  rows: readonly DutySendRow[],
+  baseKey: string,
+  now: Date,
+  offered: ReadonlySet<string>,
+): boolean {
   const state = attemptFrom(rows, baseKey, now);
-  if (state.kind === 'try') {
-    return state.dueAt !== null && now.getTime() > state.dueAt.getTime() + DUTY_SWEEP_EVERY_MS;
+  if (state.kind === 'exhausted') {
+    return !rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED);
   }
-  return (
-    state.kind === 'exhausted' && !rows.some((row) => row.errorCode === SEND_RETRIES_EXHAUSTED)
-  );
+  if (state.kind !== 'try' || state.dueAt === null) return false;
+  // Still planned: a hold or a model outage kept this sweep's try from leaving.
+  if ([...offered].some((key) => baseKey === key || baseKey.startsWith(`${key}:`))) return false;
+  return now.getTime() > state.dueAt.getTime() + DUTY_SWEEP_EVERY_MS;
 }
 
 function keyStartsWith(prefix: string) {
@@ -250,12 +288,12 @@ function keyStartsWith(prefix: string) {
 /**
  * The plan only offers what is still worth saying: a night-before text stops at quiet
  * hours and a parent's direct question is never offered again. A send with a retry due
- * through a whole sweep and no new try was stranded, as was a crash on the last try.
- * Run after the sweep's own sends, so a send it just retried is not counted.
+ * through a whole sweep, that this sweep did not offer (`offered`: the asks it planned),
+ * was stranded, as was a crash on the last try. Run after the sweep's own sends.
  */
 export async function settleStrandedDutySends(
   database: Database,
-  input: { now: Date; pager: OpsPager },
+  input: { now: Date; pager: OpsPager; offered: ReadonlySet<string> },
 ): Promise<void> {
   const rows = await database
     .select(SEND_ROW)
@@ -276,31 +314,34 @@ export async function settleStrandedDutySends(
     if (group) group.push(row);
     else sends.set(baseKey, [row]);
   }
-  const pages = new Map<
-    string,
-    { surface: DutySendSurface; reason: ReturnType<typeof failureLabel>; count: number }
-  >();
+  const acceptedKeys = [...sends].filter(([, group]) => isAccepted(group)).map(([key]) => key);
+  const carriedByOtherDoor = (key: string) =>
+    acceptedKeys.some((done) => done.startsWith(`${key}:`) || key.startsWith(`${done}:`));
+  let dropped = 0;
+  let surface: DutySendSurface = 'ack';
+  let reason: ReturnType<typeof failureLabel> = 'send_refused';
   for (const [baseKey, group] of sends) {
-    if (!isStranded(group, baseKey, input.now)) continue;
+    if (carriedByOtherDoor(baseKey)) continue;
+    if (!isStranded(group, baseKey, input.now, input.offered)) continue;
     const failures = group.filter((row) => row.status === 'failed');
     const last = failures.at(-1);
     if (!last) continue;
-    const surface: DutySendSurface = baseKey.startsWith(DUTY_ACK_KEY_PREFIX) ? 'ack' : 'ask';
+    const rowSurface: DutySendSurface = baseKey.startsWith(DUTY_ACK_KEY_PREFIX) ? 'ack' : 'ask';
     await recordDutySendFailure(database, {
       familyId: last.familyId,
       claimId: last.id,
       code: last.errorCode,
       attempt: failures.length,
-      surface,
-      audience: surface === 'ack' || last.providerChatId === null ? last.parentUserId : null,
+      surface: rowSurface,
+      audience: rowSurface === 'ack' || last.providerChatId === null ? last.parentUserId : null,
       final: true,
     });
-    const reason = failureLabel(last.errorCode);
-    const page = pages.get(`${surface}:${reason}`);
-    if (page) page.count += 1;
-    else pages.set(`${surface}:${reason}`, { surface, reason, count: 1 });
+    dropped += 1;
+    if (rowSurface === 'ask') surface = 'ask';
+    if (failureLabel(last.errorCode) === 'not_confirmed') reason = 'not_confirmed';
   }
-  for (const { surface, reason, count } of pages.values()) {
-    await input.pager.page({ site: 'duty_unsent', facts: { surface, reason }, count });
+  // One page: #ops claims this site once an hour, so a second would be swallowed.
+  if (dropped > 0) {
+    await input.pager.page({ site: 'duty_unsent', facts: { surface, reason }, count: dropped });
   }
 }
