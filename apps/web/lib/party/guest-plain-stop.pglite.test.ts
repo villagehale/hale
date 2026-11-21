@@ -416,6 +416,119 @@ describe('VIL-742 with the flag on: a guest ends the reminder in plain words', (
   });
 });
 
+describe('VIL-742 a guest who answered more than one party', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function secondParty(
+    over: { startsAt?: Date; cancelled?: boolean; response?: 'yes' | 'maybe' | 'no' } = {},
+  ) {
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId: host.familyId,
+        title: 'Second party',
+        startsAt: over.startsAt ?? new Date(PARTY_AT.getTime() + 7 * DAY),
+        source: 'parent',
+      })
+      .returning({ id: schema.familyEvents.id });
+    const [invite] = await db.database
+      .insert(schema.partyInvites)
+      .values({
+        familyId: host.familyId,
+        familyEventId: event?.id as string,
+        hostUserId: host.parentUserId,
+        publicToken: `second-${textSeq}-${Date.now()}`,
+      })
+      .returning({ id: schema.partyInvites.id });
+    const second = invite?.id as string;
+    await submitRsvp(
+      db.database,
+      { inviteId: second, familyId: host.familyId, cancelled: false },
+      {
+        displayName: 'Guest',
+        response: over.response ?? 'yes',
+        headcount: 1,
+        reminderPhone: TYPED,
+      },
+      NOW,
+    );
+    if (over.cancelled) {
+      await db.database
+        .update(schema.partyInvites)
+        .set({ cancelledAt: NOW })
+        .where(eq(schema.partyInvites.id, second));
+    }
+    return second;
+  }
+
+  async function liveOptIns() {
+    const rows = await db.database
+      .select({ id: schema.partyRsvps.id })
+      .from(schema.partyRsvps)
+      .where(eq(schema.partyRsvps.phoneE164Hash, phoneBlindIndex(GUEST)));
+    return rows.length;
+  }
+
+  it('two parties that can still text them: the reader is not told, and neither reminder is dropped', async () => {
+    await secondParty();
+    const { inputs } = await reply(words(), NOT_A_STOP);
+
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).not.toHaveProperty('partyGuest');
+    expect(await liveOptIns()).toBe(2);
+  });
+
+  it('a reminder already sent still counts: the host can still cancel that party', async () => {
+    await secondParty();
+    await db.database
+      .update(schema.partyRsvps)
+      .set({ reminderSentAt: NOW })
+      .where(eq(schema.partyRsvps.partyInviteId, inviteId));
+    const { inputs } = await reply(words(), NOT_A_STOP);
+
+    expect(inputs[0]).not.toHaveProperty('partyGuest');
+  });
+
+  it.each([
+    ['is already over', { startsAt: new Date(NOW.getTime() - DAY) }],
+    ['was cancelled', { cancelled: true }],
+    ['they said no to', { response: 'no' as const }],
+  ])('a second party that %s cannot text them, so the fact stands', async (_label, over) => {
+    await secondParty(over);
+    const { inputs } = await reply(words(), NOT_A_STOP);
+
+    expect(inputs[0]?.partyGuest).toBe(true);
+  });
+
+  it('a deleted second party cannot text them, so the fact stands', async () => {
+    const second = await secondParty();
+    const [row] = await db.database
+      .select({ eventId: schema.partyInvites.familyEventId })
+      .from(schema.partyInvites)
+      .where(eq(schema.partyInvites.id, second));
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: NOW })
+      .where(eq(schema.familyEvents.id, row?.eventId as string));
+    const { inputs } = await reply(words(), NOT_A_STOP);
+
+    expect(inputs[0]?.partyGuest).toBe(true);
+  });
+
+  it('two names on the one party are one party, so the fact stands', async () => {
+    await submitRsvp(
+      db.database,
+      { inviteId, familyId: host.familyId, cancelled: false },
+      { displayName: 'Other guest', response: 'yes', headcount: 1, reminderPhone: TYPED },
+      NOW,
+    );
+    const { inputs } = await reply(words(), NOT_A_STOP);
+
+    expect(await liveOptIns()).toBe(2);
+    expect(inputs[0]?.partyGuest).toBe(true);
+  });
+});
+
 describe('VIL-742 who the reader is told is a guest', () => {
   it('with the flag off, a guest read carries no fact and the request is unchanged', async () => {
     vi.stubEnv(FLAG, 'false');

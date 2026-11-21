@@ -552,7 +552,7 @@ async function runIntakeTurn(
   const reader = deps.optOutReader ?? sharedOptOutReader();
   // VIL-742. A 1:1 text only: an unknown chat may be a group, where the reminder is not
   // all Hale says to them.
-  const guestFact = inbound.isGroup === false ? await guestReadFact(database, phoneHash) : {};
+  const guestFact = inbound.isGroup === false ? await guestReadFact(database, phoneHash, now) : {};
   const stopTurn = guestFact.partyGuest ? handleGuestStop : handleStop;
 
   // 3. Rate limit, keyed by the BLIND INDEX (the raw number never reaches the limiter

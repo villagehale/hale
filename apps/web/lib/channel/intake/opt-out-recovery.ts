@@ -311,7 +311,7 @@ async function recoverRow(
       text: held.inbound.body,
       language: held.language,
       late: { receivedAt: held.inbound.receivedAt, readAt: now },
-      ...(await guestReadFact(database, row.phoneHash)),
+      ...(await guestReadFact(database, row.phoneHash, now)),
     });
     if (reading === null) return 'read_failed';
     outcome = await settleReading(database, deps, row, held, reading);

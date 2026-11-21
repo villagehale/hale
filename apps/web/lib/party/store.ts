@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, isNotNull, isNull, notInArray, or } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, ne, notInArray, or } from 'drizzle-orm';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -377,11 +377,17 @@ export async function optOutGuestRemindersOnStop(
 
 /**
  * VIL-742 · whether a live party reminder is the ONLY thing Hale sends this number. It is
- * the premise the opt-out reader is handed, and a wrong yes stops someone who only meant
- * the reminder, so any other tie makes it false: a channel in any state, an intake that
- * became an account, an open invite, or a live seat in a Hale group.
+ * the premise the opt-out reader is handed, and a stop erases every opt-in on the number,
+ * so a wrong yes takes away something the sender meant to keep. Any other tie makes it
+ * false: a second party that can still text them (a reply cannot say which one it means),
+ * a channel in any state, an intake that became an account, an open invite, or a live
+ * seat in a Hale group.
  */
-export async function isReminderOnlyGuest(database: Database, phoneHash: string): Promise<boolean> {
+export async function isReminderOnlyGuest(
+  database: Database,
+  phoneHash: string,
+  now: Date,
+): Promise<boolean> {
   const [optedIn] = await database
     .select({ id: schema.partyRsvps.id })
     .from(schema.partyRsvps)
@@ -394,7 +400,23 @@ export async function isReminderOnlyGuest(database: Database, phoneHash: string)
     .limit(1);
   if (!optedIn) return false;
 
-  const otherTies = await Promise.all([
+  const [partiesThatCanText, ...otherTies] = await Promise.all([
+    database
+      .selectDistinct({ inviteId: schema.partyRsvps.partyInviteId })
+      .from(schema.partyRsvps)
+      .innerJoin(schema.partyInvites, eq(schema.partyInvites.id, schema.partyRsvps.partyInviteId))
+      .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.partyInvites.familyEventId))
+      .where(
+        and(
+          eq(schema.partyRsvps.phoneE164Hash, phoneHash),
+          isNotNull(schema.partyRsvps.reminderOptInAt),
+          ne(schema.partyRsvps.response, 'no'),
+          isNull(schema.partyInvites.cancelledAt),
+          isNull(schema.familyEvents.deletedAt),
+          gte(schema.familyEvents.startsAt, now),
+        ),
+      )
+      .limit(2),
     database
       .select({ id: schema.parentChannels.id })
       .from(schema.parentChannels)
@@ -464,7 +486,7 @@ export async function isReminderOnlyGuest(database: Database, phoneHash: string)
       )
       .limit(1),
   ]);
-  return otherTies.every((rows) => rows.length === 0);
+  return partiesThatCanText.length <= 1 && otherTies.every((rows) => rows.length === 0);
 }
 
 /**

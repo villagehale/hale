@@ -18,7 +18,8 @@ export function rsvpGuestPlainStopEnabled(): boolean {
 export async function guestReadFact(
   database: Database,
   phoneHash: string,
+  now: Date,
 ): Promise<Pick<OptOutReadInput, 'partyGuest'>> {
   if (!rsvpGuestPlainStopEnabled()) return {};
-  return (await isReminderOnlyGuest(database, phoneHash)) ? { partyGuest: true } : {};
+  return (await isReminderOnlyGuest(database, phoneHash, now)) ? { partyGuest: true } : {};
 }
