@@ -63,10 +63,12 @@ import { looksLikeAddCommand, parseAddCaregiver } from './parse';
  * message anyone interprets.
  *
  * WHAT A CAREGIVER CAN ASK: nothing. Every inbound from an accepted caregiver that is
- * not STOP/HELP gets one static line pointing them at the parent. There is no model on
- * this path at all — not a small one, not a cheap one. A conversational surface for a
- * third party is a surface that can be talked into answering about a child, and no
- * amount of prompt care makes that safe enough to ship as a side effect of M6.
+ * not STOP/HELP gets one line pointing them at the parent, written by the door-line
+ * writer from the parent's name alone (`caregiver_scoped_reply`, VIL-706); what they
+ * asked never reaches the model, and a line it does not write is not sent. A
+ * conversational surface for a third party is a surface that can be talked into
+ * answering about a child, and no amount of prompt care makes that safe enough to ship
+ * as a side effect of M6.
  *
  * The parent's confirmation is a model read of what they meant, in whatever
  * words they used. A failed read assents to nothing and texts nobody. STOP never
