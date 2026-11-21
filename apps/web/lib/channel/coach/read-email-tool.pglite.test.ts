@@ -109,10 +109,23 @@ describe('read_email · production reader', () => {
       await connectGmail(familyId, parentUserId);
       const conversationId = await alert(familyId, parentUserId, 'gm-mark');
       const { reader: r } = reader(async () => BODY);
+      const { tools, emailTexts } = taintTurnOnEmailRead([
+        readEmailTool((gmailMessageId) =>
+          r.read({ familyId, parentUserId, conversationId, gmailMessageId }),
+        ),
+      ]);
+      const tool = tools.find((t) => t.name === 'read_email');
+      if (!tool) throw new Error('no read_email');
 
       await expect(
-        r.read({ familyId, parentUserId, conversationId, gmailMessageId: 'gm-mark' }),
+        invokeTool(
+          tool,
+          { gmailMessageId: 'gm-mark' },
+          { familyId, actor: parentUserId },
+          buildGuardDeps(db.database, parentUserId),
+        ),
       ).resolves.toEqual({ read: true, body: expected, truncated: false });
+      expect(emailTexts()).toEqual([BODY]);
     },
   );
 
