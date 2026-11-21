@@ -26,6 +26,7 @@ import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { loadAgentContext } from '~/lib/coach/context';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import { recordedModel } from '~/lib/testing/recorded-model';
 
 /**
@@ -189,9 +190,11 @@ function nudgeDeps(transport: FakeTransport, client: AgentClient | null = null):
     weather: { getDailyOutlook: async () => [] },
     buildGate: openGate,
     transport,
-    // The ask runs pass the recorded writer. The find runs pass none, so its words are
-    // the grounded floor and the assertions below can name them.
+    // The ask runs pass the recorded writer, and the real composer writes the ask. The
+    // find's words are the nudge eval's subject; here they are a line of its facts, so
+    // the assertions below can name them.
     client,
+    composeMessage: factNudgeWriter,
   };
 }
 
@@ -364,7 +367,7 @@ describe('the weekday-care arc', () => {
 
     expect(found.sent).toBe(1);
     const findBody = findTransport.sent[0]?.body ?? '';
-    expect(findBody).toContain('Tuesday');
+    expect(findBody.toLowerCase()).toContain('tuesday');
     expect(findBody).toContain('EarlyON drop-in');
     expect(findBody).toContain('Armour Heights');
     expect(findBody).not.toContain('Ava');

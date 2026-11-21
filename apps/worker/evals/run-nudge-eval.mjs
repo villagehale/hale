@@ -53,7 +53,7 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const NUDGE_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'nudge-voice.md');
 
 const MAX_TOKENS = 300;
-/** Mirrors MAX_NUDGE_SEGMENTS in apps/web/lib/channel/nudge/nudge-voice.ts. */
+/** A writing-quality bar on recorded drafts. The send path has no length check. */
 const MAX_PAYLOAD_SEGMENTS = 2;
 /** The copy contract's hard ceiling. Tighter than the radar's three: this message
  * interrupted someone. */
