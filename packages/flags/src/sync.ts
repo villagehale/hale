@@ -160,7 +160,8 @@ export async function syncFlags(options: SyncOptions = {}): Promise<SyncResult> 
   const byKey = new Map(existing.map((flag) => [flag.key, flag]));
   const results: SyncFlagResult[] = [];
 
-  for (const spec of FLAGS) {
+  for (const spec of FLAGS as readonly FlagSpec[]) {
+    if (spec.envOnly) continue;
     const payload = desiredPayload(spec, groupIndex);
     const remote = byKey.get(spec.posthogKey);
     if (!remote) {
