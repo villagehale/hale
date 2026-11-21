@@ -28,6 +28,7 @@ import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
 import { MESSAGE_HOLD, placeHold, releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
+import { optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
 import {
   type IntakeSession,
   type TranscriptEntry,
@@ -314,6 +315,10 @@ async function recoverRow(
     outcome = await settleReading(database, deps, row, held, reading);
   }
   if (KEPT.has(outcome)) return outcome;
+  // An ordinary read of a text this door held unread is no longer unread. The row
+  // becomes a reply the unhanded reconciler can give to the coach. A stop stays out
+  // of that queue. Only the held shape is touched, so an onboarding intake row is not.
+  if (outcome === 'read_not_stop') await releaseUnreadHoldToCoach(database, row.providerMessageId);
   if (held.familyId && held.authorUserId) {
     await database.insert(schema.auditLog).values({
       familyId: held.familyId,
@@ -332,6 +337,31 @@ async function recoverRow(
   }
   await releaseHeldMessage(database, row.providerMessageId);
   return outcome;
+}
+
+/**
+ * VIL-707. The held inbound was stored as `intake` so the coach could not answer it
+ * while the read was unknown. Once the read is ordinary, it is a reply with the unread
+ * bit cleared and `handed_off_at` still null, which is what the reconciler re-drives.
+ * Off unless the hold-turn flag is exactly `true`. A stop is never passed here.
+ */
+async function releaseUnreadHoldToCoach(
+  database: Database,
+  providerMessageId: string,
+): Promise<void> {
+  if (!optOutUnreadHoldTurnEnabled()) return;
+  await database
+    .update(schema.channelMessages)
+    .set({ category: 'reply', optOutUnread: false })
+    .where(
+      and(
+        eq(schema.channelMessages.providerMessageId, providerMessageId),
+        eq(schema.channelMessages.direction, 'in'),
+        eq(schema.channelMessages.category, 'intake'),
+        eq(schema.channelMessages.optOutUnread, true),
+        isNull(schema.channelMessages.handedOffAt),
+      ),
+    );
 }
 
 async function settleReading(

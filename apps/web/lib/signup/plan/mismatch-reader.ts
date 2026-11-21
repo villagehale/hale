@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SiteChoice } from '../site-choices';
 
@@ -61,6 +61,7 @@ export function toMismatchReading(
       : null;
   }
   const question = raw.question?.replace(/\s+/g, ' ').trim() ?? '';
+  if (question && hasLinkShape(question)) noteLinkGate('signup-mismatch', 'refused');
   if (!question || question.length > 320 || hasLinkShape(question)) return null;
   return { verdict: 'unclear', question };
 }

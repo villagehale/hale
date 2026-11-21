@@ -86,8 +86,11 @@ export function refuseGarbledText(text: string): void {
 }
 
 /**
- * VIL-226 · the rate-limit and idempotency rules ride PROACTIVE_CADENCE, so an unset
- * flag sends exactly today's request and reads exactly today's refusal.
+ * VIL-226 · the in-call rate-limit retry rides PROACTIVE_CADENCE. Unset, a 429 is
+ * today's refusal: one attempt, not retried.
+ *
+ * VIL-705 · the idempotency key does not. It names the send in every cadence,
+ * including `off`, so rolling the flag back does not drop duplicate-send protection.
  */
 function cadenceArmed(): boolean {
   return proactiveCadence() !== 'off';
@@ -449,7 +452,7 @@ export async function sendLinqParts(input: {
     message.effect = { type: input.effect.type, name: input.effect.name };
   }
   const armed = cadenceArmed();
-  if (armed) message.idempotency_key = linqSendKey(input.sendKey);
+  message.idempotency_key = linqSendKey(input.sendKey);
   const send = () =>
     linqRequest({
       method: 'POST',
@@ -502,7 +505,7 @@ export async function sendLinqExperience(input: {
   for (const value of Object.values(input.experience.params)) refuseGarbledText(value);
   const message = {
     experience: input.experience,
-    ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+    idempotency_key: linqSendKey(input.sendKey),
   };
   const result = await linqRequest({
     method: 'POST',

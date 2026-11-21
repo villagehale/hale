@@ -3,7 +3,10 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { storeProviderSession } from '../browser-use/vault';
-import { PROVIDER_CREDENTIALS_ENABLED_ENV } from '../credentials/flag';
+import {
+  PLAN_CITY_LOGIN_OWNER_ENABLED_ENV,
+  PROVIDER_CREDENTIALS_ENABLED_ENV,
+} from '../credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { markCredentialsStale, saveProviderCredentials } from '../credentials/store';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
@@ -264,6 +267,49 @@ describe('plan prep before the open', () => {
       { offerId: family.offerId, kind: 'login_ask', outcome: 'sent' },
     ]);
     expect(loginCode(stale.parts[1])).toMatch(/^[0-9A-Za-z]{10}$/);
+  });
+
+  it('asks this parent to save a login when the only one belongs to the co-parent', async () => {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
+    const family = await planned();
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${family.familyId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!coParent) throw new Error('no co-parent');
+    expect(
+      await saveProviderCredentials(db.database, {
+        familyId: family.familyId,
+        parentUserId: coParent.id,
+        providerHost: HOST,
+        username: 'co-parent',
+        password: 'fixture-pass',
+        now: NOW,
+      }),
+    ).toEqual({ ok: true });
+    const asked = fakes();
+    const askedNotices = await runDueSignupPlanPrep(db.database, { now: NOW }, asked.deps);
+    expect(askedNotices.notices.filter((notice) => notice.offerId === family.offerId)).toEqual([
+      { offerId: family.offerId, kind: 'login_ask', outcome: 'sent' },
+    ]);
+
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true\n');
+    const shared = await planned();
+    expect(
+      await saveProviderCredentials(db.database, {
+        familyId: shared.familyId,
+        parentUserId: coParent.id,
+        providerHost: HOST,
+        username: 'co-parent',
+        password: 'fixture-pass',
+        now: NOW,
+      }),
+    ).toEqual({ ok: true });
+    const quiet = fakes();
+    const quietNotices = await runDueSignupPlanPrep(db.database, { now: NOW }, quiet.deps);
+    expect(quietNotices.notices.filter((notice) => notice.offerId === shared.offerId)).toEqual([]);
   });
 
   it('counts a provider session only when it lasts through the open', async () => {

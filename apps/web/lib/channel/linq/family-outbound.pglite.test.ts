@@ -8,6 +8,7 @@ import { queueActivityDecisionFromReply } from './activity-decision';
 import {
   deliverFamilyOutbound,
   familyOutboundTarget,
+  familySpeech,
   flushGroupDecisionSyncs,
   noteGroupSyncConversation,
   queueGroupActivityDecision,
@@ -432,6 +433,46 @@ describe('a 1:1 decision syncs the group', () => {
       .from(schema.groupDecisionSync);
     expect(waiting).toHaveLength(4);
     expect(waiting.every((row) => row.flushedAt !== null)).toBe(true);
+  });
+
+  it('writes the sync in the named parent stored language after one off-language turn', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, seeded.familyId));
+    await db.database
+      .update(schema.users)
+      .set({ locale: 'zh', proactiveLanguage: 'en' })
+      .where(eq(schema.users.id, seeded.parentUserId));
+    await db.database.insert(schema.channelMessages).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body: '今天中文',
+    });
+    expect(await familySpeech(db.database, seeded.familyId, seeded.parentUserId)).toMatchObject({
+      language: 'en',
+    });
+
+    const http = wire();
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: { decision: 'picked', activity: 'swim', kid: 'Maya', day: 'Tuesday', time: '4:00' },
+      now: NOW,
+    });
+    const flushed = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: http.fetch,
+    });
+    expect(flushed.sent).toBe(1);
+    expect(http.bodies()).toContain('Quick sync:');
+    expect(http.bodies()).not.toContain('Pour info:');
   });
 
   it('uses the French template and waits out a later 1:1 reply', async () => {

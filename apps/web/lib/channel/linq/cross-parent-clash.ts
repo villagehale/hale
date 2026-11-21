@@ -1,5 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { type ClashPerson, type GroupClash, clashSameKid, planWhen } from './group-conflict';
 
 /**
@@ -76,6 +76,9 @@ export const CROSS_PARENT_CLASH_MAX_TOKENS = 300;
 export function crossParentClashTextUsable(text: string): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
-  if (hasLinkShape(body)) return null;
+  if (hasLinkShape(body)) {
+    noteLinkGate('cross-parent-clash', 'refused');
+    return null;
+  }
   return body;
 }

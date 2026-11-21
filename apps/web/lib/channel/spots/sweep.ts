@@ -4,6 +4,7 @@ import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type AcceptedStatus, SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
+import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type DeliveryHoldReason,
@@ -11,7 +12,6 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
@@ -434,6 +434,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
       opt_out_unread: 0,
       no_watch_consent: 0,
       quiet_hours: 0,
+      sends_paused: 0,
       coparent_ask: 0,
     },
     released: {

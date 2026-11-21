@@ -7,7 +7,7 @@ import {
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
 import type { EmptySearch } from './lane';
@@ -445,6 +445,7 @@ export function followUpViolations(
 
   if (text === '') return ['The message was empty.'];
   if (hasLinkShape(text)) {
+    noteLinkGate('followup-note', 'redraft');
     violations.push('The message contains a link or a web address. Never send one.');
   }
   if (claimsVerification(text)) {

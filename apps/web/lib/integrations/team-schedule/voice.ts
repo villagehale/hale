@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { MatchChange } from './match';
@@ -87,7 +87,10 @@ export function voiceFacts(input: {
 function refused(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed === '') return true;
-  if (hasLinkShape(trimmed)) return true;
+  if (hasLinkShape(trimmed)) {
+    noteLinkGate('team-schedule', 'refused');
+    return true;
+  }
   if (trimmed.replace(/\D/g, '').length >= 10) return true;
   return false;
 }
@@ -96,9 +99,7 @@ export function teamScheduleParentUserMessage(facts: TeamScheduleVoiceFacts): st
   return JSON.stringify(facts);
 }
 
-export function teamScheduleDriverUserMessage(
-  facts: Omit<TeamScheduleVoiceFacts, 'mode'>,
-): string {
+export function teamScheduleDriverUserMessage(facts: Omit<TeamScheduleVoiceFacts, 'mode'>): string {
   return JSON.stringify(facts);
 }
 

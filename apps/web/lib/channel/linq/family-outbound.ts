@@ -14,6 +14,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
@@ -333,7 +334,8 @@ export async function familySpeech(
   userId: string,
 ): Promise<{ name: string | null; language: ReplyLanguage | null }> {
   if (typeof database.select !== 'function') return { name: null, language: null };
-  const language = await familySpeechLanguage(database, familyId);
+  // The parent this line names. A missing user falls back to the family language.
+  const language = await readParentLanguage(database, { familyId, parentUserId: userId });
   const [user] = await database
     .select({ name: schema.users.name })
     .from(schema.users)
@@ -343,7 +345,11 @@ export async function familySpeech(
   return { name, language };
 }
 
-/** The language half of {@link familySpeech}, for a household line that names no speaker. */
+/**
+ * The language of a household line that names no parent. A line that names one
+ * (`familySpeech`) uses that parent's stored language. This one stays the family
+ * language: there is no parent to read (VIL-572).
+ */
 export async function familySpeechLanguage(
   database: Database,
   familyId: string,

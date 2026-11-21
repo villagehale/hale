@@ -31,8 +31,9 @@ on:
       - '.github/workflows/web-smoke.yml'
 
 concurrency:
+  # Same rule as ci.yml: cancel a superseded pull-request run, and let main finish.
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   web-smoke:

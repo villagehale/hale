@@ -1782,6 +1782,110 @@ describe('authorized signup runner', () => {
       expect(await browserUseRegistrationSpendUsd(db.database)).toBeCloseTo(0.25);
     });
 
+    describe('season slot counts a provider attempt (VIL-704)', () => {
+      async function attempted(familyId: string) {
+        const [row] = await db.database
+          .select({ attempted: schema.familySignupHelpSeasons.attempted })
+          .from(schema.familySignupHelpSeasons)
+          .where(eq(schema.familySignupHelpSeasons.familyId, familyId));
+        return row?.attempted ?? 0;
+      }
+
+      function preSessionThrow() {
+        return vi.fn(async (): Promise<BrowserUseSignupResult> => {
+          throw new BrowserUseEngineThrew(new Error('browser setup failed'), {
+            runId: null,
+            sessionId: null,
+            browserId: null,
+            sessionCostUsd: null,
+          });
+        });
+      }
+
+      it('a pre-session throw leaves attempted unchanged and the next yes still runs', async () => {
+        vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+        vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true');
+        const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+        await withProviderSession(seeded);
+        const run = preSessionThrow();
+        const thrown = await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-pre'), {
+          browserUseSignup: { run },
+        });
+        expect(thrown.browserUse?.detail).toBe('engine_threw');
+        expect(await attempted(seeded.familyId)).toBe(0);
+        await addOffer(seeded, ACTIVENET);
+        run.mockImplementation(async () => CHECKOUT);
+        const next = await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-next'), {
+          browserUseSignup: { run },
+        });
+        expect(next).toMatchObject({ claimed: true, outcome: 'reached_checkout' });
+        expect(await attempted(seeded.familyId)).toBe(1);
+      });
+
+      it('a provider-side failure still counts', async () => {
+        vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+        vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true');
+        const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+        await withProviderSession(seeded);
+        const run = vi.fn(async () => {
+          throw new BrowserUseEngineThrew(new Error('worker killed'), {
+            runId: 'run-started',
+            sessionId: 'session-started',
+            browserId: null,
+            sessionCostUsd: null,
+          });
+        });
+        await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-provider'), {
+          browserUseSignup: { run },
+        });
+        expect(await attempted(seeded.familyId)).toBe(1);
+      });
+
+      it('gives the slot back when the page is not open yet, even if a session exists', async () => {
+        vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+        vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true');
+        const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+        await withProviderSession(seeded);
+        const run = vi.fn(async () => ({
+          ...CHECKOUT,
+          outcome: 'rush' as const,
+          detail: 'timed_open' as const,
+          opensAt: 'Monday, January 5 at 7:00 AM',
+        }));
+        const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-rush'), {
+          browserUseSignup: { run },
+        });
+        expect(result.browserUse?.outcome).toBe('rush');
+        expect(result.browserUse?.sessionId).toBe(CHECKOUT.sessionId);
+        expect(await attempted(seeded.familyId)).toBe(0);
+      });
+
+      it('keeps the slot when the release flag is not exactly true', async () => {
+        vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+        vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true\n');
+        const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+        await withProviderSession(seeded);
+        await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-flag'), {
+          browserUseSignup: { run: preSessionThrow() },
+        });
+        expect(await attempted(seeded.familyId)).toBe(1);
+      });
+
+      it('keeps the slot when a throw does not say whether a session started', async () => {
+        vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
+        vi.stubEnv('SIGNUP_HELP_SLOT_RELEASE_ENABLED', 'true');
+        const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
+        await withProviderSession(seeded);
+        const run = vi.fn(async () => {
+          throw new Error('unknown runner failure');
+        });
+        await runAuthorizedSignup(db.database, yes(seeded, 'msg-slot-unknown'), {
+          browserUseSignup: { run },
+        });
+        expect(await attempted(seeded.familyId)).toBe(1);
+      });
+    });
+
     it('keeps the held allowance when a runner throws without saying whether a session started', async () => {
       const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);

@@ -33,7 +33,13 @@ import {
  *   invoice.paid                      → metadata.tier, else the invoice line's price
  *   customer.subscription.updated     → tier of the active price after the change
  *   customer.subscription.deleted     → 'free' (subscription ended → downgrade)
+ *   charge.refunded (full)            → 'free', unless a live subscription remains
+ *   charge.dispute.created            → 'free', unless a live subscription remains
  *   (any other event type)            → null (not a tier-affecting event)
+ *
+ * Refund and dispute revocation runs only when STRIPE_BILLING_REVOKE_ENABLED
+ * is exactly `true`. Verification still requires STRIPE_WEBHOOK_SECRET and
+ * does not wait on that flag.
  *
  * ── Which family an event targets ──
  *   We thread the family id through Stripe metadata at checkout creation
@@ -248,13 +254,17 @@ export function planTierFromStripeEvent(
       return priceTierMap[priceId] ?? null;
     }
     case 'checkout.session.completed': {
-      const tier = isRecord(object.metadata) ? readString(object.metadata.tier) : null;
-      if (tier && isPaidTier(tier)) return tier;
+      const metadata = isRecord(object.metadata) ? object.metadata : null;
+      const tier = paidTierToken(metadata ? readString(metadata.tier) : null);
+      if (tier) return tier;
+      const priceId = metadata ? readString(metadata.priceId) : null;
+      if (priceId && priceTierMap[priceId]) return priceTierMap[priceId] ?? null;
       return paymentLinkTierFrom(object, options);
     }
     case 'invoice.paid': {
-      const tier = isRecord(object.metadata) ? readString(object.metadata.tier) : null;
-      if (tier && isPaidTier(tier)) return tier;
+      const metadata = isRecord(object.metadata) ? object.metadata : null;
+      const tier = paidTierToken(metadata ? readString(metadata.tier) : null);
+      if (tier) return tier;
       const priceId = invoicePriceId(object);
       if (!priceId) return null;
       return priceTierMap[priceId] ?? null;
@@ -392,6 +402,125 @@ function subscriptionPriceId(object: Record<string, unknown>): string | null {
 /** Type guard: a string is one of the purchasable paid tiers. */
 function isPaidTier(value: string): value is PaidTier {
   return (PAID_TIERS as readonly string[]).includes(value);
+}
+
+/**
+ * `plus` → plus. `family` and `max` → family. Case-insensitive, so a Max
+ * checkout recorded as `Max` grants Max limits instead of leaving the family
+ * on Free. Anything else is null (never a silent Plus grant).
+ */
+export function paidTierToken(value: string | null): PaidTier | null {
+  if (!value) return null;
+  const token = value.trim().toLowerCase();
+  if (token === 'plus') return 'plus';
+  if (token === 'family' || token === 'max') return 'family';
+  return null;
+}
+
+const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
+
+export type ChargeRevokeDecision =
+  | { action: 'ignore' }
+  | { action: 'revoke'; kind: 'refund' | 'dispute' }
+  | {
+      action: 'keep';
+      reason: 'partial_refund' | 'active_subscription';
+      kind: 'refund' | 'dispute';
+    };
+
+/**
+ * Candidate only. A partial refund keeps the tier. A subscription that is
+ * still active, trialing, or past_due keeps the tier. A full refund or a
+ * dispute is a revoke candidate. applyChargeRevoke does not drop a family
+ * that still has a subscription unless this charge is tied to that
+ * subscription and it is not live. An unexpanded invoice id is not enough.
+ */
+export function chargeRevokeDecision(payload: unknown): ChargeRevokeDecision {
+  if (!isRecord(payload)) return { action: 'ignore' };
+  const type = readString(payload.type);
+  const object = isRecord(payload.data) ? payload.data.object : undefined;
+  if (!isRecord(object) || !type) return { action: 'ignore' };
+
+  if (type === 'charge.refunded') {
+    if (!isFullRefund(object)) return { action: 'keep', reason: 'partial_refund', kind: 'refund' };
+    if (liveSubscriptionRemains(object)) {
+      return { action: 'keep', reason: 'active_subscription', kind: 'refund' };
+    }
+    return { action: 'revoke', kind: 'refund' };
+  }
+
+  if (
+    type === 'charge.dispute.created' ||
+    type === 'charge.dispute.funds_withdrawn' ||
+    (type === 'charge.dispute.closed' && readString(object.status)?.toLowerCase() === 'lost')
+  ) {
+    if (liveSubscriptionRemains(object)) {
+      return { action: 'keep', reason: 'active_subscription', kind: 'dispute' };
+    }
+    return { action: 'revoke', kind: 'dispute' };
+  }
+
+  return { action: 'ignore' };
+}
+
+/** Subscription id on a charge or dispute, when Stripe expanded it. */
+export function chargeSubscriptionId(payload: unknown): string | null {
+  return chargeLinkFromStripeEvent(payload).subscriptionId;
+}
+
+/**
+ * What a charge or dispute payload itself proves. `chargeId` is present on
+ * both shapes (the charge's id, or the dispute's `charge`). Subscription id
+ * and status are set only when Stripe expanded them — an invoice id string
+ * does not identify a subscription.
+ */
+export function chargeLinkFromStripeEvent(payload: unknown): {
+  chargeId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+} {
+  if (!isRecord(payload)) return { chargeId: null, subscriptionId: null, subscriptionStatus: null };
+  const type = readString(payload.type);
+  const object = isRecord(payload.data) ? payload.data.object : undefined;
+  if (!isRecord(object)) return { chargeId: null, subscriptionId: null, subscriptionStatus: null };
+  const nested = nestedSubscription(object);
+  const chargeId =
+    type?.startsWith('charge.dispute.') === true ? readId(object.charge) : readString(object.id);
+  return {
+    chargeId,
+    subscriptionId: nested.id,
+    subscriptionStatus: nested.status,
+  };
+}
+
+function isFullRefund(object: Record<string, unknown>): boolean {
+  if (object.refunded === true) return true;
+  const amount = typeof object.amount === 'number' ? object.amount : null;
+  const refundedAmount = typeof object.amount_refunded === 'number' ? object.amount_refunded : null;
+  return amount !== null && refundedAmount !== null && amount > 0 && refundedAmount >= amount;
+}
+
+function liveSubscriptionRemains(object: Record<string, unknown>): boolean {
+  const status = nestedSubscription(object).status;
+  return status !== null && LIVE_SUBSCRIPTION.has(status);
+}
+
+function nestedSubscription(object: Record<string, unknown>): {
+  id: string | null;
+  status: string | null;
+} {
+  const direct = subscriptionRef(object.subscription);
+  if (direct.id || direct.status) return direct;
+  const invoice = isRecord(object.invoice) ? object.invoice : null;
+  if (invoice) return subscriptionRef(invoice.subscription);
+  return { id: null, status: null };
+}
+
+function subscriptionRef(value: unknown): { id: string | null; status: string | null } {
+  if (typeof value === 'string' && value.length > 0) return { id: value, status: null };
+  if (!isRecord(value)) return { id: null, status: null };
+  const status = readString(value.status)?.toLowerCase() ?? null;
+  return { id: readString(value.id), status };
 }
 
 function readString(value: unknown): string | null {

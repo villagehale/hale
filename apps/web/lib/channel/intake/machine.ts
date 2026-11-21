@@ -164,6 +164,7 @@ import {
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
+import { optOutHoldWriteStopsTurnEnabled, optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
 import { type ProvisionChild, provisionFromIntake } from './provision';
 import { INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY, type RadarComposer } from './radar';
 import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
@@ -422,7 +423,23 @@ export type IntakeOutcome =
       // `group_turn_during_intake` (group onboarding v2): a family-group message from a
       // number whose own 1:1 intake is still open. Onboarding is a 1:1 conversation, so
       // nothing of it is answered into the group.
-      reason: 'invalid_number' | 'no_open_conversation' | 'group_turn_during_intake' | 'opted_out';
+      reason:
+        | 'invalid_number'
+        | 'no_open_conversation'
+        | 'group_turn_during_intake'
+        | 'opted_out'
+        /**
+         * VIL-707. The opt-out read failed. With `OPT_OUT_UNREAD_HOLD_TURN_ENABLED`
+         * exactly `true`, the turn ends here: nothing is sent and the text is not
+         * claimed for the coach. The hold row is what the recovery sweep re-reads.
+         */
+        | 'opt_out_unread'
+        /**
+         * VIL-707. The hold write threw. With `OPT_OUT_HOLD_WRITE_STOPS_TURN_ENABLED`
+         * exactly `true`, the turn ends here after one `opt_out_hold_unwritten` page.
+         * The text stays unclaimed so a later delivery can try the hold again.
+         */
+        | 'opt_out_hold_unwritten';
       /**
        * On the hand-off (`no_open_conversation`) only, set by {@link handleInboundSms}: this
        * turn's opt-out read failed, so the text may be a stop. It rides to the router with
@@ -546,7 +563,16 @@ async function runIntakeTurn(
         text: inbound.body,
         language: null,
       });
-      await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
+      const settled = await settleOptOutHold(
+        database,
+        phoneHash,
+        inbound,
+        reading,
+        now,
+        deps.optOutHold,
+      );
+      const held = heldUnreadOutcome(settled, reading);
+      if (held) return held;
       if (reading?.intent === 'stop') {
         return handleStop(
           database,
@@ -594,7 +620,16 @@ async function runIntakeTurn(
     });
     turnIntent = reading?.intent ?? null;
     read.optOutUnread = reading === null;
-    await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
+    const settled = await settleOptOutHold(
+      database,
+      phoneHash,
+      inbound,
+      reading,
+      now,
+      deps.optOutHold,
+    );
+    const held = heldUnreadOutcome(settled, reading);
+    if (held) return held;
     if (reading?.intent === 'stop') {
       return handleStop(
         database,
@@ -4042,6 +4077,25 @@ export interface OptOutHoldPort {
  * read settles only the message it read; another unread text of the same number stays
  * held until it is read (opt-out-recovery.ts).
  */
+type HoldSettle = 'ok' | 'hold_unwritten';
+
+/**
+ * VIL-707. A failed read, or a hold that did not land, ends the turn when its flag is
+ * exactly `true`. Off, the turn continues as before.
+ */
+function heldUnreadOutcome(
+  settled: HoldSettle,
+  reading: OptOutReading | null,
+): Extract<IntakeOutcome, { status: 'ignored' }> | null {
+  if (settled === 'hold_unwritten') {
+    return { status: 'ignored', reason: 'opt_out_hold_unwritten' };
+  }
+  if (reading === null && optOutUnreadHoldTurnEnabled()) {
+    return { status: 'ignored', reason: 'opt_out_unread' };
+  }
+  return null;
+}
+
 async function settleOptOutHold(
   database: Database,
   phoneHash: string,
@@ -4049,8 +4103,8 @@ async function settleOptOutHold(
   reading: OptOutReading | null,
   now: Date,
   hold?: OptOutHoldPort,
-): Promise<void> {
-  if (inbound.body.trim().length === 0) return;
+): Promise<HoldSettle> {
+  if (inbound.body.trim().length === 0) return 'ok';
   const port: OptOutHoldPort = hold ?? {
     hold: async (hash, providerMessageId, at) => {
       await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
@@ -4062,16 +4116,20 @@ async function settleOptOutHold(
   try {
     if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
     else await port.settled(inbound.providerId);
+    return 'ok';
   } catch (err) {
-    // The hold is a guard, never a reason to drop the turn: the turn goes on. A hold that
-    // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
+    // A hold that did not land leaves a possibly unread stop with no row for the sweep,
+    // so it pages. With the flag exactly `true`, that is also the end of the turn.
+    // Off, the turn goes on, which is the path this flag exists to close.
     const name = err instanceof Error ? err.name : 'unknown';
     if (reading === null) {
       console.error({ err: name }, 'opt-out hold: write failed');
       await pageOps(database, { site: 'opt_out_hold_unwritten', facts: {} });
+      if (optOutHoldWriteStopsTurnEnabled()) return 'hold_unwritten';
     } else {
       console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
     }
+    return 'ok';
   }
 }
 

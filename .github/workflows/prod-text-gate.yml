@@ -1,0 +1,183 @@
+# Production text gate (VIL-696).
+#
+# Vercel builds a production deployment on every main merge and, until a
+# Deployment Check is required, aliases it straight onto the parent domain.
+# This workflow is that check. It runs when the candidate deployment is ready
+# and not yet aliased, asks THAT deployment to take one synthetic canary turn
+# (webhook, enqueue, drain, answer), and reports a commit status. Vercel moves
+# the production domains only after the status succeeds. A failure leaves the
+# previous deployment serving. This file never aliases and never rolls a
+# deployment back.
+#
+# repository_dispatch workflows run from the default branch. The file has to be
+# on main before Vercel can be told to require the status. Require it only
+# after that, or every production deploy waits on a status nothing writes.
+#
+# The status context the project setting must name, exactly:
+#   Vercel - hale-web: prod-text-gate (production)
+#
+# Recovery after a failed check: re-run the failed jobs on that run. The
+# status action reports on the deployment's commit only from this event.
+# There is no separate manual run, because that run cannot update the status.
+#
+# Secrets (Actions → Secrets and variables → Actions). Names only:
+#   CRON_SECRET
+#       Same value as hale-web Production. Authorizes the gate route.
+#   VERCEL_AUTOMATION_BYPASS_SECRET
+#       Protection Bypass for Automation on hale-web. The candidate URL is
+#       behind Standard Protection until it is aliased. Omit only when GitHub
+#       Actions is a Trusted Source for this repository and the OIDC header
+#       below is enough. The deployment also needs the bypass env var so it
+#       can call its own webhook and drain.
+# The OIDC token is requested in the job (id-token: write). It is not a stored
+# secret. LINQ_WEBHOOK_SECRET stays on the deployment; Actions never sees it.
+
+name: Prod text gate
+
+on:
+  repository_dispatch:
+    types:
+      - vercel.deployment.ready
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: prod-text-gate-${{ github.event.client_payload.deployment.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  # Prints the names a skipped check job would have filtered on. No status.
+  receipt:
+    name: receipt
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Name the deployment
+        run: |
+          echo "project=${{ github.event.client_payload.project.name }}"
+          echo "environment=${{ github.event.client_payload.environment }}"
+          echo "target=${{ github.event.client_payload.target }}"
+
+  check:
+    name: check
+    if: >
+      github.event.client_payload.project.name == 'hale-web' &&
+      (
+        github.event.client_payload.environment == 'production' ||
+        github.event.client_payload.target == 'production'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Pending now, success or failure in the post step, from this job's conclusions.
+      - name: Tell Vercel the check started
+        if: github.event_name == 'repository_dispatch'
+        uses: vercel/repository-dispatch/actions/status@v1
+        with:
+          name: 'Vercel - hale-web: prod-text-gate (production)'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.git.sha || github.sha }}
+
+      - name: OIDC token for a Vercel trusted source
+        id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const token = await core.getIDToken();
+              core.setSecret(token);
+              core.setOutput('token', token);
+            } catch (error) {
+              core.warning(`OIDC token unavailable: ${error.message}`);
+              core.setOutput('token', '');
+            }
+
+      - name: Text the candidate build
+        id: gate
+        env:
+          DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+          GIT_SHA: ${{ github.event.client_payload.git.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node .github/scripts/prod-text-gate.mjs
+
+      # Runs even when Checkout or the probe never wrote a title. The title
+      # matches the script's, so a re-run finds the open issue instead of
+      # filing a second one. This step does not need the checkout.
+      - name: Open a fix task
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.gate.outputs.title }}
+          BODY: ${{ steps.gate.outputs.body }}
+          SHA: ${{ github.event.client_payload.git.sha || github.sha }}
+          STAGE: ${{ steps.gate.outputs.stage || 'did_not_finish' }}
+          DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TITLE:-}" ]; then
+            short="${SHA:-unknown}"
+            short="${short:0:12}"
+            TITLE="Prod text gate held ${short}"
+            BODY="$(printf '%s\n' \
+              "The production text gate did not finish, so the production domains stay on the previous deployment." \
+              "" \
+              "- Stage: \`${STAGE}\`" \
+              "- Commit: \`${SHA:-unknown}\`" \
+              "- Deployment: ${DEPLOYMENT_URL:-unknown}" \
+              "- Run: ${RUN_URL}" \
+              "" \
+              "Re-run the failed jobs on this run. That is what reports the commit status again.")"
+          fi
+          existing="$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            echo "issue #$existing already open"
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "$BODY"
+
+      - name: Page Slack #ops
+        if: failure()
+        env:
+          OPS_SLACK_WEBHOOK_URL: ${{ secrets.OPS_SLACK_WEBHOOK_URL }}
+          SLACK_OPS_CHANNEL: ${{ vars.SLACK_OPS_CHANNEL }}
+          SUMMARY: ${{ steps.gate.outputs.summary || 'prod text gate did not finish' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPS_SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::error::prod text gate failed (${SUMMARY}) but the ops Slack page cannot send — missing Actions secret OPS_SLACK_WEBHOOK_URL. Add an Incoming Webhook for #ops (C0C5XMCAQ56)."
+            exit 1
+          fi
+          node --input-type=module <<'EOF'
+          const url = process.env.OPS_SLACK_WEBHOOK_URL ?? '';
+          if (!url.startsWith('https://')) {
+            console.error('::error::OPS_SLACK_WEBHOOK_URL must be an https incoming-webhook URL');
+            process.exit(1);
+          }
+          const channel = (process.env.SLACK_OPS_CHANNEL || 'C0C5XMCAQ56').trim();
+          const summary = process.env.SUMMARY || 'prod text gate did not finish';
+          const runUrl = process.env.RUN_URL || '';
+          const text = `Hale: prod text gate held production. ${summary} ${runUrl}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text, channel }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!response.ok) {
+            console.error(`::error::ops Slack webhook refused with HTTP ${response.status}`);
+            process.exit(1);
+          }
+          EOF

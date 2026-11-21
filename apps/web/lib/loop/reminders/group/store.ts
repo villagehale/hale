@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gt, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
+import { groupReminderInFlightCancelEnabled } from './flag';
 
 /**
  * VIL-448 (T26) — the `group_reminders` rows: set, armed, cancelled, claimed and closed.
@@ -18,8 +19,45 @@ import { isUndefinedTable } from '~/lib/channel/linq/roster';
 export const SENDING_STALE_MS = 10 * 60_000;
 export const DUE_BATCH = 25;
 
-/** Not committed to a send yet, so a cancel or a STOP still wins, even over a tick that has claimed it. */
+/**
+ * Queued, not yet committed to a send: a cancel or a STOP still wins, even over a tick
+ * that has claimed the row (`sending`). `in_flight` joins them only while
+ * `GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED` is exactly `true`, and only when Linq has
+ * not accepted the send (no provider message id).
+ */
 const CANCELLABLE: schema.GroupReminderStatus[] = ['pending', 'scheduled', 'sending'];
+
+const LANDED_AFTER_STOP = 'group_reminder_landed_after_stop';
+
+/** Linq has not accepted this reminder's send. The dedupe key is the ledger's. */
+function providerNotYetAccepted() {
+  return sql`not exists (
+    select 1 from ${schema.channelMessages}
+    where ${schema.channelMessages.providerMessageId} is not null
+      and (
+        ${schema.channelMessages.dedupeKey} = ('linq:group_reminder:' || ${schema.groupReminders.id}::text)
+        or ${schema.channelMessages.dedupeKey} = ('linq:group_reminder_direct:' || ${schema.groupReminders.id}::text)
+      )
+  )`;
+}
+
+function providerAlreadyAccepted() {
+  return sql`exists (
+    select 1 from ${schema.channelMessages}
+    where ${schema.channelMessages.providerMessageId} is not null
+      and (
+        ${schema.channelMessages.dedupeKey} = ('linq:group_reminder:' || ${schema.groupReminders.id}::text)
+        or ${schema.channelMessages.dedupeKey} = ('linq:group_reminder_direct:' || ${schema.groupReminders.id}::text)
+      )
+  )`;
+}
+
+/** Queued rows always. In-flight rows only when the flag is exactly `true` and Linq has not taken the send. */
+function stillCancellable() {
+  const queued = inArray(schema.groupReminders.status, CANCELLABLE);
+  if (!groupReminderInFlightCancelEnabled()) return queued;
+  return or(queued, and(eq(schema.groupReminders.status, 'in_flight'), providerNotYetAccepted()));
+}
 
 /** A tick holds the row: checking and writing it (`sending`), or sending it now (`in_flight`). */
 const CLAIMED: schema.GroupReminderStatus[] = ['sending', 'in_flight'];
@@ -113,6 +151,95 @@ async function auditCancelled(
   );
 }
 
+/**
+ * An in-flight reminder Linq already accepted cannot be pulled back. The audit row
+ * says `landed_after_stop` so the send is visible. One row per reminder.
+ */
+async function auditAcceptedInFlight(
+  tx: Tx,
+  scope: ReturnType<typeof and> | ReturnType<typeof eq> | undefined,
+  actor: string,
+): Promise<void> {
+  if (!groupReminderInFlightCancelEnabled()) return;
+  const landed = await tx
+    .select({ id: schema.groupReminders.id, familyId: schema.groupReminders.familyId })
+    .from(schema.groupReminders)
+    .where(and(scope, eq(schema.groupReminders.status, 'in_flight'), providerAlreadyAccepted()));
+  if (landed.length === 0) return;
+  const existing = await tx
+    .select({ targetId: schema.auditLog.targetId })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, LANDED_AFTER_STOP),
+        inArray(
+          schema.auditLog.targetId,
+          landed.map((row) => row.id),
+        ),
+      ),
+    );
+  const seen = new Set(existing.map((row) => row.targetId));
+  const fresh = landed.filter((row) => !seen.has(row.id));
+  if (fresh.length === 0) return;
+  await tx.insert(schema.auditLog).values(
+    fresh.map((row) => ({
+      familyId: row.familyId,
+      actor,
+      actionTaken: LANDED_AFTER_STOP,
+      targetTable: 'group_reminders',
+      targetId: row.id,
+      after: { reason: 'landed_after_stop' },
+    })),
+  );
+}
+
+/**
+ * The provider accepted a reminder a STOP had already cancelled. Writes
+ * `landed_after_stop` once. No row when Linq has no message id, or the flag is off.
+ */
+export async function auditLandedAfterStop(
+  database: Database,
+  row: Pick<GroupReminderRow, 'id' | 'familyId'>,
+): Promise<void> {
+  if (!groupReminderInFlightCancelEnabled()) return;
+  const [current] = await database
+    .select({ status: schema.groupReminders.status })
+    .from(schema.groupReminders)
+    .where(eq(schema.groupReminders.id, row.id))
+    .limit(1);
+  if (current?.status !== 'cancelled') return;
+  const [sent] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        inArray(schema.channelMessages.dedupeKey, [
+          `linq:group_reminder:${row.id}`,
+          `linq:group_reminder_direct:${row.id}`,
+        ]),
+        isNotNull(schema.channelMessages.providerMessageId),
+      ),
+    )
+    .limit(1);
+  if (!sent) return;
+  const [already] = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(eq(schema.auditLog.actionTaken, LANDED_AFTER_STOP), eq(schema.auditLog.targetId, row.id)),
+    )
+    .limit(1);
+  if (already) return;
+  await database.insert(schema.auditLog).values({
+    familyId: row.familyId,
+    actor: 'system',
+    actionTaken: LANDED_AFTER_STOP,
+    targetTable: 'group_reminders',
+    targetId: row.id,
+    after: { reason: 'landed_after_stop' },
+  });
+}
+
 /** Cancels these reminders while they are still unsent. Returns the ones it closed. */
 export async function cancelReminders(
   database: Database,
@@ -129,14 +256,10 @@ export async function cancelReminders(
         closedAt: input.now,
         updatedAt: input.now,
       })
-      .where(
-        and(
-          inArray(schema.groupReminders.id, input.ids),
-          inArray(schema.groupReminders.status, CANCELLABLE),
-        ),
-      )
+      .where(and(inArray(schema.groupReminders.id, input.ids), stillCancellable()))
       .returning();
     await auditCancelled(tx, closed, input.reason, input.actor);
+    await auditAcceptedInFlight(tx, inArray(schema.groupReminders.id, input.ids), input.actor);
     return closed;
   });
 }
@@ -145,7 +268,9 @@ export async function cancelReminders(
  * STOP works per member. A member who stops Hale in the group, or is taken out of the
  * chat, loses every unsent reminder they asked for and every one that is for them,
  * including one a tick has claimed and is still writing. One already going out
- * (`in_flight`) is left to land and close as sent. Hale leaving the group (`phoneHash` absent)
+ * (`in_flight`) is left to land unless `GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED` is
+ * exactly `true`: then a row Linq has not accepted yet is cancelled, and one Linq
+ * has accepted is audited `landed_after_stop` and left to close as sent. Hale leaving the group (`phoneHash` absent)
  * cancels the whole chat's. Silent: a STOP is acknowledged once by the roster flow, and
  * nothing more is said. A database without the table has nothing to cancel, and says so
  * by name rather than failing the STOP.
@@ -172,15 +297,14 @@ export async function cancelGroupReminders(
           closedAt: input.now,
           updatedAt: input.now,
         })
-        .where(
-          and(
-            eq(schema.groupReminders.chatId, input.chatId),
-            inArray(schema.groupReminders.status, CANCELLABLE),
-            scope,
-          ),
-        )
+        .where(and(eq(schema.groupReminders.chatId, input.chatId), stillCancellable(), scope))
         .returning();
       await auditCancelled(tx, rows, input.reason, 'system');
+      await auditAcceptedInFlight(
+        tx,
+        and(eq(schema.groupReminders.chatId, input.chatId), scope),
+        'system',
+      );
       return rows;
     });
   } catch (err) {

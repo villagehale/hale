@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
@@ -13,6 +14,7 @@ import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conv
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { reminderFacts } from './facts';
+import { groupReminderInFlightCancelEnabled } from './flag';
 import {
   type GroupReminderLineOutcome,
   postGroupReminderLine,
@@ -30,6 +32,8 @@ import {
 } from './standing';
 import {
   type GroupReminderRow,
+  auditLandedAfterStop,
+  cancelGroupReminders,
   claimReminder,
   closeReminder,
   commitSend,
@@ -206,8 +210,74 @@ async function settle(
     return prior ? closeFromLedger(database, row, prior, now) : 'retrying';
   }
   await thread();
-  await closeReminder(database, row, { status: 'sent', reason: null, now });
-  return 'sent';
+  const closed = await closeReminder(database, row, { status: 'sent', reason: null, now });
+  if (!closed) await auditLandedAfterStop(database, row);
+  return closed ? 'sent' : 'lost';
+}
+
+/**
+ * The phone hash whose opt-out blocks this send, or null when it may still go.
+ * A missing seat, a revoked channel, or an unread opt-out hold. No word list.
+ */
+async function reminderOptOutHash(
+  database: Database,
+  row: GroupReminderRow,
+): Promise<string | null> {
+  const [current] = await database
+    .select({ status: schema.groupReminders.status })
+    .from(schema.groupReminders)
+    .where(eq(schema.groupReminders.id, row.id))
+    .limit(1);
+  if (current?.status !== 'in_flight') return row.askedByPhoneHash;
+  const seats = await liveSeats(database, row.chatId);
+  if (!seats.some((seat) => seat.phoneHash === row.askedByPhoneHash)) return row.askedByPhoneHash;
+  if (
+    row.forKind === 'person' &&
+    row.forPhoneHash &&
+    !seats.some((seat) => seat.phoneHash === row.forPhoneHash)
+  ) {
+    return row.forPhoneHash;
+  }
+  if (await userOptedOut(database, row.askedByUserId)) return row.askedByPhoneHash;
+  if (
+    row.forUserId &&
+    row.forUserId !== row.askedByUserId &&
+    (await userOptedOut(database, row.forUserId))
+  ) {
+    return row.forPhoneHash ?? row.askedByPhoneHash;
+  }
+  return null;
+}
+
+/** A verified channel that has been revoked, or a number held for an unread opt-out. */
+async function userOptedOut(database: Database, userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  if (await isParentHeld(database, userId)) return true;
+  const rows = await database
+    .select({
+      revokedAt: schema.parentChannels.revokedAt,
+      verifiedAt: schema.parentChannels.verifiedAt,
+    })
+    .from(schema.parentChannels)
+    .where(eq(schema.parentChannels.userId, userId));
+  const verified = rows.filter((channel) => channel.verifiedAt !== null);
+  if (verified.length === 0) return false;
+  return verified.every((channel) => channel.revokedAt !== null);
+}
+
+function optOutGate(database: Database, row: GroupReminderRow, now: Date) {
+  if (!groupReminderInFlightCancelEnabled()) return undefined;
+  return async () => {
+    const phoneHash = await reminderOptOutHash(database, row);
+    if (!phoneHash) return true;
+    await cancelGroupReminders(database, {
+      chatId: row.chatId,
+      phoneHash,
+      reason: 'member_stop',
+      now,
+    });
+    return false;
+  };
 }
 
 async function familyHoldsChat(database: Database, familyId: string, chatId: string) {
@@ -329,6 +399,7 @@ async function fireOne(
       dedupeKey: sendKey,
       now,
       transport: ports.oneToOne,
+      beforeSend: optOutGate(database, row, now),
     });
     return settle(database, row, sendKey, texted, now, () =>
       threadIfParent(database, { familyId: row.familyId, parentUserId: userId, body: text }),
@@ -351,6 +422,7 @@ async function fireOne(
     now,
     send: ports.send,
     listChatHandles: ports.listChatHandles,
+    beforeSend: optOutGate(database, row, now),
   });
   return settle(database, row, sendKey, posted, now, async () => {
     const conversationId = await resolveOrCreateNoteConversation(

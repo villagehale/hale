@@ -2,6 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -25,7 +26,8 @@ export type FloodLineFallback =
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
-  | 'empty';
+  | 'empty'
+  | 'link';
 
 export type FloodLineCompose =
   | { status: 'composed'; line: string }
@@ -94,6 +96,11 @@ export function createFloodLine(client: () => AgentClient): FloodLineComposer {
       }
       const line = plainText(raw);
       if (line === '') return { status: 'unavailable', reason: 'empty' };
+      // A link in this line is not rewritten and not replaced. Nothing is sent.
+      if (hasLinkShape(line)) {
+        noteLinkGate('flood-line', 'refused');
+        return { status: 'unavailable', reason: 'link' };
+      }
       return { status: 'composed', line };
     },
   };

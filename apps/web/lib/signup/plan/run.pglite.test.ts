@@ -21,6 +21,7 @@ import {
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import {
+  PLAN_CITY_LOGIN_OWNER_ENABLED_ENV,
   PROVIDER_ACCOUNT_CREATE_ENABLED_ENV,
   PROVIDER_CREDENTIALS_ENABLED_ENV,
 } from '../credentials/flag';
@@ -30,7 +31,11 @@ import { loginPurposeLine } from '../login-link/page-copy';
 import { lookupLoginLink } from '../login-link/store';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
-import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import {
+  REGISTRATION_ASSISTED_RUN_ENABLED_ENV,
+  REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV,
+  REGISTRATION_PLAN_RUN_ENABLED_ENV,
+} from './flag';
 import type { PlanPrepFacts } from './prep';
 import {
   PLAN_JOIN_LEAD_MS,
@@ -45,6 +50,7 @@ import {
   cancelSignupPlan,
   claimDuePlan,
   parkSignupPlan,
+  releaseUnstartedPlansBeforeOpen,
   savePlanResume,
 } from './store';
 
@@ -1904,5 +1910,228 @@ describe('parked password rejection and mismatched options', () => {
     expect(inputs[0]?.credentials).toEqual({ username: 'ada', password: 'city-pass', totp: null });
     expect(inputs[0]?.accountCreate).toBe(true);
     expect(inputs[0]?.providerSession.storageState).toEqual({ cookies: [], origins: [] });
+  });
+});
+
+describe('a plan is claimed only once registration is open (VIL-704)', () => {
+  it('leaves a plan whose open is two minutes ahead unclaimed when the flag is exactly true', async () => {
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true\n');
+    const early = await plannedFamily();
+    const { runner: earlyRunner } = engineLike(PAID);
+    const stillEarly = await runDueSignupPlans(db.database, { now: NOW }, deps(earlyRunner).deps);
+    expect(stillEarly.plans.map((plan) => plan.offerId)).toContain(early.offerId);
+
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
+    const waiting = await plannedFamily();
+    const { runner } = engineLike(PAID);
+    const held = await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(held.plans.find((plan) => plan.offerId === waiting.offerId)).toBeUndefined();
+    expect((await offerRow(waiting.offerId))?.status).toBe('planned');
+    expect(runner.run.mock.calls.some(([input]) => input.correlationId === waiting.offerId)).toBe(
+      false,
+    );
+    expect((await steps(waiting.offerId)).map((step) => step.step)).not.toContain('plan_started');
+
+    let claimedAtOpen = false;
+    for (let i = 0; i < 30; i += 1) {
+      const next = await claimDuePlan(db.database, {
+        now: OPENS,
+        leadMs: 0,
+        leaseMs: PLAN_LEASE_MS,
+      });
+      if (!next || next === 'contended') break;
+      if (next.offerId === waiting.offerId) {
+        claimedAtOpen = true;
+        break;
+      }
+    }
+    expect(claimedAtOpen).toBe(true);
+    expect((await offerRow(waiting.offerId))?.status).toBe('submitting');
+  });
+
+  it('returns an unstarted claim to planned and does not start it before the open', async () => {
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
+    const family = await plannedFamily();
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+        planLeaseUntil: new Date(NOW.getTime() - 1_000),
+      })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    const { runner } = engineLike(PAID);
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(result.plans.find((plan) => plan.offerId === family.offerId)).toBeUndefined();
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('planned');
+    expect(row?.planResume).toBeNull();
+    expect(row?.planLeaseUntil).toBeNull();
+    expect(runner.run.mock.calls.some(([input]) => input.correlationId === family.offerId)).toBe(
+      false,
+    );
+    expect(notices.some((notice) => notice.offerId === family.offerId)).toBe(false);
+    expect((await steps(family.offerId)).map((step) => step.step)).toContain('plan_before_open');
+  });
+
+  it('does not clear a newer sweep that already holds the claim', async () => {
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
+    const opens = new Date(NOW.getTime() + 60_000);
+    const family = await plannedFamily({ opensAt: opens });
+    const leaseUntil = new Date(opens.getTime() + PLAN_LEASE_MS);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+        planLeaseUntil: leaseUntil,
+      })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    const { runner } = engineLike(PAID);
+    await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('submitting');
+    expect(row?.planLeaseUntil?.toISOString()).toBe(leaseUntil.toISOString());
+    expect(row?.planResume).toMatchObject({ phase: 'signup', runId: null });
+    expect(runner.run.mock.calls.some(([input]) => input.correlationId === family.offerId)).toBe(
+      false,
+    );
+  });
+
+  it('lets the sweep that holds a claim put that claim back before the open', async () => {
+    const family = await plannedFamily();
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+        planLeaseUntil: new Date(NOW.getTime() + PLAN_LEASE_MS),
+      })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    const released = await releaseUnstartedPlansBeforeOpen(db.database, {
+      now: NOW,
+      offerId: family.offerId,
+    });
+    expect(released.map((row) => row.id)).toEqual([family.offerId]);
+    expect((await offerRow(family.offerId))?.status).toBe('planned');
+  });
+});
+
+describe("a co-parent plan cannot use the other parent's city login (VIL-704)", () => {
+  const SECRET = 'other-parent-city-secret';
+
+  async function coParentOf(familyId: string) {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${familyId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('no co-parent');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'co_parent' });
+    await enrolParent(familyId, user.id);
+    return user.id;
+  }
+
+  async function givePlanTo(family: { familyId: string; offerId: string }, parentUserId: string) {
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ parentUserId })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    await db.database
+      .update(schema.authorizedSignupConsents)
+      .set({ parentUserId })
+      .where(eq(schema.authorizedSignupConsents.familyId, family.familyId));
+  }
+
+  function armCredentials() {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+  }
+
+  it('refuses the other parent password and session when the flag is exactly true', async () => {
+    armCredentials();
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
+    const family = await plannedFamily({ session: true });
+    const coParentId = await coParentOf(family.familyId);
+    expect(
+      (
+        await saveProviderCredentials(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          providerHost: AUTO_HOST,
+          username: 'ada',
+          password: SECRET,
+          now: NOW,
+        })
+      ).ok,
+    ).toBe(true);
+    await givePlanTo(family, coParentId);
+    const { runner, inputs } = engineLike(PAID);
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: OPENS }, d);
+    expect(result.plans.find((plan) => plan.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_login',
+      detail: 'no_provider_session',
+    });
+    expect(inputs.some((input) => input.correlationId === family.offerId)).toBe(false);
+    const spoken = JSON.stringify({ inputs, notices });
+    expect(spoken).not.toContain(SECRET);
+    const audit = (await steps(family.offerId)).find(
+      (step) => step.step === 'plan_city_login_refused',
+    );
+    expect(audit).toMatchObject({ reason: 'other_parent', refused: 'both' });
+    expect(JSON.stringify(audit)).not.toContain(SECRET);
+
+    const own = await plannedFamily({ session: false });
+    expect(
+      (
+        await saveProviderCredentials(db.database, {
+          familyId: own.familyId,
+          parentUserId: own.parentUserId,
+          providerHost: AUTO_HOST,
+          username: 'ada',
+          password: 'own-city-pass',
+          now: NOW,
+        })
+      ).ok,
+    ).toBe(true);
+    const owned = engineLike(PAID);
+    const ran = await runDueSignupPlans(db.database, { now: OPENS }, deps(owned.runner).deps);
+    expect(ran.plans.find((plan) => plan.offerId === own.offerId)?.outcome).toBe('completed');
+    expect(owned.inputs.find((input) => input.correlationId === own.offerId)?.credentials).toEqual({
+      username: 'ada',
+      password: 'own-city-pass',
+      totp: null,
+    });
+  });
+
+  it('still passes the family login when the flag is not exactly true', async () => {
+    armCredentials();
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true\n');
+    const family = await plannedFamily({ session: false });
+    const coParentId = await coParentOf(family.familyId);
+    expect(
+      (
+        await saveProviderCredentials(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          providerHost: AUTO_HOST,
+          username: 'ada',
+          password: SECRET,
+          now: NOW,
+        })
+      ).ok,
+    ).toBe(true);
+    await givePlanTo(family, coParentId);
+    const { runner, inputs } = engineLike(PAID);
+    const result = await runDueSignupPlans(db.database, { now: OPENS }, deps(runner).deps);
+    expect(result.plans.find((plan) => plan.offerId === family.offerId)?.outcome).toBe('completed');
+    expect(inputs.find((input) => input.correlationId === family.offerId)?.credentials).toEqual({
+      username: 'ada',
+      password: SECRET,
+      totp: null,
+    });
   });
 });

@@ -175,15 +175,17 @@ describe('promo off', () => {
     const html = renderToStaticMarkup(createElement(RedesignHome, { ...door }));
     expect(html).not.toContain('id="founding"');
     expect(html).not.toContain('promo-bar');
-    expect(text(html)).toContain('Founding families join free.');
+    expect(text(html)).toContain('Start with a text.');
+    expect(text(html)).not.toContain('Founding families join free.');
   });
 
-  it('leaves the pricing Plus card unchanged, with no strikethrough', () => {
+  it('leaves the pricing Plus card on one plain price, with no strikethrough', () => {
     const html = renderToStaticMarkup(createElement(RedesignPricing, { ...door }));
     const card = html.match(/<li class="hs-tier t-plus">[\s\S]*?<\/li>/)?.[0] ?? '';
-    expect(card).toContain('$19 CAD/mo');
-    expect(card).toContain('$14 USD/mo');
-    expect(card).toContain('or $159 CAD / $119 USD a year, about three months free');
+    expect(card).toContain('$19/mo');
+    expect(card).toContain('or $159/yr');
+    expect(card).not.toMatch(/\b(CAD|USD)\b/);
+    expect(card).not.toContain('$14/mo');
     expect(card).not.toMatch(/<(s|del|strike)[\s>]|promo-tier-regular|line-through/i);
   });
 });

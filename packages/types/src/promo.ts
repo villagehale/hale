@@ -23,22 +23,24 @@ export type BillingCurrency = 'CAD' | 'USD';
 export const DEFAULT_FOUNDING_PROMO_ENDS_AT = '2027-01-01T00:00:00-05:00';
 
 /**
- * Plus list display. CAD matches the existing public Plus copy for
- * STRIPE_PRICE_PLUS_{MONTHLY,ANNUAL}. USD matches create-prices (1400 / 11900).
+ * Plus list display. Amounts are unchanged: CAD matches the public Plus price
+ * for STRIPE_PRICE_PLUS_{MONTHLY,ANNUAL}; USD matches create-prices (1400 / 11900).
+ * Labels are a plain "$" with no CAD/USD note. Callers pick the row from the
+ * visitor's country.
  */
 export const PLUS_LIST_PRICE_DISPLAY: Record<
   BillingCurrency,
   { monthlyLabel: string; annualLabel: string; monthlyCents: number; annualCents: number }
 > = {
   CAD: {
-    monthlyLabel: '$19/mo CAD',
-    annualLabel: '$159/yr CAD',
+    monthlyLabel: '$19/mo',
+    annualLabel: '$159/yr',
     monthlyCents: 1900,
     annualCents: 15900,
   },
   USD: {
-    monthlyLabel: '$14/mo USD',
-    annualLabel: '$119/yr USD',
+    monthlyLabel: '$14/mo',
+    annualLabel: '$119/yr',
     monthlyCents: 1400,
     annualCents: 11900,
   },
@@ -47,23 +49,48 @@ export const PLUS_LIST_PRICE_DISPLAY: Record<
 /**
  * Max list annual display for after the promo cutoff. CAD 32900 / USD 25900
  * match `STRIPE_PRICE_MAX_ANNUAL_{CAD,USD}` from create-founding-prices.
- * Not purchasable during the window.
+ * Not purchasable during the window. Labels are a plain "$" with no currency
+ * note; callers pick the row from the visitor's country. There is no monthly
+ * Max amount in this table.
  */
 export const MAX_LIST_PRICE_DISPLAY: Record<
   BillingCurrency,
   { annualLabel: string; annualCents: number }
 > = {
-  CAD: { annualLabel: '$329/yr CAD', annualCents: 32900 },
-  USD: { annualLabel: '$259/yr USD', annualCents: 25900 },
+  CAD: { annualLabel: '$329/yr', annualCents: 32900 },
+  USD: { annualLabel: '$259/yr', annualCents: 25900 },
 };
 
 /**
  * US → USD; every other country code, and a missing header, → CAD.
  * Reads Vercel's `x-vercel-ip-country` value (ISO 3166-1 alpha-2).
+ *
+ * Display-only. The sale card keeps a bare `$`. Checkout does not use this
+ * once CHECKOUT_SERVER_CURRENCY_ENABLED is exactly `true` — it uses
+ * `serverCheckoutCurrency`, which refuses anything other than US or CA.
  */
 export function currencyFromIpCountry(countryHeader: string | null | undefined): BillingCurrency {
   const country = countryHeader?.trim().toUpperCase();
   return country === 'US' ? 'USD' : 'CAD';
+}
+
+/** Shown instead of a buy button when checkout is refused for the visitor's country. */
+export const CHECKOUT_REGION_UNSUPPORTED_MESSAGE =
+  "Hale is only in the US and Canada for now. We'll let you know when it reaches you.";
+
+/**
+ * The currency the server will charge. US → USD, CA → CAD. A missing or empty
+ * geo header keeps the CAD fallback. Any other explicit country is null — the
+ * caller refuses checkout, with no USD/CAD fallback and no client-sent currency.
+ */
+export function serverCheckoutCurrency(
+  countryHeader: string | null | undefined,
+): BillingCurrency | null {
+  const country = countryHeader?.trim().toUpperCase();
+  if (!country) return 'CAD';
+  if (country === 'US') return 'USD';
+  if (country === 'CA') return 'CAD';
+  return null;
 }
 
 /** Parse an override timestamp, or the Toronto default when unset/invalid. */

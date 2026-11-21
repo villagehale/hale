@@ -31,6 +31,9 @@ const DAY = 'The family-local day check.';
 
 describe('promptCacheLayoutEnabled', () => {
   it('is off unless the env is the exact string true (no trim)', () => {
+    // The all-flags-on CI job sets this before the process starts. The unset
+    // case is what this line checks, so clear it first.
+    delete process.env[PROMPT_CACHE_LAYOUT_ENV];
     expect(promptCacheLayoutEnabled()).toBe(false);
     process.env[PROMPT_CACHE_LAYOUT_ENV] = 'true';
     expect(promptCacheLayoutEnabled()).toBe(true);

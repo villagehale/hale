@@ -1,6 +1,10 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { LINQ_SIGNATURE_TOLERANCE_SECONDS, verifyLinqWebhookSignature } from './signature';
+import {
+  LINQ_SIGNATURE_TOLERANCE_SECONDS,
+  signLinqWebhook,
+  verifyLinqWebhookSignature,
+} from './signature';
 
 /**
  * Standard Webhooks, computed here from Linq's documented steps — not by calling
@@ -35,6 +39,19 @@ function verify(overrides: Partial<Parameters<typeof verifyLinqWebhookSignature>
 describe('verifyLinqWebhookSignature', () => {
   it('accepts a signature over the raw body with the whsec_ key', () => {
     expect(verify()).toBe(true);
+  });
+
+  it('accepts signLinqWebhook, the signer the canary and the prod gate share', () => {
+    expect(
+      verify({
+        signature: signLinqWebhook({
+          secret: SECRET,
+          webhookId: ID,
+          timestamp: TS,
+          rawBody: BODY,
+        }),
+      }),
+    ).toBe(true);
   });
 
   it('accepts the valid token when the header carries more than one', () => {

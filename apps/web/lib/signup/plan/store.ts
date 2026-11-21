@@ -1,5 +1,5 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -289,6 +289,52 @@ export async function claimDuePlan(
     throw err;
   }
   return row ? claimedPlan(row, null) : null;
+}
+
+/**
+ * Puts an unstarted plan back to `planned` while registration is still ahead.
+ * A provider run, or a payment that may exist, stays where it is.
+ *
+ * Without `offerId` this recovers abandoned claims only: a live lease belongs to
+ * a sweep that may already be driving the plan, and a clock captured before
+ * prep must not clear it. With `offerId` the sweep is letting go of the claim
+ * it holds.
+ */
+export async function releaseUnstartedPlansBeforeOpen(
+  database: Database,
+  input: { now: Date; offerId?: string },
+): Promise<Array<{ id: string; familyId: string; parentUserId: string; opensAt: Date | null }>> {
+  const offers = schema.authorizedSignupOffers;
+  const abandoned = or(isNull(offers.planLeaseUntil), lte(offers.planLeaseUntil, input.now));
+  return database
+    .update(offers)
+    .set({
+      status: 'planned',
+      planResume: null,
+      planLeaseUntil: null,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        input.offerId ? eq(offers.id, input.offerId) : abandoned,
+        eq(offers.status, 'submitting'),
+        gt(offers.planOpensAt, input.now),
+        or(isNull(offers.planAlreadyOpen), eq(offers.planAlreadyOpen, false)),
+        sql`(
+          ${offers.planResume} is null
+          or (
+            coalesce(${offers.planResume}->>'phase', 'signup') <> 'paying'
+            and (${offers.planResume}->>'runId') is null
+          )
+        )`,
+      ),
+    )
+    .returning({
+      id: offers.id,
+      familyId: offers.familyId,
+      parentUserId: offers.parentUserId,
+      opensAt: offers.planOpensAt,
+    });
 }
 
 /**

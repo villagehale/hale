@@ -134,13 +134,42 @@ export type SuppressReason =
   /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
    * not be reached. The drain asks again for a T-1h held this way, which the next hourly
    * slot would only find started. Sending or dropping the row overwrites it. */
-  | typeof COMPOSE_HELD;
+  | typeof COMPOSE_HELD
+  /** VIL-730 · NOT a drop: the mark on a row whose send job is queued and not yet settled.
+   * The row stays 'scheduled' (it is not 'sent' until Linq accepts the text) and is not
+   * offered again before its lease (`composeNextTryAt`) runs out. Only held-at-send.ts
+   * settles it: 'sent' on an accepted ledger row, a retry hold or a drop otherwise. */
+  | typeof SEND_PENDING
+  /** VIL-730 · NOT a drop: the send was refused (a gate such as `unbacked_claim`, or Linq)
+   * and the row is back to the run under the same bounded backoff as a compose hold
+   * (nextComposeHold). The failure's own code is on the audit row. */
+  | typeof SEND_FAILED_HELD
+  /** VIL-730. The send was refused on every try (nextComposeHold); ops was paged. */
+  | 'send_retries_exhausted'
+  /** VIL-730. The dispatch found the parent's reminder category off at send time. */
+  | 'send_suppressed_pref'
+  /** VIL-730. The dispatch found no live SMS consent at send time. */
+  | 'send_suppressed_consent';
 
 export const COMPOSE_HELD = 'compose_unavailable';
+export const SEND_PENDING = 'send_pending';
+export const SEND_FAILED_HELD = 'send_failed';
 
-/** A reason a row stops: every SuppressReason but the hold mark, which only
- * `holdForCompose` writes (run.ts). */
-export type DropReason = Exclude<SuppressReason, typeof COMPOSE_HELD>;
+/**
+ * VIL-730 · how long a queued send may stay unsettled before the run may offer the row
+ * again. Longer than the channel.send queue's whole retry arc, so a job still retrying is
+ * never raced by a re-compose; the dead-letter consumer settles a job that gives up well
+ * before this. If even that is lost, the re-offer meets the same dedupe key, so a text
+ * that did leave is found, not sent twice.
+ */
+export const SEND_PENDING_LEASE_MS = 3 * 60 * 60_000;
+
+/** The marks a row left 'scheduled' may carry. None of them is a reason it stopped. */
+type HoldMark = typeof COMPOSE_HELD | typeof SEND_PENDING | typeof SEND_FAILED_HELD;
+
+/** A reason a row stops: every SuppressReason but the hold marks, which only
+ * `holdForCompose`, `markSendPending` (run.ts) and held-at-send.ts write. */
+export type DropReason = Exclude<SuppressReason, HoldMark>;
 
 /**
  * VIL-625 · how often a held row is put back to the writer. This bounds an internal
