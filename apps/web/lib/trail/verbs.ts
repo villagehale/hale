@@ -1382,8 +1382,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale could not reach the driver about a schedule change',
     family: 'problem',
   },
-  // About the one adult who stopped Hale or left no number: their audience, off History and
-  // the family export (rights/export.ts), and in their own copy.
+  // About the one adult who stopped Hale, left no number, or has a text Hale could not read:
+  // their audience, off History and the family export (rights/export.ts), in their own copy.
   team_schedule_driver_unreachable: {
     sentence: 'Hale did not text you about a schedule change',
     family: 'note',

@@ -628,6 +628,7 @@ export function teamSchedulePortsFor(
           timeZone: parent?.timeZone && parent.timeZone.length > 0 ? parent.timeZone : 'UTC',
         }),
         familyId,
+        input.signal,
       );
     }),
   };

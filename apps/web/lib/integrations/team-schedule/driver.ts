@@ -58,6 +58,8 @@ export interface DriverNotifyPorts {
     wasAt: Date | null;
     whenAt: Date | null;
     place: string | null;
+    /** Set on a retry: the drain's queues are waiting behind this compose. */
+    signal?: AbortSignal;
   }): Promise<string | null>;
   gate(input: {
     familyId: string;
@@ -449,6 +451,9 @@ const DRIVER_RETRY_MAX_PER_TICK = 5;
 /** No new compose starts past this, so a slow model cannot hold up the queues behind it. */
 export const DRIVER_RETRY_BUDGET_MS = 20_000;
 
+/** One compose can ask the model several times, so the client's timeout does not bound it. */
+export const DRIVER_RETRY_COMPOSE_BOUND_MS = 30_000;
+
 /** No try follows a row carrying one of these. */
 const DRIVER_CLOSED_CODES: ReadonlySet<string> = new Set([
   DRIVER_UNCONFIRMED,
@@ -567,9 +572,9 @@ function driverLegStep(attempts: readonly DriverAttempt[], now: Date): DriverLeg
 }
 
 /**
- * A leg that ended on this adult's own standing: they stopped Hale, gave no consent, or left
- * no number. The row is theirs alone. As a family row it would tell every other parent seat
- * that this adult stopped Hale.
+ * A leg that ended on this adult's own standing: they stopped Hale, gave no consent, left no
+ * number, or sent a text Hale still has not read. The row is theirs alone. As a family row it
+ * would tell every other parent seat about this adult's stop or their unread text.
  */
 function driverUnreachableAudit(
   familyId: string,
@@ -597,7 +602,7 @@ async function closeDriverLeg(
   database: Database,
   leg: DriverLeg,
   open: OpenAttempt,
-  close: { code: string; reason: string; page: DriverUnsentReason | null; ownStanding?: true },
+  close: { code: string; reason: string; page: DriverUnsentReason | null; ownStanding?: boolean },
   pager: OpsPager,
 ): Promise<'closed'> {
   const after = { reason: close.reason, attempts: open.attempts };
@@ -677,10 +682,20 @@ async function holdDriverLeg(
 }
 
 /**
- * Quiet hours and an operator pause wait: the sweep offers it again, until the leg would
- * leave the sweep's window, which closes it and pages. Every other hold is this adult's own
- * stop or consent, which ends the retry, unpaged.
+ * What a gate hold does to an open retry. A hold that clears by itself waits: the sweep offers
+ * the leg again until it would leave the sweep's window, which closes it and pages. An unread
+ * opt-out is one of those, because a real stop shows up on a later tick as `not_enrolled`.
+ * `ownStanding` is about this one adult, so the row that closes the leg is theirs alone. A
+ * `Record`, so a new hold reason has to say which it is.
  */
+const RETRY_HOLDS: Record<ProactiveHoldReason, { waits: boolean; ownStanding: boolean }> = {
+  quiet_hours: { waits: true, ownStanding: false },
+  sends_paused: { waits: true, ownStanding: false },
+  opt_out_unread: { waits: true, ownStanding: true },
+  not_enrolled: { waits: false, ownStanding: true },
+  no_watch_consent: { waits: false, ownStanding: true },
+};
+
 async function settleHeldRetry(
   database: Database,
   leg: DriverLeg,
@@ -689,21 +704,18 @@ async function settleHeldRetry(
   pager: OpsPager,
   lastChance: boolean,
 ): Promise<'waiting' | 'closed'> {
-  if (reason === 'quiet_hours' || reason === 'sends_paused') {
-    if (!lastChance) return 'waiting';
-    return closeDriverLeg(
-      database,
-      leg,
-      open,
-      { code: SEND_RETRIES_EXHAUSTED, reason: `held:${reason}`, page: 'held_too_long' },
-      pager,
-    );
-  }
+  const hold = RETRY_HOLDS[reason];
+  if (hold.waits && !lastChance) return 'waiting';
   return closeDriverLeg(
     database,
     leg,
     open,
-    { code: SEND_RETRIES_EXHAUSTED, reason: `held:${reason}`, page: null, ownStanding: true },
+    {
+      code: SEND_RETRIES_EXHAUSTED,
+      reason: `held:${reason}`,
+      page: hold.waits ? 'held_too_long' : null,
+      ownStanding: hold.ownStanding,
+    },
     pager,
   );
 }
@@ -782,7 +794,8 @@ async function sendDriverAttempt(
         providerChatId: chatId,
         status: 'failed',
         errorCode,
-        createdAt: now,
+        // Not `now`: a batch's start can be minutes old, and an old stamp reads as a dead run.
+        createdAt: ports.clock(),
       })
       .onConflictDoNothing()
       .returning({ id: schema.channelMessages.id });
@@ -801,7 +814,11 @@ async function sendDriverAttempt(
     return 'closed';
   }
 
-  const text = await ports.composeDriver({ userId: leg.userId, ...notice });
+  const text = await ports.composeDriver({
+    userId: leg.userId,
+    ...notice,
+    ...(turn.previous ? { signal: AbortSignal.timeout(DRIVER_RETRY_COMPOSE_BOUND_MS) } : {}),
+  });
   if (text === null) {
     const [row] = await writeAttempt(DRIVER_UNWRITTEN);
     if (!row) return 'lost';
@@ -853,13 +870,14 @@ async function sendDriverAttempt(
     );
   }
   const carried = sent.transport === 'imessage' ? 'imessage' : channel;
+  const acceptedAt = ports.clock();
   await database.transaction(async (tx) => {
     await tx
       .update(schema.channelMessages)
       .set({
         status: acceptedStatus(carried),
         errorCode: null,
-        sentAt: now,
+        sentAt: acceptedAt,
         providerMessageId: sent.providerMessageId,
         channel: carried,
         providerChatId: chatId ?? sent.chatId ?? null,

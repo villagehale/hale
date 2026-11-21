@@ -1,24 +1,36 @@
 import { randomUUID } from 'node:crypto';
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyDeliveryStatus } from '~/lib/channel/delivery-status';
+import { holdSender, releaseHeldMessage } from '~/lib/channel/intake/opt-out-hold';
 import { FakeTransport, type OutboundMessage } from '~/lib/channel/intake/transport';
+import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import {
   GARBLED_TEXT,
   LinqSendError,
   createLinqPhoneTransport,
 } from '~/lib/channel/linq/transport';
-import type { ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
+import {
+  type ProactiveSendVerdict,
+  assertProactiveSendAllowed,
+  buildOutboundGatePorts,
+} from '~/lib/channel/outbound-gate';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   DRIVER_RETRY_BUDGET_MS,
+  DRIVER_RETRY_COMPOSE_BOUND_MS,
   type DriverNotifyPorts,
+  type DriverRetrySummary,
   notifyDrivers,
   retryTeamScheduleDrivers,
 } from './driver';
+import { composeTeamScheduleDriver, voiceFacts } from './voice';
 
 /**
  * VIL-734 · a driver's schedule-change text is on the ledger as sent only once Linq took it,
@@ -37,6 +49,8 @@ const at = (minutes: number) => new Date(NOW.getTime() + minutes * MIN);
 
 let db: TestDb;
 let family: { familyId: string; parentUserId: string };
+/** What the clock port reads: the time of the run under test. */
+let runClock = NOW;
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
@@ -50,12 +64,14 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.stubEnv(FLAG, 'true');
   vi.stubEnv('TEAM_SCHEDULE_CHANGES_ENABLED', 'true');
+  runClock = NOW;
   family = await seedFamily(db.database);
 });
 
 afterEach(async () => {
   vi.unstubAllEnvs();
-  await db.exec('truncate table families, users, rate_limits cascade');
+  vi.restoreAllMocks();
+  await db.exec('truncate table families, users, rate_limits, opt_out_held_messages cascade');
 });
 
 async function seedChange(
@@ -169,7 +185,7 @@ function harness(
       threaded.push(input.body);
       return 'conv-1';
     },
-    clock: () => NOW,
+    clock: () => runClock,
     pager: {
       page: async (page) => {
         pages.push(page);
@@ -186,6 +202,7 @@ function firstTry(
   now = NOW,
   drivers = [{ userId: family.parentUserId }],
 ) {
+  runClock = now;
   return notifyDrivers(
     db.database,
     {
@@ -205,6 +222,7 @@ function firstTry(
 }
 
 function tick(ports: DriverNotifyPorts, now: Date) {
+  runClock = now;
   return retryTeamScheduleDrivers(db.database, { now, portsFor: () => ports });
 }
 
@@ -246,6 +264,52 @@ async function driverAudit() {
     );
   return rows;
 }
+
+const HELD_PHONE = '+15555550100';
+const HELD_TEXT = 'held-text-1';
+
+/** The adult as the real outbound gate reads them: a verified number and watch consent. */
+async function enrolDriver() {
+  // The flags-on CI job forces this kill switch on too, and it would hold every send here.
+  vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+  await db.database
+    .update(schema.users)
+    .set({ timezone: TZ, resolvedTimezone: TZ, timezoneSource: 'place' })
+    .where(eq(schema.users.id, family.parentUserId));
+  await db.database.insert(schema.parentChannels).values({
+    userId: family.parentUserId,
+    familyId: family.familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(HELD_PHONE),
+    phoneE164Hash: phoneBlindIndex(HELD_PHONE),
+    verifiedAt: NOW,
+  });
+  await recordWatchConsent(
+    db.database,
+    {
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      granted: true,
+      verbatimReply: 'yes',
+      interpretation: 'the parent said yes to being watched',
+      channelMessageId: null,
+    },
+    NOW,
+  );
+}
+
+const realGate: DriverNotifyPorts['gate'] = (request) =>
+  assertProactiveSendAllowed(
+    { ...request, kind: 'plan_check_in' },
+    buildOutboundGatePorts(db.database),
+  );
+
+const holdTheirText = () =>
+  holdSender(db.database, {
+    phoneHash: phoneBlindIndex(HELD_PHONE),
+    providerMessageId: HELD_TEXT,
+    now: at(1),
+  });
 
 const legKey = (changeId: string, attempt: number) =>
   `team_schedule:driver:${changeId}:${family.parentUserId}:${attempt}`;
@@ -902,6 +966,204 @@ describe('the driver text, flag on', () => {
       action: 'team_schedule_driver_unsent',
       after: { reason: 'held:sends_paused', attempts: 1 },
     });
+  });
+
+  it('waits out an unread opt-out hold, then sends the retry once the text is read', async () => {
+    await enrolDriver();
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports);
+    await holdTheirText();
+
+    expect(await tick(ports, at(5))).toMatchObject({ waiting: 1, closed: 0 });
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect((await ledger())[0]?.errorCode).toBe('http_503');
+
+    expect(await releaseHeldMessage(db.database, HELD_TEXT)).toBe('released');
+    expect(await tick(ports, at(6))).toMatchObject({ sent: 1, closed: 0 });
+
+    expect(h.compose.calls).toBe(2);
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'queued', errorCode: null, dedupeKey: legKey(changeId, 2) },
+    ]);
+  });
+
+  it('closes the retry, unpaged, when the held text turns out to be a real stop', async () => {
+    await enrolDriver();
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused()] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports);
+    await holdTheirText();
+    expect(await tick(ports, at(5))).toMatchObject({ waiting: 1, closed: 0 });
+
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: at(6) })
+      .where(eq(schema.parentChannels.userId, family.parentUserId));
+    await releaseHeldMessage(db.database, HELD_TEXT);
+
+    expect(await tick(ports, at(7))).toMatchObject({ sent: 0, closed: 1 });
+    expect(h.compose.calls).toBe(1);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await driverAudit()).toContainEqual({
+      action: 'team_schedule_driver_unreachable',
+      after: { reason: 'held:not_enrolled', attempts: 1 },
+    });
+  });
+
+  it.each(['true', 'false'])(
+    "closes a hold that never clears on the adult's own row, and pages (audience read %s)",
+    async (lit) => {
+      vi.stubEnv('AUDIT_LOG_AUDIENCE_ENABLED', lit);
+      await enrolDriver();
+      const { changeId } = await seedChange();
+      const [second] = await db.database
+        .insert(schema.users)
+        .values({ email: `${randomUUID()}@example.test`, name: 'Second Parent' })
+        .returning({ id: schema.users.id });
+      if (!second) throw new Error('no user');
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: family.familyId, userId: second.id, role: 'co_parent' });
+      const h = harness({ script: [refused()] });
+      const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+      await firstTry(changeId, ports);
+      await holdTheirText();
+
+      await tick(ports, at(22 * 60));
+      expect(h.pages).toEqual([]);
+      expect((await ledger())[0]?.errorCode).toBe('http_503');
+
+      await tick(ports, at(23 * 60));
+      await tick(ports, at(23 * 60 + 1));
+
+      expect(h.compose.calls).toBe(1);
+      expect(h.transport.tried).toBe(1);
+      expect(h.pages).toEqual([
+        { site: 'team_schedule_driver_unsent', facts: { reason: 'held_too_long' }, count: 1 },
+      ]);
+      expect(await ledger()).toMatchObject([
+        { status: 'failed', errorCode: 'send_retries_exhausted' },
+      ]);
+      expect(await driverAudit()).toContainEqual({
+        action: 'team_schedule_driver_unreachable',
+        after: { reason: 'held:opt_out_unread', attempts: 1 },
+      });
+
+      const trailFor = async (actorUserId: string) =>
+        (
+          await assembleFamilyExport(db.database, family.familyId, {
+            actorUserId,
+            now: at(23 * 60 + 2),
+          })
+        ).trail.map((row) => row.summary);
+      const others = await trailFor(second.id);
+      expect(others).toContain(
+        'Hale could not reach the driver about a schedule change and will try again',
+      );
+      expect(others).not.toContain('Hale could not reach the driver about a schedule change');
+      expect(others).not.toContain('Hale did not text you about a schedule change');
+      expect(await trailFor(family.parentUserId)).toContain(
+        'Hale did not text you about a schedule change',
+      );
+    },
+  );
+
+  it('stamps a try from the clock, so a slow batch cannot make its live send look dead', async () => {
+    const { changeId } = await seedChange();
+    const batchStart = new Date(NOW.getTime() - 12 * MIN);
+    let sweptDuringSend: DriverRetrySummary | undefined;
+    const h = harness({
+      atSend: async () => {
+        sweptDuringSend = await tick(ports, NOW);
+      },
+    });
+    const ports: DriverNotifyPorts = { ...h.ports, clock: () => NOW };
+
+    await firstTry(changeId, ports, batchStart);
+
+    expect(sweptDuringSend).toMatchObject({ closed: 0, sent: 0 });
+    expect(h.pages).toEqual([]);
+    expect(await driverAudit()).toEqual([
+      { action: 'team_schedule_driver_sent', after: { attempt: 1, channel: 'sms' } },
+    ]);
+    expect(await ledger()).toMatchObject([
+      { status: 'queued', errorCode: null, sentAt: NOW, providerMessageId: 'fake-out-1' },
+    ]);
+  });
+
+  it('cuts a retry compose off at its bound and counts the try as unwritten', async () => {
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    await firstTry(changeId, h.ports);
+
+    const bound = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(bound.signal);
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      composeDriver: async (input) => {
+        if (!input.signal) throw new Error('compose ran with no bound');
+        const cut = new Promise<null>((resolve) => {
+          input.signal?.addEventListener('abort', () => resolve(null));
+        });
+        bound.abort();
+        return cut;
+      },
+    };
+
+    expect(await tick(ports, at(5))).toMatchObject({ retrying: 1, failed: 0 });
+    expect(timeout).toHaveBeenCalledWith(DRIVER_RETRY_COMPOSE_BOUND_MS);
+    expect(h.transport.tried).toBe(1);
+    expect(h.pages).toEqual([]);
+    expect(await ledger()).toMatchObject([
+      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'failed', errorCode: 'unwritten', dedupeKey: legKey(changeId, 2) },
+    ]);
+
+    expect(await tick(h.ports, at(15))).toMatchObject({ sent: 1 });
+    expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
+  });
+
+  it('the real compose hands the bound to its model request', async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const client = {
+      messages: {
+        create: async (_body: unknown, options?: { signal?: AbortSignal }) => {
+          seen.push(options?.signal);
+          throw new Error('aborted');
+        },
+      },
+    } as unknown as AgentClient;
+    const bound = new AbortController();
+
+    const text = await composeTeamScheduleDriver(
+      client,
+      voiceFacts({
+        mode: 'applied',
+        kid: null,
+        team: 'Team practice',
+        change: 'time',
+        wasAt: START,
+        whenAt: NEW_START,
+        place: 'Rink 1',
+        language: 'en',
+        timeZone: TZ,
+      }),
+      family.familyId,
+      bound.signal,
+    );
+
+    expect(text).toBeNull();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe(bound.signal);
   });
 
   it('asks the model again after a garbled draft, and sends the clean one', async () => {
