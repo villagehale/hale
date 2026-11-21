@@ -249,7 +249,10 @@ describe('a who-is-in line needs a plan to hold the answers', () => {
     expect(audits.map((row) => row.after)).toEqual([{ reason: 'unsent' }]);
   });
 
-  it('a redelivered message opens no second plan and says nothing twice', async () => {
+  it.each([
+    ['read as another event', { status: 'other' } as PlanRef],
+    ['with no plan named', undefined],
+  ])('a redelivered message %s opens no second plan and keeps the turn', async (_label, planRef) => {
     const a = await seedFamily(PARENT_A, 'Ada');
     await seedFamily(PARENT_B, 'Bao');
     const once = {
@@ -258,12 +261,13 @@ describe('a who-is-in line needs a plan to hold the answers', () => {
       senderFamilyId: a.familyId,
       coveringFamilyId: a.familyId,
       messageId: 'm-redelivered-1',
-      planRef: { status: 'other' } as PlanRef,
+      ...(planRef ? { planRef } : {}),
     };
     const first = await ask(once);
     expect(first.group).toHaveLength(1);
     const second = await ask(once);
     expect(second.group).toEqual([]);
+    expect(second.out).toMatchObject({ handled: true, outcome: 'group_experience_line_unsent' });
     const plans = await planRows();
     expect(plans).toHaveLength(1);
     expect(plans[0]?.closedAt).toBeNull();

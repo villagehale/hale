@@ -484,10 +484,6 @@ async function openRsvp(
   reading: GroupExperienceReading,
   deny: readonly string[],
 ): Promise<GroupExperienceTurnOutcome> {
-  const card = ports.pollCard ?? postgresExperiencePollCard(ports.database);
-  const target = await planFor(input, plans, reading);
-  // A who's-in line collects answers, so it is said only for a plan that can hold them.
-  if (target.status === 'none') return noPlanToCollect();
   if (await alreadySpoke(ports, input)) {
     return {
       handled: true,
@@ -496,6 +492,10 @@ async function openRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
+  const card = ports.pollCard ?? postgresExperiencePollCard(ports.database);
+  const target = await planFor(input, plans, reading);
+  // A who's-in line collects answers, so it is said only for a plan that can hold them.
+  if (target.status === 'none') return noPlanToCollect();
   const spoken = await speak(
     ports,
     input,
