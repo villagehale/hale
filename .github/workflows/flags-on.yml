@@ -1,8 +1,8 @@
 # The test suite with the default-off catalog flags on (scripts/ci/all-flags-on.mjs).
 # Advisory: continue-on-error, and not a required check, so a dark flag that breaks
-# the suite cannot block a PR. Own workflow, not a job in ci.yml, because it runs for
-# about 28 minutes, and Deploy, ci-heal, merge-ready and main's concurrency slot all
-# wait for the CI workflow to finish.
+# the suite cannot block a PR. Own workflow, not a job in ci.yml, because it runs far
+# longer than the required jobs, and Deploy, ci-heal, merge-ready and main's
+# concurrency slot all wait for the CI workflow to finish.
 name: Flags-on tests
 
 on:

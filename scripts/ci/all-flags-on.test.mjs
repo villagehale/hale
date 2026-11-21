@@ -18,7 +18,7 @@ const HELD_OFF_AT_LAUNCH = [
   'LINQ_APP_CLIP_PAY_ENABLED',
   'PROACTIVE_SENDS_PAUSED',
 ];
-// Held off by name before its catalog row lands, so not asserted against today's output.
+// Held off by name whether or not the catalog declares it yet, so not asserted in the full output.
 const HELD_OFF_ONCE_DECLARED = ['PROACTIVE_WEEKLY_CAP_ENABLED'];
 
 function printedEnv(args) {

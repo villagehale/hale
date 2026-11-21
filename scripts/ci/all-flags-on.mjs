@@ -23,7 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const catalogPath = path.join(root, 'packages', 'flags', 'src', 'catalog.ts');
 const LAUNCH_PAYMENT_ENV = new Set(['BROWSER_USE_SIGNUP_PAYMENT_ENABLED']);
 // PROACTIVE_SENDS_PAUSED refuses every proactive send when on, so no launch state has it on.
-// PROACTIVE_WEEKLY_CAP_ENABLED stays off until Barton says go; it has no catalog row yet.
+// PROACTIVE_WEEKLY_CAP_ENABLED stays off until Barton says go.
 const LAUNCH_HELD_OFF_ENV = new Set(['PROACTIVE_SENDS_PAUSED', 'PROACTIVE_WEEKLY_CAP_ENABLED']);
 
 /**
