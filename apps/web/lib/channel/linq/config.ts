@@ -190,10 +190,11 @@ export function linqGroupPlanRsvpEnabled(): boolean {
  * before writing its calendar (VIL-399 scene 04, launch scope since Barton 11-12). Exactly
  * `true` on any deploy. Unset, empty, `on`, and `false` stay dark, and dark leaves the RSVP
  * tally as it was: no ask, no calendar copy. The plan RSVP flag still has to be on for a
- * plan to exist.
+ * plan to exist. Not read under its Preview-only name (`LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED`):
+ * Prod holds a value there that did nothing, and it must not light this at merge.
  */
 export function linqGroupPlanRsvpCalendarEnabled(): boolean {
-  return trimmed('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED') === 'true';
+  return isEnabled('linq-group-plan-calendar');
 }
 
 /**

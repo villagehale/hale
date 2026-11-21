@@ -43,7 +43,7 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-  vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
 });
 
 afterEach(async () => {

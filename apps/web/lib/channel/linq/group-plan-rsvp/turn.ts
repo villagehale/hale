@@ -160,7 +160,7 @@ export interface GroupPlanRsvpTurnDeps {
   send: (input: GroupPlanLine) => Promise<{ providerMessageId: string }>;
   /** Plan RSVPs (LINQ_GROUP_PLAN_RSVP_ENABLED). */
   enabled?: () => boolean;
-  /** Calendar copy after an OK (LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED). Default off. */
+  /** Calendar copy after an OK (LINQ_GROUP_PLAN_CALENDAR_ENABLED). Default off. */
   calendarEnabled?: () => boolean;
   households?: GroupPlanHouseholdResolver;
   calendar?: GroupPlanCalendarWriter;

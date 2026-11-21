@@ -299,7 +299,7 @@ describe('postgres household calendar copy', () => {
     });
 
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -641,7 +641,7 @@ describe('the private reply and a tapback use the household language', () => {
     });
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -703,7 +703,7 @@ describe('the private reply and a tapback use the household language', () => {
     await store.setCalendarAskMessage(plan.id, priya.familyId, 'ask-msg');
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerCalendarTapback(
       {
         database: db.database,
@@ -767,7 +767,7 @@ describe('the private reply and a tapback use the household language', () => {
     const composer = fakeGroupPlanRsvpComposer();
     const words = 'Oui, mets-le sur notre calendrier';
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -820,7 +820,7 @@ describe('the private reply and a tapback use the household language', () => {
     await store.setCalendarAskMessage(plan.id, priya.familyId, 'ask-msg');
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reply = await considerCalendarTapback(
       {
         database: db.database,
@@ -871,7 +871,7 @@ describe('the private reply and a tapback use the household language', () => {
     const words = 'Oui, on est partants';
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     await considerGroupPlanRsvp(
       {
         database: db.database,
@@ -980,7 +980,7 @@ describe('the private reply and a tapback use the household language', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     await considerGroupPlanRsvp(
       {
         database: db.database,
@@ -1069,7 +1069,7 @@ describe('a 1:1 reply reaches the calendar ask before ordinary intake', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_WEBHOOK_SECRET', secret);
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const body = JSON.stringify({
       api_version: 'v3',
       webhook_version: '2026-02-03',
@@ -1151,7 +1151,7 @@ describe('a claimed group with no member seat', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const yes = {
       intent: 'rsvp' as const,
       planTitle: null,
@@ -1242,7 +1242,7 @@ describe('a 1:1 yes after Hale asked something else', () => {
       now: NOW,
     });
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const reads: string[] = [];
     const ports = {
       database: db.database,
@@ -1339,7 +1339,7 @@ describe('a private reply among calendar asks', () => {
     });
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const quiet = await considerPrivateCalendarReply(
       {
         database: db.database,
@@ -1457,7 +1457,7 @@ describe('a private reply among calendar asks', () => {
       at: new Date(NOW.getTime() + 1_000),
     });
     vi.stubEnv('VERCEL_ENV', 'preview');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const ports = {
       database: db.database,
       now: new Date(NOW.getTime() + 60_000),
@@ -1595,7 +1595,7 @@ async function twoOpenAsks(gapMs: number) {
     await askWasSent(store, { ...ask, userId: priya.userId });
   }
   vi.stubEnv('VERCEL_ENV', 'preview');
-  vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
   const ports = {
     database: db.database,
     now: new Date(NOW.getTime() + 120_000),
@@ -1686,7 +1686,7 @@ describe('a multi-family chat with no covering family', () => {
     const composer = fakeGroupPlanRsvpComposer();
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
-    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_CALENDAR_ENABLED', 'true');
     const started = await considerGroupPlanRsvp(
       {
         database: db.database,
