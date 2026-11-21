@@ -547,11 +547,11 @@ function countByPhase(
 
 /**
  * {@link cancelSignupPlan}'s mark on every running plan at once: an incident stop that needs
- * no redeploy. No payment starts after it ({@link savePlanResume}) and a later sweep lets
- * each run go without a text, unless a charge may exist: a plan in `paying` is marked too,
- * and the sweep still reads what its payment did and tells the parent. A plan the parent
- * already took back keeps their time. Each mark and its one audit row land together.
- * Returns the plans marked by this call.
+ * no redeploy. A plan not yet past its paying checkpoint can no longer start a payment
+ * ({@link savePlanResume}), and a later sweep lets each run go without a text, unless a charge
+ * may exist: a plan in `paying` is marked too, its payment may still run, and the sweep reads
+ * what it did and tells the parent. A plan the parent already took back keeps their time.
+ * Each mark and its one audit row land together. Returns the plans marked by this call.
  */
 export async function requestStopForRunningPlans(
   database: Database,

@@ -137,7 +137,7 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 
 ### Stop every running registration plan
 
-A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment: none of them starts a payment after it, with no redeploy. It needs `DATABASE_URL`. Running it against Production needs Barton's go.
+A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment, with no redeploy: a plan not yet past its paying checkpoint can no longer start a payment. A plan already past it is counted under `paying`. Its payment can still run, and the sweep reads what it did and tells its parent. The script needs `DATABASE_URL`. Running it against Production needs Barton's go.
 
 **It covers day-before plans only.** A one-shot signup is not a plan, so the stop does not touch it, and a one-shot run can pay when `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` is on. To close that path, turn `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` off with the redeploy steps above. A one-shot run already going keeps the wallet it started with until it ends.
 
@@ -151,9 +151,11 @@ Run it before you turn the flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off th
 
 **What a parent hears.** The stop sends nothing, and there is no fixed line for it, so a parent whose plan was stopped hears nothing until someone follows up. A run that ends after the stop sends no notice and asks nothing, and its browser is closed. To find those families, each stopped plan has one `plan_ops_stop` row in `audit_log`, and its `plan_finished` row keeps how the run really ended under `stoppedFrom`. Three things can still reach a parent:
 
-- A plan whose payment had started is still read, and the parent is told what it did, including a declined card. A plan whose checkout review may have placed the order tells the parent a charge may exist and pages #ops.
+- A plan past its paying checkpoint is still read, and the parent is told what its payment did, including a declined card. A plan whose checkout review may have placed the order tells the parent a charge may exist and pages #ops.
 - A plan a sweep claimed after the last `--apply` runs as usual until a later `--apply` marks it. If it ends first, its parent gets the usual notice, which is why step 3 repeats.
 - A run that had already ended when the stop landed still sends its usual notice.
+
+**Follow up on these first.** Two stopped endings can leave something at the provider that the parent has not heard about. Both are under `stoppedFrom` on the `plan_finished` row. `submit_boundary` means the agent on an assisted town said it added the registration to a cart, submitted it or checked out, which it must never do. `waitlist` means the run may have joined the waitlist the parent asked for.
 
 ## Rotating APP_ENCRYPTION_KEY
 

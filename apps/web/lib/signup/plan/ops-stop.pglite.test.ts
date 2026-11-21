@@ -28,11 +28,15 @@ import {
   savePlanResume,
 } from './store';
 
-const scriptDb = vi.hoisted(() => ({ current: null as unknown }));
-vi.mock('@hale/db', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@hale/db')>()),
-  createDb: () => scriptDb.current,
-}));
+const scriptDb = vi.hoisted(() => ({ current: null as unknown, realDriver: false }));
+vi.mock('@hale/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@hale/db')>();
+  return {
+    ...actual,
+    createDb: (options: Parameters<typeof actual.createDb>[0]) =>
+      scriptDb.realDriver ? actual.createDb(options) : scriptDb.current,
+  };
+});
 
 const NOW = new Date('2026-12-01T11:58:00.000Z');
 const OPENS = new Date('2026-12-01T12:00:00.000Z');
@@ -371,10 +375,14 @@ function sweepDeps(settled: BrowserUsePlanResult = PAID) {
 }
 
 /** Runs the real script on the test database. Stderr also carries SDK warnings at import. */
-async function runScript(database: unknown) {
+async function runScript(
+  database: unknown,
+  options: { args?: string[]; realDriverUrl?: string } = {},
+) {
   scriptDb.current = database;
-  vi.stubEnv('DATABASE_URL', 'postgres://unused.invalid/none');
-  process.argv = ['node', 'stop-signup-plans.ts'];
+  scriptDb.realDriver = options.realDriverUrl !== undefined;
+  vi.stubEnv('DATABASE_URL', options.realDriverUrl ?? 'postgres://unused.invalid/none');
+  process.argv = ['node', 'stop-signup-plans.ts', ...(options.args ?? [])];
   const stdout: string[] = [];
   const stderr: string[] = [];
   const streams = [
@@ -613,6 +621,7 @@ describe('a stop that lands while the run is going', () => {
     ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
     ['not open yet', { ...CLOSED, outcome: 'not_open', detail: 'none' }],
     ['a failed run', { ...CLOSED, outcome: 'error', detail: 'run_failed' }],
+    ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
   ])('ending at %s, the parent hears nothing and the browser is let go', async (_name, ending) => {
     const plan = await dueFamily();
     const runner = runEndingAt(ending, opsStop);
@@ -750,6 +759,27 @@ describe('a stop that lands while the run is going', () => {
     expect(paged).toEqual([
       `Hale: ops page. site registration_review_placed_order. ref ${plan.offerId}.`,
     ]);
+  });
+
+  it('a plan past its paying checkpoint is counted under paying and its parent is told', async () => {
+    const plan = await dueFamily();
+    let stopped: Awaited<ReturnType<typeof opsStop>> | null = null;
+    const heard = hearing({
+      ...runEndingAt(PAID, nothingLands),
+      run: async (input: BrowserUsePlanInput) => {
+        expect(await input.onCheckpoint({ ...PAYING, runId: null })).toBe(true);
+        stopped = await opsStop();
+        return PAID;
+      },
+    });
+
+    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+
+    expect(stopped).toEqual({ signup: 0, paying: 1 });
+    expect(heard.notices.map((n) => [n.offerId, n.outcome, n.amountChargedCents])).toEqual([
+      [plan.offerId, 'completed', 9800],
+    ]);
+    expect((await offerRow(plan.offerId)).status).toBe('completed');
   });
 
   it('a decline read from a payment already under way still reaches the parent', async () => {
@@ -894,5 +924,48 @@ describe('the stop-signup-plans script', () => {
     expect(stderr.at(-1)).toBe('{"mode":"dry_run","failed":"23503"}');
     expect(stderr.join('\n')).not.toContain(familyId);
     expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it('on a malformed DATABASE_URL prints the error code and no part of the URL', async () => {
+    const user = 'fake_user';
+    const password = 'pa#ss-FAKE';
+    const host = 'db.example.invalid';
+    const url = `postgres://${user}:${password}@${host}:6543/postgres`;
+    const { createDb } = await vi.importActual<typeof import('@hale/db')>('@hale/db');
+    expect(() => createDb({ connectionString: url })).toThrow(
+      expect.objectContaining({ code: 'ERR_INVALID_URL', input: url }),
+    );
+
+    const { stdout, stderr, exit } = await runScript(null, { realDriverUrl: url });
+
+    expect(stdout).toEqual([]);
+    expect(stderr.at(-1)).toBe('{"mode":"dry_run","failed":"ERR_INVALID_URL"}');
+    const printed = stderr.join('\n');
+    for (const part of [user, password, host]) expect(printed).not.toContain(part);
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it('with --apply, marks the running plan and writes its one audit row', async () => {
+    const plan = await runningPlan(QUEUED);
+    const startedAt = Date.now();
+
+    const { stdout, exit } = await runScript(db.database, { args: ['--apply'] });
+
+    expect(stdout).toEqual([
+      '{"mode":"apply","stopped":{"signup":1,"paying":0},"stillRunning":{"signup":1,"paying":0}}',
+    ]);
+    expect(exit).toHaveBeenCalledWith(0);
+    const stampedAt = (await offerRow(plan.offerId)).planCancelRequestedAt?.getTime();
+    expect(stampedAt).toBeGreaterThanOrEqual(startedAt);
+    expect(stampedAt).toBeLessThanOrEqual(Date.now());
+    expect(await stopRows(plan.offerId)).toEqual([
+      {
+        familyId: plan.familyId,
+        actor: 'system',
+        actionTaken: 'authorized_signup_step',
+        targetTable: 'authorized_signup_offers',
+        after: { step: 'plan_ops_stop', phase: 'signup' },
+      },
+    ]);
   });
 });
