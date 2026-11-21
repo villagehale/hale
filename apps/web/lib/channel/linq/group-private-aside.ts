@@ -69,7 +69,8 @@ export interface PrivateAsideDraftInput {
   askedByThisFamily: boolean;
   /** Clock-shaped facts from the group message, when code could read a clock. */
   planTimes: readonly string[];
-  private: Omit<FamilyPrivateSlice, 'familyId'>;
+  /** Never a retired key: the draft model writes only from what the family holds now. */
+  private: Omit<FamilyPrivateSlice, 'familyId' | 'retiredMemory'>;
   /** This family's own clock-shaped event times, when code could read a clock. */
   ownTimes: readonly string[];
   lastAside: LastPrivateAside | null;
@@ -226,7 +227,8 @@ async function asideForFamily(
 ): Promise<FamilyAsideOutcome> {
   if (await alreadyHandled(database, input.inboundId, familyId)) return 'already_handled';
   if (!hasPrivateData(slice)) return 'no_private_data';
-  const { familyId: _owner, ...privateOnly } = slice;
+  // A retired key (a fact a parent forgot) is for the deny lists only: never draft from it.
+  const { familyId: _owner, retiredMemory: _retired, ...privateOnly } = slice;
   const draft = await deps.model.draft({
     groupText: input.text,
     askedByThisFamily: input.senderFamilyId === familyId,

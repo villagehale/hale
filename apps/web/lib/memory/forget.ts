@@ -90,7 +90,8 @@ export async function forgetFamilyFact(
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.actor,
-      actionTaken: MEMORY_FACT_FORGOTTEN,
+      // A literal, not the constant: the trail's verb drift test reads write sites statically.
+      actionTaken: 'memory_fact_forgotten',
       targetTable: 'family_memory_facts',
       targetId: row.id,
       after: { factId: row.id, applied: true },
