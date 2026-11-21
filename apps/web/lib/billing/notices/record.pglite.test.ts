@@ -528,6 +528,25 @@ describe('a write that throws', () => {
   });
 });
 
+describe('the billing_notices migration', () => {
+  it('applies twice, and holds one open row per family and lane', async () => {
+    await db.applyMigration('0265_billing_notices.sql');
+    const row = {
+      familyId,
+      lane: 'plan_change' as const,
+      facts: { eventIds: ['evt_a'] },
+      lastEventAt: NOW,
+      nextTryAt: NOW,
+    };
+    await db.database.insert(schema.billingNotices).values(row);
+    await expect(db.database.insert(schema.billingNotices).values(row)).rejects.toThrow();
+    // Positive control: the index is per status and per lane, not per family.
+    await db.database.insert(schema.billingNotices).values({ ...row, status: 'sent' });
+    await db.database.insert(schema.billingNotices).values({ ...row, lane: 'payment' });
+    expect(await noticeRows()).toHaveLength(3);
+  });
+});
+
 describe('mergeNoticeFacts', () => {
   const refund = (chargeId: string, refundedMinor: number) => ({
     chargeId,

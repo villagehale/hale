@@ -67,7 +67,7 @@ afterAll(async () => {
 
 async function seedPhone(userId: string, family: string) {
   seq += 1;
-  const phone = `+1416556${String(seq).padStart(4, '0')}`;
+  const phone = `+1416555${String(3000 + seq).padStart(4, '0')}`;
   await db.database.insert(schema.parentChannels).values({
     userId,
     familyId: family,
