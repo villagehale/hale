@@ -21,6 +21,7 @@ import {
   loadOpenSessionByFamily,
   saveSession,
 } from '~/lib/channel/intake/session';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -431,11 +432,14 @@ async function continueAfterReceipt(
   ports: ConnectedNoticePorts,
 ): Promise<void> {
   // VIL-721. The one link has no second card: its receipt carries the schedule ask
-  // (or the co-parent ask), as the calendar receipt does.
-  if (args.fromBundle || args.provider === 'google') {
+  // (or the co-parent ask), as the calendar receipt does. Lit, a Gmail connect made
+  // any other way gets no calendar card either: the walk offers one link, and a
+  // parent who turned the link down is not handed half of it again.
+  const bundle = args.fromBundle || args.provider === 'google';
+  if (bundle || threadOnboardingV2Enabled()) {
     await askAfterCalendarReceipt(
       database,
-      { ...args, connected: args.provider, fromBundle: true },
+      { ...args, connected: args.provider, fromBundle: bundle },
       ports,
     );
     return;

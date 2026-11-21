@@ -22,6 +22,7 @@ import {
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
 import { householdTimezone } from '~/lib/channel/household-timezone';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
@@ -590,6 +591,15 @@ async function completeGoogleBundle(
   }
   const who = { familyId: bound.familyId, parentUserId: bound.userId };
   const freshAfter = async (status: 'denied' | 'partial' | 'invalid' | 'error') => {
+    // Turned off while this consent was at Google: a fresh one link would land on a
+    // redeem page that no longer opens it, so none is minted. Named, not silent.
+    if (!threadOnboardingV2Enabled()) {
+      console.info(
+        { familyId: bound.familyId, provider: 'google', status, fresh: 'skipped_flag_off' },
+        'connector link: no fresh one link - the flag is off',
+      );
+      return back(status, 'text', 'google');
+    }
     let fresh: string | undefined;
     try {
       const outcome = await textFreshConnectorLink(db(), {
@@ -743,7 +753,8 @@ async function completeGoogleBundle(
     }
   } catch {
     // Rows already written stay: the connection IS stored for what landed, and the
-    // fresh link lets the parent finish the rest. Nothing here is a partial claim.
+    // receipt names only that. The connector that did not land is in the log line
+    // below; the parent can ask for its link in the thread. Nothing is a partial claim.
     if (connectIds.length === 0) return freshAfter('error');
     console.error(
       { familyId: bound.familyId, stored: connectIds.length },

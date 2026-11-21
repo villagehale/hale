@@ -58,6 +58,7 @@ describe('redeemChannelLinkAction — the one Google link (VIL-721)', () => {
 
   it('lit, sends the tap into the one consent and carries the link id to burn', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     recallMock.mockResolvedValue({
       userId: 'user',
       familyId: 'family',
@@ -73,6 +74,7 @@ describe('redeemChannelLinkAction — the one Google link (VIL-721)', () => {
 
   it('lit, without a recalled link id, still goes to the one consent', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { signedIn } = await redeem('tok-g', 'google');
     expect(signedIn).toEqual({
       token: 'tok-g',
@@ -87,6 +89,7 @@ describe('redeemChannelLinkAction — the one Google link (VIL-721)', () => {
 
   it('lit, texts a fresh ONE link for a dead one, and opens nothing', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     recallMock.mockResolvedValue({
       userId: 'user',
       familyId: 'family',

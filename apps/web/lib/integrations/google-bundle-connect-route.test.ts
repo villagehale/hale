@@ -60,6 +60,7 @@ beforeEach(() => {
   vi.stubEnv('GOOGLE_CONNECTOR_CLIENT_ID', '');
   vi.stubEnv('GOOGLE_CONNECTOR_CLIENT_SECRET', '');
   vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   authMock.mockResolvedValue({ user: { id: 'ext-parent' } });
   resolveFamilyMock.mockResolvedValue(FAMILY);
   resolveUserIdMock.mockResolvedValue(USER);
@@ -83,6 +84,13 @@ describe('GET /api/integrations/google/connect (VIL-721)', () => {
       expect(authMock).not.toHaveBeenCalled();
     },
   );
+
+  it('starts nothing while the friend walk it rides is off', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', undefined);
+    const res = await callBundle();
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'not_offered' });
+  });
 
   it('is a texted link only: without from=text nothing starts', async () => {
     const res = await callBundle('');

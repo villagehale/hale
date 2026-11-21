@@ -12,6 +12,8 @@ describe('THREAD_ONBOARDING_V2_ENABLED (VIL-721)', () => {
   beforeEach(() => {
     // The env path under test. The PostHog path is its own flag and stays off here.
     vi.stubEnv('POSTHOG_FLAGS_ENABLED', undefined);
+    // The walk rides the friend walk; its own case below turns that off.
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   });
 
   afterEach(() => {
@@ -35,6 +37,12 @@ describe('THREAD_ONBOARDING_V2_ENABLED (VIL-721)', () => {
   it('is on for exactly true', () => {
     vi.stubEnv(THREAD_ONBOARDING_V2_ENABLED_ENV, 'true');
     expect(threadOnboardingV2Enabled()).toBe(true);
+  });
+
+  it('stays off while the friend walk it rides is off', () => {
+    vi.stubEnv(THREAD_ONBOARDING_V2_ENABLED_ENV, 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', undefined);
+    expect(threadOnboardingV2Enabled()).toBe(false);
   });
 
   it('is read on every call, not once at import', () => {

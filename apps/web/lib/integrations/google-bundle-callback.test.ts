@@ -134,6 +134,7 @@ beforeEach(() => {
   vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
   vi.stubEnv('APP_URL', 'https://app.example.com');
   vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   freshMock.mockResolvedValue('not_enrolled');
   settleSupersededMock.mockResolvedValue('revoked');
   kickMock.mockResolvedValue({ outcome: 'completed' });
@@ -255,6 +256,25 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
     expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=denied');
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(freshMock.mock.calls[0]?.[1]).toMatchObject({ provider: 'google' });
+  });
+
+  it('mints no fresh link when the flag went off while the consent was at Google', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+    granted(PROFILE);
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=partial');
+    expect(freshMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('still completes a granted consent that was in flight when the flag went off', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+    granted(GMAIL, GCAL);
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=ok');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(2);
   });
 
   it('refuses a completer who is not the minter: no exchange, no row (consent fixation)', async () => {

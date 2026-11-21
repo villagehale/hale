@@ -63,14 +63,14 @@ describe('keepKidActivities', () => {
       now: NOW,
     });
 
-    expect(outcome).toEqual({ status: 'kept', count: 3, linked: 2 });
+    expect(outcome).toEqual({ status: 'kept', count: 3, linked: 2, skipped: 0 });
     const facts = await factsOf(familyId);
     expect(facts).toHaveLength(3);
     const byKey = new Map(facts.map((fact) => [fact.factKey, fact]));
-    expect(byKey.get('kid-activity:swim-lessons')?.childId).toBe(maya);
-    expect(byKey.get('kid-activity:soccer')?.childId).toBe(leo);
+    expect(byKey.get('kid-activity-swim-lessons')?.childId).toBe(maya);
+    expect(byKey.get('kid-activity-soccer')?.childId).toBe(leo);
     // Two kids and no name: the household's, never a guess at which kid.
-    expect(byKey.get('kid-activity:library-story-time')?.childId).toBeNull();
+    expect(byKey.get('kid-activity-library-story-time')?.childId).toBeNull();
     for (const fact of facts) {
       expect(fact).toMatchObject({
         factType: 'routine',
@@ -86,7 +86,7 @@ describe('keepKidActivities', () => {
       expect(fact.sourcedAt?.toISOString()).toBe(NOW.toISOString());
       expect(JSON.stringify(fact.factValue)).not.toMatch(/Maya|Leo/);
     }
-    expect(byKey.get('kid-activity:swim-lessons')?.factValue).toEqual({
+    expect(byKey.get('kid-activity-swim-lessons')?.factValue).toEqual({
       schemaVersion: 1,
       kind: 'kid_activity',
       activity: 'swim lessons',
@@ -119,6 +119,45 @@ describe('keepKidActivities', () => {
     expect(fact?.childId).toBe(only);
   });
 
+  it('puts an activity on the kid its own words name when the model named none', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await seedChild(db.database, familyId, 'Maya', 72, undefined, NOW);
+    const leo = await seedChild(db.database, familyId, 'Leo', 48, undefined, NOW);
+    await keepKidActivities(db.database, {
+      familyId,
+      parentUserId,
+      sessionId: SESSION,
+      activities: [{ child: null, activity: "Leo's hockey", when: null }],
+      heardIn: 'one_to_one',
+      now: NOW,
+    });
+    const [fact] = await factsOf(familyId);
+    expect(fact?.childId).toBe(leo);
+  });
+
+  it('keeps no activity whose words name a teen it is not on, and says how many it skipped', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await seedChild(db.database, familyId, 'Maya', 72, undefined, NOW);
+    await seedChild(db.database, familyId, 'Noor', 180, undefined, NOW);
+    const outcome = await keepKidActivities(db.database, {
+      familyId,
+      parentUserId,
+      sessionId: SESSION,
+      activities: [
+        { child: 'Maya', activity: 'carpool with Noor to swim', when: null },
+        { child: 'Maya', activity: 'ballet', when: null },
+      ],
+      heardIn: 'one_to_one',
+      now: NOW,
+    });
+    expect(outcome).toEqual({ status: 'kept', count: 1, linked: 1, skipped: 1 });
+    const facts = await factsOf(familyId);
+    expect(facts.map((fact) => fact.factKey)).toEqual(['kid-activity-ballet']);
+    expect(JSON.stringify(facts)).not.toContain('Noor');
+    const [audit] = await keptAudits(familyId);
+    expect(audit?.after).toEqual({ count: 1, linked: 1, skipped: 1 });
+  });
+
   it('records a group thread as heard by the family', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     await seedChild(db.database, familyId, 'Ava', 60, undefined, NOW);
@@ -144,7 +183,7 @@ describe('keepKidActivities', () => {
       heardIn: 'one_to_one',
       now: NOW,
     });
-    expect(outcome).toEqual({ status: 'nothing_to_keep' });
+    expect(outcome).toEqual({ status: 'nothing_to_keep', skipped: 0 });
     expect(await factsOf(familyId)).toEqual([]);
     expect(await keptAudits(familyId)).toEqual([]);
   });
@@ -207,19 +246,21 @@ describe('keepKidActivities', () => {
 
 describe('kidActivityFactKey', () => {
   it('folds an activity to a key of letters and digits', () => {
-    expect(kidActivityFactKey('Swim Lessons!')).toBe('kid-activity:swim-lessons');
-    expect(kidActivityFactKey('Natation à Laval')).toBe('kid-activity:natation-a-laval');
+    expect(kidActivityFactKey('Swim Lessons!')).toBe('kid-activity-swim-lessons');
+    expect(kidActivityFactKey('Natation à Laval')).toBe('kid-activity-natation-a-laval');
   });
 
   it('keys a phrase in another script on a short, stable hash of itself', () => {
     const key = kidActivityFactKey('游泳');
-    expect(key).toMatch(/^kid-activity:h-[0-9a-f]{12}$/);
+    expect(key).toMatch(/^kid-activity-h-[0-9a-f]{12}$/);
+    // No colon: every memory reader drops colon keys as namespaced.
+    expect(key).not.toContain(':');
     expect(kidActivityFactKey('游泳')).toBe(key);
   });
 
   it('cuts a long phrase to at most sixty characters with no trailing dash', () => {
     const key = kidActivityFactKey(`${'a'.repeat(59)} b and more words`);
-    const slug = key.slice('kid-activity:'.length);
+    const slug = key.slice('kid-activity-'.length);
     expect(slug.length).toBeLessThanOrEqual(60);
     expect(slug.endsWith('-')).toBe(false);
   });

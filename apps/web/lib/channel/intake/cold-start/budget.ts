@@ -17,8 +17,6 @@ export const OPTIONAL_ASK_CLASSES = [
   'signup',
   'calendar',
   'email',
-  // VIL-721. The one Google link: Gmail and the calendar asked together.
-  'google',
 ] as const;
 export type OptionalAskClass = (typeof OPTIONAL_ASK_CLASSES)[number];
 

@@ -75,6 +75,8 @@ const BOTH = ['gmail', 'calendar'] as const;
 
 function lit() {
   vi.stubEnv(THREAD_ONBOARDING_V2_ENABLED_ENV, 'true');
+  // The in-thread walk rides the friend walk.
+  vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
 }
 
 afterEach(() => {

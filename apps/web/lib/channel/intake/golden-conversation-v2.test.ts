@@ -356,7 +356,7 @@ describe('VIL-721 in-thread onboarding, flag on', () => {
     expect(fact).toMatchObject({
       childId: child?.id,
       factType: 'routine',
-      factKey: 'kid-activity:swim-lessons',
+      factKey: 'kid-activity-swim-lessons',
       factValue: {
         schemaVersion: 1,
         kind: 'kid_activity',

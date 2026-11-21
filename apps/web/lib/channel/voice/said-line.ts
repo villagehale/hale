@@ -604,11 +604,6 @@ function conveyFacts(input: SaidLineInput): ConveyFact[] | null {
 const LINK_MINUTES = CHANNEL_SIGNIN_TTL_MS / 60_000;
 
 /**
- * One text carrying both Google connect links, in the model's words (#868: the
- * fixed connector offer is gone). The links are the required facts. Null when the
- * write failed or no writer is wired: the caller sends nothing.
- */
-/**
  * VIL-721. The one link for Gmail and the calendar together, in the model's words:
  * what it connects (Google's own product names, as data), how long it works, and the
  * unverified-app caution as a fact. Code puts the URL in the slot. Null: the caller
@@ -635,6 +630,11 @@ export async function writeGoogleBundleLink(
   });
 }
 
+/**
+ * One text carrying both Google connect links, in the model's words (#868: the
+ * fixed connector offer is gone). The links are the required facts. Null when the
+ * write failed or no writer is wired: the caller sends nothing.
+ */
 export async function writeConnectorLinks(
   writer: SaidLineWriter | null | undefined,
   input: { language: ReplyLanguage | null; calendarUrl: string; gmailUrl: string },

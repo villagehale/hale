@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
+import { deriveStage, namesAny } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import { type FactHeard, writeFact } from '~/lib/memory/facts';
 import { kidFirstName } from './cold-start/ladder';
@@ -18,8 +19,16 @@ import type { KidActivity } from './onboarding-turn';
  *  - provenance on the row itself: `memory_source` parent_message, `source_audience`
  *    and `source_user_id` from who said it and where, `inferred_by` this writer,
  *    `sourced_at` and `valid_from` the turn's clock.
- *  - the kid's name is never in the value. The fact points at the child row; an
- *    activity code cannot place on a kid is the household's and carries no name.
+ *  - the value is the activity and its "when" as the model read them; code adds no
+ *    name to it. The fact points at the child row. An activity that names no kid code
+ *    can find is put on the kid its own words name (the shared matcher, `namesAny`),
+ *    else the only kid, else the household.
+ *  - a 13+ child's name never rides a row that is not that child's (rule #1, stripped
+ *    at the source): an activity whose words name a teen but which cannot be placed on
+ *    that teen is not kept (`skipped`). A teen's own row is withheld from every
+ *    parent-facing read by memory-context.ts (`notTeen`).
+ *  - the key carries no colon: every memory reader drops colon keys as namespaced
+ *    (memory-context.ts factsForContext), and these facts are meant to be read.
  *
  * One audit row per keep (rule #6), counts only: no activity, no name.
  *
@@ -31,12 +40,14 @@ export const KID_ACTIVITY_INFERRED_BY = 'onboarding_thread_v2';
 /** The model read it from the parent's own words: above the floor, below a record. */
 export const KID_ACTIVITY_CONFIDENCE = 0.9;
 
-const KEY_PREFIX = 'kid-activity:';
+const KEY_PREFIX = 'kid-activity-';
 const MAX_SLUG = 60;
 
 export type KidActivityFactsOutcome =
-  | { status: 'kept'; count: number; linked: number }
-  | { status: 'nothing_to_keep' }
+  /** `skipped`: activities not kept because their words name a teen they are not on. */
+  | { status: 'kept'; count: number; linked: number; skipped: number }
+  /** Nothing to write: an empty list, or every activity skipped (`skipped` says so). */
+  | { status: 'nothing_to_keep'; skipped: number }
   /** A write or its audit row did not land; nothing of this keep is stored. */
   | { status: 'failed' };
 
@@ -62,15 +73,31 @@ export function kidActivityFactKey(activity: string): string {
 interface ChildRow {
   id: string;
   name: string | null;
+  dateOfBirth: string;
 }
 
-/** The child row an activity names, or the only child when it names none. */
+/** The kids whose name the activity's own words carry, by the shared matcher. */
+function namedIn(item: KidActivity, children: readonly ChildRow[]): ChildRow[] {
+  const words = [item.activity, item.when ?? ''].join(' ');
+  return children.filter((row) => row.name != null && namesAny(words, [row.name]));
+}
+
+/**
+ * The child row an activity is for: the kid the model named, else the one kid its own
+ * words name, else the only kid. Null is the household.
+ */
 function childFor(item: KidActivity, children: readonly ChildRow[]): string | null {
-  if (!item.child) return children.length === 1 ? (children[0]?.id ?? null) : null;
-  const wanted = kidFirstName(item.child)?.toLowerCase();
-  if (!wanted) return null;
-  const match = children.find((row) => kidFirstName(row.name)?.toLowerCase() === wanted);
-  return match?.id ?? null;
+  if (item.child) {
+    const wanted = kidFirstName(item.child)?.toLowerCase();
+    const match = wanted
+      ? children.find((row) => kidFirstName(row.name)?.toLowerCase() === wanted)
+      : undefined;
+    if (match) return match.id;
+  }
+  const named = namedIn(item, children);
+  if (named.length === 1) return named[0]?.id ?? null;
+  if (!item.child && named.length === 0 && children.length === 1) return children[0]?.id ?? null;
+  return null;
 }
 
 export async function keepKidActivities(
@@ -86,13 +113,14 @@ export async function keepKidActivities(
     now: Date;
   },
 ): Promise<KidActivityFactsOutcome> {
-  if (input.activities.length === 0) return { status: 'nothing_to_keep' };
+  if (input.activities.length === 0) return { status: 'nothing_to_keep', skipped: 0 };
   try {
     const rows = await database
       .select({
         id: schema.children.id,
         familyId: schema.children.familyId,
         name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.familyId))
@@ -103,7 +131,26 @@ export async function keepKidActivities(
       input.heardIn === 'family'
         ? { in: 'family', userId: input.parentUserId }
         : { in: 'one_to_one', userId: input.parentUserId };
-    const placed = input.activities.map((item) => ({ item, childId: childFor(item, children) }));
+    const placed: { item: KidActivity; childId: string | null }[] = [];
+    let skipped = 0;
+    for (const item of input.activities) {
+      const childId = childFor(item, children);
+      const teenElsewhere = namedIn(item, children).some(
+        (row) => row.id !== childId && deriveStage(row.dateOfBirth, input.now) === 'teenager',
+      );
+      if (teenElsewhere) {
+        skipped += 1;
+        continue;
+      }
+      placed.push({ item, childId });
+    }
+    if (placed.length === 0) {
+      console.info(
+        { familyId: input.familyId, skipped },
+        'onboarding: kid activities not kept - each named a teen it could not be placed on',
+      );
+      return { status: 'nothing_to_keep', skipped };
+    }
     await database.transaction(async (rawTx) => {
       const tx = rawTx as unknown as Database;
       for (const { item, childId } of placed) {
@@ -137,15 +184,16 @@ export async function keepKidActivities(
         after: {
           count: placed.length,
           linked: placed.filter((entry) => entry.childId !== null).length,
+          ...(skipped > 0 ? { skipped } : {}),
         },
       });
     });
     const linked = placed.filter((entry) => entry.childId !== null).length;
     console.info(
-      { familyId: input.familyId, count: placed.length, linked },
+      { familyId: input.familyId, count: placed.length, linked, skipped },
       'onboarding: kid activities kept',
     );
-    return { status: 'kept', count: placed.length, linked };
+    return { status: 'kept', count: placed.length, linked, skipped };
   } catch (err) {
     console.error(
       { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },

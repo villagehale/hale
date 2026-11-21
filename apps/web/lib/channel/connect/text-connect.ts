@@ -58,14 +58,9 @@ export const GOOGLE_BUNDLE_LINK = 'google' as const;
 
 export type GoogleBundleLink = typeof GOOGLE_BUNDLE_LINK;
 
-/** The connectors one bundle link asks Google for, in the order the consent lists them. */
-export const GOOGLE_BUNDLE_PROVIDERS = [
-  'gmail',
-  'gcal',
-] as const satisfies readonly TextConnectProvider[];
-
 /**
- * Exact match, and only while THREAD_ONBOARDING_V2_ENABLED is on. Dark, `to=google`
+ * Exact match, and only while THREAD_ONBOARDING_V2_ENABLED (and the friend walk it rides)
+ * is on. Dark, `to=google`
  * names nothing this deployment mints, so it lands like any unknown target (the
  * family page), and no Google consent starts from it.
  */

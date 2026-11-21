@@ -8,14 +8,15 @@
 // yes and a question to it, and the one-link wow line.
 //
 // The flag is read through the product's own reader, never from process.env here, so
-// the operator turns it on for the run. Recording is pending (VIL-721): CI does not run
+// the operator turns it on for the run (with COLD_START_LADDER_ENABLED, the friend walk
+// it rides). Recording is pending (VIL-721): CI does not run
 // this suite until its cache is committed.
 //
-//   THREAD_ONBOARDING_V2_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --estimate
-//   THREAD_ONBOARDING_V2_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --dry
-//   THREAD_ONBOARDING_V2_ENABLED=true HALE_SPEND_LEDGER=... node --env-file=... \
+//   THREAD_ONBOARDING_V2_ENABLED=true COLD_START_LADDER_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --estimate
+//   THREAD_ONBOARDING_V2_ENABLED=true COLD_START_LADDER_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --dry
+//   THREAD_ONBOARDING_V2_ENABLED=true COLD_START_LADDER_ENABLED=true HALE_SPEND_LEDGER=... node --env-file=... \
 //     evals/thread-onboarding-v2-eval.mjs --live --max-usd 1
-//   THREAD_ONBOARDING_V2_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --cached-only
+//   THREAD_ONBOARDING_V2_ENABLED=true COLD_START_LADDER_ENABLED=true node evals/thread-onboarding-v2-eval.mjs --cached-only
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -88,7 +89,7 @@ async function loadSubject() {
   const flag = await importTs(FLAG_SRC);
   if (!flag.threadOnboardingV2Enabled()) {
     console.error(
-      'thread-onboarding-v2: THREAD_ONBOARDING_V2_ENABLED is not exactly true; this suite grades the lit walk. nothing run.',
+      'thread-onboarding-v2: the lit walk needs THREAD_ONBOARDING_V2_ENABLED and COLD_START_LADDER_ENABLED exactly true; this suite grades it. nothing run.',
     );
     process.exit(2);
   }

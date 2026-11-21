@@ -138,6 +138,18 @@ describe('sendConnectorConnectedText', () => {
     expect(transport.sent).toHaveLength(3);
   });
 
+  it('VIL-721 lit: a Gmail receipt is not followed by a calendar card, so no second link goes', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    await seedChannel();
+
+    const outcome = await send('gmail');
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent.map((row) => row.body).join('\n')).not.toMatch(/https?:\/\//);
+  });
+
   it('writes the ledger row the dedupe key hangs on, and threads what it said', async () => {
     await seedChannel();
 

@@ -2923,11 +2923,13 @@ async function friendColdTurn(
           : null;
   const pending = pendingConnector(nextGiven, progress) ?? askCard;
   if (pending === 'google') {
-    // VIL-721. The one card: this reply, then one link for Gmail and the calendar.
+    // VIL-721. The one card: this reply, then one link for Gmail and the calendar. The
+    // ledger's send class is CHECK-constrained (migration 0145), so the ask rides the
+    // existing connector class; its own key keeps its declines and repeats apart.
     const gate = await gateOptionalAsk(database, {
       familyId,
       now,
-      sendClass: 'google',
+      sendClass: 'calendar',
       askKey: 'google',
     });
     let carried = false;
@@ -2948,7 +2950,7 @@ async function friendColdTurn(
         await recordOptionalAsk(database, {
           familyId,
           now,
-          sendClass: 'google',
+          sendClass: 'calendar',
           askKey: 'google',
         });
         nextProgress.googleOffered = true;

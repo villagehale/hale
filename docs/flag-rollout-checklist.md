@@ -254,6 +254,7 @@ One extra signal is named on the row.
 Dependencies, as the code reads them:
 
 - `TRAVEL_BRIEF_ENABLED` and `CHECK_IN_ANCHOR_ENABLED` need `F14_ENABLED` for the family.
+- `THREAD_ONBOARDING_V2_ENABLED` needs `COLD_START_LADDER_ENABLED` (the friend walk it rides). With the ladder off it stays dark, so the older ladder keeps its own name ask and connector cards.
 - `TEAM_SCHEDULE_CHANGES_ENABLED` needs `EMAIL_ALERT_ENABLED` (it runs inside the Gmail alert join) and migration `0229_team_schedule_changes`.
 - `EMAIL_ALERT_BODY_ENABLED` needs `EMAIL_ALERT_ENABLED`.
 - `NEXT_DAY_CHECKBACK_ENABLED` needs `WORKSTREAMS_ENABLED` (its only signal is a `waiting_on_parent` workstream) and `F14_ENABLED` for the family.

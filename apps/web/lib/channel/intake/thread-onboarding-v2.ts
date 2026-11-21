@@ -1,4 +1,5 @@
 import { isEnabled } from '@hale/flags';
+import { coldStartLadderEnabled } from './cold-start/flags';
 
 /**
  * VIL-721 — onboarding in the thread, v2.
@@ -23,10 +24,14 @@ import { isEnabled } from '@hale/flags';
  * Every message on either path is the model's. When the model cannot write one,
  * nothing is sent and #ops is paged (friend-voice.ts); this module writes no
  * sentence of its own.
+ *
+ * It rides the friend walk: COLD_START_LADDER_ENABLED must be on too. Without it,
+ * provisioning runs the older ladder, whose name ask and per-provider cards this
+ * walk does not replace, so the v2 order would put the wrong question under them.
  */
 export const THREAD_ONBOARDING_V2_ENABLED_ENV = 'THREAD_ONBOARDING_V2_ENABLED';
 
-/** Exact `true`. A trailing newline stays off. */
+/** Exact `true`, and the friend walk on. A trailing newline stays off. */
 export function threadOnboardingV2Enabled(): boolean {
-  return isEnabled('thread-onboarding-v2');
+  return isEnabled('thread-onboarding-v2') && coldStartLadderEnabled();
 }
