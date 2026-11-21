@@ -1884,6 +1884,12 @@ async function routeChannelMessageInner(
   // read when the tapback is due, so a crisis never gets a like while Hale is still
   // composing 911.
   let screened: LaneReading | null = null;
+  // VIL-717: when GATE 4 has read the text or given up. A burst's wait can put the ack's clock
+  // before the screen runs, so the ack waits on this instead of sampling `screened` once.
+  let screenFinished: () => void = () => {};
+  const screenDone = new Promise<void>((resolve) => {
+    screenFinished = resolve;
+  });
   // Not in a group thread, never on a re-drive: neither the tapback nor the ack covers one.
   const turnSkip = redriven
     ? 're_driven'
@@ -1937,7 +1943,10 @@ async function routeChannelMessageInner(
       afterMs: holdingAfterMs,
       parentText: context.body,
       withinMinutes: ackMinutes,
-      read: holdingRead,
+      read: async () => {
+        await screenDone;
+        return holdingRead();
+      },
       reader: deps.ackEta.reader,
       writer: deps.ackEta.writer,
       sendLine: async (line) => {
@@ -1951,17 +1960,32 @@ async function routeChannelMessageInner(
           typingTimer = null;
         }
         // Not the answer: no claim, and the question this turn is about to read stays open.
-        const sent = await sendReply(deps, {
-          route,
-          body: line,
-          job,
-          conversationId: null,
-          templateKey: ACK_ETA_TEMPLATE_KEY,
-          openAsks: 'untouched',
-        });
+        let accepted = false as boolean;
+        let channelMessageId: string | null = null;
+        try {
+          const sent = await sendReply(deps, {
+            route,
+            body: line,
+            job,
+            conversationId: null,
+            templateKey: ACK_ETA_TEMPLATE_KEY,
+            openAsks: 'untouched',
+            onSent: async () => {
+              accepted = true;
+            },
+          });
+          channelMessageId = sent.channelMessageId;
+        } catch (err) {
+          if (!accepted) throw err;
+          // Linq has it. A receipt that failed must not read as an ack that did not go.
+          deps.log.error(
+            { err: err instanceof Error ? err.name : 'unknown' },
+            'ack eta: the ack went, its ledger row did not land',
+          );
+        }
         // The send cleared the bubble; the answer is still being written.
         await startTyping();
-        return { channelMessageId: sent.channelMessageId };
+        return { channelMessageId };
       },
       recordPromise: (input) =>
         deps.ackEta.record(deps.database, {
@@ -2057,6 +2081,7 @@ async function routeChannelMessageInner(
           },
           onScreened: (reading) => {
             screened = reading;
+            screenFinished();
           },
         }),
         OFF_DOMAIN_BUDGET_MS,
@@ -2071,6 +2096,8 @@ async function routeChannelMessageInner(
       );
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
+    } finally {
+      screenFinished();
     }
     // The screen already read the parent's words. This turn is answered in the language
     // it came in; the tags only feed the one language Hale writes to this parent in
@@ -2185,6 +2212,8 @@ async function routeChannelMessageInner(
     return coachResult;
   } finally {
     await stopTyping();
+    // A turn that ended before the screen ran leaves no ack waiting on it.
+    screenFinished();
   }
 }
 

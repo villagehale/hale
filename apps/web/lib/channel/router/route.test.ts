@@ -7668,6 +7668,92 @@ describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () =
     expect(h.logs).toContainEqual([{ outcome: 'safety_lane' }, expect.any(String)]);
   });
 
+  it('a burst that used up the wait still gets the ack, once the screen has read the text', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const slowScreen: OffDomainLane = {
+      async consider(input) {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        input.onScreened?.(screenedAs(IN_DOMAIN));
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      offDomain: slowScreen,
+      burst: fakeBurst({ kind: 'lone', waitedMs: 8_000, why: 'alone' }),
+      context: { reply: SMS_ROUTE, body: 'find us a swim class on saturdays' },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    expect(ack.reads).toEqual(['find us a swim class on saturdays']);
+    expect(ack.records).toHaveLength(1);
+  });
+
+  it('a screen that ends without a reading is still no ack: the wait never stands in for it', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const blindScreen: OffDomainLane = {
+      async consider() {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      offDomain: blindScreen,
+      burst: fakeBurst({ kind: 'lone', waitedMs: 8_000, why: 'alone' }),
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.reads).toEqual([]);
+    expect(h.logs).toContainEqual([{ outcome: 'unscreened' }, expect.any(String)]);
+  });
+
+  it('an ack Linq took whose ledger row failed is named as sent, never as not sent', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE },
+    });
+    const database = h.deps.database;
+    h.deps.database = new Proxy(database, {
+      get(target, key, receiver) {
+        if (key !== 'insert') return Reflect.get(target, key, receiver);
+        return (table: never) => {
+          const builder = target.insert(table);
+          if (table !== schema.channelMessages) return builder;
+          return {
+            values: (row: { templateKey?: string | null }) =>
+              row.templateKey === ACK_ETA_TEMPLATE_KEY
+                ? { returning: () => Promise.reject(new Error('ledger down')) }
+                : builder.values(row as never),
+          };
+        };
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    // Linq took it, and the answer still follows it.
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    // No ledger row to write the promise against, so no late note can follow this ack.
+    expect(ack.records).toEqual([]);
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ outcome: 'ack_sent_unrecorded', task: 'find' }),
+      expect.any(String),
+    ]);
+    expect(JSON.stringify(h.logs)).not.toContain('ack_send_failed');
+  });
+
   it('never in a group thread, and never on a re-drive', async () => {
     const group = ackPorts({ task: 'find' });
     const inGroup = harness({

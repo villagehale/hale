@@ -38,6 +38,8 @@ export type AckEtaOutcome =
   /** The screen read threw when the ack came due: nobody knows it is not a crisis. */
   | 'read_failed'
   | 'ack_sent'
+  /** Linq took the ack and its ledger row failed: no promise, so no late note can follow. */
+  | 'ack_sent_unrecorded'
   | 'ack_send_failed'
   /** Not a slow ask, and no tapback is lit for this turn. */
   | 'not_a_slow_ask'
@@ -81,13 +83,15 @@ export interface AckEtaArm {
   parentText: string;
   /** The window the ack may state, in minutes (window.ts `ackWindowMinutes`). */
   withinMinutes: number;
-  /** Read when the ack is DUE: by then the screen has usually read the text. */
+  /** Read when the ack is DUE. Waits for this turn's screen, which a burst's wait can put
+   * after the clock, and ends with the turn. */
   read: () => Promise<HoldingLineRead>;
   reader: AckTaskReader;
   writer: AckLineWriter;
-  /** Sends the ack as this turn's non-answer line and returns its ledger row. Throws when
-   * the transport did not take it. */
-  sendLine: (line: string) => Promise<{ channelMessageId: string }>;
+  /** Sends the ack as this turn's non-answer line and returns its ledger row, or null when
+   * the transport took it and the row did not land. Throws only when the transport did not
+   * take it. */
+  sendLine: (line: string) => Promise<{ channelMessageId: string | null }>;
   /** Writes the promise against the ack's row. Never throws (promise.ts). */
   recordPromise: (input: {
     task: AckTask;
@@ -197,7 +201,7 @@ export function armAckEta(input: AckEtaArm): AckEtaLine {
     }
     const language = read.language;
     sending = (async () => {
-      let sent: { channelMessageId: string };
+      let sent: { channelMessageId: string | null };
       try {
         sent = await input.sendLine(composed.line);
       } catch (err) {
@@ -205,6 +209,14 @@ export function armAckEta(input: AckEtaArm): AckEtaLine {
         input.log.warn(
           { outcome, task, err: errName(err) },
           'ack eta: the ack did not go, the answer is still coming',
+        );
+        return;
+      }
+      if (sent.channelMessageId === null) {
+        outcome = 'ack_sent_unrecorded';
+        input.log.warn(
+          { outcome, task },
+          'ack eta: the ack went, its ledger row did not, so no late note can follow it',
         );
         return;
       }
