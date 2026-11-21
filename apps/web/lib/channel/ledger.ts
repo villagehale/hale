@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
+import type { FamilySendKey } from './family-send-key';
 import { isUuid } from './mid-activity/claim';
 import type { ChannelKind } from './types';
 
@@ -179,6 +180,31 @@ export async function dedupeActive(dedupeKey: string, database: Database): Promi
     .where(
       and(
         eq(schema.channelMessages.dedupeKey, dedupeKey),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * VIL-740 · whether THIS family already sent this text, under its own key or the key the
+ * text carried before the family was in it. Another family's row under the old key is not
+ * this family's send. A key with no family form reads as {@link dedupeActive} does.
+ */
+export async function familySendSpent(
+  database: Database,
+  familyId: string,
+  key: FamilySendKey,
+): Promise<boolean> {
+  if (key.legacyDedupeKey === null) return dedupeActive(key.dedupeKey, database);
+  const rows = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        inArray(schema.channelMessages.dedupeKey, [key.dedupeKey, key.legacyDedupeKey]),
         inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
       ),
     )

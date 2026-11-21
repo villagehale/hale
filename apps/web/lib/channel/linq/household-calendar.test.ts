@@ -35,6 +35,7 @@ import { whoTakesFactKey, whoTakesPrompt } from './logistics-poll';
 
 const PARENT_A = 'parent-a';
 const PARENT_B = 'parent-b';
+const FAMILY_ID = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-09-24T18:00:00.000Z');
 const ZONE = 'America/Toronto';
 
@@ -60,6 +61,7 @@ function block(over: Partial<BusyBlock> & Pick<BusyBlock, 'eventId' | 'userId'>)
 async function notices(blocks: BusyBlock[], now = NOW) {
   return planHouseholdNotices({
     blocks,
+    familyId: FAMILY_ID,
     parentUserIds: [PARENT_A, PARENT_B],
     parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
     childNames: ['Maya'],
@@ -317,6 +319,7 @@ describe('planHouseholdNotices', () => {
           end: new Date('2026-09-25T20:00:00.000Z'),
         }),
       ],
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -398,6 +401,7 @@ describe('planHouseholdNotices', () => {
           end: new Date('2026-09-25T20:00:00.000Z'),
         }),
       ],
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -548,6 +552,7 @@ describe('planHouseholdNotices', () => {
     };
     const decided = await planHouseholdNotices({
       blocks: both,
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -562,6 +567,7 @@ describe('planHouseholdNotices', () => {
     );
     const unanswered = await planHouseholdNotices({
       blocks: both,
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -574,6 +580,7 @@ describe('planHouseholdNotices', () => {
     expect(unanswered.find((notice) => notice.text.includes('Tomorrow:'))).toBeUndefined();
     const declined = await planHouseholdNotices({
       blocks: both,
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -602,6 +609,7 @@ describe('planAmbiguousWhoTakes', () => {
           end: start,
         }),
       ],
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B],
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
@@ -639,6 +647,7 @@ describe('planAmbiguousWhoTakes', () => {
           end: start,
         }),
       ],
+      familyId: FAMILY_ID,
       parentUserIds: [PARENT_A, PARENT_B] as const,
       parentNames: { [PARENT_A]: 'Barton', [PARENT_B]: 'Sam' },
       childNames: ['Maya'],
