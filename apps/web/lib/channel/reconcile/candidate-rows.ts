@@ -4,7 +4,7 @@ import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
-import type { BillingClaimFacts } from './billing-text';
+import { type BillingClaimFacts, billingDollars } from './billing-text';
 import { CLAIM_ROW_SLOTS, type ClaimCandidateRow } from './candidates';
 import { type SendAudience, claimRowLabel } from './claim-label';
 import type { ReconcileView } from './reconcile';
@@ -634,8 +634,6 @@ async function cancellationRows(
   ];
 }
 
-const asDollars = (minor: number) => `$${(minor / 100).toFixed(2)}`;
-
 /**
  * VIL-735 · the rows a billing notice's text may cite: the writer's facts, as rows of the
  * kinds the reader already knows, so a true "you're on Plus" is backed without touching
@@ -680,7 +678,7 @@ export function billingClaimRows(
       row(
         'send_done',
         'refund',
-        `A refund of ${asDollars(refund.refundedMinor)} of the ${asDollars(refund.chargeMinor)} paid to Hale`,
+        `A refund of ${billingDollars(refund.refundedMinor)} of the ${billingDollars(refund.chargeMinor)} paid to Hale`,
       ),
     ),
   ];

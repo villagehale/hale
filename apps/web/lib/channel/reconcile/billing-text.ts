@@ -18,6 +18,11 @@ export interface BillingClaimFacts {
 const FREE_PLAN_WORDS: ReadonlySet<string> = new Set(['free', '免费']);
 const FREE_PLAN_FRENCH_STEM = 'gratuit';
 
+/** Money as the product writes it: a plain `$`, no currency note (billing/price-display.ts). */
+export function billingDollars(minor: number): string {
+  return `$${(minor / 100).toFixed(2)}`;
+}
+
 function wordsOf(sentence: string, locale: string | undefined): string[] {
   const segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
   return [...segmenter.segment(sentence)]

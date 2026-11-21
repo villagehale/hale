@@ -57,7 +57,7 @@ export function stripeChargeLookupFromEnv(
   };
 }
 
-async function stripeGet(
+export async function stripeGet(
   secret: string,
   path: string,
   fetchImpl: typeof fetch,
