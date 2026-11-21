@@ -1,7 +1,7 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-name';
@@ -325,6 +325,14 @@ function db() {
   return fake as never;
 }
 
+/** With every default-off flag on (CI's advisory job), these three stop or reroute a send
+ * before the writer runs. Off here, so the writer's failure is what the test sees. */
+function keepTheDirectSendPath() {
+  vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+  vi.stubEnv('PROACTIVE_CADENCE', 'off');
+  vi.stubEnv('REGISTRATION_DATE_CHECK', 'off');
+}
+
 /**
  * A recommendation that used up its draft tries stays settled, and a different one picked
  * for the same send (the same week, or the same Saturday) still gets its own.
@@ -602,6 +610,8 @@ describe('runNudgeCron — sending', () => {
  */
 describe('runNudgeCron — a nudge the model could not write', () => {
   const REASONS = ['no_client', 'skill_load', 'model_failed', 'unusable'] as const;
+
+  beforeEach(keepTheDirectSendPath);
 
   function ledgerRows(h: Harness) {
     return h.writes.filter((write) => write.table === schema.channelMessages);
@@ -1299,6 +1309,7 @@ describe('runNudgeCron — the weekday drop-in', () => {
 
   it('a different drop-in in the same week gets its own draft tries', async () => {
     armed();
+    keepTheDirectSendPath();
     const composeMessage = vi.fn(async () => ({ unwritten: 'unusable' as const }));
     const h = harness({
       families: NO_REGION,

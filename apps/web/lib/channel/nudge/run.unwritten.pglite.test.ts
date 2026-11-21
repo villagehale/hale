@@ -135,6 +135,11 @@ beforeEach(async () => {
   await db.exec('truncate table families, users, rate_limits cascade');
   vi.unstubAllEnvs();
   vi.stubEnv('F14_ENABLED', 'true');
+  // With every default-off flag on (CI's advisory job), these stop or reroute a send
+  // before the writer runs. Off here, so the writer's failure is what the test sees.
+  vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+  vi.stubEnv('PROACTIVE_CADENCE', 'off');
+  vi.stubEnv('REGISTRATION_DATE_CHECK', 'off');
   posted = [];
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
