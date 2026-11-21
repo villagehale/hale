@@ -61,6 +61,60 @@ describe('acceptPartyGuestLine', () => {
     ).toBeNull();
   });
 
+  it('refuses a house number that only contains the right one', () => {
+    expect(
+      acceptPartyGuestLine(GOOD_REMINDER.replace('14 Elm St', '114 Elm St'), REMINDER),
+    ).toBeNull();
+    expect(
+      acceptPartyGuestLine(GOOD_REMINDER.replace('14 Elm St', '14 Elm Street'), REMINDER),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['no time at all', GOOD_REMINDER.replace(', Saturday, December 12 at 2:00 PM', '')],
+    ['the wrong hour', GOOD_REMINDER.replace('2:00 PM', '3:00 PM')],
+    ['the wrong minutes', GOOD_REMINDER.replace('2:00 PM', '2:30 PM')],
+    ['only the day of the month', GOOD_REMINDER.replace(' at 2:00 PM', '')],
+    ['the wrong half of the day', GOOD_REMINDER.replace('2:00 PM', '2:00 am')],
+    ['the wrong half, dotted', GOOD_REMINDER.replace('2:00 PM', '2 a.m.')],
+  ])('refuses a reminder with %s', (_name, text) => {
+    expect(acceptPartyGuestLine(text, REMINDER)).toBeNull();
+  });
+
+  it.each(['2:00 PM', '2 PM', '2pm', '2 p.m.', '14 h', '14h', '14h00', '14:00'])(
+    'accepts the time written as %s',
+    (clock) => {
+      const text = GOOD_REMINDER.replace('2:00 PM', clock);
+      expect(acceptPartyGuestLine(text, REMINDER)).toBe(text);
+    },
+  );
+
+  it('reads minutes when the party is not on the hour', () => {
+    const halfPast: PartyGuestLine = { ...REMINDER, when: 'Saturday, December 12 at 2:30 PM' };
+    const ok = GOOD_REMINDER.replace('2:00 PM', '14 h 30');
+    expect(acceptPartyGuestLine(ok, halfPast)).toBe(ok);
+    expect(acceptPartyGuestLine(GOOD_REMINDER.replace('2:00 PM', '2 PM'), halfPast)).toBeNull();
+  });
+
+  it('reads a morning party and the narrow space ICU can put before the half', () => {
+    const morning: PartyGuestLine = { ...REMINDER, when: 'Saturday, December 12 at 10:00\u202fAM' };
+    const ok = GOOD_REMINDER.replace('2:00 PM', '10 a.m.');
+    expect(acceptPartyGuestLine(ok, morning)).toBe(ok);
+    expect(acceptPartyGuestLine(GOOD_REMINDER.replace('2:00 PM', '10 p.m.'), morning)).toBeNull();
+  });
+
+  it('does not take a number in the title or place for the time', () => {
+    const titled: PartyGuestLine = { ...REMINDER, title: "Nora's 2nd birthday" };
+    const noClock =
+      "It's Hale with the reminder you asked for: Nora's 2nd birthday is tomorrow at 14 Elm St.";
+    expect(acceptPartyGuestLine(noClock, titled)).toBeNull();
+
+    const roomNamedLikeATime: PartyGuestLine = { ...REMINDER, where: 'Salle 14h' };
+    const onlyTheRoom =
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow at Salle 14h.";
+    expect(acceptPartyGuestLine(onlyTheRoom, roomNamedLikeATime)).toBeNull();
+  });
+
   it('reads the place past a trailing stop and accents, and needs none on a cancellation', () => {
     const fr: PartyGuestLine = {
       why: 'asked_for_reminder',
@@ -77,44 +131,36 @@ describe('acceptPartyGuestLine', () => {
   it.each([
     ['the opt-out line', `${GOOD_REMINDER} Reply STOP to opt out.`],
     ['help in capitals', `${GOOD_REMINDER} Text HELP for help.`],
-    ['a lowercase instruction', `${GOOD_REMINDER} reply stop anytime`],
     ['the French line', `${GOOD_REMINDER} Répondez ARRÊT pour ne plus recevoir ces messages.`],
-    ['a lowercase French instruction', `${GOOD_REMINDER} répondez arrêt`],
     ['a full-width keyword', `${GOOD_REMINDER} ＳＴＯＰ`],
-    ['a keyword split by a zero-width space', `${GOOD_REMINDER} ST​OP`],
+    ['a keyword split by a zero-width space', `${GOOD_REMINDER} ST\u200bOP`],
     ['a bare start keyword', `${GOOD_REMINDER} START`],
-    ['a way out with no capitals', `${GOOD_REMINDER} Reply to stop getting these.`],
+    ['a keyword nobody listed', `${GOOD_REMINDER} Text QUIT to end these.`],
+    ['a time marker the facts do not hold', GOOD_REMINDER.replace('2:00 PM', '2:00 AM')],
   ])('refuses %s', (_name, text) => {
     expect(acceptPartyGuestLine(text, REMINDER)).toBeNull();
   });
 
-  it("does not read the facts' own words, or an ordinary verb, as a keyword", () => {
+  it("reads a fact's own capitals as the fact, and nothing the draft adds around them", () => {
     const busStop: PartyGuestLine = { ...REMINDER, where: 'Bus STOP Cafe' };
     const onlyFact =
       "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Bus STOP Cafe.";
     expect(acceptPartyGuestLine(onlyFact, busStop)).toBe(onlyFact);
+    expect(acceptPartyGuestLine(`${onlyFact} Reply STOP to opt out.`, busStop)).toBeNull();
 
     const shoutedTitle: PartyGuestLine = { ...REMINDER, title: 'STOP MOTION movie party' };
     const repeated = `It's Hale with the reminder you asked for: STOP MOTION movie party is tomorrow at 2:00 PM at 14 Elm St.`;
     expect(acceptPartyGuestLine(repeated, shoutedTitle)).toBe(repeated);
 
-    const verb = `${GOOD_REMINDER} Stop by any time after 2.`;
-    expect(acceptPartyGuestLine(verb, REMINDER)).toBe(verb);
-
-    const infinitive =
-      "It's Hale. You asked me to text you to help you remember: Nora's party is tomorrow at 14 Elm St.";
-    expect(acceptPartyGuestLine(infinitive, REMINDER)).toBe(infinitive);
-
-    const startTime =
-      "It's Hale. You asked me to text you the start time: Nora's party is tomorrow at 2:00 PM at 14 Elm St.";
-    expect(acceptPartyGuestLine(startTime, REMINDER)).toBe(startTime);
+    const acronym: PartyGuestLine = { ...REMINDER, where: 'YMCA pool' };
+    const atThePool =
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at YMCA pool.";
+    expect(acceptPartyGuestLine(atThePool, acronym)).toBe(atThePool);
   });
 
-  it('still refuses a fact that is itself a keyword instruction', () => {
-    const hostile: PartyGuestLine = { ...REMINDER, where: 'Reply STOP to 12345' };
-    const repeated =
-      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Reply STOP to 12345.";
-    expect(acceptPartyGuestLine(repeated, hostile)).toBeNull();
+  it('does not read an ordinary lowercase word as a keyword', () => {
+    const verb = `${GOOD_REMINDER} Stop by any time after 2.`;
+    expect(acceptPartyGuestLine(verb, REMINDER)).toBe(verb);
   });
 
   it.each([
@@ -156,7 +202,7 @@ describe('createPartyGuestLineWriter', () => {
 
     const text = await createPartyGuestLineWriter(() => traced as never, pager).write(REMINDER);
 
-    expect(text).toBe(GOOD_REMINDER);
+    expect(text).toEqual({ status: 'written', text: GOOD_REMINDER });
     await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     const sent = capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
     expect(sent.properties).toMatchObject({ hale_stage: 'reminder' });
@@ -171,7 +217,7 @@ describe('createPartyGuestLineWriter', () => {
 
     const text = await createPartyGuestLineWriter(() => client, pager).write(REMINDER);
 
-    expect(text).toBe(GOOD_REMINDER);
+    expect(text).toEqual({ status: 'written', text: GOOD_REMINDER });
     expect(requests).toHaveLength(1);
     expect(JSON.parse(requests[0]?.messages[0]?.content as string)).toEqual({
       why: 'asked_for_reminder',
@@ -192,7 +238,7 @@ describe('createPartyGuestLineWriter', () => {
 
     const text = await createPartyGuestLineWriter(() => client, pager).write(REMINDER);
 
-    expect(text).toBe(GOOD_REMINDER);
+    expect(text).toEqual({ status: 'written', text: GOOD_REMINDER });
     expect(requests).toHaveLength(2);
     expect(requests[1]?.model).not.toBe(requests[0]?.model);
     expect(pages).toEqual([]);
@@ -208,7 +254,7 @@ describe('createPartyGuestLineWriter', () => {
 
     const text = await createPartyGuestLineWriter(() => client, pager).write(CANCELLED);
 
-    expect(text).toBeNull();
+    expect(text).toEqual({ status: 'unwritten', page: 'paged' });
     expect(requests).toHaveLength(2);
     expect(pages).toEqual([
       { site: 'party_guest_unwritten', facts: { why: 'host_cancelled', stage: 'after_retry' } },
@@ -225,7 +271,7 @@ describe('createPartyGuestLineWriter', () => {
 
     const text = await createPartyGuestLineWriter(() => client, pager).write(REMINDER);
 
-    expect(text).toBeNull();
+    expect(text).toEqual({ status: 'unwritten', page: 'paged' });
     expect(pages).toEqual([
       {
         site: 'party_guest_unwritten',
@@ -247,9 +293,23 @@ describe('createPartyGuestLineWriter', () => {
       throw new Error('ANTHROPIC_API_KEY is not set');
     }, pager).write(REMINDER);
 
-    expect(text).toBeNull();
+    expect(text).toEqual({ status: 'unwritten', page: 'paged' });
     expect(pages).toHaveLength(1);
   });
+
+  it.each(['page_not_configured', 'page_failed', 'already_paged'] as const)(
+    'names a page that came back %s',
+    async (outcome) => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const pager: OpsPager = { page: async () => outcome };
+
+      const result = await createPartyGuestLineWriter(() => {
+        throw new Error('model outage');
+      }, pager).write(REMINDER);
+
+      expect(result).toEqual({ status: 'unwritten', page: outcome });
+    },
+  );
 });
 
 describe('partyGuestLineUserMessage', () => {

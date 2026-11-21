@@ -12,6 +12,7 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { localParts } from '~/lib/loop/prefs';
+import type { OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { dayKeyIn } from '~/lib/plan/spine';
 import { partyWhen, redactTeenNames } from './card';
 import { guestCancellation, guestReminder } from './guest-copy';
@@ -90,7 +91,7 @@ export interface PartyReminderDeps {
   release: typeof releaseGuestReminder;
   loadTeenNames: typeof loadTeenFirstNames;
   recordSend(database: Database, write: GuestSendLedger): Promise<void>;
-  /** Writes the guest's text while `party-guest-model-copy` is on. Null means none goes out. */
+  /** Writes the guest's text while `party-guest-model-copy` is on. */
   guestLine: PartyGuestLineWriter;
 }
 
@@ -103,6 +104,8 @@ export interface PartyReminderResult {
   failed: number;
   /** Guests of a party whose text the model could not write: nothing sent, #ops paged. */
   unwritten: number;
+  /** Parties among those whose page did not leave, so nobody was told. */
+  unpaged: number;
 }
 
 /** One guest reminder's identity. The rsvp id is the natural key — one guest, one party,
@@ -148,6 +151,7 @@ export async function runPartyReminderCron(
     deduped: 0,
     failed: 0,
     unwritten: 0,
+    unpaged: 0,
   };
 
   const parties = await loadPartiesStartingSoon(database, now);
@@ -166,11 +170,12 @@ export async function runPartyReminderCron(
         const waiting = await loadOptedInGuests(database, party.inviteId);
         if (waiting.length === 0) continue;
         const written = await deps.guestLine.write({ why: 'asked_for_reminder', ...facts });
-        if (written === null) {
+        if (written.status === 'unwritten') {
           result.unwritten += waiting.length;
+          if (pageDidNotLeave(written.page)) result.unpaged += 1;
           continue;
         }
-        body = written;
+        body = written.text;
       } else {
         body = guestReminder(facts.title, facts.when, facts.where);
       }
@@ -210,21 +215,28 @@ export async function notifyGuestsOfCancellation(
   input: { inviteId: string },
   deps: PartyReminderDeps = defaultPartyReminderDeps(),
   now: Date = new Date(),
-): Promise<{ sent: number; failed: number; unwritten: number }> {
+): Promise<{ sent: number; failed: number; unwritten: number; unpaged: number }> {
   const party = await loadPartyByInvite(database, input.inviteId);
-  if (!party) return { sent: 0, failed: 0, unwritten: 0 };
+  if (!party) return { sent: 0, failed: 0, unwritten: 0, unpaged: 0 };
 
   const teens = await deps.loadTeenNames(database, party.familyId, now);
   let body: string;
   if (isEnabled('party-guest-model-copy', party.familyId)) {
     const waiting = await loadOptedInGuests(database, party.inviteId, { includeReminded: true });
-    if (waiting.length === 0) return { sent: 0, failed: 0, unwritten: 0 };
+    if (waiting.length === 0) return { sent: 0, failed: 0, unwritten: 0, unpaged: 0 };
     const written = await deps.guestLine.write({
       why: 'host_cancelled',
       ...guestLineFacts(party, teens),
     });
-    if (written === null) return { sent: 0, failed: 0, unwritten: waiting.length };
-    body = written;
+    if (written.status === 'unwritten') {
+      return {
+        sent: 0,
+        failed: 0,
+        unwritten: waiting.length,
+        unpaged: pageDidNotLeave(written.page) ? 1 : 0,
+      };
+    }
+    body = written.text;
   } else {
     body = guestCancellation(redactTeenNames(party.title, teens));
   }
@@ -247,7 +259,11 @@ export async function notifyGuestsOfCancellation(
     if (outcome === 'sent') sent += 1;
     else if (outcome === 'failed') failed += 1;
   }
-  return { sent, failed, unwritten: 0 };
+  return { sent, failed, unwritten: 0, unpaged: 0 };
+}
+
+function pageDidNotLeave(page: OpsPagerOutcome): boolean {
+  return page === 'page_failed' || page === 'page_not_configured';
 }
 
 /** The party as a guest may hear it, with every teen's name already out. */

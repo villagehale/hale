@@ -256,7 +256,14 @@ describe('a guest message that cannot leave (VIL-267)', () => {
 
     const result = await runPartyReminderCron(partyDb([party], [guest()]), deps(released), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 1, unwritten: 0 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 1,
+      unwritten: 0,
+      unpaged: 0,
+    });
     // The claim comes back, so the guest's ONE reminder is not burned by an outage.
     expect(released).toEqual(['rsvp-1']);
     expect(error).toHaveBeenCalled();
@@ -275,7 +282,7 @@ describe('a guest message that cannot leave (VIL-267)', () => {
 
     // The path reports only sent/failed, so an invisible skip here would read as
     // "everybody was told" for a party that is off.
-    expect(result).toEqual({ sent: 0, failed: 1, unwritten: 0 });
+    expect(result).toEqual({ sent: 0, failed: 1, unwritten: 0, unpaged: 0 });
     expect(error).toHaveBeenCalled();
   });
 

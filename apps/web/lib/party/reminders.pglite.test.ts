@@ -140,12 +140,12 @@ async function sendAudits(familyId: string): Promise<number> {
   return rows.length;
 }
 
-function recordingWriter(text: string | null) {
+function recordingWriter(text: string) {
   const lines: PartyGuestLine[] = [];
   const writer: PartyGuestLineWriter = {
     async write(line) {
       lines.push(line);
-      return text;
+      return { status: 'written', text };
     },
   };
   return { writer, lines };
@@ -180,7 +180,14 @@ describe('flag off: both texts and every send path are today’s', () => {
 
     const result = await runPartyReminderCron(db.database, depsWith(transport, NEVER_WRITES), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 1, deduped: 0, failed: 0, unwritten: 0 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 1,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: FIXED_REMINDER }]);
     const [guest] = await rsvps(party.inviteId);
     expect(guest?.reminderSentAt).not.toBeNull();
@@ -200,7 +207,7 @@ describe('flag off: both texts and every send path are today’s', () => {
       NOW,
     );
 
-    expect(result).toEqual({ sent: 1, failed: 0, unwritten: 0 });
+    expect(result).toEqual({ sent: 1, failed: 0, unwritten: 0, unpaged: 0 });
     expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: FIXED_CANCELLATION }]);
     const [guest] = await rsvps(party.inviteId);
     expect(await ledgerKeys(party.familyId)).toEqual([guestCancelDedupeKey(guest?.id as string)]);
@@ -233,7 +240,14 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
 
     const result = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 2, deduped: 0, failed: 0, unwritten: 0 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 2,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect(lines).toEqual([
       {
         why: 'asked_for_reminder',
@@ -262,7 +276,14 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
     await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
     const again = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
 
-    expect(again).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 0, unwritten: 0 });
+    expect(again).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect(lines).toHaveLength(1);
     expect(transport.sent).toHaveLength(1);
   });
@@ -285,7 +306,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       NOW,
     );
 
-    expect(result).toEqual({ sent: 1, failed: 0, unwritten: 0 });
+    expect(result).toEqual({ sent: 1, failed: 0, unwritten: 0, unpaged: 0 });
     expect(lines).toEqual([
       {
         why: 'host_cancelled',
@@ -317,7 +338,14 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
 
     const result = await runPartyReminderCron(db.database, depsWith(transport, failing), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 0, unwritten: 2 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 0,
+      unwritten: 2,
+      unpaged: 0,
+    });
     expect(transport.sent).toEqual([]);
     expect(pages).toEqual([
       {
@@ -332,7 +360,14 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
     // Positive control: nothing was burned, so a working writer in the same hour sends.
     const { writer } = recordingWriter(WRITTEN_REMINDER);
     const retried = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
-    expect(retried).toEqual({ evaluated: 1, sent: 2, deduped: 0, failed: 0, unwritten: 0 });
+    expect(retried).toEqual({
+      evaluated: 1,
+      sent: 2,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect(new Set(transport.bodies())).toEqual(new Set([WRITTEN_REMINDER]));
   });
 
@@ -354,12 +389,42 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       NOW,
     );
 
-    expect(result).toEqual({ sent: 0, failed: 0, unwritten: 2 });
+    expect(result).toEqual({ sent: 0, failed: 0, unwritten: 2, unpaged: 0 });
     expect(transport.sent).toEqual([]);
     expect(pages).toEqual([
       { site: 'party_guest_unwritten', facts: { why: 'host_cancelled', stage: 'after_retry' } },
     ]);
     expect(await ledgerKeys(party.familyId)).toEqual([]);
+  });
+
+  it('names an unwritten text whose page did not leave, on both paths', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const party = await seedParty();
+    await addGuest(party, 'Priya', PHONE_A);
+    const transport = new FakeTransport();
+    const pager: OpsPager = { page: async () => 'page_not_configured' };
+    const failing = createPartyGuestLineWriter(() => {
+      throw new Error('model outage');
+    }, pager);
+
+    const reminder = await runPartyReminderCron(db.database, depsWith(transport, failing), NOW);
+    const cancelled = await notifyGuestsOfCancellation(
+      db.database,
+      { inviteId: party.inviteId },
+      depsWith(transport, failing),
+      NOW,
+    );
+
+    expect(reminder).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 0,
+      unwritten: 1,
+      unpaged: 1,
+    });
+    expect(cancelled).toEqual({ sent: 0, failed: 0, unwritten: 1, unpaged: 1 });
+    expect(transport.sent).toEqual([]);
   });
 
   it('counts a provider failure after the text is written as failed and frees the claim', async () => {
@@ -379,7 +444,14 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       NOW,
     );
 
-    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 1, unwritten: 0 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 1,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect((await rsvps(party.inviteId)).map((row) => row.reminderSentAt)).toEqual([null]);
     expect(await ledgerKeys(party.familyId)).toEqual([]);
   });
@@ -422,13 +494,20 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
     const writer: PartyGuestLineWriter = {
       async write() {
         await optOutGuestRemindersOnStop(db.database, PHONE_A_E164, NOW);
-        return WRITTEN_REMINDER;
+        return { status: 'written', text: WRITTEN_REMINDER };
       },
     };
 
     const result = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
 
-    expect(result).toEqual({ evaluated: 1, sent: 1, deduped: 0, failed: 0, unwritten: 0 });
+    expect(result).toEqual({
+      evaluated: 1,
+      sent: 1,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
     expect(transport.sent).toEqual([{ to: PHONE_B_E164, body: WRITTEN_REMINDER }]);
   });
 
@@ -446,8 +525,15 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       NOW,
     );
 
-    expect(reminder).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 0, unwritten: 0 });
-    expect(cancelled).toEqual({ sent: 0, failed: 0, unwritten: 0 });
+    expect(reminder).toEqual({
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    });
+    expect(cancelled).toEqual({ sent: 0, failed: 0, unwritten: 0, unpaged: 0 });
     expect(lines).toEqual([]);
     expect(transport.sent).toEqual([]);
   });

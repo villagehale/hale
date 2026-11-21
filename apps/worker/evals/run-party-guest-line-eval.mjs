@@ -60,7 +60,8 @@ async function subjects() {
 function runBroken(voice) {
   const passed = PARTY_GUEST_LINE_FIXTURES.filter((fixture) => {
     const accepted = voice.acceptPartyGuestLine(BROKEN_TEXT, fixture.line);
-    return accepted !== null && partyGuestLineMisses(accepted, fixture).length === 0;
+    if (accepted === null) return false;
+    return !fixture.expectUnwritten && partyGuestLineMisses(accepted, fixture).length === 0;
   });
   console.info(`broken-mode calibration: ${passed.length} of the bad texts passed (must be 0)`);
   process.exit(passed.length === 0 ? 0 : 1);
@@ -117,16 +118,20 @@ async function run(mode) {
       if (body) break;
     }
     const failures = [];
-    const verdict = await judge(fixture.id, {
-      request: userMessage,
-      message: body ?? standIn,
-      watchFor: fixture.watchFor,
-    });
-    if (!unrecorded) {
-      if (!body) failures.push('unwritten');
-      else failures.push(...partyGuestLineMisses(body, fixture));
-      if (body && verdict.score < JUDGE_MIN) {
-        failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    if (fixture.expectUnwritten) {
+      if (body) failures.push('should_be_unwritten', ...partyGuestLineMisses(body, fixture));
+    } else {
+      const verdict = await judge(fixture.id, {
+        request: userMessage,
+        message: body ?? standIn,
+        watchFor: fixture.watchFor,
+      });
+      if (!unrecorded) {
+        if (!body) failures.push('unwritten');
+        else failures.push(...partyGuestLineMisses(body, fixture));
+        if (body && verdict.score < JUDGE_MIN) {
+          failures.push(`judge:${verdict.score} (${verdict.reason})`);
+        }
       }
     }
     results.push({ fixture, body, unrecorded, failures });
