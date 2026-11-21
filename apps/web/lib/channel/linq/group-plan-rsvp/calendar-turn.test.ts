@@ -68,6 +68,10 @@ function writerSpy(): GroupPlanCalendarWriter & { familyIds: string[]; removed: 
       familyIds.push(input.familyId);
       return { status: 'written', familyEventId: `evt-${input.familyId}` };
     },
+    async move(input) {
+      familyIds.push(input.familyId);
+      return { status: 'written', familyEventId: `evt-${input.familyId}` };
+    },
     async remove(input) {
       removed.push(input.familyId);
       return { status: 'removed', familyEventId: `evt-${input.familyId}` };

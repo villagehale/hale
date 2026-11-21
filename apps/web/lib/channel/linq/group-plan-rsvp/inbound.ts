@@ -27,6 +27,7 @@ import {
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
   hostFamilyIdForPlan,
+  householdInChat,
   sharedCalendarConsentReader,
 } from './calendar';
 import {
@@ -449,6 +450,7 @@ export async function moveGroupPlanCalendarCopies(
     {
       store,
       ...groupPlanCalendarPorts(ports),
+      householdInChat: (familyId) => householdInChat(ports.database, input.chatId, familyId),
       daytime: async (familyId) => {
         const zone = await store.householdTimeZone(familyId);
         return zone !== null && !inProactiveQuietHours(ports.now, zone);

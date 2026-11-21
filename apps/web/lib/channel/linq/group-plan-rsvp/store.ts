@@ -227,6 +227,11 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   /** The titles of these chats' most recently closed plans, newest first. */
   closedPlanTitles(chatIds: readonly string[]): Promise<string[]>;
   /** A parent's first name, to address a line to them. */
+  /**
+   * The parent a household's private notice goes to: `preferredUserId` while they still hold a
+   * parent seat in this family, otherwise the family's current primary parent.
+   */
+  currentParentOf(familyId: string, preferredUserId: string | null): Promise<string | null>;
   parentFirstName(userId: string): Promise<string | null>;
   /** The titles of these plans, closed ones included. A plan that no longer exists is absent. */
   planTitles(planIds: readonly string[]): Promise<{ id: string; title: string }[]>;
@@ -950,6 +955,20 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .orderBy(desc(schema.linqGroupPlans.createdAt))
         .limit(CLOSED_PLAN_RIVALS);
       return rows.map((row) => row.title);
+    },
+
+    async currentParentOf(familyId, preferredUserId) {
+      const members = await database
+        .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId));
+      const parents = members.filter(
+        (member) => member.role === 'primary_parent' || member.role === 'co_parent',
+      );
+      if (preferredUserId && parents.some((member) => member.userId === preferredUserId)) {
+        return preferredUserId;
+      }
+      return parents.find((member) => member.role === 'primary_parent')?.userId ?? null;
     },
 
     async parentFirstName(userId) {

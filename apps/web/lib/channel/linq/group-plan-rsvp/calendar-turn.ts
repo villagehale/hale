@@ -569,17 +569,21 @@ export function movedNoticeDedupeKey(moveAuditId: string): string {
 
 export type MovedCopyEffect =
   | { familyId: string; status: 'moved'; notice: 'sent' | 'held' | { skipped: CalendarSkipReason } }
-  | { familyId: string; status: 'skipped'; reason: 'write_failed' };
+  | { familyId: string; status: 'skipped'; reason: 'write_failed' | 'left_chat' | 'copy_removed' };
 
 /**
- * A plan's time moved. Every household whose copy Hale wrote gets that copy moved, then
- * one model-written 1:1 notice, by day on that household's own clock. A notice owed at
- * night is held (the move's audit row is the debt) for the morning re-drive. A household
- * that never wrote the plan is untouched here: its ask, if any, already carries the plan.
+ * A plan's time moved. Every household still in this chat whose copy Hale wrote gets that
+ * copy moved, then one model-written 1:1 notice, by day on that household's own clock. A
+ * notice owed at night is held (the move's audit row is the debt) for the morning re-drive.
+ * A household that left keeps its copy as it was and hears nothing, and a copy the parent
+ * took off stays off. A household that never wrote the plan is untouched here: its ask, if
+ * any, already carries the plan.
  */
 export async function moveWrittenCopies(
   input: { chatId: string; plan: GroupPlanRecord; actorUserId: string | null; now: Date },
   ports: CalendarTurnPorts & {
+    /** Whether this household is in this chat now: a family that left is not moved or texted. */
+    householdInChat: (familyId: string) => Promise<boolean>;
     daytime: (familyId: string) => Promise<boolean>;
     languageOf: (familyId: string) => Promise<ReplyLanguage | null>;
   },
@@ -591,7 +595,15 @@ export async function moveWrittenCopies(
   }
   const effects: MovedCopyEffect[] = [];
   for (const row of await ports.store.listWrittenCalendarConsents(input.plan.id)) {
-    const moved = await ports.calendar.write({
+    if (!(await ports.householdInChat(row.familyId))) {
+      console.info(
+        { outcome: 'group_plan_calendar_move_left_chat' },
+        'group plan calendar: this household left the chat, its copy and its phone are left alone',
+      );
+      effects.push({ familyId: row.familyId, status: 'skipped', reason: 'left_chat' });
+      continue;
+    }
+    const moved = await ports.calendar.move({
       planId: input.plan.id,
       chatId: input.chatId,
       familyId: row.familyId,
@@ -601,6 +613,14 @@ export async function moveWrittenCopies(
     });
     if (moved.status === 'failed') {
       effects.push({ familyId: row.familyId, status: 'skipped', reason: 'write_failed' });
+      continue;
+    }
+    if (moved.status === 'gone') {
+      console.info(
+        { outcome: 'group_plan_calendar_move_copy_removed' },
+        'group plan calendar: the household took this copy off, it stays off',
+      );
+      effects.push({ familyId: row.familyId, status: 'skipped', reason: 'copy_removed' });
       continue;
     }
     if (moved.status === 'unchanged') continue;
@@ -640,11 +660,12 @@ export async function sendMovedNotice(
     language: ReplyLanguage | null;
   },
 ): Promise<'sent' | { skipped: CalendarSkipReason }> {
-  const userId = input.row.decidedByUserId;
+  // Resolved now: whoever gave the OK may have left this household since.
+  const userId = await ports.store.currentParentOf(input.row.familyId, input.row.decidedByUserId);
   if (!userId) {
     console.warn(
       { outcome: 'group_plan_calendar_moved_notice_unsent', reason: 'no_parent' },
-      'group plan calendar: no parent recorded for this OK, moved notice not sent',
+      'group plan calendar: no parent in this household, moved notice not sent',
     );
     return { skipped: 'no_parent' };
   }

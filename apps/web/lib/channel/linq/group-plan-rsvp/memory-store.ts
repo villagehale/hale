@@ -467,6 +467,10 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       }
     },
 
+    async currentParentOf(_familyId, preferredUserId) {
+      return preferredUserId;
+    },
+
     async parentFirstName() {
       return null;
     },

@@ -64,7 +64,7 @@ async function textedHale(familyId: string, userId: string) {
 async function movedAtNight(options: { decider?: 'primary' | 'coParent'; texted?: boolean } = {}) {
   const [family] = await db.database
     .insert(schema.families)
-    .values({ displayName: 'Ada', provinceOrState: 'ON' })
+    .values({ displayName: 'Ada', provinceOrState: 'ON', linqGroupChatId: CHAT })
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
   const [user] = await db.database

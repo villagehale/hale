@@ -7,7 +7,7 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { createFamilyEventsCopyStore } from '../group-plan-invites';
+import { createFamilyEventsCopyStore, moveLiveCopy } from '../group-plan-invites';
 import type { LinqTapback } from '../transport';
 
 /**
@@ -273,34 +273,7 @@ export function postgresGroupPlanHouseholds(database: Database): GroupPlanHouseh
   return {
     async resolve(input) {
       if (!input.userId) return { status: 'none' };
-      const memberships = await database
-        .select({
-          familyId: schema.familyMembers.familyId,
-          role: schema.familyMembers.role,
-        })
-        .from(schema.familyMembers)
-        .where(eq(schema.familyMembers.userId, input.userId));
-      const parentFamilies = memberships
-        .filter((row) => (PARENT_ROLES as readonly string[]).includes(row.role))
-        .map((row) => row.familyId);
-      if (parentFamilies.length === 0) return { status: 'none' };
-
-      const [covering] = await database
-        .select({ id: schema.families.id })
-        .from(schema.families)
-        .where(eq(schema.families.linqGroupChatId, input.chatId))
-        .limit(1);
-      const joined = await consentedJoinFamilyIds(database, input.chatId);
-      const seated = await liveSeatFamilies(database, input.chatId, input.userId);
-      const removed = await removedSeatFamilies(database, input.chatId, input.userId);
-      const eligible = parentFamilies.filter((id) => {
-        if (removed.has(id) && !seated.has(id)) return false;
-        if (id === covering?.id) return true;
-        if (seated.has(id) && joined.has(id)) return true;
-        // Shared chat (no covering family): a live seat is this household, even
-        // before a join row. Two seats stay ambiguous.
-        return !covering && seated.has(id);
-      });
+      const eligible = await eligibleFamilies(database, input.chatId, input.userId);
       if (eligible.length === 1) {
         const familyId = eligible[0];
         return familyId ? { status: 'one', familyId } : { status: 'none' };
@@ -309,6 +282,62 @@ export function postgresGroupPlanHouseholds(database: Database): GroupPlanHouseh
       return { status: 'ambiguous' };
     },
   };
+}
+
+/** The households this parent can answer for in this chat. */
+async function eligibleFamilies(
+  database: Database,
+  chatId: string,
+  userId: string,
+): Promise<string[]> {
+  const memberships = await database
+    .select({
+      familyId: schema.familyMembers.familyId,
+      role: schema.familyMembers.role,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, userId));
+  const parentFamilies = memberships
+    .filter((row) => (PARENT_ROLES as readonly string[]).includes(row.role))
+    .map((row) => row.familyId);
+  if (parentFamilies.length === 0) return [];
+
+  const [covering] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  const joined = await consentedJoinFamilyIds(database, chatId);
+  const seated = await liveSeatFamilies(database, chatId, userId);
+  const removed = await removedSeatFamilies(database, chatId, userId);
+  return parentFamilies.filter((id) => {
+    if (removed.has(id) && !seated.has(id)) return false;
+    if (id === covering?.id) return true;
+    if (seated.has(id) && joined.has(id)) return true;
+    // Shared chat (no covering family): a live seat is this household, even
+    // before a join row. Two seats stay ambiguous.
+    return !covering && seated.has(id);
+  });
+}
+
+/**
+ * Whether this household is in this chat now: a parent of it still answers for it here, by the
+ * rule an OK uses. A family that left (join closed, seats removed) is not, whatever it had.
+ */
+export async function householdInChat(
+  database: Database,
+  chatId: string,
+  familyId: string,
+): Promise<boolean> {
+  const members = await database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  for (const member of members) {
+    if (!(PARENT_ROLES as readonly string[]).includes(member.role)) continue;
+    if ((await eligibleFamilies(database, chatId, member.userId)).includes(familyId)) return true;
+  }
+  return false;
 }
 
 /** A parent who has left the chat is not seated, so they cannot OK a calendar write. */
@@ -427,6 +456,18 @@ export interface GroupPlanCalendarWriter {
     | { status: 'failed' }
   >;
   /**
+   * A plan's time moved: moves the copy already on this family's calendar. `gone` when it is
+   * not there any more (they took it off): it stays off and nothing is said.
+   */
+  move(
+    input: GroupPlanCalendarWrite,
+  ): Promise<
+    | { status: 'written'; familyEventId: string }
+    | { status: 'unchanged'; familyEventId: string }
+    | { status: 'gone' }
+    | { status: 'failed' }
+  >;
+  /**
    * Soft-deletes the copy Hale placed for this plan and family. A row the
    * parent added themselves has no group-plan key and is left alone.
    */
@@ -464,6 +505,29 @@ export function postgresGroupPlanCalendarWriter(database: Database): GroupPlanCa
         console.error(
           { err: err instanceof Error ? err.name : 'unknown' },
           'group plan calendar: write failed',
+        );
+        return { status: 'failed' };
+      }
+    },
+    async move(input) {
+      try {
+        return await moveLiveCopy(
+          database,
+          {
+            groupPlanId: input.planId,
+            chatId: input.chatId,
+            title: input.title,
+            startsAt: input.startsAt,
+            endsAt: null,
+            location: input.location,
+            cancelled: false,
+          },
+          input.familyId,
+        );
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'group plan calendar: move failed',
         );
         return { status: 'failed' };
       }

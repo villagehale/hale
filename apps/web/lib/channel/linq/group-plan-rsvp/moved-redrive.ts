@@ -1,5 +1,5 @@
-import { schema } from '@hale/db';
-import { and, asc, eq, gte, inArray } from 'drizzle-orm';
+import { type Database, schema } from '@hale/db';
+import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import {
   MAX_REDRIVE_PER_RUN,
   REDRIVE_MAX_AGE_MS,
@@ -7,7 +7,7 @@ import {
   redriveParentTimeZone,
 } from '~/lib/channel/redrive-slot';
 import { linqGroupPlanRsvpCalendarEnabled, linqGroupPlanRsvpEnabled } from '../config';
-import { primaryParentId } from '../roster-ask';
+import { householdInChat } from './calendar';
 import { movedNoticeDedupeKey, sendMovedNotice } from './calendar-turn';
 import {
   type GroupPlanRsvpInboundPorts,
@@ -22,7 +22,8 @@ import { GROUP_PLAN_CALENDAR_MOVED_VERB, createPostgresGroupPlanRsvpStore } from
  * It reads the MOVE, not a refusal: the open set is every move audit row in the staleness
  * window whose notice key nobody has claimed, newest move per (plan, household) only. It
  * rides the shared re-drive slot (redrive-slot.ts): same hour, bound and per-run cap. A
- * plan that closed, or a copy no longer written, owes nothing.
+ * plan that closed, a copy no longer written or since taken off the calendar, or a household
+ * that has left the chat, owes nothing.
  */
 
 export interface MovedNoticeRedriveResult {
@@ -32,6 +33,17 @@ export interface MovedNoticeRedriveResult {
   skipped: number;
   /** Off with the calendar step: nothing read. */
   dark: boolean;
+}
+
+/** Whether this household's copy is still on its calendar. */
+async function copyOnCalendar(database: Database, familyEventId: string | null): Promise<boolean> {
+  if (!familyEventId) return false;
+  const [copy] = await database
+    .select({ id: schema.familyEvents.id })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.id, familyEventId), isNull(schema.familyEvents.deletedAt)))
+    .limit(1);
+  return Boolean(copy);
 }
 
 export async function runGroupPlanMovedNoticeRedrive(
@@ -86,7 +98,7 @@ export async function runGroupPlanMovedNoticeRedrive(
   for (const move of open) {
     if (result.due >= MAX_REDRIVE_PER_RUN) break;
     const row = await store.loadCalendarConsent(move.planId, move.familyId);
-    const parent = row?.decidedByUserId ?? (await primaryParentId(database, move.familyId));
+    const parent = await store.currentParentOf(move.familyId, row?.decidedByUserId ?? null);
     if (!parent) {
       result.skipped += 1;
       continue;
@@ -97,7 +109,13 @@ export async function runGroupPlanMovedNoticeRedrive(
       .select()
       .from(schema.linqGroupPlans)
       .where(eq(schema.linqGroupPlans.id, move.planId));
-    if (!plan || plan.closedAt || row?.status !== 'written') {
+    if (
+      !plan ||
+      plan.closedAt ||
+      row?.status !== 'written' ||
+      !(await copyOnCalendar(database, row.familyEventId)) ||
+      !(await householdInChat(database, plan.chatId, move.familyId))
+    ) {
       result.skipped += 1;
       continue;
     }

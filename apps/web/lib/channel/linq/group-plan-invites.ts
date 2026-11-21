@@ -321,6 +321,46 @@ export function createFamilyEventsCopyStore(database: Database): GroupPlanCopySt
   };
 }
 
+/** A move of a copy already placed. `gone`: this family has no live copy to move. */
+export type CopyMove = CopyWrite | { status: 'gone' };
+
+/**
+ * A plan's time changed: move this family's copy. A copy the parent took off their calendar
+ * (soft-deleted) stays off. Unlike `upsertCopy`, a move never brings a row back or places one.
+ */
+export async function moveLiveCopy(
+  database: Database,
+  plan: GroupPlan,
+  familyId: string,
+): Promise<CopyMove> {
+  const fe = schema.familyEvents;
+  const key = groupPlanCopyKey(plan.groupPlanId, familyId);
+  const [row] = await database
+    .select()
+    .from(fe)
+    .where(and(eq(fe.groupPlanCopyKey, key), eq(fe.familyId, familyId)))
+    .limit(1);
+  if (!row || row.deletedAt !== null) return { status: 'gone' };
+  const values = {
+    title: plan.title,
+    startsAt: plan.startsAt,
+    endsAt: plan.endsAt,
+    location: plan.location,
+  };
+  const same =
+    row.title === values.title &&
+    row.startsAt.getTime() === values.startsAt.getTime() &&
+    (row.endsAt?.getTime() ?? null) === (values.endsAt?.getTime() ?? null) &&
+    row.location === values.location;
+  if (same) return { status: 'unchanged', familyEventId: row.id };
+  const [moved] = await database
+    .update(fe)
+    .set(values)
+    .where(and(eq(fe.id, row.id), isNull(fe.deletedAt)))
+    .returning({ id: fe.id });
+  return moved ? { status: 'written', familyEventId: moved.id } : { status: 'gone' };
+}
+
 /** Which copies exist (live or not) for these families — lets a cancel find every copy. */
 export async function existingCopyFamilies(
   database: Database,
