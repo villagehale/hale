@@ -16,7 +16,9 @@ import {
 } from '~/lib/testing/pglite';
 import { acknowledgeDutyWrite } from './ack';
 import {
+  type DutyDirectTarget,
   type DutySendPorts,
+  deliverDutyDirectLines,
   deliverDutyGroupLine,
   planFamilyDutyAsks,
   sweepDutyAsks,
@@ -33,6 +35,12 @@ const PHONE_ONE = '+15555550101';
 const PHONE_TWO = '+15555550102';
 const PHONE_THREE = '+15555550103';
 const PHONE_FOUR = '+15555550104';
+const PHONE_FIVE = '+15555550105';
+const PHONE_SIX = '+15555550106';
+const PHONE_SEVEN = '+15555550107';
+const PHONE_EIGHT = '+15555550108';
+const PHONE_NINE = '+15555550109';
+const PHONE_TEN = '+15555550110';
 
 let db: TestDb;
 
@@ -101,6 +109,7 @@ function ports(
 async function outRows(familyId: string) {
   return db.database
     .select({
+      parentUserId: schema.channelMessages.parentUserId,
       status: schema.channelMessages.status,
       errorCode: schema.channelMessages.errorCode,
       providerMessageId: schema.channelMessages.providerMessageId,
@@ -251,14 +260,17 @@ async function splitFamilyOnOneToOnes(
   return family;
 }
 
-function scriptedReply(text: string): AgentClient {
+function scriptedReply(text: string, duringCompose?: () => void): AgentClient {
   return {
     messages: {
-      create: vi.fn(async () => ({
-        content: [{ type: 'text', text: JSON.stringify({ text }) }],
-        usage: { input_tokens: 12, output_tokens: 8 },
-        stop_reason: 'end_turn',
-      })),
+      create: vi.fn(async () => {
+        duringCompose?.();
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ text }) }],
+          usage: { input_tokens: 12, output_tokens: 8 },
+          stop_reason: 'end_turn',
+        };
+      }),
     },
   } as unknown as AgentClient;
 }
@@ -619,6 +631,172 @@ describe('a split ask on 1:1s', () => {
       unanswered: 1,
       silentNamed: false,
     });
+  });
+});
+
+describe('each parent is gated at the moment of sending', () => {
+  const onHold = { allowed: false, reason: 'opt_out_unread' } as const;
+  const allowed = { allowed: true, optOut: 'short' } as const;
+  const SPLIT_TEXT = 'Who drives Robin to hockey and who drives Casey to dance?';
+
+  function directPorts(
+    sendDirect: NonNullable<DutySendPorts['sendDirect']>,
+    gate: DutySendPorts['gate'],
+  ): DutySendPorts {
+    return {
+      ...ports(
+        vi.fn(async () => ({ providerMessageId: 'unused' })),
+        'unused',
+        pager().pager,
+      ),
+      target: async () => ({ channel: 'legacy' }),
+      gate,
+      sendDirect,
+    };
+  }
+
+  function accepting() {
+    let accepted = 0;
+    return vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async () => {
+      accepted += 1;
+      return { providerMessageId: `linq-gated-${accepted}` };
+    });
+  }
+
+  it('a parent held during the compose is not texted, and the other still is', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('gate-compose', [PHONE_FIVE, PHONE_SIX]);
+    let held = false;
+    const sendDirect = accepting();
+    const client = scriptedReply(SPLIT_TEXT, () => {
+      held = true;
+    });
+
+    await sweepDutyAsks(db.database, {
+      now: AFTERNOON,
+      ports: directPorts(sendDirect, async (request) =>
+        held && request.parentUserId === family.secondUserId ? onHold : allowed,
+      ),
+      replyClient: client,
+    });
+
+    expect(vi.mocked(client.messages.create)).toHaveBeenCalledTimes(1);
+    expect(sendDirect.mock.calls.map((call) => call[0].to)).toEqual([PHONE_FIVE]);
+    const rows = await outRows(family.familyId);
+    expect(rows.filter((row) => row.parentUserId === family.secondUserId)).toEqual([]);
+    expect(
+      rows.filter((row) => row.parentUserId === family.parentUserId).map((row) => row.status),
+    ).toEqual(['sent']);
+  });
+
+  it('a parent held during a retry compose is not texted again', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'true');
+    const family = await splitFamilyOnOneToOnes('gate-retry', [PHONE_SEVEN, PHONE_EIGHT]);
+    let held = false;
+    let refusals = 1;
+    const sendDirect = vi.fn<NonNullable<DutySendPorts['sendDirect']>>(async (input) => {
+      if (input.to === PHONE_EIGHT && refusals > 0) {
+        refusals -= 1;
+        throw refused();
+      }
+      return { providerMessageId: 'linq-gated-retry' };
+    });
+    const sendPorts = directPorts(sendDirect, async (request) =>
+      held && request.parentUserId === family.secondUserId ? onHold : allowed,
+    );
+
+    await sweepDutyAsks(db.database, {
+      now: AFTERNOON,
+      ports: sendPorts,
+      replyClient: scriptedReply(SPLIT_TEXT),
+    });
+    await sweepDutyAsks(db.database, {
+      now: later(1, AFTERNOON),
+      ports: sendPorts,
+      replyClient: scriptedReply(SPLIT_TEXT, () => {
+        held = true;
+      }),
+    });
+
+    expect(sendDirect.mock.calls.filter((call) => call[0].to === PHONE_EIGHT)).toHaveLength(1);
+    const second = (await outRows(family.familyId)).filter(
+      (row) => row.parentUserId === family.secondUserId,
+    );
+    expect(second.map((row) => row.status)).toEqual(['failed']);
+  });
+
+  it('names the hold in the delivery, and a gate that stays allowed still sends', async () => {
+    const family = await twoParents('gate-named');
+    const sendDirect = accepting();
+    const target = (parentUserId: string, phone: string, leg: string): DutyDirectTarget => ({
+      parentUserId,
+      phone,
+      sendKey: `gate-named:${family.familyId}:${leg}`,
+      dedupeKey: `gate-named:${family.familyId}:${leg}`,
+      attempt: 1,
+    });
+    const deliverTo = (targets: DutyDirectTarget[], gate: DutySendPorts['gate']) =>
+      deliverDutyDirectLines(
+        db.database,
+        {
+          familyId: family.familyId,
+          targets,
+          text: SPLIT_TEXT,
+          now: AFTERNOON,
+          templateKey: 'linq:group_duty_night_before',
+        },
+        directPorts(sendDirect, gate),
+      );
+
+    const partly = await deliverTo(
+      [target(family.parentUserId, PHONE_NINE, 'a'), target(family.secondUserId, PHONE_TEN, 'b')],
+      async (request) => (request.parentUserId === family.secondUserId ? onHold : allowed),
+    );
+    expect(partly).toEqual({ status: 'sent', chatId: PHONE_NINE, held: 'opt_out_unread' });
+
+    const none = await deliverTo([target(family.secondUserId, PHONE_TEN, 'c')], async () => ({
+      allowed: false,
+      reason: 'quiet_hours',
+    }));
+    expect(none).toEqual({ status: 'held', reason: 'quiet_hours' });
+
+    const both = await deliverTo(
+      [target(family.parentUserId, PHONE_NINE, 'd'), target(family.secondUserId, PHONE_TEN, 'e')],
+      async () => allowed,
+    );
+    expect(both).toEqual({ status: 'sent', chatId: PHONE_TEN });
+    expect(sendDirect.mock.calls.map((call) => call[0].to)).toEqual([
+      PHONE_NINE,
+      PHONE_NINE,
+      PHONE_TEN,
+    ]);
+  });
+
+  it('the group path reads its gate after the compose too', async () => {
+    vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
+    vi.stubEnv(COPARENT_SPLIT_DUTY_ENABLED_ENV, 'false');
+    const family = await nightBeforeFamily('gate-group');
+    let held = false;
+    const send = vi.fn<DutySendPorts['send']>();
+    const swept = await sweepDutyAsks(db.database, {
+      now: EVENING,
+      ports: {
+        ...ports(send, 'chat-gate-group', pager().pager),
+        gate: async () => (held ? onHold : allowed),
+      },
+      replyClient: scriptedReply('unused'),
+      composeNight: async () => {
+        held = true;
+        return 'Model wording.';
+      },
+    });
+
+    expect(held).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+    expect(await outRows(family.familyId)).toEqual([]);
+    expect(swept.held).toBeGreaterThanOrEqual(1);
   });
 });
 

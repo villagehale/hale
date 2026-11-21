@@ -12,7 +12,7 @@ import {
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { splitKidEvent, spokenBlockTitle, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
+import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   PROACTIVE_QUIET_HOURS,
@@ -162,7 +162,8 @@ export function defaultDutySendPorts(): DutySendPorts {
 }
 
 export type DutyDelivery =
-  | { status: 'sent'; chatId: string }
+  /** `held`: a parent the gate stopped at send time, while another was reached. */
+  | { status: 'sent'; chatId: string; held?: ProactiveHoldReason }
   | {
       status: 'skipped';
       reason:
@@ -1347,20 +1348,20 @@ export async function deliverDutyGroupLine(
   return { status: 'sent', chatId: target.chatId };
 }
 
-interface DutyDirectTarget {
+export interface DutyDirectTarget {
   parentUserId: string;
   phone: string;
   /** The base key for this parent: the Linq key on every try. */
   sendKey: string;
   dedupeKey: string;
   attempt: number;
-  optOut: OptOutForm;
 }
 
 /**
- * VIL-661 · who a split ask can reach on a 1:1 right now, read before any compose. Each
- * parent passes their own gate on every try. `askedAlready`: Linq has accepted this ask
- * for at least one parent, so what is left is a retry to the others.
+ * VIL-661 · who a split ask could reach on a 1:1, read so a parent on hold costs no model
+ * call. Not the permission to send: deliverDutyDirectLines reads each gate again at the
+ * send. `askedAlready`: Linq has accepted this ask for at least one parent, so what is
+ * left is a retry to the others.
  */
 async function dutyDirectReach(
   database: Database,
@@ -1406,7 +1407,6 @@ async function dutyDirectReach(
       sendKey,
       dedupeKey: attempt.dedupeKey,
       attempt: attempt.attempt,
-      optOut: verdict.optOut,
     });
   }
   const stopped: DutyDelivery = held
@@ -1418,7 +1418,7 @@ async function dutyDirectReach(
 }
 
 /** The same model-written split ask, to each parent on Linq 1:1 when there is no group. */
-async function deliverDutyDirectLines(
+export async function deliverDutyDirectLines(
   database: Database,
   input: {
     familyId: string;
@@ -1433,9 +1433,30 @@ async function deliverDutyDirectLines(
   if (!ports.sendDirect) return { status: 'skipped', reason: 'no_group' };
   if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
   const pager = ports.pager ?? defaultDutyPager(database);
+  const gatePorts = ports.gatePorts(database);
   let reached: string | null = null;
+  let held: ProactiveHoldReason | null = null;
   let retrying = false;
+  let dropped = false;
   for (const target of input.targets) {
+    // An opt-out can land during the compose or the send before this one.
+    const verdict = await ports.gate(
+      {
+        familyId: input.familyId,
+        parentUserId: target.parentUserId,
+        kind: 'duty_ask',
+        now: input.now,
+      },
+      gatePorts,
+    );
+    if (!verdict.allowed) {
+      held ??= verdict.reason;
+      console.info(
+        { familyId: input.familyId, reason: verdict.reason },
+        'duty: a parent was held at send, not texted',
+      );
+      continue;
+    }
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({
@@ -1458,7 +1479,7 @@ async function deliverDutyDirectLines(
     try {
       sent = await ports.sendDirect({
         to: target.phone,
-        text: withOptOut(input.text, target.optOut),
+        text: withOptOut(input.text, verdict.optOut),
         sendKey: target.sendKey,
         fetch: input.fetch,
       });
@@ -1474,7 +1495,8 @@ async function deliverDutyDirectLines(
         final,
         pager,
       });
-      if (!final) retrying = true;
+      if (final) dropped = true;
+      else retrying = true;
       continue;
     }
     await markDutySendAccepted(database, {
@@ -1484,8 +1506,13 @@ async function deliverDutyDirectLines(
     });
     reached = target.phone;
   }
-  if (reached) return { status: 'sent', chatId: reached };
-  return { status: 'not_sent', reason: retrying ? 'send_retrying' : SEND_RETRIES_EXHAUSTED };
+  if (reached) {
+    return { status: 'sent', chatId: reached, ...(held ? { held } : {}) };
+  }
+  if (retrying) return { status: 'not_sent', reason: 'send_retrying' };
+  if (dropped) return { status: 'not_sent', reason: SEND_RETRIES_EXHAUSTED };
+  if (held) return { status: 'held', reason: held };
+  return { status: 'skipped', reason: 'no_group' };
 }
 
 function dutyAskKey(line: CadenceLine | undefined, ymd: string): string {
