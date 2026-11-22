@@ -12,6 +12,7 @@ import {
   CLAIM_CONNECTION_ERROR,
   CLAIM_NUMBER_ERROR,
   CLAIM_RATE_LIMIT,
+  claimCodeNote,
   claimFailureStep,
 } from '~/lib/auth/claim-phone-copy';
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
@@ -37,12 +38,15 @@ export function ClaimByPhoneForm({
   callbackUrl = '',
   smsNumber = '',
   source = null,
+  noStopKeyword,
 }: {
   callbackUrl?: string;
   /** Hale's public line. Empty keeps the new-user link on /text. */
   smsNumber?: string;
   /** A validated `?s=` from this page. The no-JS link carries it. */
   source?: string | null;
+  /** NO_STOP_KEYWORD_COPY_ENABLED, read on the server. */
+  noStopKeyword: boolean;
 }) {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -281,10 +285,7 @@ export function ClaimByPhoneForm({
               {error ? null : (
                 <p className={styles.note}>
                   <InfoIcon />
-                  <span>
-                    Nothing yet? It can take a minute. If you once replied STOP to Hale, reply START
-                    in that thread first.
-                  </span>
+                  <span>{claimCodeNote(noStopKeyword)}</span>
                 </p>
               )}
             </form>

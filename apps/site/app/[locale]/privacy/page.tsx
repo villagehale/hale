@@ -47,6 +47,9 @@ import { pageSource } from '~/lib/page-source';
  * where the code or a confirmed fact supports them (message retention, consent records,
  * Google Drive read-only, PostHog replay).
  *
+ * 2026-11-21: The Purchase sentence now says "A paid checkout". Wording only:
+ * reportBillingPurchase already reports every paid Checkout Session.
+ *
  * 2026-11-16: Meta Pixel (dataset 1460101092968766) PageView on villagehale.com
  * after Accept and on app.villagehale.com when conversions are on. Purchase is
  * CAPI from the Stripe webhook, event_id = Checkout Session id.
@@ -128,7 +131,7 @@ export default async function PrivacyPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Privacy Policy"
-      lastUpdatedIso="2026-11-16"
+      lastUpdatedIso="2026-11-21"
       intro={
         <p>
           Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
@@ -559,7 +562,7 @@ export default async function PrivacyPage({
             <strong>Meta</strong> — advertising measurement. The Meta Pixel (dataset
             1460101092968766) records a PageView on the marketing site (villagehale.com) after the
             visitor taps Accept in the cookie banner, and on the product app (app.villagehale.com)
-            when conversions measurement is on. A paid founding-family checkout sends a Purchase
+            when conversions measurement is on. A paid checkout sends a Purchase
             event to Meta&rsquo;s Conversions API from Hale&rsquo;s servers, using the Stripe
             Checkout Session id so a matching browser Purchase can be deduplicated. That event may
             include a hashed email, a hashed phone number, Meta click cookies, and the IP address

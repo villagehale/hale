@@ -1,3 +1,4 @@
+import type { BillingPlanName } from './billing-text';
 import type { ClaimRowLabel } from './claim-label';
 
 /**
@@ -126,6 +127,20 @@ export type ClaimCandidateRow =
       kind: 'cancelled';
       what: ClaimRowLabel;
       startsAt: Date | null;
+    }
+  /**
+   * VIL-735 · what a billing notice's writer was told, offered only on that lane
+   * (`billingClaimRows`). Existing kinds in existing slots, so the output grammar and
+   * every other request stay byte-identical. `currentPlan` is what the verifier holds a
+   * sentence to.
+   */
+  | {
+      familyId: string;
+      source: 'billing_fact';
+      kind: 'registration_done' | 'cancelled' | 'send_done';
+      fact: 'plan' | 'ended' | 'refund';
+      what: ClaimRowLabel;
+      currentPlan: BillingPlanName;
     };
 
 export interface ProjectedRow {
@@ -190,6 +205,9 @@ function slotOf(row: ClaimCandidateRow): Slot {
       return 'm';
     case 'cancelled':
       return 'x';
+    case 'billing_fact':
+      if (row.fact === 'plan') return 'r';
+      return row.fact === 'ended' ? 'x' : 'm';
   }
 }
 
@@ -254,6 +272,12 @@ function project(row: ClaimCandidateRow, a: ClaimRowAlias, when: (at: Date) => s
       return row.startsAt
         ? ({ ...base, state: 'cancelled', when: when(row.startsAt) } satisfies ProjectedRow)
         : ({ ...base, state: 'cancelled' } satisfies ProjectedRow);
+    case 'billing_fact':
+      if (row.fact === 'plan') return { ...base, state: 'confirmed' } satisfies ProjectedRow;
+      return {
+        ...base,
+        state: row.fact === 'ended' ? 'cancelled' : 'sent',
+      } satisfies ProjectedRow;
   }
 }
 

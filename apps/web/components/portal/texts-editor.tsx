@@ -20,9 +20,12 @@ const LEVELS: { value: ChildNameLevel; label: string }[] = [
 export function TextsEditor({
   prefs,
   childFirstName,
+  noStopKeyword,
 }: {
   prefs: LoopPrefsView;
   childFirstName: string | null;
+  /** NO_STOP_KEYWORD_COPY_ENABLED, read on the server. */
+  noStopKeyword: boolean;
 }) {
   const [view, setView] = useState(prefs);
   const [editingQuiet, setEditingQuiet] = useState(false);
@@ -171,7 +174,9 @@ export function TextsEditor({
         </p>
       ) : null}
       <p className={`${styles.text} ${styles.span}`}>
-        To pause all texts, reply STOP to Hale. Reply START to turn them back on.
+        {noStopKeyword
+          ? 'To stop Hale’s texts to you, tell Hale in your own words. When you want them back, tell Hale that too.'
+          : 'To pause all texts, reply STOP to Hale. Reply START to turn them back on.'}
       </p>
     </div>
   );

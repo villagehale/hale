@@ -30,7 +30,7 @@ const ERROR_TEXT: Record<string, string> = {
   no_family: 'Text Hale first so your family is ready, then come back to this page.',
   currency_changed:
     'Your location changed. Reload this page to check the price before you continue.',
-  founding_unavailable: 'The founding offer isn’t available right now. Please try again later.',
+  founding_unavailable: 'This offer isn’t available right now. Please try again later.',
   stripe_billing_not_live:
     'Checkout isn’t open yet. You haven’t been charged. Please try again later.',
   stripe_checkout_failed: 'We couldn’t open checkout. You haven’t been charged. Please try again.',

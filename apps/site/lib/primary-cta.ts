@@ -22,7 +22,8 @@ import { buildSmsBody, buildSmsHrefForBody, smsUriFormForPlatform } from '~/lib/
 export function primaryTextTarget(input: {
   platform: Platform;
   smsNumber: string;
-  prefill: string;
+  /** Null opens an empty composer: a hello does not belong in a thread a parent already has. */
+  prefill: string | null;
   source: string | null;
   /** Locale-prefixed path of the /text page, e.g. `/text` or `/fr/text`. */
   textPath: string;
@@ -33,6 +34,7 @@ export function primaryTextTarget(input: {
       : input.textPath;
     return { href, composer: false };
   }
+  if (input.prefill === null) return { href: `sms:${input.smsNumber}`, composer: true };
   return {
     href: buildSmsHrefForBody(
       input.smsNumber,

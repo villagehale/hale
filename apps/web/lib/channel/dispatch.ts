@@ -9,9 +9,11 @@ import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
+import { billingTextConflict } from '~/lib/channel/reconcile/billing-text';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
+import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
 import { sendTexts } from './outbound-transport';
@@ -139,6 +141,8 @@ export interface DispatchPorts {
    * enforced family. Required; off is a named `off` decision, not a missing port.
    */
   claimEnforce: DispatchClaimEnforce;
+  /** Pages #ops when a refused verdict could not be stored (failure-page.ts). */
+  opsPager: OpsPager;
   renderer: {
     render: (
       m: LoopMessage,
@@ -307,6 +311,16 @@ async function dispatchLeg(
   // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
   // artifact instead of a loud row saying the template needs fixing.
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  // VIL-735 · a billing text names a plan and money. A wrong one never leaves, whatever
+  // the claim reader did or whichever mode it is in.
+  const factConflict = msg.claimFacts
+    ? billingTextConflict(claimText(rendered), msg.claimFacts)
+    : null;
+  if (factConflict) {
+    console.error({ event: 'billing_text_conflict', why: factConflict }, 'dispatch: not sent');
+    await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+    return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
+  }
   if (rendered.modelWritten) {
     const body = claimText(rendered);
     if (ports.claimEnforce.enforces(msg.familyId)) {
@@ -318,6 +332,7 @@ async function dispatchLeg(
           parentUserId: msg.parentUserId,
           body,
           now,
+          ...(msg.claimFacts ? { writerFacts: msg.claimFacts } : {}),
         });
         if (decision.status === 'failed') {
           console.error(
@@ -331,7 +346,14 @@ async function dispatchLeg(
           return { channel, outcome: 'failed', reason: 'claim_read_failed', voice };
         }
         if (decision.status === 'unbacked') {
-          await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+          const channelMessageId = await writeLedgerRow(ports, msg, channel, 'failed', {
+            errorCode: 'unbacked_claim',
+          });
+          await keepRefusedVerdict(ports, {
+            familyId: msg.familyId,
+            channelMessageId,
+            refusal: decision.refusal,
+          });
           return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
         }
       }
@@ -359,7 +381,11 @@ async function dispatchLeg(
     return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
   }
 
-  const result = await adapter.send({ userId: msg.parentUserId, rendered });
+  const result = await adapter.send({
+    userId: msg.parentUserId,
+    rendered,
+    ...(msg.sendKey ? { sendKey: msg.sendKey } : {}),
+  });
   if (result.status === 'error' && result.transient) {
     throw new ChannelRetryableError(channel, result.code, result.message);
   }
@@ -579,6 +605,33 @@ async function auditIfGarbled(
     targetId: ledgerId,
     after: { channel, category: msg.category, templateKey: msg.templateKey },
   });
+}
+
+/**
+ * The refusal is decided and on the ledger before this runs, and that failed row carries no
+ * dedupe key, so a store failure that rejected the dispatch would let a retry read the body
+ * again and possibly send it. Only the error's name is logged, because a driver error can
+ * echo its query's parameters.
+ */
+async function keepRefusedVerdict(
+  ports: DispatchPorts,
+  input: Parameters<DispatchClaimEnforce['recordRefusal']>[0],
+): Promise<void> {
+  try {
+    await ports.claimEnforce.recordRefusal(input);
+  } catch (err) {
+    const page = await ports.opsPager
+      .page({ site: 'claim_refusal_unstored', facts: {}, ref: input.channelMessageId })
+      .catch((): OpsPagerOutcome => 'page_failed');
+    console.error(
+      {
+        event: 'claim_refusal_unstored',
+        err: err instanceof Error ? err.name : 'unknown',
+        page,
+      },
+      'dispatch: the refused verdict was not stored - the refusal stands',
+    );
+  }
 }
 
 /** The words a parent will actually read. */
