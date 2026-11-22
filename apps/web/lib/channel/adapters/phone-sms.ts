@@ -64,7 +64,7 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
   const transport = deps.transport ?? createOutboundTransport();
   return {
     kind: 'sms',
-    async send({ userId, rendered }) {
+    async send({ userId, rendered, sendKey }) {
       if (rendered.kind !== 'sms') {
         throw new Error(`sms adapter received ${rendered.kind} content`);
       }
@@ -132,6 +132,7 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
           to,
           body: rendered.text,
           ...(decorations ? { decorations } : {}),
+          ...(sendKey ? { sendKey } : {}),
         });
         return {
           status: 'sent',

@@ -547,6 +547,41 @@ describe('the watched-spot proactive classes', () => {
     ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
   });
 
+  it('VIL-735 · a receipt may claim urgency and cross quiet hours; a cancel or refund cannot', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'billing_receipt',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'billing_receipt', now: TWO_AM },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'billing_change',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+    expect(PROACTIVE_CATEGORY.billing_receipt).toBe('alert');
+    expect(PROACTIVE_CATEGORY.billing_change).toBe('alert');
+  });
+
   it('counts both kinds under ONE ledger category', () => {
     // The two watched-spot kinds are the same message. Two categories would split one
     // household's trail in two.

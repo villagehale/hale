@@ -12,8 +12,7 @@
 // Needs DATABASE_URL.
 
 import { createDb, schema } from '@hale/db';
-import { ne } from 'drizzle-orm';
-import { MESSAGE_HOLD, clearCollisionHold } from '../lib/channel/intake/opt-out-hold';
+import { clearCollisionHold, operatorOnlyHold } from '../lib/channel/intake/opt-out-hold';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -32,7 +31,7 @@ if (!key) {
       heldAt: schema.optOutHeldMessages.heldAt,
     })
     .from(schema.optOutHeldMessages)
-    .where(ne(schema.optOutHeldMessages.kind, MESSAGE_HOLD));
+    .where(operatorOnlyHold);
   console.info(
     JSON.stringify(
       { holds: holds.map((hold) => ({ key: hold.key, heldAt: hold.heldAt.toISOString() })) },

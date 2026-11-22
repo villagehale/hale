@@ -58,6 +58,9 @@ export const PROACTIVE_ROUTING: Record<ProactiveSendKind, 'decider' | 'immediate
     autonomy_acted: 'immediate',
     // VIL-717. Its own clock: a note that the promised time passed means nothing in a batch.
     ack_late_note: 'immediate',
+    // VIL-735 · event-driven as well: the billing notice leg in the drain sends them.
+    billing_receipt: 'immediate',
+    billing_change: 'immediate',
   };
 
 /** The classes whose sweeps still send on their own, in table order. */

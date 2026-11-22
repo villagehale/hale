@@ -72,6 +72,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
   vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'false');
 });
 
 afterEach(async () => {

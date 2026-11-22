@@ -1022,6 +1022,31 @@ describe('VIL-333 identity challenge', () => {
     expect(h.transport.bodies()).toEqual([]);
     expect(coach.calls).toBe(0);
   });
+
+  it.each([
+    ['read as none', 'why should i trust you with my kids stuff', { intent: 'none' as const }],
+    ['a failed read', 'how do i know you wont get this all wrong', null],
+  ])('VIL-744: a doubt on %s reaches the coach, with no disclosure', async (_case, body, read) => {
+    const coach = fakeCoach('Fair to ask.');
+    const h = harness({ context: { body }, coach });
+    const asked: unknown[] = [];
+    h.deps.turnReader = {
+      read: async () => (read ? { ...read, confirmation: '' } : null),
+    };
+    h.deps.saidLine = {
+      async write(input) {
+        asked.push(input);
+        return 'Disclosure (test fixture) villagehale.com aloha@villagehale.com';
+      },
+    };
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).not.toMatchObject({ handler: 'identity_challenge' });
+    expect(coach.calls).toBe(1);
+    expect(asked).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Fair to ask.']);
+  });
 });
 
 describe('the language the inbound screen read', () => {
