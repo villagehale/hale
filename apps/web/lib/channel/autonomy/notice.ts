@@ -19,6 +19,7 @@ import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   type AutonomyNoticeContext,
   type AutonomyNoticeItem,
@@ -144,6 +145,34 @@ async function releaseClaims(database: Database, ids: string[], errorCode: strin
     .update(schema.channelMessages)
     .set({ status: 'failed', errorCode, dedupeKey: null })
     .where(inArray(schema.channelMessages.id, ids));
+}
+
+/**
+ * Linq may have this text. The row keeps its key and the covers stay unreleased, so the
+ * notice is not owed again. Caught here because the send's catch releases the claims, which
+ * is the one thing this must not do: a row whose update failed still holds the key.
+ */
+async function keepUnconfirmedClaim(
+  database: Database,
+  input: { familyId: string; primaryId: string; code: string },
+): Promise<'send_failed'> {
+  console.error(
+    { familyId: input.familyId, code: input.code },
+    'autonomy notice: Linq may have it',
+  );
+  try {
+    await database
+      .update(schema.channelMessages)
+      .set({ status: 'failed', errorCode: `unconfirmed:${input.code}`.slice(0, 80) })
+      .where(eq(schema.channelMessages.id, input.primaryId));
+    await pageOps(database, { site: 'linq_send_unconfirmed', facts: { lane: 'autonomy_notice' } });
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'autonomy notice: unconfirmed send not recorded; its claim still holds the key',
+    );
+  }
+  return 'send_failed';
 }
 
 const NOTICE_CLAIM_VERBS = [
@@ -351,7 +380,11 @@ async function sendAutonomyNotice(
       to,
       legacy: ports.transport,
       shareGroupCap: false,
+      reportMayHaveLanded: true,
     });
+    if (delivered.status === 'skipped' && delivered.mayHaveLanded) {
+      return keepUnconfirmedClaim(database, { familyId, primaryId, code: delivered.reason });
+    }
     if (delivered.status === 'held' || delivered.status === 'skipped') {
       const code = delivered.reason;
       await releaseClaims(database, [primaryId], code);

@@ -12,6 +12,7 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import { releasePlanRun, settleBrowserUsePlanPayment } from '../browser-use/plan-engine';
@@ -442,6 +443,7 @@ async function sendPrepText(
             target: { channel: 'legacy' },
             shareGroupCap: false,
             now: input.now,
+            ...(input.dedupeKey === null ? {} : { reportMayHaveLanded: true as const }),
           },
         ),
       (sent) => !(sent instanceof AskOrderUnmarked) && sent.delivered.status === 'sent',
@@ -451,6 +453,16 @@ async function sendPrepText(
   }
   if (delivered instanceof AskOrderUnmarked) return failed(delivered.message);
   const went = delivered.delivered;
+  if (went.status === 'skipped' && went.mayHaveLanded) {
+    // Left queued with no sentAt, the claim's "not confirmed" state: the next sweep does not
+    // send this bubble again (claimPrepText).
+    await pageOps(database, { site: 'linq_send_unconfirmed', facts: { lane: 'signup_prep' } });
+    console.error(
+      { offerId: input.offerId, kind: input.kind, code: went.reason },
+      'signup plan prep: Linq may have this text',
+    );
+    return null;
+  }
   if (went.status !== 'sent') return failed(went.reason);
   await database
     .update(messages)

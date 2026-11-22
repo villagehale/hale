@@ -779,6 +779,7 @@ type SettledReason =
   | 'already_asked'
   | 'requested_drop_after_parent_text'
   | 'hold_past_last_send'
+  | 'delivery_unconfirmed'
   | OpenAskClosedReason;
 
 /**
@@ -854,6 +855,34 @@ async function holdByName(
     ...(held.parentUserId ? { parentUserId: held.parentUserId } : {}),
     mode: 'live',
   });
+}
+
+/**
+ * Linq may have taken this text. The writer's next words would go under a new Linq key, and
+ * no key can follow a set of items the decider is free to change, so the items end here.
+ */
+async function dropUnconfirmed(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  familyId: string,
+  items: readonly QueuedItem[],
+  now: Date,
+): Promise<void> {
+  const itemIds = items.map((item) => item.id);
+  await mark(database, familyId, itemIds, {
+    status: 'dropped',
+    reason: 'delivery_unconfirmed',
+    decision: 'send_now',
+    holdUntil: null,
+    now,
+  });
+  await audit(database, familyId, 'proactive_cadence_skipped', {
+    reason: 'delivery_unconfirmed',
+    itemIds,
+    mode: 'live',
+  });
+  const page = deps.page ?? ((opsPage: OpsPage) => pageOps(database, opsPage));
+  await page({ site: 'linq_send_unconfirmed', facts: { lane: 'proactive_review' } });
 }
 
 /** A refusal's code as Hale or Linq names one: `timeout`, `http_429`, a numeric code. */
@@ -1599,7 +1628,13 @@ async function sendChosen(
       target,
       fetch: deps.fetch,
       now,
+      reportMayHaveLanded: true,
     });
+    if (delivered.status === 'skipped' && delivered.mayHaveLanded) {
+      await dropUnconfirmed(database, deps, familyId, copy.items, now);
+      summary.dropped += 1;
+      continue;
+    }
     if (delivered.status !== 'sent') {
       await holdByName(database, familyId, copy.items, deliveryHold(delivered.reason), now);
       summary.held += 1;

@@ -586,6 +586,7 @@ export const AUDIT_VERBS = [
   'village_intro_declined',
   'village_intro_identity_asked',
   'village_intro_disclosed',
+  'village_intro_open_unconfirmed',
   'village_intro_closed',
   // ── claiming the receipts room, and Hale asking how it went ─────────────
   'account_claimed_by_phone',
@@ -2205,6 +2206,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     // teen safety line above, it says so outright rather than "completed an intro".
     sentence: 'both families said yes, so your contact details were shared',
     family: 'done',
+  },
+  // Not `disclosed`: Hale does not know whether the group opened, and says only that.
+  village_intro_open_unconfirmed: {
+    sentence: 'Hale tried to open an introduction group and could not confirm it opened',
+    family: 'problem',
   },
   village_intro_closed: { sentence: 'an introduction was closed', family: 'note' },
   // ── claiming the receipts room, and Hale asking how it went ─────────────

@@ -1,5 +1,10 @@
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
-import { linqApiKey, linqFromE164, linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
+import {
+  linqApiKey,
+  linqFromE164,
+  linqPhoneOutboundConfigured,
+  linqRefusedForCertainEnabled,
+} from '~/lib/channel/linq/config';
 import * as linq from '~/lib/channel/linq/transport';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { persistCapturedSend } from '~/lib/channel/preview-capture-store';
@@ -117,6 +122,15 @@ export function refusalIsRateLimit(err: unknown): boolean {
 }
 
 export const linqRefusedForCertain = linq.linqRefusedForCertain;
+
+/**
+ * With LINQ_REFUSED_FOR_CERTAIN_ENABLED: this failed send may be on the parent's phone, so a
+ * caller holding no Linq key for it must not write it again. A capture run never reached Linq.
+ */
+export function sendMayHaveLanded(err: unknown): boolean {
+  if (!linqRefusedForCertainEnabled() || err instanceof PreviewCaptureRefused) return false;
+  return !linq.linqRefusedForCertain(err);
+}
 
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 

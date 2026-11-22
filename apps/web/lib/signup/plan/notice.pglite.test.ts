@@ -522,6 +522,7 @@ describe('the login card in a prep notice', () => {
   });
 
   it('a sweep whose card went but whose next bubble did not sends the rest with that same card, never a second', async () => {
+    vi.stubEnv('LINQ_REFUSED_FOR_CERTAIN_ENABLED', 'false');
     const f = await plannedFamily();
     const sent: { to: string; body: string }[] = [];
     let refuseSecond = true;
@@ -582,6 +583,7 @@ describe('the login card in a prep notice', () => {
   });
 
   it('sends a bubble whose first try failed, and a one-off notice every time', async () => {
+    vi.stubEnv('LINQ_REFUSED_FOR_CERTAIN_ENABLED', 'false');
     const f = await plannedFamily();
     const bodies: string[] = [];
     let refuse = true;
@@ -774,5 +776,71 @@ describe('a prep notice on an iMessage chat arrives paced', () => {
       [0, 'card'],
       [0, 'It takes a minute.'],
     ]);
+  });
+});
+
+describe('a prep text Linq may have taken', () => {
+  const FLAG = 'LINQ_REFUSED_FOR_CERTAIN_ENABLED';
+  const PARTS = [{ type: 'text', body: 'Hale needs the swim login for Saturday.' }] as const;
+
+  async function twoSweeps(status: number) {
+    const f = await plannedFamily();
+    const bodies: string[] = [];
+    const transport: ChannelTransport = {
+      async send(input) {
+        bodies.push(input.body);
+        if (bodies.length === 1) throw new LinqSendError(`http_${status}`, status, true);
+        return { providerMessageId: 'prov-accepted', transport: 'imessage', chatId: 'chat-1' };
+      },
+    };
+    const deliver = createPlanPrepDeliver(db.database, { transport });
+    const sweep = () =>
+      deliver({
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        offerId: f.offerId,
+        kind: 'login_ask',
+        noticeKey: `${f.offerId}:login_ask`,
+        parts: PARTS,
+        now: NOW,
+      });
+    const first = await sweep();
+    const second = await sweep();
+    const rows = await db.database
+      .select({ status: schema.channelMessages.status, sentAt: schema.channelMessages.sentAt })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.familyId, f.familyId),
+          eq(schema.channelMessages.dedupeKey, `${PLAN_PREP_TEMPLATE}:${f.offerId}:login_ask:0`),
+        ),
+      );
+    return { first, second, bodies, rows };
+  }
+
+  it('flag on: a 409 is not sent again on the next sweep and is not recorded as sent', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const { first, bodies, rows } = await twoSweeps(409);
+
+    expect(first).toBe('failed');
+    expect(bodies).toEqual(['Hale needs the swim login for Saturday.']);
+    expect(rows).toEqual([{ status: 'queued', sentAt: null }]);
+  });
+
+  it('flag on: a 422 proved a refusal, so the next sweep sends it', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const { second, bodies, rows } = await twoSweeps(422);
+
+    expect(second).toBe('sent');
+    expect(bodies).toHaveLength(2);
+    expect(rows).toEqual([{ status: 'sent', sentAt: NOW }]);
+  });
+
+  it('flag off: a 409 is sent again, as main does', async () => {
+    vi.stubEnv(FLAG, 'false');
+    const { second, bodies } = await twoSweeps(409);
+
+    expect(second).toBe('sent');
+    expect(bodies).toHaveLength(2);
   });
 });

@@ -5,7 +5,11 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type { SaidLineInput } from '~/lib/channel/voice/said-line';
-import { INTRO_GROUP_TEMPLATE_KEY, type OpenIntroGroupResult } from './group';
+import {
+  INTRO_GROUP_TEMPLATE_KEY,
+  type OpenIntroGroupResult,
+  createLinqIntroGroupOpener,
+} from './group';
 import type { IntroGroupOutcome, IntroGroupRequest } from './group-voice';
 import {
   type IntroSweepChild,
@@ -237,6 +241,10 @@ function harness(
       });
       return 'msg-row';
     },
+    recordOpenUnconfirmed: async () => {
+      throw new Error('this test does not expect a group Linq may have opened');
+    },
+    page: async () => 'paged',
     audit: async (_db, row) => {
       audits.push({ familyId: row.familyId, actionTaken: row.actionTaken, after: row.after });
     },
@@ -1381,5 +1389,114 @@ describe('phase 3 - the group introduction', () => {
     expect(h.groupCalls).toEqual([]);
     expect(h.groups).toEqual([]);
     expect(h.identityAsk.calls).toEqual([{ reason: 'introduction', missing: ['name'] }]);
+  });
+});
+
+describe('an intro group Linq may have opened', () => {
+  const FLAG = 'LINQ_REFUSED_FOR_CERTAIN_ENABLED';
+  const NEXT_SWEEP = new Date(NOW.getTime() + 60 * 60_000);
+
+  beforeEach(() => {
+    vi.stubEnv(VILLAGE_INTROS_ENABLED_ENV, 'true');
+    vi.stubEnv(VILLAGE_INTROS_ALLOWLIST_ENV, `${A},${B}`);
+    vi.stubEnv('VILLAGE_INTRO_GROUPS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function sweepPair(first: number) {
+    const calls = { posts: 0 };
+    const fetchImpl = (async () => {
+      calls.posts += 1;
+      if (calls.posts > 1) {
+        return Response.json(
+          { chat: { id: 'chat-intro', message: { id: 'msg-intro' } } },
+          { status: 201 },
+        );
+      }
+      return Response.json({ error: { code: first } }, { status: first });
+    }) as unknown as typeof fetch;
+    const h = harness({
+      families: [
+        family({ familyId: A, parentName: 'Sam Lee' }),
+        family({ familyId: B, parentName: 'Priya Shah' }),
+      ],
+      discoverable: new Set([`user-${A}`, `user-${B}`]),
+      alreadyAsked: new Set([`user-${A}`, `user-${B}`]),
+      proposals: [
+        proposal({
+          status: 'both_accepted',
+          familyAAskedAt: NOW,
+          familyBAskedAt: NOW,
+          familyAReply: 'yes',
+          familyBReply: 'yes',
+        }),
+      ],
+    });
+    const open = createLinqIntroGroupOpener({ fetch: fetchImpl });
+    h.deps.openIntroGroup = open;
+    const marks = new Set<string>();
+    const pages: unknown[] = [];
+    h.deps.dedupeActive = async (_db, key) => marks.has(key);
+    h.deps.recordOpenUnconfirmed = async (_db, write) => {
+      marks.add(write.dedupeKey);
+    };
+    h.deps.page = async (_db, page) => {
+      pages.push(page);
+      return 'paged';
+    };
+    return { h, calls, marks, pages };
+  }
+
+  it('flag on: a 409 is not opened again, audits both families, and pages #ops', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const { h, calls, marks, pages } = sweepPair(409);
+
+    const first = await runVillageIntroSweep(DB, h.deps, NOW);
+    const second = await runVillageIntroSweep(DB, h.deps, NEXT_SWEEP);
+
+    expect(first.introFailed).toBe(1);
+    expect(second.introFailed).toBe(1);
+    expect(second.introduced).toBe(0);
+    expect(calls.posts).toBe(1);
+    expect(h.groupCalls).toHaveLength(1);
+    expect([...marks]).toEqual([`${INTRO_GROUP_TEMPLATE_KEY}:prop-1:unconfirmed`]);
+    expect(h.audits.filter((a) => a.actionTaken === 'village_intro_disclosed')).toEqual([]);
+    expect(
+      h.audits
+        .filter((a) => a.actionTaken === 'village_intro_open_unconfirmed')
+        .map((a) => a.familyId)
+        .sort(),
+    ).toEqual([A, B]);
+    expect(pages).toEqual([{ site: 'linq_send_unconfirmed', facts: { lane: 'village_intro' } }]);
+  });
+
+  it('flag on: a 422 proved a refusal, so the next sweep opens the group', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const { h, calls, marks, pages } = sweepPair(422);
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    const second = await runVillageIntroSweep(DB, h.deps, NEXT_SWEEP);
+
+    expect(second.introduced).toBe(1);
+    expect(calls.posts).toBe(2);
+    expect([...marks]).toEqual([]);
+    expect(pages).toEqual([]);
+  });
+
+  it('flag off: a 409 is opened again, as main does', async () => {
+    vi.stubEnv(FLAG, 'false');
+    const { h, calls, marks } = sweepPair(409);
+
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    const second = await runVillageIntroSweep(DB, h.deps, NEXT_SWEEP);
+
+    expect(second.introduced).toBe(1);
+    expect(calls.posts).toBe(2);
+    expect([...marks]).toEqual([]);
   });
 });
