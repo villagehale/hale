@@ -1,11 +1,16 @@
 import { type CalendarStanding, type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
+import { type FamilySendKey, familySendKey, providerPollKey } from '~/lib/channel/family-send-key';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import { acceptedStatus, dedupeActive, familySendSpent } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
+import {
+  handOffProactive,
+  isFamilySendQueued,
+  isQueuedForDecider,
+} from '~/lib/channel/proactive/queue';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -172,9 +177,8 @@ export interface WhoTakesAsk {
   time: string;
 }
 
-export interface HouseholdNotice {
+export interface HouseholdNotice extends FamilySendKey {
   kind: 'kid_event' | 'conflict' | 'clash' | 'handoff' | 'followup' | 'who_takes';
-  dedupeKey: string;
   /**
    * `activity_followup` has no frequency counter. Quiet hours and consent
    * still apply. There is no daily or weekly count on this path.
@@ -217,6 +221,7 @@ export interface HandoffStatement {
 }
 
 export interface NoticePlanInput {
+  familyId: string;
   blocks: readonly BusyBlock[];
   parentUserIds: readonly [string, string];
   parentNames: Readonly<Record<string, string>>;
@@ -298,7 +303,7 @@ export async function planAmbiguousWhoTakes(
   if (!text) return null;
   return {
     kind: 'who_takes',
-    dedupeKey: `linq-group:who-takes:${best.eventId}:${startIso}`,
+    ...familySendKey(`linq-group:who-takes:${best.eventId}:${startIso}`, input.familyId),
     gateKind: 'activity_followup',
     category: 'calendar_alert',
     text,
@@ -353,7 +358,7 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
   if (!text) return null;
   return {
     kind: 'conflict',
-    dedupeKey: `linq-group:conflict:${best.block.eventId}:${startIso}`,
+    ...familySendKey(`linq-group:conflict:${best.block.eventId}:${startIso}`, input.familyId),
     gateKind: 'activity_followup',
     category: 'calendar_alert',
     text,
@@ -443,7 +448,10 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
   if (!text) return null;
   return {
     kind: 'handoff',
-    dedupeKey: `linq-group:handoff:${best.eventId}:${best.start.toISOString()}`,
+    ...familySendKey(
+      `linq-group:handoff:${best.eventId}:${best.start.toISOString()}`,
+      input.familyId,
+    ),
     gateKind: 'activity_followup',
     category: 'calendar_alert',
     text,
@@ -484,7 +492,7 @@ async function batchedKidEvents(input: NoticePlanInput): Promise<HouseholdNotice
   if (lines.length === 0 || !recipient) return null;
   return {
     kind: 'kid_event',
-    dedupeKey: `linq-group:kids:${ids.join(':')}`,
+    ...familySendKey(`linq-group:kids:${ids.join(':')}`, input.familyId),
     gateKind: 'activity_followup',
     category: 'calendar_alert',
     text: lines.join('\n'),
@@ -514,7 +522,7 @@ async function soonestFollowup(input: NoticePlanInput): Promise<HouseholdNotice 
   if (!text) return null;
   return {
     kind: 'followup',
-    dedupeKey: `linq-group:followup:${best.block.eventId}`,
+    ...familySendKey(`linq-group:followup:${best.block.eventId}`, input.familyId),
     gateKind: 'activity_followup',
     category: 'followup',
     text,
@@ -1062,6 +1070,7 @@ export async function narrateHouseholdCalendar(
     input.now,
   );
   const planInput: NoticePlanInput = {
+    familyId: input.familyId,
     blocks,
     parentUserIds: context.parentUserIds,
     parentNames,
@@ -1153,7 +1162,7 @@ export async function narrateHouseholdCalendar(
       parentUserId: notice.recipientUserId,
       ask: notice.clashPoll.ask,
       options: notice.clashPoll.options,
-      idempotencyKey: `poll:${notice.dedupeKey}`,
+      idempotencyKey: providerPollKey(notice),
       now: input.now,
       fetch: input.fetch,
     });
@@ -1219,7 +1228,8 @@ async function clashNotice(
   for (const clash of clashes) {
     // VIL-609: both parents hear this in 1:1, never in the group.
     if (uncoverSameKid && clashCrossParent(clash, kids, parents)) continue;
-    if (await dedupeActive(clash.dedupeKey, database)) continue;
+    const sendKey = familySendKey(clash.dedupeKey, input.familyId);
+    if (await familySendSpent(database, input.familyId, sendKey)) continue;
     const pair = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
     const recipient =
       [clash.suggested?.personId, ...pair.map((plan) => clash.restsOn[plan.key])].find(
@@ -1273,7 +1283,7 @@ async function clashNotice(
       : null;
     return {
       kind: 'clash',
-      dedupeKey: clash.dedupeKey,
+      ...sendKey,
       gateKind: 'activity_followup',
       category: 'calendar_alert',
       text: alert.text,
@@ -1580,7 +1590,15 @@ export async function takeGroupPickupClaim(
   if (!people.some((person) => person.id === input.senderUserId)) return 'not_a_member';
   const sent: GroupClash[] = [];
   for (const clash of findGroupClashes({ plans, busy, people, now: input.now })) {
-    if (await dedupeActive(clash.dedupeKey, database)) sent.push(clash);
+    if (
+      await familySendSpent(
+        database,
+        input.familyId,
+        familySendKey(clash.dedupeKey, input.familyId),
+      )
+    ) {
+      sent.push(clash);
+    }
   }
   const candidates = pickupCandidates({
     plans,
@@ -2095,7 +2113,7 @@ async function sendGroupNotice(
     fetch?: typeof fetch;
   },
 ): Promise<'sent' | 'already_sent' | 'held' | 'not_sent' | 'queued'> {
-  if (await dedupeActive(input.notice.dedupeKey, database)) return 'already_sent';
+  if (await familySendSpent(database, input.familyId, input.notice)) return 'already_sent';
   const verdict = await assertProactiveSendAllowed(
     {
       familyId: input.familyId,
@@ -2112,7 +2130,7 @@ async function sendGroupNotice(
     );
     return 'held';
   }
-  if (await isQueuedForDecider(database, input.familyId, input.notice.dedupeKey)) {
+  if (await isFamilySendQueued(database, input.familyId, input.notice)) {
     return 'queued';
   }
   const handedOff = await handOffProactive(
