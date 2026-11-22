@@ -240,6 +240,8 @@ export const OPS_PAGE_VOCABULARY = {
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
+  /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
+  registration_stop_unverified: {},
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
@@ -303,6 +305,7 @@ const OPS_PAGE_PER_REF = [
   'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  'registration_stop_unverified',
   'billing_notice_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
