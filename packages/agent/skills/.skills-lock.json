@@ -547,10 +547,6 @@
     "file": "onboarding-stated-place.md",
     "sha256": "a452830d46e13edb7532d80e3bfe307984fc91b2829b7e0ab4df4ffb7599f547"
   },
-  "opt-out-read-party-guest.md": {
-    "file": "opt-out-read-party-guest.md",
-    "sha256": "6b92c301946f783a41b754ea139e817782a37321fae2b948fca16a10c7e3e2e5"
-  },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
     "sha256": "7a7a4350c4e133f709774debc8a5cfd261ca0e55bde8580e4ea61c6413d7246d"

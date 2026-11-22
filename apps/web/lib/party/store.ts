@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, gte, isNotNull, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -373,120 +373,6 @@ export async function optOutGuestRemindersOnStop(
     .where(eq(schema.partyRsvps.phoneE164Hash, phoneBlindIndex(phoneE164)))
     .returning({ id: schema.partyRsvps.id });
   return updated.length;
-}
-
-/**
- * VIL-742 · whether a live party reminder is the ONLY thing Hale sends this number. It is
- * the premise the opt-out reader is handed, and a stop erases every opt-in on the number,
- * so a wrong yes takes away something the sender meant to keep. Any other tie makes it
- * false: a second party that can still text them (a reply cannot say which one it means),
- * a channel in any state, an intake that became an account, an open invite, or a live
- * seat in a Hale group.
- */
-export async function isReminderOnlyGuest(
-  database: Database,
-  phoneHash: string,
-  now: Date,
-): Promise<boolean> {
-  const [optedIn] = await database
-    .select({ id: schema.partyRsvps.id })
-    .from(schema.partyRsvps)
-    .where(
-      and(
-        eq(schema.partyRsvps.phoneE164Hash, phoneHash),
-        isNotNull(schema.partyRsvps.reminderOptInAt),
-      ),
-    )
-    .limit(1);
-  if (!optedIn) return false;
-
-  const [partiesThatCanText, ...otherTies] = await Promise.all([
-    database
-      .selectDistinct({ inviteId: schema.partyRsvps.partyInviteId })
-      .from(schema.partyRsvps)
-      .innerJoin(schema.partyInvites, eq(schema.partyInvites.id, schema.partyRsvps.partyInviteId))
-      .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.partyInvites.familyEventId))
-      .where(
-        and(
-          eq(schema.partyRsvps.phoneE164Hash, phoneHash),
-          isNotNull(schema.partyRsvps.reminderOptInAt),
-          ne(schema.partyRsvps.response, 'no'),
-          isNull(schema.partyInvites.cancelledAt),
-          isNull(schema.familyEvents.deletedAt),
-          gte(schema.familyEvents.startsAt, now),
-        ),
-      )
-      .limit(2),
-    database
-      .select({ id: schema.parentChannels.id })
-      .from(schema.parentChannels)
-      .where(eq(schema.parentChannels.phoneE164Hash, phoneHash))
-      .limit(1),
-    database
-      .select({ id: schema.smsIntakeSessions.id })
-      .from(schema.smsIntakeSessions)
-      .where(
-        and(
-          eq(schema.smsIntakeSessions.phoneHash, phoneHash),
-          or(
-            isNotNull(schema.smsIntakeSessions.familyId),
-            isNotNull(schema.smsIntakeSessions.userId),
-          ),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.caregiverInvites.id })
-      .from(schema.caregiverInvites)
-      .where(
-        and(
-          eq(schema.caregiverInvites.phoneE164Hash, phoneHash),
-          isNull(schema.caregiverInvites.closedAt),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.linqGroupMembers.id })
-      .from(schema.linqGroupMembers)
-      .where(
-        and(
-          eq(schema.linqGroupMembers.phoneE164Hash, phoneHash),
-          isNull(schema.linqGroupMembers.removedAt),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.linqGroupRosterMembers.id })
-      .from(schema.linqGroupRosterMembers)
-      .where(
-        and(
-          eq(schema.linqGroupRosterMembers.phoneE164Hash, phoneHash),
-          notInArray(schema.linqGroupRosterMembers.status, ['left', 'removed']),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.linqMultiFamilyMembers.id })
-      .from(schema.linqMultiFamilyMembers)
-      .where(
-        and(
-          eq(schema.linqMultiFamilyMembers.phoneE164Hash, phoneHash),
-          isNull(schema.linqMultiFamilyMembers.removedAt),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.linqSharedGroupPeople.id })
-      .from(schema.linqSharedGroupPeople)
-      .where(
-        and(
-          eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneHash),
-          isNull(schema.linqSharedGroupPeople.stoppedAt),
-        ),
-      )
-      .limit(1),
-  ]);
-  return partiesThatCanText.length <= 1 && otherTies.every((rows) => rows.length === 0);
 }
 
 /**

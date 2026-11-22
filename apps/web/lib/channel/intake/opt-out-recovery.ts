@@ -23,7 +23,6 @@ import {
   releaseCrisisReply,
 } from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
-import { guestReadFact } from '~/lib/party/guest-plain-stop';
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
@@ -311,7 +310,6 @@ async function recoverRow(
       text: held.inbound.body,
       language: held.language,
       late: { receivedAt: held.inbound.receivedAt, readAt: now },
-      ...(await guestReadFact(database, row.phoneHash, now)),
     });
     if (reading === null) return 'read_failed';
     outcome = await settleReading(database, deps, row, held, reading);

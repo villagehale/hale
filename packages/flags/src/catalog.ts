@@ -184,8 +184,7 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
-  // VIL-742. A party guest ends the reminder in plain words, and the RSVP page says so
-  // without a keyword. Exact `true`.
+  // VIL-742. The RSVP page names no reply keyword. Exact `true`.
   exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),

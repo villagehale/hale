@@ -16,12 +16,6 @@
 //   node evals/run-opt-out-read-eval.mjs --cached-only
 //
 // --cached-only exits on the first miss and writes nothing. Do not record from CI.
-//
-// VIL-742 · RECORDING PENDING for the party-guest rows (OPT_OUT_GUEST_FIXTURES). They run
-// with the guest fact and the opt-out-read-party-guest addendum, as the lit path sends
-// them. While GUEST_ROWS_PENDING is true, --cached-only lists them as PENDING and does not
-// grade them, and --dry prices them. RSVP_GUEST_PLAIN_STOP_ENABLED stays off until they are
-// recorded and pass; then set it to false and commit the cache, so a miss fails the sweep.
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -41,12 +35,10 @@ import {
   scoreFirstJudgeSchema,
 } from './lib/harness.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
-import { OPT_OUT_FIXTURES, OPT_OUT_GUEST_FIXTURES } from './opt-out-read-fixtures.mjs';
+import { OPT_OUT_FIXTURES } from './opt-out-read-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read.md');
-const GUEST_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read-party-guest.md');
-const GUEST_ROWS_PENDING = true;
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const READER_SRC = join(WEB_ROOT, 'lib', 'channel', 'intake', 'opt-out-reader.ts');
 const JUDGE_MAX_TOKENS = 4096;
@@ -71,13 +63,10 @@ async function main() {
   const { OPT_OUT_READ_MAX_TOKENS, OPT_OUT_READ_TOOL_SCHEMA, optOutUserMessage } =
     await importTs(READER_SRC);
   const skill = await agent.loadSkill(SKILL);
-  const guestSkill = await agent.loadSkill(GUEST_SKILL);
-  const rows = [
-    ...OPT_OUT_FIXTURES,
-    ...OPT_OUT_GUEST_FIXTURES.map((f) => ({ ...f, partyGuest: true })),
-  ];
-  const replyRows = rows.filter((f) => f.expect !== 'none' && f.expect !== 'identity').length;
-  const subjectCalls = rows.length;
+  const replyRows = OPT_OUT_FIXTURES.filter(
+    (f) => f.expect !== 'none' && f.expect !== 'identity',
+  ).length;
+  const subjectCalls = OPT_OUT_FIXTURES.length;
   const judgeCalls = replyRows * JUDGE_SAMPLES_MEDIAN;
   if (preflight) {
     const subjIn = Math.ceil((skill.instructions.length + 300) / 4);
@@ -112,51 +101,32 @@ async function main() {
     },
   );
   let failed = 0;
-  for (const f of rows) {
-    if (f.partyGuest && GUEST_ROWS_PENDING && cachedOnly) {
-      console.info(`PENDING  ${f.id}  not recorded yet (VIL-742)`);
-      continue;
-    }
-    const call = await cachedToolCall({
-      tag: `opt-out-read:${f.id}`,
-      model,
-      lane,
-      system: skill.instructions,
-      ...(f.partyGuest ? { systemExtras: [guestSkill.instructions] } : {}),
-      // A language hint only when certain (French). Region is unknown here, so the
-      // facts are both 988 lines and 911, as production sends.
-      userMessage: optOutUserMessage({
-        text: f.text,
-        language: f.language === 'fr' ? 'fr' : null,
-        region: null,
-        late: f.late
-          ? { receivedAt: new Date(f.late.receivedAt), readAt: new Date(f.late.readAt) }
-          : null,
-        ...(f.partyGuest ? { partyGuest: true } : {}),
-      }),
-      toolName: 'opt_out',
-      toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
-      toolSchema: OPT_OUT_READ_TOOL_SCHEMA,
-      maxTokens: OPT_OUT_READ_MAX_TOKENS,
-      cachedOnly,
-      getClient,
-      cost,
-    });
-    const out = call?.value;
-    if (call?.dry) {
-      // An unrecorded row under --dry: the stand-in says nothing about the text, so it is
-      // not graded, and its judge draws are still priced.
-      if (f.expect !== 'none' && f.expect !== 'identity') {
-        await judge(f.id, {
-          personMessage: f.text,
-          personLanguage: f.language,
-          asked: f.expect,
-          reply: out.confirmation,
-        });
-      }
-      console.info(`PENDING  ${f.id}  not recorded yet (priced)`);
-      continue;
-    }
+  for (const f of OPT_OUT_FIXTURES) {
+    const out = (
+      await cachedToolCall({
+        tag: `opt-out-read:${f.id}`,
+        model,
+        lane,
+        system: skill.instructions,
+        // A language hint only when certain (French). Region is unknown here, so the
+        // facts are both 988 lines and 911, as production sends.
+        userMessage: optOutUserMessage({
+          text: f.text,
+          language: f.language === 'fr' ? 'fr' : null,
+          region: null,
+          late: f.late
+            ? { receivedAt: new Date(f.late.receivedAt), readAt: new Date(f.late.readAt) }
+            : null,
+        }),
+        toolName: 'opt_out',
+        toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
+        toolSchema: OPT_OUT_READ_TOOL_SCHEMA,
+        maxTokens: OPT_OUT_READ_MAX_TOKENS,
+        cachedOnly,
+        getClient,
+        cost,
+      })
+    )?.value;
     const intent = out?.intent ?? 'none';
     if (intent !== f.expect || out?.verbatim !== f.text) {
       failed += 1;
