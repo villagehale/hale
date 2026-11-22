@@ -20,6 +20,8 @@ const HELD_OFF_AT_LAUNCH = [
 ];
 // Held off by name whether or not the catalog declares it yet, so not asserted in the full output.
 const HELD_OFF_ONCE_DECLARED = ['PROACTIVE_WEEKLY_CAP_ENABLED'];
+// A job timeout at or under this cuts the run off before the web suite reports.
+const SLOWEST_MEASURED_RUN_MINUTES = 35;
 
 function printedEnv(args) {
   const printed = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
@@ -161,6 +163,10 @@ describe('--launch-set', () => {
       delete expected[name];
     }
     for (const name of HELD_OFF_ONCE_DECLARED) delete expected[name];
+    // From the catalog, so a payment row another PR adds does not fail this test.
+    for (const { env } of PAYMENT_ENV_ONLY) {
+      if (env !== 'BROWSER_USE_SIGNUP_PAYMENT_ENABLED') delete expected[env];
+    }
     expect(launch).toEqual(expected);
     expect(launch.BROWSER_USE_SIGNUP_PAYMENT_ENABLED).toBe('true');
     expect(launch.LOOP_SEND_ENABLED).toBe('true');
@@ -231,7 +237,15 @@ describe('flags-on CI job', () => {
   it('runs the launch set past a failed package, advisory, in its own workflow', () => {
     const flagsOn = workflow('flags-on.yml');
     expect(flagsOn.match(/^name: (.+)$/m)[1]).toBe('Flags-on tests');
+    expect(flagsOn).toContain(
+      '\non:\n  push:\n    branches: [main, production]\n  pull_request:\n    branches: [main, production]\n',
+    );
+    expect(flagsOn).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(flagsOn).toMatch(/group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n/);
+    expect(flagsOn).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}\n");
+    expect(Number(flagsOn.match(/timeout-minutes: (\d+)/)[1])).toBeGreaterThan(
+      SLOWEST_MEASURED_RUN_MINUTES,
+    );
     expect(flagsOn).toContain('\npermissions:\n  contents: read\n');
     expect(flagsOn).toContain('name: Unit tests (default-off flags on)');
     expect(flagsOn).toContain('continue-on-error: true');

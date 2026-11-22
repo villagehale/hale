@@ -1,8 +1,8 @@
 # The test suite with the default-off catalog flags on (scripts/ci/all-flags-on.mjs).
 # Advisory: continue-on-error, and not a required check, so a dark flag that breaks
 # the suite cannot block a PR. Own workflow, not a job in ci.yml, because it runs far
-# longer than the required jobs, and Deploy, ci-heal, merge-ready and main's
-# concurrency slot all wait for the CI workflow to finish.
+# longer than the required jobs, and Deploy, ci-heal and main's concurrency slot all
+# wait for the CI workflow to finish.
 name: Flags-on tests
 
 on:
@@ -10,6 +10,8 @@ on:
     branches: [main, production]
   pull_request:
     branches: [main, production]
+  # Lets someone run this on a chosen ref before a flag turn-on.
+  workflow_dispatch:
 
 concurrency:
   # Same rule as ci.yml: cancel a superseded pull-request run, and let main finish.
