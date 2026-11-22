@@ -1,17 +1,5 @@
 import { type AckPromiseOutcome, type Database, schema } from '@hale/db';
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  gte,
-  inArray,
-  isNull,
-  lte,
-  notInArray,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { HOLDING_LINE_TEMPLATE_KEY } from '~/lib/channel/router/holding-line';

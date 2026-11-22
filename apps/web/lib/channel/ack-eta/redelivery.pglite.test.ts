@@ -2,9 +2,10 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
-import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { createInboundBurst } from '~/lib/channel/router/burst';
+import { createDisambiguationStore } from '~/lib/channel/router/disambiguation';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
 import { darkSideTurn } from '~/lib/channel/router/side-turn.fixture';
@@ -13,7 +14,6 @@ import {
   auditTurnLedger,
   loadInboundContext,
 } from '~/lib/channel/router/wiring';
-import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
@@ -112,7 +112,9 @@ async function seedText() {
   return { job, inboundId: row.id };
 }
 
-function ackPorts(record: AckEtaRouterPorts['record']): AckEtaRouterPorts & { writes: () => number } {
+function ackPorts(
+  record: AckEtaRouterPorts['record'],
+): AckEtaRouterPorts & { writes: () => number } {
   let writes = 0;
   return {
     writes: () => writes,

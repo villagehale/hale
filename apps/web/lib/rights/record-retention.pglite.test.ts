@@ -222,7 +222,10 @@ describe('sweepRecordRetention: ack promises', () => {
   it('deletes settled rows past the window and rows a dark flag never claimed', async () => {
     const family = await seedFamily();
     const past = ACK_PROMISE_RETENTION_DAYS + 1;
-    await seedPromise(family.familyId, family.parentUserId, { dueAt: ago(past), claimedAt: ago(past) });
+    await seedPromise(family.familyId, family.parentUserId, {
+      dueAt: ago(past),
+      claimedAt: ago(past),
+    });
     await seedPromise(family.familyId, family.parentUserId, { dueAt: ago(past), claimedAt: null });
     const recentSettled = await seedPromise(family.familyId, family.parentUserId, {
       dueAt: ago(past),
