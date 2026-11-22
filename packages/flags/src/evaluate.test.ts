@@ -302,6 +302,27 @@ describe('sync local evaluation', () => {
   });
 });
 
+describe('an env-only flag, read before any family is known', () => {
+  it('is on for the exact value when PostHog answers no for a missing family', () => {
+    setFlagEvaluatorForTests(() => false);
+    expect(isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true' })).toBe(
+      true,
+    );
+    // Positive control: a flag PostHog decides takes that same answer over its env value.
+    expect(isEnabled('f14', undefined, { ...ON, F14_ENABLED: 'true' })).toBe(false);
+  });
+
+  it('stays off without the exact value when PostHog answers yes at 100%', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('ingest-body-max', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true\n' }),
+    ).toBe(false);
+    // Positive control: a flag PostHog decides is on from that same answer.
+    expect(isEnabled('f14', undefined, ON)).toBe(true);
+  });
+});
+
 describe('catalog', () => {
   it('has unique keys and env names', () => {
     const keys = FLAGS.map((flag) => flag.key);

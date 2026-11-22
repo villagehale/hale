@@ -149,6 +149,7 @@ export async function composeTeamScheduleDriver(
   client: AgentClient,
   facts: Omit<TeamScheduleVoiceFacts, 'mode'>,
   familyId: string,
+  signal: AbortSignal | undefined,
 ): Promise<string | null> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -175,6 +176,7 @@ export async function composeTeamScheduleDriver(
       },
       schema: z.object({ line: z.string() }),
       maxTokens: TEAM_SCHEDULE_DRIVER_MAX_TOKENS,
+      signal,
     });
     if (refused(value.line)) return null;
     return value.line.trim();

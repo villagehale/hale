@@ -13,7 +13,7 @@ import {
   claimFailureStep,
 } from '~/lib/auth/claim-phone-copy';
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
-import { PORTAL_INTAKE_PREFILL } from '~/lib/text-hale-target';
+import { PORTAL_INTAKE_PREFILL, messagesCapable, platformFromUa } from '~/lib/text-hale-target';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 
 /**
@@ -21,6 +21,10 @@ import type { PaidTier } from '~/lib/webhooks/stripe-billing';
  * Stripe Checkout. Hale does not text first after payment: the parent uses
  * Text Hale.
  */
+function threadAnswer(value: unknown): boolean | null {
+  return value === null ? null : value === true;
+}
+
 export function FoundingJoinForm({
   plusLabel,
   maxLabel,
@@ -40,6 +44,8 @@ export function FoundingJoinForm({
   const [tries, setTries] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [verified, setVerified] = useState(false);
+  /** Null: the read failed, so the screen claims neither line. */
+  const [hasThread, setHasThread] = useState<boolean | null>(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -98,8 +104,12 @@ export function FoundingJoinForm({
         body: JSON.stringify({ tier }),
       });
       if (checkout.status === 409) {
-        const denied = (await checkout.json().catch(() => null)) as { error?: unknown } | null;
+        const denied = (await checkout.json().catch(() => null)) as {
+          error?: unknown;
+          hasThread?: unknown;
+        } | null;
         if (denied?.error === 'already_paid') {
+          setHasThread(threadAnswer(denied.hasThread));
           setStep('paid');
           return;
         }
@@ -156,8 +166,9 @@ export function FoundingJoinForm({
           }
           return;
         }
-        const body = (await verify.json()) as { alreadyPaid?: boolean };
+        const body = (await verify.json()) as { alreadyPaid?: boolean; hasThread?: unknown };
         if (body.alreadyPaid) {
+          setHasThread(threadAnswer(body.hasThread));
           setStep('paid');
           return;
         }
@@ -184,16 +195,30 @@ export function FoundingJoinForm({
   const CODE_SLOTS = ['1', '2', '3', '4', '5', '6'] as const;
 
   if (step === 'paid') {
+    // Without a composer the door is /text, the page that starts a new parent off.
+    const showDoor =
+      hasThread === false ||
+      (smsNumber !== '' && messagesCapable(platformFromUa(navigator.userAgent)));
     return (
       <section className={`${stage.card} ${stage.door}`}>
         <div className={stage.act}>
           <div className={styles.stack}>
-            <p className={styles.eyebrow}>Founding family</p>
+            <p className={styles.eyebrow}>Biggest sale of the year</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
-            <p className={stage.lede}>Text Hale to start. Hale will not text first.</p>
-            <DeviceTextLink smsNumber={smsNumber} prefill={PORTAL_INTAKE_PREFILL} source={null}>
-              Text Hale
-            </DeviceTextLink>
+            {hasThread === null ? null : (
+              <p className={stage.lede}>
+                {hasThread ? 'Keep texting Hale like you do now.' : 'Text Hale to start.'}
+              </p>
+            )}
+            {showDoor ? (
+              <DeviceTextLink
+                smsNumber={smsNumber}
+                prefill={hasThread === false ? PORTAL_INTAKE_PREFILL : null}
+                source={null}
+              >
+                Text Hale
+              </DeviceTextLink>
+            ) : null}
           </div>
         </div>
       </section>
@@ -207,19 +232,19 @@ export function FoundingJoinForm({
         ? 'Check your texts'
         : verified
           ? 'Choose Plus or Max'
-          : 'Join as a founding family';
+          : 'Join Hale';
   const lede =
     step === 'expired'
       ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
       : step === 'code' && !verified
         ? 'A code is on its way to this number.'
-        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime. Hale will not text first.`;
+        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime.`;
 
   return (
     <section className={`${stage.card} ${stage.door}`}>
       <div className={stage.act}>
         <div className={styles.stack}>
-          <p className={styles.eyebrow}>Founding family</p>
+          <p className={styles.eyebrow}>Biggest sale of the year</p>
           <h1 className={stage.h1}>{heading}</h1>
           <p className={stage.lede}>{lede}</p>
           {cancelled ? (

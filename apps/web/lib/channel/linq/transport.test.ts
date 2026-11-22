@@ -1050,6 +1050,32 @@ const FROM = '+16462352164';
 const TO = '+14165550100';
 
 describe('createLinqPhoneTransport', () => {
+  it("names a new-chat send to Linq only when the caller owns the send's key", async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('LINQ_FROM_E164', FROM);
+    const posted: Array<{ message: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      posted.push(JSON.parse(String(init?.body)));
+      return Response.json(
+        { chat: { id: 'chat-now', message: { id: 'msg-new-chat' } } },
+        { status: 201 },
+      );
+    });
+    const transport = createLinqPhoneTransport({ fetch: fetchMock });
+
+    await transport.send({ to: TO, body: 'First wording', sendKey: 'duty:one' });
+    await transport.send({ to: TO, body: 'Second wording', sendKey: 'duty:one' });
+    await transport.send({ to: TO, body: 'Another send', sendKey: 'duty:two' });
+    await transport.send({ to: TO, body: 'No key' });
+
+    const keys = posted.map((body) => body.message.idempotency_key);
+    expect(keys[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).toMatch(/^[0-9a-f]{64}$/);
+    expect(keys[2]).not.toBe(keys[0]);
+    expect(posted[3]?.message).not.toHaveProperty('idempotency_key');
+  });
+
   /**
    * A later answer to an ask goes into the chat the ask was made in, threaded under the
    * message given — but only while that chat is still this parent's 1:1 on this line, read

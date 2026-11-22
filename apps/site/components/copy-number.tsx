@@ -22,6 +22,7 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
  */
 export function CopyNumberButton({
   number,
+  text = number,
   placement,
   className,
   label = 'Copy number',
@@ -29,6 +30,9 @@ export function CopyNumberButton({
   ariaLabel = "Copy Hale's phone number to your clipboard",
 }: {
   number: string;
+  /** What goes on the clipboard, when it is not the number. A denied copy still opens the
+   * composer for `number`. */
+  text?: string;
   /** Which chip this is — `hero`, `closing`, `text_entry`… See LandingCta. */
   placement?: string;
   className?: string;
@@ -49,7 +53,7 @@ export function CopyNumberButton({
       onClick={() => {
         capture('copy_number_click', placement ? { cta_placement: placement } : {});
         navigator.clipboard
-          .writeText(number)
+          .writeText(text)
           .then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);

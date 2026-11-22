@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authRateLimited } from '~/lib/auth/rate-limit';
+import { alreadyPaidParentHasThread } from '~/lib/billing/checkout-payer';
 import { verifyPromoJoinCode } from '~/lib/billing/new-visitor-join';
 import { newVisitorFoundingAllowedFromRequest } from '~/lib/billing/promo-access';
 import {
@@ -49,7 +50,14 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'unavailable' }, { status: 503 });
   }
 
-  const res = NextResponse.json({ status: 'ok', alreadyPaid: result.alreadyPaid });
+  const hasThread = result.alreadyPaid
+    ? await alreadyPaidParentHasThread(db(), result.familyId, result.userId)
+    : false;
+  const res = NextResponse.json({
+    status: 'ok',
+    alreadyPaid: result.alreadyPaid,
+    ...(hasThread === false ? {} : { hasThread }),
+  });
   res.cookies.set(PROMO_JOIN_COOKIE, token, {
     httpOnly: true,
     secure: true,

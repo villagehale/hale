@@ -417,7 +417,95 @@ export function paidTierToken(value: string | null): PaidTier | null {
   return null;
 }
 
-const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
+export const LIVE_SUBSCRIPTION: ReadonlySet<string> = new Set(['active', 'trialing', 'past_due']);
+
+/** Terminal in Stripe. `unpaid` and `paused` are not here: both can come back. */
+export const ENDED_SUBSCRIPTION: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
+
+/** What the plan is decided from: one subscription as Stripe reports it now. */
+export interface SubscriptionFacts {
+  id: string;
+  status: string;
+  priceId: string | null;
+  /** The paid invoices covering the current period. `refunded` is true only on proof. */
+  periodInvoices: ReadonlyArray<{ id: string; refunded: boolean }>;
+}
+
+export type PlanDecision =
+  | { action: 'set'; tier: PlanTier; entitledIds: readonly string[] }
+  | { action: 'hold'; reason: 'mixed_tiers' | 'unmapped_price' | 'current_period_unproven' };
+
+const TIER_RANK: Record<PlanTier, number> = { free: 0, plus: 1, family: 2 };
+
+/**
+ * What one subscription says about its current period. `grants` is a period someone paid
+ * for. `holds` is a live subscription whose payment is not proven, so it can keep a tier
+ * the family already has but can never give one.
+ */
+function planStanding(
+  subscription: SubscriptionFacts,
+  refundReadyIds: ReadonlySet<string>,
+  openHoldIds: ReadonlySet<string>,
+  lapsedHoldIds: ReadonlySet<string>,
+): 'none' | 'grants' | 'holds' {
+  if (!LIVE_SUBSCRIPTION.has(subscription.status)) return 'none';
+  if (refundReadyIds.has(subscription.id)) return 'none';
+  if (lapsedHoldIds.has(subscription.id)) return 'none';
+  const invoices = subscription.periodInvoices;
+  if (invoices.length > 0 && invoices.every((invoice) => invoice.refunded)) return 'none';
+  if (openHoldIds.has(subscription.id)) return 'holds';
+  if (subscription.status === 'trialing') return 'grants';
+  const paid = invoices.some((invoice) => !invoice.refunded);
+  return subscription.status === 'active' && paid ? 'grants' : 'holds';
+}
+
+/**
+ * The plan a family's Stripe subscriptions add up to. `eventGrant` is the tier the event
+ * itself resolved for its own subscription, which is how a verified Payment Link purchase
+ * on a price outside the map still grants.
+ */
+export function decidePlanTier(input: {
+  subscriptions: readonly SubscriptionFacts[];
+  refundReadyIds: ReadonlySet<string>;
+  /** Subscriptions with an open refund hold: none of them may grant until a new paid period. */
+  openHoldIds: ReadonlySet<string>;
+  /** Open refund holds that rolled past their period with nothing paid. They carry no tier. */
+  lapsedHoldIds: ReadonlySet<string>;
+  currentTier: PlanTier;
+  comped: boolean;
+  priceTierMap: PriceTierMap;
+  eventSubscriptionId: string | null;
+  eventGrant: { subscriptionId: string; tier: PaidTier } | null;
+}): PlanDecision {
+  const standings = input.subscriptions.map((row) => ({
+    row,
+    standing: planStanding(row, input.refundReadyIds, input.openHoldIds, input.lapsedHoldIds),
+  }));
+  const entitledIds = standings.filter((s) => s.standing === 'grants').map((s) => s.row.id);
+  if (input.comped) return { action: 'set', tier: 'family', entitledIds };
+  const tiers = new Set<PlanTier>();
+  let eventHeldTier: PlanTier | null = null;
+  for (const { row, standing } of standings) {
+    if (standing === 'none') continue;
+    const mapped = row.priceId ? input.priceTierMap[row.priceId] : undefined;
+    const tier =
+      mapped ?? (input.eventGrant?.subscriptionId === row.id ? input.eventGrant.tier : null);
+    if (!tier) return { action: 'hold', reason: 'unmapped_price' };
+    if (standing === 'grants') {
+      tiers.add(tier);
+      continue;
+    }
+    const carried = TIER_RANK[input.currentTier] < TIER_RANK[tier] ? input.currentTier : tier;
+    if (carried !== 'free') tiers.add(carried);
+    if (row.id === input.eventSubscriptionId) eventHeldTier = tier;
+  }
+  if (tiers.size > 1) return { action: 'hold', reason: 'mixed_tiers' };
+  const [decided = 'free'] = tiers;
+  if (eventHeldTier && TIER_RANK[eventHeldTier] > TIER_RANK[decided]) {
+    return { action: 'hold', reason: 'current_period_unproven' };
+  }
+  return { action: 'set', tier: decided, entitledIds };
+}
 
 export type ChargeRevokeDecision =
   | { action: 'ignore' }
