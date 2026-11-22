@@ -64,21 +64,18 @@ export function partyGuestLineUserMessage(line: PartyGuestLine): string {
 const NAMES_HALE = /\bHale\b/;
 const TRAILING_PUNCTUATION = /[\s.,;:!?]+$/;
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+const LETTER = /\p{L}/u;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
 /** A number to text back. Too short for the phone check, and no party fact needs one. */
 const SHORT_CODE = /(?<!\d)\d{5,6}(?!\d)/;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 
+/** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
 function factsIn(line: PartyGuestLine): string[] {
   return (line.where === null ? [line.title] : [line.title, line.where])
     .map(inShape)
-    .filter((fact) => fact.length > 0);
-}
-
-/** The draft on its `inShape` form, less the title and place wherever it repeats them whole. */
-function outsideFacts(body: string, line: PartyGuestLine): string {
-  return factsIn(line).reduce((rest, fact) => rest.split(fact).join('\n'), inShape(body));
+    .filter((fact) => LETTER.test(fact));
 }
 
 /** Where `run` first stands as whole words: "114 Elm St" does not hold "14 Elm St". */
@@ -97,16 +94,21 @@ function lessOneMention(text: string, fact: string): string {
 }
 
 /**
- * Whether the draft shouts a word the party's facts do not hold. A keyword to text back is
- * written in capitals in every language, so this needs no list of keywords. A title or
- * place the host typed in capitals is theirs for ONE mention each: a place called "STOP"
- * must not exempt a second STOP in the same text. The time's PM is a fact. A lowercase
- * keyword is the skill's and the eval's to catch.
+ * The draft on its `inShape` form, less ONE whole-word mention each of the title and place:
+ * a place called "STOP" must not exempt a second STOP in the same text.
  */
-function shoutsOutsideFacts(body: string, line: PartyGuestLine): boolean {
-  const timeWords = new Set(inShape(line.when).match(SHOUTED_WORD));
-  const rest = factsIn(line).reduce(lessOneMention, inShape(body));
-  return (rest.match(SHOUTED_WORD) ?? []).some((word) => !timeWords.has(word));
+function outsideFacts(body: string, line: PartyGuestLine): string {
+  return factsIn(line).reduce(lessOneMention, inShape(body));
+}
+
+/**
+ * Whether the draft shouts a word the party's facts do not hold. A keyword to text back is
+ * written in capitals in every language, so this needs no list of keywords. The time's PM
+ * is a fact. A lowercase keyword is the skill's and the eval's to catch.
+ */
+function shoutsOutsideFacts(outside: string, when: string): boolean {
+  const timeWords = new Set(inShape(when).match(SHOUTED_WORD));
+  return (outside.match(SHOUTED_WORD) ?? []).some((word) => !timeWords.has(word));
 }
 
 function carriesPlace(body: string, where: string): boolean {
@@ -152,7 +154,7 @@ export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string
   }
   if (contactsOutside(body, line.where === null ? [] : [line.where]).length > 0) return null;
   if (SHORT_CODE.test(outside)) return null;
-  return shoutsOutsideFacts(body, line) ? null : body;
+  return shoutsOutsideFacts(outside, line.when) ? null : body;
 }
 
 export function createPartyGuestLineWriter(

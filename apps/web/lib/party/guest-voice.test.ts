@@ -200,6 +200,68 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(named, suite)).toBe(named);
   });
 
+  describe('a number to text back when a fact holds digits', () => {
+    const remind = (rest: string) =>
+      `It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM${rest}`;
+    const cancelled = (title: string): PartyGuestLine => ({ ...CANCELLED, title, where: null });
+
+    it.each<[string, PartyGuestLine, string]>([
+      [
+        'a place that is only that number, named first',
+        { ...REMINDER, where: '12345' },
+        remind(' at 12345. To opt out text stop to 12345.'),
+      ],
+      [
+        'a place that is only that number, as the only mention',
+        { ...REMINDER, where: '12345' },
+        remind('. To opt out text stop to 12345.'),
+      ],
+      [
+        'a place whose digits sit inside a longer number',
+        { ...REMINDER, where: '555' },
+        remind(' at 555. To opt out text stop to 55512.'),
+      ],
+      [
+        'a one-digit title inside a longer number',
+        cancelled('5'),
+        "It's Hale: the host has cancelled the party. Text stop to 55555.",
+      ],
+      [
+        'a title that is only that number',
+        cancelled('12345'),
+        "It's Hale: the host has cancelled the party. Text stop to 12345.",
+      ],
+      [
+        'a second mention of a place that holds the number',
+        { ...REMINDER, where: 'Suite 12345' },
+        remind(' at Suite 12345. Text stop to Suite 12345.'),
+      ],
+      [
+        'a different number than the place holds',
+        { ...REMINDER, where: '556' },
+        remind(' at 556. To opt out text stop to 55512.'),
+      ],
+    ])('refuses %s', (_name, line, draft) => {
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it('keeps a place that holds a five-digit number, named once (positive control)', () => {
+      const line: PartyGuestLine = { ...REMINDER, where: 'Suite 12345' };
+      const draft = remind(' at Suite 12345.');
+      expect(acceptPartyGuestLine(draft, line)).toBe(draft);
+    });
+  });
+
+  it('does not read a wrong hour as right by lifting a digit-only title out of it', () => {
+    const line: PartyGuestLine = { ...REMINDER, title: '1' };
+    const wrongHour =
+      "It's Hale with the reminder you asked for: the party is tomorrow at 12:00 PM at 14 Elm St.";
+    const rightHour =
+      "It's Hale with the reminder you asked for: the party is tomorrow at 2:00 PM at 14 Elm St.";
+    expect(acceptPartyGuestLine(wrongHour, line)).toBeNull();
+    expect(acceptPartyGuestLine(rightHour, line)).toBe(rightHour);
+  });
+
   it('does not read an ordinary lowercase word as a keyword', () => {
     const verb = `${GOOD_REMINDER} Stop by any time after 2.`;
     expect(acceptPartyGuestLine(verb, REMINDER)).toBe(verb);
