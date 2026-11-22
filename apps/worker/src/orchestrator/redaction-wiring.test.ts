@@ -32,11 +32,12 @@ const suggestion: ClassifierSuggestion = { kind: 'surface_only' };
 type ClassifierInput = { payload: Record<string, unknown>; childNames: readonly string[] };
 
 let classifierInput: ClassifierInput | null = null;
+let classifierPayload: Record<string, unknown> = {};
 const runClassifier = vi.fn(async (input: ClassifierInput) => {
   classifierInput = input;
   return {
     eventType: 'daycare_communication' as const,
-    payload: {},
+    payload: classifierPayload,
     confidence: { score: 0.9, rationale: 'sure' },
     suggestion,
     teenContent: false,
@@ -55,6 +56,7 @@ vi.mock('../services/executor.js', () => ({ runExecutor: vi.fn() }));
 
 const CHILD_NAME = 'Mia';
 let recordedDedupHash: string | null = null;
+let recordedPayload: Record<string, unknown> | null = null;
 
 vi.mock('../services/memory-writer.js', () => ({
   loadResumePoint: vi.fn(async () => null),
@@ -64,8 +66,9 @@ vi.mock('../services/memory-writer.js', () => ({
     children: [{ id: 'c1', name: CHILD_NAME, ageInMonths: 33 }],
     contextSlice: { childrenAgesMonths: [33], province: 'ON', timezone: 'America/Toronto' },
   })),
-  recordEvent: vi.fn(async (input: { dedupHash: string }) => {
+  recordEvent: vi.fn(async (input: { dedupHash: string; payload: Record<string, unknown> }) => {
     recordedDedupHash = input.dedupHash;
+    recordedPayload = input.payload;
     return { eventId: 'evt-1', duplicate: false };
   }),
   recordDrop: vi.fn(async () => {}),
@@ -100,5 +103,38 @@ describe('runOrchestrator — redaction at the ingest boundary (rule #1)', () =>
     await runOrchestrator(job);
     const originalRaw = JSON.stringify(job.payload);
     expect(recordedDedupHash).toBe(dedupHashFor('fam-1', 'gmail', originalRaw));
+  });
+});
+
+/**
+ * events.payload holds what the classifier WROTE, from a redacted copy of the signal. The
+ * Gmail draft path reads `id` back off that row as the message to reply to, so an id the
+ * model copied across in its redacted form has to be Google's again by the time it lands.
+ */
+describe('runOrchestrator — the stored row keeps a Gmail message id', () => {
+  const GMAIL_ID = '0e14f18e70064eda';
+
+  beforeEach(() => {
+    classifierPayload = {};
+    recordedPayload = null;
+    runClassifier.mockClear();
+  });
+
+  it("stores Google's id where the classifier copied the redacted one", async () => {
+    classifierPayload = { id: '0e14f18e[POSTAL]eda', sender: 'the school' };
+    await runOrchestrator({ ...job, payload: { id: GMAIL_ID, subject: 'note' } });
+    expect(recordedPayload).toEqual({ id: GMAIL_ID, sender: 'the school' });
+  });
+
+  it('adds no id to a row the classifier wrote without one', async () => {
+    classifierPayload = { sender: 'the school' };
+    await runOrchestrator({ ...job, payload: { id: GMAIL_ID, subject: 'note' } });
+    expect(recordedPayload).toEqual({ sender: 'the school' });
+  });
+
+  it('leaves a redacted id from any other source redacted', async () => {
+    classifierPayload = { id: '[CHILD]', sender: 'the school' };
+    await runOrchestrator({ ...job, source: 'outlook', payload: { id: CHILD_NAME } });
+    expect(recordedPayload).toEqual({ id: '[CHILD]', sender: 'the school' });
   });
 });

@@ -39,6 +39,12 @@ const CURRENCY_BEFORE = '(?<![$€£¥¢]\\s?)';
 const NOT_A_FIGURE_BEFORE = '(?<!\\d)(?<!(?<!\\d)\\d{1,4}[.,])';
 const NOT_A_FIGURE_AFTER = '(?!\\d)(?![.,]\\d{1,4}(?!\\d))';
 const CURRENCY_AFTER = '(?!\\s*(?:dollars?|bucks|usd|cad)\\b)';
+/**
+ * Never start at the third or later group of a space-separated digit run. A match from
+ * there is also a match from the group before it, which the guards always let start, so
+ * this changes no match. Without it each group rescans the rest of the run (quadratic).
+ */
+const NOT_THIRD_GROUP = '(?<!\\d \\d+ )';
 const ONE_DIGIT_GAP = '[ .-]';
 
 const CHARACTER_GAP = '[ .-]?';
@@ -52,7 +58,7 @@ export const PLACE_TOKENS: readonly RegExp[] = [
   CANADIAN_POSTAL,
   /(?<![\p{L}\p{N}])[a-z]\d[a-z](?![\p{L}\p{N}])/giu, // Canadian FSA
   new RegExp(
-    `${CURRENCY_BEFORE}${NOT_A_FIGURE_BEFORE}(?:\\d+ )*\\d{5}(?:-\\d{4})?(?: \\d+)*${NOT_A_FIGURE_AFTER}${CURRENCY_AFTER}`,
+    `${NOT_THIRD_GROUP}${CURRENCY_BEFORE}${NOT_A_FIGURE_BEFORE}(?:\\d+ )*\\d{5}(?:-\\d{4})?(?: \\d+)*${NOT_A_FIGURE_AFTER}${CURRENCY_AFTER}`,
     'gi',
   ), // US ZIP or ZIP+4, digits together, with any figure grouped around it by spaces
   new RegExp(
@@ -142,11 +148,26 @@ export function inShape(text: string): string {
 /** Each match of `pattern` on the shape, as the run of typed characters it was read from. */
 function matchedRuns(chars: readonly ShapedChar[], pattern: RegExp): ShapedChar[][] {
   const shape = chars.map((c) => c.shape).join('');
-  return Array.from(shape.matchAll(pattern), (match) => {
+  const runs: ShapedChar[][] = [];
+  // Matches arrive in order and a character's end never moves back, so one forward walk
+  // finds every run.
+  let first = 0;
+  for (const match of shape.matchAll(pattern)) {
     const start = match.index;
     const end = start + match[0].length;
-    return chars.filter((c) => start < c.at + c.shape.length && c.at < end);
-  });
+    while (
+      first < chars.length &&
+      (chars[first] as ShapedChar).at + (chars[first] as ShapedChar).shape.length <= start
+    ) {
+      first += 1;
+    }
+    const run: ShapedChar[] = [];
+    for (let i = first; i < chars.length && (chars[i] as ShapedChar).at < end; i += 1) {
+      run.push(chars[i] as ShapedChar);
+    }
+    runs.push(run);
+  }
+  return runs;
 }
 
 /**
@@ -155,11 +176,15 @@ function matchedRuns(chars: readonly ShapedChar[], pattern: RegExp): ShapedChar[
  */
 export function redactInShape(text: string, pattern: RegExp, replacement: string): string {
   const chars = shaped(text);
-  const runs = matchedRuns(chars, pattern);
+  // A character two matches share belongs to the first.
+  const owner = new Map<ShapedChar, ShapedChar[]>();
+  for (const run of matchedRuns(chars, pattern)) {
+    for (const c of run) if (!owner.has(c)) owner.set(c, run);
+  }
   let scrubbed = '';
   let inside: ShapedChar[] | undefined;
   for (const c of chars) {
-    const run = runs.find((r) => r.includes(c));
+    const run = owner.get(c);
     if (run === undefined) scrubbed += c.char;
     else if (run !== inside) scrubbed += replacement;
     inside = run;
