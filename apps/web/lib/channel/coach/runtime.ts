@@ -9,9 +9,11 @@ import {
   agentRunCostUsd,
   pickModel,
   runAgent,
+  withoutMarkEscape,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { type FamilyCountry, type PlanTier, familyCountryOf } from '@hale/types';
 import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
@@ -1024,7 +1026,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-628: after read_email, a phone, code or host only the email gave is cut
               // before the judge reads the draft, so the judge sees what is sent.
               const emails = emailTexts();
-              const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
+              // The model read the email through the mark, so it can hand a code back as
+              // `48&lt;29`, which the check would not read as the email's `48<29`.
+              const asRead = withoutMarkEscape(
+                emails.length > 0 && isEnabled('untrusted-field-marking'),
+                drafted,
+              );
+              const { text: spoken, dropped } = dropEmailOnlyTokens(asRead, {
                 emails,
                 trusted:
                   emails.length > 0

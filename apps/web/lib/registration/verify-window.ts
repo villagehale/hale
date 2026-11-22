@@ -1,4 +1,10 @@
-import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
+import {
+  type AgentClient,
+  comparableToMarked,
+  pickLane,
+  presentUntrusted,
+  withoutMarkEscape,
+} from '@hale/agent';
 import type { Municipality, ProgramDomain } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
@@ -185,6 +191,11 @@ export function normalizeQuote(text: string): string {
     .replace(/[“”]/g, '"')
     .replace(/[\s ]+/g, ' ')
     .trim();
+}
+
+/** What a quote check compares: both sides as the model was shown them (VIL-560). */
+export function quoteKey(text: string): string {
+  return normalizeQuote(comparableToMarked(isEnabled('untrusted-field-marking'), text));
 }
 
 /** Every four-digit year mentioned in a run of text. */
@@ -682,9 +693,9 @@ export function corroborationFailure(
 ): 'uncorroborated' | null {
   if (!extracted.found) return null;
 
-  const page = normalizeQuote(pageText);
+  const page = quoteKey(pageText);
   const onPage = (quote: string | null) =>
-    quote !== null && quote.trim() !== '' && page.includes(normalizeQuote(quote));
+    quote !== null && quote.trim() !== '' && page.includes(quoteKey(quote));
 
   if (!onPage(extracted.evidence)) return 'uncorroborated';
   const complete = completeDates(extracted);
@@ -1080,7 +1091,7 @@ export async function extractPublishedWindow(
     schema: extractionSchema,
     maxTokens: EXTRACTION_MAX_TOKENS,
   });
-  return toExtractedWindow(value);
+  return toExtractedWindow(withoutMarkEscape(isEnabled('untrusted-field-marking'), value));
 }
 
 /**

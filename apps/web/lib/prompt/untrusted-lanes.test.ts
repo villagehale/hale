@@ -10,12 +10,24 @@ import {
   type EmailAlertNoticeFacts,
   emailAlertNoticeUserMessage,
 } from '~/lib/integrations/email-alert-notice';
+import { stripEmailOnlyNoticeTokens } from '~/lib/integrations/email-alert-notice-tokens';
 import { eventNotesUserMessage } from '~/lib/integrations/event-notes';
 import { classifyEvent } from '~/lib/pipeline/classify';
 import { draftAction } from '~/lib/pipeline/draft';
-import { classAvailabilityInput } from '~/lib/registration/class-availability';
-import { extractionInput } from '~/lib/registration/verify-window';
-import { extractChildEvent } from '~/lib/sentinel/extract';
+import {
+  type ExtractedAvailability,
+  classAvailabilityInput,
+  extractClassAvailability,
+  normalizeClassAvailability,
+} from '~/lib/registration/class-availability';
+import { normalizeExtractedRegistration } from '~/lib/registration/live-reading';
+import {
+  type ExtractedWindow,
+  corroborationFailure,
+  extractPublishedWindow,
+  extractionInput,
+} from '~/lib/registration/verify-window';
+import { extractChildEvent, sourcedAddress } from '~/lib/sentinel/extract';
 import { triageEmail } from '~/lib/sentinel/triage';
 import { signupFacts } from '~/lib/signup/browser-use/engine';
 import { type BrowserUsePlanInput, planFacts } from '~/lib/signup/browser-use/plan-engine';
@@ -243,13 +255,13 @@ describe.each([
     );
   });
 
-  it('the class-availability reader marks the page and its anchor, not the parent words', () => {
+  it('the class-availability reader marks the page, not its anchor or the parent words', () => {
     const input = JSON.parse(
       classAvailabilityInput({ label: 'Tot swim', anchor: 'Saturday 9:00' }, '8 seats open'),
     );
     expect(input).toEqual({
       class_label: 'Tot swim',
-      session_anchor: expected('web', 'session_anchor', 'Saturday 9:00'),
+      session_anchor: 'Saturday 9:00',
       page_text: expected('web', 'page_text', '8 seats open'),
     });
   });
@@ -395,5 +407,218 @@ describe('with the flag on, hostile text stays inside its mark (VIL-560)', () =>
     expect(marked).toBe(markUntrusted('email', 'payload', JSON.stringify({ [key]: 'Swim' })));
     expect(marked.slice(marked.indexOf('>') + 1, marked.lastIndexOf('</'))).not.toContain('<');
     expect(marked.split('</untrusted>')).toHaveLength(2);
+  });
+});
+
+describe('a gate compares a model copy with what the model was shown (VIL-560)', () => {
+  const SESSION = 'Swim ages <5 - Tuesdays 4:30 PM';
+  const SHOWN_SESSION = 'Swim ages &lt;5 - Tuesdays 4:30 PM';
+  const PAGE = `Riverton Aquatics. ${SESSION}. Full - Waitlist open.`;
+
+  const availability = (overrides: Partial<ExtractedAvailability> = {}): ExtractedAvailability => ({
+    page_kind: 'program_page',
+    session_quote: SHOWN_SESSION,
+    sessions_matching: 'one',
+    availability_quote: 'Full - Waitlist open',
+    waitlist_quote: 'Waitlist open',
+    schedule_quote: null,
+    session_start_quote: null,
+    session_start_date_text: null,
+    session_start: null,
+    state: 'full',
+    spots_left: null,
+    waitlist_room: true,
+    confidence: 0.9,
+    ...overrides,
+  });
+
+  const WINDOW_PAGE =
+    'Winter 2027 swim ages <5. Resident registration for ages <5 opens Tuesday, February 2, 2027 at 7:00 PM Eastern time.';
+  const dated = {
+    quote: 'registration for ages &lt;5 opens Tuesday, February 2, 2027 at 7:00 PM',
+    dateText: 'February 2, 2027',
+    timeText: '7:00 PM',
+    date: '2027-02-02',
+    time: '19:00',
+  };
+  const windowReading = (overrides: Partial<ExtractedWindow> = {}): ExtractedWindow => ({
+    found: true,
+    reason: null,
+    cycleOnPage: 'Winter 2027 swim ages &lt;5',
+    yearEvidence: 'Winter 2027 swim ages &lt;5',
+    evidence: 'Resident registration for ages &lt;5',
+    preview: null,
+    residentOpen: dated,
+    generalOpen: null,
+    unclassifiedOpen: null,
+    partialDates: [],
+    timeZone: 'America/Toronto',
+    timeZoneEvidence: 'ages &lt;5 opens Tuesday, February 2, 2027 at 7:00 PM Eastern time',
+    note: null,
+    confidence: 0.9,
+    ...overrides,
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  describe('with the flag on', () => {
+    beforeEach(() => {
+      vi.stubEnv(FLAG, 'true');
+    });
+
+    it.each([
+      ['the escape it was shown', SHOWN_SESSION],
+      ['the plain character', SESSION],
+    ])('a session quote holding %s is on the page', (_name, quote) => {
+      expect(
+        normalizeClassAvailability(availability({ session_quote: quote }), PAGE, {
+          label: 'Swim',
+          anchor: null,
+        }),
+      ).toMatchObject({ status: 'read', state: 'full' });
+    });
+
+    it('a look-alike on the page matches the escape the model was shown for it', () => {
+      const page = PAGE.replace('<', '\u3008');
+      expect(
+        normalizeClassAvailability(availability(), page, { label: 'Swim', anchor: null }),
+      ).toMatchObject({ status: 'read' });
+    });
+
+    it('a literal copy of the anchor, and a copy of the page, are the same session', () => {
+      for (const quote of [SESSION, SHOWN_SESSION]) {
+        expect(
+          normalizeClassAvailability(availability({ session_quote: quote }), PAGE, {
+            label: 'Swim',
+            anchor: SESSION,
+          }),
+        ).toMatchObject({ status: 'read' });
+      }
+    });
+
+    it('positive control: a quote the page does not hold is still refused', () => {
+      expect(
+        normalizeClassAvailability(
+          availability({ session_quote: 'Swim ages &lt;9 - Tuesdays 4:30 PM' }),
+          PAGE,
+          { label: 'Swim', anchor: null },
+        ),
+      ).toEqual({ status: 'unknown', reason: 'uncorroborated' });
+    });
+
+    it('a class reading keeps the page character, never the escape', async () => {
+      const { client } = scriptedModel(availability() as unknown as Record<string, unknown>);
+      const read = await extractClassAvailability({ label: 'Swim', anchor: null }, PAGE, client);
+      expect(read.session_quote).toBe(SESSION);
+      expect(normalizeClassAvailability(read, PAGE, { label: 'Swim', anchor: null })).toMatchObject(
+        { status: 'read', session: SESSION },
+      );
+    });
+
+    it('registration quotes copied through the escape are corroborated', () => {
+      expect(corroborationFailure(WINDOW_PAGE, windowReading())).toBeNull();
+    });
+
+    it('positive control: a registration quote the page does not hold is refused', () => {
+      expect(
+        corroborationFailure(
+          WINDOW_PAGE,
+          windowReading({ evidence: 'Resident registration for ages &lt;9' }),
+        ),
+      ).toBe('uncorroborated');
+    });
+
+    it('the time zone and program name are read through the escape too', () => {
+      expect(
+        normalizeExtractedRegistration(windowReading(), WINDOW_PAGE, {
+          sourceUrl: 'https://rec.maplewood.example/swim',
+          checkedAt: new Date('2026-11-14T14:00:00.000Z'),
+        }),
+      ).toMatchObject({
+        status: 'verified',
+        timeZone: 'America/Toronto',
+        programOnPage: 'Winter 2027 swim ages &lt;5',
+      });
+    });
+
+    it('a registration reading keeps the page character, never the escape', async () => {
+      const { client } = scriptedModel({
+        found: true,
+        reason: null,
+        cycle_on_page: 'Winter 2027 swim ages &lt;5',
+        year_evidence: 'Winter 2027 swim ages &lt;5',
+        evidence: 'Resident registration for ages &lt;5',
+        preview: null,
+        resident_open: {
+          quote: dated.quote,
+          date_text: dated.dateText,
+          time_text: dated.timeText,
+          date: dated.date,
+          time: dated.time,
+        },
+        general_open: null,
+        unclassified_open: null,
+        time_zone: 'America/Toronto',
+        time_zone_evidence: 'Eastern time',
+        eligibility_evidence: null,
+        note: null,
+        confidence: 0.9,
+      });
+      const read = await extractPublishedWindow(cycle, WINDOW_PAGE, { client });
+      expect(read.evidence).toBe('Resident registration for ages <5');
+      expect(read.residentOpen?.quote).toBe(
+        'registration for ages <5 opens Tuesday, February 2, 2027 at 7:00 PM',
+      );
+      expect(read.cycleOnPage).toBe('Winter 2027 swim ages <5');
+      expect(corroborationFailure(WINDOW_PAGE, read)).toBeNull();
+    });
+
+    it.each([
+      ['a bracket', '12 Maple <Road'],
+      ['a look-alike that is a letter', '12 Maple \u1438Road'],
+    ])('an address the email split with %s survives its escaped copy', (_name, written) => {
+      expect(sourcedAddress('12 Maple &lt;Road', `Meet at ${written} today`)).toBe(
+        '12 Maple <Road',
+      );
+    });
+
+    it('positive control: an address the email does not hold is still null', () => {
+      expect(sourcedAddress('14 Maple &lt;Road', 'Meet at 12 Maple <Road today')).toBeNull();
+    });
+
+    it('the email-alert strip keeps a fact copied through the escape and cuts one it lacks', () => {
+      const facts = JSON.stringify({ title: 'Room A1234<B5678, call 416-555-0199' });
+      const copy = 'Room A1234&lt;B5678, call 416-555-0199';
+      expect(stripEmailOnlyNoticeTokens(copy, facts)).toBe(copy);
+      expect(stripEmailOnlyNoticeTokens('Use code Z98765 today', facts)).toBe('Use code today');
+    });
+  });
+
+  describe('with the flag off, the gates read exactly as on main', () => {
+    beforeEach(() => {
+      vi.stubEnv(FLAG, '');
+    });
+
+    it('an escaped quote is not on the page', () => {
+      expect(
+        normalizeClassAvailability(availability(), PAGE, { label: 'Swim', anchor: null }),
+      ).toEqual({ status: 'unknown', reason: 'uncorroborated' });
+      expect(corroborationFailure(WINDOW_PAGE, windowReading())).toBe('uncorroborated');
+      expect(sourcedAddress('12 Maple &lt;Road', 'Meet at 12 Maple <Road today')).toBeNull();
+    });
+
+    it('positive control: the plain quote passes and the reader returns the model bytes', async () => {
+      expect(
+        normalizeClassAvailability(availability({ session_quote: SESSION }), PAGE, {
+          label: 'Swim',
+          anchor: null,
+        }),
+      ).toMatchObject({ status: 'read', session: SESSION });
+      const { client } = scriptedModel(availability() as unknown as Record<string, unknown>);
+      const read = await extractClassAvailability({ label: 'Swim', anchor: null }, PAGE, client);
+      expect(read.session_quote).toBe(SHOWN_SESSION);
+    });
   });
 });

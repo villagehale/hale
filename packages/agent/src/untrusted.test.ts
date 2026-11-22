@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  escapeTagOpeners,
   markUntrusted,
   presentUntrusted,
   presentUntrustedJson,
@@ -25,6 +26,9 @@ const TAG_OPENERS: Array<[string, string]> = [
   ['vertical double angle bracket', '\uFE3D'],
   ['vertical angle bracket', '\uFE3F'],
   ['invisible tag-block less-than', '\u{E003C}'],
+  ['modifier letter left arrowhead', '\u02C2'],
+  ['Canadian syllabics pa', '\u1438'],
+  ['not less-than, which decomposes to <', '\u226E'],
 ];
 const OPENER_CHARACTERS = TAG_OPENERS.map(([, character]) => character);
 
@@ -167,6 +171,40 @@ describe('a value cannot forge a closer', () => {
     expect(markUntrusted('email', 'body', 'a </untrusted> b')).toBe(
       `${OPEN} a &lt;/untrusted> b ${CLOSE}`,
     );
+  });
+});
+
+describe('every Unicode code point', () => {
+  const hex = (codePoint: number) => `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+  const foldsToOpener = (character: string) => {
+    const folded = character.normalize('NFKD');
+    return OPENER_CHARACTERS.some((opener) => folded.includes(opener));
+  };
+
+  it('escapes a character whose NFKD form holds an opener and leaves every other alone', () => {
+    const unescaped: string[] = [];
+    const changed: string[] = [];
+    const foldedOnly: string[] = [];
+    for (let codePoint = 0; codePoint <= 0x10ffff; codePoint += 1) {
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) continue;
+      const character = String.fromCodePoint(codePoint);
+      const opens = OPENER_CHARACTERS.includes(character) || foldsToOpener(character);
+      if (foldsToOpener(character) && character.normalize('NFKD') !== character) {
+        foldedOnly.push(hex(codePoint));
+      }
+      const escaped = escapeTagOpeners(character);
+      if (opens && escaped !== '&lt;') unescaped.push(hex(codePoint));
+      if (!opens && escaped !== character) changed.push(hex(codePoint));
+    }
+    expect(unescaped).toEqual([]);
+    expect(changed).toEqual([]);
+    expect(foldedOnly).toEqual(['U+226E', 'U+2329', 'U+FE3D', 'U+FE3F', 'U+FE64', 'U+FF1C']);
+  });
+
+  it('positive control: ordinary punctuation that folds to no opener passes through', () => {
+    for (const character of ['\u00AB', '\u2264', '\u226A', '&', '>']) {
+      expect(escapeTagOpeners(character)).toBe(character);
+    }
   });
 });
 

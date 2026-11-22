@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted, withoutMarkEscape } from '@hale/agent';
 import { isEnabled } from '@hale/flags';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
@@ -20,6 +20,7 @@ import {
   REGISTRATION_TIME_ZONE,
   dateSpanRefusal,
   normalizeQuote,
+  quoteKey,
 } from './verify-window';
 
 /**
@@ -126,10 +127,8 @@ export function classAvailabilityInput(query: ClassAvailabilityQuery, pageText: 
   const marked = isEnabled('untrusted-field-marking');
   return JSON.stringify({
     class_label: query.label,
-    session_anchor:
-      query.anchor === null
-        ? null
-        : presentUntrusted(marked, 'web', 'session_anchor', query.anchor),
+    // Never marked: the skill has the model copy it exactly and code compares that copy.
+    session_anchor: query.anchor,
     page_text: presentUntrusted(marked, 'web', 'page_text', pageText),
   });
 }
@@ -243,8 +242,7 @@ export function listingSessionStart(
   const date = extracted.session_start;
   if (quote === null || dateText === null || date === null) return null;
   if (!calendarDay(date) || !yearsOnPage(pageText).has(date.slice(0, 4))) return null;
-  const page = normalizeQuote(pageText);
-  if (!page.includes(normalizeQuote(quote))) return null;
+  if (!quoteKey(pageText).includes(quoteKey(quote))) return null;
   if (dateSpanRefusal({ quote, dateText, timeText: null, date, time: null }) !== null) {
     return null;
   }
@@ -268,9 +266,9 @@ export function normalizeClassAvailability(
     status: 'unknown',
     reason,
   });
-  const page = normalizeQuote(pageText);
+  const page = quoteKey(pageText);
   const onPage = (text: string | null): text is string =>
-    text !== null && text.trim() !== '' && page.includes(normalizeQuote(text));
+    text !== null && text.trim() !== '' && page.includes(quoteKey(text));
 
   if (extracted.page_kind === 'challenge_page')
     return { status: 'refused', reason: 'challenge_page' };
@@ -282,7 +280,7 @@ export function normalizeClassAvailability(
 
   const session = extracted.session_quote;
   if (!onPage(session)) return unknown('uncorroborated');
-  if (query.anchor !== null && normalizeQuote(session) !== normalizeQuote(query.anchor)) {
+  if (query.anchor !== null && quoteKey(session) !== quoteKey(query.anchor)) {
     return unknown('session_moved');
   }
   const availability = extracted.availability_quote;
@@ -427,7 +425,7 @@ export async function extractClassAvailability(
     schema: extractionSchema,
     maxTokens: CLASS_AVAILABILITY_MAX_TOKENS,
   });
-  return value;
+  return withoutMarkEscape(isEnabled('untrusted-field-marking'), value);
 }
 
 /** The one production reader. The fetch port is the DNS-pinned fetcher that never

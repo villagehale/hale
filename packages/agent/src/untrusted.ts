@@ -10,12 +10,20 @@
 export type UntrustedSource = 'email' | 'calendar' | 'web' | 'other';
 
 /**
- * ASCII `<` and what a model could read as it: full-width and small forms, angle brackets
- * and ornaments, the vertical forms that fold to them, and the invisible tag-block `<`.
+ * ASCII `<` and what a model could read as it: angle brackets and ornaments, the invisible
+ * tag-block `<`, and the look-alikes U+02C2 and U+1438. A character that decomposes to one
+ * of these (full-width, small and vertical forms, U+226E) is caught by its NFKD form.
  * Not `«`, which is ordinary French punctuation and folds to none of these.
  */
-const TAG_OPENERS =
-  /[<\uFF1C\uFE64\u2039\u2329\u3008\u300A\u27E8\u27EA\u276C\u276E\u2770\u2991\u29FC\uFE3D\uFE3F\u{E003C}]/gu;
+const TAG_OPENERS = new Set(
+  '<\u2039\u3008\u300A\u27E8\u27EA\u276C\u276E\u2770\u2991\u29FC\u{E003C}\u02C2\u1438',
+);
+const MAY_OPEN_TAG = /[<\u0080-\u{10FFFF}]/gu;
+const ESCAPED_OPENER = '&lt;';
+
+function opensTag(character: string): boolean {
+  return [...character.normalize('NFKD')].some((folded) => TAG_OPENERS.has(folded));
+}
 
 /**
  * Every character that could open a tag becomes `&lt;`, so a value holds no tag and so no
@@ -23,7 +31,23 @@ const TAG_OPENERS =
  * back as `&amp;`.
  */
 export function escapeTagOpeners(value: string): string {
-  return value.replace(TAG_OPENERS, '&lt;');
+  return value.replace(MAY_OPEN_TAG, (character) =>
+    opensTag(character) ? ESCAPED_OPENER : character,
+  );
+}
+
+/**
+ * The form a gate compares a model's copy and its source in. The model read `&lt;` for `<`
+ * and every look-alike, so it may hand back either: both sides take the one spelling `<`.
+ */
+export function comparableToMarked(enabled: boolean, text: string): string {
+  return enabled ? escapeTagOpeners(text).replaceAll(ESCAPED_OPENER, '<') : text;
+}
+
+/** A model's answer with the escape undone, so what is kept or sent never holds `&lt;`. */
+export function withoutMarkEscape<T>(enabled: boolean, answer: T): T {
+  if (!enabled) return answer;
+  return JSON.parse(JSON.stringify(answer).replaceAll(ESCAPED_OPENER, '<')) as T;
 }
 
 /** Quotes, brackets and newlines in a field name must not end the attribute or the tag. */

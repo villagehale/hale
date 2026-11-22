@@ -2483,6 +2483,7 @@ describe('a reply written after read_email (VIL-628)', () => {
   async function respond(opts: {
     read: boolean;
     body?: string;
+    email?: string;
     facts?: string[];
     parentStated?: string[];
     watched?: string;
@@ -2516,7 +2517,7 @@ describe('a reply written after read_email (VIL-628)', () => {
         }) as never,
       emailReader: {
         connected: async () => true,
-        read: async () => ({ read: true, body: EMAIL, truncated: false }),
+        read: async () => ({ read: true, body: opts.email ?? EMAIL, truncated: false }),
       },
       runAgent: async (args) => {
         const read = args.tools.find((tool) => tool.name === 'read_email');
@@ -2668,6 +2669,22 @@ describe('a reply written after read_email (VIL-628)', () => {
           truncated: false,
         },
       ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('with the untrusted mark on, a code the model copied through the escape is still cut', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday. Enter code 48<29<13 to sign.',
+        answer: 'The trip is Friday. Enter code 48&lt;29&lt;13 to sign.',
+      });
+      expect(reply).toBe('The trip is Friday.');
     } finally {
       vi.unstubAllEnvs();
       vi.restoreAllMocks();
