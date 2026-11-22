@@ -230,7 +230,7 @@ async function runningPlan(resume: PlanResumeToken) {
 async function dueFamily() {
   const seeded = await seedFamily(db.database);
   phoneSeq += 1;
-  const phone = `+1202555${String(300 + phoneSeq).padStart(4, '0')}`;
+  const phone = `+1202555${String(100 + phoneSeq).padStart(4, '0')}`;
   await db.database.insert(schema.parentChannels).values({
     userId: seeded.parentUserId,
     familyId: seeded.familyId,
@@ -930,6 +930,7 @@ describe('a stop that lands while the run is going', () => {
   it('a decline read from a payment already under way still reaches the parent', async () => {
     const plan = await runningPlan(PAYING);
     await opsStop();
+    const paged = opsPages();
     const { notices, deps } = sweepDeps({
       ...PAID,
       outcome: 'payment_not_approved',
@@ -941,9 +942,10 @@ describe('a stop that lands while the run is going', () => {
 
     await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
 
-    expect(notices.map((n) => [n.offerId, n.outcome, n.detail])).toEqual([
-      [plan.offerId, 'payment_not_approved', 'card_declined'],
+    expect(notices.map((n) => [n.offerId, n.outcome, n.detail, n.charged])).toEqual([
+      [plan.offerId, 'payment_not_approved', 'card_declined', 'nothing'],
     ]);
+    expect(paged).not.toContain(stopPage(plan.offerId));
   });
 
   it("a parent's own take-back during a run still hears how the run ended", async () => {
