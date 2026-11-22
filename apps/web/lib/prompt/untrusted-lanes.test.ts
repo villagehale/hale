@@ -18,6 +18,7 @@ import {
   type ExtractedAvailability,
   classAvailabilityInput,
   extractClassAvailability,
+  listingSessionStart,
   normalizeClassAvailability,
 } from '~/lib/registration/class-availability';
 import { normalizeExtractedRegistration } from '~/lib/registration/live-reading';
@@ -541,6 +542,37 @@ describe('a gate compares a model copy with what the model was shown (VIL-560)',
         timeZone: 'America/Toronto',
         programOnPage: 'Winter 2027 swim ages &lt;5',
       });
+    });
+
+    it.each([
+      ['the escape', 'Winter 2027 swim ages &lt;5'],
+      ['the letter itself', 'Winter 2027 swim ages \u14385'],
+    ])('a program name copied with %s matches a page holding a look-alike letter', (_n, name) => {
+      expect(
+        normalizeExtractedRegistration(
+          windowReading({ cycleOnPage: name }),
+          WINDOW_PAGE.replaceAll('<', '\u1438'),
+          {
+            sourceUrl: 'https://rec.maplewood.example/swim',
+            checkedAt: new Date('2026-11-14T14:00:00.000Z'),
+          },
+        ),
+      ).toMatchObject({ status: 'verified', programOnPage: name });
+    });
+
+    it('a listing start quoted through the escape is the session start', () => {
+      expect(
+        listingSessionStart(
+          {
+            session_start_quote: 'Ages &lt;5 start September 12, 2026',
+            session_start_date_text: 'September 12, 2026',
+            session_start: '2026-09-12',
+          },
+          'Swim. Ages <5 start September 12, 2026 at the pool.',
+        )
+          ?.toISOString()
+          .slice(0, 10),
+      ).toBe('2026-09-12');
     });
 
     it('a registration reading keeps the page character, never the escape', async () => {
