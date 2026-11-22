@@ -69,6 +69,11 @@ export interface LoopMessage {
    * claim gate as rows, so a true "you're on Plus" is backed and a wrong plan is not.
    */
   claimFacts?: BillingClaimFacts;
+  /**
+   * VIL-735 · Linq's idempotency key for this message, the same on every retry. Set by a
+   * lane whose retry may follow a send that landed (a timeout, a 5xx, a crash).
+   */
+  sendKey?: string;
 }
 
 /**
@@ -172,5 +177,9 @@ export interface Channel {
   /** Send already-rendered content to a resolved parent. Policy (consent, quiet
    * hours, caps, dedupe, ledger) is the dispatch's job — a Channel never enforces
    * it, so no caller can reach a provider except through the seam. */
-  send(input: { userId: string; rendered: RenderedContent }): Promise<ChannelSendOutcome>;
+  send(input: {
+    userId: string;
+    rendered: RenderedContent;
+    sendKey?: string;
+  }): Promise<ChannelSendOutcome>;
 }

@@ -13,12 +13,12 @@ CREATE TABLE IF NOT EXISTS "billing_notices" (
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "billing_notices_lane_check" CHECK ("lane" IN ('payment', 'plan_change')),
-  CONSTRAINT "billing_notices_status_check" CHECK ("status" IN ('open', 'sending', 'sent', 'dropped'))
+  CONSTRAINT "billing_notices_status_check" CHECK ("status" IN ('open', 'sending', 'unconfirmed', 'sent', 'dropped'))
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "billing_notices_one_open_uniq"
   ON "billing_notices" ("family_id", "lane") WHERE "status" = 'open';--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "billing_notices_due_idx"
-  ON "billing_notices" ("next_try_at") WHERE "status" IN ('open', 'sending');--> statement-breakpoint
+  ON "billing_notices" ("next_try_at") WHERE "status" IN ('open', 'sending', 'unconfirmed');--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "billing_notices_recipient_idx"
   ON "billing_notices" ("parent_user_id");--> statement-breakpoint
 ALTER TABLE "billing_notices" ENABLE ROW LEVEL SECURITY;

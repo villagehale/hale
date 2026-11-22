@@ -381,7 +381,11 @@ async function dispatchLeg(
     return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
   }
 
-  const result = await adapter.send({ userId: msg.parentUserId, rendered });
+  const result = await adapter.send({
+    userId: msg.parentUserId,
+    rendered,
+    ...(msg.sendKey ? { sendKey: msg.sendKey } : {}),
+  });
   if (result.status === 'error' && result.transient) {
     throw new ChannelRetryableError(channel, result.code, result.message);
   }

@@ -12,7 +12,7 @@ import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import { familyIdFromStripeEvent, stripeRefsFromStripeEvent } from '~/lib/webhooks/stripe-billing';
 import type { ApplyStripeBillingResult } from '~/lib/webhooks/stripe-billing-apply';
 import { addsNoticeSubject, mergeNoticeFacts } from './merge';
-import { BILLING_NOTICE_LOCK_NS, writeNoticeAudit } from './store';
+import { BILLING_NOTICE_LOCK_NS, writeNoticeDrop } from './store';
 
 /**
  * VIL-735 · the webhook's half of a billing notice: one durable row saying a text is
@@ -361,11 +361,11 @@ async function writeIntent(
   let open = held;
   // A row from before the current arming must not ride a new event past the leg's check.
   if (open && open.lastEventAt.getTime() <= armedAt.getTime()) {
-    await tx
-      .update(schema.billingNotices)
-      .set({ status: 'dropped', dropReason: 'before_arm', updatedAt: now })
-      .where(eq(schema.billingNotices.id, open.id));
-    await writeNoticeAudit.dropped(tx, open, { reason: 'before_arm', attempts: open.attempts });
+    await writeNoticeDrop(tx, open, open, {
+      reason: 'before_arm',
+      attempts: open.attempts,
+      now,
+    });
     open = undefined;
   }
 
@@ -415,7 +415,7 @@ async function refundAlreadyTold(
       and(
         eq(schema.billingNotices.familyId, familyId),
         eq(schema.billingNotices.lane, 'plan_change'),
-        inArray(schema.billingNotices.status, ['sending', 'sent']),
+        inArray(schema.billingNotices.status, ['sending', 'unconfirmed', 'sent']),
       ),
     );
   return told.some((row) =>

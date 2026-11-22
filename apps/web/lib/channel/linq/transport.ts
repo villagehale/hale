@@ -922,6 +922,8 @@ export async function createLinqChat(input: {
   to: readonly string[];
   text: string;
   decorations?: readonly LinqTextDecoration[];
+  /** The caller's identity for this one send (see `linqSendKey`). Absent: no key is sent. */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ chatId: string; providerMessageId: string }> {
   if (input.to.length < 1) throw new LinqSendError('invalid_recipients', 400, true);
@@ -939,7 +941,10 @@ export async function createLinqChat(input: {
     body: {
       from: input.from,
       to: [...input.to],
-      message: { parts: [wirePart(part)] },
+      message: {
+        parts: [wirePart(part)],
+        ...(input.sendKey ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+      },
     },
     fetch: input.fetch,
   });
@@ -1521,7 +1526,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls, decorations, replyIn }) {
+    async send({ to, body, mediaUrls, decorations, replyIn, sendKey }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1556,6 +1561,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
             text: body,
             decorations,
             replyTo: { messageId: replyIn.messageId },
+            sendKey,
             fetch: deps.fetch,
           });
           return {
@@ -1579,6 +1585,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           to: [to],
           text: body,
           decorations,
+          sendKey,
           fetch: deps.fetch,
         });
         return {
@@ -1598,7 +1605,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           : { type: 'text', value: body },
       ];
       for (const url of media) parts.push({ type: 'media', url });
-      const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
+      const sent = await sendLinqParts({ chatId, parts, sendKey, fetch: deps.fetch });
       return {
         providerMessageId: sent.providerMessageId,
         transport: 'imessage' as const,

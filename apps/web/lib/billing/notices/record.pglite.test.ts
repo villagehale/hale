@@ -1,5 +1,5 @@
 import { type BillingNoticeEventFacts, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -21,6 +21,7 @@ const minutesBefore = (minutes: number) => new Date(NOW.getTime() - minutes * 60
 
 let db: TestDb;
 let familyId: string;
+let userId: string;
 let pages: OpsPage[];
 let serial = 0;
 
@@ -44,7 +45,7 @@ beforeEach(async () => {
   pages = [];
   vi.spyOn(console, 'info').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  ({ familyId } = await seedFamily(db.database));
+  ({ familyId, parentUserId: userId } = await seedFamily(db.database));
   await db.database
     .update(schema.families)
     .set({ stripeCustomerId: `cus_family_${serial}` })
@@ -273,29 +274,32 @@ describe('idempotency', () => {
     ]);
   });
 
-  it('a late, lower refund after a sent notice claims and changes nothing', async () => {
-    await record(
-      refundEvent({ id: `evt_r_high_${serial}` }, { amount_refunded: 9000, refunded: false }),
-      {
-        status: 'no_tier',
-      },
-    );
-    await db.database
-      .update(schema.billingNotices)
-      .set({ status: 'sent' })
-      .where(eq(schema.billingNotices.familyId, familyId));
-    await expect(
-      record(
-        refundEvent({ id: `evt_r_low_${serial}` }, { amount_refunded: 5000, refunded: false }),
+  it.each(['sent', 'unconfirmed'] as const)(
+    'a late, lower refund after a %s notice claims and changes nothing',
+    async (status) => {
+      await record(
+        refundEvent({ id: `evt_r_high_${serial}` }, { amount_refunded: 9000, refunded: false }),
         {
           status: 'no_tier',
         },
-      ),
-    ).resolves.toBe('stale_refund');
-    const rows = await noticeRows();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe('sent');
-  });
+      );
+      await db.database
+        .update(schema.billingNotices)
+        .set({ status })
+        .where(eq(schema.billingNotices.familyId, familyId));
+      await expect(
+        record(
+          refundEvent({ id: `evt_r_low_${serial}` }, { amount_refunded: 5000, refunded: false }),
+          {
+            status: 'no_tier',
+          },
+        ),
+      ).resolves.toBe('stale_refund');
+      const rows = await noticeRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe(status);
+    },
+  );
 });
 
 describe('one row for a refund and a cancel', () => {
@@ -422,6 +426,63 @@ describe('one row for a refund and a cancel', () => {
     const open = rows.find((r) => r.status === 'open');
     expect(open?.facts.refunds).toBeUndefined();
     expect(open?.facts.ended?.subscriptionId).toBe(`sub_${serial}`);
+  });
+
+  describe('whose access copy that before_arm drop lands in', () => {
+    const relight = async () => {
+      await record(refundEvent(), { status: 'no_tier' });
+      const relit = new Date(NOW.getTime() + 60 * 60_000);
+      await db.database
+        .update(schema.billingNotices)
+        .set({ lastEventAt: new Date(relit.getTime() - 60_000) })
+        .where(eq(schema.billingNotices.familyId, familyId));
+      const later = new Date(relit.getTime() + 60_000);
+      await record(
+        deletedEvent({ created: secs(later) }),
+        { status: 'applied', tier: 'free' },
+        { ...ARMED, BILLING_THREAD_NOTICES_SINCE: relit.toISOString() },
+        later,
+      );
+      const rows = await noticeRows();
+      return rows.find((r) => r.status === 'dropped');
+    };
+
+    it('one checkout actor: the row names that payer and keeps its amounts', async () => {
+      await db.database.insert(schema.auditLog).values({
+        familyId,
+        actor: userId,
+        actionTaken: 'billing_checkout_started',
+        targetTable: 'families',
+        targetId: familyId,
+        occurredAt: minutesBefore(30),
+      });
+      const dropped = await relight();
+      expect(dropped?.dropReason).toBe('before_arm');
+      expect(dropped?.parentUserId).toBe(userId);
+      expect(dropped?.facts.refunds?.[0]).toMatchObject({
+        refundedMinor: 15900,
+        chargeMinor: 15900,
+      });
+      const [audit] = await db.database
+        .select({ audience: schema.auditLog.audience })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'billing_notice_dropped'),
+          ),
+        );
+      expect(audit?.audience).toBe(userId);
+    });
+
+    it('no resolvable payer: the row names nobody and holds no amount', async () => {
+      const dropped = await relight();
+      expect(dropped?.dropReason).toBe('before_arm');
+      expect(dropped?.parentUserId).toBeNull();
+      expect(dropped?.facts.refunds?.[0]).toMatchObject({ chargeId: `ch_${serial}` });
+      expect(dropped?.facts.refunds?.[0]).not.toHaveProperty('refundedMinor');
+      expect(dropped?.facts.refunds?.[0]).not.toHaveProperty('chargeMinor');
+    });
   });
 });
 

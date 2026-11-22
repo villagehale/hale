@@ -15,7 +15,7 @@ import { families } from './families.js';
 import { users } from './users.js';
 
 export type BillingNoticeLane = 'payment' | 'plan_change';
-export type BillingNoticeStatus = 'open' | 'sending' | 'sent' | 'dropped';
+export type BillingNoticeStatus = 'open' | 'sending' | 'unconfirmed' | 'sent' | 'dropped';
 
 /** What Stripe said, with no name, email, card or message text. */
 export interface BillingNoticeEventFacts {
@@ -46,7 +46,9 @@ export interface BillingNoticeEventFacts {
  * VIL-735 · one owed text about a payment, a cancel or a refund. The webhook records the
  * row; the drain reads the facts, has the model write the text and sends it through the
  * dispatch. `open` takes merges and is due at `next_try_at`; `sending` is one attempt in
- * flight and its `next_try_at` is the lease; `sent` and `dropped` are final.
+ * flight and its `next_try_at` is the lease; `unconfirmed` is a try that may have reached
+ * the parent, due again at `next_try_at` under the same provider key, and it takes no
+ * merges because Linq could drop the merged text as a repeat; `sent` and `dropped` are final.
  */
 export const billingNotices = pgTable(
   'billing_notices',
@@ -75,7 +77,7 @@ export const billingNotices = pgTable(
       .where(sql`${table.status} = 'open'`),
     due: index('billing_notices_due_idx')
       .on(table.nextTryAt)
-      .where(sql`${table.status} IN ('open', 'sending')`),
+      .where(sql`${table.status} IN ('open', 'sending', 'unconfirmed')`),
     recipient: index('billing_notices_recipient_idx').on(table.parentUserId),
     laneCheck: check(
       'billing_notices_lane_check',
@@ -83,7 +85,7 @@ export const billingNotices = pgTable(
     ),
     statusCheck: check(
       'billing_notices_status_check',
-      sql`${table.status} IN ('open', 'sending', 'sent', 'dropped')`,
+      sql`${table.status} IN ('open', 'sending', 'unconfirmed', 'sent', 'dropped')`,
     ),
   }),
 );

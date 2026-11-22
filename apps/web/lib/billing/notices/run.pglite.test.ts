@@ -8,6 +8,7 @@ import {
   familyOutboundTarget,
   familyOutboundTargetForUser,
 } from '~/lib/channel/linq/family-outbound';
+import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import type { Channel, ChannelSendOutcome, LoopMessage } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -164,7 +165,7 @@ const paymentFacts = (over: Partial<BillingNoticeEventFacts> = {}): BillingNotic
 async function insertNotice(over: {
   lane?: 'payment' | 'plan_change';
   facts?: BillingNoticeEventFacts;
-  status?: 'open' | 'sending' | 'sent' | 'dropped';
+  status?: 'open' | 'sending' | 'unconfirmed' | 'sent' | 'dropped';
   dropReason?: string;
   lastEventAt?: Date;
   nextTryAt?: Date;
@@ -524,7 +525,7 @@ describe('a send that does not reach them', () => {
     expect(linqCalls).toHaveLength(0);
   });
 
-  it('a retryable throw from the channel is a failed attempt with no text', async () => {
+  it('a retryable throw before the channel was reached stays open: nothing could have landed', async () => {
     const notice = await insertNotice({});
     await tick({
       dispatch: async () => {
@@ -606,7 +607,7 @@ describe('a crash mid-send', () => {
     expect(linqCalls).toHaveLength(0);
   });
 
-  it('with no accepted row: one failed attempt, send_abandoned, back to open', async () => {
+  it('with no accepted row it may still have landed: one failed attempt, unconfirmed', async () => {
     const notice = await insertNotice({
       status: 'sending',
       parentUserId,
@@ -614,7 +615,7 @@ describe('a crash mid-send', () => {
     });
     await tick();
     const row = await noticeRow(notice.id);
-    expect(row.status).toBe('open');
+    expect(row.status).toBe('unconfirmed');
     expect(row.attempts).toBe(1);
     expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
     expect((await auditRows('billing_notice_send_failed'))[0]?.after).toEqual({
@@ -633,6 +634,233 @@ describe('a crash mid-send', () => {
     });
     await tick();
     expect((await noticeRow(notice.id)).status).toBe('sending');
+  });
+});
+
+describe('a send Linq may have taken', () => {
+  const accepted = () =>
+    Response.json(
+      { chat: { id: CHAT, message: { id: `linq-${Math.random()}` } } },
+      { status: 201 },
+    );
+  const badGateway = () => Response.json({}, { status: 502 });
+  const dropped = (): Response => {
+    throw new TypeError('connection reset');
+  };
+  const refused = () => Response.json({}, { status: 422 });
+  const written = (text: string): ComposeAnswer => ({ status: 'written', text });
+
+  /** The real dispatch, adapter and Linq transport, with only `fetch` stood in. */
+  function realLinq(answers: Array<() => Response>) {
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const posts: { text: string; key: unknown }[] = [];
+    const wire = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        message: { parts: { value: string }[]; idempotency_key?: unknown };
+      };
+      posts.push({
+        text: body.message.parts[0]?.value as string,
+        key: body.message.idempotency_key,
+      });
+      const answer = answers.shift();
+      if (!answer) throw new Error('a POST nobody expected');
+      return answer();
+    }) as typeof fetch;
+    const sms = createSmsChannel({
+      resolveTarget: (id) => resolveSendablePhone(db.database, id),
+      familyTarget: (id) => familyOutboundTargetForUser(db.database, id),
+      database: db.database,
+      configured: true,
+      transport: createLinqPhoneTransport({ fetch: wire }),
+    });
+    const dispatch: BillingNoticeRunDeps['dispatch'] = (message, beforeSend) =>
+      dispatchLoopMessage(message, {
+        ...buildDispatchPorts(db.database, {
+          channels: guardedChannels({ sms }, beforeSend),
+          renderer: loopTemplateRenderer,
+          now: () => clock.now,
+        }),
+        claimEnforce: {
+          enforces: () => true,
+          decide: async () => ({ status: 'clean' as const }),
+          recordRefusal: async () => 'off' as const,
+        },
+      });
+    return { posts, dispatch };
+  }
+
+  it.each([
+    ['a 502', badGateway],
+    ['a dropped connection', dropped],
+  ])('%s: the retry is in new words under the same key', async (_label, first) => {
+    const linq = realLinq([first, accepted]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch, answers: [written("You're on Plus now.")] });
+
+    let row = await noticeRow(notice.id);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.attempts).toBe(1);
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
+    expect((await auditRows('billing_notice_send_failed')).map((a) => a.after)).toEqual([
+      { lane: 'payment', reason: 'not_confirmed', attempts: 1 },
+    ]);
+
+    clock.now = later(AFTERNOON, 5);
+    await tick({ dispatch: linq.dispatch, answers: [written('All set, you have Plus.')] });
+
+    row = await noticeRow(notice.id);
+    expect(row.status).toBe('sent');
+    expect(linq.posts.map((post) => post.text)).toEqual([
+      "You're on Plus now.",
+      'All set, you have Plus.',
+    ]);
+    expect(linq.posts[0]?.key).toMatch(/^[0-9a-f]{64}$/);
+    expect(linq.posts[1]?.key).toBe(linq.posts[0]?.key);
+  });
+
+  it('two notices never share a key', async () => {
+    const linq = realLinq([accepted, accepted]);
+    await insertNotice({});
+    await seedHousehold();
+    await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    expect(linq.posts).toHaveLength(2);
+    expect(linq.posts[0]?.key).toMatch(/^[0-9a-f]{64}$/);
+    expect(linq.posts[1]?.key).toMatch(/^[0-9a-f]{64}$/);
+    expect(linq.posts[1]?.key).not.toBe(linq.posts[0]?.key);
+  });
+
+  it('a cancel during the wait gets its own row and key: Linq could drop it as a repeat', async () => {
+    const linq = realLinq([badGateway, accepted, accepted]);
+    const notice = await refundNotice();
+    await tick({ dispatch: linq.dispatch });
+    expect((await noticeRow(notice.id)).status).toBe('unconfirmed');
+
+    clock.now = later(AFTERNOON, 2);
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+    await recordBillingNoticeIntent(
+      db.database,
+      {
+        id: 'evt_cancel_wait',
+        type: 'customer.subscription.deleted',
+        livemode: true,
+        created: Math.floor(clock.now.getTime() / 1000),
+        data: {
+          object: {
+            id: 'sub_1',
+            metadata: { familyId },
+            cancellation_details: { reason: 'cancellation_requested' },
+          },
+        },
+      },
+      { status: 'applied', tier: 'free' },
+      { env: ARMED, now: clock.now },
+    );
+    const rows = await db.database
+      .select()
+      .from(schema.billingNotices)
+      .where(eq(schema.billingNotices.familyId, familyId));
+    const other = rows.find((r) => r.id !== notice.id);
+    expect(other?.status).toBe('open');
+    expect((await noticeRow(notice.id)).facts.ended).toBeUndefined();
+
+    clock.now = later(AFTERNOON, 20);
+    await tick({ dispatch: linq.dispatch });
+
+    expect((await noticeRow(notice.id)).status).toBe('sent');
+    expect((await noticeRow(other?.id as string)).status).toBe('sent');
+    expect(linq.posts).toHaveLength(3);
+    expect(linq.posts[1]?.key).toBe(linq.posts[0]?.key);
+    expect(linq.posts[2]?.key).not.toBe(linq.posts[0]?.key);
+  });
+
+  it('four tries under one key, then dropped as unconfirmed and paged once', async () => {
+    const linq = realLinq([badGateway, badGateway, badGateway, badGateway]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    for (const gap of [5, 10, 20]) {
+      clock.now = later(clock.now, gap);
+      await tick({ dispatch: linq.dispatch });
+    }
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('dropped');
+    expect(row.dropReason).toBe('send_unconfirmed');
+    expect(new Set(linq.posts.map((post) => post.key)).size).toBe(1);
+    expect(linq.posts).toHaveLength(4);
+    expect(pages).toEqual([
+      {
+        site: 'billing_notice_unsent',
+        ref: notice.id,
+        facts: { lane: 'payment', reason: 'not_confirmed' },
+      },
+    ]);
+    clock.now = later(clock.now, 60);
+    await tick({ dispatch: linq.dispatch });
+    expect(linq.posts).toHaveLength(4);
+  });
+
+  it('a refusal after an unconfirmed try does not prove the first stayed home', async () => {
+    const linq = realLinq([badGateway, refused, refused, refused]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    clock.now = later(clock.now, 5);
+    await tick({ dispatch: linq.dispatch });
+    expect((await noticeRow(notice.id)).status).toBe('unconfirmed');
+    for (const gap of [10, 20]) {
+      clock.now = later(clock.now, gap);
+      await tick({ dispatch: linq.dispatch });
+    }
+    expect((await noticeRow(notice.id)).dropReason).toBe('send_unconfirmed');
+    expect(pages[0]?.facts).toEqual({ lane: 'payment', reason: 'not_confirmed' });
+  });
+
+  it('a writer failure on the retry leaves it unconfirmed, with no second POST', async () => {
+    const linq = realLinq([badGateway]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    clock.now = later(clock.now, 5);
+    await tick({
+      dispatch: linq.dispatch,
+      answers: [{ status: 'failed', reason: 'unwritten' }],
+    });
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.attempts).toBe(2);
+    expect(linq.posts).toHaveLength(1);
+  });
+
+  it('a retry due at night waits and stays unconfirmed', async () => {
+    const night = new Date('2026-11-24T04:00:00Z');
+    clock.now = night;
+    const notice = await refundNotice({
+      status: 'unconfirmed',
+      parentUserId,
+      attempts: 1,
+      lastEventAt: later(night, -30),
+      nextTryAt: later(night, -1),
+    });
+    await tick();
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.attempts).toBe(1);
+    expect(row.nextTryAt.getTime()).toBeGreaterThan(night.getTime());
+    expect(linqCalls).toHaveLength(0);
+  });
+
+  it('a crash on the last try drops as unconfirmed and pages', async () => {
+    const notice = await insertNotice({
+      status: 'sending',
+      parentUserId,
+      attempts: 3,
+      nextTryAt: later(AFTERNOON, -1),
+    });
+    await tick();
+    expect((await noticeRow(notice.id)).dropReason).toBe('send_unconfirmed');
+    expect(pages[0]?.facts).toEqual({ lane: 'payment', reason: 'not_confirmed' });
   });
 });
 
