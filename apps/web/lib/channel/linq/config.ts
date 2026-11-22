@@ -219,6 +219,10 @@ export function linqVoiceMemosEnabled(): boolean {
   return isEnabled('linq-voice-memos');
 }
 
+export function linqRefusedForCertainEnabled(): boolean {
+  return isEnabled('linq-refused-for-certain');
+}
+
 /**
  * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
  * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and

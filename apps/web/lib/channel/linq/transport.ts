@@ -85,6 +85,20 @@ export function refuseGarbledText(text: string): void {
   throw new LinqSendError(GARBLED_TEXT, 0, true);
 }
 
+/** The statuses that prove Linq rejected the request, rather than took it and answered badly. */
+const LINQ_CERTAIN_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 422]);
+
+/**
+ * Did Linq certainly not take this text? `permanent` answers another question (would a retry
+ * earn the same answer), and a 408, 409 or 425 can follow a request Linq took. Status 0 is a
+ * refusal raised before any fetch only when it is also permanent: a timeout or a network error
+ * is status 0 and not permanent, and may have landed.
+ */
+export function linqRefusedForCertain(err: unknown): boolean {
+  if (!(err instanceof LinqSendError) || !err.permanent) return false;
+  return err.httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(err.httpStatus);
+}
+
 /**
  * VIL-226 · the in-call rate-limit retry rides PROACTIVE_CADENCE. Unset, a 429 is
  * today's refusal: one attempt, not retried.

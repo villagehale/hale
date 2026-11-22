@@ -233,6 +233,7 @@ export const FLAGS = [
   }),
   exact('first-touch-ladder', 'FIRST_TOUCH_LADDER_ENABLED', { parser: 'trimmed-on' }),
   exact('linq-polls', 'LINQ_POLLS', { parser: 'trimmed-on' }),
+  exact('linq-refused-for-certain', 'LINQ_REFUSED_FOR_CERTAIN_ENABLED', { envOnly: true }),
   exact('social-watchlist', 'SOCIAL_WATCHLIST', { parser: 'exact-on' }),
 
   exact('general-answer-search', 'GENERAL_ANSWER_SEARCH_ENABLED', {
