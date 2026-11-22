@@ -1,3 +1,4 @@
+import { isEnabled } from '@hale/flags';
 import type { Metadata } from 'next';
 import { PublicColophon } from '~/components/hale/public-surface';
 import { db } from '~/lib/db';
@@ -94,7 +95,7 @@ export default async function RsvpPage({ params }: PageProps) {
             </p>
           </section>
         ) : (
-          <RsvpForm token={token} />
+          <RsvpForm token={token} plainStopWording={isEnabled('rsvp-guest-plain-stop')} />
         )}
 
         <PublicColophon />
