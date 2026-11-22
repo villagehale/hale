@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { SettingsIndex } from '~/components/portal/settings-index';
 import { authConfigured } from '~/lib/auth-config';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
+import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 
@@ -12,10 +13,11 @@ function on(connections: { provider: string; status: string }[], provider: strin
 export const metadata: Metadata = { title: 'Settings' };
 
 export default async function SettingsPage() {
-  const [profile, connections, smsChannel] = await Promise.all([
+  const [profile, connections, smsChannel, basics] = await Promise.all([
     loadViewerProfile(),
     loadFamilyConnectors(),
     loadSmsChannel(),
+    loadFamilyBasics(),
   ]);
   const masked =
     smsChannel.status === 'ready' && smsChannel.channel.enrolled
@@ -28,6 +30,7 @@ export default async function SettingsPage() {
       calendarOn={on(connections, 'gcal')}
       name={profile?.name ?? null}
       maskedPhone={masked}
+      planTier={basics.planTier}
       canSignOut={authConfigured()}
     />
   );

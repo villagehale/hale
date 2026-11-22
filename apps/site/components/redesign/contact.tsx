@@ -36,7 +36,7 @@ export function RedesignContact({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Contact")}</p>
     <h1 className="sp-h1">{t("Say hello.")}</h1>
-    <p className="sp-lede">{t("We’re small, parent-built and early, so a real person reads what you send. Email is the fastest way to reach us.")}</p>
+    <p className="sp-lede">{t("Hale is built by parents, and a real person reads what you send. Email is the fastest way to reach us.")}</p>
     
    </div>
    

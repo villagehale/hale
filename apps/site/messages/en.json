@@ -57,6 +57,7 @@
     "metaDescription": "Hale is an iMessage and text helper that plans kids’ activities and the family year for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
+    "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
     "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do."
   },
@@ -75,7 +76,7 @@
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
     "metaDescription": "Calm, cited parenting guides for the questions families search for — general guidance grounded in trusted frameworks, never a substitute for your provider.",
-    "empty": "Our first parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
+    "empty": "Parenting guides are in review. In the meantime, the fastest way to get guidance for your own child — with their age and your family in mind — is to ask Hale.",
     "countHeading": "{n} questions parents search.",
     "filterLabel": "Filter guides by stage",
     "filterStatus": "Showing {n} of {total} guides",
@@ -110,12 +111,32 @@
     "plan": "You’re on {plan}.",
     "metaTitle": "You're in · Hale",
     "heading": "You're in.",
-    "lede": "Text Hale to start. Hale will not text first.",
+    "lede": "Text Hale to start.",
     "textHale": "Text Hale",
     "unpaidTitle": "Checkout · Hale",
     "unpaidHeading": "Checkout",
     "unpaidLede": "This page confirms a payment after Stripe has taken it.",
-    "continue": "Open Hale"
+    "continue": "Open Hale",
+    "thanks": "Thanks.",
+    "keepTexting": "Keep texting Hale like you do now.",
+    "checkIn": "Hale will check in with you in your thread shortly.",
+    "upgradedHeading": "You’re on Max now.",
+    "upgradedLede": "You paid only the difference for the rest of your year. Everything carries over.",
+    "alreadyHeading": "You’re already on {plan}.",
+    "alreadyLede": "This payment won’t be kept. We’ll refund it in full within a few days.",
+    "startFromPhone": "Text Hale from your phone to start.",
+    "number": "Hale’s number: {number}",
+    "copyNumber": "Copy number",
+    "copyMessage": "Copy message",
+    "copied": "Copied",
+    "pendingHeading": "Almost there.",
+    "pendingLede": "Your payment is still going through. This page will update on its own.",
+    "pendingSlowLede": "It can take a few minutes. You’ll see it in Hale once it clears.",
+    "receiptLede": "This checkout is finished. Open Hale to see your plan.",
+    "notFoundLede": "We couldn’t find a finished payment here.",
+    "notCharged": "You haven’t been charged.",
+    "seePricing": "See pricing",
+    "emailUs": "Email us"
   },
   "Jsonld": {
     "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",

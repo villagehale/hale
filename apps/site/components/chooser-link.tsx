@@ -41,9 +41,9 @@ export function ChooserLink({
   children: React.ReactNode;
   /** Already-validated E.164, or '' when the number is not live. */
   smsNumber: string;
-  /** Locked composer body for this locale. The server passes it; this client
-   * component does not load the message bundles. */
-  prefill: string;
+  /** Locked composer body for this locale, or null for an empty composer. The server
+   * passes it; this client component does not load the message bundles. */
+  prefill: string | null;
   /** A `?s=` code the server already validated. The no-JS href carries it. */
   source?: string | null;
 }) {

@@ -47,6 +47,12 @@ export interface FlagSpec {
   envAlso?: { env: string; value: string };
   /** Catalog + sync only — no reader is wired on this branch. */
   upcoming?: boolean;
+  /**
+   * Read from the env in every mode and never created in PostHog. For a gate that runs
+   * before any family is known: PostHog answers a family-scoped flag "off" for no family,
+   * and a 100% rollout would turn it on with no env value at all.
+   */
+  envOnly?: boolean;
 }
 
 function exact<K extends string>(
@@ -87,6 +93,8 @@ export const FLAGS = [
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
+  exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
+  exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
   exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
     parser: 'trimmed-not-false',
     default: true,
@@ -181,6 +189,11 @@ export const FLAGS = [
   exact('no-stop-keyword-copy', 'NO_STOP_KEYWORD_COPY_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
+  // VIL-734. A team-schedule driver text is on the ledger as sent only once Linq accepts
+  // it; a refused send is retried and the last try pages #ops. Exact `true`.
+  exact('team-schedule-send-receipt', 'TEAM_SCHEDULE_SEND_RECEIPT_ENABLED'),
+  // VIL-734. A group reminder that closes failed pages #ops. Exact `true`.
+  exact('group-reminder-unsent-page', 'GROUP_REMINDER_UNSENT_PAGE_ENABLED'),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
@@ -255,6 +268,8 @@ export const FLAGS = [
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
+  exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),
+  exact('ingest-body-max', 'INGEST_BODY_MAX_ENABLED', { envOnly: true }),
   {
     key: 'proactive-cadence',
     env: 'PROACTIVE_CADENCE',
@@ -336,10 +351,28 @@ export const PAYMENT_ENV_ONLY = [
     note: 'env-only; exact `true`; checkout currency is US/CA geo only, no client currency, no USD-to-CAD list fallback; nothing in PostHog may turn this on',
   },
   {
+    env: 'CHECKOUT_SUCCESS_STATES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; the checkout success page picks its state from Stripe and the DB. Read by apps/web and apps/site, so both Vercel projects carry it, hale-web first; nothing in PostHog may turn this on',
+  },
+  {
     env: 'STRIPE_BILLING_REVOKE_ENABLED',
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; refund and dispute webhooks revoke the tier, checkout waits for an applied billing event, reconcile pages #ops; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'BILLING_THREAD_NOTICES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`, armed only with a strict BILLING_THREAD_NOTICES_SINCE instant; AI-written Linq text to the paying parent after a payment, cancel or refund; nothing in PostHog may turn this on',
   },
 ] as const;
 

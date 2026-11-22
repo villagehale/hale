@@ -8,6 +8,7 @@ import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import {
   createOutboundTransport,
+  findHaleDirectChat,
   plainTextWithoutLinks,
   readSendRefusal,
   refusalStopsRetry,
@@ -263,5 +264,65 @@ describe('deliverFamilyOutbound legacy skip', () => {
         target: { channel: 'legacy' },
       }),
     ).rejects.toMatchObject({ code: 'timeout', permanent: false });
+  });
+});
+
+describe('findHaleDirectChat', () => {
+  const HALE = '+15555550100';
+  const PARENT = '+15555550111';
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const listing = (chats: unknown[], status = 200) =>
+    vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ chats }, { status }));
+
+  it('asks Linq for this line and number and skips a group', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    const fetchImpl = listing([
+      { id: 'chat-group', is_group: true },
+      { id: 'chat-direct', is_group: false },
+    ]);
+
+    await expect(
+      findHaleDirectChat(PARENT, { fetch: fetchImpl as unknown as typeof fetch }),
+    ).resolves.toBe('chat-direct');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const query = new URL(url).searchParams;
+    expect(query.get('from')).toBe(HALE);
+    expect(query.get('to')).toBe(PARENT);
+    expect(init.method).toBe('GET');
+  });
+
+  it('answers null when Linq holds no direct chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    await expect(
+      findHaleDirectChat(PARENT, {
+        fetch: listing([{ id: 'chat-group', is_group: true }]) as unknown as typeof fetch,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('with no Hale line it throws not_configured and asks nobody', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '');
+    const fetchImpl = listing([]);
+    await expect(
+      findHaleDirectChat(PARENT, { fetch: fetchImpl as unknown as typeof fetch }),
+    ).rejects.toMatchObject({ name: 'LinqSendError', code: 'not_configured' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('a Linq refusal throws, so a caller never reads it as no chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', HALE);
+    await expect(
+      findHaleDirectChat(PARENT, { fetch: listing([], 503) as unknown as typeof fetch }),
+    ).rejects.toBeInstanceOf(LinqSendError);
   });
 });

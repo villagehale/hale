@@ -39,6 +39,14 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "billing-notice-check.md": {
+    "file": "billing-notice-check.md",
+    "sha256": "0291d52f8458e2444ca83c4f076daf54b3628c1afabf20d2f070b40a0aff4d1e"
+  },
+  "billing-notice.md": {
+    "file": "billing-notice.md",
+    "sha256": "dcc48ca50a67d85bdda79c00641649d613ff2a0e184ab9e07a40929db0b6a415"
+  },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
     "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"

@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { billingWebhookReady, reconcileBillingTiers } from '~/lib/billing/billing-live';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { applyStripeBillingEvent } from './stripe-billing-apply.js';
+import { applyStripeBillingEvent as applyEvent } from './stripe-billing-apply.js';
 
 /**
  * VIL-703. A full refund or a dispute on a cancelled Max subscription drops
@@ -13,6 +13,14 @@ import { applyStripeBillingEvent } from './stripe-billing-apply.js';
  */
 
 const REVOKE = { STRIPE_BILLING_REVOKE_ENABLED: 'true' };
+
+type ApplyArgs = Parameters<typeof applyEvent>;
+/** The all-flags CI job forces the settle flag on; these pin main's grant path. */
+const applyStripeBillingEvent = (...[event, database, map, options, deps]: ApplyArgs) =>
+  applyEvent(event, database, map, options, {
+    ...deps,
+    env: deps?.env ?? { ...process.env, STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'false' },
+  });
 
 let db: TestDb;
 
