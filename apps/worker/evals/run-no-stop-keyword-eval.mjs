@@ -3,12 +3,15 @@
 // SUBJECTS, as the lit path builds them, through the real skill loader and real runAgent:
 //   group lines  group-onboarding-voice + group-onboarding-no-keyword (system extra) over the
 //                real groupOnboardingLineInput, graded by the real lineUsable.
-//   coach doubt  coach-channel-sms + nearby-find + home-place + coach-no-stop-keyword, in the
-//                order channel/coach/runtime.ts builds them. Listed tools are empty stubs.
+//   coach doubt  the real opt-out-read request first, because any reading but `none` is
+//                answered before the coach runs. Then coach-channel-sms + nearby-find +
+//                home-place + coach-no-stop-keyword, in the order channel/coach/runtime.ts
+//                builds them. Listed tools are empty stubs.
 //
 // A case fails when production would refuse the draft, when it names a keyword, when a line
-// that carries the way out does not say the person can stop, or when the coach does not say
-// it is an AI. Nothing here reads a flag: each request is built as the lit path builds it.
+// that carries the way out does not say the person can stop, when the coach does not say it
+// is an AI, or when the reader would route a doubt fixture away from the coach. Nothing here
+// reads a flag: each request is built as the lit path builds it.
 //
 // RECORDING PENDING. The addenda are new bytes, so nothing is recorded yet. While
 // RECORDING_PENDING is true, --cached-only runs the --dry projection and exits 0 unless a
@@ -30,6 +33,7 @@ import {
   cacheGet,
   cacheKey,
   cachePut,
+  cachedToolCall,
   dryReportLine,
   dryRequestPlanEntry,
   dryStandInText,
@@ -184,8 +188,11 @@ async function run(mode) {
   );
   const { lineUsable } = await importTs(join(WEB, 'channel', 'linq', 'group-onboarding-voice.ts'));
   const { namesKeyword } = await importTs(join(WEB, 'channel', 'no-stop-keyword.ts'));
+  const { OPT_OUT_READ_MAX_TOKENS, OPT_OUT_READ_TOOL_SCHEMA, optOutUserMessage } = await importTs(
+    join(WEB, 'channel', 'intake', 'opt-out-reader.ts'),
+  );
   const skill = (name) => agent.loadSkill(join(SKILLS, `${name}.md`));
-  const [group, groupAddendum, coach, nearby, home, coachAddendum] = await Promise.all(
+  const [group, groupAddendum, coach, nearby, home, coachAddendum, turnReader] = await Promise.all(
     [
       'group-onboarding-voice',
       'group-onboarding-no-keyword',
@@ -193,6 +200,7 @@ async function run(mode) {
       'coach-nearby-find',
       'coach-home-place',
       'coach-no-stop-keyword',
+      'opt-out-read',
     ].map(skill),
   );
   const helpLines = await coachHelpLines(LOCATION);
@@ -235,6 +243,30 @@ async function run(mode) {
   }
   for (const fixture of COACH_DOUBT_FIXTURES) {
     const tag = `no-stop-keyword:${fixture.id}`;
+    // As router/route.ts reads the turn before its identity gate.
+    const reading = await cachedToolCall({
+      tag: `${tag}:reader`,
+      lane: agent.pickLane(turnReader.meta.task),
+      system: turnReader.instructions,
+      userMessage: optOutUserMessage({ text: fixture.text, language: null }),
+      toolName: 'opt_out',
+      toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
+      toolSchema: OPT_OUT_READ_TOOL_SCHEMA,
+      maxTokens: OPT_OUT_READ_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    if (reading.dry) unrecorded.add(tag);
+    else if (reading.value.intent !== 'none' || reading.value.verbatim !== fixture.text) {
+      results.push({
+        id: fixture.id,
+        body: null,
+        unrecorded: false,
+        failures: [`reader routes it away from the coach (${reading.value.intent})`],
+      });
+      continue;
+    }
     const answer = await agent.runAgent({
       skill: coach,
       systemExtras: [

@@ -50,11 +50,19 @@ export const GROUP_WAY_OUT_FIXTURES = [
   },
 ];
 
+// Doubt that is not a question about who is texting. "Is this a real person" or "is this a
+// scam" is read as `identity` and answered by the said-line writer before the coach runs, so
+// it would prove this prompt on a turn that never reaches it. The suite reads each text with
+// the real opt-out-read request first and fails the case unless it comes back `none`.
 export const COACH_DOUBT_FIXTURES = [
-  { id: 'doubt-real-person', language: 'en', text: 'wait is this a real person' },
-  { id: 'doubt-scam', language: 'en', text: 'is this a scam? who is behind this number' },
-  { id: 'doubt-bot', language: 'en', text: 'are you a bot or what' },
-  { id: 'doubt-fr', language: 'fr', text: 'c’est une arnaque? qui est derrière ce numéro' },
+  { id: 'doubt-trust-kids', language: 'en', text: 'why should i trust you with my kids stuff' },
+  { id: 'doubt-get-it-wrong', language: 'en', text: 'how do i know you wont get this all wrong' },
+  { id: 'doubt-ai', language: 'en', text: 'i dont really trust ai with anything about my kids' },
+  {
+    id: 'doubt-fr',
+    language: 'fr',
+    text: 'pourquoi je te ferais confiance avec les infos de mes enfants',
+  },
 ];
 
 /** The word for stopping in prose, in the fixture's language. A keyword is refused apart. */
