@@ -158,6 +158,48 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(atThePool, acronym)).toBe(atThePool);
   });
 
+  describe('a place literally called STOP', () => {
+    const place: PartyGuestLine = { ...REMINDER, where: 'STOP' };
+    const saysWhere =
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at STOP.";
+
+    it('passes a draft that only says where it is (positive control)', () => {
+      expect(acceptPartyGuestLine(saysWhere, place)).toBe(saysWhere);
+    });
+
+    it.each([
+      ['beside the place', `${saysWhere} STOP to 12345.`],
+      ['before the place', `STOP to 12345. ${saysWhere}`],
+      ['with no number', `${saysWhere} Reply STOP.`],
+      [
+        'as the only mention, with a number to text',
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM. STOP to 12345.",
+      ],
+    ])('refuses the keyword %s', (_name, text) => {
+      expect(acceptPartyGuestLine(text, place)).toBeNull();
+    });
+
+    it('refuses it on a cancellation, which needs no place', () => {
+      const note = "It's Hale: the host has cancelled Nora's party. STOP to 12345.";
+      expect(acceptPartyGuestLine(note, { ...place, why: 'host_cancelled' })).toBeNull();
+    });
+  });
+
+  it('does not let a fact exempt a longer shouted word it is only part of', () => {
+    const place: PartyGuestLine = { ...CANCELLED, where: 'STO' };
+    const draft = "It's Hale: the host has cancelled Nora's party. Reply STOP.";
+    expect(acceptPartyGuestLine(draft, place)).toBeNull();
+  });
+
+  it('refuses a short code it was not handed, and keeps one the place holds', () => {
+    expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text 12345.`, REMINDER)).toBeNull();
+
+    const suite: PartyGuestLine = { ...REMINDER, where: 'Unit 12345, 14 Elm St' };
+    const named =
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Unit 12345, 14 Elm St.";
+    expect(acceptPartyGuestLine(named, suite)).toBe(named);
+  });
+
   it('does not read an ordinary lowercase word as a keyword', () => {
     const verb = `${GOOD_REMINDER} Stop by any time after 2.`;
     expect(acceptPartyGuestLine(verb, REMINDER)).toBe(verb);

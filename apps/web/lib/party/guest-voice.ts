@@ -65,39 +65,54 @@ const NAMES_HALE = /\bHale\b/;
 const TRAILING_PUNCTUATION = /[\s.,;:!?]+$/;
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
+/** A number to text back. Too short for the phone check, and no party fact needs one. */
+const SHORT_CODE = /(?<!\d)\d{5,6}(?!\d)/;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 
-/** The draft on its `inShape` form, less the title and place wherever it repeats them whole. */
-function outsideFacts(body: string, line: PartyGuestLine): string {
+function factsIn(line: PartyGuestLine): string[] {
   return (line.where === null ? [line.title] : [line.title, line.where])
     .map(inShape)
-    .filter((fact) => fact.length > 0)
-    .reduce((rest, fact) => rest.split(fact).join('\n'), inShape(body));
+    .filter((fact) => fact.length > 0);
+}
+
+/** The draft on its `inShape` form, less the title and place wherever it repeats them whole. */
+function outsideFacts(body: string, line: PartyGuestLine): string {
+  return factsIn(line).reduce((rest, fact) => rest.split(fact).join('\n'), inShape(body));
+}
+
+/** Where `run` first stands as whole words: "114 Elm St" does not hold "14 Elm St". */
+function wholeRunAt(text: string, run: string): number {
+  for (let at = text.indexOf(run); at !== -1; at = text.indexOf(run, at + 1)) {
+    const before = text[at - 1] ?? '';
+    const after = text[at + run.length] ?? '';
+    if (!WORD_CHARACTER.test(before) && !WORD_CHARACTER.test(after)) return at;
+  }
+  return -1;
+}
+
+function lessOneMention(text: string, fact: string): string {
+  const at = wholeRunAt(text, fact);
+  return at === -1 ? text : `${text.slice(0, at)}\n${text.slice(at + fact.length)}`;
 }
 
 /**
  * Whether the draft shouts a word the party's facts do not hold. A keyword to text back is
  * written in capitals in every language, so this needs no list of keywords. A title or
- * place the host typed in capitals is theirs where the draft repeats it whole, and the
- * time's PM is a fact. A lowercase keyword is the skill's and the eval's to catch.
+ * place the host typed in capitals is theirs for ONE mention each: a place called "STOP"
+ * must not exempt a second STOP in the same text. The time's PM is a fact. A lowercase
+ * keyword is the skill's and the eval's to catch.
  */
-function shoutsOutsideFacts(outside: string, when: string): boolean {
-  const timeWords = new Set(inShape(when).match(SHOUTED_WORD));
-  return (outside.match(SHOUTED_WORD) ?? []).some((word) => !timeWords.has(word));
+function shoutsOutsideFacts(body: string, line: PartyGuestLine): boolean {
+  const timeWords = new Set(inShape(line.when).match(SHOUTED_WORD));
+  const rest = factsIn(line).reduce(lessOneMention, inShape(body));
+  return (rest.match(SHOUTED_WORD) ?? []).some((word) => !timeWords.has(word));
 }
 
-/** The place as a whole run of words: "114 Elm St" does not carry "14 Elm St". */
 function carriesPlace(body: string, where: string): boolean {
   const place = inShape(where).toLowerCase().replace(TRAILING_PUNCTUATION, '');
   if (place.length === 0) return true;
-  const text = inShape(body).toLowerCase();
-  for (let at = text.indexOf(place); at !== -1; at = text.indexOf(place, at + 1)) {
-    const before = text[at - 1] ?? '';
-    const after = text[at + place.length] ?? '';
-    if (!WORD_CHARACTER.test(before) && !WORD_CHARACTER.test(after)) return true;
-  }
-  return false;
+  return wholeRunAt(inShape(body).toLowerCase(), place) !== -1;
 }
 
 /**
@@ -136,7 +151,8 @@ export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string
     if (!carriesClock(outside, line.when)) return null;
   }
   if (contactsOutside(body, line.where === null ? [] : [line.where]).length > 0) return null;
-  return shoutsOutsideFacts(outside, line.when) ? null : body;
+  if (SHORT_CODE.test(outside)) return null;
+  return shoutsOutsideFacts(body, line) ? null : body;
 }
 
 export function createPartyGuestLineWriter(
