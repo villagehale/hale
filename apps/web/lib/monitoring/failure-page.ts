@@ -195,6 +195,11 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** VIL-745 · a party guest's text the model could not write: nothing was sent. */
+  party_guest_unwritten: {
+    why: ['asked_for_reminder', 'host_cancelled'],
+    stage: ['skill_load', 'after_retry'],
+  },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
@@ -235,6 +240,8 @@ export const OPS_PAGE_VOCABULARY = {
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
+  /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
+  registration_stop_unverified: {},
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
@@ -298,6 +305,7 @@ const OPS_PAGE_PER_REF = [
   'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  'registration_stop_unverified',
   'billing_notice_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
