@@ -139,7 +139,7 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 
 A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment, with no redeploy: a plan not yet past its paying checkpoint can no longer start a payment. A plan already past it is counted under `paying`. Its payment can still run, and the sweep reads what it did and tells its parent. The script needs `DATABASE_URL`. Running it against Production needs Barton's go.
 
-**Light the flag before an incident.** `PLAN_OPS_STOP_ENABLED` must be exactly `true` in two places: on hale-web in Production, so the sweep reads a stop, and in the shell that runs `--apply`, which refuses without it. Lit, it changes nothing until someone runs `--apply`. The dry run works either way. If it is lit only in the shell, the stop still blocks new payments, but the sweep treats it as a parent's own take-back and each run's ending goes to its parent as usual.
+**The flag guards `--apply` and nothing else.** `PLAN_OPS_STOP_ENABLED` must be exactly `true` in the shell that runs `--apply`, which refuses without it. It does not need to be set on hale-web: the sweep honours any stop row, and only `--apply` writes one. The dry run works either way.
 
 **It covers day-before plans only.** A one-shot signup is not a plan, so the stop does not touch it, and a one-shot run can pay when `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` is on. To close that path, turn `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` off with the redeploy steps above. A one-shot run already going keeps the wallet it started with until it ends.
 

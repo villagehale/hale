@@ -31,7 +31,7 @@ import {
   cancelSignupPlan,
   countRunningPlans,
   loadConversablePlans,
-  parkUnlessOpsStopped,
+  planOpsStopped,
   planTakenBack,
   requestStopForRunningPlans,
   runPlanStop,
@@ -169,7 +169,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.delete(schema.authorizedSignupOffers);
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
-  vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {
@@ -431,6 +430,16 @@ async function runScript(
 }
 
 describe('an ops stop of every running plan', () => {
+  it('is honoured by a deployment with the flag unset, because only --apply writes one', async () => {
+    expect(process.env[PLAN_OPS_STOP_ENABLED_ENV]).toBeUndefined();
+    const plan = await runningPlan(QUEUED);
+    expect(await planOpsStopped(db.database, plan)).toBe(false);
+
+    await requestStopForRunningPlans(db.database, { now: NOW });
+
+    expect(await planOpsStopped(db.database, plan)).toBe(true);
+  });
+
   it('takes back a plan in signup, and no payment can start after it', async () => {
     const plan = await runningPlan(QUEUED);
     const startsPayment = { ...PAYING, runId: null };
@@ -798,33 +807,36 @@ describe('a stop that lands while the run is going', () => {
   it.each([
     ['once a session started', 'run-1', 'bu-session-1'],
     ['naming no session, since the create call may have reached the provider', null, null],
-  ])('an engine that throws %s tells the parent and pages once', async (_name, runId, sessionId) => {
-    const paged = opsPages();
-    const plan = await dueFamily();
-    const stopped = hearing({
-      ...runEndingAt(UNPAID, nothingLands),
-      run: async () => {
-        await opsStop();
-        throw new PlanEngineThrew(new TypeError('fetch failed'), {
-          runId,
-          sessionId,
-          browserId: null,
-          sessionCostUsd: null,
-          reviewStarted: false,
-        });
-      },
-    });
+  ])(
+    'an engine that throws %s tells the parent and pages once',
+    async (_name, runId, sessionId) => {
+      const paged = opsPages();
+      const plan = await dueFamily();
+      const stopped = hearing({
+        ...runEndingAt(UNPAID, nothingLands),
+        run: async () => {
+          await opsStop();
+          throw new PlanEngineThrew(new TypeError('fetch failed'), {
+            runId,
+            sessionId,
+            browserId: null,
+            sessionCostUsd: null,
+            reviewStarted: false,
+          });
+        },
+      });
 
-    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+      const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
 
-    expect(result.plans).toEqual([
-      { offerId: plan.offerId, outcome: 'error', detail: 'engine_threw', notice: 'sent' },
-    ]);
-    expect(stopped.notices.map((n) => [n.offerId, n.detail])).toEqual([
-      [plan.offerId, 'engine_threw'],
-    ]);
-    expect(paged).toEqual([stopPage(plan.offerId)]);
-  });
+      expect(result.plans).toEqual([
+        { offerId: plan.offerId, outcome: 'error', detail: 'engine_threw', notice: 'sent' },
+      ]);
+      expect(stopped.notices.map((n) => [n.offerId, n.detail])).toEqual([
+        [plan.offerId, 'engine_threw'],
+      ]);
+      expect(paged).toEqual([stopPage(plan.offerId)]);
+    },
+  );
 
   it.each<[string, BrowserUsePlanResult, string]>([
     [
@@ -975,78 +987,11 @@ describe('a stop that lands while the run is going', () => {
   });
 });
 
-describe('with the ops-stop flag off', () => {
-  beforeEach(() => {
-    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, '');
-  });
-
-  it('a stop row changes no ending: the parent hears the run as on main, with no page', async () => {
-    const paged = opsPages();
-    const plan = await dueFamily();
-    const runner = runEndingAt(UNPAID, opsStop);
-    const heard = hearing(runner);
-
-    const result = await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
-
-    expect(result.plans).toEqual([
-      { offerId: plan.offerId, outcome: 'needs_human', detail: 'no_saved_card', notice: 'sent' },
-    ]);
-    expect(heard.notices.map((n) => [n.offerId, n.detail, n.liveViewUrl])).toEqual([
-      [plan.offerId, 'no_saved_card', UNPAID.liveViewUrl],
-    ]);
-    expect(runner.release).not.toHaveBeenCalled();
-    expect(paged).toEqual([]);
-    expect(await finishedRow(plan.offerId)).not.toHaveProperty('stoppedFrom');
-  });
-
-  it('a stop row does not keep a run from parking and asking', async () => {
-    const plan = await dueFamily();
-    const ending: BrowserUsePlanResult = {
-      ...CLOSED,
-      outcome: 'options_mismatch',
-      detail: 'none',
-      siteChoices: SITE_CHOICES,
-    };
-    const heard = hearing(runEndingAt(ending, opsStop));
-
-    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
-
-    expect(firstBody(heard.asks)).toBe('ask for options_mismatch');
-    expect((await offerRow(plan.offerId)).status).toBe('planned');
-  });
-
-  it('parks on the plain path, with no stop transaction', async () => {
-    const plan = await runningPlan(QUEUED);
-    const park = { ...plan, availability: { kind: 'password_rejected' as const }, now: NOW };
-    const transaction = vi.spyOn(db.database, 'transaction');
-
-    expect(await parkUnlessOpsStopped(db.database, park)).toBe('parked');
-    expect(transaction).not.toHaveBeenCalled();
-    expect((await offerRow(plan.offerId)).status).toBe('planned');
-
-    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'true');
-    const lit = await runningPlan(QUEUED);
-    transaction.mockClear();
-    expect(await parkUnlessOpsStopped(db.database, { ...park, ...lit })).toBe('parked');
-    expect(transaction).toHaveBeenCalledTimes(1);
-  });
-
-  it('a stop row does not keep a plan out of the before-open release', async () => {
-    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
-    const plan = await runningPlan(UNSTARTED);
-    await requestStopForRunningPlans(db.database, { now: NOW });
-    const { runner, notices, deps } = sweepDeps();
-
-    const result = await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
-
-    expect(result.plans).toEqual([]);
-    expect((await offerRow(plan.offerId)).status).toBe('planned');
-    expect(runner.run).not.toHaveBeenCalled();
-    expect(notices).toEqual([]);
-  });
-});
-
 describe('the stop-signup-plans script', () => {
+  beforeEach(() => {
+    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'true');
+  });
+
   it('with apply, marks every running plan once and reports the counts', async () => {
     const signup = await runningPlan(QUEUED);
     const paying = await runningPlan(PAYING);

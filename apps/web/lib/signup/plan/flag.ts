@@ -16,15 +16,14 @@ export function registrationPlanRunEnabled(
 }
 
 /**
- * The ops stop of every running plan (`pnpm signup:stop-plans`). Env-only, off unless
- * PLAN_OPS_STOP_ENABLED is exactly `true`. Off, `--apply` refuses and the sweep never reads a
- * stop. On, nothing changes until someone runs `--apply`.
+ * The ops stop of every running plan (`pnpm signup:stop-plans`). Env-only, and read only by
+ * the script: off unless PLAN_OPS_STOP_ENABLED is exactly `true` in the shell that runs it,
+ * and off, `--apply` refuses. The sweep never reads this flag. It honours any stop row, and
+ * only `--apply` writes one, so a deployment without the flag cannot misread a stop.
  */
 export const PLAN_OPS_STOP_ENABLED_ENV = 'PLAN_OPS_STOP_ENABLED';
 
-export function planOpsStopEnabled(
-  env: Record<string, string | undefined> = process.env,
-): boolean {
+export function planOpsStopEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return isEnabled('plan-ops-stop', undefined, env);
 }
 
