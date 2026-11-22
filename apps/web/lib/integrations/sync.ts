@@ -252,9 +252,15 @@ export async function syncConnection(
     const result = await runProviderSync(connection, accessToken, deps.googleFetch);
 
     for (const event of result.events) {
+      const providerId = event.payload.id;
       const redacted: IngestedEventPayload = {
         ...event,
-        payload: redactEventPayload(event.payload, deps.childNames),
+        payload: {
+          ...redactEventPayload(event.payload, deps.childNames),
+          // Google's own key, not text anyone wrote. The orchestrator hashes it for dedup
+          // and puts it back on the stored Gmail row, where the draft path reads it.
+          ...(typeof providerId === 'string' ? { id: providerId } : {}),
+        },
       };
       await deps.enqueue(redacted);
     }
