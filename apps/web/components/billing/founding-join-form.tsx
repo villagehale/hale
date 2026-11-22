@@ -188,7 +188,7 @@ export function FoundingJoinForm({
       <section className={`${stage.card} ${stage.door}`}>
         <div className={stage.act}>
           <div className={styles.stack}>
-            <p className={styles.eyebrow}>Founding family</p>
+            <p className={styles.eyebrow}>Biggest sale of the year</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
             <p className={stage.lede}>Text Hale to start. Hale will not text first.</p>
             <DeviceTextLink smsNumber={smsNumber} prefill={PORTAL_INTAKE_PREFILL} source={null}>
@@ -207,7 +207,7 @@ export function FoundingJoinForm({
         ? 'Check your texts'
         : verified
           ? 'Choose Plus or Max'
-          : 'Join as a founding family';
+          : 'Join Hale';
   const lede =
     step === 'expired'
       ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
@@ -219,7 +219,7 @@ export function FoundingJoinForm({
     <section className={`${stage.card} ${stage.door}`}>
       <div className={stage.act}>
         <div className={styles.stack}>
-          <p className={styles.eyebrow}>Founding family</p>
+          <p className={styles.eyebrow}>Biggest sale of the year</p>
           <h1 className={stage.h1}>{heading}</h1>
           <p className={stage.lede}>{lede}</p>
           {cancelled ? (

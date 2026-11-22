@@ -93,6 +93,8 @@ export const FLAGS = [
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
+  exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
+  exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
   exact('coach-bubbles', 'COACH_BUBBLES_ENABLED', {
     parser: 'trimmed-not-false',
     default: true,
