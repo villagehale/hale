@@ -7,9 +7,9 @@ import {
   type RunAgentResult,
   type Skill,
   agentRunCostUsd,
-  comparableToMarked,
   pickModel,
   runAgent,
+  withoutMarkEscape,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
@@ -1027,12 +1027,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // before the judge reads the draft, so the judge sees what is sent.
               const emails = emailTexts();
               // The model read the email through the mark, so it can hand a code back as
-              // `48&lt;29`, and the email may have written it with a look-alike of `<`. Both
-              // sides are read in the one spelling.
+              // `48&lt;29`, and the email may have written it with a look-alike of `<`. The
+              // gate compares in one spelling; the parent gets the model's own characters
+              // with only the entity undone.
               const marked = emails.length > 0 && isEnabled('untrusted-field-marking');
-              const asRead = comparableToMarked(marked, drafted);
-              const { text: spoken, dropped } = dropEmailOnlyTokens(asRead, {
-                emails: emails.map((email) => comparableToMarked(marked, email)),
+              const asWritten = withoutMarkEscape(marked, drafted);
+              const { text: spoken, dropped } = dropEmailOnlyTokens(asWritten, {
+                emails,
+                readThroughMark: marked,
                 trusted:
                   emails.length > 0
                     ? [

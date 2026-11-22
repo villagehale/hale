@@ -56,6 +56,7 @@
  * No `~/` imports: the injection eval loads the coach runtime under tsx.
  */
 
+import { comparableToMarked } from '@hale/agent';
 import { asHandsetReads, hasLinkShape, linkHostname, wordSpans } from '../../format/link-shape';
 import { MARKETING_SITE_URL } from '../../legal-links';
 import { crisisFactsForRegion } from '../crisis-resources';
@@ -71,6 +72,9 @@ export interface EmailOnlyCheck {
   /** What the reply may repeat, beside Hale's own text: the parent's words and the facts
    * the parent told Hale. Never a provider page, an email or a fact read from one. */
   trusted: readonly string[];
+  /** The model read the email through the untrusted mark, so the reply and the emails are
+   * compared in one spelling of `<`. What is sent keeps the reply's own characters. */
+  readThroughMark?: boolean;
 }
 
 export interface EmailOnlyResult {
@@ -512,7 +516,9 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
       .map((span) => hostOf(span.word))
       .filter((host) => host !== null),
   );
-  const emailReads = check.emails.map((email) => digitReadOf(readOf(email)).toLowerCase());
+  const readAsSeen = (text: string) =>
+    readOf(comparableToMarked(check.readThroughMark === true, text));
+  const emailReads = check.emails.map((email) => digitReadOf(readAsSeen(email)).toLowerCase());
   const emailDigits = emailReads.flatMap((email) =>
     [...email.matchAll(DIGIT_RUN)].map((match) => digitsOf(match[0])),
   );
@@ -534,7 +540,7 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
 
   let text = reply;
   for (let pass = 0; pass < CUT_PASSES; pass++) {
-    const once = dropPass(text, { trustedWords, trustedNumbers, trustedHosts, email });
+    const once = dropPass(text, { trustedWords, trustedNumbers, trustedHosts, email, readAsSeen });
     dropped.phone += once.dropped.phone;
     dropped.code += once.dropped.code;
     dropped.host += once.dropped.host;
@@ -555,6 +561,7 @@ function dropPass(
     trustedNumbers: readonly Token[];
     trustedHosts: ReadonlySet<string>;
     email: EmailShapes;
+    readAsSeen: (text: string) => string;
   },
 ): EmailOnlyResult {
   const dropped = NOTHING_DROPPED();
@@ -573,11 +580,11 @@ function dropPass(
         return [{ kind: 'host' as const, key: host ?? word, from: span.from, to: span.to }];
       }),
   ];
-  const read = readOf(reply);
+  const read = known.readAsSeen(reply);
   const cuts = cutsIn(read);
   if (cuts.length === 0) return { text: reply, dropped };
   for (const cut of cuts) dropped[cut.kind] += 1;
-  const spans = sentencesHolding(reply, read, cuts, cutsIn);
+  const spans = sentencesHolding(reply, read, cuts, cutsIn, known.readAsSeen);
   if (spans === null) return { text: '', dropped };
   const left = subtractSpans(reply, spans);
   return { text: left.status === 'cut' ? left.text : '', dropped };
@@ -596,6 +603,7 @@ function sentencesHolding(
   read: string,
   cuts: readonly Token[],
   cutsIn: (read: string) => Token[],
+  readAsSeen: (text: string) => string,
 ): Span[] | null {
   const sentences = segmentSentences(reply, undefined);
   const tiled =
@@ -603,7 +611,7 @@ function sentencesHolding(
     sentences.at(-1)?.end === reply.length &&
     sentences.every((sentence, at) => at === 0 || sentence.start === sentences[at - 1]?.end);
   if (!tiled) return null;
-  const reads = sentences.map((sentence) => readOf(reply.slice(sentence.start, sentence.end)));
+  const reads = sentences.map((sentence) => readAsSeen(reply.slice(sentence.start, sentence.end)));
   const joined = reads.join('');
   let placed = cuts;
   if (joined !== read) {

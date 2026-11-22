@@ -10,7 +10,7 @@ import {
   markUntrusted,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { type HealthPlace, healthNumbersIn } from '~/lib/channel/health-line';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
@@ -2691,7 +2691,7 @@ describe('a reply written after read_email (VIL-628)', () => {
     }
   });
 
-  it.each(['48&lt;29&lt;13', '48<29<13'])(
+  it.each(['48&lt;29&lt;13', '48<29<13', '48\u143829\u143813', '48\u300A29\u300A13'])(
     'with the untrusted mark on, a code an email wrote with a look-alike is cut from %s',
     async (copied) => {
       vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
@@ -2709,6 +2709,56 @@ describe('a reply written after read_email (VIL-628)', () => {
       }
     },
   );
+
+  describe.each(['true', 'false'])('with the untrusted mark set to %s', (flag) => {
+    beforeEach(() => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', flag);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    it.each([
+      '\u5B66\u6821\u8FD9\u5468\u8BFB\u300A\u4E09\u53EA\u5C0F\u732A\u300B\u3002',
+      '\u8BF7\u770B\u3008\u7B2C\u4E00\u7AE0\u3009\u3002',
+      'Le club \u2039 Lecture \u203A est mardi.',
+      '\u1438\u14C2\u1483 \u1405\u14EA\u14D7\u14A5.',
+    ])('a reply that writes a look-alike of < is delivered as written: %s', async (answer) => {
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday.',
+        answer,
+      });
+      expect(reply).toBe(answer);
+    });
+
+    it('a sentence kept after a cut keeps its own characters', async () => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday. Enter code 48<29<13 to sign.',
+        answer: 'Le club \u2039 Lecture \u203A est mardi. Enter code 48 29 13 to sign.',
+      });
+      expect(reply).toBe('Le club \u2039 Lecture \u203A est mardi.');
+    });
+  });
+
+  it('with the untrusted mark on, a kept sentence holding the entity is delivered with <', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const { reply } = await respond({
+        read: true,
+        email: 'Ages <5 swim moved to Tuesday. Enter code 48<29<13 to sign.',
+        answer: 'Ages &lt;5 swim moved to Tuesday. Enter code 48&lt;29&lt;13 to sign.',
+      });
+      expect(reply).toBe('Ages <5 swim moved to Tuesday.');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
 
   it("Hale's own site survives a read turn (positive control)", async () => {
     const answer =
