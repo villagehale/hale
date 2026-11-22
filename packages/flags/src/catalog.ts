@@ -351,7 +351,7 @@ export const PAYMENT_ENV_ONLY = [
     env: 'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED',
     posthogKey: null,
     type: 'boolean' as const,
-    note: 'env-only; exact `true`; a full refund of the charge that paid the current period drops the plan AND cancels that subscription in Stripe; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+    note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
   },
 ] as const;
 

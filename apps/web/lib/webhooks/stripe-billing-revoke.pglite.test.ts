@@ -3,13 +3,8 @@ import { MAX_ENTITLEMENTS, PLUS_ENTITLEMENTS, entitlementsFor } from '@hale/type
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { billingWebhookReady, reconcileBillingTiers } from '~/lib/billing/billing-live';
-import type {
-  OtherSubscriptions,
-  StripeChargeContext,
-  StripeChargeLookup,
-} from '~/lib/billing/stripe-charge-context';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { applyStripeBillingEvent } from './stripe-billing-apply.js';
+import { applyStripeBillingEvent as applyEvent } from './stripe-billing-apply.js';
 
 /**
  * VIL-703. A full refund or a dispute on a cancelled Max subscription drops
@@ -18,6 +13,14 @@ import { applyStripeBillingEvent } from './stripe-billing-apply.js';
  */
 
 const REVOKE = { STRIPE_BILLING_REVOKE_ENABLED: 'true' };
+
+type ApplyArgs = Parameters<typeof applyEvent>;
+/** The all-flags CI job forces the settle flag on; these pin main's grant path. */
+const applyStripeBillingEvent = (...[event, database, map, options, deps]: ApplyArgs) =>
+  applyEvent(event, database, map, options, {
+    ...deps,
+    env: deps?.env ?? { ...process.env, STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'false' },
+  });
 
 let db: TestDb;
 
@@ -36,36 +39,6 @@ async function planTier(familyId: string): Promise<string | undefined> {
     .where(eq(schema.families.id, familyId))
     .limit(1);
   return row?.planTier;
-}
-
-const NOTHING_ELSE: OtherSubscriptions = { paid: [], refundedIds: [], truncated: false };
-
-function lookupFake(
-  found: Partial<StripeChargeContext> = {},
-  other: OtherSubscriptions = NOTHING_ELSE,
-): StripeChargeLookup {
-  return {
-    async lookupCharge() {
-      return {
-        customerId: null,
-        subscriptionId: null,
-        subscriptionStatus: null,
-        subscriptionCreated: null,
-        subscriptionCustomerId: null,
-        subscriptionFamilyId: null,
-        familyId: null,
-        periodStanding: null,
-        invoiceCreated: null,
-        ...found,
-      };
-    },
-    async subscriptionStatus() {
-      return 'canceled';
-    },
-    async otherSubscriptions() {
-      return other;
-    },
-  };
 }
 
 function refund(input: {
@@ -110,14 +83,13 @@ describe('stripe billing revoke', () => {
       refunded: true,
       status: 'canceled',
     });
-    const deps = { env: REVOKE, chargeLookup: lookupFake() };
-    const first = await applyStripeBillingEvent(event, db.database, {}, {}, deps);
+    const first = await applyStripeBillingEvent(event, db.database, {}, {}, { env: REVOKE });
     expect(first).toEqual({ status: 'applied', tier: 'free' });
     expect(await planTier(familyId)).toBe('free');
     expect(entitlementsFor('free', true)).toEqual(PLUS_ENTITLEMENTS);
     expect(entitlementsFor('free', true)).not.toEqual(MAX_ENTITLEMENTS);
 
-    const replay = await applyStripeBillingEvent(event, db.database, {}, {}, deps);
+    const replay = await applyStripeBillingEvent(event, db.database, {}, {}, { env: REVOKE });
     expect(replay).toEqual({ status: 'duplicate' });
     expect(await planTier(familyId)).toBe('free');
   });
@@ -185,7 +157,7 @@ describe('stripe billing revoke', () => {
       db.database,
       {},
       {},
-      { env: REVOKE, chargeLookup: lookupFake() },
+      { env: REVOKE },
     );
     expect(dispute).toEqual({ status: 'applied', tier: 'free' });
     expect(await planTier(familyId)).toBe('free');
@@ -230,17 +202,7 @@ describe('stripe billing revoke', () => {
       db.database,
       {},
       {},
-      {
-        env: REVOKE,
-        chargeLookup: lookupFake(
-          {},
-          {
-            paid: [{ id: 'sub_live', priceId: null, status: 'active' }],
-            refundedIds: [],
-            truncated: false,
-          },
-        ),
-      },
+      { env: REVOKE },
     );
     expect(result).toEqual({ status: 'kept', reason: 'active_subscription' });
     expect(await planTier(familyId)).toBe('plus');
@@ -272,7 +234,7 @@ describe('stripe billing revoke', () => {
       db.database,
       {},
       {},
-      { env: REVOKE, chargeLookup: lookupFake() },
+      { env: REVOKE, chargeLookup: null },
     );
     expect(bare).toMatchObject({ status: 'unresolved', reason: 'subscription_unresolved' });
     expect(await planTier(familyId)).toBe('family');
@@ -297,14 +259,16 @@ describe('stripe billing revoke', () => {
       {},
       {
         env: REVOKE,
-        chargeLookup: lookupFake(
-          { customerId: 'cus_newer', subscriptionId: 'sub_old', subscriptionStatus: 'canceled' },
-          {
-            paid: [{ id: 'sub_new', priceId: null, status: 'active' }],
-            refundedIds: [],
-            truncated: false,
+        chargeLookup: {
+          async lookupCharge() {
+            return {
+              customerId: 'cus_newer',
+              subscriptionId: 'sub_old',
+              subscriptionStatus: 'canceled',
+              familyId: null,
+            };
           },
-        ),
+        },
       },
     );
     expect(lookedUp).toEqual({ status: 'kept', reason: 'active_subscription' });
@@ -340,7 +304,7 @@ describe('stripe billing revoke', () => {
       db.database,
       {},
       {},
-      { env: REVOKE, chargeLookup: lookupFake() },
+      { env: REVOKE, chargeLookup: null },
     );
     expect(unresolved).toMatchObject({ status: 'unresolved', reason: 'no_family' });
     expect(await planTier(familyId)).toBe('family');
@@ -356,12 +320,16 @@ describe('stripe billing revoke', () => {
       {},
       {
         env: REVOKE,
-        chargeLookup: lookupFake({
-          customerId: 'cus_dlookup',
-          subscriptionId: 'sub_dlookup',
-          subscriptionStatus: 'canceled',
-          familyId,
-        }),
+        chargeLookup: {
+          async lookupCharge() {
+            return {
+              customerId: 'cus_dlookup',
+              subscriptionId: 'sub_dlookup',
+              subscriptionStatus: 'canceled',
+              familyId,
+            };
+          },
+        },
       },
     );
     expect(resolved).toEqual({ status: 'applied', tier: 'free' });

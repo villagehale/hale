@@ -1,9 +1,7 @@
 import type { Database } from '@hale/db';
 import type { PlanTier } from '@hale/types';
-import type { SQL } from 'drizzle-orm';
-import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { applyStripeBillingEvent } from './stripe-billing-apply.js';
+import { applyStripeBillingEvent as applyEvent } from './stripe-billing-apply.js';
 import type { PriceTierMap } from './stripe-billing.js';
 
 /**
@@ -13,6 +11,14 @@ import type { PriceTierMap } from './stripe-billing.js';
  * and models the unique-index claim (a redelivered event id conflicts → []). No
  * real Stripe, no real DB.
  */
+
+type ApplyArgs = Parameters<typeof applyEvent>;
+/** The all-flags CI job forces the settle flag on; these pin main's grant path. */
+const applyStripeBillingEvent = (...[event, database, map, options, deps]: ApplyArgs) =>
+  applyEvent(event, database, map, options, {
+    ...deps,
+    env: deps?.env ?? { ...process.env, STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'false' },
+  });
 
 const PRICE_PLUS = 'price_plus';
 const PRICE_FAMILY = 'price_family';
@@ -64,26 +70,17 @@ function fakeDb(
     audits: [],
     claimed: new Set(opts.preClaimed ?? []),
   };
-  const dialect = new PgDialect();
   const selectChain = () => ({
     from: () => ({
-      where: (condition: SQL) => {
-        // A marker read filters by verb and subscription in SQL: honour its bound parameters.
-        const { params } = dialect.sqlToQuery(condition);
-        const limit = async () => {
-          if (params.some((p) => typeof p === 'string' && p.startsWith('billing_'))) {
-            return rec.audits
-              .filter(
-                (a) =>
-                  params.includes(a.actionTaken) &&
-                  params.includes((a.after as { subscriptionId?: unknown }).subscriptionId),
-              )
-              .map((a) => ({ after: a.after, actionTaken: a.actionTaken }));
+      where: () => ({
+        limit: async () => {
+          const refunds = rec.audits.filter((a) => a.actionTaken === 'billing_refund_ready');
+          if (refunds.length > 0) {
+            return refunds.map((a) => ({ after: a.after, actionTaken: a.actionTaken }));
           }
           return familyExists && opts.existingTier ? [{ planTier: opts.existingTier }] : [];
-        };
-        return { limit, orderBy: () => ({ limit }) };
-      },
+        },
+      }),
     }),
   });
   const tx = {

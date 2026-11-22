@@ -48,8 +48,20 @@ interface StoredCharge {
   payment_intent: string | null;
   refunded: boolean;
   amount: number;
+  amount_captured: number;
   amount_refunded: number;
   metadata: Record<string, string>;
+}
+
+export type FakeRefundStatus = 'pending' | 'requires_action' | 'succeeded' | 'failed' | 'canceled';
+
+interface StoredRefund {
+  id: string;
+  object: 'refund';
+  charge: string;
+  amount: number;
+  status: FakeRefundStatus;
+  pending_reason: string | null;
 }
 
 interface StoredSubscription {
@@ -115,11 +127,14 @@ export function createFakeStripe() {
   const invoices = new Map<string, Record<string, unknown>>();
   const subscriptions = new Map<string, StoredSubscription>();
   const invoicePayments: StoredInvoicePayment[] = [];
+  const refunds: StoredRefund[] = [];
   const calls: FakeStripeCall[] = [];
   const interceptors: Interceptor[] = [];
   /** Subscription ids the search index has not caught up with. */
   const unindexed = new Set<string>();
   let onDelete: ((subscriptionId: string) => Promise<void>) | null = null;
+  const readHooks: Array<{ match: (call: FakeStripeCall) => boolean; run: () => Promise<void> }> =
+    [];
 
   function addSubscription(input: FakeSubscriptionInput): StoredSubscription {
     const subscription: StoredSubscription = {
@@ -186,7 +201,7 @@ export function createFakeStripe() {
               invoice_item_details: null,
               subscription_item_details: {
                 subscription: subscription.id,
-                subscription_item: `si_${subscription.id}`,
+                subscription_item: subscription.items.data[0]?.id,
                 proration: input.proration ?? false,
                 invoice_item: null,
               },
@@ -202,9 +217,11 @@ export function createFakeStripe() {
       payment_intent: input.paymentIntentId,
       refunded,
       amount,
+      amount_captured: amount,
       amount_refunded: refunded ? amount : 0,
       metadata: {},
     });
+    if (refunded) addRefund(input.chargeId, amount, 'succeeded', null);
     invoicePayments.push({
       id: `inpay_${input.invoiceId}`,
       object: 'invoice_payment',
@@ -218,11 +235,73 @@ export function createFakeStripe() {
     if (input.latest !== false) subscription.latest_invoice = input.invoiceId;
   }
 
-  function refund(chargeId: string): void {
+  function addRefund(
+    chargeId: string,
+    amount: number,
+    status: FakeRefundStatus,
+    pendingReason: string | null,
+  ): StoredRefund {
+    const row: StoredRefund = {
+      id: `re_${refunds.length + 1}`,
+      object: 'refund',
+      charge: chargeId,
+      amount,
+      status,
+      pending_reason: status === 'pending' ? pendingReason : null,
+    };
+    refunds.push(row);
+    return row;
+  }
+
+  /** A full refund. Stripe marks the charge refunded when the refund is created. */
+  function refund(
+    chargeId: string,
+    over: { status?: FakeRefundStatus; pendingReason?: string } = {},
+  ): StoredRefund {
     const charge = charges.get(chargeId);
     if (!charge) throw new Error(`fake stripe: no charge ${chargeId}`);
     charge.refunded = true;
     charge.amount_refunded = charge.amount;
+    return addRefund(
+      chargeId,
+      charge.amount,
+      over.status ?? 'succeeded',
+      over.pendingReason ?? 'processing',
+    );
+  }
+
+  /** An unpaid invoice on a customer, with or without a subscription. */
+  function addOpenInvoice(input: {
+    id: string;
+    customer: string;
+    subscriptionId: string | null;
+    created: number;
+  }): void {
+    invoices.set(input.id, {
+      id: input.id,
+      object: 'invoice',
+      customer: input.customer,
+      status: 'open',
+      created: input.created,
+      amount_paid: 0,
+      billing_reason: input.subscriptionId ? 'subscription_cycle' : 'manual',
+      parent: input.subscriptionId
+        ? {
+            type: 'subscription_details',
+            quote_details: null,
+            subscription_details: { subscription: input.subscriptionId, metadata: {} },
+          }
+        : null,
+      lines: { object: 'list', has_more: false, data: [] },
+    });
+  }
+
+  /** A Dashboard price change that swaps the item, so old invoice lines name a gone item. */
+  function replaceItem(subscriptionId: string, priceId: string): void {
+    const item = subscriptions.get(subscriptionId)?.items.data[0];
+    if (!item) throw new Error(`fake stripe: no subscription ${subscriptionId}`);
+    item.id = `si_replaced_${subscriptionId}`;
+    item.price = { id: priceId };
   }
 
   function list(path: string, data: unknown[], hasMore = false): Response {
@@ -263,6 +342,34 @@ export function createFakeStripe() {
           (!paymentIntent || row.payment.payment_intent === paymentIntent) &&
           (!invoice || row.invoice === invoice),
       );
+      return list(path, rows.slice(0, limit), rows.length > limit);
+    }
+
+    if (path === '/v1/refunds') {
+      const charge = query.get('charge');
+      if (!charge) throw new Error('fake stripe: refund list without a charge');
+      const rows = refunds.filter((row) => row.charge === charge);
+      const limit = Number(query.get('limit') ?? '10');
+      return list(path, rows.slice(0, limit), rows.length > limit);
+    }
+
+    if (path === '/v1/invoices') {
+      const subscription = query.get('subscription');
+      const customer = query.get('customer');
+      const status = query.get('status');
+      if (!subscription && !customer) throw new Error('fake stripe: unfiltered invoice list');
+      const invoiceSubscription = (row: Record<string, unknown>) =>
+        (row.parent as { subscription_details?: { subscription?: string } } | null)
+          ?.subscription_details?.subscription ?? null;
+      const rows = [...invoices.values()]
+        .filter(
+          (row) =>
+            (!status || row.status === status) &&
+            (!customer || row.customer === customer) &&
+            (!subscription || invoiceSubscription(row) === subscription),
+        )
+        .sort((a, b) => Number(b.created) - Number(a.created));
+      const limit = Number(query.get('limit') ?? '10');
       return list(path, rows.slice(0, limit), rows.length > limit);
     }
 
@@ -312,6 +419,7 @@ export function createFakeStripe() {
           object: 'charge',
           refunded: latest.refunded,
           amount: latest.amount,
+          amount_captured: latest.amount_captured,
           amount_refunded: latest.amount_refunded,
         },
       });
@@ -330,6 +438,11 @@ export function createFakeStripe() {
       headers: new Headers(init?.headers),
     };
     calls.push(call);
+    const hookIndex = readHooks.findIndex((hook) => hook.match(call));
+    if (hookIndex >= 0) {
+      const [hook] = readHooks.splice(hookIndex, 1);
+      await hook?.run();
+    }
     for (const interceptor of interceptors) {
       if (interceptor.remaining > 0 && interceptor.match(call)) {
         interceptor.remaining -= 1;
@@ -346,9 +459,12 @@ export function createFakeStripe() {
     invoices,
     subscriptions,
     invoicePayments,
+    refunds,
     unindexed,
     addSubscription,
     addPaidInvoice,
+    addOpenInvoice,
+    replaceItem,
     refund,
     /** Answers matching requests from here on, up to `times` of them. */
     intercept(
@@ -360,6 +476,10 @@ export function createFakeStripe() {
     },
     clearIntercepts(): void {
       interceptors.length = 0;
+    },
+    /** Runs once, before the first matching request is answered: a commit mid-read. */
+    beforeRead(match: (call: FakeStripeCall) => boolean, run: () => Promise<void>): void {
+      readHooks.push({ match, run });
     },
     /** Runs while a DELETE is in flight, after Stripe has cancelled the subscription. */
     duringDelete(hook: (subscriptionId: string) => Promise<void>): void {

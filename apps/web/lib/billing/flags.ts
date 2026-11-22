@@ -21,10 +21,10 @@ export const CHECKOUT_SERVER_CURRENCY_ENABLED_ENV = 'CHECKOUT_SERVER_CURRENCY_EN
  */
 export const STRIPE_BILLING_REVOKE_ENABLED_ENV = 'STRIPE_BILLING_REVOKE_ENABLED';
 /**
- * A full refund of the charge that paid a subscription's current period drops the plan
- * and cancels that subscription in Stripe. Without the cancel, the renewal would charge
- * the parent again and its `invoice.paid` would re-grant the tier. Takes effect only with
- * STRIPE_BILLING_REVOKE_ENABLED also exactly `true`. Off unless the value is exactly `true`.
+ * The plan follows what Stripe says is still paid: every entitlement event re-reads the
+ * family's subscriptions, and a full refund of the current period cancels that one
+ * subscription, because otherwise the renewal would charge the parent again. Takes effect
+ * only with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`. Off unless exactly `true`.
  */
 export const STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV =
   'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED';
