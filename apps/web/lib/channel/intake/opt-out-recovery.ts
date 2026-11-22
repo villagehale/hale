@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { hasDrawAStopWouldHold } from '~/lib/channel/linq/secret-santa-send';
 import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { threadIfParent } from '~/lib/channel/thread';
@@ -29,12 +30,16 @@ import { type Inbound, handleStop, writeChannelMessage } from './machine';
 import {
   MESSAGE_HOLD,
   STOP_PENDING_HOLD,
+  markStopPending,
   placeHold,
   releaseHeldMessage,
   releaseStoppedMessage,
 } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
-import { optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
+import {
+  optOutHoldUntilStopCommitsEnabled,
+  optOutUnreadHoldTurnEnabled,
+} from './opt-out-turn-flags';
 import {
   type IntakeSession,
   type TranscriptEntry,
@@ -301,6 +306,9 @@ async function recoverRow(
       // and the failure-page sweep pages it as "not in ledger".
       return 'unrecorded';
     }
+    // The stop may not have reached these, and with no text it cannot be run again. A stop
+    // that did commit has cleared them, so it is not held forever.
+    if (stopPending && (await stopNotYetApplied(database, row.phoneHash))) return 'unrecorded';
     await releaseRow(database, row);
     return 'no_channel';
   }
@@ -327,6 +335,14 @@ async function recoverRow(
     });
     if (reading === null) return 'read_failed';
     outcome = await settleReading(database, deps, row, held, reading);
+    // A stop this read found and could not record is not read again: a later "none" would
+    // release a parent who said stop.
+    if (reading.intent === 'stop' && KEPT.has(outcome) && optOutHoldUntilStopCommitsEnabled()) {
+      await markStopPending(database, {
+        phoneHash: row.phoneHash,
+        providerMessageId: row.providerMessageId,
+      });
+    }
   }
   if (KEPT.has(outcome)) return outcome;
   // An ordinary read of a text this door held unread is no longer unread. The row
@@ -1002,6 +1018,17 @@ async function numberReachable(database: Database, phoneHash: string): Promise<b
     )
     .limit(1);
   return session !== undefined;
+}
+
+/** A record on this number that {@link handleStop} writes first and that still stands: an
+ * open caregiver invite, a guest's reminder opt-in, or a Secret Santa draw it could get. */
+async function stopNotYetApplied(database: Database, phoneHash: string): Promise<boolean> {
+  const timeline = await numberHolderTimeline(database, phoneHash);
+  const openRecord = timeline.some(
+    (holding) =>
+      (holding.kind === 'invite' || holding.kind === 'guest_reminders') && holding.end === null,
+  );
+  return openRecord || hasDrawAStopWouldHold(database, phoneHash);
 }
 
 /**

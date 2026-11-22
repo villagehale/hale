@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import { isParentHeld, isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
@@ -599,6 +599,32 @@ async function sendOrganizerNote(
 /** Held reasons the sweep never retries on its own. */
 const TERMINAL: readonly HeldReason[] = ['claim_stuck', 'stopped', 'draw_stale', 'cannot_open_1to1'];
 const RETRIED: readonly HeldReason[] = ['send_failed', 'line_unwritten'];
+
+/** A live draw this number has not been sent and could still be: what a 1:1 stop would mark
+ * `opted_out` (optOutSecretSantaOnStop). */
+export async function hasDrawAStopWouldHold(
+  database: Database,
+  phoneHash: string,
+): Promise<boolean> {
+  const p = schema.secretSantaParticipants;
+  const d = schema.secretSantaDraws;
+  const people = schema.linqSharedGroupPeople;
+  const [draw] = await database
+    .select({ id: p.id })
+    .from(p)
+    .innerJoin(people, eq(people.id, p.personId))
+    .innerJoin(d, eq(d.id, p.drawId))
+    .where(
+      and(
+        eq(people.phoneE164Hash, phoneHash),
+        isNull(p.deliveredAt),
+        inArray(d.status, ['collecting', 'drawn']),
+        or(isNull(p.heldReason), notInArray(p.heldReason, ['opted_out', ...TERMINAL])),
+      ),
+    )
+    .limit(1);
+  return draw !== undefined;
+}
 
 export interface SantaSweepSummary {
   draws: number;

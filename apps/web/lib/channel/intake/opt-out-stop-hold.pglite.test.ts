@@ -22,8 +22,15 @@ import {
   fakeRadar,
   fakeSilentAnswerComposer,
 } from './fakes';
-import { type IntakeDeps, handleInboundSms } from './machine';
-import { MESSAGE_HOLD, clearCollisionHold, holdSender, isSenderHeld } from './opt-out-hold';
+import { type IntakeDeps, handleInboundSms, handleStop } from './machine';
+import {
+  MESSAGE_HOLD,
+  STOP_PENDING_HOLD,
+  clearCollisionHold,
+  holdSender,
+  isSenderHeld,
+  markStopPending,
+} from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import { type OptOutRecoveryDeps, recoverHeldOptOutReads } from './opt-out-recovery';
 import { OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV } from './opt-out-turn-flags';
@@ -616,4 +623,309 @@ describe('a stop read live that could not be recorded', () => {
     expect(await channelRevoked(family.parentUserId)).toBe(true);
     expect(await isSenderHeld(db.database, HASH())).toBe(false);
   }, 30_000);
+});
+
+async function heldKind(): Promise<string | undefined> {
+  const [row] = await db.database
+    .select({ kind: schema.optOutHeldMessages.kind })
+    .from(schema.optOutHeldMessages)
+    .where(eq(schema.optOutHeldMessages.providerMessageId, HELD_ID));
+  return row?.kind;
+}
+
+/** Answers each read in turn, and counts them. */
+function scriptedReader(...readings: OptOutReading[]): {
+  reader: OptOutReader;
+  asked: () => number;
+} {
+  let asked = 0;
+  return {
+    reader: {
+      read: async () => {
+        const reading = readings[asked];
+        asked += 1;
+        if (!reading) throw new Error('read more times than the case scripted');
+        return reading;
+      },
+    },
+    asked: () => asked,
+  };
+}
+
+const PAST_BACKOFF = new Date(NOW.getTime() + 16 * 60_000);
+
+describe('a stop the recovery sweep read itself', () => {
+  it('flag on: a failed stop is remembered, so a later reading of none cannot release it', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    const model = scriptedReader(STOP, NONE);
+    const transport = new FakeTransport();
+
+    const first = await withRevokeRefused(() =>
+      recoverHeldOptOutReads(db.database, sweepDeps(model.reader, transport, NOW)),
+    );
+
+    expect(first.outcomes.stop_failed).toBe(1);
+    expect(await heldKind()).toBe(STOP_PENDING_HOLD);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, transport, PAST_BACKOFF),
+    );
+
+    expect(second.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(second.outcomes.read_not_stop).toBe(0);
+    expect(model.asked()).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await withdrawals(family.parentUserId)).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    expect(transport.sent).toEqual([]);
+  }, 30_000);
+
+  it('flag off: the same sequence re-reads the text and releases it, as on main', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'false');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    const model = scriptedReader(STOP, NONE);
+    const transport = new FakeTransport();
+
+    const first = await withRevokeRefused(() =>
+      recoverHeldOptOutReads(db.database, sweepDeps(model.reader, transport, NOW)),
+    );
+
+    expect(first.outcomes.stop_failed).toBe(1);
+    expect(await heldKind()).toBe(MESSAGE_HOLD);
+
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, transport, PAST_BACKOFF),
+    );
+
+    expect(second.outcomes.read_not_stop).toBe(1);
+    expect(model.asked()).toBe(2);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it('flag on: a stop the timeline cannot place is remembered too', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    // The ledger names this parent for a text sent while the timeline says another held it.
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: new Date(SENT_AT.getTime() - 60_000) })
+      .where(eq(schema.parentChannels.userId, family.parentUserId));
+    const other = await seedFamily(db.database, 'Next Holder Family');
+    await db.database.insert(schema.parentChannels).values({
+      userId: other.parentUserId,
+      familyId: other.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: HASH(),
+      verifiedAt: new Date(SENT_AT.getTime() - 30_000),
+    });
+    const model = scriptedReader(STOP, NONE);
+    const transport = new FakeTransport();
+
+    const first = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, transport, NOW),
+    );
+
+    expect(first.outcomes.timeline_unresolved).toBe(1);
+    expect(await heldKind()).toBe(STOP_PENDING_HOLD);
+
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, transport, PAST_BACKOFF),
+    );
+
+    expect(second.outcomes.timeline_unresolved).toBe(1);
+    expect(second.outcomes.read_not_stop).toBe(0);
+    expect(model.asked()).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+  }, 30_000);
+});
+
+describe('a pending stop whose text is in no store', () => {
+  async function seedInvite(): Promise<void> {
+    const inviter = await seedFamily(db.database, 'Inviting Family');
+    await db.database.insert(schema.caregiverInvites).values({
+      familyId: inviter.familyId,
+      invitedByUserId: inviter.parentUserId,
+      role: 'co_parent',
+      displayName: 'Sam',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: HASH(),
+      state: 'awaiting_caregiver_reply',
+      expiresAt: new Date(NOW.getTime() + 72 * 3_600_000),
+      createdAt: new Date(SENT_AT.getTime() - 3_600_000),
+    });
+  }
+
+  async function seedGuest(): Promise<void> {
+    const host = await seedFamily(db.database, 'Hosting Family');
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({ familyId: host.familyId, title: 'A party', startsAt: NOW, source: 'parent' })
+      .returning({ id: schema.familyEvents.id });
+    const [invite] = await db.database
+      .insert(schema.partyInvites)
+      .values({
+        familyId: host.familyId,
+        familyEventId: event?.id as string,
+        hostUserId: host.parentUserId,
+        publicToken: 'party-token-stop-hold',
+      })
+      .returning({ id: schema.partyInvites.id });
+    await db.database.insert(schema.partyRsvps).values({
+      partyInviteId: invite?.id as string,
+      displayName: 'Guest',
+      nameKey: 'guest',
+      response: 'yes',
+      reminderOptInAt: new Date(SENT_AT.getTime() - 3_600_000),
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: HASH(),
+    });
+  }
+
+  async function seedDraw(
+    status: 'drawn' | 'cancelled' = 'drawn',
+    deliveredAt: Date | null = null,
+  ): Promise<void> {
+    const [person] = await db.database
+      .insert(schema.linqSharedGroupPeople)
+      .values({
+        chatId: 'chat-stop-hold',
+        phoneE164Encrypted: encryptString(PHONE),
+        phoneE164Hash: HASH(),
+      })
+      .returning({ id: schema.linqSharedGroupPeople.id });
+    const [draw] = await db.database
+      .insert(schema.secretSantaDraws)
+      .values({ chatId: 'chat-stop-hold', status })
+      .returning({ id: schema.secretSantaDraws.id });
+    await db.database.insert(schema.secretSantaParticipants).values({
+      drawId: draw?.id as string,
+      personId: person?.id as string,
+      deliveredAt,
+    });
+  }
+
+  async function heldNoText(kind: 'pending' | 'message'): Promise<void> {
+    await holdSender(db.database, { phoneHash: HASH(), providerMessageId: HELD_ID, now: SENT_AT });
+    if (kind === 'pending') {
+      await markStopPending(db.database, { phoneHash: HASH(), providerMessageId: HELD_ID });
+    }
+  }
+
+  /** The real stop path's writes, for a stop that committed and whose ack was all that failed. */
+  async function theStopCommits(): Promise<void> {
+    await handleStop(
+      db.database,
+      {
+        phoneE164: PHONE,
+        inbound: new FakeTransport().inbound(PHONE, 'x', {
+          providerId: HELD_ID,
+          receivedAt: SENT_AT,
+        }),
+        session: null,
+        now: NOW,
+        providerAnswered: true,
+      },
+      { transport: new FakeTransport() },
+    );
+  }
+
+  const sweep = (now: Date) =>
+    recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(scriptedReader().reader, new FakeTransport(), now),
+    );
+
+  const records: [string, () => Promise<void>][] = [
+    ['an open caregiver invite', seedInvite],
+    ['a guest reminder opt-in', seedGuest],
+    ['an undelivered Secret Santa draw', () => seedDraw()],
+  ];
+
+  it.each(records)(
+    'stays held and paged while the number has %s',
+    async (_name, seed) => {
+      vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+      await seed();
+      await heldNoText('pending');
+
+      const first = await sweep(NOW);
+
+      expect(first.outcomes.unrecorded).toBe(1);
+      expect(first.outcomes.no_channel).toBe(0);
+      expect(await isSenderHeld(db.database, HASH())).toBe(true);
+      const posted: string[] = [];
+      await pageFailureAlerts(db.database, {
+        now: NOW,
+        post: async (line) => {
+          posted.push(line);
+          return 'sent';
+        },
+      });
+      expect(posted).toEqual([
+        'Hale: opt-out reads held. messages 1. numbers 1. not in ledger 1. legacy 0. oldest 0h.',
+      ]);
+
+      await theStopCommits();
+      const second = await sweep(PAST_BACKOFF);
+
+      expect(second.outcomes.no_channel).toBe(1);
+      expect(second.outcomes.unrecorded).toBe(0);
+      expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    },
+    30_000,
+  );
+
+  it('is released once nothing remains on the number', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    await heldNoText('pending');
+
+    const swept = await sweep(NOW);
+
+    expect(swept.outcomes.no_channel).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it.each<[string, () => Promise<void>]>([
+    ['a delivered draw', () => seedDraw('drawn', new Date(SENT_AT.getTime() - 60_000))],
+    ['a cancelled draw', () => seedDraw('cancelled')],
+  ])(
+    'is released when the only record is %s',
+    async (_name, seed) => {
+      vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+      await seed();
+      await heldNoText('pending');
+
+      const swept = await sweep(NOW);
+
+      expect(swept.outcomes.no_channel).toBe(1);
+      expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    },
+    30_000,
+  );
+
+  it.each(records)(
+    'an ordinary unread hold with %s is released, as on main',
+    async (_name, seed) => {
+      vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'false');
+      await seed();
+      await heldNoText('message');
+
+      const swept = await sweep(NOW);
+
+      expect(swept.outcomes.no_channel).toBe(1);
+      expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    },
+    30_000,
+  );
 });
