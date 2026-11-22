@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { householdTimezone, knownTimezone } from '~/lib/channel/household-timezone';
 import { isParentHeld, isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
@@ -17,6 +17,7 @@ import {
   SANTA_DONE_TEMPLATE,
   type SecretSantaLineWriter,
   composeSantaDoneLine,
+  drawRowsAStopReaches,
   foldName,
   nameAppears,
   secretSantaEnabled,
@@ -599,6 +600,31 @@ async function sendOrganizerNote(
 /** Held reasons the sweep never retries on its own. */
 const TERMINAL: readonly HeldReason[] = ['claim_stuck', 'stopped', 'draw_stale', 'cannot_open_1to1'];
 const RETRIED: readonly HeldReason[] = ['send_failed', 'line_unwritten'];
+
+/** A row a 1:1 stop would mark `opted_out` ({@link drawRowsAStopReaches}), not marked yet, on
+ * a live draw, and still sendable: a reason the giver's own text lifts is not terminal here. */
+export async function hasDrawAStopWouldHold(
+  database: Database,
+  phoneHash: string,
+): Promise<boolean> {
+  const p = schema.secretSantaParticipants;
+  const d = schema.secretSantaDraws;
+  const neverSent = TERMINAL.filter((reason) => !RELEASABLE.includes(reason));
+  const [draw] = await database
+    .select({ id: p.id })
+    .from(p)
+    .innerJoin(d, eq(d.id, p.drawId))
+    .where(
+      and(
+        drawRowsAStopReaches(database, phoneHash),
+        inArray(d.status, ['collecting', 'drawn']),
+        isNull(d.staleAt),
+        or(isNull(p.heldReason), notInArray(p.heldReason, ['opted_out', ...neverSent])),
+      ),
+    )
+    .limit(1);
+  return draw !== undefined;
+}
 
 export interface SantaSweepSummary {
   draws: number;

@@ -990,19 +990,22 @@ export async function optOutSecretSantaOnStop(
   database: Database,
   phoneE164: string,
 ): Promise<void> {
-  const people = database
-    .select({ id: schema.linqSharedGroupPeople.id })
-    .from(schema.linqSharedGroupPeople)
-    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(phoneE164)));
   await database
     .update(schema.secretSantaParticipants)
     .set({ heldReason: 'opted_out' })
-    .where(
-      and(
-        inArray(schema.secretSantaParticipants.personId, people),
-        isNull(schema.secretSantaParticipants.deliveredAt),
-      ),
-    );
+    .where(drawRowsAStopReaches(database, phoneBlindIndex(phoneE164)));
+}
+
+/** The participant rows a 1:1 stop from this number marks `opted_out`. */
+export function drawRowsAStopReaches(database: Database, phoneHash: string) {
+  const people = database
+    .select({ id: schema.linqSharedGroupPeople.id })
+    .from(schema.linqSharedGroupPeople)
+    .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneHash));
+  return and(
+    inArray(schema.secretSantaParticipants.personId, people),
+    isNull(schema.secretSantaParticipants.deliveredAt),
+  );
 }
 
 /** A group STOP: out of any collecting draw; never texted a drawn one. */
