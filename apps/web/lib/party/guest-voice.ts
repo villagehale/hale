@@ -2,6 +2,7 @@ import { type AgentClient, hasGarbledText, pickLane } from '@hale/agent';
 import { inShape } from '@hale/types';
 import { z } from 'zod';
 import { withLlmContext } from '~/lib/analytics/llm-trace';
+import { namesKeyword } from '~/lib/channel/no-stop-keyword';
 import { smallerLane } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { contactsOutside } from '~/lib/format/contact-shape';
@@ -66,10 +67,58 @@ const TRAILING_PUNCTUATION = /[\s.,;:!?]+$/;
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const LETTER = /\p{L}/u;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
-/** A number to text back. Too short for the phone check, and no party fact needs one. */
-const SHORT_CODE = /(?<!\d)\d{5,6}(?!\d)/;
+/**
+ * A number to text back: five or six digits, spaced or punctuated or not. Too short for the
+ * phone check, and a longer run is that check's to read.
+ */
+const TEXT_BACK_RUNS = /(?<!\d[\s.()-]{0,2})\d(?:[\s.()-]{0,2}\d){4,5}(?![\s.()-]{0,2}\d)/g;
+const STREET_NAME_NEXT = /^\s+\p{L}/u;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
+
+/** "12 2026" and "3-1420": a day and its year, or a unit and its street number. */
+function splitsAroundFourDigits(run: string): boolean {
+  const groups = run.split(/\D+/);
+  return groups.length > 1 && groups.some((group) => group.length === 4);
+}
+
+function holdsTextBackNumber(text: string): boolean {
+  return [...text.matchAll(TEXT_BACK_RUNS)].some(([run]) => !splitsAroundFourDigits(run));
+}
+
+function cutNumbers(fact: string, keeps: (run: string, at: number) => boolean): string {
+  const cut = fact.replace(TEXT_BACK_RUNS, (run: string, at: number) =>
+    splitsAroundFourDigits(run) || keeps(run, at) ? run : ' ',
+  );
+  if (cut === fact) return fact;
+  return cut
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[\s,;:-]+$/, '')
+    .trim();
+}
+
+/**
+ * A title with no number a guest could text back. It comes out before the model reads the
+ * title, because no check on a finished draft can tell a host's words from a short code
+ * they typed to reach their guests.
+ */
+export function withoutTextBackNumbers(title: string): string {
+  return cutNumbers(title, () => false);
+}
+
+/**
+ * The same for a place, which keeps a street number: one that opens the place or a comma
+ * part with a street name after it, like "12-345 Main St". A ZIP code goes, because a guest
+ * does not need it in a text.
+ */
+export function placeWithoutTextBackNumbers(place: string): string {
+  return cutNumbers(place, (run, at) => {
+    const before = place.slice(0, at).trimEnd();
+    const opensPart = before === '' || before.endsWith(',');
+    return opensPart && STREET_NAME_NEXT.test(place.slice(at + run.length));
+  });
+}
 
 /** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
 function factsIn(line: PartyGuestLine): string[] {
@@ -99,6 +148,12 @@ function lessOneMention(text: string, fact: string): string {
  */
 function outsideFacts(body: string, line: PartyGuestLine): string {
   return factsIn(line).reduce(lessOneMention, inShape(body));
+}
+
+/** Only what survives the cut may be lifted, so one mention of a street number stands. */
+function lessPlaceMention(body: string, where: string | null): string {
+  const place = where === null ? '' : placeWithoutTextBackNumbers(inShape(where));
+  return place.length === 0 ? inShape(body) : lessOneMention(inShape(body), place);
 }
 
 /**
@@ -147,13 +202,15 @@ function carriesClock(outside: string, when: string): boolean {
 export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string | null {
   const body = text.trim();
   if (body.length === 0 || hasGarbledText(body) || !NAMES_HALE.test(body)) return null;
+  if (line.title.length === 0) return null;
   const outside = outsideFacts(body, line);
   if (line.why === 'asked_for_reminder') {
     if (line.where !== null && !carriesPlace(body, line.where)) return null;
     if (!carriesClock(outside, line.when)) return null;
   }
   if (contactsOutside(body, line.where === null ? [] : [line.where]).length > 0) return null;
-  if (SHORT_CODE.test(outside)) return null;
+  if (holdsTextBackNumber(lessPlaceMention(body, line.where))) return null;
+  if (namesKeyword(body, factsIn(line)) !== null) return null;
   return shoutsOutsideFacts(outside, line.when) ? null : body;
 }
 

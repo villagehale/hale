@@ -525,6 +525,26 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
     expect(transport.bodies()).toEqual([reply]);
   });
 
+  it('hands the writer a title and place with no number to text back', async () => {
+    const party = await seedParty({
+      title: 'Text WIN to 55555',
+      location: 'Hall, Austin, TX 78701',
+    });
+    await addGuest(party, 'Priya', PHONE_A);
+    const seen: PartyGuestLine[] = [];
+    const writer: PartyGuestLineWriter = {
+      async write(line) {
+        seen.push(line);
+        return { status: 'written', text: 'Hale here.' };
+      },
+    };
+
+    await runPartyReminderCron(db.database, depsWith(new FakeTransport(), writer), NOW);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ title: 'Text WIN to', where: 'Hall, Austin, TX' });
+  });
+
   it('does not text a guest who opts out while the model is writing', async () => {
     const party = await seedParty();
     await addGuest(party, 'Priya', PHONE_A);

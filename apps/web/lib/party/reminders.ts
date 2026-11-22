@@ -19,7 +19,9 @@ import { guestCancellation, guestReminder } from './guest-copy';
 import {
   type PartyGuestLine,
   type PartyGuestLineWriter,
+  placeWithoutTextBackNumbers,
   sharedPartyGuestLineWriter,
+  withoutTextBackNumbers,
 } from './guest-voice';
 import { claimGuestReminder, loadTeenFirstNames, releaseGuestReminder } from './store';
 
@@ -173,14 +175,15 @@ export async function runPartyReminderCron(
       if (isEnabled('party-guest-model-copy', party.familyId)) {
         const waiting = await loadOptedInGuests(database, party.inviteId);
         if (waiting.length === 0) continue;
-        const written = await deps.guestLine.write({ why: 'asked_for_reminder', ...facts });
+        const toWrite = writerFacts(party, teens);
+        const written = await deps.guestLine.write({ why: 'asked_for_reminder', ...toWrite });
         if (written.status === 'unwritten') {
           result.unwritten += waiting.length;
           if (pageDidNotLeave(written.page)) result.unpaged += 1;
           continue;
         }
         body = written.text;
-        writtenFrom = facts;
+        writtenFrom = toWrite;
       } else {
         body = guestReminder(facts.title, facts.when, facts.where);
       }
@@ -240,7 +243,7 @@ export async function notifyGuestsOfCancellation(
     if (waiting.length === 0) return { sent: 0, failed: 0, unwritten: 0, unpaged: 0 };
     const written = await deps.guestLine.write({
       why: 'host_cancelled',
-      ...guestLineFacts(party, teens),
+      ...writerFacts(party, teens),
     });
     if (written.status === 'unwritten') {
       return {
@@ -294,7 +297,7 @@ async function partyStillReads(
 ): Promise<boolean> {
   const current = await loadPartyByInvite(database, inviteId, { liveOnly: true });
   if (current === null) return false;
-  const facts = guestLineFacts(current, teens);
+  const facts = writerFacts(current, teens);
   return (
     facts.title === written.title && facts.when === written.when && facts.where === written.where
   );
@@ -306,6 +309,17 @@ function guestLineFacts(party: DueParty, teens: readonly string[]): GuestLineFac
     title: redactTeenNames(party.title, teens),
     when: partyWhen(party.startsAt, party.timeZone),
     where: party.location === null ? null : redactTeenNames(party.location, teens),
+  };
+}
+
+/** What the model is given. The fixed flag-off text keeps the host's words as they are. */
+function writerFacts(party: DueParty, teens: readonly string[]): GuestLineFacts {
+  const facts = guestLineFacts(party, teens);
+  const where = facts.where === null ? null : placeWithoutTextBackNumbers(facts.where);
+  return {
+    ...facts,
+    title: withoutTextBackNumbers(facts.title),
+    where: where === '' ? null : where,
   };
 }
 

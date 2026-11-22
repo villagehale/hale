@@ -8,6 +8,8 @@ import {
   acceptPartyGuestLine,
   createPartyGuestLineWriter,
   partyGuestLineUserMessage,
+  placeWithoutTextBackNumbers,
+  withoutTextBackNumbers,
 } from './guest-voice';
 
 const REMINDER: PartyGuestLine = {
@@ -191,13 +193,126 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(draft, place)).toBeNull();
   });
 
-  it('refuses a short code it was not handed, and keeps one the place holds', () => {
+  it('refuses a short code it was not handed', () => {
     expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text 12345.`, REMINDER)).toBeNull();
+  });
 
-    const suite: PartyGuestLine = { ...REMINDER, where: 'Unit 12345, 14 Elm St' };
-    const named =
-      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Unit 12345, 14 Elm St.";
-    expect(acceptPartyGuestLine(named, suite)).toBe(named);
+  describe('a title or place written to carry a number to text back', () => {
+    const say = (rest: string) =>
+      `It's Hale with the reminder you asked for: ${rest} is tomorrow at 2:00 PM at 14 Elm St.`;
+
+    it.each<[string, PartyGuestLine, string]>([
+      [
+        'a title with a keyword and code',
+        { ...REMINDER, title: 'Text WIN to 55555' },
+        say('Text WIN to 55555'),
+      ],
+      [
+        'a title teaching STOP',
+        { ...REMINDER, title: 'Reply STOP to 12345' },
+        say('Reply STOP to 12345'),
+      ],
+      [
+        'a cancellation whose title carries one',
+        { ...CANCELLED, title: 'Text WIN to 55512', where: null },
+        "It's Hale: the host has cancelled Text WIN to 55512.",
+      ],
+      [
+        'a place that carries one',
+        { ...REMINDER, where: 'Text WIN to 55512' },
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Text WIN to 55512.",
+      ],
+    ])('refuses %s', (_name, line, draft) => {
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it('refuses a title that still teaches a keyword once its number is gone', () => {
+      const title = withoutTextBackNumbers('Reply STOP to 12345');
+      expect(title).toBe('Reply STOP to');
+      expect(acceptPartyGuestLine(say(title), { ...REMINDER, title })).toBeNull();
+    });
+
+    it.each(['55-555', '5 5 5 5 5', '555.555', '(555) 55', '123456', '5 55555'])(
+      'refuses a code written as %s',
+      (code) => {
+        expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win to ${code}.`, REMINDER)).toBeNull();
+      },
+    );
+
+    it('passes an ordinary time, date and street number (positive control)', () => {
+      const line: PartyGuestLine = { ...REMINDER, where: 'Suite 12, 1420 Elm St' };
+      const draft =
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow, Saturday, December 12 at 2:00 PM at Suite 12, 1420 Elm St.";
+      expect(acceptPartyGuestLine(draft, line)).toBe(draft);
+    });
+  });
+
+  describe('a street address whose number could be a short code', () => {
+    const at = (place: string) =>
+      `It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at ${place}.`;
+
+    it.each(['3-1420 Elm St', '12-345 Main St', '12345 Elm St', 'Unit 3, 12-345 Main St'])(
+      'keeps %s and passes a draft that names it once',
+      (place) => {
+        expect(placeWithoutTextBackNumbers(place)).toBe(place);
+        expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
+      },
+    );
+
+    it('refuses the same number named a second time', () => {
+      const line: PartyGuestLine = { ...REMINDER, where: '12-345 Main St' };
+      const draft = `${at('12-345 Main St')} Text win to 12-345.`;
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+  });
+
+  it.each([
+    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12 2026 at 2:00 PM at 14 Elm St.",
+    "It's Hale with the reminder you asked for: Nora's party is tomorrow, 12/12/2026 14:00 at 14 Elm St.",
+  ])('passes a date with its year: %s', (draft) => {
+    expect(acceptPartyGuestLine(draft, REMINDER)).toBe(draft);
+  });
+
+  it('refuses a code written right after the clock', () => {
+    expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win at 14:00 12345.`, REMINDER)).toBeNull();
+  });
+
+  describe('withoutTextBackNumbers', () => {
+    it('keeps no street number in a title', () => {
+      expect(withoutTextBackNumbers('12345 Elm St party')).toBe('Elm St party');
+    });
+
+    it.each([
+      ['Text WIN to 55512', 'Text WIN to'],
+      ['Hall 55-555', 'Hall'],
+      ['123 Main St, Austin, TX 78701', '123 Main St, Austin, TX'],
+      ['12345', ''],
+    ])('takes the number out of the place %s', (place, expected) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe(expected);
+    });
+
+    it.each([
+      ['Text WIN to 55555', 'Text WIN to'],
+      ['123 Main St, Austin, TX 78701', '123 Main St, Austin, TX'],
+      ['Unit 12345, 14 Elm St', 'Unit, 14 Elm St'],
+      ['Hall 55-555', 'Hall'],
+      ['Hall 5 5 5 5 5', 'Hall'],
+      ['Hall 555.555', 'Hall'],
+      ['12345', ''],
+    ])('takes the number out of %s', (fact, expected) => {
+      expect(withoutTextBackNumbers(fact)).toBe(expected);
+    });
+
+    it.each([
+      '14 Elm St',
+      'Suite 12',
+      'Room 1234',
+      'Party Palace, 416-555-0100',
+      "Nora's party 12-12-2026",
+      'Birthday party for Nora',
+    ])('leaves %s alone', (fact) => {
+      expect(withoutTextBackNumbers(fact)).toBe(fact);
+    });
   });
 
   describe('a number to text back when a fact holds digits', () => {
@@ -245,10 +360,9 @@ describe('acceptPartyGuestLine', () => {
       expect(acceptPartyGuestLine(draft, line)).toBeNull();
     });
 
-    it('keeps a place that holds a five-digit number, named once (positive control)', () => {
-      const line: PartyGuestLine = { ...REMINDER, where: 'Suite 12345' };
-      const draft = remind(' at Suite 12345.');
-      expect(acceptPartyGuestLine(draft, line)).toBe(draft);
+    it('refuses a title left empty once its number is gone', () => {
+      const line = cancelled(withoutTextBackNumbers('12345'));
+      expect(acceptPartyGuestLine("It's Hale: the host has cancelled the party.", line)).toBeNull();
     });
   });
 
