@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { describe, expect, it } from 'vitest';
-import { applyStripeBillingEvent } from './stripe-billing-apply.js';
+import { applyStripeBillingEvent as applyEvent } from './stripe-billing-apply.js';
 import type { PriceTierMap } from './stripe-billing.js';
 
 /**
@@ -11,6 +11,14 @@ import type { PriceTierMap } from './stripe-billing.js';
  * and models the unique-index claim (a redelivered event id conflicts → []). No
  * real Stripe, no real DB.
  */
+
+type ApplyArgs = Parameters<typeof applyEvent>;
+/** The all-flags CI job forces the settle flag on; these pin main's grant path. */
+const applyStripeBillingEvent = (...[event, database, map, options, deps]: ApplyArgs) =>
+  applyEvent(event, database, map, options, {
+    ...deps,
+    env: deps?.env ?? { ...process.env, STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'false' },
+  });
 
 const PRICE_PLUS = 'price_plus';
 const PRICE_FAMILY = 'price_family';

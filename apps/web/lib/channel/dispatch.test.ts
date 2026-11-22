@@ -4,6 +4,7 @@ import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
+import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import {
   ChannelRetryableError,
@@ -67,7 +68,12 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
     claimShadow: { dispatch: () => 'off' },
-    claimEnforce: { enforces: () => false, decide: async () => ({ status: 'off' as const }) },
+    opsPager: { page: async () => 'paged' },
+    claimEnforce: {
+      enforces: () => false,
+      decide: async () => ({ status: 'off' as const }),
+      recordRefusal: async () => 'off' as const,
+    },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -1004,15 +1010,40 @@ describe('VIL-581 · the claim shadow reads model-written bodies only, and the l
 
 describe('VIL-581 · enforce at the dispatch choke reads model-written bodies only', () => {
   const MODEL_BODY = 'Votre visite chez le dentiste est réservée.';
+  const REFUSAL = {
+    claims: [
+      {
+        segment: 0,
+        kind: 'scheduled_event',
+        cited: 'none',
+        status: 'refused' as const,
+        reason: 'no_scheduled_row',
+        why: 'cited_none',
+      },
+    ],
+    candidates: { offered: {}, capped: [] },
+  };
 
   function enforcePorts(
     decision: Awaited<ReturnType<DispatchPorts['claimEnforce']['decide']>>,
     modelWritten: boolean,
     text = MODEL_BODY,
+    faults: { store?: Error; page?: Error } = {},
   ) {
     const decided: unknown[] = [];
     const shadowed: DispatchShadowInput[] = [];
+    const refusals: unknown[] = [];
+    const pages: OpsPage[] = [];
+    const sms = fakeChannel('sms');
     const run = makePorts({
+      channels: { sms },
+      opsPager: {
+        page: async (page) => {
+          pages.push(page);
+          if (faults.page) throw faults.page;
+          return 'paged';
+        },
+      },
       renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
       claimShadow: {
         dispatch: (input) => {
@@ -1026,9 +1057,14 @@ describe('VIL-581 · enforce at the dispatch choke reads model-written bodies on
           decided.push(input);
           return decision;
         },
+        recordRefusal: async (input) => {
+          refusals.push(input);
+          if (faults.store) throw faults.store;
+          return 'stored';
+        },
       },
     });
-    return { ...run, decided, shadowed };
+    return { ...run, decided, shadowed, refusals, pages, sms };
   }
 
   it('a clean read sends, and the shadow is not started', async () => {
@@ -1046,11 +1082,55 @@ describe('VIL-581 · enforce at the dispatch choke reads model-written bodies on
   });
 
   it('an unbacked read fails the leg the same way the regex floor does', async () => {
-    const { ports, ledger, shadowed } = enforcePorts({ status: 'unbacked' }, true);
+    const { ports, ledger, shadowed, refusals, pages, sms } = enforcePorts(
+      { status: 'unbacked', refusal: REFUSAL },
+      true,
+    );
     const result = await dispatchLoopMessage(message(), ports);
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
     expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
     expect(shadowed).toEqual([]);
+    expect(refusals).toEqual([
+      { familyId: message().familyId, channelMessageId: 'row-1', refusal: REFUSAL },
+    ]);
+    expect(pages).toEqual([]);
+    expect(sms.calls).toEqual([]);
+  });
+
+  it('a verdict that cannot be stored leaves the leg refused, unsent, and pages #ops', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { ports, ledger, pages, sms } = enforcePorts(
+      { status: 'unbacked', refusal: REFUSAL },
+      true,
+      MODEL_BODY,
+      // A driver error can echo its query's parameters, so the log must not carry it.
+      { store: new Error(`insert failed: ${MODEL_BODY}`) },
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
+    expect(sms.calls).toEqual([]);
+    expect(pages).toEqual([{ site: 'claim_refusal_unstored', facts: {}, ref: 'row-1' }]);
+    const logged = JSON.stringify(errors.mock.calls);
+    expect(logged).toContain('claim_refusal_unstored');
+    expect(logged).not.toContain(MODEL_BODY);
+    errors.mockRestore();
+  });
+
+  it('a page that fails as well still leaves the leg refused and unsent', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { ports, pages, sms } = enforcePorts(
+      { status: 'unbacked', refusal: REFUSAL },
+      true,
+      MODEL_BODY,
+      { store: new Error('store down'), page: new Error('pager down') },
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(pages).toHaveLength(1);
+    expect(sms.calls).toEqual([]);
+    expect(JSON.stringify(errors.mock.calls)).toContain('page_failed');
+    errors.mockRestore();
   });
 
   it('a retryable read failure throws ChannelRetryableError and writes no row', async () => {

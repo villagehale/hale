@@ -57,7 +57,10 @@ export type ClaimLabelSource =
   /** activity_bookings.title. A 13+ child's confirmation writes no row at all. */
   | { from: 'booking'; title: string }
   /** A send Hale made, by channel and audience only: never a body or a person. */
-  | { from: 'send_receipt'; channel: 'text' | 'email'; audience: SendAudience };
+  | { from: 'send_receipt'; channel: 'text' | 'email'; audience: SendAudience }
+  /** VIL-735 · a line about the family's own Hale plan, built from server facts. Read
+   * only by the claim reader, never sent. */
+  | { from: 'billing'; text: string };
 
 /** Who a send went to, as a role. A text to the parent being written to is the
  * conversation itself, never a receipt. */
@@ -116,5 +119,7 @@ export function claimRowLabel(source: ClaimLabelSource, now: Date): ClaimRowLabe
       return brand(
         `${source.channel === 'email' ? 'An email' : 'A text'} ${SEND_RECEIPT_WHAT[source.audience]}`,
       );
+    case 'billing':
+      return brand(source.text);
   }
 }

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROMO_PREVIEW_COOKIE, signPromoPreviewCookie } from '~/lib/billing/promo-preview';
+import { PORTAL_TITLE, resolveDocumentTitle } from '~/lib/portal/document-title';
 
 const { cookieJar } = vi.hoisted(() => ({
   cookieJar: { value: undefined as string | undefined },
@@ -44,7 +45,8 @@ describe('/founding offer surface', () => {
     vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
     const html = await renderFounding();
     expect(html).toContain('Free');
-    expect(html).toContain('Join as a founding family');
+    expect(html).toContain('Join Hale');
+    expect(html).not.toMatch(/founding famil/i);
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
     expect(html).not.toContain('/mo');
@@ -53,6 +55,13 @@ describe('/founding offer surface', () => {
     expect(html).not.toContain('Continue ·');
     expect(html).not.toMatch(/grey|gray/i);
     expect(html).not.toMatch(/\bCAD\b/);
+  });
+
+  it('titles the tab Join Hale, with no second Hale from the layout suffix', async () => {
+    const { metadata } = await import('./page');
+    expect(resolveDocumentTitle(metadata.title, PORTAL_TITLE.template, PORTAL_TITLE.default)).toBe(
+      'Join Hale',
+    );
   });
 
   it('shows the same three options with a matching preview token while flags stay off', async () => {
