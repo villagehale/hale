@@ -1,13 +1,18 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
-import { SENT_STATUSES, dedupeActive } from '~/lib/channel/ledger';
+import { familySendKey } from '~/lib/channel/family-send-key';
+import { SENT_STATUSES, dedupeActive, familySendSpent } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
-import { type CandidateDraft, queueCheckInForDecider } from '~/lib/channel/proactive/queue';
+import {
+  type CandidateDraft,
+  legacyCandidateHolds,
+  queueCheckInForDecider,
+} from '~/lib/channel/proactive/queue';
 import { boundedLine } from '~/lib/channel/proactive/tools';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -456,6 +461,21 @@ export async function queueSaidSignupAsk(
   if (!firstEndedAt) return 'past_window';
   const { opensAt, closesAt } = firstSessionAskWindow(firstEndedAt, input.timeZone);
   if (input.now.getTime() >= closesAt.getTime()) return 'past_window';
+  const sendKey = familySendKey(
+    midActivityStartDedupeKey({
+      start: 'said',
+      occurrence: firstEndedAt.toISOString().slice(0, 10),
+      candidateId: input.candidateId,
+    }),
+    input.familyId,
+  );
+  // This lane writes its candidate in every cadence, so the old-key hold is not gated on live.
+  if (sendKey.legacyDedupeKey !== null) {
+    if (await familySendSpent(database, input.familyId, sendKey)) return 'duplicate';
+    if (await legacyCandidateHolds(database, input.familyId, sendKey.legacyDedupeKey)) {
+      return 'duplicate';
+    }
+  }
   const draft = midActivityAskDraft({
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -463,11 +483,7 @@ export async function queueSaidSignupAsk(
     start: 'said',
     firstEndedAt,
     closesAt,
-    dedupeKey: midActivityStartDedupeKey({
-      start: 'said',
-      occurrence: firstEndedAt.toISOString().slice(0, 10),
-      candidateId: input.candidateId,
-    }),
+    dedupeKey: sendKey.dedupeKey,
   });
   const inserted = await database
     .insert(schema.proactiveCandidates)

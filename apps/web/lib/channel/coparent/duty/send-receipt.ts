@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
+import { DUTY_ASK_KEY_PREFIX, familySendKey, unscopedSendKey } from '~/lib/channel/family-send-key';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { linqRefusedForCertainEnabled } from '~/lib/channel/linq/config';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -30,7 +31,7 @@ import type { OpenDutyQuestion } from './cadence';
  */
 export const DUTY_SEND_IN_FLIGHT = 'send_in_flight';
 
-export const DUTY_ASK_KEY_PREFIX = 'duty_ask:';
+export { DUTY_ASK_KEY_PREFIX };
 const SPLIT_ASK_KEY_PREFIX = `${DUTY_ASK_KEY_PREFIX}split_duty:`;
 export const DUTY_ACK_KEY_PREFIX = 'linq:duty_ack:';
 
@@ -118,11 +119,12 @@ function baseKeyOf(dedupeKey: string): string {
 }
 
 /**
- * One family's send. A key carries no family id, so another family's `<key>` and
- * `<key>:<parent>` can coexist: every comparison across sends goes through this scope.
+ * One family's send. An old key carries no family id, so another family's `<key>` and
+ * `<key>:<parent>` can coexist, and one send can hold rows under both key shapes: every
+ * comparison across sends goes through this scope.
  */
 export function dutySendScope(familyId: string, baseKey: string): string {
-  return `${familyId}:${baseKey}`;
+  return `${familyId}:${unscopedSendKey(baseKey, familyId)}`;
 }
 
 export function isLastDutySendTry(attempt: number): boolean {
@@ -147,12 +149,16 @@ function isAccepted(rows: readonly DutySendRow[]): boolean {
   return rows.some(rowAccepted);
 }
 
-/** One door's rows: its key and that key's retries. */
+/** One door's rows, under either key shape: its key and that key's retries. */
 function doorRows(rows: readonly DutySendRow[], doorKey: string): DutySendRow[] {
-  const retries = `${doorKey}${RETRY_INFIX}`;
-  return rows.filter(
-    (row) => row.dedupeKey === doorKey || row.dedupeKey?.startsWith(retries) === true,
-  );
+  return rows.filter((row) => {
+    const door = familySendKey(doorKey, row.familyId);
+    return [door.dedupeKey, door.legacyDedupeKey].some(
+      (key) =>
+        key !== null &&
+        (row.dedupeKey === key || row.dedupeKey?.startsWith(`${key}${RETRY_INFIX}`) === true),
+    );
+  });
 }
 
 /** A door that may have carried the ask, or that ended it: the other door must not send it. */
@@ -193,14 +199,20 @@ export async function readDutyAskRows(
   database: Database,
   input: { familyId: string; dedupeKey: string },
 ): Promise<DutySendRow[]> {
-  const prefix = `${input.dedupeKey}:`;
+  const { dedupeKey, legacyDedupeKey } = familySendKey(input.dedupeKey, input.familyId);
+  const keys = legacyDedupeKey === null ? [dedupeKey] : [dedupeKey, legacyDedupeKey];
   return database
     .select(SEND_ROW)
     .from(schema.channelMessages)
     .where(
       and(
         eq(schema.channelMessages.familyId, input.familyId),
-        or(eq(schema.channelMessages.dedupeKey, input.dedupeKey), keyStartsWith(prefix)),
+        or(
+          ...keys.flatMap((key) => [
+            eq(schema.channelMessages.dedupeKey, key),
+            keyStartsWith(`${key}:`),
+          ]),
+        ),
       ),
     )
     .orderBy(asc(schema.channelMessages.createdAt));
@@ -421,7 +433,7 @@ export async function settleStrandedDutySends(
   const sends = new Map<string, OneDutySend>();
   for (const row of rows) {
     if (row.dedupeKey === null) continue;
-    const baseKey = baseKeyOf(row.dedupeKey);
+    const baseKey = unscopedSendKey(baseKeyOf(row.dedupeKey), row.familyId);
     const scope = dutySendScope(row.familyId, baseKey);
     const send = sends.get(scope);
     if (send) send.rows.push(row);
