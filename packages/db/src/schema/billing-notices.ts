@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   integer,
@@ -49,6 +50,7 @@ export interface BillingNoticeEventFacts {
  * flight and its `next_try_at` is the lease; `unconfirmed` is a try that may have reached
  * the parent, due again at `next_try_at` under the same provider key, and it takes no
  * merges because Linq could drop the merged text as a repeat; `sent` and `dropped` are final.
+ * `may_have_landed` is set right before the POST and outlives every status, including a drop.
  */
 export const billingNotices = pgTable(
   'billing_notices',
@@ -65,6 +67,7 @@ export const billingNotices = pgTable(
     lastEventAt: timestamp('last_event_at', { withTimezone: true }).notNull(),
     nextTryAt: timestamp('next_try_at', { withTimezone: true }).notNull(),
     attempts: integer('attempts').notNull().default(0),
+    mayHaveLanded: boolean('may_have_landed').notNull().default(false),
     channelMessageId: uuid('channel_message_id').references(() => channelMessages.id, {
       onDelete: 'set null',
     }),
@@ -86,6 +89,10 @@ export const billingNotices = pgTable(
     statusCheck: check(
       'billing_notices_status_check',
       sql`${table.status} IN ('open', 'sending', 'unconfirmed', 'sent', 'dropped')`,
+    ),
+    unconfirmedLandedCheck: check(
+      'billing_notices_unconfirmed_landed_check',
+      sql`${table.status} <> 'unconfirmed' OR ${table.mayHaveLanded}`,
     ),
   }),
 );

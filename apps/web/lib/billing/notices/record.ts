@@ -401,8 +401,10 @@ async function writeIntent(
 }
 
 /**
- * An older refund event cannot lower a total Hale already told the parent. A row dropped
- * as `send_unconfirmed` may be on their phone, so it counts as told.
+ * An older refund event cannot lower a total Hale already told the parent. A row that may
+ * have landed counts as told whatever it was dropped for. If that drop removed its amounts
+ * the total cannot be compared, so the charge counts as told: a second text is the worse way
+ * to be wrong.
  */
 async function refundAlreadyTold(
   tx: Parameters<Parameters<Database['transaction']>[0]>[0],
@@ -419,17 +421,16 @@ async function refundAlreadyTold(
         eq(schema.billingNotices.familyId, familyId),
         eq(schema.billingNotices.lane, 'plan_change'),
         or(
-          inArray(schema.billingNotices.status, ['sending', 'unconfirmed', 'sent']),
-          and(
-            eq(schema.billingNotices.status, 'dropped'),
-            eq(schema.billingNotices.dropReason, 'send_unconfirmed'),
-          ),
+          inArray(schema.billingNotices.status, ['sending', 'sent']),
+          eq(schema.billingNotices.mayHaveLanded, true),
         ),
       ),
     );
   return told.some((row) =>
     (row.facts.refunds ?? []).some(
-      (seen) => seen.chargeId === refund.chargeId && refund.refundedMinor <= seen.refundedMinor,
+      (seen) =>
+        seen.chargeId === refund.chargeId &&
+        (typeof seen.refundedMinor !== 'number' || refund.refundedMinor <= seen.refundedMinor),
     ),
   );
 }

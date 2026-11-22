@@ -285,7 +285,7 @@ describe('idempotency', () => {
       );
       await db.database
         .update(schema.billingNotices)
-        .set({ status })
+        .set({ status, mayHaveLanded: status === 'unconfirmed' })
         .where(eq(schema.billingNotices.familyId, familyId));
       await expect(
         record(
@@ -301,13 +301,14 @@ describe('idempotency', () => {
     },
   );
 
-  const droppedRefund = (dropReason: string) =>
+  const droppedRefund = (dropReason: string, mayHaveLanded = false) =>
     db.database.insert(schema.billingNotices).values({
       familyId,
       parentUserId: userId,
       lane: 'plan_change',
       status: 'dropped',
       dropReason,
+      mayHaveLanded,
       facts: {
         eventIds: [`evt_r_told_${serial}`],
         refunds: [
@@ -330,7 +331,7 @@ describe('idempotency', () => {
     ['the same', 9000],
     ['a lower', 5000],
   ])('dropped as send_unconfirmed may have reached them: %s total queues nothing', async (_label, total) => {
-    await droppedRefund('send_unconfirmed');
+    await droppedRefund('send_unconfirmed', true);
     await expect(
       record(
         refundEvent({ id: `evt_r_after_${serial}` }, { amount_refunded: total, refunded: false }),
@@ -340,6 +341,16 @@ describe('idempotency', () => {
     const rows = await noticeRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.dropReason).toBe('send_unconfirmed');
+  });
+
+  it('a drop reason alone is not the fact: send_unconfirmed with the column false counts as nothing', async () => {
+    await droppedRefund('send_unconfirmed', false);
+    await expect(
+      record(
+        refundEvent({ id: `evt_r_after_${serial}` }, { amount_refunded: 5000, refunded: false }),
+        { status: 'no_tier' },
+      ),
+    ).resolves.toBe('recorded');
   });
 
   it('dropped as send_retries_exhausted never reached Linq: a lower total still queues a text', async () => {

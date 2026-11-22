@@ -9,11 +9,13 @@ CREATE TABLE IF NOT EXISTS "billing_notices" (
   "last_event_at" timestamp with time zone NOT NULL,
   "next_try_at" timestamp with time zone NOT NULL,
   "attempts" integer DEFAULT 0 NOT NULL,
+  "may_have_landed" boolean DEFAULT false NOT NULL,
   "channel_message_id" uuid REFERENCES "channel_messages"("id") ON DELETE set null,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "billing_notices_lane_check" CHECK ("lane" IN ('payment', 'plan_change')),
-  CONSTRAINT "billing_notices_status_check" CHECK ("status" IN ('open', 'sending', 'unconfirmed', 'sent', 'dropped'))
+  CONSTRAINT "billing_notices_status_check" CHECK ("status" IN ('open', 'sending', 'unconfirmed', 'sent', 'dropped')),
+  CONSTRAINT "billing_notices_unconfirmed_landed_check" CHECK ("status" <> 'unconfirmed' OR "may_have_landed")
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "billing_notices_one_open_uniq"
   ON "billing_notices" ("family_id", "lane") WHERE "status" = 'open';--> statement-breakpoint

@@ -173,6 +173,7 @@ async function insertNotice(over: {
   attempts?: number;
   parentUserId?: string | null;
   family?: string;
+  mayHaveLanded?: boolean;
 }) {
   const lane = over.lane ?? 'payment';
   const [row] = await db.database
@@ -188,6 +189,7 @@ async function insertNotice(over: {
       nextTryAt: over.nextTryAt ?? AFTERNOON,
       createdAt: over.createdAt ?? later(AFTERNOON, -5),
       attempts: over.attempts ?? 0,
+      mayHaveLanded: over.mayHaveLanded ?? over.status === 'unconfirmed',
     })
     .returning();
   if (!row) throw new Error('no notice row');
@@ -305,6 +307,30 @@ function deps(
 
 const tick = (over: Parameters<typeof deps>[0] = {}) =>
   runBillingNoticeTick(db.database, deps(over));
+
+/** A later Stripe refund event on the same charge, through the real webhook recorder. */
+const lowerRefund = (id: string, refundedMinor = 9000) =>
+  recordBillingNoticeIntent(
+    db.database,
+    {
+      id,
+      type: 'charge.refunded',
+      livemode: true,
+      created: Math.floor(clock.now.getTime() / 1000),
+      data: {
+        object: {
+          id: 'ch_1',
+          customer: `cus_${familyId}`,
+          amount: 15900,
+          amount_refunded: refundedMinor,
+          currency: 'cad',
+          refunded: false,
+        },
+      },
+    },
+    { status: 'no_tier' },
+    { env: ARMED, now: clock.now },
+  );
 
 describe('a text the parent gets', () => {
   it('Linq accepts: sent, linked to its ledger row, one audit row, in that parent’s thread', async () => {
@@ -607,9 +633,10 @@ describe('a crash mid-send', () => {
     expect(linqCalls).toHaveLength(0);
   });
 
-  it('with no accepted row it may still have landed: one failed attempt, unconfirmed', async () => {
+  it('a crash after beforeSend: unconfirmed, and the retry carries the same Linq key', async () => {
     const notice = await insertNotice({
       status: 'sending',
+      mayHaveLanded: true,
       parentUserId,
       nextTryAt: later(AFTERNOON, -1),
     });
@@ -624,6 +651,56 @@ describe('a crash mid-send', () => {
       attempts: 1,
     });
     expect(linqCalls).toHaveLength(0);
+
+    const keys: (string | undefined)[] = [];
+    clock.now = later(AFTERNOON, 5);
+    await tick({
+      dispatch: async (message, beforeSend) => {
+        keys.push(message.sendKey);
+        return deps().dispatch(message, beforeSend);
+      },
+    });
+    expect(keys).toEqual([`billing_notice:${notice.id}`]);
+    expect((await noticeRow(notice.id)).status).toBe('sent');
+  });
+
+  it('a crash during the model write (sending, column false) is an ordinary retry', async () => {
+    const notice = await insertNotice({
+      status: 'sending',
+      parentUserId,
+      nextTryAt: later(AFTERNOON, -1),
+    });
+    await tick();
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.mayHaveLanded).toBe(false);
+    expect(row.attempts).toBe(1);
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
+    expect(linqCalls).toHaveLength(0);
+  });
+
+  it('a crash during the write can merge with a later event again', async () => {
+    const notice = await refundNotice({
+      status: 'sending',
+      parentUserId,
+      nextTryAt: later(AFTERNOON, -1),
+    });
+    const newer = await insertNotice({
+      lane: 'plan_change',
+      facts: {
+        eventIds: ['evt_cancel'],
+        ended: { subscriptionId: 'sub_1', why: 'cancelled' },
+      },
+      nextTryAt: later(AFTERNOON, 30),
+    });
+    await tick();
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('dropped');
+    expect(row.dropReason).toBe('merged');
+    const survivor = await noticeRow(newer.id);
+    expect(survivor.status).toBe('open');
+    expect(survivor.facts.refunds?.[0]?.chargeId).toBe('ch_1');
+    expect(survivor.facts.ended?.subscriptionId).toBe('sub_1');
   });
 
   it('a second drain during a write that runs to the model deadline leaves the row alone', async () => {
@@ -922,6 +999,7 @@ describe('a send Linq may have taken', () => {
   it('a crash on the last try drops as unconfirmed and pages', async () => {
     const notice = await insertNotice({
       status: 'sending',
+      mayHaveLanded: true,
       parentUserId,
       attempts: 3,
       nextTryAt: later(AFTERNOON, -1),
@@ -929,6 +1007,212 @@ describe('a send Linq may have taken', () => {
     await tick();
     expect((await noticeRow(notice.id)).dropReason).toBe('send_unconfirmed');
     expect(pages[0]?.facts).toEqual({ lane: 'payment', reason: 'not_confirmed' });
+  });
+
+  it('a crash before the POST on the last try is exhausted, not unconfirmed', async () => {
+    const notice = await insertNotice({
+      status: 'sending',
+      parentUserId,
+      attempts: 3,
+      nextTryAt: later(AFTERNOON, -1),
+    });
+    await tick();
+    const row = await noticeRow(notice.id);
+    expect(row.dropReason).toBe('send_retries_exhausted');
+    expect(row.mayHaveLanded).toBe(false);
+    expect(pages[0]?.facts).toEqual({ lane: 'payment', reason: 'send_abandoned' });
+  });
+
+  it('a first-try definite refusal leaves the column false and returns to open', async () => {
+    const linq = realLinq([refused]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    const row = await noticeRow(notice.id);
+    expect(linq.posts).toHaveLength(1);
+    expect(row.status).toBe('open');
+    expect(row.mayHaveLanded).toBe(false);
+  });
+
+  it('a first-try refusal later dropped by a gate does not count as told', async () => {
+    const linq = realLinq([refused]);
+    const notice = await refundNotice({ parentUserId });
+    await tick({ dispatch: linq.dispatch });
+    expect((await noticeRow(notice.id)).status).toBe('open');
+
+    clock.now = later(AFTERNOON, 5);
+    await db.database
+      .update(schema.billingNotices)
+      .set({ lastEventAt: later(clock.now, -(73 * 60)) })
+      .where(eq(schema.billingNotices.id, notice.id));
+    await tick({ dispatch: linq.dispatch });
+    const dropped = await noticeRow(notice.id);
+    expect(dropped.dropReason).toBe('stale');
+    expect(dropped.mayHaveLanded).toBe(false);
+
+    await expect(lowerRefund('evt_after_refusal')).resolves.toBe('recorded');
+  });
+
+  it('a definite refusal on a retry of a may-have-landed row keeps the column true', async () => {
+    const linq = realLinq([badGateway, refused]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch });
+    expect((await noticeRow(notice.id)).mayHaveLanded).toBe(true);
+
+    clock.now = later(clock.now, 5);
+    await tick({ dispatch: linq.dispatch });
+    const row = await noticeRow(notice.id);
+    expect(linq.posts).toHaveLength(2);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.mayHaveLanded).toBe(true);
+  });
+
+  it('beforeSend finding no sending row makes no Linq POST', async () => {
+    const linq = realLinq([]);
+    const notice = await insertNotice({});
+    const summary = await tick({
+      dispatch: async (message, beforeSend) => {
+        await db.database
+          .update(schema.billingNotices)
+          .set({ status: 'open' })
+          .where(eq(schema.billingNotices.id, notice.id));
+        return linq.dispatch(message, beforeSend);
+      },
+    });
+    expect(linq.posts).toHaveLength(0);
+    expect(summary).toMatchObject({ skipped: 1, sent: 0, retrying: 0 });
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.mayHaveLanded).toBe(false);
+    expect(row.attempts).toBe(0);
+    expect(await auditRows('billing_notice_send_failed')).toEqual([]);
+  });
+
+  it('the column is already true when the POST leaves', async () => {
+    let atPost: boolean | undefined;
+    const notice = await insertNotice({});
+    const linq = realLinq([
+      () => {
+        throw new TypeError('connection reset');
+      },
+    ]);
+    await tick({
+      dispatch: (message, beforeSend) =>
+        linq.dispatch(message, async () => {
+          await beforeSend();
+          atPost = (await noticeRow(notice.id)).mayHaveLanded;
+        }),
+    });
+    expect(linq.posts).toHaveLength(1);
+    expect(atPost).toBe(true);
+  });
+
+  it('the CHECK refuses an unconfirmed row with the column false', async () => {
+    await expect(
+      db.database.insert(schema.billingNotices).values({
+        familyId,
+        lane: 'payment',
+        status: 'unconfirmed',
+        mayHaveLanded: false,
+        facts: paymentFacts(),
+        lastEventAt: AFTERNOON,
+        nextTryAt: AFTERNOON,
+      }),
+    ).rejects.toThrow(/billing_notices_unconfirmed_landed_check/);
+    await db.database.insert(schema.billingNotices).values({
+      familyId,
+      lane: 'payment',
+      status: 'unconfirmed',
+      mayHaveLanded: true,
+      facts: paymentFacts(),
+      lastEventAt: AFTERNOON,
+      nextTryAt: later(AFTERNOON, 60),
+    });
+  });
+
+  describe('a row that may have landed and is then dropped by a gate', () => {
+    const unconfirmedRefund = (over: Parameters<typeof insertNotice>[0] = {}) =>
+      refundNotice({
+        status: 'unconfirmed',
+        parentUserId,
+        attempts: 1,
+        ...over,
+      });
+
+    it.each([
+      ['the same', 15900],
+      ['a lower', 9000],
+    ])('stale: %s refund is stale_refund and sends nothing', async (_label, total) => {
+      const notice = await unconfirmedRefund({ lastEventAt: later(AFTERNOON, -(73 * 60)) });
+      await tick();
+      const dropped = await noticeRow(notice.id);
+      expect(dropped.dropReason).toBe('stale');
+      expect(dropped.mayHaveLanded).toBe(true);
+
+      await expect(lowerRefund('evt_after_stale', total)).resolves.toBe('stale_refund');
+      await tick();
+      expect(linqCalls).toHaveLength(0);
+    });
+
+    it('a facts gate (plan_state_unsettled): a lower refund is stale_refund', async () => {
+      subscription = { ...ACTIVE, status: 'canceled' };
+      const notice = await unconfirmedRefund({ createdAt: later(AFTERNOON, -31) });
+      await tick();
+      const dropped = await noticeRow(notice.id);
+      expect(dropped.dropReason).toBe('plan_state_unsettled');
+      expect(dropped.mayHaveLanded).toBe(true);
+
+      await expect(lowerRefund('evt_after_unsettled')).resolves.toBe('stale_refund');
+      expect(linqCalls).toHaveLength(0);
+    });
+
+    it('Alerts off (category_off): a lower refund is stale_refund', async () => {
+      const notice = await unconfirmedRefund();
+      await db.database.insert(schema.loopPrefs).values({ userId: parentUserId, catAlert: false });
+      await tick();
+      const dropped = await noticeRow(notice.id);
+      expect(dropped.dropReason).toBe('category_off');
+      expect(dropped.mayHaveLanded).toBe(true);
+
+      await expect(lowerRefund('evt_after_alerts_off')).resolves.toBe('stale_refund');
+      expect(linqCalls).toHaveLength(0);
+    });
+
+    it('no_thread: a lower refund is stale_refund', async () => {
+      const notice = await unconfirmedRefund();
+      await db.database
+        .delete(schema.channelMessages)
+        .where(eq(schema.channelMessages.parentUserId, parentUserId));
+      await tick({ findDirectChat: async () => null });
+      const dropped = await noticeRow(notice.id);
+      expect(dropped.dropReason).toBe('no_thread');
+      expect(dropped.mayHaveLanded).toBe(true);
+
+      await expect(lowerRefund('evt_after_no_thread')).resolves.toBe('stale_refund');
+      expect(linqCalls).toHaveLength(0);
+    });
+
+    it('payer_unresolved: the row holds no amount and the charge still counts as told', async () => {
+      const notice = await unconfirmedRefund({ parentUserId: null });
+      await db.database
+        .delete(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
+          ),
+        );
+      await tick();
+      const dropped = await noticeRow(notice.id);
+      expect(dropped.dropReason).toBe('payer_unresolved');
+      expect(dropped.mayHaveLanded).toBe(true);
+      expect(dropped.parentUserId).toBeNull();
+      expect(dropped.facts.refunds?.[0]?.chargeId).toBe('ch_1');
+      expect(dropped.facts.refunds?.[0]).not.toHaveProperty('refundedMinor');
+      expect(dropped.facts.refunds?.[0]).not.toHaveProperty('chargeMinor');
+
+      await expect(lowerRefund('evt_after_payer', 15900)).resolves.toBe('stale_refund');
+      expect(linqCalls).toHaveLength(0);
+    });
   });
 });
 

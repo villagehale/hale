@@ -54,9 +54,10 @@ import { payerThreadProof } from './thread';
  * (the #1324 rule); anything else retries with a fresh write, then pages #ops. Nothing
  * is ever sent in place of the model's text.
  *
- * Only a definite refusal proves a text stayed home. After a timeout, a 5xx or a crash it
- * may be on the parent's phone, so the row is `unconfirmed`: every retry carries the same
- * Linq key, and it takes no merges, because Linq could drop the merged text as a repeat.
+ * `may_have_landed` is the one record of whether a text may be on the parent's phone. It is
+ * set right before the POST and cleared only by a definite refusal of a row's first POST.
+ * While it is true the row retries as `unconfirmed` under the same Linq key and takes no
+ * merges, because Linq could drop the merged text as a repeat.
  */
 
 const DUE_BATCH = 25;
@@ -72,6 +73,8 @@ const FACTS_MOVED_RETRY_MS = 60_000;
 /** Why the last check before the send stopped it. Neither is a failed attempt. */
 const OPT_OUT_HELD = 'opt_out_held';
 const FACTS_MOVED = 'facts_moved';
+/** Another run owns the row now, so this one neither sends nor records a failure. */
+const LEFT_SENDING = 'left_sending';
 
 /** The route's ceiling is 800s and the queues may use 700. No notice starts past this. */
 const LAST_START_MS = 640_000;
@@ -158,16 +161,6 @@ export interface BillingNoticeTick {
 export type BillingNoticeTickResult = BillingNoticeTick | { skipped: 'flag_off' | 'preview' };
 
 type RowOutcome = 'sent' | 'held' | 'retrying' | 'dropped' | 'skipped';
-
-/** `mayHaveLanded` outlives the close to `sending`, which would otherwise hide it. */
-type NoticeInHand = BillingNotice & { mayHaveLanded?: true };
-
-/** Held by the tick, so a throw at any point after the send began still knows it began. */
-type SendAttempt = { reached: (NoticeInHand & { parentUserId: string }) | null };
-
-function mayHaveLanded(row: NoticeInHand): boolean {
-  return row.mayHaveLanded === true || row.status === 'unconfirmed';
-}
 
 export function defaultBillingNoticeDeps(
   database: Database,
@@ -259,9 +252,8 @@ export async function runBillingNoticeTick(
       tick.stopped = 'budget';
       break;
     }
-    const send: SendAttempt = { reached: null };
     try {
-      tick[await processNotice(database, row, armedAt, deps, send)] += 1;
+      tick[await processNotice(database, row, armedAt, deps)] += 1;
     } catch (err) {
       // One family's failure must not cost the next family its text. Counted as an
       // attempt, so a row that always throws ends in a page rather than a silent loop.
@@ -269,9 +261,7 @@ export async function runBillingNoticeTick(
         { err: err instanceof Error ? err.name : 'unknown', notice: row.id },
         'billing notice: row failed',
       );
-      const inHand: NoticeInHand =
-        send.reached ?? (row.status === 'sending' ? { ...row, mayHaveLanded: true } : row);
-      tick[await failAttempt(database, inHand, 'unexpected', deps)] += 1;
+      tick[await failAttempt(database, row, 'unexpected', deps)] += 1;
     }
   }
   return tick;
@@ -282,7 +272,6 @@ async function processNotice(
   row: BillingNotice,
   armedAt: Date,
   deps: BillingNoticeRunDeps,
-  send: SendAttempt,
 ): Promise<RowOutcome> {
   if (row.status === 'sending') return takeOver(database, row, deps);
   const now = deps.now();
@@ -336,19 +325,13 @@ async function processNotice(
 
   const closed = await closeRow(database, row, parentUserId, resolvedFacts, deps);
   if (!closed) return 'skipped';
-  return writeAndSend(
-    database,
-    { ...closed, parentUserId, ...(row.status === 'unconfirmed' ? { mayHaveLanded: true } : {}) },
-    deps,
-    send,
-  );
+  return writeAndSend(database, { ...closed, parentUserId }, deps);
 }
 
 async function writeAndSend(
   database: Database,
-  row: NoticeInHand & { parentUserId: string },
+  row: BillingNotice & { parentUserId: string },
   deps: BillingNoticeRunDeps,
-  send: SendAttempt,
 ): Promise<RowOutcome> {
   const facts = await readNoticeFacts(database, row, {
     subscriptions: deps.subscriptions,
@@ -394,31 +377,37 @@ async function writeAndSend(
   const beforeSend = async () => {
     const held = await heldAtSend(database, row, facts.writer.plan);
     if (held) throw new ChannelRetryableError('sms', held, 'billing notice: held at send');
-    send.reached = { ...row, mayHaveLanded: true };
+    const marked = await database
+      .update(schema.billingNotices)
+      .set({ mayHaveLanded: true, updatedAt: deps.now() })
+      .where(and(eq(schema.billingNotices.id, row.id), eq(schema.billingNotices.status, 'sending')))
+      .returning({ id: schema.billingNotices.id });
+    if (marked.length === 0) {
+      throw new ChannelRetryableError('sms', LEFT_SENDING, 'billing notice: row left sending');
+    }
   };
   let result: DispatchResult;
   try {
     result = await deps.dispatch(message, beforeSend);
   } catch (err) {
+    if (err instanceof ChannelRetryableError && err.code === LEFT_SENDING) return 'skipped';
     // A throw after Linq accepted (the thread write, say) is still a text they received.
     if (await settleIfAccepted(database, row, deps)) return 'sent';
-    if (send.reached) return failAttempt(database, send.reached, 'not_confirmed', deps);
-    if (err instanceof ChannelRetryableError) {
-      if (err.code === OPT_OUT_HELD || err.code === FACTS_MOVED) {
-        const wait = err.code === OPT_OUT_HELD ? OPT_OUT_RETRY_MS : FACTS_MOVED_RETRY_MS;
-        await returnToOpen(
-          database,
-          row,
-          { nextTryAt: new Date(deps.now().getTime() + wait), attempts: row.attempts },
-          deps,
-        );
-        return 'held';
-      }
-      return failAttempt(database, row, failureOf(err.code), deps);
+    if (!(err instanceof ChannelRetryableError)) throw err;
+    if (err.code === OPT_OUT_HELD || err.code === FACTS_MOVED) {
+      const wait = err.code === OPT_OUT_HELD ? OPT_OUT_RETRY_MS : FACTS_MOVED_RETRY_MS;
+      await returnToOpen(
+        database,
+        row,
+        { nextTryAt: new Date(deps.now().getTime() + wait), attempts: row.attempts },
+        deps,
+      );
+      return 'held';
     }
-    throw err;
+    const failure = failureOf(err.code);
+    return failAttempt(database, row, failure === 'claim_gate' ? failure : 'not_confirmed', deps);
   }
-  return settleDispatch(database, row, result, send.reached, deps);
+  return settleDispatch(database, row, result, deps);
 }
 
 /**
@@ -429,7 +418,7 @@ async function writeAndSend(
  */
 async function heldAtSend(
   database: Database,
-  row: NoticeInHand & { parentUserId: string },
+  row: BillingNotice & { parentUserId: string },
   plan: BillingPlanName,
 ): Promise<typeof OPT_OUT_HELD | typeof FACTS_MOVED | null> {
   if (await isParentHeld(database, row.parentUserId)) return OPT_OUT_HELD;
@@ -440,7 +429,7 @@ async function heldAtSend(
     .limit(1);
   if (!family || billingPlanName(family.planTier) !== plan) return FACTS_MOVED;
   // This row takes no merges now, so a newer row is that event's own text.
-  if (mayHaveLanded(row)) return null;
+  if (row.mayHaveLanded) return null;
   const [newer] = await database
     .select({ id: schema.billingNotices.id })
     .from(schema.billingNotices)
@@ -467,9 +456,8 @@ function failureOf(code: string): NoticeFailure {
 
 async function settleDispatch(
   database: Database,
-  row: NoticeInHand & { parentUserId: string },
+  row: BillingNotice & { parentUserId: string },
   result: DispatchResult,
-  reached: SendAttempt['reached'],
   deps: BillingNoticeRunDeps,
 ): Promise<RowOutcome> {
   const leg = result.legs[0];
@@ -478,7 +466,7 @@ async function settleDispatch(
     case 'sent':
     case 'deduped':
       if (await settleIfAccepted(database, row, deps)) return 'sent';
-      return failAttempt(database, reached ?? row, 'not_confirmed', deps);
+      return failAttempt(database, row, 'not_confirmed', deps);
     case 'suppressed_quiet_hours':
       await returnToOpen(
         database,
@@ -495,10 +483,19 @@ async function settleDispatch(
     case 'suppressed_consent':
       return dropNotice(database, row, 'no_consent', deps);
     case 'failed':
+      // `row` is as it stood before this attempt: a refusal says nothing about an earlier POST.
+      if (!row.mayHaveLanded) await clearMayHaveLanded(database, row.id, deps.now());
       return failAttempt(database, row, failureOf(leg.reason ?? 'unknown'), deps);
     case 'suppressed_cap':
       return failAttempt(database, row, 'send_refused', deps);
   }
+}
+
+async function clearMayHaveLanded(database: Database, id: string, now: Date): Promise<void> {
+  await database
+    .update(schema.billingNotices)
+    .set({ mayHaveLanded: false, updatedAt: now })
+    .where(and(eq(schema.billingNotices.id, id), eq(schema.billingNotices.status, 'sending')));
 }
 
 /** The ledger row Linq accepted for this notice: written only from Linq's own answer. */
@@ -564,7 +561,7 @@ async function takeOver(
     .returning();
   if (!claimed) return 'skipped';
   if (await settleIfAccepted(database, claimed, deps)) return 'sent';
-  return failAttempt(database, { ...claimed, mayHaveLanded: true }, 'send_abandoned', deps);
+  return failAttempt(database, claimed, 'send_abandoned', deps);
 }
 
 async function duplicateUnderReview(
@@ -745,12 +742,12 @@ async function waitOpen(
 /**
  * Back to `open`, so the row can absorb a later event. An event that arrived during the
  * attempt opened a row of its own: this one's facts merge into it and this one drops as
- * `merged`, so a refund and a cancel still end up as one text. A try that may have landed
+ * `merged`, so a refund and a cancel still end up as one text. A row that may have landed
  * goes back to `unconfirmed` instead, and merges nothing.
  */
 async function returnToOpen(
   database: Database,
-  row: NoticeInHand,
+  row: BillingNotice,
   next: { nextTryAt: Date; attempts: number },
   deps: BillingNoticeRunDeps,
 ): Promise<void> {
@@ -770,7 +767,7 @@ async function returnToOpen(
     ) {
       return;
     }
-    if (mayHaveLanded(row) || current.status === 'unconfirmed') {
+    if (current.mayHaveLanded) {
       await tx
         .update(schema.billingNotices)
         .set({
@@ -832,21 +829,36 @@ async function returnToOpen(
  */
 async function failAttempt(
   database: Database,
-  row: NoticeInHand,
+  row: BillingNotice,
   failure: NoticeFailure,
   deps: BillingNoticeRunDeps,
 ): Promise<RowOutcome> {
+  const [current] = await database
+    .select({
+      mayHaveLanded: schema.billingNotices.mayHaveLanded,
+      parentUserId: schema.billingNotices.parentUserId,
+    })
+    .from(schema.billingNotices)
+    .where(
+      and(
+        eq(schema.billingNotices.id, row.id),
+        inArray(schema.billingNotices.status, ['open', 'sending', 'unconfirmed']),
+      ),
+    )
+    .limit(1);
+  if (!current) return 'skipped';
+  // The tick's copy of a row it closed has no payer; a gate's copy has one not yet stored.
+  const held = { ...row, parentUserId: row.parentUserId ?? current.parentUserId };
   const now = deps.now();
   const step = nextComposeHold(row.attempts, now);
   if (step.action === 'exhausted') {
-    const unconfirmed = mayHaveLanded(row);
-    const reason = unconfirmed ? 'send_unconfirmed' : 'send_retries_exhausted';
-    await finishDrop(database, row, reason, row.attempts + 1, now);
-    await pageUnsent(deps.pager, row, unconfirmed ? 'not_confirmed' : failure);
+    const reason = current.mayHaveLanded ? 'send_unconfirmed' : 'send_retries_exhausted';
+    await finishDrop(database, held, reason, row.attempts + 1, now);
+    await pageUnsent(deps.pager, held, current.mayHaveLanded ? 'not_confirmed' : failure);
     return 'dropped';
   }
-  await writeNoticeAudit.failed(database, row, { reason: failure, attempts: step.attempts });
-  await returnToOpen(database, row, { nextTryAt: step.nextTryAt, attempts: step.attempts }, deps);
+  await writeNoticeAudit.failed(database, held, { reason: failure, attempts: step.attempts });
+  await returnToOpen(database, held, { nextTryAt: step.nextTryAt, attempts: step.attempts }, deps);
   return 'retrying';
 }
 
