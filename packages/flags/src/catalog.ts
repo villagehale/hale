@@ -187,6 +187,8 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
+  // VIL-742. The RSVP page names no reply keyword. Exact `true`.
+  exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
   // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply
   // keyword. Exact `true`.
   exact('no-stop-keyword-copy', 'NO_STOP_KEYWORD_COPY_ENABLED'),
