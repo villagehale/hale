@@ -199,6 +199,14 @@ export const OPS_PAGE_VOCABULARY = {
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-734 · a driver's schedule-change text that reached them on no try. */
+  team_schedule_driver_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started', 'held_too_long'],
+  },
+  /** VIL-734 · a group reminder that closed unsent: nothing reached the person who asked. */
+  group_reminder_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner', 'retries_ran_out'],
+  },
   /** VIL-735 · a billing text owed to a parent that was not sent. Each is one family's money. */
   billing_notice_unsent: {
     lane: ['payment', 'plan_change'],

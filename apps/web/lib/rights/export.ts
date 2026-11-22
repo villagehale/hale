@@ -51,6 +51,9 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
   'linq_secret_santa_draw_sent',
   'linq_secret_santa_noted',
+  // VIL-734. That one driver stopped Hale, left no number, left the household, or has a text
+  // still unread.
+  'team_schedule_driver_unreachable',
   // VIL-735. A text about one adult's payment. Their own copy carries the notice itself.
   'billing_notice_sent',
   'billing_notice_send_failed',
@@ -62,6 +65,7 @@ const OWN_ROWS_IN_EXPORT = [
   'crisis_unanswered',
   'opt_out_hold_read',
   'opt_out_hold_cleared',
+  'team_schedule_driver_unreachable',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {
