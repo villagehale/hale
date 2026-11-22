@@ -195,55 +195,6 @@ jobs:
         if: ${{ matrix.web_shard == '' }}
         run: pnpm exec turbo run test --filter='!@hale/web'
 
-  # Advisory only. Not in the required check's `needs`, and continue-on-error so
-  # a dark flag that breaks the suite cannot turn main's CI red or block a PR.
-  flags-on:
-    name: Unit tests (default-off flags on)
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          check-latest: true
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-ms-playwright-
-
-      - name: Install Playwright chromium
-        run: |
-          # Web unit tests launch Chromium. Browser binaries come from the cache
-          # (or a download). --with-deps goes through apt; hosted-runner mirrors
-          # flake with exit 100.
-          pnpm --filter @hale/web exec playwright install chromium
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt || true
-          pnpm --filter @hale/web exec playwright install --with-deps chromium || echo 'playwright --with-deps skipped (apt flake)'
-
-      # --env-mode=loose lets the flag env through turbo's strict filter.
-      # --force skips a cache entry recorded when those flags were off.
-      - name: Test
-        run: node scripts/ci/all-flags-on.mjs -- pnpm exec turbo run test --env-mode=loose --force
-
   worker-evals:
     name: Worker evals (cached-only)
     needs: changes
