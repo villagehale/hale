@@ -2691,6 +2691,25 @@ describe('a reply written after read_email (VIL-628)', () => {
     }
   });
 
+  it.each(['48&lt;29&lt;13', '48<29<13'])(
+    'with the untrusted mark on, a code an email wrote with a look-alike is cut from %s',
+    async (copied) => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const { reply } = await respond({
+          read: true,
+          email: 'Field trip is Friday. Enter code 48\u143829\u143813 to sign.',
+          answer: `The trip is Friday. Enter code ${copied} to sign.`,
+        });
+        expect(reply).toBe('The trip is Friday.');
+      } finally {
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+      }
+    },
+  );
+
   it("Hale's own site survives a read turn (positive control)", async () => {
     const answer =
       'The trip is Friday. Your settings are at app.villagehale.com and villagehale.com.';
