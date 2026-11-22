@@ -232,12 +232,25 @@ describe('acceptPartyGuestLine', () => {
       expect(acceptPartyGuestLine(say(title), { ...REMINDER, title })).toBeNull();
     });
 
-    it.each(['55-555', '5 5 5 5 5', '555.555', '(555) 55', '123456', '5 55555'])(
-      'refuses a code written as %s',
-      (code) => {
-        expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win to ${code}.`, REMINDER)).toBeNull();
-      },
-    );
+    it.each([
+      '55-555',
+      '5 5 5 5 5',
+      '555.555',
+      '(555) 55',
+      '123456',
+      '5 55555',
+      '55,555',
+      '55/555',
+      '55_555',
+      '5   5   5   5   5',
+      '55:555',
+      '12:345',
+      '12 3456',
+      '1234 5',
+      '1 2345',
+    ])('refuses a code written as %s', (code) => {
+      expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win to ${code}.`, REMINDER)).toBeNull();
+    });
 
     it('passes an ordinary time, date and street number (positive control)', () => {
       const line: PartyGuestLine = { ...REMINDER, where: 'Suite 12, 1420 Elm St' };
@@ -251,13 +264,17 @@ describe('acceptPartyGuestLine', () => {
     const at = (place: string) =>
       `It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at ${place}.`;
 
-    it.each(['3-1420 Elm St', '12-345 Main St', '12345 Elm St', 'Unit 3, 12-345 Main St'])(
-      'keeps %s and passes a draft that names it once',
-      (place) => {
-        expect(placeWithoutTextBackNumbers(place)).toBe(place);
-        expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
-      },
-    );
+    it.each([
+      '3-1420 Elm St',
+      '12-345 Main St',
+      '12345 Elm St',
+      'Unit 3, 12-345 Main St',
+      'Suite 12, 1420 Elm St',
+      '10265, rue Sainte-Catherine',
+    ])('keeps %s and passes a draft that names it once', (place) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe(place);
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
+    });
 
     it('refuses the same number named a second time', () => {
       const line: PartyGuestLine = { ...REMINDER, where: '12-345 Main St' };
@@ -269,7 +286,9 @@ describe('acceptPartyGuestLine', () => {
   it.each([
     "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12 2026 at 2:00 PM at 14 Elm St.",
     "It's Hale with the reminder you asked for: Nora's party is tomorrow, 12/12/2026 14:00 at 14 Elm St.",
-  ])('passes a date with its year: %s', (draft) => {
+    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2026 at 2:00 PM at 14 Elm St.",
+    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2:00 PM at 14 Elm St.",
+  ])('passes an ordinary date and time: %s', (draft) => {
     expect(acceptPartyGuestLine(draft, REMINDER)).toBe(draft);
   });
 
@@ -280,6 +299,14 @@ describe('acceptPartyGuestLine', () => {
   describe('withoutTextBackNumbers', () => {
     it('keeps no street number in a title', () => {
       expect(withoutTextBackNumbers('12345 Elm St party')).toBe('Elm St party');
+    });
+
+    it('cuts a code split around four digits', () => {
+      expect(withoutTextBackNumbers('Text win to 12 3456')).toBe('Text win to');
+    });
+
+    it.each(['Party Dec 12 2026', 'Party Dec 12 2:30'])('leaves the date in %s', (title) => {
+      expect(withoutTextBackNumbers(title)).toBe(title);
     });
 
     it.each([

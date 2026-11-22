@@ -68,27 +68,34 @@ const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const LETTER = /\p{L}/u;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
 /**
- * A number to text back: five or six digits, spaced or punctuated or not. Too short for the
- * phone check, and a longer run is that check's to read.
+ * A number to text back in a draft: five or six digits with only spaces or punctuation
+ * between them. Too short for the phone check, and a longer run is that check's to read.
  */
-const TEXT_BACK_RUNS = /(?<!\d[\s.()-]{0,2})\d(?:[\s.()-]{0,2}\d){4,5}(?![\s.()-]{0,2}\d)/g;
-const STREET_NAME_NEXT = /^\s+\p{L}/u;
+const NUMBER_IN_DRAFT =
+  /(?<!\p{Nd}[^\p{L}\p{N}\n]*)\p{Nd}(?:[^\p{L}\p{N}\n]*\p{Nd}){4,5}(?![^\p{L}\p{N}\n]*\p{Nd})/gu;
+/**
+ * The same in a host's title or place, read more narrowly: a comma parts an address and a
+ * colon a time. A number this leaves in a fact still has to pass the draft's check.
+ */
+const NUMBER_IN_FACT =
+  /(?<!\p{Nd}[\s.()-]{0,2})\p{Nd}(?:[\s.()-]{0,2}\p{Nd}){4,5}(?![\s.()-]{0,2}\p{Nd})/gu;
+/** A real clock time only, so "55:555" stays a number. */
+const CLOCK_TIME = /(?<!\p{Nd})(?:[01]?\d|2[0-3]):[0-5]\d(?!\p{Nd})/gu;
+/** "12 2026" or "12, 2026". */
+const DAY_AND_YEAR = /^(?:[1-9]|[12]\d|3[01])[^\p{L}\p{N}\n]*(?:19|20)\d{2}$/u;
+const STREET_NAME_NEXT = /^,?\s+\p{L}/u;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 
-/** "12 2026" and "3-1420": a day and its year, or a unit and its street number. */
-function splitsAroundFourDigits(run: string): boolean {
-  const groups = run.split(/\D+/);
-  return groups.length > 1 && groups.some((group) => group.length === 4);
-}
-
 function holdsTextBackNumber(text: string): boolean {
-  return [...text.matchAll(TEXT_BACK_RUNS)].some(([run]) => !splitsAroundFourDigits(run));
+  return [...text.replace(CLOCK_TIME, '\n').matchAll(NUMBER_IN_DRAFT)].some(
+    ([run]) => !DAY_AND_YEAR.test(run),
+  );
 }
 
 function cutNumbers(fact: string, keeps: (run: string, at: number) => boolean): string {
-  const cut = fact.replace(TEXT_BACK_RUNS, (run: string, at: number) =>
-    splitsAroundFourDigits(run) || keeps(run, at) ? run : ' ',
+  const cut = fact.replace(NUMBER_IN_FACT, (run: string, at: number) =>
+    DAY_AND_YEAR.test(run) || keeps(run, at) ? run : ' ',
   );
   if (cut === fact) return fact;
   return cut
