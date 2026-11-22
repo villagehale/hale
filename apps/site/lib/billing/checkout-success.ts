@@ -45,6 +45,14 @@ export function billingThreadNoticesEnabled(
   return env.BILLING_THREAD_NOTICES_ENABLED === 'true';
 }
 
+/** State H: Stripe's cancel_url brought this visitor back to the pricing page. */
+export function checkoutWasCancelled(
+  search: Record<string, string | string[] | undefined>,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return checkoutSuccessStatesEnabled(env) && search.checkout === 'cancelled';
+}
+
 export function googleAdsConversionSendTo(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
@@ -62,14 +70,13 @@ export function metaPixelIdFromEnv(
 export type PaidPlanName = 'Plus' | 'Max';
 
 /**
- * The page state hale-web chose from Stripe and its DB. Only the active plan carries a
- * name, and the plan name always comes from the verified tier.
+ * The page state hale-web chose from Stripe and its DB. The plan name always comes from
+ * the verified tier.
  */
 export type CheckoutSuccessView =
   | {
       readonly state: 'plan_active';
       readonly plan: PaidPlanName;
-      readonly firstName: string | null;
       readonly checkInDue: boolean;
     }
   | { readonly state: 'upgraded' }
@@ -163,11 +170,7 @@ function checkoutViewFromJson(
     const plan = planNameForTier(tier);
     if (!plan) return { state: 'receipt' };
     if (state === 'already_on_plan') return { state, plan };
-    const firstName =
-      typeof payload.firstName === 'string' && payload.firstName.length > 0
-        ? payload.firstName
-        : null;
-    return { state, plan, firstName, checkInDue: payload.checkInDue === true };
+    return { state, plan, checkInDue: payload.checkInDue === true };
   }
   return isPlainViewState(state) ? { state } : null;
 }

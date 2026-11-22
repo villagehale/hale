@@ -269,7 +269,6 @@ describe('checkoutViewFromSession on real billing rows', () => {
     const { p } = await activeFamily();
     expect(await view(p)).toEqual({
       state: 'plan_active',
-      firstName: 'Riley',
       checkInDue: false,
     });
   });
@@ -315,7 +314,6 @@ describe('checkoutViewFromSession on real billing rows', () => {
     const firstPage = vi.fn().mockResolvedValue('paged');
     expect(await view(first, { page: firstPage })).toMatchObject({
       state: 'plan_active',
-      firstName: 'Riley',
     });
     expect(firstPage).not.toHaveBeenCalled();
   });
@@ -516,11 +514,10 @@ describe('checkoutViewFromSession on real billing rows', () => {
 
     expect(await view({ ...p, expiresAt: nowSeconds() + 3600 })).toMatchObject({
       state: 'plan_active',
-      firstName: 'Riley',
     });
   });
 
-  it('greets by name only in the half hour after paying', async () => {
+  it('promises the check-in only in the half hour after paying', async () => {
     const { familyId, parentUserId } = await seedFamily(test.database);
     await setName(parentUserId, 'Riley Parent');
     const now = nowSeconds();
@@ -541,12 +538,10 @@ describe('checkoutViewFromSession on real billing rows', () => {
 
     expect(await view(p, { env, findDirectChat })).toEqual({
       state: 'plan_active',
-      firstName: null,
       checkInDue: false,
     });
     expect(await view({ ...p, subscriptionCreated: now - 60 }, { env, findDirectChat })).toEqual({
       state: 'plan_active',
-      firstName: 'Riley',
       checkInDue: true,
     });
   });
@@ -604,7 +599,7 @@ describe('who paid', () => {
     expect(await view(p)).toEqual({ state: 'new_visitor' });
 
     await inbound(familyId, coparent);
-    expect(await view(p)).toMatchObject({ state: 'plan_active', firstName: 'Sam' });
+    expect(await view(p)).toMatchObject({ state: 'plan_active' });
   });
 
   it('counts an inbound SMS outside the group as a 1:1 thread, and a group one as none', async () => {
@@ -631,7 +626,7 @@ describe('who paid', () => {
     const p = purchase(familyId);
     await startCheckout(familyId, parentUserId, p.created);
     await applyEvent(completedEvent(p));
-    expect(await view(p)).toEqual({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+    expect(await view(p)).toEqual({ state: 'plan_active', checkInDue: false });
   });
 
   it('a row with no group bit inside the family group is not a thread', async () => {
@@ -656,7 +651,8 @@ describe('who paid', () => {
     await startCheckout(familyId, parentUserId, p.created);
     await startCheckout(familyId, other, p.created + 3600);
     await applyEvent(completedEvent(p));
-    expect(await view(p)).toMatchObject({ state: 'plan_active', firstName: 'Avery' });
+    expect(await resolveCheckoutPayer(test.database, familyId, p.created)).toBe(parentUserId);
+    expect(await view(p)).toMatchObject({ state: 'plan_active' });
   });
 
   it('names nobody when two parents started checkout inside this session window', async () => {
@@ -692,20 +688,7 @@ describe('who paid', () => {
     expect(await resolveCheckoutPayer(test.database, familyId, p.created)).toBeNull();
   });
 
-  it('says plain thanks with no stored name, and never reads the unconfirmed Google name', async () => {
-    const { familyId, parentUserId } = await seedFamily(test.database);
-    await test.database
-      .update(schema.users)
-      .set({ name: null, googleGivenName: 'Unconfirmed' })
-      .where(eq(schema.users.id, parentUserId));
-    await inbound(familyId, parentUserId);
-    const p = purchase(familyId);
-    await startCheckout(familyId, parentUserId, p.created);
-    await applyEvent(completedEvent(p));
-    expect(await view(p)).toEqual({ state: 'plan_active', firstName: null, checkInDue: false });
-  });
-
-  it('carries no name or check-in on any state but the active plan', async () => {
+  it('carries no check-in on any state but the active plan', async () => {
     const { familyId, parentUserId } = await seedFamily(test.database);
     await setName(parentUserId, 'Named Parent');
     const p = purchase(familyId);
@@ -746,7 +729,6 @@ describe('the check-in sentence', () => {
     const { p, sinceBefore, findDirectChat } = await checkInFamily();
     expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
       state: 'plan_active',
-      firstName: 'Riley',
       checkInDue: true,
     });
     expect(findDirectChat).toHaveBeenCalledWith(PARENT_PHONE);
@@ -831,7 +813,7 @@ describe('the check-in sentence', () => {
     const sinceBefore = new Date((p.subscriptionCreated - 3600) * 1000).toISOString();
     expect(
       await view(p, { env: armed(sinceBefore), findDirectChat: async () => chat }),
-    ).toMatchObject({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+    ).toMatchObject({ state: 'plan_active', checkInDue: false });
   });
 
   it('is not due when the only inbound text is an old SMS with no Linq chat', async () => {
@@ -855,7 +837,6 @@ describe('the check-in sentence', () => {
     };
     expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
       state: 'plan_active',
-      firstName: 'Riley',
       checkInDue: false,
     });
   });
@@ -868,7 +849,6 @@ describe('the check-in sentence', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await view(p, { env: armed(sinceBefore), findDirectChat })).toEqual({
       state: 'plan_active',
-      firstName: 'Riley',
       checkInDue: false,
     });
     expect(warn).toHaveBeenCalledWith('checkout view: thread proof failed', { err: 'TypeError' });
@@ -905,10 +885,10 @@ describe('the /founding already-paid screen', () => {
     expect(await alreadyPaidParentHasThread(test.database, familyId, parentUserId, ON)).toBe(true);
   });
 
-  it('answers false and names the failure when the read fails', async () => {
+  it('answers null, not false, and names the failure when the read fails', async () => {
     const { familyId, parentUserId } = await seedFamily(test.database);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(await alreadyPaidParentHasThread(untouchable(), familyId, parentUserId, ON)).toBe(false);
+    expect(await alreadyPaidParentHasThread(untouchable(), familyId, parentUserId, ON)).toBeNull();
     expect(warn).toHaveBeenCalledWith('founding paid screen: thread read failed', {
       err: 'Error',
     });

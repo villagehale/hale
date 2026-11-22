@@ -57,6 +57,7 @@
     "metaDescription": "Hale is an iMessage and text helper that plans kids’ activities and the family year for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
+    "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
     "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do."
   },
@@ -116,7 +117,6 @@
     "unpaidHeading": "Checkout",
     "unpaidLede": "This page confirms a payment after Stripe has taken it.",
     "continue": "Open Hale",
-    "thanksNamed": "Thanks, {name}.",
     "thanks": "Thanks.",
     "keepTexting": "Keep texting Hale like you do now.",
     "checkIn": "Hale will check in with you in your thread shortly.",

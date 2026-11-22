@@ -102,6 +102,28 @@ describe('/founding join copy', () => {
     expect(screen.querySelector('a')?.getAttribute('href')).toBe(`sms:${HALE_NUMBER}`);
   });
 
+  it('claims neither line when the thread read failed, and opens an empty composer', async () => {
+    vi.stubGlobal('navigator', { userAgent: IPHONE });
+    const screen = await renderAlreadyPaidScreen(
+      { alreadyPaid: true, hasThread: null },
+      { smsNumber: HALE_NUMBER },
+    );
+    expect(screen.textContent).toContain('This number is already on a paid plan.');
+    expect(screen.textContent).not.toContain(START);
+    expect(screen.textContent).not.toContain(KEEP_TEXTING);
+    expect(screen.querySelector('a')?.getAttribute('href')).toBe(`sms:${HALE_NUMBER}`);
+  });
+
+  it('leaves the door off for an unread thread on a device that cannot open it', async () => {
+    vi.stubGlobal('navigator', { userAgent: WINDOWS });
+    const screen = await renderAlreadyPaidScreen(
+      { alreadyPaid: true, hasThread: null },
+      { smsNumber: HALE_NUMBER },
+    );
+    expect(screen.textContent).not.toContain(START);
+    expect(screen.querySelector('a')).toBeNull();
+  });
+
   it('leaves the door off for that parent on a device that cannot open their thread', async () => {
     vi.stubGlobal('navigator', { userAgent: WINDOWS });
     const screen = await renderAlreadyPaidScreen(

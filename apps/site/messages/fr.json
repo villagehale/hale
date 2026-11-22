@@ -57,6 +57,7 @@
     "metaDescription": "Hale est une aide par iMessage et texto qui planifie les activités des enfants et l’année familiale pour les parents aux États-Unis et au Canada. Créée par Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc."
   },
   "Pricing": {
+    "noCharge": "Aucun montant n’a été débité.",
     "metaTitle": "Tarifs · Hale",
     "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire."
   },
@@ -112,7 +113,6 @@
     "unpaidHeading": "Paiement",
     "unpaidLede": "Cette page confirme un paiement une fois que Stripe l’a reçu.",
     "continue": "Ouvrir Hale",
-    "thanksNamed": "Merci, {name}.",
     "thanks": "Merci.",
     "keepTexting": "Continue de texter Hale comme d’habitude.",
     "checkIn": "Hale te fera signe dans ta conversation sous peu.",

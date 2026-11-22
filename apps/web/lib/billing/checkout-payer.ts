@@ -84,15 +84,15 @@ export async function hasOneToOneThread(
 
 /**
  * For the /founding "already on a paid plan" screen, behind the page-state flag. The code
- * is already spent by the time this runs, so a failed read answers false and the screen
- * keeps today's wording instead of costing the parent a 500.
+ * is already spent by the time this runs, so a failed read answers null instead of costing
+ * the parent a 500, and the screen then claims neither "keep texting" nor "start".
  */
 export async function alreadyPaidParentHasThread(
   database: Database,
   familyId: string,
   parentUserId: string,
   env: Record<string, string | undefined> = process.env,
-): Promise<boolean> {
+): Promise<boolean | null> {
   if (!checkoutSuccessStatesEnabled(env)) return false;
   try {
     const [family] = await database
@@ -106,6 +106,6 @@ export async function alreadyPaidParentHasThread(
     console.warn('founding paid screen: thread read failed', {
       err: err instanceof Error ? err.name : 'unknown',
     });
-    return false;
+    return null;
   }
 }

@@ -2,7 +2,6 @@ import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { and, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
-import { firstName } from '~/lib/loop/reminders/group/standing';
 import type { OpsPage, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
 import { hasOneToOneThread, resolveCheckoutPayer } from './checkout-payer.js';
@@ -12,14 +11,15 @@ import { payerThreadProof } from './notices/thread';
 /**
  * Which state the checkout success page shows, from the Stripe session and Hale's DB.
  *
- * Whoever holds the success URL can read this answer, so two rules hold: family rows are
- * read only until the session's `expires_at`, and `firstName` / `checkInDue` exist only
- * on `plan_active`. `upgraded` and `already_on_plan` render on the page but nothing here
+ * Whoever holds the success URL can read this answer, and the session id is also the
+ * purchase id Google and Meta receive. So it carries no personal data, family rows are
+ * read only until the session's `expires_at`, and `checkInDue` exists only on
+ * `plan_active`. `upgraded` and `already_on_plan` render on the page but nothing here
  * selects them: no billing flow charges "only the difference" or queues a duplicate's
  * refund, so their copy would be untrue today.
  */
 export type CheckoutSuccessView =
-  | { state: 'plan_active'; firstName: string | null; checkInDue: boolean }
+  | { state: 'plan_active'; checkInDue: boolean }
   | { state: 'upgraded' }
   | { state: 'already_on_plan' }
   | { state: 'new_visitor' }
@@ -38,7 +38,7 @@ export interface SessionFacts {
   tier: 'plus' | 'family' | null;
   /** now < session.expires_at. Family rows are read only while this holds. */
   fresh: boolean;
-  /** Inside the half hour after the subscription began. Only then may the page greet the payer. */
+  /** Inside the half hour after the subscription began. Only then is a check-in "shortly". */
   justPaid: boolean;
   createdAt: number;
   familyId: string | null;
@@ -75,11 +75,8 @@ const LIVE_SUBSCRIPTION = new Set<string | null>(['active', 'trialing', 'past_du
 const ENDED_SUBSCRIPTION = new Set<string | null>(['canceled', 'incomplete_expired']);
 /** Stops clock skew turning a real first purchase into a false duplicate. */
 const PURCHASE_CLOCK_SKEW_SECONDS = 60;
-/**
- * The session id is the only key to this answer, and it is also the purchase id Google and
- * Meta receive. So the name and the check-in last only as long as the buyer's own landing.
- */
-const GREETING_WINDOW_SECONDS = 30 * 60;
+/** "Shortly" stops being true after this, and it bounds the Linq read a public URL can cause. */
+const CHECK_IN_WINDOW_SECONDS = 30 * 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -115,7 +112,7 @@ export function sessionFactsFromStripe(
     fresh: expiresAt !== null && now.getTime() < expiresAt * 1000,
     justPaid:
       subscriptionCreated !== null &&
-      now.getTime() < (subscriptionCreated + GREETING_WINDOW_SECONDS) * 1000,
+      now.getTime() < (subscriptionCreated + CHECK_IN_WINDOW_SECONDS) * 1000,
     createdAt: readNumber(raw.created) ?? 0,
     familyId: familyId && isUuid(familyId) ? familyId : null,
     subscriptionId: subscription ? readString(subscription.id) : readString(raw.subscription),
@@ -297,15 +294,6 @@ async function checkInIsDue(
   }
 }
 
-async function payerFirstName(database: Database, payerId: string): Promise<string | null> {
-  const [user] = await database
-    .select({ name: schema.users.name })
-    .from(schema.users)
-    .where(eq(schema.users.id, payerId))
-    .limit(1);
-  return firstName(user?.name);
-}
-
 async function familyView(
   database: Database,
   s: SessionFacts,
@@ -327,12 +315,8 @@ async function familyView(
   }
   if (state !== 'plan_active') return { state };
   const payerId = s.justPaid ? (family?.payerId ?? null) : null;
-  if (payerId === null) return { state, firstName: null, checkInDue: false };
-  const [name, checkInDue] = await Promise.all([
-    payerFirstName(database, payerId),
-    checkInIsDue(database, s, payerId, deps),
-  ]);
-  return { state, firstName: name, checkInDue };
+  if (payerId === null) return { state, checkInDue: false };
+  return { state, checkInDue: await checkInIsDue(database, s, payerId, deps) };
 }
 
 /**

@@ -87,6 +87,7 @@ describe('POST /api/promo/join/verify', () => {
   it.each([
     [true, { status: 'ok', alreadyPaid: true, hasThread: true }],
     [false, { status: 'ok', alreadyPaid: true }],
+    [null, { status: 'ok', alreadyPaid: true, hasThread: null }],
   ])('a paid number with a thread answer of %s gets %j', async (hasThread, expected) => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');

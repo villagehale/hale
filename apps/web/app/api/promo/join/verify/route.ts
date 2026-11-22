@@ -50,12 +50,13 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'unavailable' }, { status: 503 });
   }
 
-  const hasThread =
-    result.alreadyPaid && (await alreadyPaidParentHasThread(db(), result.familyId, result.userId));
+  const hasThread = result.alreadyPaid
+    ? await alreadyPaidParentHasThread(db(), result.familyId, result.userId)
+    : false;
   const res = NextResponse.json({
     status: 'ok',
     alreadyPaid: result.alreadyPaid,
-    ...(hasThread ? { hasThread: true } : {}),
+    ...(hasThread === false ? {} : { hasThread }),
   });
   res.cookies.set(PROMO_JOIN_COOKIE, token, {
     httpOnly: true,

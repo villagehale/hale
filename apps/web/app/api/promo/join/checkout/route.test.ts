@@ -170,6 +170,11 @@ describe('POST /api/promo/join/checkout', () => {
     expect(paidWithThread.status).toBe(409);
     expect(await paidWithThread.json()).toEqual({ error: 'already_paid', hasThread: true });
     expect(threadMock).toHaveBeenLastCalledWith(expect.anything(), 'fam-9', 'user-9');
+
+    threadMock.mockResolvedValue(null);
+    const paidUnread = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(paidUnread.status).toBe(409);
+    expect(await paidUnread.json()).toEqual({ error: 'already_paid', hasThread: null });
   });
 
   it('opens Max promo checkout when the body asks for max', async () => {

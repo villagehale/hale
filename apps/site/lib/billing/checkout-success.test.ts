@@ -164,10 +164,10 @@ describe('checkoutFactsFromJson view', () => {
         ...BASE,
         view: { state: 'plan_active', firstName: 'Riley', checkInDue: true, familyId: 'x' },
       })?.view,
-    ).toEqual({ state: 'plan_active', plan: 'Plus', firstName: 'Riley', checkInDue: true });
+    ).toEqual({ state: 'plan_active', plan: 'Plus', checkInDue: true });
     expect(
       checkoutFactsFromJson({ ...BASE, tier: 'family', view: { state: 'plan_active' } })?.view,
-    ).toEqual({ state: 'plan_active', plan: 'Max', firstName: null, checkInDue: false });
+    ).toEqual({ state: 'plan_active', plan: 'Max', checkInDue: false });
   });
 
   it('reads a check-in that is not exactly true as false', () => {

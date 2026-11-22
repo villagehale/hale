@@ -16,11 +16,7 @@ import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry'
 
 const OPENS_THE_COMPOSER: readonly Platform[] = ['apple', 'android'];
 
-/**
- * The checkout success page, one state per buyer. Whoever holds the URL sees this, so
- * only the active plan shows a name, and that name sits in `ph-no-capture` so a session
- * replay records a blank box instead.
- */
+/** The checkout success page, one state per buyer. Whoever holds the URL sees this. */
 export function CheckoutState({
   view,
   locale,
@@ -84,11 +80,7 @@ export function CheckoutState({
         <>
           {heading(t('plan', { plan: view.plan }))}
           <p className="sp-lede">
-            {view.firstName ? (
-              <span className="ph-no-capture">{t('thanksNamed', { name: view.firstName })}</span>
-            ) : (
-              t('thanks')
-            )}
+            {t('thanks')}
             {sentenceGap}
             {t('keepTexting')}
             {view.checkInDue && billingThreadNoticesEnabled()

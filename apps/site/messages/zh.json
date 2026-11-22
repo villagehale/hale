@@ -57,6 +57,7 @@
     "metaDescription": "Hale 是一个通过 iMessage 和短信工作的助手，帮美国和加拿大的家长安排孩子的活动和全家的一年。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
   },
   "Pricing": {
+    "noCharge": "你没有被扣款。",
     "metaTitle": "价格 · Hale",
     "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。"
   },
@@ -116,7 +117,6 @@
     "unpaidHeading": "结账",
     "unpaidLede": "只有 Stripe 确认收款后，这里才会显示成功。",
     "continue": "打开 Hale",
-    "thanksNamed": "谢谢，{name}。",
     "thanks": "谢谢。",
     "keepTexting": "照常给 Hale 发消息就行。",
     "checkIn": "Hale 很快会在对话里联系你。",

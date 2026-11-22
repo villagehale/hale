@@ -21,6 +21,10 @@ import type { PaidTier } from '~/lib/webhooks/stripe-billing';
  * Stripe Checkout. Hale does not text first after payment: the parent uses
  * Text Hale.
  */
+function threadAnswer(value: unknown): boolean | null {
+  return value === null ? null : value === true;
+}
+
 export function FoundingJoinForm({
   plusLabel,
   maxLabel,
@@ -40,7 +44,8 @@ export function FoundingJoinForm({
   const [tries, setTries] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [verified, setVerified] = useState(false);
-  const [hasThread, setHasThread] = useState(false);
+  /** Null: the read failed, so the screen claims neither line. */
+  const [hasThread, setHasThread] = useState<boolean | null>(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -104,7 +109,7 @@ export function FoundingJoinForm({
           hasThread?: unknown;
         } | null;
         if (denied?.error === 'already_paid') {
-          setHasThread(denied.hasThread === true);
+          setHasThread(threadAnswer(denied.hasThread));
           setStep('paid');
           return;
         }
@@ -161,9 +166,9 @@ export function FoundingJoinForm({
           }
           return;
         }
-        const body = (await verify.json()) as { alreadyPaid?: boolean; hasThread?: boolean };
+        const body = (await verify.json()) as { alreadyPaid?: boolean; hasThread?: unknown };
         if (body.alreadyPaid) {
-          setHasThread(body.hasThread === true);
+          setHasThread(threadAnswer(body.hasThread));
           setStep('paid');
           return;
         }
@@ -192,20 +197,23 @@ export function FoundingJoinForm({
   if (step === 'paid') {
     // Without a composer the door is /text, the page that starts a new parent off.
     const showDoor =
-      !hasThread || (smsNumber !== '' && messagesCapable(platformFromUa(navigator.userAgent)));
+      hasThread === false ||
+      (smsNumber !== '' && messagesCapable(platformFromUa(navigator.userAgent)));
     return (
       <section className={`${stage.card} ${stage.door}`}>
         <div className={stage.act}>
           <div className={styles.stack}>
             <p className={styles.eyebrow}>Founding family</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
-            <p className={stage.lede}>
-              {hasThread ? 'Keep texting Hale like you do now.' : 'Text Hale to start.'}
-            </p>
+            {hasThread === null ? null : (
+              <p className={stage.lede}>
+                {hasThread ? 'Keep texting Hale like you do now.' : 'Text Hale to start.'}
+              </p>
+            )}
             {showDoor ? (
               <DeviceTextLink
                 smsNumber={smsNumber}
-                prefill={hasThread ? null : PORTAL_INTAKE_PREFILL}
+                prefill={hasThread === false ? PORTAL_INTAKE_PREFILL : null}
                 source={null}
               >
                 Text Hale

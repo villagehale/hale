@@ -255,13 +255,14 @@ describe('with the flag on', () => {
   });
 
   describe('A: an existing family on its first paid plan', () => {
-    it('says the plan and the name, inside an element replay does not record', async () => {
+    it('says the plan and thanks the parent, with no name even if one is sent', async () => {
       withUserAgent(IPHONE);
       stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
       const main = mainOf(await renderPage());
       expect(main).toContain('<h1 class="sp-h1">You’re on Plus.</h1>');
-      expect(main).toContain('<span class="ph-no-capture">Thanks, Riley.</span>');
-      expect(main).toContain('Keep texting Hale like you do now.');
+      expect(main).toContain('Thanks. Keep texting Hale like you do now.');
+      expect(main).not.toContain('Riley');
+      expect(main).not.toContain('ph-no-capture');
       expect(main).toContain('Text Hale');
       expect(main).toContain('Open Hale');
       expect(main).not.toContain('Hale will check in');
@@ -293,15 +294,8 @@ describe('with the flag on', () => {
       expect(main).toContain('Text Hale');
     });
 
-    it('says plain thanks with no name', async () => {
-      stubFacts({ state: 'plan_active', firstName: null, checkInDue: false });
-      const main = mainOf(await renderPage());
-      expect(main).toContain('Thanks. Keep texting Hale like you do now.');
-      expect(main).not.toContain('Thanks,');
-    });
-
     it('names the plan from the verified tier', async () => {
-      stubFacts({ state: 'plan_active', firstName: null, checkInDue: false }, { tier: 'family' });
+      stubFacts({ state: 'plan_active', checkInDue: false }, { tier: 'family' });
       expect(mainOf(await renderPage())).toContain('You’re on Max.');
     });
 
@@ -315,7 +309,7 @@ describe('with the flag on', () => {
 
       stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: true });
       expect(mainOf(await renderPage())).toContain(
-        'Keep texting Hale like you do now. Hale will check in with you in your thread shortly.',
+        'Thanks. Keep texting Hale like you do now. Hale will check in with you in your thread shortly.',
       );
     });
   });

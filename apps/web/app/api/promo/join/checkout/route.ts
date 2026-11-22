@@ -127,7 +127,7 @@ export async function POST(req: Request): Promise<Response> {
         binding.userId,
       );
       return NextResponse.json(
-        { error: 'already_paid', ...(hasThread ? { hasThread: true } : {}) },
+        { error: 'already_paid', ...(hasThread === false ? {} : { hasThread }) },
         { status: 409 },
       );
     }
