@@ -129,7 +129,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'is-hale-a-person',
     question: 'Is Hale a person?',
     answer:
-      'No, and it never pretends to be. Hale is built by Village Hale Technologies Inc., a small parent-founded company. Write to aloha@villagehale.com and a real person reads it.',
+      'No, and it never pretends to be. Hale is built by Village Hale Technologies Inc., a parent-founded company. Write to aloha@villagehale.com and a real person reads it.',
   },
   {
     id: 'is-hale-official',
