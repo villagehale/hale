@@ -306,6 +306,8 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  // A nudge the model could not write. Not a choice, so not the skipped row.
+  'proactive_nudge_unwritten',
   // VIL-226 · the per-family proactive queue and its hourly decider.
   'proactive_nudge_queued',
   // VIL-612 · another class's sweep handed its text to the decider.
@@ -1545,6 +1547,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale had nothing worth interrupting you for',
     family: 'note',
   },
+  proactive_nudge_unwritten: {
+    // Hale had something to say and could not write it, so the line above would be false.
+    // History hides the row (INTERNAL_TRAIL_VERBS); the rights export keeps it.
+    sentence: 'Hale could not write a heads-up, so it sent nothing',
+    family: 'note',
+  },
   proactive_watch_granted: { sentence: 'you let Hale watch for things to flag', family: 'done' },
   proactive_watch_declined: {
     sentence: 'you asked Hale not to watch for things to flag',
@@ -2456,6 +2464,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'activity_deep_dispatched',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
+  // A failed write. The parent's History would otherwise read it as Hale choosing quiet.
+  'proactive_nudge_unwritten',
   // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
   // VIL-735. About one adult's payment: the other parent never sees it.
