@@ -116,6 +116,8 @@ export function refusalIsRateLimit(err: unknown): boolean {
   return err instanceof LinqSendError && linq.isLinqRateLimit(err);
 }
 
+export const linqRefusedForCertain = linq.linqRefusedForCertain;
+
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 
 /** The same sentence with URLs removed. Other wording, including STOP, stays. */
