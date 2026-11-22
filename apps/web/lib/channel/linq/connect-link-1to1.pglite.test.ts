@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', HALE);
   vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'false');
 });
 
 afterEach(async () => {
@@ -403,6 +404,74 @@ describe('deliverConnectLinkOneToOne', () => {
     expect(result).toEqual({ outcome: '1to1_not_sent', code: 'not_configured' });
     expect(group.sends).toEqual([]);
     expect(await connectStep()).toBe('none');
+  });
+
+  it('VIL-744: with the flag on, the line needs no keyword and a plain way out is sent', async () => {
+    vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
+    const { familyId, userId } = await seedConfirmedGroup();
+    const direct = oneToOne();
+    const plain = 'Hale here, for Riley. The links connect your calendar. Tell me to stop anytime.';
+    const voice = fakeGroupOnboardingComposer({ body: plain });
+
+    const result = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice,
+      oneToOne: direct.send,
+    });
+
+    expect(result).toEqual({ outcome: 'sent', links: 2 });
+    expect(direct.texts.map((text) => text.body)).toEqual([plain]);
+    expect(voice.calls[0]?.input.mustMention).toEqual(['Hale', 'Riley']);
+    expect(voice.calls[0]?.input.wayOut).toBe(true);
+  });
+
+  it('VIL-744: with the flag on, a draft that names a keyword is refused and nothing is sent', async () => {
+    vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
+    const { familyId, userId } = await seedConfirmedGroup();
+    const direct = oneToOne();
+    const voice = fakeGroupOnboardingComposer({
+      body: 'Hale here, for Riley. The links connect your calendar. Reply STOP to end these.',
+    });
+
+    const result = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice,
+      oneToOne: direct.send,
+    });
+
+    expect(result).toEqual({ outcome: 'group_line_unsent', fallback: 'unusable' });
+    expect(voice.calls.map((call) => call.prompt)).toEqual(['full', 'short']);
+    expect(direct.texts).toEqual([]);
+    const trail = await verbs(familyId);
+    expect(trail).toContain('group_line_unsent');
+    expect(trail).not.toContain('connector_link_minted');
+    expect(await connectStep()).toBe('none');
+  });
+
+  it('VIL-744 positive control: with the flag off, the same draft is sent as it is today', async () => {
+    const { familyId, userId } = await seedConfirmedGroup();
+    const direct = oneToOne();
+    const today = 'Hale here, for Riley. The links connect your calendar. Reply STOP to end these.';
+    const voice = fakeGroupOnboardingComposer({ body: today });
+
+    const result = await deliverConnectLinkOneToOne(db.database, {
+      familyId,
+      userId,
+      groupChatId: GROUP,
+      now: NOW,
+      voice,
+      oneToOne: direct.send,
+    });
+
+    expect(result).toEqual({ outcome: 'sent', links: 2 });
+    expect(direct.texts.map((text) => text.body)).toEqual([today]);
+    expect(voice.calls[0]?.input.mustMention).toEqual(['Hale', 'Riley', 'STOP']);
   });
 
   it('sends nothing and mints nothing when the line could not be written', async () => {

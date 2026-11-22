@@ -186,6 +186,9 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
+  // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply
+  // keyword. Exact `true`.
+  exact('no-stop-keyword-copy', 'NO_STOP_KEYWORD_COPY_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   // VIL-734. A team-schedule driver text is on the ledger as sent only once Linq accepts
