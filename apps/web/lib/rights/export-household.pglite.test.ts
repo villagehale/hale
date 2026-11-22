@@ -63,6 +63,65 @@ async function conversation(familyId: string, noteKey: string | null, createdAt?
   return row?.id as string;
 }
 
+describe('a refused claim verdict in a right-to-access copy', () => {
+  it("carries the verdicts on this adult's own texts and never the other parent's", async () => {
+    const { familyId, parentA, parentB } = await seedHousehold();
+    const verdict = (kind: string) => ({
+      claims: [
+        {
+          segment: 0,
+          kind,
+          cited: 'none',
+          status: 'refused' as const,
+          reason: 'no_scheduled_row',
+          why: 'cited_none',
+        },
+      ],
+      candidates: { offered: { calendar: 1 }, capped: [] },
+    });
+    const refuse = async (parentUserId: string, kind: string) => {
+      const [message] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction: 'out',
+          category: 'reminder',
+          status: 'failed',
+          errorCode: 'unbacked_claim',
+        })
+        .returning({ id: schema.channelMessages.id });
+      await db.database.insert(schema.claimRefusals).values({
+        familyId,
+        channelMessageId: message?.id as string,
+        createdAt: NOW,
+        ...verdict(kind),
+      });
+    };
+    await refuse(parentA, 'scheduled_event');
+    await refuse(parentB, 'send_done');
+
+    const copyA = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      now: NOW,
+    });
+    const copyB = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentB,
+      now: NOW,
+    });
+
+    expect(copyA.requesterOnly.refusedClaims).toEqual([
+      { refusedAt: NOW.toISOString(), ...verdict('scheduled_event') },
+    ]);
+    expect(copyB.requesterOnly.refusedClaims).toEqual([
+      { refusedAt: NOW.toISOString(), ...verdict('send_done') },
+    ]);
+    expect(JSON.stringify(copyA)).not.toContain('send_done');
+    expect(JSON.stringify(copyB)).not.toContain('scheduled_event');
+  });
+});
+
 describe('the household calendar in a right-to-access copy', () => {
   it("carries the household's events, withholds a teen's, and keeps each parent's mirror theirs", async () => {
     const { familyId, parentA, parentB, kidId, teenId } = await seedHousehold();
