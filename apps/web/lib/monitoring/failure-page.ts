@@ -220,6 +220,8 @@ export const OPS_PAGE_VOCABULARY = {
       'unexpected',
     ],
   },
+  /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
+  duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
   /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
   claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },

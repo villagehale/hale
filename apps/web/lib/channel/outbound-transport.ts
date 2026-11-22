@@ -104,6 +104,11 @@ export function failedSendPatch(code: string): {
   return { status: 'failed', errorCode: code };
 }
 
+/** A rate limit is not permanent, but asking again right away only earns another. */
+export function refusalIsRateLimit(err: unknown): boolean {
+  return err instanceof LinqSendError && linq.isLinqRateLimit(err);
+}
+
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 
 /** The same sentence with URLs removed. Other wording, including STOP, stays. */
