@@ -18,7 +18,7 @@ import {
   notifyGuestsOfCancellation,
   runPartyReminderCron,
 } from './reminders';
-import { optOutGuestRemindersOnStop, submitRsvp } from './store';
+import { cancelPartyInvite, optOutGuestRemindersOnStop, submitRsvp } from './store';
 
 /**
  * VIL-745 · the two texts a party guest can get, both flag states, on the real queries:
@@ -96,7 +96,23 @@ async function seedParty(input: { title?: string; location?: string | null } = {
       publicToken: `token-${familyId}`,
     })
     .returning({ id: schema.partyInvites.id });
-  return { familyId, inviteId: invite?.id as string };
+  return {
+    familyId,
+    inviteId: invite?.id as string,
+    familyEventId: event?.id as string,
+    hostUserId: parentUserId,
+  };
+}
+
+type SeededParty = Awaited<ReturnType<typeof seedParty>>;
+
+function cancelParty(party: SeededParty) {
+  return cancelPartyInvite(db.database, {
+    familyId: party.familyId,
+    inviteId: party.inviteId,
+    familyEventId: party.familyEventId,
+    actorUserId: party.hostUserId,
+  });
 }
 
 async function addGuest(
@@ -187,6 +203,7 @@ describe('flag off: both texts and every send path are today’s', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: FIXED_REMINDER }]);
     const [guest] = await rsvps(party.inviteId);
@@ -211,6 +228,22 @@ describe('flag off: both texts and every send path are today’s', () => {
     expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: FIXED_CANCELLATION }]);
     const [guest] = await rsvps(party.inviteId);
     expect(await ledgerKeys(party.familyId)).toEqual([guestCancelDedupeKey(guest?.id as string)]);
+  });
+
+  it('takes no new check: a party cancelled mid-run still gets the send it gets today', async () => {
+    const party = await seedParty();
+    await addGuest(party, 'Priya', PHONE_A);
+    const transport = new FakeTransport();
+    const deps = depsWith(transport, NEVER_WRITES);
+    const loadTeenNames = deps.loadTeenNames;
+    deps.loadTeenNames = async (...args) => {
+      await cancelParty(party);
+      return loadTeenNames(...args);
+    };
+
+    await runPartyReminderCron(db.database, deps, NOW);
+
+    expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: FIXED_REMINDER }]);
   });
 
   it('an inexact flag value is off', async () => {
@@ -247,6 +280,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(lines).toEqual([
       {
@@ -283,6 +317,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(lines).toHaveLength(1);
     expect(transport.sent).toHaveLength(1);
@@ -345,6 +380,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 2,
       unpaged: 0,
+      superseded: 0,
     });
     expect(transport.sent).toEqual([]);
     expect(pages).toEqual([
@@ -367,6 +403,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(new Set(transport.bodies())).toEqual(new Set([WRITTEN_REMINDER]));
   });
@@ -422,6 +459,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 1,
       unpaged: 1,
+      superseded: 0,
     });
     expect(cancelled).toEqual({ sent: 0, failed: 0, unwritten: 1, unpaged: 1 });
     expect(transport.sent).toEqual([]);
@@ -451,6 +489,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 1,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect((await rsvps(party.inviteId)).map((row) => row.reminderSentAt)).toEqual([null]);
     expect(await ledgerKeys(party.familyId)).toEqual([]);
@@ -507,6 +546,7 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(transport.sent).toEqual([{ to: PHONE_B_E164, body: WRITTEN_REMINDER }]);
   });
@@ -532,9 +572,140 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
       failed: 0,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     expect(cancelled).toEqual({ sent: 0, failed: 0, unwritten: 0, unpaged: 0 });
     expect(lines).toEqual([]);
     expect(transport.sent).toEqual([]);
+  });
+
+  describe('the party changes while the model writes', () => {
+    const NOTHING_SENT = {
+      evaluated: 1,
+      sent: 0,
+      deduped: 0,
+      failed: 0,
+      unwritten: 0,
+      unpaged: 0,
+    };
+
+    function editEvent(
+      party: SeededParty,
+      change: Partial<typeof schema.familyEvents.$inferInsert>,
+    ) {
+      return db.database
+        .update(schema.familyEvents)
+        .set(change)
+        .where(eq(schema.familyEvents.id, party.familyEventId));
+    }
+
+    it('sends no reminder for a party cancelled during the write', async () => {
+      const party = await seedParty();
+      await addGuest(party, 'Priya', PHONE_A);
+      await addGuest(party, 'Sam', PHONE_B);
+      const transport = new FakeTransport();
+      const writer: PartyGuestLineWriter = {
+        async write() {
+          await cancelParty(party);
+          return { status: 'written', text: WRITTEN_REMINDER };
+        },
+      };
+
+      const result = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
+
+      expect(result).toEqual({ ...NOTHING_SENT, superseded: 2 });
+      expect(transport.sent).toEqual([]);
+      expect((await rsvps(party.inviteId)).map((row) => row.reminderSentAt)).toEqual([null, null]);
+      expect(await ledgerKeys(party.familyId)).toEqual([]);
+    });
+
+    it('does not take the claim for a party cancelled just before it', async () => {
+      const party = await seedParty();
+      await addGuest(party, 'Priya', PHONE_A);
+      const transport = new FakeTransport();
+      const { writer } = recordingWriter(WRITTEN_REMINDER);
+      const deps = depsWith(transport, writer);
+      const claim = deps.claim;
+      deps.claim = async (...args) => {
+        await cancelParty(party);
+        return claim(...args);
+      };
+
+      const result = await runPartyReminderCron(db.database, deps, NOW);
+
+      expect(result).toEqual({ ...NOTHING_SENT, superseded: 1 });
+      expect(transport.sent).toEqual([]);
+      expect((await rsvps(party.inviteId)).map((row) => row.reminderSentAt)).toEqual([null]);
+    });
+
+    const MOVED_TO = new Date('2026-08-06T23:30:00Z');
+    it.each([
+      ['time', { startsAt: MOVED_TO }, { when: 'Thursday, August 6 at 7:30 PM' }],
+      ['place', { location: '99 Oak Ave' }, { where: '99 Oak Ave' }],
+      ['title', { title: 'Pool party for Nora' }, { title: 'Pool party for Nora' }],
+    ])(
+      'discards a draft whose %s moved, and the next run writes the new one',
+      async (_name, change, fact) => {
+        const party = await seedParty();
+        await addGuest(party, 'Priya', PHONE_A);
+        const transport = new FakeTransport();
+        const lines: PartyGuestLine[] = [];
+        const fresh = `${WRITTEN_REMINDER} (fresh)`;
+        const writer: PartyGuestLineWriter = {
+          async write(line) {
+            lines.push(line);
+            if (lines.length > 1) return { status: 'written', text: fresh };
+            await editEvent(party, change);
+            return { status: 'written', text: WRITTEN_REMINDER };
+          },
+        };
+
+        const first = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
+
+        expect(first).toEqual({ ...NOTHING_SENT, superseded: 1 });
+        expect(transport.sent).toEqual([]);
+        expect((await rsvps(party.inviteId)).map((row) => row.reminderSentAt)).toEqual([null]);
+
+        await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
+
+        expect(lines[1]).toMatchObject(fact);
+        expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: fresh }]);
+      },
+    );
+
+    it('still sends when nothing the guest would read changed (positive control)', async () => {
+      const party = await seedParty();
+      await addGuest(party, 'Priya', PHONE_A);
+      const transport = new FakeTransport();
+      const writer: PartyGuestLineWriter = {
+        async write() {
+          await editEvent(party, { endsAt: new Date('2026-08-07T01:00:00Z') });
+          return { status: 'written', text: WRITTEN_REMINDER };
+        },
+      };
+
+      const result = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
+
+      expect(result).toEqual({ ...NOTHING_SENT, sent: 1, superseded: 0 });
+      expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: WRITTEN_REMINDER }]);
+    });
+
+    it('still sends the cancellation note for a cancelled party', async () => {
+      const party = await seedParty();
+      await addGuest(party, 'Priya', PHONE_A);
+      await cancelParty(party);
+      const transport = new FakeTransport();
+      const { writer } = recordingWriter(WRITTEN_CANCELLATION);
+
+      const result = await notifyGuestsOfCancellation(
+        db.database,
+        { inviteId: party.inviteId },
+        depsWith(transport, writer),
+        NOW,
+      );
+
+      expect(result).toEqual({ sent: 1, failed: 0, unwritten: 0, unpaged: 0 });
+      expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: WRITTEN_CANCELLATION }]);
+    });
   });
 });

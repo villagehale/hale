@@ -263,6 +263,7 @@ describe('a guest message that cannot leave (VIL-267)', () => {
       failed: 1,
       unwritten: 0,
       unpaged: 0,
+      superseded: 0,
     });
     // The claim comes back, so the guest's ONE reminder is not burned by an outage.
     expect(released).toEqual(['rsvp-1']);

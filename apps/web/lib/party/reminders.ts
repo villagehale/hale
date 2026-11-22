@@ -106,6 +106,8 @@ export interface PartyReminderResult {
   unwritten: number;
   /** Parties among those whose page did not leave, so nobody was told. */
   unpaged: number;
+  /** Guests not texted because the party was cancelled or changed after its text was written. */
+  superseded: number;
 }
 
 /** One guest reminder's identity. The rsvp id is the natural key — one guest, one party,
@@ -152,6 +154,7 @@ export async function runPartyReminderCron(
     failed: 0,
     unwritten: 0,
     unpaged: 0,
+    superseded: 0,
   };
 
   const parties = await loadPartiesStartingSoon(database, now);
@@ -166,6 +169,7 @@ export async function runPartyReminderCron(
       const teens = await deps.loadTeenNames(database, party.familyId, now);
       const facts = guestLineFacts(party, teens);
       let body: string;
+      let writtenFrom: GuestLineFacts | null = null;
       if (isEnabled('party-guest-model-copy', party.familyId)) {
         const waiting = await loadOptedInGuests(database, party.inviteId);
         if (waiting.length === 0) continue;
@@ -176,21 +180,31 @@ export async function runPartyReminderCron(
           continue;
         }
         body = written.text;
+        writtenFrom = facts;
       } else {
         body = guestReminder(facts.title, facts.when, facts.where);
       }
       // Read after the model call, so a guest who opted out while it wrote is not texted.
       const guests = await loadOptedInGuests(database, party.inviteId);
       for (const guest of guests) {
+        if (
+          writtenFrom !== null &&
+          !(await partyStillReads(database, party.inviteId, teens, writtenFrom))
+        ) {
+          result.superseded += 1;
+          continue;
+        }
         const outcome = await sendToGuest(database, deps, {
           party,
           guest,
           body,
           dedupeKey: guestReminderDedupeKey(guest.rsvpId),
           now,
+          claimWhileLive: writtenFrom !== null,
         });
         if (outcome === 'sent') result.sent += 1;
         else if (outcome === 'deduped') result.deduped += 1;
+        else if (outcome === 'superseded') result.superseded += 1;
         else result.failed += 1;
       }
     } catch (err) {
@@ -266,8 +280,28 @@ function pageDidNotLeave(page: OpsPagerOutcome): boolean {
   return page === 'page_failed' || page === 'page_not_configured';
 }
 
+type GuestLineFacts = Omit<PartyGuestLine, 'why'>;
+
+/**
+ * Whether the party is still on and still reads as the text says. The model call takes
+ * seconds, and a host can cancel or move the party inside it.
+ */
+async function partyStillReads(
+  database: Database,
+  inviteId: string,
+  teens: readonly string[],
+  written: GuestLineFacts,
+): Promise<boolean> {
+  const current = await loadPartyByInvite(database, inviteId, { liveOnly: true });
+  if (current === null) return false;
+  const facts = guestLineFacts(current, teens);
+  return (
+    facts.title === written.title && facts.when === written.when && facts.where === written.where
+  );
+}
+
 /** The party as a guest may hear it, with every teen's name already out. */
-function guestLineFacts(party: DueParty, teens: readonly string[]): Omit<PartyGuestLine, 'why'> {
+function guestLineFacts(party: DueParty, teens: readonly string[]): GuestLineFacts {
   return {
     title: redactTeenNames(party.title, teens),
     when: partyWhen(party.startsAt, party.timeZone),
@@ -304,11 +338,21 @@ async function sendToGuest(
     dedupeKey: string;
     now: Date;
     claimReminder?: boolean;
+    /** Refuse the claim once the party is cancelled, so a written reminder cannot follow it. */
+    claimWhileLive?: boolean;
   },
-): Promise<'sent' | 'deduped' | 'failed'> {
+): Promise<'sent' | 'deduped' | 'failed' | 'superseded'> {
   const claimReminder = args.claimReminder !== false;
-  if (claimReminder && !(await deps.claim(database, args.guest.rsvpId, args.now))) {
-    return 'deduped';
+  if (
+    claimReminder &&
+    !(await deps.claim(database, args.guest.rsvpId, args.now, {
+      whileLive: args.claimWhileLive === true,
+    }))
+  ) {
+    const partyOff =
+      args.claimWhileLive === true &&
+      (await loadPartyByInvite(database, args.party.inviteId, { liveOnly: true })) === null;
+    return partyOff ? 'superseded' : 'deduped';
   }
 
   try {
@@ -380,7 +424,11 @@ async function loadPartiesStartingSoon(database: Database, now: Date): Promise<D
     );
 }
 
-async function loadPartyByInvite(database: Database, inviteId: string): Promise<DueParty | null> {
+async function loadPartyByInvite(
+  database: Database,
+  inviteId: string,
+  opts: { liveOnly?: boolean } = {},
+): Promise<DueParty | null> {
   const rows = await database
     .select({
       inviteId: schema.partyInvites.id,
@@ -394,7 +442,13 @@ async function loadPartyByInvite(database: Database, inviteId: string): Promise<
     .from(schema.partyInvites)
     .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.partyInvites.familyEventId))
     .innerJoin(schema.users, eq(schema.users.id, schema.partyInvites.hostUserId))
-    .where(eq(schema.partyInvites.id, inviteId))
+    .where(
+      and(
+        eq(schema.partyInvites.id, inviteId),
+        opts.liveOnly ? isNull(schema.partyInvites.cancelledAt) : undefined,
+        opts.liveOnly ? isNull(schema.familyEvents.deletedAt) : undefined,
+      ),
+    )
     .limit(1);
   const row = rows[0];
   return row && row.inviteId === inviteId ? row : null;
