@@ -28,6 +28,11 @@ export function groupReminderInFlightCancelEnabled(
   return isEnabled('group-reminder-inflight-cancel', undefined, env);
 }
 
+/** VIL-734. A group reminder that closes failed pages #ops. Exactly `true`. */
+export function groupReminderUnsentPageEnabled(): boolean {
+  return isEnabled('group-reminder-unsent-page');
+}
+
 /**
  * All three flags. The tick sends nothing unless this holds: with v2 off, a claimed group
  * is every loop text's home channel, so a reminder handed to the 1:1 dispatch could land

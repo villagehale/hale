@@ -13,7 +13,7 @@
  * anything while the mode is `off`.
  */
 
-import { flagValue } from '@hale/flags';
+import { flagValue, isEnabled } from '@hale/flags';
 
 export const CLAIM_READER_MODE_ENV = 'CLAIM_READER_MODE';
 export const CLAIM_READER_ENFORCE_ALLOWLIST_ENV = 'CLAIM_READER_ENFORCE_FAMILY_ALLOWLIST';
@@ -41,4 +41,28 @@ export function claimReaderEnforces(
     .split(',')
     .map((id) => id.trim())
     .includes(familyId);
+}
+
+/**
+ * VIL-732 · a named recipient's claim candidates include the kid-judged mirrors of their
+ * own Google Calendar, the rows their reminders are written from (candidate-rows.ts).
+ * Dark: household rows only, and a reminder about a mirrored event is refused unbacked.
+ */
+export function claimReadOwnMirrorsEnabled(
+  familyId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('claim-read-own-mirrors', familyId, env);
+}
+
+/**
+ * VIL-732 · a dispatch leg the claim reader refused keeps its verdict in
+ * `claim_refusals` (migration 0259): each claim's kind, cited alias and why, and how
+ * many rows of each source were offered. No body. Dark: nothing is written.
+ */
+export function claimRefusalStoreEnabled(
+  familyId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('claim-refusal-store', familyId, env);
 }

@@ -101,8 +101,8 @@ function asBoolean(spec: FlagSpec, value: boolean | string): boolean {
 /**
  * Single chokepoint for launch flags.
  *
- * 1. POSTHOG_FLAGS_ENABLED off (the default) → today's env parser, including
- *    allowlists. PostHog is not touched.
+ * 1. POSTHOG_FLAGS_ENABLED off (the default), or an env-only flag → today's env
+ *    parser, including allowlists. PostHog is not touched.
  * 2. Env explicitly `false`/`off` (or `true` on VOICE_DISABLED) → OFF, even
  *    when PostHog would return true.
  * 3. Otherwise the local PostHog poller for this family (HMAC distinct_id +
@@ -115,7 +115,7 @@ export function isEnabled(
   env: EnvBag = process.env,
 ): boolean {
   const spec = getFlag(flagKey);
-  if (!posthogFlagsPathEnabled(env)) return envEnabled(spec, familyId, env);
+  if (spec.envOnly || !posthogFlagsPathEnabled(env)) return envEnabled(spec, familyId, env);
   if (isFlagKilled(flagKey, env)) return false;
   const evaluated = fromPosthog(spec, familyId, env);
   if (evaluated === undefined) return envEnabled(spec, familyId, env);

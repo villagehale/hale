@@ -9,6 +9,9 @@ export const OPT_OUT_UNREAD_HOLD_TURN_ENV = 'OPT_OUT_UNREAD_HOLD_TURN_ENABLED';
 /** VIL-707. A hold write that throws ends the turn. Exactly `true`. */
 export const OPT_OUT_HOLD_WRITE_STOPS_TURN_ENV = 'OPT_OUT_HOLD_WRITE_STOPS_TURN_ENABLED';
 
+/** A stop reading keeps its text's hold until the stop is recorded. Exactly `true`. */
+export const OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV = 'OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENABLED';
+
 export function optOutUnreadHoldTurnEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -19,4 +22,10 @@ export function optOutHoldWriteStopsTurnEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return isEnabled('opt-out-hold-write-stops-turn', undefined, env);
+}
+
+export function optOutHoldUntilStopCommitsEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('opt-out-hold-until-stop-commits', undefined, env);
 }

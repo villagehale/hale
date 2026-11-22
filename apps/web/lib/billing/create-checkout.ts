@@ -5,8 +5,8 @@ import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
 import { familyAlreadySubscribed } from './already-subscribed.js';
-import { checkoutSuccessUrl } from './checkout-session.js';
-import { holidayPromoEnabled } from './flags.js';
+import { checkoutCancelUrl, checkoutSuccessUrl } from './checkout-session.js';
+import { checkoutSuccessStatesEnabled, holidayPromoEnabled } from './flags.js';
 import {
   type CheckoutSku,
   foundingWindowOpen,
@@ -61,7 +61,10 @@ export async function createBillingCheckout(input: {
   adsContext?: AdsCheckoutContext;
   /** When set, skip the session family lookup (the ads new-visitor path). */
   familyId?: string;
-  /** Defaults to the settings billing hash. Founding join cancels back to /founding. */
+  /**
+   * Defaults to the settings billing hash. Founding join cancels back to /founding.
+   * With CHECKOUT_SUCCESS_STATES_ENABLED every checkout cancels to the pricing page instead.
+   */
   cancelUrl?: string;
   now?: Date;
   env?: Record<string, string | undefined>;
@@ -119,11 +122,12 @@ export async function createBillingCheckout(input: {
     tier,
     period,
     successUrl: checkoutSuccessUrl(marketingOrigin),
-    cancelUrl:
-      input.cancelUrl ??
-      (sku && isPromoAnnualSku(sku)
-        ? `${origin}/settings/founding?checkout=cancelled`
-        : `${origin}/settings?checkout=cancelled#billing`),
+    cancelUrl: checkoutSuccessStatesEnabled(env)
+      ? checkoutCancelUrl(marketingOrigin)
+      : (input.cancelUrl ??
+        (sku && isPromoAnnualSku(sku)
+          ? `${origin}/settings/founding?checkout=cancelled`
+          : `${origin}/settings?checkout=cancelled#billing`)),
     customerEmail: family.stripeCustomerId ? null : customerEmail,
     customerId: family.stripeCustomerId,
     sku,
