@@ -125,7 +125,17 @@ function ports(
       renderer: loopTemplateRenderer,
       now: () => at,
     }),
-    claimEnforce: { enforces: () => true, decide: async () => ({ status: verdict }) },
+    claimEnforce: {
+      enforces: () => true,
+      decide: async () =>
+        verdict === 'clean'
+          ? { status: 'clean' }
+          : {
+              status: 'unbacked',
+              refusal: { claims: [], candidates: { offered: {}, capped: [] } },
+            },
+      recordRefusal: async () => 'off',
+    },
   };
   return { sms, ports: built };
 }

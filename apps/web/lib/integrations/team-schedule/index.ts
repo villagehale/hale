@@ -1,5 +1,7 @@
 export { applyTeamScheduleChange, applyTeamScheduleEffects, teamSchedulePortsFor } from './apply';
 export type { TeamScheduleApplyInput, TeamScheduleOutcome, TeamScheduleResult } from './apply';
+export { retryTeamScheduleDrivers } from './driver';
+export type { DriverRetrySummary } from './driver';
 export {
   TEAM_SCHEDULE_CHANGES_ALLOWLIST_ENV,
   TEAM_SCHEDULE_CHANGES_ENABLED_ENV,

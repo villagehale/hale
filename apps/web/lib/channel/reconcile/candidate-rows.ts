@@ -1,11 +1,19 @@
-import { type Database, householdFamilyEvent, householdRemovedFamilyEvent, schema } from '@hale/db';
+import {
+  type Database,
+  familyEventForParent,
+  householdFamilyEvent,
+  householdRemovedFamilyEvent,
+  schema,
+} from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
+import { type BillingClaimFacts, billingDollars } from './billing-text';
 import { CLAIM_ROW_SLOTS, type ClaimCandidateRow } from './candidates';
 import { type SendAudience, claimRowLabel } from './claim-label';
+import { claimReadOwnMirrorsEnabled } from './flag';
 import type { ReconcileView } from './reconcile';
 import { loadReconcileView } from './view';
 
@@ -56,6 +64,8 @@ export async function loadClaimShadowContext(
     /** The coach already loaded it. */
     view?: ReconcileView;
     pending?: { activityFollowup: string | null; spotWatch: string | null };
+    /** The body reaches `parentUserId` alone, so their own calendar mirrors may back it. */
+    oneToOne?: true;
   },
 ): Promise<ClaimShadowContext> {
   const { familyId, now } = input;
@@ -76,7 +86,12 @@ export async function loadClaimShadowContext(
   ] = await Promise.all([
     familySpeechLanguage(database, familyId),
     input.view ?? loadReconcileView(database, { familyId, now }),
-    calendarRows(database, familyId, now),
+    calendarRows(
+      database,
+      familyId,
+      now,
+      input.oneToOne === true && claimReadOwnMirrorsEnabled(familyId) ? to.userId : null,
+    ),
     loadOpenCommitments(database, familyId, now),
     watchedPageRows(database, familyId),
     liveSequenceRows(database, familyId),
@@ -218,11 +233,21 @@ async function recipient(
   return primary ? { userId: primary.userId, timeZone: primary.timezone } : null;
 }
 
-/** view.ts's own predicate: household rows (no mirror, not deleted), future, soonest first. */
+/**
+ * Future rows, soonest first. A send that reaches one parent alone also gets the
+ * kid-judged mirrors of that parent's Google Calendar, the rows the reminder cron writes
+ * their reminders from (familyEventForParent, CLAIM_READ_OWN_MIRRORS_ENABLED). Every other
+ * read, a group turn included, gets household rows only (view.ts's own predicate).
+ *
+ * Mirrors sort after every household row, so they fill only the slots household rows
+ * leave and can never displace a row the household-only read offers. The one-to-one read
+ * asks for one row past the cap, so the candidate builder names an overflow in `capped`.
+ */
 async function calendarRows(
   database: Database,
   familyId: string,
   now: Date,
+  recipientUserId: string | null,
 ): Promise<ClaimCandidateRow[]> {
   const rows = await database
     .select({
@@ -237,12 +262,15 @@ async function calendarRows(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        householdFamilyEvent(),
+        recipientUserId === null ? householdFamilyEvent() : familyEventForParent(recipientUserId),
         gte(schema.familyEvents.startsAt, now),
       ),
     )
-    .orderBy(asc(schema.familyEvents.startsAt))
-    .limit(CLAIM_ROW_SLOTS.e);
+    .orderBy(
+      ...(recipientUserId === null ? [] : [sql`${schema.familyEvents.googleEventId} is not null`]),
+      asc(schema.familyEvents.startsAt),
+    )
+    .limit(recipientUserId === null ? CLAIM_ROW_SLOTS.e : CLAIM_ROW_SLOTS.e + 1);
   return rows.map((row) => ({
     familyId,
     source: 'calendar',
@@ -630,5 +658,55 @@ async function cancellationRows(
       cancelled(claimRowLabel({ from: 'watched_page', label: row.label }, now), null),
     ),
     ...plans.map((row) => cancelled(claimRowLabel({ from: 'signup', ...row }, now), null)),
+  ];
+}
+
+/**
+ * VIL-735 · the rows a billing notice's text may cite: the writer's facts, as rows of the
+ * kinds the reader already knows, so a true "you're on Plus" is backed without touching
+ * its grammar. The labels are English on purpose: only the reader sees them.
+ */
+export function billingClaimRows(
+  familyId: string,
+  facts: BillingClaimFacts,
+  now: Date,
+): ClaimCandidateRow[] {
+  const was = facts.previousPlan && facts.previousPlan !== facts.plan ? facts.previousPlan : null;
+  const planLabel = [
+    `Hale plan now: ${facts.plan}`,
+    was ? ` (was ${was})` : '',
+    facts.paidThrough ? `, paid through ${facts.paidThrough.date}` : '',
+  ].join('');
+  const row = (
+    kind: 'registration_done' | 'cancelled' | 'send_done',
+    fact: 'plan' | 'ended' | 'refund',
+    text: string,
+  ): ClaimCandidateRow => ({
+    familyId,
+    source: 'billing_fact',
+    kind,
+    fact,
+    what: claimRowLabel({ from: 'billing', text }, now),
+    currentPlan: facts.plan,
+  });
+  const endedPlan = facts.previousPlan && facts.previousPlan !== 'Free' ? facts.previousPlan : null;
+  return [
+    row('registration_done', 'plan', planLabel),
+    ...(facts.ended
+      ? [
+          row(
+            'cancelled',
+            'ended',
+            endedPlan ? `The Hale ${endedPlan} subscription ended` : 'The Hale subscription ended',
+          ),
+        ]
+      : []),
+    ...facts.refunds.map((refund) =>
+      row(
+        'send_done',
+        'refund',
+        `A refund of ${billingDollars(refund.refundedMinor)} of the ${billingDollars(refund.chargeMinor)} paid to Hale`,
+      ),
+    ),
   ];
 }

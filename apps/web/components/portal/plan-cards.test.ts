@@ -13,7 +13,8 @@ describe('FoundingPlan', () => {
     const html = renderToStaticMarkup(createElement(FoundingPlan));
     const source = readFileSync(join(here, 'plan-cards.tsx'), 'utf8');
 
-    expect(html).toContain('Founding family');
+    expect(html).toMatch(/>Free<\/span>/);
+    expect(html).not.toContain('Founding family');
     expect(html).toContain('Everything Hale does is free for you.');
     expect(html).toContain('There’s no plan to pick and nothing to pay.');
     expect(html).toContain('you’ll hear from Hale well before it does.');

@@ -3,6 +3,7 @@ import { PROMO_JOIN_COOKIE, signPromoJoinBinding } from '~/lib/billing/promo-joi
 import { PROMO_PREVIEW_COOKIE, signPromoPreviewCookie } from '~/lib/billing/promo-preview';
 
 const createMock = vi.fn();
+const threadMock = vi.fn();
 const clientMock = { createCheckoutSession: vi.fn() };
 
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -11,6 +12,9 @@ vi.mock('~/lib/billing/create-checkout', () => ({
 }));
 vi.mock('~/lib/billing/stripe-client', () => ({
   stripeCheckoutClientFromEnv: () => clientMock,
+}));
+vi.mock('~/lib/billing/checkout-payer', () => ({
+  alreadyPaidParentHasThread: (...args: unknown[]) => threadMock(...args),
 }));
 
 async function post(
@@ -38,6 +42,7 @@ describe('POST /api/promo/join/checkout', () => {
     vi.resetModules();
     vi.unstubAllEnvs();
     createMock.mockReset();
+    threadMock.mockReset();
   });
 
   it('404s when the new-visitor flag is off', async () => {
@@ -155,8 +160,21 @@ describe('POST /api/promo/join/checkout', () => {
     });
 
     createMock.mockResolvedValue({ status: 'already_paid' });
+    threadMock.mockResolvedValue(false);
     const paid = await post(`${PROMO_JOIN_COOKIE}=${token}`);
     expect(paid.status).toBe(409);
+    expect(await paid.json()).toEqual({ error: 'already_paid' });
+
+    threadMock.mockResolvedValue(true);
+    const paidWithThread = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(paidWithThread.status).toBe(409);
+    expect(await paidWithThread.json()).toEqual({ error: 'already_paid', hasThread: true });
+    expect(threadMock).toHaveBeenLastCalledWith(expect.anything(), 'fam-9', 'user-9');
+
+    threadMock.mockResolvedValue(null);
+    const paidUnread = await post(`${PROMO_JOIN_COOKIE}=${token}`);
+    expect(paidUnread.status).toBe(409);
+    expect(await paidUnread.json()).toEqual({ error: 'already_paid', hasThread: null });
   });
 
   it('opens Max promo checkout when the body asks for max', async () => {
