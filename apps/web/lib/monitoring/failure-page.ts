@@ -241,6 +241,11 @@ export const OPS_PAGE_VOCABULARY = {
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
+  /** A proactive nudge the model could not write: nothing was sent. */
+  nudge_unwritten: {
+    kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],
+    reason: ['no_client', 'skill_load', 'model_failed', 'unusable'],
+  },
   inbound_canary_failed: {
     stage: [
       'not_configured',
