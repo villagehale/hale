@@ -8,6 +8,7 @@ import {
   metaCapiEnabled,
   promoNewVisitorCheckoutEnabled,
   stripeBillingRevokeEnabled,
+  stripeRefundEndsSubscriptionEnabled,
 } from './flags.js';
 
 describe('holiday/conversion flags', () => {
@@ -80,6 +81,16 @@ describe('billingThreadNoticesArmedAt', () => {
         BILLING_THREAD_NOTICES_SINCE: since,
       }),
     ).toBeNull();
+  });
+
+  it('turns on refund-ends-subscription only for the exact value true', () => {
+    const read = (value?: string) =>
+      stripeRefundEndsSubscriptionEnabled({ STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: value });
+    expect(stripeRefundEndsSubscriptionEnabled({})).toBe(false);
+    expect(read('on')).toBe(false);
+    expect(read('TRUE')).toBe(false);
+    expect(read('true\n')).toBe(false);
+    expect(read('true')).toBe(true);
   });
 });
 

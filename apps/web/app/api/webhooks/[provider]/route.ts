@@ -67,6 +67,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
       }
     }
+    if (applied.status === 'retry') {
+      return NextResponse.json({ status: 'retry', reason: applied.reason }, { status: 503 });
+    }
     // After conversions on purpose: a retry of this event answers `duplicate` and would
     // never report the purchase again. A thrown write stays a 500 so Stripe redelivers.
     await recordBillingNoticeIntent(db(), billingEvent, applied);
