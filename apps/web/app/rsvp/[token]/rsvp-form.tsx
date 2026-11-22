@@ -53,7 +53,7 @@ function reminderCopy(plainStopWording: boolean): { confirmation: string; checkb
       };
 }
 
-export function ReminderConfirmation({ plainStopWording }: { plainStopWording: boolean }) {
+function ReminderConfirmation({ plainStopWording }: { plainStopWording: boolean }) {
   return (
     <p className="text-slate-green leading-relaxed">
       {reminderCopy(plainStopWording).confirmation}

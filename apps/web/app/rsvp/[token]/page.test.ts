@@ -1,7 +1,20 @@
-import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ReminderConfirmation } from './rsvp-form';
+
+const forcedState = vi.hoisted(() => ({ done: null as unknown }));
+
+// The form's `done` state is only reachable through a browser submit. Every state that
+// starts null gets the forced value; `done` is read first, so the others go unused.
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>();
+  return {
+    ...react,
+    useState: (initial: unknown) =>
+      initial === null && forcedState.done !== null
+        ? [forcedState.done, () => {}]
+        : react.useState(initial),
+  };
+});
 
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/party/store', async (importOriginal) => ({
@@ -41,12 +54,15 @@ async function pageText(): Promise<string> {
   return visibleText(renderToStaticMarkup(element));
 }
 
-const confirmationText = (plainStopWording: boolean) =>
-  visibleText(renderToStaticMarkup(createElement(ReminderConfirmation, { plainStopWording })));
+async function confirmationPageText(): Promise<string> {
+  forcedState.done = { answer: 'yes', reminderOptIn: true };
+  return pageText();
+}
 
 describe('the reminder wording on the RSVP page', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    forcedState.done = null;
   });
 
   it('flag exactly true: the page shows the new checkbox line and no keyword', async () => {
@@ -68,14 +84,22 @@ describe('the reminder wording on the RSVP page', () => {
     },
   );
 
-  it('flag on: the confirmation is the new line and names no keyword', () => {
-    const text = confirmationText(true);
-    expect(text).toBe(CONFIRMATION_ON);
-    expect(text).not.toMatch(/\bSTOP\b/);
-    expect(text).not.toMatch(/\bHELP\b/);
+  it('flag exactly true: the real confirmation screen shows the new line and no keyword', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const page = await confirmationPageText();
+    expect(page).toContain(CONFIRMATION_ON);
+    expect(page).not.toContain(CONFIRMATION_OFF);
+    expect(page).not.toMatch(/\bSTOP\b/);
+    expect(page).not.toMatch(/\bHELP\b/);
   });
 
-  it("flag off: the confirmation is today's line", () => {
-    expect(confirmationText(false)).toBe(CONFIRMATION_OFF);
-  });
+  it.each([undefined, 'false', 'True', 'true\n', '1'])(
+    "flag %j: the real confirmation screen keeps today's line",
+    async (value) => {
+      vi.stubEnv(FLAG, value as string);
+      const page = await confirmationPageText();
+      expect(page).toContain(CONFIRMATION_OFF);
+      expect(page).not.toContain(CONFIRMATION_ON);
+    },
+  );
 });
