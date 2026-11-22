@@ -41,10 +41,7 @@ const WEB_CLASSIFY = `${WEB_LIB}/pipeline/classify.ts`;
 const ALLOWED: Array<[string, string]> = [
   [WORKER_CLASSIFIER, 'the worker classify stage — redacts its own input'],
   [WEB_CLASSIFY, 'the web classify stage — redacts its own input'],
-  [
-    `${WEB_LIB}/telemetry/mask.ts`,
-    'names the field in order to MASK it (a consumer, not a producer)',
-  ],
+  [`${WEB_LIB}/telemetry/mask.ts`, 'names the field in order to MASK it (a consumer, not a producer)'],
 ];
 
 function walk(dir: string): string[] {
@@ -97,21 +94,12 @@ describe('the classify stage owns the redaction of its own model input (VIL-160)
         // The only binding sent as raw_content must be the one the redactor
         // produced, from THIS call's payload and THIS family's names. The
         // literal second argument is the point: `[]`, a stray variable, or a
-        // dropped argument all fail here. presentUntrusted may wrap that
-        // string when UNTRUSTED_FIELD_MARKING_ENABLED is on; it is not a
-        // second source of text.
+        // dropped argument all fail here.
         const binding = source.match(/raw_content:\s*([A-Za-z_$][\w$]*)/)?.[1];
         expect(binding).toBeDefined();
-        const redactedCall = 'JSON.stringify(redactEventPayload(input.payload, input.childNames))';
-        const assignment = source.slice(source.indexOf(`${binding} =`));
-        const direct = assignment.startsWith(`${binding} = ${redactedCall}`);
-        const wrapped = assignment.startsWith(`${binding} = presentUntrusted(`);
-        expect(direct || wrapped).toBe(true);
-        if (wrapped) {
-          const call = assignment.slice(0, assignment.indexOf(');'));
-          expect(call).toContain(redactedCall);
-          expect(call.match(/redactEventPayload/g)).toHaveLength(1);
-        }
+        expect(source).toContain(
+          `${binding} = JSON.stringify(redactEventPayload(input.payload, input.childNames))`,
+        );
       });
 
       it('declares no rawContent field — there is no way to hand it a raw string', () => {

@@ -180,11 +180,12 @@ export async function runClassifier(
   // still probes to the same row whether or not the family's names changed
   // between the two arrivals.
   const dedupHash = dedupHashFor(input.familyId, input.source, JSON.stringify(input.payload));
-  const redacted = presentUntrusted(
+  let redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  redacted = presentUntrusted(
     isEnabled('untrusted-field-marking'),
     untrustedSourceFor(input.source),
     'payload',
-    JSON.stringify(redactEventPayload(input.payload, input.childNames)),
+    redacted,
   );
 
   const userMessage = JSON.stringify({

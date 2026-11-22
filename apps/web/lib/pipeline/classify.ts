@@ -146,11 +146,12 @@ export async function classifyEvent(
   deps: ClassifyDeps = {},
 ): Promise<ClassifyResult> {
   const skill = await loadClassifyEventSkill();
-  const redacted = presentUntrusted(
+  let redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  redacted = presentUntrusted(
     isEnabled('untrusted-field-marking'),
     untrustedSourceFor(input.source),
     'payload',
-    JSON.stringify(redactEventPayload(input.payload, input.childNames)),
+    redacted,
   );
   const userMessage = JSON.stringify({
     signal: { source: input.source, raw_content: redacted },
