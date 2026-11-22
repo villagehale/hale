@@ -51,6 +51,10 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-686. That one adult was sent their Secret Santa draw, or told whose had not landed.
   'linq_secret_santa_draw_sent',
   'linq_secret_santa_noted',
+  // VIL-735. A text about one adult's payment. Their own copy carries the notice itself.
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
 ] as const satisfies readonly AuditVerb[];
 
 /** Of those, the rows the adult they are about gets in their own copy (right of access). */

@@ -9,6 +9,7 @@ import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
+import { billingTextConflict } from '~/lib/channel/reconcile/billing-text';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
@@ -310,6 +311,16 @@ async function dispatchLeg(
   // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
   // artifact instead of a loud row saying the template needs fixing.
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  // VIL-735 · a billing text names a plan and money. A wrong one never leaves, whatever
+  // the claim reader did or whichever mode it is in.
+  const factConflict = msg.claimFacts
+    ? billingTextConflict(claimText(rendered), msg.claimFacts)
+    : null;
+  if (factConflict) {
+    console.error({ event: 'billing_text_conflict', why: factConflict }, 'dispatch: not sent');
+    await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
+    return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
+  }
   if (rendered.modelWritten) {
     const body = claimText(rendered);
     if (ports.claimEnforce.enforces(msg.familyId)) {
@@ -321,6 +332,7 @@ async function dispatchLeg(
           parentUserId: msg.parentUserId,
           body,
           now,
+          ...(msg.claimFacts ? { writerFacts: msg.claimFacts } : {}),
         });
         if (decision.status === 'failed') {
           console.error(
@@ -369,7 +381,11 @@ async function dispatchLeg(
     return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
   }
 
-  const result = await adapter.send({ userId: msg.parentUserId, rendered });
+  const result = await adapter.send({
+    userId: msg.parentUserId,
+    rendered,
+    ...(msg.sendKey ? { sendKey: msg.sendKey } : {}),
+  });
   if (result.status === 'error' && result.transient) {
     throw new ChannelRetryableError(channel, result.code, result.message);
   }
