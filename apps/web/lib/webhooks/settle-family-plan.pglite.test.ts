@@ -400,6 +400,25 @@ describe('a full refund of the current period', () => {
     expect(await afters(familyId, 'family_plan_updated')).toHaveLength(1);
   });
 
+  it('every Stripe request on the settle path sends the pinned API version', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_pin', 'sub_pin');
+    buy(h.fake, 'pin', familyId);
+
+    expect(await h.apply(refundEvent(h.fake, 'ch_pin'))).toEqual({
+      status: 'applied',
+      tier: 'free',
+    });
+
+    const paths = h.fake.calls.map((call) => call.path);
+    expect(paths).toContain('/v1/invoice_payments');
+    expect(paths).toContain('/v1/refunds');
+    expect(h.fake.deletes()).toEqual(['sub_pin']);
+    expect(h.fake.calls.map((call) => call.headers.get('stripe-version'))).toEqual(
+      h.fake.calls.map(() => '2026-11-18.endive'),
+    );
+  });
+
   it('a sibling whose own refund failed still counts as paid', async () => {
     const h = harness();
     const familyId = await family('plus', 'cus_failsib', 'sub_failsib');
@@ -1379,6 +1398,7 @@ describe('flag off is main plus one claim', () => {
   }
 
   function assertNoNewReads(fake: FakeStripe) {
+    expect(fake.calls.length).toBeGreaterThan(0);
     expect(fake.deletes()).toEqual([]);
     const paths = fake.calls.map((call) => call.path);
     expect(paths).not.toContain('/v1/invoice_payments');
