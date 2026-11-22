@@ -1,12 +1,17 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { FAMILY_SCOPED_SEND_KEYS_ENV } from '~/lib/channel/family-send-key';
+import { FakeTransport } from '~/lib/channel/intake/transport';
+import { type ProactiveReviewDeps, runProactiveReview } from '~/lib/channel/proactive/review';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
 import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { runMidActivityAnswerPass } from './answer';
-import { MID_ACTIVITY_ASK_TEMPLATE_KEY, midActivityAskDedupeKey } from './claim';
+import { MID_ACTIVITY_ASK_TEMPLATE_KEY, midActivityAskDedupeKey, midActivityAskRef } from './claim';
 import { midActivityStartDedupeKey } from './claim';
 import { MID_ACTIVITY_ASK_ENABLED_ENV } from './flag';
 import { noteActivitySignupTool } from './said-tool';
@@ -390,6 +395,169 @@ describe('runMidActivityAskSweep', () => {
         now: said,
       }),
     ).toBe('duplicate');
+  });
+});
+
+describe('the said ask when two families share a day', () => {
+  const DAY_KEY = '2026-06-02';
+  const OLD_KEY = `mid-activity:ask:said:${DAY_KEY}:none`;
+  const familyKey = (familyId: string) => `mid-activity:ask:said:${familyId}#${DAY_KEY}:none`;
+
+  function armSaid(flag: 'true' | 'false') {
+    arm();
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, flag);
+  }
+
+  const said = (seeded: Seeded) =>
+    queueSaidSignupAsk(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      title: 'Parent and tot swim',
+      firstSessionStartsAt: new Date(FIRST),
+      firstSessionEndsAt: null,
+      candidateId: null,
+      timeZone: 'America/Toronto',
+      now: NOW,
+    });
+
+  function reviewDeps(): { deps: ProactiveReviewDeps; transport: FakeTransport } {
+    const transport = new FakeTransport();
+    return {
+      transport,
+      deps: {
+        client: null,
+        transport,
+        decide: async ({ snapshot }) => ({
+          decision: {
+            reason: 'the evening after the first session',
+            action: 'send_now',
+            itemIds: snapshot.candidates.map((candidate) => candidate.id),
+            holdUntil: null,
+            frequencyPreference: null,
+          },
+          skipped: null,
+        }),
+        compose: async () => ({ message: 'FAKE check-in line' }),
+        buildGate: openDeps().buildGate,
+        resolveSendablePhone: async () => '+14165550111',
+        lineHold: async () => null,
+        loadRecipients: async () => [],
+        outboundTarget: async () => ({ channel: 'legacy' }),
+        threadMessage: threadProactiveMessage,
+        fulfillCommitment,
+        recheckOpenAsk: async () => ({ verdict: 'owed', timeZone: 'America/Toronto' }),
+        page: async () => 'paged',
+      },
+    };
+  }
+
+  const candidateRows = (familyId: string) =>
+    db.database
+      .select({
+        dedupeKey: schema.proactiveCandidates.dedupeKey,
+        status: schema.proactiveCandidates.status,
+        reason: schema.proactiveCandidates.reason,
+      })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+
+  const sentKeys = async (familyId: string) =>
+    (
+      await db.database
+        .select({ dedupeKey: schema.channelMessages.dedupeKey })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, familyId))
+    ).map((row) => row.dedupeKey);
+
+  it('flag on: each family queues its own key, it still parses, and both asks go', async () => {
+    armSaid('true');
+    const a = await seed();
+    const b = await seed();
+
+    expect(await said(a)).toBe('queued');
+    expect(await said(b)).toBe('queued');
+
+    for (const family of [a, b]) {
+      const [row] = await candidateRows(family.familyId);
+      expect(row?.dedupeKey).toBe(familyKey(family.familyId));
+      expect(midActivityAskRef(row?.dedupeKey ?? null)).toEqual({
+        kind: 'said',
+        candidateId: null,
+      });
+    }
+
+    const { deps, transport } = reviewDeps();
+    const summary = await runProactiveReview(db.database, deps, NOW);
+
+    expect(summary.failed).toBe(0);
+    expect(transport.sent).toHaveLength(2);
+    expect(await sentKeys(a.familyId)).toEqual([familyKey(a.familyId)]);
+    expect(await sentKeys(b.familyId)).toEqual([familyKey(b.familyId)]);
+  });
+
+  it('flag off: the second family loses its ask to the old key, as before', async () => {
+    armSaid('false');
+    const a = await seed();
+    const b = await seed();
+    expect(await said(a)).toBe('queued');
+    expect(await said(b)).toBe('queued');
+    expect((await candidateRows(a.familyId))[0]?.dedupeKey).toBe(OLD_KEY);
+    expect((await candidateRows(b.familyId))[0]?.dedupeKey).toBe(OLD_KEY);
+
+    const { deps, transport } = reviewDeps();
+    await runProactiveReview(db.database, deps, NOW);
+
+    expect(transport.sent).toHaveLength(1);
+    const rows = [...(await candidateRows(a.familyId)), ...(await candidateRows(b.familyId))];
+    expect(rows.map((row) => row.status).sort()).toEqual(['dropped', 'sent']);
+    expect(rows.find((row) => row.status === 'dropped')?.reason).toBe('already_sent');
+    expect([...(await sentKeys(a.familyId)), ...(await sentKeys(b.familyId))]).toEqual([OLD_KEY]);
+  });
+
+  it('flag on: an open ask under the old key is not queued a second time', async () => {
+    armSaid('false');
+    const a = await seed();
+    expect(await said(a)).toBe('queued');
+
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'true');
+
+    expect(await said(a)).toBe('duplicate');
+    expect(await candidateRows(a.familyId)).toHaveLength(1);
+  });
+
+  it("flag on: an old ask dropped for another family's send is queued again as this family's", async () => {
+    armSaid('false');
+    const a = await seed();
+    expect(await said(a)).toBe('queued');
+    await db.database
+      .update(schema.proactiveCandidates)
+      .set({ status: 'dropped', reason: 'already_sent', holdUntil: null })
+      .where(eq(schema.proactiveCandidates.familyId, a.familyId));
+
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'true');
+
+    expect(await said(a)).toBe('queued');
+    const keys = (await candidateRows(a.familyId)).map((row) => row.dedupeKey).sort();
+    expect(keys).toEqual([familyKey(a.familyId), OLD_KEY].sort());
+  });
+
+  it('flag on: two families holding open asks under the one old key each get theirs', async () => {
+    armSaid('false');
+    const a = await seed();
+    const b = await seed();
+    expect(await said(a)).toBe('queued');
+    expect(await said(b)).toBe('queued');
+
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'true');
+    const { deps, transport } = reviewDeps();
+    const summary = await runProactiveReview(db.database, deps, NOW);
+
+    expect(summary.failed).toBe(0);
+    expect(transport.sent).toHaveLength(2);
+    expect(await sentKeys(a.familyId)).toEqual([familyKey(a.familyId)]);
+    expect(await sentKeys(b.familyId)).toEqual([familyKey(b.familyId)]);
   });
 });
 
