@@ -174,7 +174,10 @@ describe('a value cannot forge a closer', () => {
   });
 });
 
-describe('every Unicode code point', () => {
+// Over a million code points: about 0.5 s alone, past vitest's 5 s default on a CI runner.
+const WHOLE_UNICODE_WALK_TIMEOUT_MS = 60_000;
+
+describe('every Unicode code point', { timeout: WHOLE_UNICODE_WALK_TIMEOUT_MS }, () => {
   const hex = (codePoint: number) => `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
   const foldsToOpener = (character: string) => {
     const folded = character.normalize('NFKD');
