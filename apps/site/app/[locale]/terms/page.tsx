@@ -40,6 +40,9 @@ import { pageSource } from '~/lib/page-source';
  * and it is what the public line shows in every locale. A later merge should
  * bump it to the merge date. Counsel should read the diff.
  *
+ * 2026-11-21: "Changes to Hale" no longer calls Hale early. Wording only: what
+ * Hale may change and what it promises are the same.
+ *
  * app.villagehale.com/terms is now a permanent 308 here (VIL-256) — kept forever,
  * because the mobile app, sent emails and stored consent records all name the old
  * URL and none of those can be rewritten. This is the only copy now; it stays
@@ -111,7 +114,7 @@ export default async function TermsPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Terms of Service"
-      lastUpdatedIso="2026-10-09"
+      lastUpdatedIso="2026-11-21"
       intro={
         <p>
           These terms are an agreement between you and Village Hale Technologies Inc.
@@ -339,7 +342,7 @@ export default async function TermsPage({
 
       <LegalSectionBlock id="changes-to-hale" title="Changes to Hale">
         <p>
-          Hale is early, and it changes. We may add, change, or withdraw features, and we may set
+          Hale changes over time. We may add, change, or withdraw features, and we may set
           reasonable limits on use to keep the service running for everyone. We do not promise any
           particular level of availability or support, and we are not liable for a change to Hale
           itself — but we will not knowingly take away something your family relies on without

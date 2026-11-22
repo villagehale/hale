@@ -45,8 +45,8 @@ import { FOUNDER_PING_TEMPLATE_KEY } from './copy';
 /**
  * How long the offer stands.
  *
- * TWO DAYS. It is not a general number, it is this message's: the note says "one of our
- * first families", which is a thing you say to somebody who has just arrived. A welcome
+ * TWO DAYS. It is not a general number, it is this message's: the note thanks them for
+ * giving Hale a try, which is a thing you say to somebody who has just arrived. A welcome
  * that lands on the fourth day is not a welcome, it is a product remembering something.
  * Past the TTL the offer stops being answerable and no note is ever sent — the row stays
  * on the ledger as the account of an offer that lapsed.

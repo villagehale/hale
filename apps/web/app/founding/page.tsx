@@ -21,7 +21,7 @@ import {
 } from '~/lib/billing/promo-preview';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 
-export const metadata: Metadata = { title: 'Join as a founding family' };
+export const metadata: Metadata = { title: { absolute: 'Join Hale' } };
 export const dynamic = 'force-dynamic';
 
 interface PageProps {

@@ -115,8 +115,20 @@ for (const { phase, currency } of CASES) {
         const faq = text(renderToStaticMarkup(createElement(PromoFaqItems, { promo })));
         expect(faq).toContain(foundingAfterLine(promo));
         expect(foundingAfterLine(promo)).toBe(
-          `Founding families who join by Dec 31 keep ${want.max[1]} for Max or ${want.plus[1]} for Plus for as long as they’re members. Families who join after that pay the regular price.`,
+          `Families who join by Dec 31 keep ${want.max[1]} for Max or ${want.plus[1]} for Plus for as long as they’re members. Families who join after that pay the regular price.`,
         );
+      });
+
+      it('leads with the sale and never calls anyone a founding family', () => {
+        expect(body).toContain('Our biggest sale of the year');
+        expect(body).toContain(
+          'Our lowest price of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
+        );
+        expect(body).toContain(
+          'Billed once a year. Sale prices are for families who join by Dec 31, 2026.',
+        );
+        expect(body).toContain('If you cancel, the sale price ends with the membership.');
+        expect(body).not.toMatch(/founding/i);
       });
 
       it('never uses was / save / % off wording', () => {

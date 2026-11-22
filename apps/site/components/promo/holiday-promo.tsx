@@ -180,7 +180,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
       <div className="hs-wrap">
         <div className="promo-card">
           <div className="promo-main">
-            <p className="promo-kicker">Founding families</p>
+            <p className="promo-kicker">Our biggest sale of the year</p>
             <h2 className="promo-sale" id="founding-h">
               <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
               <span className="promo-sale-word">Sale</span>
@@ -188,7 +188,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
             <PriceLockup promo={promo} />
             <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
-              Founding families: your price is locked in for as long as you’re a member. Join by Dec
+              Our lowest price of the year, locked in for as long as you’re a member. Join by Dec
               31. Refund anytime.
             </p>
             <ul className="promo-chips">
@@ -213,7 +213,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               </FoundingCheckoutLink>
             </div>
             <p className="promo-fine">
-              Billed once a year. Founding prices are for families who join by Dec 31, 2026.
+              Billed once a year. Sale prices are for families who join by Dec 31, 2026.
             </p>
           </div>
           <PromoMedia promo={promo} />
@@ -227,8 +227,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 <p>
                   Join by Dec 31 and your price ({promo.max.saleLabel} for Max,{' '}
                   {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. It
-                  doesn’t go up at renewal. If you cancel, the founding price ends with the
-                  membership.
+                  doesn’t go up at renewal. If you cancel, the sale price ends with the membership.
                 </p>
               </div>
             </li>
@@ -266,7 +265,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
 
 /** The FAQ's neutral "after Dec 31" fact. Exported for the tests. */
 export function foundingAfterLine(promo: HolidayPromo): string {
-  return `Founding families who join by Dec 31 keep ${promo.max.saleLabel} for Max or ${promo.plus.saleLabel} for Plus for as long as they’re members. Families who join after that pay the regular price.`;
+  return `Families who join by Dec 31 keep ${promo.max.saleLabel} for Max or ${promo.plus.saleLabel} for Plus for as long as they’re members. Families who join after that pay the regular price.`;
 }
 
 /** The promo questions, in the site's FAQ rows. */

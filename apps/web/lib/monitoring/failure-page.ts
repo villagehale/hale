@@ -195,6 +195,8 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** A family already on a paid plan paid again. Nothing refunds it on its own. */
+  checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
   /** VIL-734 · a driver's schedule-change text that reached them on no try. */
@@ -205,6 +207,10 @@ export const OPS_PAGE_VOCABULARY = {
   group_reminder_unsent: {
     reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner', 'retries_ran_out'],
   },
+  /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
+  duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
+  /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
+  claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
@@ -254,6 +260,7 @@ type OpsPageFacts<S extends OpsPageSite> = {
  * so a second family's in the same hour pages too. Their `ref` is required.
  */
 const OPS_PAGE_PER_REF = [
+  'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
 ] as const;

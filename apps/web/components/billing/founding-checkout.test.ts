@@ -1,7 +1,13 @@
-import { createElement } from 'react';
+/**
+ * @vitest-environment happy-dom
+ */
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FoundingCheckout } from './founding-checkout';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function text(html: string): string {
   return html
@@ -54,5 +60,48 @@ describe('FoundingCheckout', () => {
     expect(body).not.toMatch(/C\$|US\$/);
     expect(body).toContain('Checkout isn’t open yet. You haven’t been charged.');
     expect(html).toMatch(/<button[^>]*disabled/);
+  });
+
+  describe('when the server refuses the offer', () => {
+    let root: ReturnType<typeof createRoot> | null = null;
+
+    afterEach(() => {
+      root?.unmount();
+      root = null;
+      document.body.replaceChildren();
+      vi.unstubAllGlobals();
+    });
+
+    it('says this offer is unavailable, with no founding wording', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: 'founding_unavailable' }), { status: 409 }),
+        ),
+      );
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      root = createRoot(container);
+      await act(async () => {
+        root?.render(
+          createElement(FoundingCheckout, {
+            currency: 'CAD',
+            phase: 'holiday',
+            ready: true,
+            attribution: {},
+            tier: 'plus',
+          }),
+        );
+      });
+      await act(async () => {
+        (container.querySelector('button') as HTMLButtonElement).click();
+      });
+
+      expect(container.textContent).toContain(
+        'This offer isn’t available right now. Please try again later.',
+      );
+      expect(container.textContent).not.toMatch(/founding/i);
+    });
   });
 });
