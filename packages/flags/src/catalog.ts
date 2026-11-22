@@ -266,6 +266,7 @@ export const FLAGS = [
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
+  exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),
   exact('ingest-body-max', 'INGEST_BODY_MAX_ENABLED', { envOnly: true }),
   {
     key: 'proactive-cadence',
