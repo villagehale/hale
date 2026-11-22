@@ -1949,6 +1949,7 @@ async function routeChannelMessageInner(
       },
       reader: deps.ackEta.reader,
       writer: deps.ackEta.writer,
+      alreadyPromised: () => deps.ackEta.promiseFor(deps.database, job.channel_message_id),
       sendLine: async (line) => {
         if (typingLive) {
           if (typingStarting) await typingStarting;
@@ -1969,6 +1970,8 @@ async function routeChannelMessageInner(
             job,
             conversationId: null,
             templateKey: ACK_ETA_TEMPLATE_KEY,
+            // One key per text: a death between this send and the promise cannot text twice.
+            sendKey: `${ACK_ETA_TEMPLATE_KEY}:${job.channel_message_id}`,
             openAsks: 'untouched',
             onSent: async () => {
               accepted = true;
@@ -4036,6 +4039,8 @@ type SendReplyArgs = {
   /** The text is about sign-up asks ({@link HandlerVerdict.stamp}): it goes plain, and the
    * stamp brackets its transport call. */
   stamp?: SendStamp;
+  /** Linq's idempotency key for this one send, when the caller owns its identity. */
+  sendKey?: string;
 };
 
 /**

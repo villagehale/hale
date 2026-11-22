@@ -144,7 +144,10 @@ export const GET = cronRoute('delete-sweep', async () => {
   }
   if (
     !failed(recordRetention) &&
-    (recordRetention.removedEpisodesBlanked > 0 || recordRetention.proactiveCandidatesDeleted > 0)
+    (recordRetention.removedEpisodesBlanked > 0 ||
+      recordRetention.proactiveCandidatesDeleted > 0 ||
+      (recordRetention.ackPromisesDeleted !== 'not_migrated' &&
+        recordRetention.ackPromisesDeleted > 0))
   ) {
     // Counts only (rule #1).
     console.info(recordRetention, 'cron/delete-sweep: removed records past their window');

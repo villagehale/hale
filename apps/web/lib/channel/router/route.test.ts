@@ -7483,6 +7483,7 @@ describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () =
         records.push(input);
         return { status: 'recorded', promiseId: 'promise-1' };
       },
+      promiseFor: async () => false,
       async page(_database, page) {
         pages.push(page);
         return 'paged';

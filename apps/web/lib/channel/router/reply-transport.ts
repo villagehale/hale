@@ -53,7 +53,11 @@ export function createReplyTransport(deps: {
     async send({ route, body, sendKey }): Promise<ReplySent> {
       switch (route.channel) {
         case 'sms': {
-          const sent = await sendResolvingNewChat(deps.phone, { to: route.to, body });
+          const sent = await sendResolvingNewChat(deps.phone, {
+            to: route.to,
+            body,
+            ...(sendKey ? { sendKey } : {}),
+          });
           const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
           return {
             providerMessageId: sent.providerMessageId,

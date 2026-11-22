@@ -140,7 +140,7 @@ export const FLAGS = [
   // VIL-717. A slow 1:1 ask (a registration, research, a find) gets a model-written ack
   // with a time from facts, and one honest note if that time passes with no answer.
   // Exact `true`; anything else, `true\n` included, is off.
-  exact('ack-eta', 'ACK_ETA_ENABLED'),
+  exact('ack-eta', 'ACK_ETA_ENABLED', { envOnly: true }),
   exact('inbound-burst', 'INBOUND_BURST_ENABLED', {
     parser: 'trimmed-not-false',
     default: true,

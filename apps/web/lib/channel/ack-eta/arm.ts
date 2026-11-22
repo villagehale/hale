@@ -40,6 +40,8 @@ export type AckEtaOutcome =
   | 'ack_sent'
   /** Linq took the ack and its ledger row failed: no promise, so no late note can follow. */
   | 'ack_sent_unrecorded'
+  /** An earlier delivery of this text already sent its ack: nothing more goes. */
+  | 'ack_already_sent'
   | 'ack_send_failed'
   /** Not a slow ask, and no tapback is lit for this turn. */
   | 'not_a_slow_ask'
@@ -65,6 +67,8 @@ export interface AckEtaRouterPorts {
   reader: AckTaskReader;
   writer: AckLineWriter;
   record(database: Database, input: AckPromiseInput): Promise<AckPromiseRecordOutcome>;
+  /** Whether this text already carries a promise (promise.ts `ackPromiseFor`). */
+  promiseFor(database: Database, inboundChannelMessageId: string): Promise<boolean>;
   page(database: Database, page: AckUnwrittenPage): Promise<unknown>;
 }
 
@@ -88,6 +92,8 @@ export interface AckEtaArm {
   read: () => Promise<HoldingLineRead>;
   reader: AckTaskReader;
   writer: AckLineWriter;
+  /** Whether an earlier delivery of this text already sent its ack and wrote its promise. */
+  alreadyPromised: () => Promise<boolean>;
   /** Sends the ack as this turn's non-answer line and returns its ledger row, or null when
    * the transport took it and the row did not land. Throws only when the transport did not
    * take it. */
@@ -172,6 +178,19 @@ export function armAckEta(input: AckEtaArm): AckEtaLine {
     if (read.status === 'withheld') {
       outcome = read.reason;
       input.log.info({ outcome }, 'ack eta: withheld, the answer is still coming');
+      return;
+    }
+
+    // The queue is at-least-once. A failed read goes on: the send's per-text Linq key still
+    // holds this text to one ack.
+    const promised = await input.alreadyPromised().catch((err: unknown) => {
+      input.log.warn({ err: errName(err) }, 'ack eta: the promise read failed');
+      return false;
+    });
+    if (settled) return;
+    if (promised) {
+      outcome = 'ack_already_sent';
+      input.log.info({ outcome }, 'ack eta: this text already has its ack');
       return;
     }
 

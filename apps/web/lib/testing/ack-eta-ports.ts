@@ -27,6 +27,7 @@ export function quietAckEtaPorts(): AckEtaRouterPorts & { reads: string[] } {
       lateNote: async () => ({ status: 'unavailable', reason: 'client_unavailable' }),
     },
     record: async () => ({ status: 'not_recorded', reason: 'write_failed' }),
+    promiseFor: async () => false,
     page: async () => 'page_not_configured',
   };
 }

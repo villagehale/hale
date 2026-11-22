@@ -70,6 +70,8 @@ const OWN_ROWS_IN_EXPORT = [
   'crisis_unanswered',
   'opt_out_hold_read',
   'opt_out_hold_cleared',
+  'ack_eta_promised',
+  'ack_eta_deadline',
   'ack_eta_late_note_sent',
   'team_schedule_driver_unreachable',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];

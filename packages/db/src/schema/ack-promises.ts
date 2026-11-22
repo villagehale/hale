@@ -34,8 +34,10 @@ import { users } from './users.js';
  * carries at most one promise, and `claimed_at` is the sweep's claim, taken with a
  * conditional update before anything is composed, so two sweeps cannot both send a note.
  *
- * Rows are kept seven days after they settle and then deleted by the sweep itself. Erasure
- * cascades from the family, the parent, and either message row.
+ * Rows are kept seven days after they settle, or after they came due if no sweep ever
+ * claimed them, and then deleted by the hourly delete sweep whatever the flag says
+ * (rights/record-retention.ts). Erasure cascades from the family, the parent, and either
+ * message row.
  */
 
 /** What the ack said Hale was doing. Mirrors `AckTask` in apps/web/lib/channel/ack-eta. */

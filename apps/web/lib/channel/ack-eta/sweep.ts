@@ -1,17 +1,24 @@
 import type { AckPromiseOutcome, Database } from '@hale/db';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import type { ProactiveHoldReason, ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
+import {
+  linqRefusedForCertain,
+  readSendRefusal,
+  refusalStopsRetry,
+} from '~/lib/channel/outbound-transport';
+import type { LineHold } from '~/lib/channel/proactive/review';
 import type { ReplyRoute, ReplyTransport } from '~/lib/channel/router/reply-route';
 import type { AckComposeFallback, AckLineWriter, LateNoteFacts } from './compose';
 import {
   type AckReplyState,
   type DueAckPromise,
   ackReplyState,
+  ackSendWasAttempted,
   claimAckPromise,
+  familyErasureScheduled,
   holdAckPromise,
   loadDueAckPromises,
-  pruneSettledAckPromises,
   recordLateNote,
+  releaseAckClaim,
   settleAckPromise,
 } from './promise';
 import { lateWindowMinutes, retryCeilingMs } from './window';
@@ -27,11 +34,17 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  *   lane_off     ACK_ETA_ENABLED or F14 is off for the family now; nothing is sent.
  *   stale        the tick reached it long after it could first have gone; a note then
  *                would only confuse, so nothing is sent.
- *   held         the outbound gate refused it for good (no live channel, no watch consent)
- *                or refused it at the send; nothing is sent.
+ *   held         the outbound gate refused it for good (no live channel, no watch consent),
+ *                refused it at the send, or the family asked to be erased; nothing is sent.
  *   unwritten    the model could not write a sendable note; nothing is sent, #ops paged.
- *   send_failed  the transport refused it.
+ *   send_failed  Linq refused it for certain; nothing landed, #ops paged.
  *   sent         the note went, in the ask's own 1:1 (threaded under it on iMessage).
+ *
+ * A SEND THAT DID NOT CONFIRM IS NOT AN ENDING. A rate limit, a 5xx, a timeout or any
+ * refusal that cannot prove the text stayed home gives the claim back, and the next tick
+ * tries again inside the stale window under the same Linq key, which Linq will not deliver
+ * twice. So does a read that throws after the claim, because nothing was sent. An owed
+ * note that is finally dropped pages #ops.
  *
  * The note is written from facts only (compose.ts). While the text is still being retried
  * it says Hale is still on it and how much longer it will keep trying: the queue's retry
@@ -48,7 +61,14 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  * the parent's night until the first tick after the floor opens, as a recovered first reply
  * does (intake/first-reply-recovery.ts), and the operator pause or an unread opt-out until
  * they clear or the note goes stale. A refusal that will not lift settles it, named.
+ *
+ * THE LINE-HEALTH PAUSE HOLDS IT TOO. Routed `immediate`, the note is outside the decider
+ * that honours the pause, so it reads the same hold itself (proactive/review.ts
+ * `readLineHold`), before the claim and again before the send.
  */
+
+/** The named ending for a family inside its erasure grace window. */
+const ERASURE_SCHEDULED = 'erasure_scheduled';
 
 /** How many due promises one tick takes. The rest are a minute later. */
 export const ACK_SWEEP_BATCH = 5;
@@ -74,6 +94,18 @@ export const ACK_SWEEP_BUDGET_MS = 20_000;
  */
 export const ACK_NOTE_WRITE_HEADROOM_MS = 3 * 60_000;
 
+/** What #ops is told about a late note that will not reach the parent. */
+export type LateNotePage = {
+  stage: 'late_note';
+  reason:
+    | AckComposeFallback
+    | 'send_refused'
+    | 'send_unconfirmed'
+    | 'line_held'
+    | 'note_dropped'
+    | 'claim_stuck';
+};
+
 export interface AckDeadlinePorts {
   /** ACK_ETA_ENABLED, for this family, now. */
   enabled(familyId: string): boolean;
@@ -90,12 +122,14 @@ export interface AckDeadlinePorts {
   }): Promise<ProactiveSendVerdict>;
   /** When the quiet floor opens for this parent, or null when it is open now. */
   quietUntil(parentUserId: string, now: Date): Promise<Date | null>;
+  /** Why Hale's sending line carries no unrequested send right now, or null when it can. */
+  lineHold(): Promise<LineHold | null>;
   /** The parent's sendable number, read now and never stored on the promise. Null when
    * they have no live, verified channel (a stop revokes it), which holds the note. */
   phone(parentUserId: string): Promise<string | null>;
   transport: ReplyTransport;
   /** Pages #ops once per hour per site (failure-page.ts `pageOps`). Never throws. */
-  page(page: { stage: 'late_note'; reason: AckComposeFallback }): Promise<unknown>;
+  page(page: LateNotePage): Promise<unknown>;
   /** Puts the sent note in the parent's thread, so the coach can read their answer to it. */
   thread(input: { familyId: string; parentUserId: string; body: string }): Promise<unknown>;
   log: Pick<Console, 'info' | 'warn' | 'error'>;
@@ -108,16 +142,25 @@ export interface AckDeadlineSweepSummary {
   deferred: number;
   /** Due promises that owe a note and were left unclaimed: it is night on the parent's clock. */
   quietHeld: number;
-  /** Due promises left unclaimed behind a hold that can lift: the pause or an unread opt-out. */
+  /** Due promises left unclaimed behind a hold that can lift: a pause or an unread opt-out. */
   railHeld: number;
+  /** Claims given back this tick: the send did not confirm, or a read threw. Still owed. */
+  released: number;
   settled: Partial<Record<AckPromiseOutcome, number>>;
-  pruned: number;
 }
 
 interface Settlement {
   outcome: AckPromiseOutcome;
   reason?: string;
   noteChannelMessageId?: string | null;
+  /** Set when this ending drops a note the parent was owed. */
+  page?: LateNotePage['reason'];
+}
+
+/** Nothing was settled: the claim goes back and the note stays owed. */
+interface Release {
+  release: string;
+  sendAttempted: boolean;
 }
 
 function errName(err: unknown): string {
@@ -152,7 +195,22 @@ type NotePlan =
   /** A note is owed and it is night on the parent's clock: unclaimed until the floor opens. */
   | { kind: 'night'; until: Date }
   /** A hold that can lift inside the stale window: left unclaimed for the next tick. */
-  | { kind: 'rail'; reason: ProactiveHoldReason };
+  | { kind: 'rail'; reason: ProactiveHoldReason | LineHold };
+
+/** How a note that went past saying ends, and whether the parent was still owed it. */
+async function staleEnding(
+  database: Database,
+  ports: AckDeadlinePorts,
+  promise: DueAckPromise,
+): Promise<Settlement> {
+  if ((await ackReplyState(database, promise)) === 'answered') return { outcome: 'stale' };
+  const hold = await ports.lineHold();
+  if (hold) return { outcome: 'stale', reason: hold, page: 'line_held' };
+  if (await ackSendWasAttempted(database, promise)) {
+    return { outcome: 'stale', reason: 'send_unconfirmed', page: 'send_unconfirmed' };
+  }
+  return { outcome: 'stale', page: 'note_dropped' };
+}
 
 async function planNote(
   database: Database,
@@ -163,9 +221,15 @@ async function planNote(
   const settle = (settlement: Settlement): NotePlan => ({ kind: 'settle', settlement });
   if (!ports.enabled(promise.familyId)) return settle({ outcome: 'lane_off' });
   if (!ports.f14For(promise.familyId)) return settle({ outcome: 'lane_off', reason: 'f14_dark' });
-  if (isStale(promise, now)) return settle({ outcome: 'stale' });
+  if (await familyErasureScheduled(database, promise.familyId)) {
+    return settle({ outcome: 'held', reason: ERASURE_SCHEDULED });
+  }
+  if (isStale(promise, now)) return settle(await staleEnding(database, ports, promise));
   const state = await ackReplyState(database, promise);
   if (state === 'answered') return settle({ outcome: 'answered' });
+
+  const lineHold = await ports.lineHold();
+  if (lineHold) return { kind: 'rail', reason: lineHold };
 
   const { familyId, parentUserId } = promise;
   const verdict = await ports.gate({ familyId, parentUserId, now });
@@ -190,7 +254,10 @@ async function planNote(
   }
 }
 
-/** Writes and sends one claimed note. Never throws for a reason it can name. */
+/**
+ * Writes and sends one claimed note. It throws only before the send, so a caller that
+ * catches a throw knows nothing went.
+ */
 async function writeNote(
   database: Database,
   ports: AckDeadlinePorts,
@@ -198,7 +265,7 @@ async function writeNote(
   state: Exclude<AckReplyState, 'answered'>,
   now: Date,
   sendClock: () => Date,
-): Promise<Settlement> {
+): Promise<Settlement | Release> {
   const phone = await ports.phone(promise.parentUserId);
   if (!phone) return { outcome: 'held', reason: 'not_enrolled' };
 
@@ -222,6 +289,11 @@ async function writeNote(
   if ((await ackReplyState(database, promise)) === 'answered') {
     return { outcome: 'answered', reason: 'while_writing' };
   }
+  if (await familyErasureScheduled(database, promise.familyId)) {
+    return { outcome: 'held', reason: ERASURE_SCHEDULED };
+  }
+  const lineHold = await ports.lineHold();
+  if (lineHold) return { release: lineHold, sendAttempted: false };
   // So may a stop. The gate again, on the clock the send will actually go out on.
   const atSend = await ports.gate({
     familyId: promise.familyId,
@@ -235,15 +307,21 @@ async function writeNote(
     sent = await ports.transport.send({
       route: noteRoute(promise, phone),
       body: composed.line,
-      // Linq drops a resend under the same key: one note per promise at the provider too.
+      // Linq drops a resend under the same key, so a retry of a send that landed is no
+      // second text, and every attempt for this promise is the same send.
       sendKey: `ack_eta_late_note:${promise.id}`,
     });
   } catch (err) {
+    const code = readSendRefusal(err)?.code ?? 'threw';
+    const certain = linqRefusedForCertain(err);
     ports.log.warn(
-      { promiseId: promise.id, err: errName(err) },
+      { promiseId: promise.id, err: errName(err), code, certain },
       'ack eta: the late note did not go',
     );
-    return { outcome: 'send_failed', reason: err instanceof LinqSendError ? err.code : 'threw' };
+    if (certain && refusalStopsRetry(err)) {
+      return { outcome: 'send_failed', reason: code, page: 'send_refused' };
+    }
+    return { release: code, sendAttempted: !certain };
   }
 
   let noteChannelMessageId: string | null = null;
@@ -291,8 +369,8 @@ export async function runAckDeadlineSweep(
     deferred: 0,
     quietHeld: 0,
     railHeld: 0,
+    released: 0,
     settled: {},
-    pruned: 0,
   };
   const startedMs = ports.clock();
   const sendClock = () => new Date(now.getTime() + (ports.clock() - startedMs));
@@ -328,21 +406,38 @@ export async function runAckDeadlineSweep(
     }
     if (!(await claimAckPromise(database, promise.id, now))) continue;
     summary.claimed += 1;
-    let settlement: Settlement;
+    let result: Settlement | Release;
     try {
-      settlement =
+      result =
         plan.kind === 'settle'
           ? plan.settlement
           : await writeNote(database, ports, promise, plan.state, now, sendClock);
     } catch (err) {
-      // A read that threw before anything was sent: nothing went, and the claim stands, so
-      // no later tick can send a note the parent might get twice.
       ports.log.error(
         { promiseId: promise.id, err: errName(err) },
         'ack eta: the deadline check threw, nothing sent',
       );
-      settlement = { outcome: 'held', reason: 'check_failed' };
+      result = { release: 'check_failed', sendAttempted: false };
     }
+    if ('release' in result) {
+      summary.released += 1;
+      try {
+        await releaseAckClaim(database, {
+          promise,
+          claimedAt: now,
+          reason: result.release,
+          sendAttempted: result.sendAttempted,
+        });
+      } catch (err) {
+        ports.log.error(
+          { promiseId: promise.id, err: errName(err) },
+          'ack eta: the claim could not be given back, this note is lost',
+        );
+        await ports.page({ stage: 'late_note', reason: 'claim_stuck' });
+      }
+      continue;
+    }
+    const settlement = result;
     await settleAckPromise(database, {
       promise,
       outcome: settlement.outcome,
@@ -359,7 +454,7 @@ export async function runAckDeadlineSweep(
       },
       'ack eta: deadline settled',
     );
+    if (settlement.page) await ports.page({ stage: 'late_note', reason: settlement.page });
   }
-  summary.pruned = await pruneSettledAckPromises(database, now);
   return summary;
 }

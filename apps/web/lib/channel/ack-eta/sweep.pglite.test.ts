@@ -1,10 +1,15 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { holdSender } from '~/lib/channel/intake/opt-out-hold';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { inProactiveQuietHours, proactiveFloorOpensAt } from '~/lib/channel/outbound-gate';
-import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
+import {
+  FakeReplyTransport,
+  type ReplySent,
+  type ReplyTransport,
+} from '~/lib/channel/router/reply-route';
 import { auditTurnLedger } from '~/lib/channel/router/wiring';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -15,7 +20,7 @@ import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { AckCompose, AckLineWriter, LateNoteFacts } from './compose';
 import { ackDeadlinePorts } from './production';
-import { recordAckPromise, recordLateNote } from './promise';
+import { recordAckPromise, recordLateNote, settleAckPromise } from './promise';
 import {
   ACK_LATE_NOTE_STALE_MS,
   ACK_NOTE_WRITE_HEADROOM_MS,
@@ -121,6 +126,7 @@ function ports(overrides: Partial<AckDeadlinePorts> & { line?: AckCompose } = {}
     f14For: () => true,
     gate: async () => ({ allowed: true, optOut: 'short' }),
     quietUntil: async () => null,
+    lineHold: async () => null,
     phone: async () => '+15550000000',
     transport,
     page: async (page) => {
@@ -144,11 +150,21 @@ async function promiseRow(id: string) {
   return row;
 }
 
+/** The promise's own audit rows. They are keyed on the adult, and name the promise in `after`. */
 async function deadlineAudits(promiseId: string) {
-  return db.database
+  const rows = await db.database
     .select({ after: schema.auditLog.after, audience: schema.auditLog.audience })
     .from(schema.auditLog)
-    .where(eq(schema.auditLog.targetId, promiseId));
+    .where(
+      and(
+        inArray(schema.auditLog.actionTaken, ['ack_eta_promised', 'ack_eta_deadline']),
+        sql`${schema.auditLog.after}->>'promise' = ${promiseId}`,
+      ),
+    );
+  return rows.map(({ after, audience }) => {
+    const { promise: _promise, ...rest } = after as Record<string, unknown>;
+    return { after: rest, audience };
+  });
 }
 
 describe('VIL-717 · the deadline sweep', () => {
@@ -544,17 +560,20 @@ describe('VIL-717 · the deadline sweep', () => {
 
   describe('through the outbound gate, on the production wiring', () => {
     const PHONE = '+15550000000';
+    const SENDING_LINE = '+15555550199';
     const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 
     beforeEach(() => {
       vi.stubEnv('APP_ENCRYPTION_KEY', ENCRYPTION_KEY);
       vi.stubEnv('ACK_ETA_ENABLED', 'true');
       vi.stubEnv('F14_ENABLED', 'true');
+      vi.stubEnv('LINQ_FROM_E164', SENDING_LINE);
     });
 
     afterEach(async () => {
       vi.unstubAllEnvs();
       await db.database.delete(schema.optOutHeldMessages);
+      await db.database.delete(schema.linqLineHealth);
     });
 
     async function enroll(seeded: { familyId: string; parentUserId: string }) {
@@ -598,6 +617,35 @@ describe('VIL-717 · the deadline sweep', () => {
       };
       return { ports: built, transport };
     }
+
+    it('a paused sending line holds the note unclaimed, and it goes when the line clears', async () => {
+      const seeded = await seedPromise('sms');
+      await enroll(seeded);
+      await answerWatch(seeded, true);
+      await db.database
+        .insert(schema.linqLineHealth)
+        .values({ phoneNumber: SENDING_LINE, status: 'flagged', paused: true });
+      const p = wired();
+
+      const held = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+      expect(held).toMatchObject({ claimed: 0, railHeld: 1, settled: {} });
+      expect(p.transport.sent).toEqual([]);
+      expect(await promiseRow(seeded.promiseId)).toMatchObject({
+        claimedAt: null,
+        outcome: null,
+      });
+
+      await db.database.update(schema.linqLineHealth).set({ paused: false });
+      const cleared = await runAckDeadlineSweep(
+        db.database,
+        p.ports,
+        new Date(AFTER_DUE.getTime() + 60_000),
+      );
+
+      expect(cleared.settled).toEqual({ sent: 1 });
+      expect(p.transport.bodies()).toEqual(['a stand-in note']);
+    });
 
     it('a parent who declined the watch gets no note, and the refusal is named', async () => {
       const seeded = await seedPromise('sms');
@@ -772,6 +820,8 @@ describe('VIL-717 · the deadline sweep', () => {
   describe("the note's audit row is one adult's", () => {
     const NOTE = 'Hale told you an answer was taking longer than it said';
     const ANSWERED = 'Hale came back to you about an activity search';
+    const PROMISED = 'Hale told you when to expect an answer';
+    const CHECKED = 'Hale checked whether an answer it promised went out in time';
 
     afterEach(() => {
       vi.unstubAllEnvs();
@@ -812,7 +862,17 @@ describe('VIL-717 · the deadline sweep', () => {
         (
           await assembleFamilyExport(db.database, seeded.familyId, { actorUserId, now: AFTER_DUE })
         ).trail.map((row) => row.summary);
-      return { asker: seeded.parentUserId, coParent, history, copy };
+      return {
+        asker: seeded.parentUserId,
+        coParent,
+        history,
+        copy,
+        promise: {
+          id: seeded.promiseId,
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+        },
+      };
     }
 
     it('audience read off: not in anyone’s History, in the asker’s own access copy only', async () => {
@@ -825,6 +885,17 @@ describe('VIL-717 · the deadline sweep', () => {
       const coParentCopy = await copy(coParent);
       expect(coParentCopy).toContain(ANSWERED);
       expect(coParentCopy).not.toContain(NOTE);
+    });
+
+    it('audience read off: the promise and its ending are in the asker’s copy only', async () => {
+      const { asker, coParent, copy, promise } = await twoParentsAndANote();
+      await settleAckPromise(db.database, { promise, outcome: 'sent', now: AFTER_DUE });
+
+      expect(await copy(asker)).toEqual(expect.arrayContaining([PROMISED, CHECKED, ANSWERED]));
+      const coParentCopy = await copy(coParent);
+      expect(coParentCopy).toContain(ANSWERED);
+      expect(coParentCopy).not.toContain(PROMISED);
+      expect(coParentCopy).not.toContain(CHECKED);
     });
 
     it('audience read on: in the asker’s History and copy, never the other adult’s', async () => {
@@ -1015,5 +1086,228 @@ describe('VIL-717 · the deadline sweep', () => {
         `ack_eta_late_note:${daytime.promiseId}`,
       ]);
     });
+  });
+});
+
+describe('VIL-717 · a late note the send did not confirm', () => {
+  const NEXT_TICK = new Date(AFTER_DUE.getTime() + 60_000);
+
+  /** A Linq door that refuses as scripted, then takes the note. Records each attempt's key. */
+  function flakyTransport(refusals: unknown[]) {
+    const left = [...refusals];
+    const keys: Array<string | undefined> = [];
+    const taken: string[] = [];
+    const transport: ReplyTransport = {
+      async send({ body, route, sendKey }): Promise<ReplySent> {
+        keys.push(sendKey);
+        const refusal = left.shift();
+        if (refusal) throw refusal;
+        taken.push(body);
+        return { providerMessageId: 'an-invented-id', channel: route.channel };
+      },
+    };
+    return { transport, keys, taken };
+  }
+
+  it.each([
+    ['a rate limit', () => new LinqSendError('rate_limited', 429, false)],
+    ['a timeout that may have landed', () => new LinqSendError('timeout', 0, false)],
+    ['a 5xx', () => new LinqSendError('server_error', 503, false)],
+    ['a permanent 409 that may have landed', () => new LinqSendError('conflict', 409, true)],
+    ['a door not configured yet', () => new LinqSendError('not_configured', 0, true)],
+  ])('%s: releases the claim, and the next tick sends under the same key', async (_name, make) => {
+    const seeded = await seedPromise('sms');
+    const door = flakyTransport([make()]);
+    const p = ports({ transport: door.transport });
+
+    const first = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(first.settled).toEqual({});
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({
+      claimedAt: null,
+      settledAt: null,
+      outcome: null,
+    });
+    expect(p.pages).toEqual([]);
+
+    const second = await runAckDeadlineSweep(db.database, p.ports, NEXT_TICK);
+
+    expect(second.settled).toEqual({ sent: 1 });
+    expect(door.taken).toEqual(['a stand-in late note']);
+    const key = `ack_eta_late_note:${seeded.promiseId}`;
+    expect(door.keys).toEqual([key, key]);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'sent' });
+  });
+
+  it('a certain refusal settles send_failed, pages #ops, and no tick tries again', async () => {
+    const seeded = await seedPromise('sms');
+    const door = flakyTransport([new LinqSendError('1005', 422, true)]);
+    const p = ports({ transport: door.transport });
+
+    const first = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+    const second = await runAckDeadlineSweep(db.database, p.ports, NEXT_TICK);
+
+    expect(first.settled).toEqual({ send_failed: 1 });
+    expect(second).toMatchObject({ due: 0, claimed: 0 });
+    expect(door.keys).toHaveLength(1);
+    expect(p.pages).toEqual([{ stage: 'late_note', reason: 'send_refused' }]);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'send_failed' });
+  });
+
+  it('a read that throws after the claim releases it, because nothing went', async () => {
+    const seeded = await seedPromise('sms');
+    let reads = 0;
+    const p = ports({
+      phone: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error('connection reset');
+        return '+15550000000';
+      },
+    });
+
+    const first = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(first.settled).toEqual({});
+    expect(p.transport.sent).toEqual([]);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ claimedAt: null, outcome: null });
+
+    const second = await runAckDeadlineSweep(db.database, p.ports, NEXT_TICK);
+
+    expect(second.settled).toEqual({ sent: 1 });
+    expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+  });
+
+  it('a send that never confirms ends stale, named, and #ops is told the note was dropped', async () => {
+    const seeded = await seedPromise('sms');
+    const door = flakyTransport([
+      new LinqSendError('timeout', 0, false),
+      new LinqSendError('timeout', 0, false),
+    ]);
+    const p = ports({ transport: door.transport });
+
+    await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+    await runAckDeadlineSweep(db.database, p.ports, NEXT_TICK);
+    const last = await runAckDeadlineSweep(
+      db.database,
+      p.ports,
+      new Date(DUE_AT.getTime() + ACK_LATE_NOTE_STALE_MS + 1_000),
+    );
+
+    expect(last.settled).toEqual({ stale: 1 });
+    expect(door.keys).toHaveLength(2);
+    expect(door.taken).toEqual([]);
+    expect(p.pages).toEqual([{ stage: 'late_note', reason: 'send_unconfirmed' }]);
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.at(-1)?.after).toEqual({ outcome: 'stale', reason: 'send_unconfirmed' });
+  });
+
+  it('an answered text that went stale is not a dropped note: no page', async () => {
+    const seeded = await seedPromise('sms');
+    await auditTurnLedger(db.database).recordAnswered({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      channelMessageId: seeded.inboundId,
+      folded: [],
+    });
+    const p = ports();
+
+    await runAckDeadlineSweep(
+      db.database,
+      p.ports,
+      new Date(DUE_AT.getTime() + ACK_LATE_NOTE_STALE_MS + 1_000),
+    );
+
+    expect(p.pages).toEqual([]);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'stale' });
+  });
+});
+
+describe('VIL-717 · the line-health pause', () => {
+  it('held at the send: the row goes back unclaimed and nothing is sent', async () => {
+    const seeded = await seedPromise('sms');
+    const answers: Array<'line_health' | null> = [null, 'line_health'];
+    const p = ports({ lineHold: async () => answers.shift() ?? null });
+
+    const first = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(first.settled).toEqual({});
+    expect(p.transport.sent).toEqual([]);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ claimedAt: null, outcome: null });
+
+    const second = await runAckDeadlineSweep(
+      db.database,
+      p.ports,
+      new Date(AFTER_DUE.getTime() + 60_000),
+    );
+
+    expect(second.settled).toEqual({ sent: 1 });
+    expect(p.transport.bodies()).toEqual(['a stand-in late note']);
+  });
+
+  it('still held when the note goes stale: dropped, with the hold named', async () => {
+    const seeded = await seedPromise('sms');
+    const p = ports({ lineHold: async () => 'line_health' });
+
+    const held = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+    const last = await runAckDeadlineSweep(
+      db.database,
+      p.ports,
+      new Date(DUE_AT.getTime() + ACK_LATE_NOTE_STALE_MS + 1_000),
+    );
+
+    expect(held).toMatchObject({ claimed: 0, railHeld: 1 });
+    expect(last.settled).toEqual({ stale: 1 });
+    expect(p.transport.sent).toEqual([]);
+    expect(p.pages).toEqual([{ stage: 'late_note', reason: 'line_held' }]);
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.at(-1)?.after).toEqual({ outcome: 'stale', reason: 'line_health' });
+  });
+});
+
+describe('VIL-717 · a family that asked to be erased', () => {
+  async function scheduleErasure(familyId: string) {
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: new Date(AFTER_DUE.getTime() + 7 * 24 * 60 * 60_000) })
+      .where(eq(schema.families.id, familyId));
+  }
+
+  it('settles held, named, before anything is written', async () => {
+    const seeded = await seedPromise('sms');
+    const control = await seedPromise('sms');
+    await scheduleErasure(seeded.familyId);
+    const p = ports();
+
+    const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(summary.settled).toEqual({ held: 1, sent: 1 });
+    expect(p.transport.sent.map((s) => s.sendKey)).toEqual([
+      `ack_eta_late_note:${control.promiseId}`,
+    ]);
+    expect(p.facts).toHaveLength(1);
+    expect(await promiseRow(seeded.promiseId)).toMatchObject({ outcome: 'held' });
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.at(-1)?.after).toEqual({ outcome: 'held', reason: 'erasure_scheduled' });
+  });
+
+  it('asked while the note was being written: nothing goes', async () => {
+    const seeded = await seedPromise('sms');
+    const base = ports();
+    const p = ports({
+      writer: {
+        ...base.ports.writer,
+        lateNote: async () => {
+          await scheduleErasure(seeded.familyId);
+          return { status: 'composed', line: 'a stand-in late note' };
+        },
+      },
+    });
+
+    const summary = await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
+
+    expect(summary.settled).toEqual({ held: 1 });
+    expect(p.transport.sent).toEqual([]);
+    const audits = await deadlineAudits(seeded.promiseId);
+    expect(audits.at(-1)?.after).toEqual({ outcome: 'held', reason: 'erasure_scheduled' });
   });
 });

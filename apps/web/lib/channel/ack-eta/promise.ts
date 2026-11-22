@@ -6,12 +6,11 @@ import {
   gt,
   gte,
   inArray,
-  isNotNull,
   isNull,
-  lt,
   lte,
   notInArray,
   or,
+  sql,
 } from 'drizzle-orm';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
@@ -37,7 +36,9 @@ import type { AckTask } from './read';
  * composes anything, and a claimed row is never read again.
  *
  * Every write lands with its audit row in the same transaction (rule #6). The rows carry
- * the asking adult as their `audience` (VIL-635): a slow ask is one adult's own question.
+ * the asking adult as their `audience` (VIL-635) and are keyed on that adult
+ * (`users/<id>`, the promise named in `after`): a slow ask is one adult's own question, so
+ * their access copy holds it and the family copy does not (rights/export.ts).
  *
  * Nothing here throws to its caller on a write that can fail after a parent already has a
  * message; each failure is a named outcome, logged with the SQLSTATE only, because a
@@ -52,9 +53,6 @@ export const ACK_LATE_NOTE_SENT_ACTION = 'ack_eta_late_note_sent';
 /** The ledger name for the ack and for the late note (`channel_messages.template_key`). */
 export const ACK_ETA_TEMPLATE_KEY = 'ack_eta';
 export const ACK_LATE_NOTE_TEMPLATE_KEY = 'ack_eta_late_note';
-
-/** How long a settled promise is kept before the sweep deletes it. */
-export const ACK_PROMISE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Postgres' "relation does not exist": the table's migration is not applied yet. */
 const UNDEFINED_TABLE = '42P01';
@@ -119,9 +117,14 @@ export async function recordAckPromise(
         familyId: input.familyId,
         actor: 'system',
         actionTaken: 'ack_eta_promised',
-        targetTable: 'ack_promises',
-        targetId: row.id,
-        after: { task: input.task, promisedMinutes: input.promisedMinutes, channel: input.channel },
+        targetTable: 'users',
+        targetId: input.parentUserId,
+        after: {
+          promise: row.id,
+          task: input.task,
+          promisedMinutes: input.promisedMinutes,
+          channel: input.channel,
+        },
         audience: input.parentUserId,
       });
       return row.id;
@@ -255,12 +258,112 @@ export async function settleAckPromise(
       familyId: input.promise.familyId,
       actor: 'system',
       actionTaken: 'ack_eta_deadline',
-      targetTable: 'ack_promises',
-      targetId: input.promise.id,
-      after: { outcome: input.outcome, ...(input.reason ? { reason: input.reason } : {}) },
+      targetTable: 'users',
+      targetId: input.promise.parentUserId,
+      after: {
+        promise: input.promise.id,
+        outcome: input.outcome,
+        ...(input.reason ? { reason: input.reason } : {}),
+      },
       audience: input.promise.parentUserId,
     });
   });
+}
+
+/**
+ * Give a claim back: this sweep sent nothing it can be sure of, so the note is still owed
+ * and the next tick may try it, under the same Linq key. Conditional on this sweep's own
+ * claim. `sendAttempted` is what a later `stale` ending reads to say the note may have gone.
+ */
+export async function releaseAckClaim(
+  database: Database,
+  input: {
+    promise: Pick<DueAckPromise, 'id' | 'familyId' | 'parentUserId'>;
+    claimedAt: Date;
+    reason: string;
+    sendAttempted: boolean;
+  },
+): Promise<void> {
+  await database.transaction(async (tx) => {
+    await tx
+      .update(schema.ackPromises)
+      .set({ claimedAt: null })
+      .where(
+        and(
+          eq(schema.ackPromises.id, input.promise.id),
+          eq(schema.ackPromises.claimedAt, input.claimedAt),
+          isNull(schema.ackPromises.settledAt),
+        ),
+      );
+    await tx.insert(schema.auditLog).values({
+      familyId: input.promise.familyId,
+      actor: 'system',
+      actionTaken: 'ack_eta_deadline',
+      targetTable: 'users',
+      targetId: input.promise.parentUserId,
+      after: {
+        promise: input.promise.id,
+        outcome: 'retrying',
+        reason: input.reason,
+        sendAttempted: input.sendAttempted,
+      },
+      audience: input.promise.parentUserId,
+    });
+  });
+}
+
+/** Whether an earlier tick tried this note's send and could not tell if it landed. */
+export async function ackSendWasAttempted(
+  database: Database,
+  promise: Pick<DueAckPromise, 'id' | 'familyId' | 'parentUserId' | 'askedAt'>,
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, promise.familyId),
+        gte(schema.auditLog.occurredAt, promise.askedAt),
+        eq(schema.auditLog.actionTaken, 'ack_eta_deadline'),
+        eq(schema.auditLog.targetTable, 'users'),
+        eq(schema.auditLog.targetId, promise.parentUserId),
+        sql`${schema.auditLog.after}->>'promise' = ${promise.id}`,
+        sql`${schema.auditLog.after}->>'sendAttempted' = 'true'`,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Whether this text already carries a promise. An unmigrated table holds none. */
+export async function ackPromiseFor(
+  database: Database,
+  inboundChannelMessageId: string,
+): Promise<boolean> {
+  try {
+    const rows = await database
+      .select({ id: schema.ackPromises.id })
+      .from(schema.ackPromises)
+      .where(eq(schema.ackPromises.inboundChannelMessageId, inboundChannelMessageId))
+      .limit(1);
+    return rows.length > 0;
+  } catch (err) {
+    if (pgErrorCode(err) === UNDEFINED_TABLE) return false;
+    throw err;
+  }
+}
+
+/** The family asked to be erased (or is gone): nothing unprompted goes to them. */
+export async function familyErasureScheduled(
+  database: Database,
+  familyId: string,
+): Promise<boolean> {
+  const [family] = await database
+    .select({ scheduledDeletionAt: schema.families.scheduledDeletionAt })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return family === undefined || family.scheduledDeletionAt !== null;
 }
 
 /**
@@ -381,24 +484,6 @@ async function replyOnLedgerBeforeClose(
     )
     .limit(1);
   return replies.length > 0;
-}
-
-/**
- * Delete promises claimed longer ago than the retention window: settled ones, and the rare
- * one a sweep claimed and then died before settling (it is never sent twice, and it is not
- * kept forever either). Returns how many.
- */
-export async function pruneSettledAckPromises(database: Database, now: Date): Promise<number> {
-  const rows = await database
-    .delete(schema.ackPromises)
-    .where(
-      and(
-        isNotNull(schema.ackPromises.claimedAt),
-        lt(schema.ackPromises.claimedAt, new Date(now.getTime() - ACK_PROMISE_RETENTION_MS)),
-      ),
-    )
-    .returning({ id: schema.ackPromises.id });
-  return rows.length;
 }
 
 /**

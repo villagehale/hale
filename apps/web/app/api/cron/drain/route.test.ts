@@ -104,7 +104,7 @@ describe('GET /api/cron/drain', () => {
     recheckHeldRemindersMock.mockReset().mockResolvedValue({ held: 0 });
     runAckDeadlineSweepMock
       .mockReset()
-      .mockResolvedValue({ due: 0, claimed: 0, settled: {}, pruned: 0 });
+      .mockResolvedValue({ due: 0, claimed: 0, settled: {} });
     // Pinned off: the all-flags-on job sets it before the process starts.
     vi.stubEnv('ACK_ETA_ENABLED', '');
     retryTeamScheduleDriversMock.mockReset();
@@ -193,7 +193,6 @@ describe('GET /api/cron/drain', () => {
       firstReply: expect.any(Object),
       groupReminders: { skipped: 'flag_off' },
       heldReminders: { held: 0 },
-      ackDeadlines: { skipped: 'flag_off' },
       teamScheduleDrivers: { skipped: 'flag_off' },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
       anthropicCredit: { skipped: 'flag_off' },
@@ -207,7 +206,7 @@ describe('GET /api/cron/drain', () => {
   it('VIL-717: lit, sweeps the promised times every scheduled minute, before the queues', async () => {
     vi.stubEnv('ACK_ETA_ENABLED', 'true');
     const order: string[] = [];
-    const summary = { due: 1, claimed: 1, settled: { answered: 1 }, pruned: 0 };
+    const summary = { due: 1, claimed: 1, settled: { answered: 1 } };
     runAckDeadlineSweepMock.mockImplementation(async () => {
       order.push('ack_deadlines');
       return summary;
@@ -231,7 +230,18 @@ describe('GET /api/cron/drain', () => {
 
     const response = await GET(request());
 
-    expect(await response.json()).toMatchObject({ ackDeadlines: { skipped: 'flag_off' } });
+    expect(await response.json()).not.toHaveProperty('ackDeadlines');
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: PostHog cannot light the sweep: with the env unset it stays dark', async () => {
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).not.toHaveProperty('ackDeadlines');
     expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
   });
 
@@ -489,6 +499,7 @@ describe('GET /api/cron/drain', () => {
 
   it('skips the opt-out recovery leg on Preview, which shares the prod database', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', '00000000-0000-4000-8000-0000000000aa');
     vi.stubEnv('PREVIEW_CAPTURE_TRANSPORT', 'on');

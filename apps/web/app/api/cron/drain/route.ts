@@ -99,9 +99,10 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // for the same reason as the group reminders.
   const heldReminders = preview ? { skipped: 'preview' as const } : await runHeldReminderLeg();
   // VIL-717: a slow ask whose stated time passed with no answer gets one honest note, and it
-  // is owed to the minute, so the sweep runs here too, before the queues. Flag off is named;
-  // a failed leg is named and the drain still runs.
-  const ackDeadlines = preview ? { skipped: 'preview' as const } : await runAckDeadlineLeg();
+  // is owed to the minute, so the sweep runs here too, before the queues. Flag off, the leg
+  // reads nothing and adds nothing to this response; a failed leg is named and the drain
+  // still runs.
+  const ackDeadlines = await runAckDeadlineLeg(preview);
   // VIL-734: a driver's schedule-change text Linq refused goes again on its backoff.
   const teamScheduleDrivers = preview
     ? { skipped: 'preview' as const }
@@ -146,7 +147,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         firstReply,
         groupReminders,
         heldReminders,
-        ackDeadlines,
+        ...(ackDeadlines ? { ackDeadlines } : {}),
         teamScheduleDrivers,
         optOutRecovery,
         anthropicCredit,
@@ -253,12 +254,13 @@ async function runAnthropicCreditLeg(): Promise<
   }
 }
 
-async function runAckDeadlineLeg(): Promise<
-  AckDeadlineSweepSummary | { skipped: 'flag_off' | 'tick_failed' }
-> {
+async function runAckDeadlineLeg(
+  preview: boolean,
+): Promise<AckDeadlineSweepSummary | { skipped: 'preview' | 'tick_failed' } | null> {
   try {
-    const { ackEtaMayBeLit } = await import('~/lib/channel/ack-eta/flag');
-    if (!ackEtaMayBeLit()) return { skipped: 'flag_off' };
+    const { ackEtaEnabled } = await import('~/lib/channel/ack-eta/flag');
+    if (!ackEtaEnabled()) return null;
+    if (preview) return { skipped: 'preview' };
     const { runAckDeadlineSweep } = await import('~/lib/channel/ack-eta/sweep');
     const { ackDeadlinePorts } = await import('~/lib/channel/ack-eta/production');
     const { db } = await import('~/lib/db');

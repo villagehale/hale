@@ -247,7 +247,9 @@ export const OPS_PAGE_VOCABULARY = {
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
-  // VIL-717. No ack (or late note) was sent because the model could not write one.
+  // VIL-717. No ack or late note reached the parent: the model could not write one, or an
+  // owed late note was finally dropped (Linq refused it, its send never confirmed, the line
+  // stayed held, it went stale) or its claim could not be given back.
   ack_eta_unwritten: {
     stage: ['read', 'ack', 'late_note'],
     reason: [
@@ -257,6 +259,11 @@ export const OPS_PAGE_VOCABULARY = {
       'judge_unavailable',
       'judge_failed',
       'gate_exhausted',
+      'send_refused',
+      'send_unconfirmed',
+      'line_held',
+      'note_dropped',
+      'claim_stuck',
     ],
   },
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
