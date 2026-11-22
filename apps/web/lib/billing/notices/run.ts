@@ -1,3 +1,4 @@
+import { hasGarbledText } from '@hale/agent';
 import { type BillingNotice, type BillingNoticeEventFacts, type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -17,6 +18,7 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { GARBLED_TEXT } from '~/lib/channel/linq/transport';
 import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import type { BillingClaimFacts, BillingPlanName } from '~/lib/channel/reconcile/billing-text';
 import type { Channel, ChannelKind, ChannelSendOutcome, LoopMessage } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
@@ -77,8 +79,8 @@ const OPT_OUT_HELD = 'opt_out_held';
 const FACTS_MOVED = 'facts_moved';
 /** Another run owns the row now, so this one neither sends nor records a failure. */
 const LEFT_SENDING = 'left_sending';
-/** The transport's refusals raised before any fetch. Every other error may follow a POST. */
-const REFUSED_BEFORE_POST: readonly string[] = [GARBLED_TEXT, 'preview_capture'];
+/** The transport's refusal for a Preview capture run, raised before any fetch. */
+const PREVIEW_CAPTURE_REFUSAL = 'preview_capture';
 
 /** The route's ceiling is 800s and the queues may use 700. No notice starts past this. */
 const LAST_START_MS = 640_000;
@@ -221,18 +223,24 @@ export function guardedChannels(
       async send(input) {
         await guard.beforeSend();
         const outcome = await sms.send(input);
-        if (madeNoPost(outcome)) await guard.noPostMade();
+        if (madeNoPost(input.rendered, outcome)) await guard.noPostMade();
         return outcome;
       },
     },
   };
 }
 
-function madeNoPost(outcome: ChannelSendOutcome): boolean {
-  return (
-    outcome.status === 'skipped' ||
-    (outcome.status === 'error' && REFUSED_BEFORE_POST.includes(outcome.code))
-  );
+/** Decided from Hale's own state, because a Linq error body can carry any code string. */
+function madeNoPost(
+  rendered: Parameters<Channel['send']>[0]['rendered'],
+  outcome: ChannelSendOutcome,
+): boolean {
+  if (outcome.status === 'skipped') return true;
+  if (outcome.status !== 'error') return false;
+  if (outcome.code === GARBLED_TEXT) {
+    return rendered.kind === 'sms' && hasGarbledText(rendered.text);
+  }
+  return outcome.code === PREVIEW_CAPTURE_REFUSAL && previewCaptureRequested();
 }
 
 export async function runBillingNoticeTick(

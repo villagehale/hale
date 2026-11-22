@@ -1111,6 +1111,19 @@ describe('a send Linq may have taken', () => {
     },
   );
 
+  it.each(['garbled_text', 'preview_capture'])(
+    'Linq answering a real POST with the code %s does not clear the column',
+    async (code) => {
+      const linq = realLinq([() => Response.json({ error: { code } }, { status: 400 }), accepted]);
+      const notice = await insertNotice({});
+      await tick({ dispatch: linq.dispatch });
+      const row = await noticeRow(notice.id);
+      expect(linq.posts).toHaveLength(1);
+      expect(row.status).toBe('unconfirmed');
+      expect(row.mayHaveLanded).toBe(true);
+    },
+  );
+
   it('a first-try skip (no_address): no POST, the column back to false, an ordinary retry', async () => {
     const linq = losesPhoneMidSend();
     const notice = await insertNotice({});
