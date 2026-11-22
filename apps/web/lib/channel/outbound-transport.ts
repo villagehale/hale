@@ -332,6 +332,20 @@ export function outboundLineFrom(): string | null {
   return linqApiKey() !== null ? linqFromE164() : null;
 }
 
+/**
+ * VIL-735 · the 1:1 chat Linq holds for Hale's line and this number, or null when there is
+ * none. Read-only: it puts nothing on a phone. A missing line or a refused read throws
+ * `LinqSendError`, so a caller can tell "no chat" from "could not read".
+ */
+export async function findHaleDirectChat(
+  to: string,
+  deps: { fetch?: typeof fetch } = {},
+): Promise<string | null> {
+  const from = outboundLineFrom();
+  if (!from) throw new LinqSendError('not_configured', 0, true);
+  return linq.findLinqDirectChat({ from, to, fetch: deps.fetch });
+}
+
 /** VIL-479 · edit one text part of a message already sent. The text is the caller's. */
 export async function editLinqMessage(
   input: In<typeof linq.editLinqMessage>,

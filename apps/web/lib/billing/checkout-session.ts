@@ -74,6 +74,11 @@ export function checkoutSuccessUrl(marketingOrigin: string): string {
   return `${base}/checkout/success?session_id=${CHECKOUT_SESSION_ID_PLACEHOLDER}`;
 }
 
+/** State H: the pricing page says no charge was made. */
+export function checkoutCancelUrl(marketingOrigin: string): string {
+  return `${marketingOrigin.replace(/\/$/, '')}/pricing?checkout=cancelled`;
+}
+
 function isProductionMarketingOrigin(raw: string): boolean {
   const url = safeHttpUrl(raw);
   if (!url) return false;

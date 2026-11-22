@@ -342,6 +342,12 @@ export const PAYMENT_ENV_ONLY = [
     note: 'env-only; exact `true`; checkout currency is US/CA geo only, no client currency, no USD-to-CAD list fallback; nothing in PostHog may turn this on',
   },
   {
+    env: 'CHECKOUT_SUCCESS_STATES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; the checkout success page picks its state from Stripe and the DB. Read by apps/web and apps/site, so both Vercel projects carry it, hale-web first; nothing in PostHog may turn this on',
+  },
+  {
     env: 'STRIPE_BILLING_REVOKE_ENABLED',
     posthogKey: null,
     type: 'boolean' as const,
@@ -352,6 +358,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'BILLING_THREAD_NOTICES_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`, armed only with a strict BILLING_THREAD_NOTICES_SINCE instant; AI-written Linq text to the paying parent after a payment, cancel or refund; nothing in PostHog may turn this on',
   },
 ] as const;
 
