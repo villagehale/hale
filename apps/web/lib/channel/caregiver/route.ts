@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { eq } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
@@ -51,6 +52,7 @@ import {
   type CoParentRefusal,
   acceptInvite,
   declineInvite,
+  coParentInviteSendKey,
   loadPendingAssent,
   recordCoParentAssent,
   recordInviteRefusal,
@@ -291,6 +293,8 @@ async function reply(
     parentUserId: string;
     lane: Lane;
     now: Date;
+    /** Linq's idempotency key, for a text that may already have landed once. */
+    sendKey?: string;
   },
 ): Promise<void> {
   if (!input.body) {
@@ -300,7 +304,11 @@ async function reply(
     );
     return;
   }
-  const { providerMessageId } = await deps.transport.send({ to: input.to, body: input.body });
+  const { providerMessageId } = await deps.transport.send({
+    to: input.to,
+    body: input.body,
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+  });
   await record(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -851,6 +859,9 @@ async function sendCoParentInvite(
     );
   }
 
+  const sendKey = askPolicyTiersEnabled(owner.familyId)
+    ? await coParentInviteSendKey(database, pending, now)
+    : undefined;
   const sent = await recordCoParentAssent(database, {
     invite: pending,
     inviterName,
@@ -873,6 +884,7 @@ async function sendCoParentInvite(
     parentUserId: owner.userId,
     lane: 'co_parent',
     now,
+    ...(sendKey ? { sendKey } : {}),
   });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,

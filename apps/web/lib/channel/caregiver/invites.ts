@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
@@ -51,6 +51,14 @@ export type CaregiverInviteState =
   | 'identity_noted'
   /** The parent confirmed and the caregiver has been texted; waiting on them. */
   | 'awaiting_caregiver_reply'
+  /**
+   * VIL-719 · the parent said yes and the text to this number failed without proving it
+   * stayed home, so it may have landed. No plain yes can claim it and it holds the number
+   * against a re-invite. Open, it can still be answered or stopped by the person; lapsed,
+   * it keeps this state with `closed_at` set, because 'expired' would have Hale tell a
+   * number it may never have reached that an invitation expired.
+   */
+  | 'send_unconfirmed'
   /** The caregiver said yes. Terminal. */
   | 'accepted'
   /** Either side said no (or the caregiver sent STOP). Terminal. */
@@ -217,9 +225,11 @@ async function throughExpiry(
   if (new Date(row.expiresAt).getTime() > now.getTime()) return toInvite(row);
   const invite = toInvite(row);
   const state =
-    invite.state === 'awaiting_parent_assent' || invite.state === 'identity_noted'
-      ? 'expired_unsent'
-      : 'expired';
+    invite.state === 'send_unconfirmed'
+      ? 'send_unconfirmed'
+      : invite.state === 'awaiting_parent_assent' || invite.state === 'identity_noted'
+        ? 'expired_unsent'
+        : 'expired';
   await closeInvite(database, invite, state, now, inviteVerb(invite.role, 'expired'));
   return null;
 }
@@ -897,20 +907,57 @@ export async function closeCoParentInviteWithoutYes(
   });
 }
 
+/** A text was sent, or may have been, so this number's reply is an answer to it. */
+export function inviteAwaitsTheirAnswer(state: CaregiverInviteState): boolean {
+  return state === 'awaiting_caregiver_reply' || state === 'send_unconfirmed';
+}
+
 /**
- * VIL-719 · the parent's yes is on record and the text to the person they named did not
- * go, or cannot be shown to have gone. The invite returns to waiting on the parent, the
- * state it held before the claim, so a re-drive finds it pending and never texts them a
- * second time. The consent row stands: the parent did say yes.
+ * VIL-719 · Linq's key for this invite's text. A fresh ask after an unconfirmed text reuses
+ * that text's key, so if the first one did land Linq does not deliver a second. The reuse
+ * ends with the window a late answer is still read in: past it, an old key must not swallow
+ * a new invitation.
  */
-export async function reopenCoParentInviteAfterFailedSend(
+export async function coParentInviteSendKey(
   database: Database,
   invite: CoParentInvite,
   now: Date,
+): Promise<string> {
+  const [unconfirmed] = await database
+    .select({ id: schema.caregiverInvites.id })
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.familyId, invite.familyId),
+        eq(schema.caregiverInvites.phoneE164Hash, phoneBlindIndex(invite.phoneE164)),
+        eq(schema.caregiverInvites.state, 'send_unconfirmed'),
+        gte(
+          schema.caregiverInvites.createdAt,
+          new Date(now.getTime() - INVITE_SILENCE_MS - LAPSED_REPLY_WINDOW_MS),
+        ),
+      ),
+    )
+    .orderBy(asc(schema.caregiverInvites.createdAt))
+    .limit(1);
+  return `co_parent_invite:${unconfirmed?.id ?? invite.id}`;
+}
+
+/**
+ * VIL-719 · the parent's yes is on record and the text to the person they named did not
+ * go through. The consent row stands either way: the parent did say yes.
+ *
+ * `awaiting_parent_assent` only when Linq certainly refused it, because that is the state
+ * a plain yes claims. `send_unconfirmed` for anything else: the text may be on their phone.
+ */
+export async function settleCoParentInviteAfterFailedSend(
+  database: Database,
+  invite: CoParentInvite,
+  state: Extract<CaregiverInviteState, 'awaiting_parent_assent' | 'send_unconfirmed'>,
+  now: Date,
 ): Promise<void> {
-  const reopened = await database
+  const settled = await database
     .update(schema.caregiverInvites)
-    .set({ state: 'awaiting_parent_assent', updatedAt: now })
+    .set({ state, updatedAt: now })
     .where(
       and(
         eq(schema.caregiverInvites.id, invite.id),
@@ -919,7 +966,7 @@ export async function reopenCoParentInviteAfterFailedSend(
       ),
     )
     .returning({ id: schema.caregiverInvites.id });
-  if (reopened.length === 0) return;
+  if (settled.length === 0) return;
   await database.insert(schema.auditLog).values({
     familyId: invite.familyId,
     actor: 'system',
@@ -1161,6 +1208,7 @@ async function closeInvite(
     | 'declined'
     | 'expired'
     | 'expired_unsent'
+    | 'send_unconfirmed'
     | 'superseded'
     | 'superseded_by_join'
     | 'superseded_by_enrollment'

@@ -5,10 +5,11 @@ import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import {
   type InviteBodyResult,
   closeCoParentInviteWithoutYes,
+  coParentInviteSendKey,
   familyHasCoParent,
   loadPendingAssent,
   recordCoParentAssent,
-  reopenCoParentInviteAfterFailedSend,
+  settleCoParentInviteAfterFailedSend,
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
@@ -29,6 +30,7 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { openChosenHouseholdGroup } from './open-chosen-group';
+import { linqRefusedForCertain } from './transport';
 /**
  * A phone number texted after `intake:coparent_ask`.
  *
@@ -82,7 +84,12 @@ function inviteeLabel(name: string | null, language: ReplyLanguage | null): stri
 
 export interface CoParentNumberDeps {
   /** The SMS door. Unused when this turn arrived on iMessage. */
-  sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
+  sendSms(input: {
+    to: string;
+    body: string;
+    /** Linq's idempotency key. Set while the ask policy is on. */
+    sendKey?: string;
+  }): Promise<{ providerMessageId: string }>;
   /** Writes the invite. Absence is named and nobody is texted. */
   ask?: ConsentAskWriter;
 }
@@ -301,8 +308,9 @@ export async function deliverCoParentNumberInvite(
  *
  * Each failure leaves the invite where a re-drive of this turn does the right thing:
  *  - the yes could not be written: closed, so the re-drive starts clean and records it;
- *  - the send failed: back to waiting on the parent, so the re-drive cannot text them twice
- *    (a timeout may still have landed);
+ *  - Linq certainly refused the text: back to waiting on the parent;
+ *  - the send failed any other way, so it may have landed: held as `send_unconfirmed`, which
+ *    no plain yes can claim, so the re-drive cannot text them twice;
  *  - the ledger write failed after the send: left open, so the re-drive reads it as already
  *    invited and texts no one.
  */
@@ -323,7 +331,9 @@ async function sendOnRecordedYes(
       'coparent number invite: could not repair the invite after a failure',
     );
   let recorded: InviteBodyResult;
+  let sendKey: string;
   try {
+    sendKey = await coParentInviteSendKey(database, assent.invite, input.now);
     recorded = await recordCoParentAssent(database, assent);
   } catch (err) {
     await closeCoParentInviteWithoutYes(database, assent.invite, input.now).catch(logUnrepaired);
@@ -333,11 +343,14 @@ async function sendOnRecordedYes(
 
   let sms: { providerMessageId: string };
   try {
-    sms = await input.sendSms({ to, body: recorded.body });
+    sms = await input.sendSms({ to, body: recorded.body, sendKey });
   } catch (err) {
-    await reopenCoParentInviteAfterFailedSend(database, assent.invite, input.now).catch(
-      logUnrepaired,
-    );
+    await settleCoParentInviteAfterFailedSend(
+      database,
+      assent.invite,
+      linqRefusedForCertain(err) ? 'awaiting_parent_assent' : 'send_unconfirmed',
+      input.now,
+    ).catch(logUnrepaired);
     throw err;
   }
   await ledgerSmsInvite(database, {
