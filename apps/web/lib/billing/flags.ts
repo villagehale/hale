@@ -27,6 +27,14 @@ export const CHECKOUT_SUCCESS_STATES_ENABLED_ENV = 'CHECKOUT_SUCCESS_STATES_ENAB
  */
 export const STRIPE_BILLING_REVOKE_ENABLED_ENV = 'STRIPE_BILLING_REVOKE_ENABLED';
 /**
+ * The plan follows what Stripe says is still paid: every entitlement event re-reads the
+ * family's subscriptions, and a full refund of the current period cancels that one
+ * subscription, because otherwise the renewal would charge the parent again. Takes effect
+ * only with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`. Off unless exactly `true`.
+ */
+export const STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV =
+  'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED';
+/**
  * After a payment, cancel or refund, Hale writes the paying parent one text in their
  * existing 1:1 thread. Armed only together with {@link BILLING_THREAD_NOTICES_SINCE_ENV}:
  * the instant the flag went on, so an event from before it can never text anyone.
@@ -72,6 +80,12 @@ export function stripeBillingRevokeEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[STRIPE_BILLING_REVOKE_ENABLED_ENV] === 'true';
+}
+
+export function stripeRefundEndsSubscriptionEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV] === 'true';
 }
 
 const STRICT_UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;

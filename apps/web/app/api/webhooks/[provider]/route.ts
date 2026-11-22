@@ -66,6 +66,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
       }
     }
+    if (applied.status === 'retry') {
+      return NextResponse.json({ status: 'retry', reason: applied.reason }, { status: 503 });
+    }
     const body: { status: string; opsAlert?: string } = { status: applied.status };
     if (applied.status === 'refund_ready') {
       body.opsAlert = applied.opsAlert;

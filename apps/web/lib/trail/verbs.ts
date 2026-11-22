@@ -104,6 +104,7 @@ export const AUDIT_VERBS = [
   'billing_refund_ready',
   'billing_grant_blocked',
   'billing_revoke_unresolved',
+  'billing_plan_unsettled',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -1981,6 +1982,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
     family: 'problem',
   },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS. The family's export still carries it.
+  billing_plan_unsettled: {
+    sentence: 'Hale could not tell which plan your payments cover, so your plan stayed as it was',
+    family: 'note',
+  },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
   upgrade_declined: { sentence: 'you stayed on the free side', family: 'done' },
@@ -2442,6 +2448,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'linq_secret_santa_draw_sent',
   // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
+  // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
+  'billing_plan_unsettled',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
