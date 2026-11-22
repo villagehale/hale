@@ -102,6 +102,8 @@ export interface OutboundMessage {
    * to `to`, which for a 1:1 is the same chat, unthreaded.
    */
   replyIn?: { chatId: string; messageId: string };
+  /** The caller's identity for this one send (Linq's idempotency key, see `linqSendKey`). */
+  sendKey?: string;
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */

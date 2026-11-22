@@ -1,7 +1,21 @@
-import type { Database } from '@hale/db';
+import {
+  type ClaimRefusalCandidates,
+  type ClaimRefusalClaim,
+  type Database,
+  schema,
+} from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
-import { type ClaimShadowContext, loadClaimShadowContext } from './candidate-rows';
-import { buildClaimCandidates } from './candidates';
+import type { BillingClaimFacts } from './billing-text';
+import {
+  type ClaimShadowContext,
+  billingClaimRows,
+  loadClaimShadowContext,
+} from './candidate-rows';
+import {
+  type ClaimCandidateRow,
+  type ClaimCandidateSet,
+  buildClaimCandidates,
+} from './candidates';
 import {
   CLAIM_READ_MAX_BUDGET_MS,
   type ClaimReadFailure,
@@ -9,7 +23,7 @@ import {
   defaultClaimReader,
 } from './claim-reader';
 import { type ClaimReadVerdict, type ReadClaimResolution, verifyClaimRead } from './claim-verdict';
-import { claimReaderEnforces } from './flag';
+import { claimReaderEnforces, claimRefusalStoreEnabled } from './flag';
 import { type ReconcileView, type RegistrationWatchMint, registrationWatchMint } from './reconcile';
 import { type Segment, claimReadLocale } from './sentences';
 import { loadReconcileView } from './view';
@@ -43,6 +57,8 @@ export type EnforcedRead =
       verdict: ClaimReadVerdict;
       /** The watch rows this reading lets the send flow write: one per window. */
       mints: readonly RegistrationWatchMint[];
+      /** What the reader was offered, by count only (claim_refusals.candidates). */
+      offered: ClaimRefusalCandidates;
     }
   | { status: 'failed'; reason: ClaimEnforceFailure };
 
@@ -56,6 +72,12 @@ export interface ClaimEnforceInput {
   inbound?: string;
   view: ReconcileView;
   pending?: { activityFollowup: string | null; spotWatch: string | null };
+  /** VIL-735 · rows from the writer's own facts, offered first so a full slot cannot
+   * crowd them out. Absent on every other lane. */
+  writerRows?: readonly ClaimCandidateRow[];
+  /** The body reaches `parentUserId` alone. Only the dispatch leg can say so: a coach
+   * turn's `parentUserId` is the speaker, who may be in a group. */
+  oneToOne?: true;
   signal: AbortSignal;
   budgetMs: number;
 }
@@ -89,12 +111,17 @@ export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
         parentUserId: input.parentUserId,
         view: input.view,
         ...(input.pending ? { pending: input.pending } : {}),
+        ...(input.oneToOne ? { oneToOne: true as const } : {}),
       });
       if (context.status === 'skipped') {
         await reportClaimReadFailed(input.familyId, context.reason);
         return { status: 'failed', reason: context.reason };
       }
-      const candidates = buildClaimCandidates(input.familyId, context.rows, context.timeZone);
+      const candidates = buildClaimCandidates(
+        input.familyId,
+        [...(input.writerRows ?? []), ...context.rows],
+        context.timeZone,
+      );
       const outcome = await ports.reader.read({
         body: input.body,
         language: context.language,
@@ -119,9 +146,18 @@ export function createClaimEnforcer(ports: ClaimEnforcerPorts): ClaimEnforcer {
         segments: outcome.segments,
         verdict,
         mints: verdict.mints.length > 0 ? [mintFor(input.view)] : [],
+        offered: offeredCounts(candidates),
       };
     },
   };
+}
+
+function offeredCounts(candidates: ClaimCandidateSet): ClaimRefusalCandidates {
+  const offered: Record<string, number> = {};
+  for (const row of candidates.byAlias.values()) {
+    offered[row.source] = (offered[row.source] ?? 0) + 1;
+  }
+  return { offered, capped: [...candidates.capped] };
 }
 
 /** The w1 alias is built from the view's own window, so a mint without one is a bug. */
@@ -161,10 +197,29 @@ export function isRetryableClaimReadFailure(reason: ClaimEnforceFailure): boolea
   }
 }
 
+/** A refused reading as `claim_refusals` keeps it: no body, no row label. */
+export interface ClaimRefusalRecord {
+  claims: ClaimRefusalClaim[];
+  candidates: ClaimRefusalCandidates;
+}
+
+function refusalRecord(read: Extract<EnforcedRead, { status: 'read' }>): ClaimRefusalRecord {
+  return {
+    claims: read.verdict.resolutions.map((r) => ({
+      segment: r.claim.segment,
+      kind: r.claim.kind,
+      cited: r.claim.row,
+      status: r.status,
+      ...(r.status === 'refused' ? { reason: r.reason, why: r.why } : {}),
+    })),
+    candidates: read.offered,
+  };
+}
+
 export type DispatchClaimDecision =
   | { status: 'off' }
   | { status: 'clean' }
-  | { status: 'unbacked' }
+  | { status: 'unbacked'; refusal: ClaimRefusalRecord }
   | { status: 'failed'; reason: ClaimEnforceFailure; retry: boolean };
 
 /** The dispatch seam holds no database; wiring.ts binds this port to its handle. */
@@ -175,7 +230,15 @@ export interface DispatchClaimEnforce {
     parentUserId: string;
     body: string;
     now: Date;
+    writerFacts?: BillingClaimFacts;
   }): Promise<DispatchClaimDecision>;
+  /** Keeps an unbacked verdict beside the failed ledger row; `off` while the store flag
+   * is dark (nothing written). */
+  recordRefusal(input: {
+    familyId: string;
+    channelMessageId: string;
+    refusal: ClaimRefusalRecord;
+  }): Promise<'stored' | 'off'>;
 }
 
 let shared: ClaimEnforcer | undefined;
@@ -209,6 +272,12 @@ export function bindDispatchClaimEnforce(
         now: input.now,
         body: input.body,
         view,
+        ...(input.writerFacts
+          ? { writerRows: billingClaimRows(input.familyId, input.writerFacts, input.now) }
+          : {}),
+        // familyOutboundTargetForUser names no content class, so a dispatch leg is never
+        // a group line (group-audience.ts refuses `unclassified`).
+        oneToOne: true,
         signal: new AbortController().signal,
         budgetMs: CLAIM_READ_MAX_BUDGET_MS,
       });
@@ -220,9 +289,19 @@ export function bindDispatchClaimEnforce(
         };
       }
       if (refusedResolutions(read.verdict).length > 0 || read.mints.length > 0) {
-        return { status: 'unbacked' };
+        return { status: 'unbacked', refusal: refusalRecord(read) };
       }
       return { status: 'clean' };
+    },
+    async recordRefusal(input) {
+      if (!claimRefusalStoreEnabled(input.familyId)) return 'off';
+      await database.insert(schema.claimRefusals).values({
+        familyId: input.familyId,
+        channelMessageId: input.channelMessageId,
+        claims: input.refusal.claims,
+        candidates: input.refusal.candidates,
+      });
+      return 'stored';
     },
   };
 }

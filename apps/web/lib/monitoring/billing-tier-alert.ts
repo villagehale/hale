@@ -14,6 +14,17 @@ export async function alertUnresolvedBillingRevoke(
   );
 }
 
+/** A plan Hale left as it was because it could not tell. Event id and reason only. */
+export async function alertUnsettledBillingPlan(
+  info: { eventId: string; reason: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<OpsPageOutcome> {
+  return postOpsSlack(
+    `billing: plan left unchanged, needs a person. event=${info.eventId} reason=${info.reason}.`,
+    fetchImpl,
+  );
+}
+
 /** Counts only. The caller already left family ids out of the text. */
 export async function alertBillingTierMismatch(
   text: string,

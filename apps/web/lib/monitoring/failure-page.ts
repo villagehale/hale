@@ -195,8 +195,35 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** A family already on a paid plan paid again. Nothing refunds it on its own. */
+  checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-735 · a billing text owed to a parent that was not sent. Each is one family's money. */
+  billing_notice_unsent: {
+    lane: ['payment', 'plan_change'],
+    reason: [
+      'unwritten',
+      'fact_check',
+      'claim_gate',
+      'send_refused',
+      'send_abandoned',
+      'not_confirmed',
+      'payer_unresolved',
+      'duplicate_payment',
+      'duplicate_under_review',
+      'subscription_unread',
+      'thread_unread',
+      'plan_state_unsettled',
+      'stale',
+      'unrecorded',
+      'unexpected',
+    ],
+  },
+  /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
+  duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
+  /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
+  claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
@@ -215,6 +242,15 @@ export const OPS_PAGE_VOCABULARY = {
       'never_answered',
       'unexpected',
     ],
+  },
+  /** VIL-736 · Stripe refused a refund lookup or cancel: the event is not claimed. */
+  billing_stripe_refused: {
+    call: ['lookup', 'cancel'],
+    status: ['400', '401', '403', '404', 'other_4xx', 'no_key', 'unknown'],
+  },
+  /** A refund Stripe has not finished, for a reason a person has to act on. */
+  billing_refund_pending: {
+    reason: ['insufficient_funds', 'requires_action', 'unknown'],
   },
   retention_step_failed: {
     step: [
@@ -246,8 +282,10 @@ type OpsPageFacts<S extends OpsPageSite> = {
  * so a second family's in the same hour pages too. Their `ref` is required.
  */
 const OPS_PAGE_PER_REF = [
+  'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  'billing_notice_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

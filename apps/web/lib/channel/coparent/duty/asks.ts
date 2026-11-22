@@ -1,10 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
   familyOutboundTarget,
@@ -16,6 +16,7 @@ import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   PROACTIVE_QUIET_HOURS,
+  type ProactiveHoldReason,
   type ProactiveSendRequest,
   type ProactiveSendVerdict,
   assertProactiveSendAllowed,
@@ -34,6 +35,7 @@ import { teenChildIds } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
@@ -60,6 +62,7 @@ import {
   spokenFirstName,
 } from './copy';
 import {
+  coparentDutyMemoryEnabled,
   coparentDutySendsActive,
   coparentDutySendsArmed,
   coparentSplitDutyActive,
@@ -68,6 +71,24 @@ import {
 import type { DutyExtractor } from './interpret';
 import { type DutyRole, type DutyState, dutyStateFromFact, needsWhichKid } from './model';
 import { type DutyNightFacts, composeDutyNight } from './night-compose';
+import {
+  DUTY_ASK_KEY_PREFIX,
+  type DutySendAttempt,
+  type OpenDutyFact,
+  defaultDutyPager,
+  dutyDoorAccepted,
+  dutyDoorAttempt,
+  dutyDoorClosesOther,
+  dutyFailureCode,
+  dutySendClaim,
+  dutySendScope,
+  isLastDutySendTry,
+  markDutySendAccepted,
+  readDutyAskRows,
+  readDutySendAttempt,
+  settleDutySendFailure,
+  settleStrandedDutySends,
+} from './send-receipt';
 import { resolveSplitDutyPair } from './split-resolve';
 import { defaultTravelTimeClient } from './travel';
 
@@ -110,14 +131,17 @@ export interface DutySendPorts {
   send: (input: {
     chatId: string;
     text: string;
+    sendKey: string;
     fetch?: typeof fetch;
   }) => Promise<{ providerMessageId: string }>;
   /** VIL-661 · Linq 1:1 when the household has no group. */
   sendDirect?: (input: {
     to: string;
     text: string;
+    sendKey: string;
     fetch?: typeof fetch;
   }) => Promise<{ providerMessageId: string }>;
+  pager?: OpsPager;
 }
 
 export function defaultDutySendPorts(): DutySendPorts {
@@ -127,11 +151,17 @@ export function defaultDutySendPorts(): DutySendPorts {
     gate: assertProactiveSendAllowed,
     gatePorts: buildOutboundGatePorts,
     send: (input) =>
-      sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch }),
+      sendLinqChatMessage({
+        chatId: input.chatId,
+        text: input.text,
+        sendKey: input.sendKey,
+        fetch: input.fetch,
+      }),
     sendDirect: async (input) => {
       const sent = await sendResolvingNewChat(createOutboundTransport({ fetch: input.fetch }), {
         to: input.to,
         body: input.text,
+        sendKey: input.sendKey,
       });
       return { providerMessageId: sent.providerMessageId };
     },
@@ -139,10 +169,17 @@ export function defaultDutySendPorts(): DutySendPorts {
 }
 
 export type DutyDelivery =
-  | { status: 'sent'; chatId: string }
+  /** `held`: a parent the gate stopped at send time, while another was reached. */
+  | { status: 'sent'; chatId: string; held?: ProactiveHoldReason }
   | {
       status: 'skipped';
-      reason: 'flag_off' | 'placeholder' | 'no_group' | 'deduped' | 'single_parent';
+      reason:
+        | 'flag_off'
+        | 'placeholder'
+        | 'no_group'
+        | 'deduped'
+        | 'single_parent'
+        | typeof SEND_RETRIES_EXHAUSTED;
     }
   | {
       status: 'held';
@@ -153,7 +190,8 @@ export type DutyDelivery =
         | 'no_watch_consent'
         | 'sends_paused'
         | 'ask_budget'
-        | 'model_unsent';
+        | 'model_unsent'
+        | 'send_retry_backoff';
     }
   | { status: 'not_sent'; reason: string }
   | { status: 'queued' };
@@ -268,6 +306,30 @@ function readOpen(value: unknown): OpenDutyQuestion | null {
     peerEventKey: typeof row.peerEventKey === 'string' ? row.peerEventKey : null,
     split: row.split === true,
   };
+}
+
+/** The household's open duty question and when that fact was written. */
+export async function readOpenDutyFact(
+  database: Database,
+  familyId: string,
+): Promise<OpenDutyFact | null> {
+  const [fact] = await database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+      validFrom: schema.familyMemoryFacts.validFrom,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, familyId),
+        eq(schema.familyMemoryFacts.factType, 'logistic'),
+        eq(schema.familyMemoryFacts.factKey, DUTY_OPEN_FACT_KEY),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .limit(1);
+  const open = fact ? readOpen(fact.factValue) : null;
+  return fact && open ? { open, validFrom: fact.validFrom } : null;
 }
 
 function reaskKey(eventKey: string, role: DutyRole): string {
@@ -1152,6 +1214,38 @@ async function noteLinesSent(
   }
 }
 
+/** The open fact is this split ask, answered or not. The answer may name the pair either way. */
+function openHoldsSplitAsk(open: OpenDutyQuestion | null, lines: readonly CadenceLine[]): boolean {
+  const ask = lines.find((row) => row.mode === 'split_duty');
+  if (!ask || !open?.split) return false;
+  const pair = [ask.eventKey, ask.peerEventKey];
+  return pair.includes(open.eventKey) && (!open.peerEventKey || pair.includes(open.peerEventKey));
+}
+
+function dutySendStopped(attempts: readonly DutySendAttempt[]): DutyDelivery {
+  if (attempts.some((row) => row.kind === 'wait')) {
+    return { status: 'held', reason: 'send_retry_backoff' };
+  }
+  if (attempts.some((row) => row.kind === 'exhausted')) {
+    return { status: 'skipped', reason: SEND_RETRIES_EXHAUSTED };
+  }
+  return { status: 'skipped', reason: 'deduped' };
+}
+
+/** Read before any compose: a key that cannot be tried now costs no model call. */
+async function dutySendBlocked(
+  database: Database,
+  input: { familyId: string; dedupeKeys: readonly string[]; now: Date },
+): Promise<DutyDelivery | null> {
+  const attempts = await Promise.all(
+    input.dedupeKeys.map((dedupeKey) =>
+      readDutySendAttempt(database, { familyId: input.familyId, dedupeKey, now: input.now }),
+    ),
+  );
+  if (attempts.length === 0 || attempts.some((row) => row.kind === 'try')) return null;
+  return dutySendStopped(attempts);
+}
+
 export async function deliverDutyGroupLine(
   database: Database,
   input: {
@@ -1186,8 +1280,12 @@ export async function deliverDutyGroupLine(
     ports.gatePorts(database),
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
-  if (await dedupeActive(input.dedupeKey, database))
-    return { status: 'skipped', reason: 'deduped' };
+  const attempt = await readDutySendAttempt(database, {
+    familyId: input.familyId,
+    dedupeKey: input.dedupeKey,
+    now: input.now,
+  });
+  if (attempt.kind !== 'try') return dutySendStopped([attempt]);
   if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
     return { status: 'queued' };
   }
@@ -1243,51 +1341,142 @@ export async function deliverDutyGroupLine(
       direction: 'out',
       category: 'duty_ask',
       templateKey: input.templateKey,
-      dedupeKey: input.dedupeKey,
+      dedupeKey: attempt.dedupeKey,
       providerChatId: target.chatId,
-      status: acceptedStatus('imessage'),
-      sentAt: input.now,
+      ...dutySendClaim(input.now),
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'skipped', reason: 'deduped' };
+  let sent: { providerMessageId: string };
   try {
-    const sent = await ports.send({ chatId: target.chatId, text: body, fetch: input.fetch });
-    await database
-      .update(schema.channelMessages)
-      .set({ providerMessageId: sent.providerMessageId })
-      .where(eq(schema.channelMessages.id, claimed.id));
-    if (coldStartLadderEnabled()) {
-      await recordOptionalAsk(database, {
-        familyId: input.familyId,
-        now: input.now,
-        sendClass: 'duty_ask',
-        askKey: input.dedupeKey,
-      });
-    }
-    return { status: 'sent', chatId: target.chatId };
+    sent = await ports.send({
+      chatId: target.chatId,
+      text: body,
+      sendKey: attempt.sendKey,
+      fetch: input.fetch,
+    });
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
-    await database
-      .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: code })
-      .where(eq(schema.channelMessages.id, claimed.id));
-    return { status: 'not_sent', reason: code };
+    const final = isLastDutySendTry(attempt.attempt);
+    await settleDutySendFailure(database, {
+      familyId: input.familyId,
+      claimId: claimed.id,
+      code: dutyFailureCode(err),
+      attempt: attempt.attempt,
+      surface: 'ask',
+      audience: null,
+      final,
+      pager: ports.pager ?? defaultDutyPager(database),
+    });
+    return { status: 'not_sent', reason: final ? SEND_RETRIES_EXHAUSTED : code };
   }
+  await markDutySendAccepted(database, {
+    familyId: input.familyId,
+    claimId: claimed.id,
+    now: input.now,
+    providerMessageId: sent.providerMessageId,
+    attempt: attempt.attempt,
+    surface: 'ask',
+    audience: null,
+  });
+  if (coldStartLadderEnabled()) {
+    await recordOptionalAsk(database, {
+      familyId: input.familyId,
+      now: input.now,
+      sendClass: 'duty_ask',
+      askKey: input.dedupeKey,
+    });
+  }
+  return { status: 'sent', chatId: target.chatId };
+}
+
+export interface DutyDirectTarget {
+  parentUserId: string;
+  phone: string;
+  /** Linq's key for this try (see `DutySendAttempt`). */
+  sendKey: string;
+  dedupeKey: string;
+  attempt: number;
 }
 
 /**
- * VIL-661 · the same model-written split ask, to each parent on Linq 1:1 when
- * there is no group. One question, two doors. A parent without a number is skipped.
+ * VIL-661 · who a split ask could reach on a 1:1, read so a parent on hold costs no model
+ * call. Not the permission to send: deliverDutyDirectLines reads each gate again at the
+ * send. `askedAlready`: Linq has accepted this ask for at least one parent, so what is
+ * left is a retry to the others.
  */
-async function deliverDutyDirectLines(
+async function dutyDirectReach(
   database: Database,
   input: {
     familyId: string;
     parentUserIds: readonly string[];
+    dedupeKey: string;
+    now: Date;
+  },
+  ports: DutySendPorts,
+): Promise<{ targets: DutyDirectTarget[]; askedAlready: boolean; stopped: DutyDelivery }> {
+  if (!ports.sendDirect) {
+    return { targets: [], askedAlready: false, stopped: { status: 'skipped', reason: 'no_group' } };
+  }
+  const rows = await readDutyAskRows(database, input);
+  if (dutyDoorAccepted(rows, input.dedupeKey)) {
+    return { targets: [], askedAlready: true, stopped: { status: 'skipped', reason: 'deduped' } };
+  }
+  if (dutyDoorClosesOther(rows, input.dedupeKey)) {
+    return {
+      targets: [],
+      askedAlready: false,
+      stopped: { status: 'held', reason: 'send_retry_backoff' },
+    };
+  }
+  const askedAlready = input.parentUserIds.some((id) =>
+    dutyDoorAccepted(rows, `${input.dedupeKey}:${id}`),
+  );
+  const gatePorts = ports.gatePorts(database);
+  const targets: DutyDirectTarget[] = [];
+  const closed: DutySendAttempt[] = [];
+  let held: ProactiveHoldReason | null = null;
+  for (const parentUserId of input.parentUserIds) {
+    const phone = await resolveSendablePhone(database, parentUserId);
+    if (!phone) continue;
+    const attempt = dutyDoorAttempt(rows, `${input.dedupeKey}:${parentUserId}`, input.now);
+    if (attempt.kind !== 'try') {
+      closed.push(attempt);
+      continue;
+    }
+    const verdict = await ports.gate(
+      { familyId: input.familyId, parentUserId, kind: 'duty_ask', now: input.now },
+      gatePorts,
+    );
+    if (!verdict.allowed) {
+      held ??= verdict.reason;
+      continue;
+    }
+    targets.push({
+      parentUserId,
+      phone,
+      sendKey: attempt.sendKey,
+      dedupeKey: attempt.dedupeKey,
+      attempt: attempt.attempt,
+    });
+  }
+  const stopped: DutyDelivery = held
+    ? { status: 'held', reason: held }
+    : closed.length > 0
+      ? dutySendStopped(closed)
+      : { status: 'skipped', reason: 'no_group' };
+  return { targets, askedAlready, stopped };
+}
+
+/** The same model-written split ask, to each parent on Linq 1:1 when there is no group. */
+export async function deliverDutyDirectLines(
+  database: Database,
+  input: {
+    familyId: string;
+    targets: readonly DutyDirectTarget[];
     text: string;
     now: Date;
-    dedupeKey: string;
     templateKey: string;
     fetch?: typeof fetch;
   },
@@ -1295,56 +1484,95 @@ async function deliverDutyDirectLines(
 ): Promise<DutyDelivery> {
   if (!ports.sendDirect) return { status: 'skipped', reason: 'no_group' };
   if (input.text.trim() === '') return { status: 'skipped', reason: 'placeholder' };
-  const verdict = await ports.gate(
-    {
-      familyId: input.familyId,
-      parentUserId: input.parentUserIds[0] ?? '',
-      kind: 'duty_ask',
-      now: input.now,
-    },
-    ports.gatePorts(database),
-  );
-  if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
-  const body = withOptOut(input.text, verdict.optOut);
-  let sentChat: string | null = null;
-  for (const parentUserId of input.parentUserIds) {
-    const phone = await resolveSendablePhone(database, parentUserId);
-    if (!phone) continue;
-    const dedupeKey = `${input.dedupeKey}:${parentUserId}`;
-    if (await dedupeActive(dedupeKey, database)) continue;
+  const pager = ports.pager ?? defaultDutyPager(database);
+  const gatePorts = ports.gatePorts(database);
+  let reached: string | null = null;
+  let held: ProactiveHoldReason | null = null;
+  let retrying = false;
+  let dropped = false;
+  for (const target of input.targets) {
+    // An opt-out can land during the compose or the send before this one.
+    const verdict = await ports.gate(
+      {
+        familyId: input.familyId,
+        parentUserId: target.parentUserId,
+        kind: 'duty_ask',
+        now: input.now,
+      },
+      gatePorts,
+    );
+    if (!verdict.allowed) {
+      held ??= verdict.reason;
+      console.info(
+        { familyId: input.familyId, reason: verdict.reason },
+        'duty: a parent was held at send, not texted',
+      );
+      continue;
+    }
     const [claimed] = await database
       .insert(schema.channelMessages)
       .values({
         familyId: input.familyId,
-        parentUserId,
+        parentUserId: target.parentUserId,
         channel: 'imessage',
         direction: 'out',
         category: 'duty_ask',
         templateKey: input.templateKey,
-        dedupeKey,
-        status: acceptedStatus('imessage'),
-        sentAt: input.now,
+        dedupeKey: target.dedupeKey,
+        ...dutySendClaim(input.now),
       })
       .onConflictDoNothing()
       .returning({ id: schema.channelMessages.id });
-    if (!claimed) continue;
-    try {
-      const sent = await ports.sendDirect({ to: phone, text: body, fetch: input.fetch });
-      await database
-        .update(schema.channelMessages)
-        .set({ providerMessageId: sent.providerMessageId })
-        .where(eq(schema.channelMessages.id, claimed.id));
-      sentChat = phone;
-    } catch (err) {
-      const code = err instanceof LinqSendError ? err.code : 'unknown';
-      await database
-        .update(schema.channelMessages)
-        .set({ status: 'failed', errorCode: code })
-        .where(eq(schema.channelMessages.id, claimed.id));
+    if (!claimed) {
+      retrying = true;
+      continue;
     }
+    let sent: { providerMessageId: string };
+    try {
+      sent = await ports.sendDirect({
+        to: target.phone,
+        text: withOptOut(input.text, verdict.optOut),
+        sendKey: target.sendKey,
+        fetch: input.fetch,
+      });
+    } catch (err) {
+      const final = isLastDutySendTry(target.attempt);
+      await settleDutySendFailure(database, {
+        familyId: input.familyId,
+        claimId: claimed.id,
+        code: dutyFailureCode(err),
+        attempt: target.attempt,
+        surface: 'ask',
+        audience: target.parentUserId,
+        final,
+        pager,
+      });
+      if (final) dropped = true;
+      else retrying = true;
+      continue;
+    }
+    await markDutySendAccepted(database, {
+      familyId: input.familyId,
+      claimId: claimed.id,
+      now: input.now,
+      providerMessageId: sent.providerMessageId,
+      attempt: target.attempt,
+      surface: 'ask',
+      audience: target.parentUserId,
+    });
+    reached = target.phone;
   }
-  if (!sentChat) return { status: 'skipped', reason: 'no_group' };
-  return { status: 'sent', chatId: sentChat };
+  if (reached) {
+    return { status: 'sent', chatId: reached, ...(held ? { held } : {}) };
+  }
+  if (retrying) return { status: 'not_sent', reason: 'send_retrying' };
+  if (dropped) return { status: 'not_sent', reason: SEND_RETRIES_EXHAUSTED };
+  if (held) return { status: 'held', reason: held };
+  return { status: 'skipped', reason: 'no_group' };
+}
+
+function dutyAskKey(line: CadenceLine | undefined, ymd: string): string {
+  return `${DUTY_ASK_KEY_PREFIX}${line?.mode ?? 'none'}:${line?.eventKey ?? 'none'}:${line?.role ?? 'none'}:${ymd}`;
 }
 
 async function applyNightBefore(
@@ -1368,6 +1596,13 @@ async function applyNightBefore(
     );
     return { status: 'held', reason: 'model_unsent' };
   }
+  const dedupeKey = dutyAskKey(input.lines[0], localYmd(input.now, input.view.timeZone));
+  const blocked = await dutySendBlocked(database, {
+    familyId: input.familyId,
+    dedupeKeys: [dedupeKey],
+    now: input.now,
+  });
+  if (blocked) return blocked;
   const client = await resolveReplyClient(input.replyClient);
   if (!client) {
     console.error(
@@ -1379,8 +1614,6 @@ async function applyNightBefore(
   const compose = input.composeNight ?? composeDutyNight;
   const text = await compose(client, facts, input.familyId);
   if (!text) return { status: 'held', reason: 'model_unsent' };
-  const first = input.lines[0];
-  const ymd = localYmd(input.now, input.view.timeZone);
   const delivered = await deliverDutyGroupLine(
     database,
     {
@@ -1388,7 +1621,7 @@ async function applyNightBefore(
       parentUserId: input.view.parentUserId,
       text,
       now: input.now,
-      dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
+      dedupeKey,
       templateKey: input.templateKey,
       sendsActive: true,
       composed: true,
@@ -1427,51 +1660,85 @@ async function applyPlan(
   if (input.lines.some((row) => row.mode === 'night_before')) {
     return applyNightBefore(database, input);
   }
-  const plan = renderDutyLines(input.lines, input.view.render);
-  if (!plan) return { status: 'skipped', reason: 'placeholder' };
   const ports = input.ports ?? defaultDutySendPorts();
   const split = input.lines.some((row) => row.mode === 'split_duty');
   const target = split ? await ports.target(database, input.familyId) : null;
   const audience = target?.channel === 'legacy' ? 'direct' : 'group';
-  const text = await voiceDuty(database, {
-    familyId: input.familyId,
-    language: input.view.render.language,
-    plan,
-    facts: dutyFacts(input.lines, input.view.render, input.view.open),
-    replyClient: input.replyClient,
-    audience,
-  });
-  if (!text) return { status: 'held', reason: 'model_unsent' };
-  const first = input.lines[0];
-  const ymd = localYmd(input.now, input.view.timeZone);
-  const delivered =
+  const dedupeKey = dutyAskKey(input.lines[0], localYmd(input.now, input.view.timeZone));
+  const reach =
     split && audience === 'direct'
-      ? await deliverDutyDirectLines(
+      ? await dutyDirectReach(
           database,
           {
             familyId: input.familyId,
             parentUserIds: input.view.render.parentIds,
-            text,
+            dedupeKey,
             now: input.now,
-            dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
-            templateKey: input.templateKey,
           },
           ports,
         )
-      : await deliverDutyGroupLine(
-          database,
-          {
-            familyId: input.familyId,
-            parentUserId: input.view.parentUserId,
-            text,
-            now: input.now,
-            dedupeKey: `duty_ask:${first?.mode ?? 'none'}:${first?.eventKey ?? 'none'}:${first?.role ?? 'none'}:${ymd}`,
-            templateKey: input.templateKey,
-            sendsActive: true,
-          },
-          ports,
-        );
-  if (delivered.status === 'sent') {
+      : null;
+  const askedAlready = reach?.askedAlready === true;
+  // A crash after a parent's copy was accepted can skip this write. That parent can answer
+  // now, so the question opens here whatever happens to the other parent's send.
+  if (askedAlready && !openHoldsSplitAsk(input.view.open, input.lines)) {
+    await noteLinesSent(database, {
+      familyId: input.familyId,
+      lines: input.lines,
+      open: input.view.open,
+      now: input.now,
+    });
+  }
+  if (reach) {
+    if (reach.targets.length === 0) return reach.stopped;
+  } else {
+    const blocked = await dutySendBlocked(database, {
+      familyId: input.familyId,
+      dedupeKeys: [dedupeKey],
+      now: input.now,
+    });
+    if (blocked) return blocked;
+  }
+  // A parent being retried has not seen this question. It reaches them as a first ask: no
+  // count of unanswered asks, and no line naming who has not replied.
+  const lines = askedAlready ? input.lines.filter((row) => !row.namesSilentParent) : input.lines;
+  const plan = renderDutyLines(lines, input.view.render);
+  if (!plan) return { status: 'skipped', reason: 'placeholder' };
+  const text = await voiceDuty(database, {
+    familyId: input.familyId,
+    language: input.view.render.language,
+    plan,
+    facts: dutyFacts(lines, input.view.render, askedAlready ? null : input.view.open),
+    replyClient: input.replyClient,
+    audience,
+  });
+  if (!text) return { status: 'held', reason: 'model_unsent' };
+  const delivered = reach
+    ? await deliverDutyDirectLines(
+        database,
+        {
+          familyId: input.familyId,
+          targets: reach.targets,
+          text,
+          now: input.now,
+          templateKey: input.templateKey,
+        },
+        ports,
+      )
+    : await deliverDutyGroupLine(
+        database,
+        {
+          familyId: input.familyId,
+          parentUserId: input.view.parentUserId,
+          text,
+          now: input.now,
+          dedupeKey,
+          templateKey: input.templateKey,
+          sendsActive: true,
+        },
+        ports,
+      );
+  if (delivered.status === 'sent' && !askedAlready) {
     await noteLinesSent(database, {
       familyId: input.familyId,
       lines: input.lines,
@@ -1491,9 +1758,21 @@ export async function sweepDutyAsks(
     composeNight?: typeof composeDutyNight;
   } = {},
 ): Promise<DutySweepResult> {
-  if (!coparentDutySendsArmed() && !coparentSplitDutyArmed()) return emptyDutySweep(false);
   const now = input.now ?? new Date();
+  const pager = input.ports?.pager ?? defaultDutyPager(database);
+  if (!coparentDutySendsArmed() && !coparentSplitDutyArmed()) {
+    if (coparentDutyMemoryEnabled()) {
+      await settleStrandedDutySends(database, {
+        now,
+        pager,
+        offered: new Set(),
+        readOpenQuestion: (familyId) => readOpenDutyFact(database, familyId),
+      });
+    }
+    return emptyDutySweep(false);
+  }
   const result = emptyDutySweep(true);
+  const offered = new Set<string>();
   const families = await database
     .select({ id: schema.families.id, linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families);
@@ -1526,6 +1805,9 @@ export async function sweepDutyAsks(
       result.skipped += 1;
       continue;
     }
+    offered.add(
+      dutySendScope(family.id, dutyAskKey(view.plan.sendLines[0], localYmd(now, view.timeZone))),
+    );
     const delivered = await applyPlan(database, {
       familyId: family.id,
       now,
@@ -1542,6 +1824,12 @@ export async function sweepDutyAsks(
     else if (delivered.status === 'held') result.held += 1;
     else result.skipped += 1;
   }
+  await settleStrandedDutySends(database, {
+    now,
+    pager,
+    offered,
+    readOpenQuestion: (familyId) => readOpenDutyFact(database, familyId),
+  });
   return result;
 }
 

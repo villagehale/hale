@@ -8,12 +8,8 @@ import {
 import { PlanCheckoutButton } from './plan-checkout-button';
 import styles from './portal.module.css';
 
-/**
- * Free card. Badge stays "Founding family" when this is the only plan; pass
- * "Free" when it sits next to the founding offer so the two cards don't share
- * a founding label.
- */
-export function FoundingPlan({ badge = 'Founding family' }: { badge?: string }) {
+/** Free card. */
+export function FoundingPlan({ badge = 'Free' }: { badge?: string }) {
   return (
     <section className={`${styles.card} ${styles['fp-card']}`}>
       <div className={styles['fp-head']}>
