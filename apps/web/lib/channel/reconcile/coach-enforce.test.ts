@@ -37,6 +37,7 @@ function readOf(
     segments: segmentSentences(body, 'en'),
     verdict: { resolutions, refusedSegments: [...new Set(refused)], mints: [] },
     mints,
+    offered: { offered: {}, capped: [] },
   };
 }
 
