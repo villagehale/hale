@@ -19,7 +19,7 @@ import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { currentFamilyId } from '~/lib/family';
 import { MARKETING_SITE_URL } from '~/lib/legal-links';
 
-export const metadata: Metadata = { title: 'Founding family checkout' };
+export const metadata: Metadata = { title: 'Checkout' };
 
 /**
  * The price confirmation before Stripe, for a family that already texts Hale.
@@ -72,7 +72,7 @@ export default async function FoundingCheckoutPage({
   if (!open) {
     return (
       <>
-        <PortalHeading back title="The founding offer has ended" lede="You haven’t been charged." />
+        <PortalHeading back title="The holiday sale has ended" lede="You haven’t been charged." />
         <div className={styles.one}>
           <section className={styles.card}>
             <h2>You can still use Hale.</h2>

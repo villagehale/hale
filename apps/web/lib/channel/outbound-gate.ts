@@ -162,7 +162,15 @@ export type ProactiveSendKind =
    * VIL-131 · Hale just did a kind without asking. One text per execution, same
    * reason the turn-on text is not a counter.
    */
-  | 'autonomy_acted';
+  | 'autonomy_acted'
+  /**
+   * VIL-735 · the text that answers a payment the parent just made. The bound is the
+   * payment, held by the notice row. It may claim urgency only while the payment is
+   * minutes old (run.ts): an older one waits for daytime like anything else.
+   */
+  | 'billing_receipt'
+  /** VIL-735 · a cancel or a refund the parent did not just trigger: waits for daytime. */
+  | 'billing_change';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -305,6 +313,11 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // of what the text is for, and execution waits until the text has gone out.
   autonomy_armed: false,
   autonomy_acted: false,
+  // It answers what the parent did a moment ago. Silence after a payment reads as a failed
+  // payment, and they are holding the phone.
+  billing_receipt: true,
+  // A plan that ended or money that went back is just as true at 08:00.
+  billing_change: false,
 };
 
 /**
@@ -403,6 +416,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'duty_ask'
   | 'autonomy_armed'
   | 'autonomy_acted'
+  | 'alert'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -428,6 +442,9 @@ export const PROACTIVE_CATEGORY: Record<
   duty_ask: 'duty_ask',
   autonomy_armed: 'autonomy_armed',
   autonomy_acted: 'autonomy_acted',
+  // The parent's Alerts switch governs these. No other writer sends `alert` rows.
+  billing_receipt: 'alert',
+  billing_change: 'alert',
 };
 
 export interface OutboundGatePorts {

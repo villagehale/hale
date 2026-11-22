@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse, after } from 'next/server';
 import { reportBillingPurchase } from '~/lib/billing/conversions';
+import { recordBillingNoticeIntent } from '~/lib/billing/notices/record';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
@@ -66,6 +67,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
       }
     }
+    if (applied.status === 'retry') {
+      return NextResponse.json({ status: 'retry', reason: applied.reason }, { status: 503 });
+    }
+    // After conversions on purpose: a retry of this event answers `duplicate` and would
+    // never report the purchase again. A thrown write stays a 500 so Stripe redelivers.
+    await recordBillingNoticeIntent(db(), billingEvent, applied);
     const body: { status: string; opsAlert?: string } = { status: applied.status };
     if (applied.status === 'refund_ready') {
       body.opsAlert = applied.opsAlert;

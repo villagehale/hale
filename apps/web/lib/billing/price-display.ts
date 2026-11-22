@@ -1,4 +1,4 @@
-import type { BillingCurrency } from '@hale/types';
+import type { BillingCurrency, PlanTier } from '@hale/types';
 import { MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY, PROMO_PRICE_DISPLAY } from '@hale/types';
 
 /**
@@ -6,6 +6,13 @@ import { MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY, PROMO_PRICE_DISPLAY } 
  * Currency still comes from visitor geo at checkout. List amounts come from
  * PLUS_LIST_PRICE_DISPLAY cents.
  */
+
+/** The plan name a parent sees. The `family` tier is sold as Max. */
+export const PLAN_TIER_LABEL: Record<PlanTier, string> = {
+  free: 'Free',
+  plus: 'Plus',
+  family: 'Max',
+};
 
 export function promoPriceLabel(tier: 'plus' | 'family', currency: BillingCurrency): string {
   return PROMO_PRICE_DISPLAY[tier][currency].perYear;

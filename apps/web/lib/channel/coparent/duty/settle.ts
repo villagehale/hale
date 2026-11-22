@@ -47,6 +47,8 @@ export async function settleDutyMemory(
     extract?: DutyExtractor;
     fetch?: typeof fetch;
     replyClient?: AgentClient | null;
+    /** When Linq stops waiting, when this runs inside its webhook. */
+    answerBy?: Date;
   },
 ): Promise<DutySettleResult> {
   if (!coparentDutyMemoryEnabled() && !coparentSplitDutyActive(input.familyId)) {
@@ -104,6 +106,7 @@ export async function settleDutyMemory(
         day: null,
         time: null,
         fetch: input.fetch,
+        answerBy: input.answerBy,
       });
       return {
         status: ack.status === 'held' ? 'held' : 'recorded',
@@ -140,6 +143,7 @@ export async function settleDutyMemory(
       day: null,
       time: null,
       fetch: input.fetch,
+      answerBy: input.answerBy,
     });
     return {
       status: ack.status === 'held' ? 'held' : undo.status === 'undone' ? 'undone' : 'reassigned',
@@ -197,6 +201,7 @@ export async function settleDutyMemory(
       day: sync.day,
       time: sync.time,
       fetch: input.fetch,
+      answerBy: input.answerBy,
     });
     return {
       status: ack.status === 'held' ? 'held' : 'recorded',
@@ -257,6 +262,7 @@ export async function settleDutyMemory(
     day: null,
     time: null,
     fetch: input.fetch,
+    answerBy: input.answerBy,
   });
   return {
     status: ack.status === 'held' ? 'held' : 'recorded',

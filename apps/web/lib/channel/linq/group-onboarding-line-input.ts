@@ -68,7 +68,7 @@ function named(...values: ReadonlyArray<string | null>): string[] {
 export function groupOnboardingLineInput(
   request: GroupOnboardingRequest,
   language: ReplyLanguage,
-  options: { parentWords?: string | null } = {},
+  options: { parentWords?: string | null; noKeyword?: boolean } = {},
 ): GroupOnboardingLine {
   const base: Pick<GroupOnboardingLine, 'skill' | 'kind' | 'language' | 'address' | 'parentWords'> =
     {
@@ -127,7 +127,11 @@ export function groupOnboardingLineInput(
           providers: [...request.providers],
         },
         questions: 0,
-        mustMention: ['Hale', ...named(request.name, request.knownParentName), 'STOP'],
+        mustMention: [
+          'Hale',
+          ...named(request.name, request.knownParentName),
+          ...(options.noKeyword ? [] : ['STOP']),
+        ],
         linkFollows: true,
         wayOut: true,
       };

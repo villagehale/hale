@@ -1,3 +1,5 @@
+import { isEnabled } from '@hale/flags';
+
 /**
  * VIL-662 — team schedule changes from a connected Gmail, dark.
  *
@@ -32,4 +34,12 @@ export function teamScheduleChangesArmed(): boolean {
 export function teamScheduleChangesActive(familyId: string): boolean {
   if (teamScheduleChangesEnabled()) return true;
   return teamScheduleChangesAllowlist().has(familyId);
+}
+
+/**
+ * VIL-734. A driver's text is on the ledger as sent only once Linq accepts it, a refused
+ * send is written again and retried, and the last try pages #ops. Exactly `true`.
+ */
+export function teamScheduleSendReceiptEnabled(): boolean {
+  return isEnabled('team-schedule-send-receipt');
 }

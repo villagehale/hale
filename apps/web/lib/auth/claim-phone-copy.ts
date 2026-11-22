@@ -20,6 +20,18 @@ export const CLAIM_CONNECTION_ERROR =
 export const CLAIM_CODE_TTL_MS = 10 * 60 * 1000;
 export const CLAIM_CODE_TRIES = 3;
 
+/**
+ * The code step's note. A number that asked to stop is sent no code, and it is re-enrolled
+ * when it texts Hale that it wants back in, in any wording (the opt-out reader's `start`,
+ * `restartFromReader` in the intake machine). `noStopKeyword` is
+ * NO_STOP_KEYWORD_COPY_ENABLED, read on the server and passed in.
+ */
+export function claimCodeNote(noStopKeyword: boolean): string {
+  return noStopKeyword
+    ? 'Nothing yet? It can take a minute. If you once told Hale to stop texting you, text Hale that you want to start again, in your own words, then send a new code.'
+    : 'Nothing yet? It can take a minute. If you once replied STOP to Hale, reply START in that thread first.';
+}
+
 export function claimFailureStep(tries: number): 'error' | 'expired' {
   return tries >= CLAIM_CODE_TRIES ? 'expired' : 'error';
 }
