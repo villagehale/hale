@@ -52,6 +52,18 @@ describe('namesKeyword', () => {
     ['Reply with a simple stop.', 'STOP'],
     ['Reply in this thread with stop.', 'STOP'],
     ['Envoyez un petit arrêt.', 'ARRET'],
+    ['You can text "stop."', 'STOP'],
+    ['You can always tell me \u201cstop.\u201d', 'STOP'],
+    ['Just say "stop!"', 'STOP'],
+    ['If you are done, "stop," is enough.', 'STOP'],
+    ['Un simple \u00ab arr\u00eat. \u00bb suffit.', 'ARRET'],
+    ['Un simple \u00ab stop ! \u00bb suffit.', 'STOP'],
+    ['Just "stop\u2026" works.', 'STOP'],
+    ['Tell me stop.', 'STOP'],
+    ['Just tell me stop anytime.', 'STOP'],
+    ['You can tell us stop whenever.', 'STOP'],
+    ['Tell Hale stop.', 'STOP'],
+    ['Tell me start when you want back in.', 'START'],
   ])('refuses %j', (draft, keyword) => {
     expect(namesKeyword(draft)).toBe(keyword);
   });
@@ -74,6 +86,13 @@ describe('namesKeyword', () => {
     'Hale is an AI, and I stop whenever you ask, in any words.',
     'Just say so and I will stop texting you.',
     'Tu peux me dire d’arrêter quand tu veux.',
+    'Tell me to stop anytime.',
+    'Tell me the start date.',
+    'Tell me when to start.',
+    'Tell me if you need help.',
+    'Tell me any help you need.',
+    'Tell me at the start.',
+    'She said "stop by anytime" and we did.',
   ])('leaves a plain sentence alone: %j', (draft) => {
     expect(namesKeyword(draft)).toBeNull();
   });

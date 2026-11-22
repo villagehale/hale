@@ -6,7 +6,9 @@ import {
   type GroupOnboardingRequest,
   groupOnboardingLineInput,
 } from './group-onboarding-line-input';
-import { composeOnboardingLine } from './group-onboarding-voice';
+import { composeOnboardingLine, lineUsable } from './group-onboarding-voice';
+import { sharedGroupLineInput } from './shared-group-line-input';
+import { sharedLineUsable } from './shared-group-voice';
 
 const composeVoice = vi.hoisted(() => vi.fn());
 
@@ -106,5 +108,47 @@ describe('the keyword-free addendum on the group onboarding lane', () => {
       'Riley',
       'STOP',
     ]);
+  });
+});
+
+describe('the keyword gate on the lines that carry the way out', () => {
+  const connect = groupOnboardingLineInput(EVERY_KIND.connect_link_1to1, 'en', { noKeyword: true });
+  const stopAck = groupOnboardingLineInput(EVERY_KIND.stop_ack, 'en', { noKeyword: true });
+  const memberStop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en');
+
+  const SURFACES: ReadonlyArray<[string, (wayOut: string, flagOn: boolean) => boolean]> = [
+    [
+      'connect_link_1to1',
+      (wayOut, flagOn) => lineUsable(`Hale here for Sam and Riley. ${wayOut}`, connect, flagOn),
+    ],
+    ['stop_ack', (wayOut, flagOn) => lineUsable(`Heard you. ${wayOut}`, stopAck, flagOn)],
+    [
+      'member_stop',
+      (wayOut, flagOn) => {
+        vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', flagOn ? 'true' : 'false');
+        return sharedLineUsable(`Got it Jordan. ${wayOut}`, memberStop);
+      },
+    ],
+  ];
+
+  describe.each(SURFACES)('%s', (_kind, usable) => {
+    it.each([
+      'You can text "stop."',
+      'You can always tell me \u201cstop.\u201d',
+      'If you are done, "stop," is enough.',
+      'Tell me stop.',
+      'Just tell me stop anytime.',
+    ])('refuses %j with the flag on, and lets it through with the flag off', (wayOut) => {
+      expect(usable(wayOut, true)).toBe(false);
+      expect(usable(wayOut, false)).toBe(true);
+    });
+
+    it.each([
+      'Tell me to stop anytime, in your own words.',
+      'Tell me the start date.',
+      'You can tell me anytime that you would like me to stop.',
+    ])('sends %j with the flag on', (wayOut) => {
+      expect(usable(wayOut, true)).toBe(true);
+    });
   });
 });

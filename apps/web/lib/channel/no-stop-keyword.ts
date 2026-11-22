@@ -29,13 +29,20 @@ const SEND_VERBS = wordSet(
     'taper tapant dites dis dire disant',
 );
 
+/**
+ * "Tell me stop" hands over a word, unless a determiner makes it a noun: "tell me the start
+ * date". Apart from the send verbs because "tell" is the verb the way out itself uses.
+ */
+const TELL_VERBS = wordSet('tell telling');
+const DETERMINERS = wordSet('the a an this any');
+
 /** Words that present the next one as a word to use: "the word stop", "le mot arrêt". */
 const NAMING_WORDS = wordSet('word keyword mot cle');
 
 /** Words that can stand between a send verb or naming word and the word it points at. */
 const SEND_LEADS = wordSet(
-  'back with the a an this to of out is here me us just simply only in moi nous le un une ' +
-    'ce cet cette est ici texto sms avec par simplement seulement juste ' +
+  'back with the a an this to of out is here me us hale just simply only in moi nous le ' +
+    'un une ce cet cette est ici texto sms avec par simplement seulement juste ' +
     'anytime any time at whenever always now later right away again ' +
     'tout moment instant n importe quand quel toujours maintenant ' +
     'quick simple single petit thread chat fil',
@@ -54,6 +61,8 @@ const QUOTE_PAIRS: Readonly<Record<string, string>> = {
 const DRAFT_WORD = /[\p{L}\p{N}]+/gu;
 const SENTENCE_END = /[.!?;\u3002]/;
 const LINE_BREAK = /[\r\n\u2028\u2029]+/;
+/** What can sit inside a closing quote: American "stop." and French « stop ! ». */
+const BEFORE_CLOSING_QUOTE = /^[\s.,!?;:\u2026]+/;
 
 interface DraftWord {
   written: string;
@@ -85,7 +94,7 @@ function isShouted({ written, plain }: DraftWord): boolean {
 
 function isQuoted(line: string, { start, end }: DraftWord): boolean {
   const before = line.slice(0, start).trimEnd().slice(-1);
-  const after = line.slice(end).trimStart().charAt(0);
+  const after = line.slice(end).replace(BEFORE_CLOSING_QUOTE, '').charAt(0);
   return after !== '' && QUOTE_PAIRS[before] === after;
 }
 
@@ -95,11 +104,14 @@ function isQuoted(line: string, { start, end }: DraftWord): boolean {
  * which is a sentence and not a keyword.
  */
 function isSendInstruction(line: string, earlier: readonly DraftWord[], word: DraftWord): boolean {
+  const nearest = earlier.at(-1)?.plain;
+  const afterDeterminer = nearest !== undefined && DETERMINERS.has(nearest);
   let next = word;
   for (const candidate of [...earlier].reverse()) {
     if (SENTENCE_END.test(line.slice(candidate.end, next.start))) return false;
     if (SEND_VERBS.has(candidate.plain) || NAMING_WORDS.has(candidate.plain)) return true;
     if (candidate.plain === 'to' && next === word) return false;
+    if (TELL_VERBS.has(candidate.plain)) return !afterDeterminer;
     if (!SEND_LEADS.has(candidate.plain)) return false;
     next = candidate;
   }
