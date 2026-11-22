@@ -21,8 +21,16 @@ export type {
   BillingNoticeStatus,
   NewBillingNotice,
 } from './schema/billing-notices.js';
-export { householdFamilyEvent, householdRemovedFamilyEvent } from './family-event-scope.js';
+export {
+  familyEventForParent,
+  householdFamilyEvent,
+  householdRemovedFamilyEvent,
+} from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
+export type {
+  ClaimRefusalCandidates,
+  ClaimRefusalClaim,
+} from './schema/claim-refusals.js';
 export type {
   MedicalReplySourceValue,
   ReplySourceValue,

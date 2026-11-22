@@ -218,6 +218,8 @@ export const OPS_PAGE_VOCABULARY = {
       'unexpected',
     ],
   },
+  /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
+  claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},

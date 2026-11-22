@@ -1,9 +1,9 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { cancelSignupPlan } from '~/lib/signup/plan/store';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { cancelSignupPlan } from '~/lib/signup/plan/store';
 import { loadClaimShadowContext } from './candidate-rows';
 import { bindDispatchClaimEnforce, createClaimEnforcer } from './claim-enforce';
 import type { ReadClaim } from './claim-reader';
@@ -134,8 +134,9 @@ describe('a "registered" claim needs a confirmation row', () => {
     expect(await sweep(ids.familyId, REGISTERED, registered('r1'))).toEqual([
       'no_registration_record',
     ]);
-    expect(await dispatch(ids.familyId, ids.primary, REGISTERED, registered('r1'))).toEqual({
+    expect(await dispatch(ids.familyId, ids.primary, REGISTERED, registered('r1'))).toMatchObject({
       status: 'unbacked',
+      refusal: { claims: [{ kind: 'registration_done', why: 'alias_not_offered' }] },
     });
   });
 
@@ -296,8 +297,9 @@ describe('a "sent" claim needs a send receipt', () => {
     const ids = await withCoParent();
     await actionText(ids, ids.coParent, 'sent');
     expect(await sweep(ids.familyId, GOT_IT, received)).toEqual(['no_delivery_record']);
-    expect(await dispatch(ids.familyId, ids.primary, GOT_IT, received)).toEqual({
+    expect(await dispatch(ids.familyId, ids.primary, GOT_IT, received)).toMatchObject({
       status: 'unbacked',
+      refusal: { claims: [{ kind: 'send_received', why: 'kind_incompatible' }] },
     });
     await db.database
       .update(schema.channelMessages)

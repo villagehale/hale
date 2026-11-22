@@ -275,7 +275,7 @@ function fakeDb(args: {
       return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
     // The requester's own section (export-requester.ts): their language settings, their
     // 1:1 thread, their language changes, consent rows, connections, calendar mirrors,
-    // private asides and billing notices; export.pglite.test.ts,
+    // private asides, stored claim verdicts and billing notices; export.pglite.test.ts,
     // export-household.pglite.test.ts, group-private-aside.pglite.test.ts and
     // billing/notices/export.pglite.test.ts cover the content.
     if (which === 26) return { from: () => ({ where: requesterWhere }) };
@@ -286,7 +286,10 @@ function fakeDb(args: {
     if (which === 31) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
-    if (which === 32 || which === 33) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 32 || which === 34) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 33) {
+      return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
+    }
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -733,17 +736,17 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Twenty-eight scoped selects (family, children, members, village saves, this parent's
+    // Thirty scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
     // field consents, this household's same-activity opt-ins, the household calendar,
     // shared threads, seats and group lists, and the requester's own language settings,
     // text thread, language changes, consents, connections, calendar mirrors, private
-    // asides and billing notices) each recorded a
+    // asides, stored claim verdicts and billing notices) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(29);
+    expect(spies.whereFamilyIds).toHaveLength(30);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

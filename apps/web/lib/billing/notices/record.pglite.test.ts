@@ -530,7 +530,7 @@ describe('a write that throws', () => {
 
 describe('the billing_notices migration', () => {
   it('applies twice, and holds one open row per family and lane', async () => {
-    await db.applyMigration('0265_billing_notices.sql');
+    await db.applyMigration('0260_billing_notices.sql');
     const row = {
       familyId,
       lane: 'plan_change' as const,

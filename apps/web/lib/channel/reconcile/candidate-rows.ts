@@ -1,4 +1,10 @@
-import { type Database, householdFamilyEvent, householdRemovedFamilyEvent, schema } from '@hale/db';
+import {
+  type Database,
+  familyEventForParent,
+  householdFamilyEvent,
+  householdRemovedFamilyEvent,
+  schema,
+} from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -7,6 +13,7 @@ import { loadOpenCommitments } from '~/lib/commitments/ledger';
 import { type BillingClaimFacts, billingDollars } from './billing-text';
 import { CLAIM_ROW_SLOTS, type ClaimCandidateRow } from './candidates';
 import { type SendAudience, claimRowLabel } from './claim-label';
+import { claimReadOwnMirrorsEnabled } from './flag';
 import type { ReconcileView } from './reconcile';
 import { loadReconcileView } from './view';
 
@@ -57,6 +64,8 @@ export async function loadClaimShadowContext(
     /** The coach already loaded it. */
     view?: ReconcileView;
     pending?: { activityFollowup: string | null; spotWatch: string | null };
+    /** The body reaches `parentUserId` alone, so their own calendar mirrors may back it. */
+    oneToOne?: true;
   },
 ): Promise<ClaimShadowContext> {
   const { familyId, now } = input;
@@ -77,7 +86,12 @@ export async function loadClaimShadowContext(
   ] = await Promise.all([
     familySpeechLanguage(database, familyId),
     input.view ?? loadReconcileView(database, { familyId, now }),
-    calendarRows(database, familyId, now),
+    calendarRows(
+      database,
+      familyId,
+      now,
+      input.oneToOne === true && claimReadOwnMirrorsEnabled(familyId) ? to.userId : null,
+    ),
     loadOpenCommitments(database, familyId, now),
     watchedPageRows(database, familyId),
     liveSequenceRows(database, familyId),
@@ -219,11 +233,21 @@ async function recipient(
   return primary ? { userId: primary.userId, timeZone: primary.timezone } : null;
 }
 
-/** view.ts's own predicate: household rows (no mirror, not deleted), future, soonest first. */
+/**
+ * Future rows, soonest first. A send that reaches one parent alone also gets the
+ * kid-judged mirrors of that parent's Google Calendar, the rows the reminder cron writes
+ * their reminders from (familyEventForParent, CLAIM_READ_OWN_MIRRORS_ENABLED). Every other
+ * read, a group turn included, gets household rows only (view.ts's own predicate).
+ *
+ * Mirrors sort after every household row, so they fill only the slots household rows
+ * leave and can never displace a row the household-only read offers. The one-to-one read
+ * asks for one row past the cap, so the candidate builder names an overflow in `capped`.
+ */
 async function calendarRows(
   database: Database,
   familyId: string,
   now: Date,
+  recipientUserId: string | null,
 ): Promise<ClaimCandidateRow[]> {
   const rows = await database
     .select({
@@ -238,12 +262,15 @@ async function calendarRows(
     .where(
       and(
         eq(schema.familyEvents.familyId, familyId),
-        householdFamilyEvent(),
+        recipientUserId === null ? householdFamilyEvent() : familyEventForParent(recipientUserId),
         gte(schema.familyEvents.startsAt, now),
       ),
     )
-    .orderBy(asc(schema.familyEvents.startsAt))
-    .limit(CLAIM_ROW_SLOTS.e);
+    .orderBy(
+      ...(recipientUserId === null ? [] : [sql`${schema.familyEvents.googleEventId} is not null`]),
+      asc(schema.familyEvents.startsAt),
+    )
+    .limit(recipientUserId === null ? CLAIM_ROW_SLOTS.e : CLAIM_ROW_SLOTS.e + 1);
   return rows.map((row) => ({
     familyId,
     source: 'calendar',
