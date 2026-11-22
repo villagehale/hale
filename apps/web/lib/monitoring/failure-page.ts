@@ -197,6 +197,8 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_unread: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
+  claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
