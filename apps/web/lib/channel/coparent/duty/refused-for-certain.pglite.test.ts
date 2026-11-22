@@ -118,6 +118,7 @@ describe('a duty text Linq may have taken, with the flag on', () => {
 
 describe('with the flag off', () => {
   it('a 409 then an accept takes a new key, as main does', async () => {
+    vi.stubEnv(FLAG, 'false');
     const { keys, statuses } = await sendTwice(409);
     expect(keys).toHaveLength(2);
     expect(keys[1]).not.toBe(keys[0]);
