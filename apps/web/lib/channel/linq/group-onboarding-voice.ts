@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { namesKeyword, noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
@@ -57,7 +58,7 @@ export type GroupLineOutcome =
 export interface GroupOnboardingComposer {
   compose(
     input: GroupOnboardingLine,
-    options?: { prompt?: 'full' | 'short' },
+    options?: { prompt?: 'full' | 'short'; noKeyword?: boolean },
   ): Promise<{ line: string }>;
 }
 
@@ -97,10 +98,22 @@ function parseSpokenLine(answer: string | null, questions: 0 | 1): { line: strin
   return null;
 }
 
-function lineUsable(line: string, input: GroupOnboardingLine): boolean {
+/** Whether a draft may go out. Exported for run-no-stop-keyword-eval.mjs. */
+export function lineUsable(
+  line: string,
+  input: GroupOnboardingLine,
+  refuseKeyword: boolean,
+): boolean {
   // VIL-438: the member welcome has no word or punctuation gate. Whether it carries
   // the facts is the model's (and the eval judge's) call, not a string match.
   if (hasLinkShape(line)) noteLinkGate('group-onboarding', 'refused');
+  if (refuseKeyword) {
+    const keyword = namesKeyword(line, [...input.mustMention, ...factStrings(input.facts)]);
+    if (keyword) {
+      console.warn({ kind: input.kind, keyword }, 'linq group onboarding: draft names a keyword');
+      return false;
+    }
+  }
   if (input.kind === 'member_welcome') return line.trim().length > 0 && !hasLinkShape(line);
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
@@ -122,10 +135,15 @@ function productionComposer(
   return {
     async compose(input, options) {
       const skill = await loadCronSkill('group-onboarding-voice');
+      // A system extra, after the cache breakpoint: dark, the request keeps its bytes.
+      const systemExtras = options?.noKeyword
+        ? [(await loadCronSkill('group-onboarding-no-keyword')).instructions]
+        : undefined;
       const client = voiceClient() ?? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'group' });
       if (scope) {
         const composed = await composeVoice({
           skill,
+          ...(systemExtras ? { systemExtras } : {}),
           context: { ...input, retry: options?.prompt === 'short' },
           factSlots: [...input.mustMention, ...factStrings(input.facts)],
           parse: (answer) => parseSpokenLine(answer, input.questions),
@@ -148,6 +166,7 @@ function productionComposer(
           client,
           lane,
           system: skill.instructions,
+          ...(systemExtras ? { systemExtras } : {}),
           userMessage,
           toolName: 'send_group_line',
           toolDescription: 'The one message Hale sends.',
@@ -166,6 +185,7 @@ function productionComposer(
         client,
         lane,
         system: skill.instructions,
+        ...(systemExtras ? { systemExtras } : {}),
         userMessage,
         toolName: 'send_group_line',
         toolDescription: 'The one message Hale sends.',
@@ -190,7 +210,8 @@ async function speak(
   parentWords: string | null,
   scope: { familyId: string; database: Database } | undefined,
 ): Promise<SpokenGroupLine> {
-  const input = groupOnboardingLineInput(request, language, { parentWords });
+  const noKeyword = noStopKeywordCopyEnabled();
+  const input = groupOnboardingLineInput(request, language, { parentWords, noKeyword });
   const composer = voice ?? productionComposer(scope);
   if (!composer) {
     await pageUnsent(request.kind, 'voice_unavailable');
@@ -199,8 +220,11 @@ async function speak(
   let last: GroupLineFallback = 'model_failed';
   for (const prompt of ['full', 'short'] as const) {
     try {
-      const composed = await composer.compose(input, { prompt });
-      if (lineUsable(composed.line, input)) {
+      const composed = await composer.compose(input, {
+        prompt,
+        ...(noKeyword && input.wayOut ? { noKeyword: true } : {}),
+      });
+      if (lineUsable(composed.line, input, noKeyword)) {
         return {
           body: composed.line,
           source: prompt === 'full' ? 'composed' : 'retry',

@@ -188,6 +188,9 @@ export const FLAGS = [
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.
   exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
+  // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply
+  // keyword. Exact `true`.
+  exact('no-stop-keyword-copy', 'NO_STOP_KEYWORD_COPY_ENABLED'),
   exact('coparent-split-duty', 'COPARENT_SPLIT_DUTY_ENABLED', { upcoming: true }),
   exact('team-schedule-changes', 'TEAM_SCHEDULE_CHANGES_ENABLED', { upcoming: true }),
   // VIL-734. A team-schedule driver text is on the ledger as sent only once Linq accepts

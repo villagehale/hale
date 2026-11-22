@@ -135,7 +135,7 @@ export function sharedGroupFactStrings(input: SharedGroupLine): string[] {
   ];
 }
 
-function factValues(value: unknown): string[] {
+export function factValues(value: unknown): string[] {
   if (typeof value === 'string') return named(value);
   if (typeof value === 'number') return [String(value)];
   if (Array.isArray(value)) return value.flatMap(factValues);
