@@ -88,17 +88,6 @@ export const AMBIGUOUS_SEND_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * True when a failed send cannot prove the text did not go out: a timeout, a dropped
- * connection, an unrecognised throw, or a 2xx whose receipt could not be read, which is
- * Linq having taken the text. Anything else is a definite non-send.
- */
-export function sendMayHaveLanded(err: unknown): boolean {
-  const refusal = readSendRefusal(err);
-  if (!refusal || AMBIGUOUS_SEND_CODES.has(refusal.code)) return true;
-  return err instanceof LinqSendError && err.httpStatus >= 200 && err.httpStatus < 300;
-}
-
-/**
  * Permanent refusals are not retried. `not_configured` is permanent at the
  * provider and transient for the sweep: a later tick sends once the door exists.
  */

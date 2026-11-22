@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, ne, notExists, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
+import {
+  DUTY_SEND_IN_FLIGHT,
+  dutyFailureCode,
+  mayHaveLanded,
+} from '~/lib/channel/coparent/duty/send-receipt';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { carpoolReminderFireAt } from '~/lib/channel/linq/carpool-cadence';
@@ -18,9 +23,7 @@ import {
   type ResolvedOutbound,
   failedSendPatch,
   readSendRefusal,
-  refusalStopsRetry,
   sendLinqChatMessage,
-  sendMayHaveLanded,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -425,15 +428,20 @@ export async function notifyDrivers(
  *
  * Each try is its own ledger row under `<leg key>:<n>`, and that unique key is the claim, so
  * two runs cannot make one try twice. The row reads `failed / send_in_flight` until Linq
- * answers: only Linq's accept writes an accepted status and `sent_at`. A refusal goes again
+ * answers: only Linq's accept writes an accepted status and `sent_at`. A failed try goes again
  * on the reminder backoff (VIL-730), each time a fresh model compose through the gate, and
- * the last try pages #ops. A send with no answer may have landed, so it is never made again.
- * Nor is one Linq took and a receipt later reported failed: that row keeps Linq's id, and
- * the delivery-health rate page is what reports receipts. Nothing is ever sent in place of
- * the model's text.
+ * the last try pages #ops.
+ *
+ * A fresh compose has new words, so only Linq's idempotency key keeps a driver from reading
+ * the change twice. A try that may have landed (a timeout, a network error, any 5xx, a 2xx
+ * with an unreadable receipt, a run that died mid-send) fixes the leg's key and door: every
+ * later try goes under that key, and if the door has moved the leg closes instead, because
+ * Linq's key may not reach across doors. Only a definite refusal leaves the next try a new
+ * key. A text Linq accepted is never sent again, even if a receipt later reports it failed:
+ * that row keeps Linq's id, and the delivery-health rate page is what reports receipts.
+ * Nothing is ever sent in place of the model's text.
  */
-const DRIVER_IN_FLIGHT = 'send_in_flight';
-const DRIVER_UNCONFIRMED = 'send_unconfirmed';
+const DRIVER_IN_FLIGHT = DUTY_SEND_IN_FLIGHT;
 const DRIVER_UNWRITTEN = 'unwritten';
 
 /** Longer than any one Linq call: an unanswered try this old belongs to a dead run. */
@@ -456,7 +464,6 @@ export const DRIVER_RETRY_COMPOSE_BOUND_MS = 30_000;
 
 /** No try follows a row carrying one of these. */
 const DRIVER_CLOSED_CODES: ReadonlySet<string> = new Set([
-  DRIVER_UNCONFIRMED,
   SEND_RETRIES_EXHAUSTED,
   'no_chat',
   'no_send_target',
@@ -476,16 +483,23 @@ interface DriverLeg {
   userId: string;
 }
 
+/** The first try that may have landed: its Linq key and the chat it went to, if any. */
+interface MayHaveLanded {
+  key: string;
+  chatId: string | null;
+}
+
 /** The newest try of a leg still open: its row, its code, and how many tries there were. */
 interface OpenAttempt {
   id: string;
   code: string;
   attempts: number;
+  landed: MayHaveLanded | null;
 }
 
 type DriverLegStep =
   | { kind: 'idle' | 'closed' | 'in_flight' | 'waiting' }
-  | { kind: 'died' | 'exhausted' | 'due'; open: OpenAttempt };
+  | { kind: 'exhausted' | 'due'; open: OpenAttempt };
 
 type DriverLegOutcome = 'sent' | 'retrying' | 'closed' | 'waiting' | 'held' | 'lost';
 
@@ -508,16 +522,23 @@ function attemptRows(database: Database, keys: string[]) {
       dedupeKey: schema.channelMessages.dedupeKey,
       errorCode: schema.channelMessages.errorCode,
       providerMessageId: schema.channelMessages.providerMessageId,
+      providerChatId: schema.channelMessages.providerChatId,
       createdAt: schema.channelMessages.createdAt,
     })
     .from(schema.channelMessages)
     .where(inArray(schema.channelMessages.dedupeKey, keys));
 }
 
-type DriverAttempt = Awaited<ReturnType<typeof attemptRows>>[number];
+type DriverAttemptRow = Awaited<ReturnType<typeof attemptRows>>[number];
+type DriverAttempt = DriverAttemptRow & { dedupeKey: string };
 
-function inAttemptOrder(keys: readonly string[], rows: readonly DriverAttempt[]): DriverAttempt[] {
-  return keys.flatMap((key) => rows.filter((row) => row.dedupeKey === key));
+function inAttemptOrder(
+  keys: readonly string[],
+  rows: readonly DriverAttemptRow[],
+): DriverAttempt[] {
+  return keys.flatMap((key) =>
+    rows.flatMap((row) => (row.dedupeKey === key ? [{ ...row, dedupeKey: key }] : [])),
+  );
 }
 
 async function driverAttempts(database: Database, legKey: string): Promise<DriverAttempt[]> {
@@ -561,11 +582,19 @@ function driverLegStep(attempts: readonly DriverAttempt[], now: Date): DriverLeg
   if (attempts.some((row) => row.providerMessageId !== null)) return { kind: 'closed' };
   const code = latest.errorCode;
   if (code === null || DRIVER_CLOSED_CODES.has(code)) return { kind: 'closed' };
-  const open = { id: latest.id, code, attempts: attempts.length };
-  if (code === DRIVER_IN_FLIGHT) {
-    const age = now.getTime() - latest.createdAt.getTime();
-    return age >= DRIVER_IN_FLIGHT_STALE_MS ? { kind: 'died', open } : { kind: 'in_flight' };
+  if (
+    code === DRIVER_IN_FLIGHT &&
+    now.getTime() - latest.createdAt.getTime() < DRIVER_IN_FLIGHT_STALE_MS
+  ) {
+    return { kind: 'in_flight' };
   }
+  const first = attempts.find((row) => mayHaveLanded(row.errorCode));
+  const open = {
+    id: latest.id,
+    code,
+    attempts: attempts.length,
+    landed: first ? { key: first.dedupeKey, chatId: first.providerChatId } : null,
+  };
   const hold = nextComposeHold(attempts.length - 1, latest.createdAt);
   if (hold.action === 'exhausted') return { kind: 'exhausted', open };
   return now < hold.nextTryAt ? { kind: 'waiting' } : { kind: 'due', open };
@@ -594,8 +623,11 @@ function driverUnreachableAudit(
 }
 
 /** A draft that could not be used is the model's failure, not a Linq refusal. */
-function unsentPageFor(code: string): DriverUnsentReason {
-  return code === DRIVER_UNWRITTEN || code === GARBLED_TEXT ? 'unwritten' : 'send_refused';
+function unsentPageFor(open: OpenAttempt): DriverUnsentReason {
+  if (open.landed) return 'send_unconfirmed';
+  return open.code === DRIVER_UNWRITTEN || open.code === GARBLED_TEXT
+    ? 'unwritten'
+    : 'send_refused';
 }
 
 /** Only the run that flips the row writes the audit row and pages. */
@@ -663,7 +695,7 @@ async function holdDriverLeg(
       database,
       leg,
       open,
-      { code: SEND_RETRIES_EXHAUSTED, reason: open.code, page: unsentPageFor(open.code) },
+      { code: SEND_RETRIES_EXHAUSTED, reason: open.code, page: unsentPageFor(open) },
       pager,
     );
   }
@@ -724,40 +756,22 @@ async function settleHeldRetry(
 async function settleFailedDriverSend(
   database: Database,
   leg: DriverLeg,
-  claim: { id: string; attempt: number },
+  claim: { id: string; attempt: number; tried: MayHaveLanded; landed: MayHaveLanded | null },
   err: unknown,
   pager: OpsPager,
   now: Date,
 ): Promise<'retrying' | 'closed'> {
-  const refusal = readSendRefusal(err);
-  if (!refusal || sendMayHaveLanded(err)) {
-    return closeDriverLeg(
-      database,
-      leg,
-      { id: claim.id, code: DRIVER_IN_FLIGHT, attempts: claim.attempt },
-      {
-        code: DRIVER_UNCONFIRMED,
-        reason: refusal?.code ?? 'unrecognised',
-        page: 'send_unconfirmed',
-      },
-      pager,
-    );
-  }
+  const code = dutyFailureCode(err);
   await database
     .update(schema.channelMessages)
-    .set({ errorCode: refusal.code })
+    .set({ errorCode: code })
     .where(eq(schema.channelMessages.id, claim.id));
-  const open = { id: claim.id, code: refusal.code, attempts: claim.attempt };
-  // Permanent at the send seam, but a garbled draft is the model's: a new compose can fix it.
-  if (refusalStopsRetry(err) && refusal.code !== GARBLED_TEXT) {
-    return closeDriverLeg(
-      database,
-      leg,
-      open,
-      { code: SEND_RETRIES_EXHAUSTED, reason: refusal.code, page: 'send_refused' },
-      pager,
-    );
-  }
+  const open = {
+    id: claim.id,
+    code,
+    attempts: claim.attempt,
+    landed: claim.landed ?? (mayHaveLanded(code) ? claim.tried : null),
+  };
   return holdDriverLeg(database, leg, open, pager, now);
 }
 
@@ -784,6 +798,18 @@ async function sendDriverAttempt(
     : to
       ? { to }
       : null;
+  const landed = turn.previous?.landed ?? null;
+  if (turn.previous && landed && landed.chatId !== chatId) {
+    return closeDriverLeg(
+      database,
+      leg,
+      turn.previous,
+      { code: SEND_RETRIES_EXHAUSTED, reason: 'door_moved', page: 'send_unconfirmed' },
+      ports.pager,
+    );
+  }
+  const attemptKey = `${leg.key}:${turn.attempt}`;
+  const sendKey = landed?.key ?? attemptKey;
   const writeAttempt = (errorCode: string) =>
     database
       .insert(schema.channelMessages)
@@ -794,7 +820,7 @@ async function sendDriverAttempt(
         direction: 'out',
         category: PROACTIVE_CATEGORY.plan_check_in,
         templateKey: TEAM_SCHEDULE_DRIVER_TEMPLATE_KEY,
-        dedupeKey: `${leg.key}:${turn.attempt}`,
+        dedupeKey: attemptKey,
         providerChatId: chatId,
         status: 'failed',
         errorCode,
@@ -830,7 +856,7 @@ async function sendDriverAttempt(
   if (text === null) {
     const [row] = await writeAttempt(DRIVER_UNWRITTEN);
     if (!row) return 'lost';
-    const open = { id: row.id, code: DRIVER_UNWRITTEN, attempts: turn.attempt };
+    const open = { id: row.id, code: DRIVER_UNWRITTEN, attempts: turn.attempt, landed };
     return holdDriverLeg(database, leg, open, ports.pager, now);
   }
   const verdict = await ports.gate({
@@ -862,16 +888,22 @@ async function sendDriverAttempt(
   try {
     sent =
       'chatId' in target
-        ? await ports.sendChat({ chatId: target.chatId, text })
+        ? await ports.sendChat({ chatId: target.chatId, text, sendKey })
         : await sendResolvingNewChat(ports.transport, {
             to: target.to,
             body: withOptOut(text, verdict.optOut),
+            sendKey,
           });
   } catch (err) {
     return settleFailedDriverSend(
       database,
       leg,
-      { id: claimed.id, attempt: turn.attempt },
+      {
+        id: claimed.id,
+        attempt: turn.attempt,
+        tried: { key: attemptKey, chatId },
+        landed,
+      },
       err,
       ports.pager,
       now,
@@ -920,9 +952,10 @@ async function sendDriverAttempt(
  * Whether this household still has this adult. The duty and carpool columns outlive every way
  * out of it, and the outbound gate reads only the adult's own consent, so someone with a Hale
  * household of their own passes it after this family took them out. A family row says they
- * are in. A group seat says so only for a caregiver or other family: a co-parent who left the
- * family keeps a live parent seat here and in any shared group, because `departCoParent` ends
- * the family row and no seat.
+ * are in. A group seat says so only for a caregiver or other family, and only if it was granted
+ * after this adult's latest departure from this family: `departCoParent` ends the family row and
+ * no seat, so a co-parent who left keeps a live parent seat here and in any shared group, and a
+ * caregiver promoted to co-parent keeps the caregiver seat from before.
  */
 async function stillInHousehold(database: Database, leg: DriverLeg): Promise<boolean> {
   const [member] = await database
@@ -945,6 +978,19 @@ async function stillInHousehold(database: Database, leg: DriverLeg): Promise<boo
         eq(schema.linqGroupMembers.userId, leg.userId),
         isNull(schema.linqGroupMembers.removedAt),
         inArray(schema.linqGroupMembers.role, ['caregiver', 'other_family']),
+        notExists(
+          database
+            .select({ id: schema.auditLog.id })
+            .from(schema.auditLog)
+            .where(
+              and(
+                eq(schema.auditLog.familyId, leg.familyId),
+                eq(schema.auditLog.actionTaken, 'co_parent_departed'),
+                eq(schema.auditLog.targetId, leg.userId),
+                gte(schema.auditLog.occurredAt, schema.linqGroupMembers.createdAt),
+              ),
+            ),
+        ),
       ),
     )
     .limit(1);
@@ -1133,18 +1179,10 @@ export async function retryTeamScheduleDrivers(
       try {
         const step = driverLegStep(attempts, input.now);
         if (step.kind === 'waiting') summary.waiting += 1;
-        if (step.kind !== 'died' && step.kind !== 'exhausted' && step.kind !== 'due') continue;
+        if (step.kind !== 'exhausted' && step.kind !== 'due') continue;
         const ports = input.portsFor(change.familyId);
         let outcome: DriverLegOutcome;
-        if (step.kind === 'died') {
-          outcome = await closeDriverLeg(
-            database,
-            leg,
-            step.open,
-            { code: DRIVER_UNCONFIRMED, reason: DRIVER_UNCONFIRMED, page: 'send_unconfirmed' },
-            ports.pager,
-          );
-        } else if (!(await stillInHousehold(database, leg))) {
+        if (!(await stillInHousehold(database, leg))) {
           outcome = await leaveRemovedDriver(database, leg, step.open, ports.pager);
         } else if (!stillDriving.has(userId)) {
           outcome = await closeDriverLeg(
@@ -1162,7 +1200,7 @@ export async function retryTeamScheduleDrivers(
             {
               code: SEND_RETRIES_EXHAUSTED,
               reason: step.open.code,
-              page: unsentPageFor(step.open.code),
+              page: unsentPageFor(step.open),
             },
             ports.pager,
           );

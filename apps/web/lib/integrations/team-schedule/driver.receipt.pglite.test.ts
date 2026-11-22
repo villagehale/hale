@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -14,6 +14,7 @@ import {
   GARBLED_TEXT,
   LinqSendError,
   createLinqPhoneTransport,
+  sendLinqChatMessage,
 } from '~/lib/channel/linq/transport';
 import {
   type ProactiveSendVerdict,
@@ -316,7 +317,10 @@ const holdTheirText = () =>
 
 const legKey = (changeId: string, attempt: number) =>
   `team_schedule:driver:${changeId}:${family.parentUserId}:${attempt}`;
-const refused = () => new LinqSendError('http_503', 503, false);
+const refused = () => new LinqSendError('http_400', 400, true);
+/** What Linq receives for a try's key: its ledger key, hashed. */
+const linqKey = (changeId: string, attempt: number) =>
+  createHash('sha256').update(legKey(changeId, attempt)).digest('hex');
 
 describe('the driver text, flag on', () => {
   it('claims nothing as sent while Linq has not answered, then records the accept', async () => {
@@ -395,7 +399,7 @@ describe('the driver text, flag on', () => {
     await firstTry(changeId, h.ports);
 
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', sentAt: null, providerMessageId: null },
+      { status: 'failed', errorCode: 'http_400', sentAt: null, providerMessageId: null },
     ]);
     expect(h.threaded).toEqual([]);
 
@@ -409,14 +413,14 @@ describe('the driver text, flag on', () => {
     expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
     expect(h.threaded).toEqual(['Pickup moved, draft 2']);
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'failed', errorCode: 'http_400', dedupeKey: legKey(changeId, 1) },
       { status: 'queued', errorCode: null, sentAt: at(5), dedupeKey: legKey(changeId, 2) },
     ]);
     expect(await driverAudit()).toEqual(
       expect.arrayContaining([
         {
           action: 'team_schedule_driver_send_failed',
-          after: { attempt: 1, reason: 'http_503' },
+          after: { attempt: 1, reason: 'http_400' },
         },
         { action: 'team_schedule_driver_sent', after: { attempt: 2, channel: 'sms' } },
       ]),
@@ -445,84 +449,20 @@ describe('the driver text, flag on', () => {
     ]);
     const rows = await ledger();
     expect(rows.map((row) => row.errorCode)).toEqual([
-      'http_503',
-      'http_503',
-      'http_503',
+      'http_400',
+      'http_400',
+      'http_400',
       'send_retries_exhausted',
     ]);
     expect(rows.every((row) => row.status === 'failed' && row.sentAt === null)).toBe(true);
     expect(await driverAudit()).toContainEqual({
       action: 'team_schedule_driver_unsent',
-      after: { reason: 'http_503', attempts: 4 },
+      after: { reason: 'http_400', attempts: 4 },
     });
 
     await tick(h.ports, at(120));
     expect(h.transport.tried).toBe(4);
     expect(h.pages).toHaveLength(1);
-  });
-
-  it('does not retry a refusal Linq calls permanent, and pages at once', async () => {
-    const { changeId } = await seedChange();
-    const h = harness({ script: [new LinqSendError('http_403', 403, true)] });
-
-    await firstTry(changeId, h.ports);
-    await tick(h.ports, at(5));
-
-    expect(h.transport.tried).toBe(1);
-    expect(h.compose.calls).toBe(1);
-    expect(h.pages).toEqual([
-      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_refused' }, count: 1 },
-    ]);
-    expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'send_retries_exhausted', sentAt: null },
-    ]);
-    expect(await driverAudit()).toContainEqual({
-      action: 'team_schedule_driver_unsent',
-      after: { reason: 'http_403', attempts: 1 },
-    });
-  });
-
-  it('never resends a timeout, which may have landed, and pages it as unconfirmed', async () => {
-    const { changeId } = await seedChange();
-    const h = harness({ script: [new LinqSendError('timeout', 0, false)] });
-
-    await firstTry(changeId, h.ports);
-    await tick(h.ports, at(5));
-    await tick(h.ports, at(60));
-
-    expect(h.transport.tried).toBe(1);
-    expect(h.pages).toEqual([
-      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
-    ]);
-    expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'send_unconfirmed', sentAt: null },
-    ]);
-  });
-
-  it('never resends a text Linq took but answered with an unreadable receipt', async () => {
-    vi.stubEnv('LINQ_API_KEY', 'test-key-not-a-secret');
-    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
-    const { changeId } = await seedChange();
-    let linqCalls = 0;
-    const tookItNoMessageId = (async () => {
-      linqCalls += 1;
-      return Response.json({ chat: { id: 'chat-new' } }, { status: 201 });
-    }) as typeof fetch;
-    const h = harness();
-    const ports = { ...h.ports, transport: createLinqPhoneTransport({ fetch: tookItNoMessageId }) };
-
-    await firstTry(changeId, ports);
-    await tick(ports, at(5));
-    await tick(ports, at(60));
-
-    expect(linqCalls).toBe(1);
-    expect(h.compose.calls).toBe(1);
-    expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'send_unconfirmed', sentAt: null },
-    ]);
-    expect(h.pages).toEqual([
-      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
-    ]);
   });
 
   it('positive control: a local missing-chat refusal before any send is still retried', async () => {
@@ -536,32 +476,34 @@ describe('the driver text, flag on', () => {
     expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
   });
 
-  it('closes a send a dead run left unanswered, without sending it again', async () => {
+  it('closes a last try a dead run left unanswered, with no further send, and pages', async () => {
     const { changeId } = await seedChange();
-    await db.database.insert(schema.channelMessages).values({
-      familyId: family.familyId,
-      parentUserId: family.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'plan_check_in',
-      templateKey: 'team_schedule:driver',
-      dedupeKey: legKey(changeId, 1),
-      status: 'failed',
-      errorCode: 'send_in_flight',
-      createdAt: NOW,
-    });
+    await db.database.insert(schema.channelMessages).values(
+      [1, 2, 3, 4].map((attempt) => ({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms' as const,
+        direction: 'out' as const,
+        category: 'plan_check_in' as const,
+        templateKey: 'team_schedule:driver',
+        dedupeKey: legKey(changeId, attempt),
+        status: 'failed' as const,
+        errorCode: attempt === 4 ? 'send_in_flight' : 'unconfirmed:http_502',
+        createdAt: NOW,
+      })),
+    );
     const h = harness();
 
     await tick(h.ports, at(9));
     expect(h.pages).toEqual([]);
-    expect((await ledger())[0]?.errorCode).toBe('send_in_flight');
+    expect((await ledger())[3]?.errorCode).toBe('send_in_flight');
 
     await tick(h.ports, at(10));
     await tick(h.ports, at(11));
 
     expect(h.compose.calls).toBe(0);
     expect(h.transport.tried).toBe(0);
-    expect((await ledger())[0]?.errorCode).toBe('send_unconfirmed');
+    expect((await ledger())[3]?.errorCode).toBe('send_retries_exhausted');
     expect(h.pages).toEqual([
       { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
     ]);
@@ -934,7 +876,7 @@ describe('the driver text, flag on', () => {
     expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
     expect(h.pages).toEqual([]);
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'failed', errorCode: 'http_400', dedupeKey: legKey(changeId, 1) },
       { status: 'queued', errorCode: null, dedupeKey: legKey(changeId, 2) },
     ]);
   });
@@ -952,7 +894,7 @@ describe('the driver text, flag on', () => {
     paused = true;
     await tick(h.ports, at(22 * 60));
     expect(h.pages).toEqual([]);
-    expect((await ledger())[0]?.errorCode).toBe('http_503');
+    expect((await ledger())[0]?.errorCode).toBe('http_400');
 
     await tick(h.ports, at(23 * 60));
     await tick(h.ports, at(23 * 60 + 1));
@@ -983,7 +925,7 @@ describe('the driver text, flag on', () => {
     expect(h.compose.calls).toBe(1);
     expect(h.transport.tried).toBe(1);
     expect(h.pages).toEqual([]);
-    expect((await ledger())[0]?.errorCode).toBe('http_503');
+    expect((await ledger())[0]?.errorCode).toBe('http_400');
 
     expect(await releaseHeldMessage(db.database, HELD_TEXT)).toBe('released');
     expect(await tick(ports, at(6))).toMatchObject({ sent: 1, closed: 0 });
@@ -992,7 +934,7 @@ describe('the driver text, flag on', () => {
     expect(h.transport.bodies()).toEqual(['Pickup moved, draft 2']);
     expect(h.pages).toEqual([]);
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'failed', errorCode: 'http_400', dedupeKey: legKey(changeId, 1) },
       { status: 'queued', errorCode: null, dedupeKey: legKey(changeId, 2) },
     ]);
   });
@@ -1043,7 +985,7 @@ describe('the driver text, flag on', () => {
 
       await tick(ports, at(22 * 60));
       expect(h.pages).toEqual([]);
-      expect((await ledger())[0]?.errorCode).toBe('http_503');
+      expect((await ledger())[0]?.errorCode).toBe('http_400');
 
       await tick(ports, at(23 * 60));
       await tick(ports, at(23 * 60 + 1));
@@ -1127,7 +1069,7 @@ describe('the driver text, flag on', () => {
     expect(h.transport.tried).toBe(1);
     expect(h.pages).toEqual([]);
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', dedupeKey: legKey(changeId, 1) },
+      { status: 'failed', errorCode: 'http_400', dedupeKey: legKey(changeId, 1) },
       { status: 'failed', errorCode: 'unwritten', dedupeKey: legKey(changeId, 2) },
     ]);
 
@@ -1626,6 +1568,125 @@ describe('the driver text, an adult the household has taken out', () => {
     expect(await legRows(driver.parentUserId)).toEqual([{ errorCode: 'send_retries_exhausted' }]);
   });
 
+  it.each(['caregiver', 'other_family'] as const)(
+    'closes the retry of a co-parent who left, though an older %s seat stays live',
+    async (seatRole) => {
+      const driver = await seatedDriver(seatRole, 'co_parent');
+      const { changeId } = await seedChange();
+      const h = harness({ script: [refused()] });
+      const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+      await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+
+      await departCoParent(db.database, {
+        familyId: family.familyId,
+        actorUserId: driver.parentUserId,
+        now: at(1),
+      });
+      const [seat] = await db.database
+        .select({
+          role: schema.linqGroupMembers.role,
+          removedAt: schema.linqGroupMembers.removedAt,
+        })
+        .from(schema.linqGroupMembers)
+        .where(eq(schema.linqGroupMembers.userId, driver.parentUserId));
+      expect(seat).toEqual({ role: seatRole, removedAt: null });
+
+      expect(await tick(ports, at(5))).toMatchObject({ sent: 0, closed: 1 });
+
+      expect(h.compose.calls).toBe(1);
+      expect(h.transport.tried).toBe(1);
+      expect(h.pages).toEqual([]);
+      expect(await legRows(driver.parentUserId)).toEqual([{ errorCode: 'send_retries_exhausted' }]);
+    },
+  );
+
+  it('writes nothing on a first try to a departed co-parent with an older caregiver seat', async () => {
+    const driver = await seatedDriver('caregiver', 'co_parent');
+    await departCoParent(db.database, {
+      familyId: family.familyId,
+      actorUserId: driver.parentUserId,
+      now: at(1),
+    });
+    const { changeId } = await seedChange();
+    const h = harness();
+
+    await firstTry(changeId, { ...h.ports, gate: realGate }, NOW, [
+      { userId: driver.parentUserId },
+    ]);
+
+    expect(h.compose.calls).toBe(0);
+    expect(h.transport.tried).toBe(0);
+    expect(await legRows(driver.parentUserId)).toEqual([]);
+  });
+
+  it('positive control: a caregiver who never departed gets the retry', async () => {
+    const driver = await seatedDriver('caregiver', null);
+    // Their departure from another family, and another adult's from this one, are not theirs here.
+    await db.database.insert(schema.auditLog).values([
+      {
+        familyId: driver.familyId,
+        actor: driver.parentUserId,
+        actionTaken: 'co_parent_departed',
+        targetTable: 'family_members',
+        targetId: driver.parentUserId,
+      },
+      {
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        actionTaken: 'co_parent_departed',
+        targetTable: 'family_members',
+        targetId: family.parentUserId,
+      },
+    ]);
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 1, closed: 0 });
+
+    expect(h.transport.tried).toBe(2);
+  });
+
+  it('positive control: a seat granted after the departure counts', async () => {
+    const driver = await seatedDriver('caregiver', 'co_parent');
+    const { changeId } = await seedChange();
+    const h = harness({ script: [refused(), 'accept'] });
+    const ports: DriverNotifyPorts = { ...h.ports, gate: realGate };
+    await firstTry(changeId, ports, NOW, [{ userId: driver.parentUserId }]);
+    await departCoParent(db.database, {
+      familyId: family.familyId,
+      actorUserId: driver.parentUserId,
+      now: at(1),
+    });
+    const [departure] = await db.database
+      .select({ occurredAt: schema.auditLog.occurredAt })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, family.familyId),
+          eq(schema.auditLog.actionTaken, 'co_parent_departed'),
+        ),
+      );
+    if (!departure) throw new Error('no departure row');
+    await removedFromChat();
+    const seatedAgain = new Date(departure.occurredAt.getTime() + 1_000);
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: family.familyId,
+      chatId: GROUP_CHAT,
+      userId: driver.parentUserId,
+      phoneE164Encrypted: encryptString(SEATED_PHONE),
+      phoneE164Hash: phoneBlindIndex(SEATED_PHONE),
+      role: 'caregiver',
+      seatedAt: seatedAgain,
+      createdAt: seatedAgain,
+    });
+
+    expect(await tick(ports, at(5))).toMatchObject({ sent: 1, closed: 0 });
+
+    expect(h.transport.tried).toBe(2);
+  });
+
   it('writes and sends nothing on a first try to someone already taken out', async () => {
     const driver = await seatedDriver('other_family', null);
     await removedFromChat();
@@ -1658,6 +1719,205 @@ describe('the driver text, an adult the household has taken out', () => {
   });
 });
 
+describe('the driver text, a try that may have landed', () => {
+  type Answer = 'accept' | 'network' | 'timeout' | 'unreadable' | number;
+
+  /** Real transport, real request building: only the wire is stood in for. */
+  function linqWire(answers: Answer[]) {
+    vi.stubEnv('LINQ_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550199');
+    const posts: Array<{ path: string; key: string }> = [];
+    const wire = (async (url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { message: { idempotency_key: string } };
+      const path = new URL(String(url)).pathname;
+      posts.push({ path, key: body.message.idempotency_key });
+      const answer = answers.shift() ?? 'accept';
+      if (answer === 'network') throw new TypeError('fetch failed');
+      if (answer === 'timeout') throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+      if (answer === 'unreadable') return Response.json({ chat: {} }, { status: 201 });
+      if (typeof answer === 'number') return Response.json({}, { status: answer });
+      const message = { id: `linq-${posts.length}` };
+      return path.endsWith('/messages')
+        ? Response.json({ message }, { status: 202 })
+        : Response.json({ chat: { id: 'chat-new', message } }, { status: 201 });
+    }) as typeof fetch;
+    return { posts, wire };
+  }
+
+  function phoneDoor(answers: Answer[]) {
+    const { posts, wire } = linqWire(answers);
+    const h = harness();
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      transport: createLinqPhoneTransport({ fetch: wire }),
+    };
+    return { ...h, ports, posts };
+  }
+
+  function chatDoor(answers: Answer[]) {
+    const { posts, wire } = linqWire(answers);
+    const h = harness();
+    const ports: DriverNotifyPorts = {
+      ...h.ports,
+      sendChat: (input) => sendLinqChatMessage({ ...input, fetch: wire }),
+    };
+    return { ...h, ports, posts };
+  }
+
+  const inboundOnChat = () =>
+    db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: `in-${randomUUID()}`,
+      providerChatId: 'chat-driver',
+      status: 'delivered',
+      inGroup: false,
+    });
+
+  const accepted = async () =>
+    (await ledger()).filter((row) => row.status === 'sent' || row.status === 'queued');
+
+  it.each([502, 503, 504, 'network', 'timeout', 'unreadable'] as const)(
+    'phone door: after %s the retry goes under the same Linq key, and one send is recorded',
+    async (answer) => {
+      const { changeId } = await seedChange();
+      const h = phoneDoor([answer, 'accept']);
+
+      await firstTry(changeId, h.ports);
+      await tick(h.ports, at(5));
+      await tick(h.ports, at(60));
+
+      expect(h.posts.every((post) => post.path.endsWith('/chats'))).toBe(true);
+      expect(h.posts.map((post) => post.key)).toEqual([linqKey(changeId, 1), linqKey(changeId, 1)]);
+      expect(await accepted()).toHaveLength(1);
+      expect(h.pages).toEqual([]);
+    },
+  );
+
+  it.each([502, 503, 504, 'network', 'timeout'] as const)(
+    'chat door: after %s the retry goes under the same Linq key, and one send is recorded',
+    async (answer) => {
+      await inboundOnChat();
+      const { changeId } = await seedChange();
+      const h = chatDoor([answer, 'accept']);
+
+      await firstTry(changeId, h.ports);
+      await tick(h.ports, at(5));
+      await tick(h.ports, at(60));
+
+      expect(h.posts.every((post) => post.path.endsWith('/chat-driver/messages'))).toBe(true);
+      expect(h.posts.map((post) => post.key)).toEqual([linqKey(changeId, 1), linqKey(changeId, 1)]);
+      expect(await accepted()).toHaveLength(1);
+      expect(h.pages).toEqual([]);
+    },
+  );
+
+  it.each(['phone', 'chat'] as const)(
+    '%s door: a run that died after Linq took the text retries under the same key',
+    async (door) => {
+      if (door === 'chat') await inboundOnChat();
+      const { changeId } = await seedChange();
+      const h = door === 'phone' ? phoneDoor(['accept', 'accept']) : chatDoor(['accept', 'accept']);
+      const dying: DriverNotifyPorts = {
+        ...h.ports,
+        clock: () => {
+          if (h.posts.length > 0) throw new Error('run died');
+          return runClock;
+        },
+      };
+
+      await expect(firstTry(changeId, dying)).rejects.toThrow('run died');
+      expect(await ledger()).toMatchObject([
+        { status: 'failed', errorCode: 'send_in_flight', sentAt: null, providerMessageId: null },
+      ]);
+
+      await tick(h.ports, at(9));
+      expect(h.posts).toHaveLength(1);
+
+      await tick(h.ports, at(10));
+      await tick(h.ports, at(60));
+
+      expect(h.posts.map((post) => post.key)).toEqual([linqKey(changeId, 1), linqKey(changeId, 1)]);
+      expect(await accepted()).toHaveLength(1);
+      expect(h.pages).toEqual([]);
+    },
+  );
+
+  it('a definite 400 is written again under a new key', async () => {
+    const { changeId } = await seedChange();
+    const h = phoneDoor([400, 'accept']);
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+
+    expect(h.posts.map((post) => post.key)).toEqual([linqKey(changeId, 1), linqKey(changeId, 2)]);
+    expect(h.compose.calls).toBe(2);
+    expect(await accepted()).toHaveLength(1);
+  });
+
+  it('once a try may have landed, a later 400 does not earn a new key', async () => {
+    const { changeId } = await seedChange();
+    const h = phoneDoor([502, 400, 'accept']);
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+    await tick(h.ports, at(15));
+
+    expect(h.posts.map((post) => post.key)).toEqual(Array(3).fill(linqKey(changeId, 1)));
+    expect(await accepted()).toHaveLength(1);
+  });
+
+  it('four 5xx answers are one key and one page that says the text may have landed', async () => {
+    const { changeId } = await seedChange();
+    const h = phoneDoor([502, 503, 504, 502]);
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+    await tick(h.ports, at(15));
+    await tick(h.ports, at(35));
+    await tick(h.ports, at(120));
+
+    expect(h.posts.map((post) => post.key)).toEqual(Array(4).fill(linqKey(changeId, 1)));
+    expect(await accepted()).toEqual([]);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+    ]);
+  });
+
+  it('pages a leg that ended on refusals as unconfirmed if an earlier try may have landed', async () => {
+    const { changeId } = await seedChange();
+    const h = phoneDoor([502, 400, 400, 400]);
+
+    await firstTry(changeId, h.ports);
+    await tick(h.ports, at(5));
+    await tick(h.ports, at(15));
+    await tick(h.ports, at(35));
+
+    expect(h.posts.map((post) => post.key)).toEqual(Array(4).fill(linqKey(changeId, 1)));
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+    ]);
+  });
+
+  it('closes and pages, with no second POST, when the door moved after a try that may have landed', async () => {
+    const { changeId } = await seedChange();
+    const h = phoneDoor([502]);
+    await firstTry(changeId, h.ports);
+    await inboundOnChat();
+
+    expect(await tick(h.ports, at(5))).toMatchObject({ sent: 0, closed: 1 });
+
+    expect(h.posts).toHaveLength(1);
+    expect(h.compose.calls).toBe(1);
+    expect(h.pages).toEqual([
+      { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+    ]);
+  });
+});
+
 describe('the driver text, flag off', () => {
   beforeEach(() => {
     vi.stubEnv(FLAG, 'true\n');
@@ -1674,7 +1934,7 @@ describe('the driver text, flag off', () => {
     expect(h.compose.calls).toBe(1);
     expect(h.pages).toEqual([]);
     expect(await ledger()).toMatchObject([
-      { status: 'failed', errorCode: 'http_503', dedupeKey: null, sentAt: NOW },
+      { status: 'failed', errorCode: 'http_400', dedupeKey: null, sentAt: NOW },
     ]);
     expect(await driverAudit()).toEqual([]);
   });
