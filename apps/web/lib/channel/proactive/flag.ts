@@ -56,6 +56,9 @@ export const PROACTIVE_ROUTING: Record<ProactiveSendKind, 'decider' | 'immediate
     // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
     autonomy_armed: 'immediate',
     autonomy_acted: 'immediate',
+    // VIL-735 · event-driven as well: the billing notice leg in the drain sends them.
+    billing_receipt: 'immediate',
+    billing_change: 'immediate',
   };
 
 /** The classes whose sweeps still send on their own, in table order. */

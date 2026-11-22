@@ -60,7 +60,9 @@ describe('/founding three-option pair', () => {
     expect(html).toContain('Free');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html).toContain('Join as a founding family');
+    expect(html).toContain('Join Hale');
+    expect(html).toContain('Biggest sale of the year');
+    expect(html).not.toMatch(/founding famil/i);
     expect(html).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('Continue ·');
@@ -72,6 +74,41 @@ function setInputValue(el: HTMLInputElement, value: string): void {
   setter?.call(el, value);
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
+
+describe('FoundingJoinForm for a number already on a paid plan', () => {
+  it('keeps the sale eyebrow and drops the founding one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/api/promo/join/verify')
+          ? new Response(JSON.stringify({ alreadyPaid: true }), { status: 200 })
+          : new Response('{}', { status: 200 }),
+      ),
+    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(createElement(FoundingJoinForm, { plusLabel: '$59/yr', maxLabel: '$99/yr' }));
+    });
+    await act(async () => {
+      setInputValue(container.querySelector('#founding-phone') as HTMLInputElement, '5555551234');
+    });
+    await act(async () => {
+      (container.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      setInputValue(container.querySelector('#founding-code') as HTMLInputElement, '123456');
+    });
+    await act(async () => {
+      (container.querySelector('button[type="submit"]') as HTMLButtonElement).click();
+    });
+
+    expect(container.textContent).toContain('This number is already on a paid plan.');
+    expect(container.textContent).toContain('Biggest sale of the year');
+    expect(container.textContent).not.toMatch(/founding/i);
+  });
+});
 
 describe('FoundingJoinForm checkout errors', () => {
   it('shows a connection error when Plus checkout fetch rejects', async () => {

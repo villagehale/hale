@@ -145,7 +145,10 @@ export function failedBars(score) {
  * claim-read-fixtures.test.mjs checks the two agree). */
 const BACKS = {
   scheduled_event: (c) =>
-    c.source === 'calendar' || c.source === 'parent_stated' || c.source === 'booking',
+    c.source === 'calendar' ||
+    c.source === 'parent_stated' ||
+    c.source === 'booking' ||
+    (c.source === 'billing_fact' && c.fact === 'plan'),
   registration_watch: (c) =>
     (c.source === 'open_commitment' && c.kind === 'registration_watch') ||
     c.source === 'live_sequence' ||
@@ -161,11 +164,13 @@ const BACKS = {
     c.source === 'signup_confirmed' ||
     c.source === 'booking' ||
     c.source === 'reported_outcome' ||
-    c.source === 'parent_stated',
-  send_done: (c) => c.source === 'send_receipt',
+    c.source === 'parent_stated' ||
+    (c.source === 'billing_fact' && c.fact === 'plan'),
+  send_done: (c) =>
+    c.source === 'send_receipt' || (c.source === 'billing_fact' && c.fact === 'refund'),
   // Sent is not received: only a receipt the provider marked delivered.
   send_received: (c) => c.source === 'send_receipt' && c.delivered === true,
-  cancelled: (c) => c.source === 'cancelled',
+  cancelled: (c) => c.source === 'cancelled' || (c.source === 'billing_fact' && c.fact === 'ended'),
 };
 
 export function compatibleRefs(fixture, kind) {

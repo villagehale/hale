@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -42,6 +43,13 @@ const inboundPayloadSchema = z.object({
   extra: z.record(z.string(), z.unknown()).optional(),
 });
 
+/**
+ * The most a signed body may hold, in UTF-8 bytes. All of it is redacted and read into a
+ * classifier prompt, so this bounds that work and that prompt. A larger body is refused
+ * whole with a 413; it is never cut, because a cut signal would be classified as complete.
+ */
+const INGEST_BODY_MAX_BYTES = 256 * 1024;
+
 export async function POST(req: Request) {
   // Read the RAW body first — the signature is computed over these exact bytes,
   // so we must not let JSON.parse re-serialize before verifying.
@@ -50,6 +58,20 @@ export async function POST(req: Request) {
   const verification = verifyInboundSignature(signature, rawBody);
   if (!verification.ok) {
     return NextResponse.json({ error: 'unauthorized', detail: verification.reason }, { status: 401 });
+  }
+
+  if (isEnabled('ingest-body-max')) {
+    const bytes = Buffer.byteLength(rawBody, 'utf8');
+    if (bytes > INGEST_BODY_MAX_BYTES) {
+      console.warn('events ingest: body over the maximum, refused', {
+        bytes,
+        maxBytes: INGEST_BODY_MAX_BYTES,
+      });
+      return NextResponse.json(
+        { error: 'body_too_large', maxBytes: INGEST_BODY_MAX_BYTES },
+        { status: 413 },
+      );
+    }
   }
 
   let parsedJson: unknown;

@@ -187,7 +187,9 @@ function ports(over: {
       gate: async () => ({ allowed: true, optOut: 'short' }),
       resolvePhone: async () => '+14165550100',
       transport,
+      sendChat: async () => ({ providerMessageId: 'chat-out-1' }),
       threadMessage: async () => 'conv-1',
+      clock: () => NOW,
       pager: {
         page: async (page) => {
           pages.push(page);

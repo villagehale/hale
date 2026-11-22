@@ -1387,20 +1387,46 @@ const STOP_ANSWERED_STATES: ReadonlySet<string> = new Set<CaregiverInviteState>(
   'superseded_by_enrollment',
 ]);
 
+async function invitesOnNumber(database: Database, hash: string): Promise<InviteRow[]> {
+  return (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.phoneE164Hash, hash))) as InviteRow[];
+}
+
+function newestUnanswered(rows: InviteRow[], hash: string): InviteRow | undefined {
+  return rows
+    .filter((r) => r.phoneE164Hash === hash && !STOP_ANSWERED_STATES.has(r.state))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+}
+
 async function inviteClosableByStop(
   database: Database,
   phoneE164: string,
 ): Promise<CaregiverInvite | null> {
   const hash = phoneBlindIndex(phoneE164);
-  const rows = (await database
-    .select(INVITE_COLUMNS)
-    .from(schema.caregiverInvites)
-    .where(eq(schema.caregiverInvites.phoneE164Hash, hash))) as InviteRow[];
-  const unanswered = rows
-    .filter((r) => r.phoneE164Hash === hash && !STOP_ANSWERED_STATES.has(r.state))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const row = unanswered[0];
+  const row = newestUnanswered(await invitesOnNumber(database, hash), hash);
   return row ? toInvite(row) : null;
+}
+
+/**
+ * Whether a stop held since `heldAt` still has an invite to close. A stop closes only the
+ * newest unanswered row, so older ones outlive it: a decline since the hold is that stop
+ * having run, and without this check they would keep the number held for good.
+ */
+export async function hasInviteAStopWouldClose(
+  database: Database,
+  phoneHash: string,
+  heldAt: Date,
+): Promise<boolean> {
+  const rows = await invitesOnNumber(database, phoneHash);
+  if (!newestUnanswered(rows, phoneHash)) return false;
+  return !rows.some(
+    (r) =>
+      r.state === 'declined' &&
+      r.closedAt !== null &&
+      new Date(r.closedAt).getTime() >= heldAt.getTime(),
+  );
 }
 
 /**

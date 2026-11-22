@@ -135,6 +135,32 @@ To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-we
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
 
+### Stop every running registration plan
+
+A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment, with no redeploy: a plan not yet past its paying checkpoint can no longer start a payment. A plan already past it is counted under `paying`. Its payment can still run, and the sweep reads what it did and tells its parent. The script needs `DATABASE_URL`. Running it against Production needs Barton's go.
+
+**The flag guards `--apply` and nothing else.** `PLAN_OPS_STOP_ENABLED` must be exactly `true` in the shell that runs `--apply`, which refuses without it. It does not need to be set on hale-web: the sweep honours any stop row, and only `--apply` writes one. The dry run works either way.
+
+**It covers day-before plans only.** A one-shot signup is not a plan, so the stop does not touch it, and a one-shot run can pay when `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` is on. To close that path, turn `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` off with the redeploy steps above. A one-shot run already going keeps the wallet it started with until it ends.
+
+Run it before you turn the run flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off the sweep returns at once, so a checkpointed run is never let go and keeps its browser.
+
+1. `pnpm signup:stop-plans`. This is a dry run. It writes nothing and prints counts only: `wouldStop` is the running plans with no ops stop on them yet, and `stillRunning` is every running plan, by phase.
+2. With the run flag still on, run `PLAN_OPS_STOP_ENABLED=true pnpm signup:stop-plans -- --apply`.
+3. Repeat `--apply` once a minute until `stillRunning` is zero in both phases. Running it again never changes an earlier stop. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
+4. Turn `REGISTRATION_PLAN_RUN_ENABLED` off with the redeploy steps above.
+5. When the new deployment is Production, run `--apply` once more and confirm `stillRunning` is zero. If it is not, a sweep claimed a plan just before the redeploy, and with the run flag off nothing will let it go: turn the run flag back on until the count is zero, then turn it off again.
+
+**What remains.** A plan that comes due between the last `--apply` and the redeploy can start a real run. The `--apply` in step 5 stops it before it pays, unless it has already passed its paying checkpoint. There is no durable stop that refuses new claims.
+
+**What a parent hears.** The stop itself sends nothing. What each run's end does depends on whether it can prove it left nothing at the provider:
+
+- **Silent, with no page.** The run never reached the provider, or its answer was read and it stopped short: a blocker, a cart it did not pay for, sold out, not open. The cart lapses with the browser the stop closes. This parent hears nothing until someone follows up.
+- **Told, and #ops is paged once (`registration_stop_unverified`, ref = the offer id).** Everything else: the agent said it submitted (`submit_boundary`) or entered payment details (`payment_boundary`), a `waitlist` ending, a run that failed, timed out or threw, an answer Hale could not read, and any detail added later. **A queued run the sweep lets go is in this group**, because it is cancelled before anyone reads what it did, so a stop during a busy open can text many parents. These endings are recorded with `charged: 'unknown'`, so the parent is told Hale cannot say what happened, and the send gate will not let Hale say it was cancelled.
+- **Money is always reported.** A plan past its paying checkpoint is read, and its parent is told what the payment did, including a declined card. A checkout review that may have placed the order tells the parent and pages #ops on its own site.
+
+A run that had already ended when the stop landed sends its usual notice. To find stopped families, each has one `plan_ops_stop` row in `audit_log`, and its `plan_finished` row keeps how the run really ended under `stoppedFrom`. Follow up on the paged ones first.
+
 ## Rotating APP_ENCRYPTION_KEY
 
 There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.

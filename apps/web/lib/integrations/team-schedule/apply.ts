@@ -37,6 +37,7 @@ import { pipelineClient } from '~/lib/pipeline/client';
 import type { FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
 import {
   type DriverNotifyPorts,
+  driverNotice,
   loadAffectedDrivers,
   notifyDrivers,
   productionDriverNotifyPorts,
@@ -605,15 +606,11 @@ export async function applyTeamScheduleEffects(
     await notifyDrivers(
       database,
       {
+        changeId: row.id,
         familyId: input.familyId,
         actionId: input.actionId,
         drivers,
-        change: row.changeKind,
-        kid: child?.name ?? null,
-        team: event.title,
-        wasAt: originalStartsAt,
-        whenAt: newStartsAt,
-        place: row.newLocation ?? event.location,
+        ...driverNotice(row, event, child?.name ?? null),
         now,
       },
       driverPorts,
@@ -689,6 +686,7 @@ export function teamSchedulePortsFor(
           timeZone: parent?.timeZone && parent.timeZone.length > 0 ? parent.timeZone : 'UTC',
         }),
         familyId,
+        input.signal,
       );
     }),
   };

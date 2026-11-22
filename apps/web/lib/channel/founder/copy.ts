@@ -30,7 +30,7 @@ export const FOUNDER_NOTE_TEMPLATE_KEY = 'founder_welcome:note';
 
 /** What the family gets, in his words. */
 export function founderNote(location: string): string {
-  return `A note from Barton, the dad who built Hale: thank you for being one of our first ${location} families. If anything ever feels off, just say so right here - I read what matters. - B`;
+  return `A note from Barton, the dad who built Hale: thank you for giving Hale a try in ${location}. If anything ever feels off, just say so right here - I read what matters. - B`;
 }
 
 /** What the founder gets back once the note has gone. */

@@ -30,8 +30,9 @@ import {
   TEXTABLE_ROLES,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
+import { familySendKey } from '~/lib/channel/family-send-key';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { dedupeActive } from '~/lib/channel/ledger';
+import { familySendSpent } from '~/lib/channel/ledger';
 import {
   type FamilyOutboundTarget,
   deliverFamilyOutbound,
@@ -915,14 +916,24 @@ async function dropAlreadySent(
     : null;
   const dropped = new Map<'already_sent' | 'already_asked', QueuedItem[]>();
   const kept: QueuedItem[] = [];
+  // VIL-740 · a kept item carries the family's key, because the ledger write after Linq
+  // accepts has no conflict clause. Two rows for one text can both map to that key, so
+  // the first is kept and the second dropped by name.
+  const claimed = new Set<string>();
   for (const item of items) {
-    const reason = (await dedupeActive(item.dedupeKey, database))
-      ? 'already_sent'
-      : care && askedAlready(care, item)
-        ? 'already_asked'
-        : null;
-    if (reason) dropped.set(reason, [...(dropped.get(reason) ?? []), item]);
-    else kept.push(item);
+    const sendKey = familySendKey(item.dedupeKey, familyId);
+    const reason =
+      claimed.has(sendKey.dedupeKey) || (await familySendSpent(database, familyId, sendKey))
+        ? 'already_sent'
+        : care && askedAlready(care, item)
+          ? 'already_asked'
+          : null;
+    if (reason) {
+      dropped.set(reason, [...(dropped.get(reason) ?? []), item]);
+    } else {
+      claimed.add(sendKey.dedupeKey);
+      kept.push({ ...item, dedupeKey: sendKey.dedupeKey });
+    }
   }
   for (const [reason, group] of dropped) {
     const itemIds = group.map((item) => item.id);

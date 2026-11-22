@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, gte, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -11,9 +12,17 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { localParts } from '~/lib/loop/prefs';
+import type { OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { dayKeyIn } from '~/lib/plan/spine';
 import { partyWhen, redactTeenNames } from './card';
 import { guestCancellation, guestReminder } from './guest-copy';
+import {
+  type PartyGuestLine,
+  type PartyGuestLineWriter,
+  placeWithoutTextBackNumbers,
+  sharedPartyGuestLineWriter,
+  withoutTextBackNumbers,
+} from './guest-voice';
 import { claimGuestReminder, loadTeenFirstNames, releaseGuestReminder } from './store';
 
 /**
@@ -84,6 +93,8 @@ export interface PartyReminderDeps {
   release: typeof releaseGuestReminder;
   loadTeenNames: typeof loadTeenFirstNames;
   recordSend(database: Database, write: GuestSendLedger): Promise<void>;
+  /** Writes the guest's text while `party-guest-model-copy` is on. */
+  guestLine: PartyGuestLineWriter;
 }
 
 export interface PartyReminderResult {
@@ -93,6 +104,12 @@ export interface PartyReminderResult {
   /** Guests skipped because another tick already claimed them. */
   deduped: number;
   failed: number;
+  /** Guests of a party whose text the model could not write: nothing sent, #ops paged. */
+  unwritten: number;
+  /** Parties among those whose page did not leave, so nobody was told. */
+  unpaged: number;
+  /** Guests not texted because the party was cancelled or changed after its text was written. */
+  superseded: number;
 }
 
 /** One guest reminder's identity. The rsvp id is the natural key — one guest, one party,
@@ -132,7 +149,15 @@ export async function runPartyReminderCron(
   deps: PartyReminderDeps = defaultPartyReminderDeps(),
   now: Date = new Date(),
 ): Promise<PartyReminderResult> {
-  const result: PartyReminderResult = { evaluated: 0, sent: 0, deduped: 0, failed: 0 };
+  const result: PartyReminderResult = {
+    evaluated: 0,
+    sent: 0,
+    deduped: 0,
+    failed: 0,
+    unwritten: 0,
+    unpaged: 0,
+    superseded: 0,
+  };
 
   const parties = await loadPartiesStartingSoon(database, now);
   for (const party of parties.slice(0, MAX_PARTIES_PER_RUN)) {
@@ -144,22 +169,45 @@ export async function runPartyReminderCron(
     // One party's failure never silences the rest of the morning.
     try {
       const teens = await deps.loadTeenNames(database, party.familyId, now);
-      const body = guestReminder(
-        redactTeenNames(party.title, teens),
-        partyWhen(party.startsAt, party.timeZone),
-        party.location === null ? null : redactTeenNames(party.location, teens),
-      );
+      const facts = guestLineFacts(party, teens);
+      let body: string;
+      let writtenFrom: GuestLineFacts | null = null;
+      if (isEnabled('party-guest-model-copy', party.familyId)) {
+        const waiting = await loadOptedInGuests(database, party.inviteId);
+        if (waiting.length === 0) continue;
+        const toWrite = writerFacts(party, teens);
+        const written = await deps.guestLine.write({ why: 'asked_for_reminder', ...toWrite });
+        if (written.status === 'unwritten') {
+          result.unwritten += waiting.length;
+          if (pageDidNotLeave(written.page)) result.unpaged += 1;
+          continue;
+        }
+        body = written.text;
+        writtenFrom = toWrite;
+      } else {
+        body = guestReminder(facts.title, facts.when, facts.where);
+      }
+      // Read after the model call, so a guest who opted out while it wrote is not texted.
       const guests = await loadOptedInGuests(database, party.inviteId);
       for (const guest of guests) {
+        if (
+          writtenFrom !== null &&
+          !(await partyStillReads(database, party.inviteId, teens, writtenFrom))
+        ) {
+          result.superseded += 1;
+          continue;
+        }
         const outcome = await sendToGuest(database, deps, {
           party,
           guest,
           body,
           dedupeKey: guestReminderDedupeKey(guest.rsvpId),
           now,
+          claimWhileLive: writtenFrom !== null,
         });
         if (outcome === 'sent') result.sent += 1;
         else if (outcome === 'deduped') result.deduped += 1;
+        else if (outcome === 'superseded') result.superseded += 1;
         else result.failed += 1;
       }
     } catch (err) {
@@ -184,12 +232,32 @@ export async function notifyGuestsOfCancellation(
   input: { inviteId: string },
   deps: PartyReminderDeps = defaultPartyReminderDeps(),
   now: Date = new Date(),
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; unwritten: number; unpaged: number }> {
   const party = await loadPartyByInvite(database, input.inviteId);
-  if (!party) return { sent: 0, failed: 0 };
+  if (!party) return { sent: 0, failed: 0, unwritten: 0, unpaged: 0 };
 
   const teens = await deps.loadTeenNames(database, party.familyId, now);
-  const body = guestCancellation(redactTeenNames(party.title, teens));
+  let body: string;
+  if (isEnabled('party-guest-model-copy', party.familyId)) {
+    const waiting = await loadOptedInGuests(database, party.inviteId, { includeReminded: true });
+    if (waiting.length === 0) return { sent: 0, failed: 0, unwritten: 0, unpaged: 0 };
+    const written = await deps.guestLine.write({
+      why: 'host_cancelled',
+      ...writerFacts(party, teens),
+    });
+    if (written.status === 'unwritten') {
+      return {
+        sent: 0,
+        failed: 0,
+        unwritten: waiting.length,
+        unpaged: pageDidNotLeave(written.page) ? 1 : 0,
+      };
+    }
+    body = written.text;
+  } else {
+    body = guestCancellation(redactTeenNames(party.title, teens));
+  }
+  // Read after the model call, so a guest who opted out while it wrote is not texted.
   const guests = await loadOptedInGuests(database, party.inviteId, { includeReminded: true });
 
   let sent = 0;
@@ -208,7 +276,51 @@ export async function notifyGuestsOfCancellation(
     if (outcome === 'sent') sent += 1;
     else if (outcome === 'failed') failed += 1;
   }
-  return { sent, failed };
+  return { sent, failed, unwritten: 0, unpaged: 0 };
+}
+
+function pageDidNotLeave(page: OpsPagerOutcome): boolean {
+  return page === 'page_failed' || page === 'page_not_configured';
+}
+
+type GuestLineFacts = Omit<PartyGuestLine, 'why'>;
+
+/**
+ * Whether the party is still on and still reads as the text says. The model call takes
+ * seconds, and a host can cancel or move the party inside it.
+ */
+async function partyStillReads(
+  database: Database,
+  inviteId: string,
+  teens: readonly string[],
+  written: GuestLineFacts,
+): Promise<boolean> {
+  const current = await loadPartyByInvite(database, inviteId, { liveOnly: true });
+  if (current === null) return false;
+  const facts = writerFacts(current, teens);
+  return (
+    facts.title === written.title && facts.when === written.when && facts.where === written.where
+  );
+}
+
+/** The party as a guest may hear it, with every teen's name already out. */
+function guestLineFacts(party: DueParty, teens: readonly string[]): GuestLineFacts {
+  return {
+    title: redactTeenNames(party.title, teens),
+    when: partyWhen(party.startsAt, party.timeZone),
+    where: party.location === null ? null : redactTeenNames(party.location, teens),
+  };
+}
+
+/** What the model is given. The fixed flag-off text keeps the host's words as they are. */
+function writerFacts(party: DueParty, teens: readonly string[]): GuestLineFacts {
+  const facts = guestLineFacts(party, teens);
+  const where = facts.where === null ? null : placeWithoutTextBackNumbers(facts.where);
+  return {
+    ...facts,
+    title: withoutTextBackNumbers(facts.title),
+    where: where === '' ? null : where,
+  };
 }
 
 /**
@@ -240,11 +352,21 @@ async function sendToGuest(
     dedupeKey: string;
     now: Date;
     claimReminder?: boolean;
+    /** Refuse the claim once the party is cancelled, so a written reminder cannot follow it. */
+    claimWhileLive?: boolean;
   },
-): Promise<'sent' | 'deduped' | 'failed'> {
+): Promise<'sent' | 'deduped' | 'failed' | 'superseded'> {
   const claimReminder = args.claimReminder !== false;
-  if (claimReminder && !(await deps.claim(database, args.guest.rsvpId, args.now))) {
-    return 'deduped';
+  if (
+    claimReminder &&
+    !(await deps.claim(database, args.guest.rsvpId, args.now, {
+      whileLive: args.claimWhileLive === true,
+    }))
+  ) {
+    const partyOff =
+      args.claimWhileLive === true &&
+      (await loadPartyByInvite(database, args.party.inviteId, { liveOnly: true })) === null;
+    return partyOff ? 'superseded' : 'deduped';
   }
 
   try {
@@ -316,7 +438,11 @@ async function loadPartiesStartingSoon(database: Database, now: Date): Promise<D
     );
 }
 
-async function loadPartyByInvite(database: Database, inviteId: string): Promise<DueParty | null> {
+async function loadPartyByInvite(
+  database: Database,
+  inviteId: string,
+  opts: { liveOnly?: boolean } = {},
+): Promise<DueParty | null> {
   const rows = await database
     .select({
       inviteId: schema.partyInvites.id,
@@ -330,7 +456,13 @@ async function loadPartyByInvite(database: Database, inviteId: string): Promise<
     .from(schema.partyInvites)
     .innerJoin(schema.familyEvents, eq(schema.familyEvents.id, schema.partyInvites.familyEventId))
     .innerJoin(schema.users, eq(schema.users.id, schema.partyInvites.hostUserId))
-    .where(eq(schema.partyInvites.id, inviteId))
+    .where(
+      and(
+        eq(schema.partyInvites.id, inviteId),
+        opts.liveOnly ? isNull(schema.partyInvites.cancelledAt) : undefined,
+        opts.liveOnly ? isNull(schema.familyEvents.deletedAt) : undefined,
+      ),
+    )
     .limit(1);
   const row = rows[0];
   return row && row.inviteId === inviteId ? row : null;
@@ -448,5 +580,6 @@ export function defaultPartyReminderDeps(): PartyReminderDeps {
     release: releaseGuestReminder,
     loadTeenNames: loadTeenFirstNames,
     recordSend: recordGuestSend,
+    guestLine: sharedPartyGuestLineWriter(),
   };
 }
