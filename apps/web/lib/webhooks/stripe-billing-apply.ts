@@ -29,7 +29,6 @@ import {
 } from './settle-family-plan.js';
 import {
   type ChargeRevokeDecision,
-  ENDED_SUBSCRIPTION,
   LIVE_SUBSCRIPTION,
   type PaidTier,
   type PriceTierMap,
@@ -152,7 +151,7 @@ export async function applyStripeBillingEvent(
         return settleRefund(event, eventId, database, priceTierMap, deps);
       }
       if (stripeRefundEndsSubscriptionEnabled(env) && revoke.kind === 'dispute') {
-        return settleDispute(event, eventId, revoke, database, deps);
+        return settleDispute(event, eventId, database, deps);
       }
       return applyChargeRevoke(event, eventId, revoke, database, deps);
     }
@@ -363,28 +362,25 @@ async function settleRefund(
 }
 
 /**
- * A dispute never cancels and never writes a refund row. It drops the plan only when the
- * pinned read proves the family's own subscription has ended. Anything else goes to a person.
+ * A dispute never changes the plan and never cancels: a person decides. Stripe can still
+ * name a family Hale has erased, and audit_log's foreign key would refuse that row.
  */
 async function settleDispute(
   event: unknown,
   eventId: string,
-  decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
   database: Database,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
   const read = await readLinkedCharge(event, eventId, false, database, deps);
   if ('done' in read) return read.done;
-  const { charge, familyId } = read;
-  if (!charge.subscriptionId || !charge.subscriptionStatus) {
-    return unresolvedRevoke(eventId, 'dispute_needs_review', familyId, database, deps, true);
-  }
-  return applyChargeRevoke(event, eventId, decision, database, deps, {
-    familyId,
-    customerId: charge.customerId,
-    subscriptionId: charge.subscriptionId,
-    subscriptionStatus: charge.subscriptionStatus,
-  });
+  const [family] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.id, read.familyId))
+    .limit(1);
+  return family
+    ? unresolvedRevoke(eventId, 'dispute_needs_review', family.id, database, deps, true)
+    : unresolvedRevoke(eventId, 'no_family', null, database, deps, true);
 }
 
 interface LinkedCharge {
@@ -400,9 +396,8 @@ async function applyChargeRevoke(
   decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
   database: Database,
   deps: ApplyStripeBillingDeps,
-  provenLink?: LinkedCharge,
 ): Promise<ApplyStripeBillingResult> {
-  const linked = provenLink ?? (await linkCharge(event, deps));
+  const linked = await linkCharge(event, deps);
   const familyId = await familyIdForLinkedCharge(linked, database);
   const claimUnresolved = isFullRefund(decision);
   if (!familyId) {
@@ -411,8 +406,7 @@ async function applyChargeRevoke(
 
   type ChargeTxResult =
     | Exclude<ApplyStripeBillingResult, { status: 'unresolved' }>
-    | { status: 'leave_unresolved' }
-    | { status: 'dispute_needs_review' };
+    | { status: 'leave_unresolved' };
 
   return database
     .transaction(async (tx): Promise<ChargeTxResult> => {
@@ -446,12 +440,6 @@ async function applyChargeRevoke(
         current.stripeSubscriptionId !== null &&
         linked.subscriptionId === current.stripeSubscriptionId;
       const nothingLiveOnFile = !current.stripeSubscriptionId;
-      const provenEnded =
-        linked.subscriptionStatus !== null && ENDED_SUBSCRIPTION.has(linked.subscriptionStatus);
-
-      if (provenLink && !(provenEnded && (tiedToCurrent || nothingLiveOnFile))) {
-        return { status: 'dispute_needs_review' };
-      }
 
       if (partial || live || otherSubscription) {
         const reason = partial ? 'partial_refund' : 'active_subscription';
@@ -501,9 +489,6 @@ async function applyChargeRevoke(
       return { status: 'applied', tier: 'free' };
     })
     .then(async (result): Promise<ApplyStripeBillingResult> => {
-      if (result.status === 'dispute_needs_review') {
-        return unresolvedRevoke(eventId, 'dispute_needs_review', familyId, database, deps, true);
-      }
       if (result.status === 'leave_unresolved') {
         return unresolvedRevoke(
           eventId,

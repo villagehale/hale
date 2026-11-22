@@ -18,7 +18,6 @@ import {
   type PaidTier,
   type PriceTierMap,
   decidePlanTier,
-  provesPayment,
 } from './stripe-billing.js';
 
 /**
@@ -432,7 +431,10 @@ function rolledPastHold(row: HeldPlan, subscription: StripeSubscriptionRead): bo
 /** A refund hold ends with its subscription, or with a new period someone actually paid for. */
 function refundHoldEnded(row: HeldPlan, subscription: StripeSubscriptionRead): boolean {
   if (ENDED_SUBSCRIPTION.has(subscription.status)) return true;
-  return rolledPastHold(row, subscription) && subscription.periodInvoices.some(provesPayment);
+  return (
+    rolledPastHold(row, subscription) &&
+    subscription.periodInvoices.some((invoice) => !invoice.refunded)
+  );
 }
 
 /** Past its period with nothing proven paid: the row stays open but carries no tier. */

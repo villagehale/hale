@@ -47,7 +47,6 @@ interface StoredCharge {
   customer: string | null;
   payment_intent: string | null;
   refunded: boolean;
-  disputed: boolean;
   amount: number;
   amount_captured: number;
   amount_refunded: number;
@@ -217,7 +216,6 @@ export function createFakeStripe() {
       customer: subscription.customer,
       payment_intent: input.paymentIntentId,
       refunded,
-      disputed: false,
       amount,
       amount_captured: amount,
       amount_refunded: refunded ? amount : 0,
@@ -270,13 +268,6 @@ export function createFakeStripe() {
       over.status ?? 'succeeded',
       over.pendingReason ?? 'processing',
     );
-  }
-
-  /** Stripe sets `disputed` on the charge when the cardholder opens a dispute. */
-  function dispute(chargeId: string): void {
-    const charge = charges.get(chargeId);
-    if (!charge) throw new Error(`fake stripe: no charge ${chargeId}`);
-    charge.disputed = true;
   }
 
   /** An unpaid invoice on a customer, with or without a subscription. */
@@ -427,7 +418,6 @@ export function createFakeStripe() {
           id: latest.id,
           object: 'charge',
           refunded: latest.refunded,
-          disputed: latest.disputed,
           amount: latest.amount,
           amount_captured: latest.amount_captured,
           amount_refunded: latest.amount_refunded,
@@ -476,7 +466,6 @@ export function createFakeStripe() {
     addOpenInvoice,
     replaceItem,
     refund,
-    dispute,
     /** Answers matching requests from here on, up to `times` of them. */
     intercept(
       match: (call: FakeStripeCall) => boolean,

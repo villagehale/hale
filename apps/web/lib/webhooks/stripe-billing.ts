@@ -428,7 +428,7 @@ export interface SubscriptionFacts {
   status: string;
   priceId: string | null;
   /** The paid invoices covering the current period. `refunded` is true only on proof. */
-  periodInvoices: ReadonlyArray<{ id: string; refunded: boolean; disputed: boolean }>;
+  periodInvoices: ReadonlyArray<{ id: string; refunded: boolean }>;
 }
 
 export type PlanDecision =
@@ -455,12 +455,8 @@ function planStanding(
   if (invoices.length > 0 && invoices.every((invoice) => invoice.refunded)) return 'none';
   if (openHoldIds.has(subscription.id)) return 'holds';
   if (subscription.status === 'trialing') return 'grants';
-  return subscription.status === 'active' && invoices.some(provesPayment) ? 'grants' : 'holds';
-}
-
-/** A refund took the money back. A dispute may yet, so neither proves the period is paid. */
-export function provesPayment(invoice: { refunded: boolean; disputed: boolean }): boolean {
-  return !invoice.refunded && !invoice.disputed;
+  const paid = invoices.some((invoice) => !invoice.refunded);
+  return subscription.status === 'active' && paid ? 'grants' : 'holds';
 }
 
 /**
