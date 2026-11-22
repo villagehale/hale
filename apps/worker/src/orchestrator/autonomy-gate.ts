@@ -124,10 +124,9 @@ export function commitsParentToEnrollmentBookingOrPayment(draft: {
 
 /**
  * VIL-719 · the three-tier ask policy's switch, read by both apps through this one reader.
- * On only when `ASK_POLICY_TIERS_ENABLED` is exactly `true`. Off, every path that checks it
- * behaves as it did before the policy existed. The family is required: under a PostHog
- * rollout a read without one is a different answer, and the worker that holds an action
- * and the web that texts about it must agree on the same household.
+ * On only when `ASK_POLICY_TIERS_ENABLED` is exactly `true`, and env-only, so PostHog never
+ * decides it (VIL-755). Off, every path that checks it behaves as it did before the policy
+ * existed.
  */
 export function askPolicyTiersEnabled(
   familyId: string,

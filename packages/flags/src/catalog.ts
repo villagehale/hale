@@ -190,8 +190,9 @@ export const FLAGS = [
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-719. The three-tier ask policy: an ask-first kind runs only on the parent's
   // recorded yes, a just-do kind sends no on-its-own text, and a tell-after text the
-  // model cannot write pages #ops. Exact `true`.
-  exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED'),
+  // model cannot write pages #ops. Exact `true`. Env-only (VIL-755): a PostHog sync must
+  // never light a policy that changes who gets texted.
+  exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.

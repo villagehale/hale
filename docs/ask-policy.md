@@ -113,17 +113,17 @@ Each text is written by the model. When it cannot be written, nothing is sent an
 | the group plan's calendar report | `group-plan-calendar-report` | `group_plan_unwritten` (already) |
 | the Gmail draft notice | `gmail-draft-notice` | the failed-turn page (already; no draft is written without its notice) |
 
-A team-schedule change the executor refused (outside the action window) or failed did not land, so nobody is told it moved and no reminder moves. A refused change stays a draft for the parent's yes, a failed one is left as `needs_human`, and the effects run only after a real run.
+A team-schedule change the executor refused (outside the action window), failed or threw on did not land, so nobody is told it moved and no reminder moves. The action leaves the parent's yes list as `needs_human`, because they were never asked about it (a refused one writes `team_schedule_change_not_run`). A failed or thrown run pages #ops (`team_schedule_not_applied`). The email then goes through the normal email notice and its quiet-hours hold, so the parent still hears what the email said.
 
 `calendar_invite_unwritten` pages for every deferral that left a parent without the text: `client_unavailable`, `skill_unavailable`, `model_failed`, `gate_exhausted` (every draft refused), `time_unjudged`, and a summary held before the model call (`summary_too_long`, `summary_carries_destination`). The time judge failing and an unreadable zone share `time_unjudged` on the invite leg, so both page. Every invite sender that follows a calendar change is wrapped: the drain, the nudge cron's cancel re-drive, the group common-time plan, and an undo's withdrawal.
 
 ## Just do
 
-An execution's audit row carries `decision.askTier` while the flag is on. An action that ran as `just_do` owes no on-its-own text. The dispatch counts it as `justDo` and logs it. The flag is read per family when the dispatch runs, so turning it off makes those texts owed again.
+An execution's audit row carries `decision.askTier` while the flag is on. An action that ran as `just_do` owes no on-its-own text. The dispatch counts it as `justDo` and logs it. The flag is read when the dispatch runs, so turning it off makes those texts owed again.
 
 ## Lanes outside the executor
 
-These run outside the executor. The flag changes two of them, the provider email and the co-parent invite on the SMS door. Each of the others already requires its own recorded yes, listed here so later work keeps to the same tiers.
+These run outside the executor. The flag changes three of them: the provider email, the co-parent invite on the SMS door, and the team-schedule driver's text. Each of the others already requires its own recorded yes, listed here so later work keeps to the same tiers.
 
 | lane | classes | tier | the yes it requires today |
 |---|---|---|---|
@@ -133,7 +133,8 @@ These run outside the executor. The flag changes two of them, the provider email
 | email to a provider after a plan's options did not match | `contact_third_party` | `ask_first` | the parent's model-read reply, bound to the ask. With the flag on, a `provider_email_yes` audit row naming the parent and their message is written first, and no email leaves without it |
 | village introduction | `contact_third_party`, `other_persons_info` | `ask_first` | both families' `village_intro` consent rows |
 | caregiver invite | `contact_third_party` | `ask_first` | a `caregiver_access_grant` consent row from the parent's reply, before the send |
-| co-parent invite | `contact_third_party` | `ask_first` | a `co_parent_access_grant` consent row. With the flag on, the SMS door writes it before the text leaves, and a write that fails sends nothing. With the flag off, that door texts first and writes the row after |
+| co-parent invite | `contact_third_party` | `ask_first` | a `co_parent_access_grant` consent row. With the flag on, the SMS door writes it before the text leaves, and a write that fails sends nothing. A text Linq certainly refused goes back to waiting on the parent. Any other failure may have landed, so the invite is held as `send_unconfirmed`: a plain yes cannot claim it, it blocks a re-invite to that number, the person can still answer or stop it, and a later ask from the parent reuses the same Linq key. With the flag off, that door texts first and writes the row after |
+| carpool or duty driver's text after a team-schedule change | `contact_third_party` when the driver is not one of the family's own parents | `ask_first` for that driver, `tell_after` for the family's own parent | with the flag on, a grant does not cover it: the whole change waits for the parent's yes to the draft (`action.approved_by_human`), and the driver is texted after that yes. The ask does not yet name the driver, because that changes the writer's facts and needs a paid eval |
 | multi-family group reads, shared free/busy | `other_persons_info` | `ask_first` | per-parent `multi_family_group` and free/busy consent rows |
 | a coach calendar change (`propose_calendar_*`) | `family_calendar` | asks today (not built as tell after, see below) | the parent's yes to the draft, which writes `action.approved_by_human` |
 | an email offer's add (`email_alert_add`) | `family_calendar` | `tell_after` | the parent's yes to Hale's offer |
@@ -181,15 +182,15 @@ Ask-first orchestrator drafts use today's surfaces: the thread's standing questi
 - A parent's yes on a move or cancel rewrites the event on the Google calendar that holds it, including the other parent's own, and that parent is not asked (`selectGcalConnection`). It needs Google writes armed for the approving parent. The alternatives are asking the calendar's owner, or skipping the Google write and leaving the old time on their calendar. Barton has not ruled on this.
 - A plan run can use the other parent's saved city login and card unless `PLAN_CITY_LOGIN_OWNER_ENABLED`.
 - The email to a provider after a plan options mismatch has no reviewer, its body is assembled in code, and with the flag off it has no recorded yes.
-- Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind. It binds no Google port, so it never writes to anyone's Google calendar.
+- Team-schedule applies a calendar change through `executeApprovedAction` with the grant holder standing in as approver. With the flag on, that lane refuses any ask-first kind and any change that would text a driver outside the family's own parents. It binds no Google port, so it never writes to anyone's Google calendar.
 - Across the flag flip, a parent's tap can land on an autonomous checkpoint of an ask-first kind. That tap writes no `action.approved_by_human` row, so the door hands the action back as a draft. The tap's job id is the action id, so a second tap is ignored until pg-boss archives the finished job. An approval that lands outside the action window has the same limit today.
 - A parent whose `send_email` grant predates the flag, and who was told Hale would email on its own, is not told it will ask again. Autonomous email cannot run today: the Gmail sender needs an actor.
 
 ## The switch
 
-- **Flag:** `ASK_POLICY_TIERS_ENABLED`, catalog key `ask-policy-tiers`. On only for the exact value `true`, read per family through `askPolicyTiersEnabled(familyId)` (`@hale/worker/autonomy-gate`).
+- **Flag:** `ASK_POLICY_TIERS_ENABLED`, catalog key `ask-policy-tiers`. On only for the exact value `true`, read through `askPolicyTiersEnabled(familyId)` (`@hale/worker/autonomy-gate`). Env-only, so it is on for every family or none.
 - **Off:** every path behaves as before, and nothing is stamped or paged.
-- **Kill:** set exactly `false` and redeploy hale-web. Unset is also off while the PostHog path is off. With the PostHog path on, only `false` (or `off`) overrides PostHog.
-- **PostHog:** a `pnpm posthog:sync-flags` creates catalog flags at 100%. While the PostHog path is on, keep this key out of a sync, or set the env to `false`, until Barton says go.
-- **New audit verbs:** `action.gated.ask_first`, and `co_parent_invite_send_unconfirmed` for a co-parent invite text that failed or could not be confirmed after the parent's yes.
-- **New page sites:** the six `*_unwritten` sites this change adds to the table above (`group_plan_unwritten` and the failed-turn page were already there).
+- **Kill:** unset it, or set anything except exact `true`, and redeploy hale-web.
+- **PostHog:** env-only (VIL-755). PostHog is never read for it and `pnpm posthog:sync-flags` never creates it.
+- **New audit verbs:** `action.gated.ask_first`, `co_parent_invite_send_unconfirmed` for a co-parent invite text that failed or could not be confirmed after the parent's yes, and `team_schedule_change_not_run` for a change a grant could not land.
+- **New page sites:** the six `*_unwritten` sites this change adds to the table above (`group_plan_unwritten` and the failed-turn page were already there), and `team_schedule_not_applied` for a failed run.

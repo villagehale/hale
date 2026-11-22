@@ -1079,11 +1079,10 @@ describe('VIL-719 the ask policy on the on-its-own and turn-on texts', () => {
     expect(result.sent).toBe(1);
   });
 
-  it('reads the policy per family: a PostHog rollout to one family withholds only its turn-on', async () => {
+  it('env-only: a PostHog rollout to one family changes nothing for it', async () => {
     const salt = 'vil-719-test-salt';
     vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
     vi.stubEnv(POSTHOG_ID_SALT_ENV, salt);
-    // Unset, not `false`: on the PostHog path an env `false` is the kill.
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', undefined);
     const rolledOut = await seedParent();
     const other = await seedParent();
@@ -1103,9 +1102,9 @@ describe('VIL-719 the ask policy on the on-its-own and turn-on texts', () => {
       sendPorts,
     );
 
-    expect(result.askFirstWithheld).toBe(1);
-    expect(result.sent).toBe(1);
-    expect(await auditDedupeKeys(rolledOut.familyId, 'autonomy_armed_notice_sent')).toEqual([]);
+    expect(result.askFirstWithheld).toBe(0);
+    expect(result.sent).toBe(2);
+    expect(await auditDedupeKeys(rolledOut.familyId, 'autonomy_armed_notice_sent')).toHaveLength(1);
     expect(await auditDedupeKeys(other.familyId, 'autonomy_armed_notice_sent')).toHaveLength(1);
   });
 });
