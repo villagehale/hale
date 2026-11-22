@@ -66,6 +66,7 @@ beforeEach(() => {
   vi.stubEnv(PROACTIVE_CADENCE_ENV, 'off');
   vi.stubEnv(COPARENT_DUTY_SENDS_ENABLED_ENV, 'true');
   vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
+  vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'false');
 });
 
 afterEach(async () => {
