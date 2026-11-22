@@ -34,17 +34,17 @@ const ANSWERS: ReadonlyArray<{ value: RsvpResponse; label: string }> = [
 type FieldError = 'name' | 'headcount' | 'phone' | null;
 
 /**
- * VIL-742. The page shows no Hale number, so a guest can only answer once the text
- * arrives: the way out is to reply and say so, and no keyword is named. The reader takes
- * that reply in any words (RSVP_GUEST_PLAIN_STOP_ENABLED).
+ * The flag-on lines ask for a request to stop texting, because that is what the opt-out
+ * reader reads as a stop. Dropping only the reminder can read as not a stop, so neither
+ * line may imply that any wording ends it.
  */
 function reminderCopy(plainStopWording: boolean): { confirmation: string; checkbox: string } {
   return plainStopWording
     ? {
         confirmation:
-          "I'll text you once, the day before. If you'd rather not hear from Hale, reply and say so, and I won't text you again.",
+          "I'll text you once, the day before. To end it, reply and ask Hale to stop texting you.",
         checkbox:
-          "Text me a reminder the day before. One message from Hale about this party only. If you'd rather not hear from Hale, reply and say so. Your number isn't stored unless you tick this.",
+          "Text me a reminder the day before. One message from Hale about this party only. To end it, reply and ask Hale to stop texting you. Your number isn't stored unless you tick this.",
       }
     : {
         confirmation: "I'll text you once, the day before. Reply STOP any time.",
