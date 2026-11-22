@@ -1,15 +1,8 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { PARENT_NAME_ASK_TEMPLATE_KEY } from './asked';
-import {
-  deliverParentCallNameLine,
-  handleParentCallNameReply,
-  holdGoogleGivenName,
-  loadParentCallName,
-} from './parent-call-name';
+import { handleParentCallNameReply, holdGoogleGivenName } from './parent-call-name';
 
 /**
  * The column and the WHERE are real here. The fake evaluates an update predicate
@@ -114,56 +107,5 @@ describe('parent call name on postgres', () => {
       .where(eq(schema.users.id, b.userId));
     expect(confirmed).toEqual({ name: 'Bea', googleGivenName: null });
     expect(untouched).toEqual({ name: null, googleGivenName: 'Other' });
-  });
-});
-
-describe('a name ask Linq may have taken', () => {
-  const FLAG = 'LINQ_REFUSED_FOR_CERTAIN_ENABLED';
-  const NOW = new Date('2026-10-08T22:00:00.000Z');
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  async function askRefusedWith(status: number) {
-    const seeded = await seed(`Name ask ${status}`);
-    await deliverParentCallNameLine(
-      db.database,
-      {
-        familyId: seeded.familyId,
-        parentUserId: seeded.userId,
-        to: '+15555550100',
-        now: NOW,
-        body: 'What should I call you?',
-        templateKey: PARENT_NAME_ASK_TEMPLATE_KEY,
-      },
-      {
-        transport: {
-          send: async () => {
-            throw new LinqSendError(`http_${status}`, status, true);
-          },
-        },
-        threadMessage: async () => 'conv-1',
-      },
-    );
-    return loadParentCallName(db.database, {
-      familyId: seeded.familyId,
-      parentUserId: seeded.userId,
-    });
-  }
-
-  it('flag on: a 409 counts as asked, so a later find does not ask again', async () => {
-    vi.stubEnv(FLAG, 'true');
-    expect((await askRefusedWith(409)).alreadyAsked).toBe(true);
-  });
-
-  it('flag on: a 422 proved a refusal, so the ask is still open', async () => {
-    vi.stubEnv(FLAG, 'true');
-    expect((await askRefusedWith(422)).alreadyAsked).toBe(false);
-  });
-
-  it('flag off: a 409 leaves the ask open, as main does', async () => {
-    vi.stubEnv(FLAG, 'false');
-    expect((await askRefusedWith(409)).alreadyAsked).toBe(false);
   });
 });

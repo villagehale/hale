@@ -6,7 +6,6 @@ import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
-import { pageOps } from '~/lib/monitoring/failure-page';
 import { PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY } from './asked';
 import { type ParentRoleGuess, storeParentRole } from './parent-role';
 
@@ -450,23 +449,7 @@ export async function deliverParentCallNameLine(
     to: input.to,
     legacy: deps.transport,
     shareGroupCap: false,
-    reportMayHaveLanded: true,
   });
-  if (delivered.status === 'skipped' && delivered.mayHaveLanded) {
-    // Queued with no sentAt reads as asked, so a later find does not ask in new words.
-    await database.insert(schema.channelMessages).values({
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'reply',
-      templateKey: input.templateKey,
-      status: 'queued',
-      errorCode: `unconfirmed:${delivered.reason}`.slice(0, 80),
-    });
-    await pageOps(database, { site: 'linq_send_unconfirmed', facts: { lane: 'parent_name_ask' } });
-    return;
-  }
   if (delivered.status !== 'sent') return;
   const channel = delivered.channel === 'imessage' ? 'imessage' : 'sms';
   const [row] = await database

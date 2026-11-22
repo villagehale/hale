@@ -11,7 +11,6 @@ import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
-import { linqRefusedForCertainEnabled } from '~/lib/channel/linq/config';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -30,7 +29,6 @@ import {
   resolveSendablePhone,
 } from '~/lib/channels/sms-consent-core';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
-import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import { discoverableUserIds } from './consent';
 import { stageWord } from './copy';
 import {
@@ -39,7 +37,6 @@ import {
   createLinqIntroGroupOpener,
   introFirstName,
   introGroupDedupeKey,
-  introGroupUnconfirmedKey,
   villageIntroGroupsEnabled,
 } from './group';
 import { type IntroGroupVoice, productionIntroGroupVoice } from './group-voice';
@@ -293,19 +290,6 @@ export interface IntroSweepDeps {
       providerChatId?: string | null;
     },
   ): Promise<string>;
-  /** The failed ledger row that stops a later sweep opening a group Linq may have opened. */
-  recordOpenUnconfirmed(
-    database: Database,
-    write: {
-      familyId: string;
-      parentUserId: string;
-      templateKey: string;
-      dedupeKey: string;
-      code: string;
-    },
-  ): Promise<void>;
-  /** Pages #ops about a group nobody can say opened. */
-  page(database: Database, page: OpsPage): Promise<unknown>;
   audit(database: Database, row: IntroSweepAudit): Promise<void>;
   /**
    * Put the sent intro in that parent's own text thread — REQUIRED (rule #11). Six of
@@ -999,13 +983,6 @@ async function introduceInGroup(
     result.introduced += 1;
     return;
   }
-  if (
-    linqRefusedForCertainEnabled() &&
-    (await deps.dedupeActive(database, introGroupUnconfirmedKey(proposal.id)))
-  ) {
-    introNotDelivered(result, proposal.id, 'group_unconfirmed');
-    return;
-  }
 
   for (const family of [familyA, familyB]) {
     const verdict = await assertProactiveSendAllowed(
@@ -1047,32 +1024,6 @@ async function introduceInGroup(
   const opened = await deps.openIntroGroup({ to: [toA, toB], text: composed.body });
   if (opened.status === 'not_configured') {
     introNotDelivered(result, proposal.id, 'no_intro_channel');
-    return;
-  }
-  if (opened.status === 'refused' && opened.mayHaveLanded) {
-    await deps.recordOpenUnconfirmed(database, {
-      familyId: familyA.familyId,
-      parentUserId: familyA.parentUserId,
-      templateKey: INTRO_GROUP_TEMPLATE_KEY,
-      dedupeKey: introGroupUnconfirmedKey(proposal.id),
-      code: opened.code,
-    });
-    for (const family of [familyA, familyB]) {
-      await deps.audit(database, {
-        familyId: family.familyId,
-        actor: 'system',
-        actionTaken: 'village_intro_open_unconfirmed',
-        targetTable: 'village_intro_proposals',
-        targetId: proposal.id,
-        // Which fields may have crossed; the other family is not named on this row.
-        after: {
-          channel: 'imessage_group',
-          mayHaveDisclosed: ['parent_first_name', 'parent_phone', 'child_stage', 'activity_title'],
-        },
-      });
-    }
-    await deps.page(database, { site: 'linq_send_unconfirmed', facts: { lane: 'village_intro' } });
-    introNotDelivered(result, proposal.id, 'group_unconfirmed', { code: opened.code });
     return;
   }
   if (opened.status === 'refused') {
@@ -1642,23 +1593,6 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       if (!row) throw new Error('village intros: channel_messages insert returned no row');
       return row.id;
     },
-    recordOpenUnconfirmed: async (database, write) => {
-      await database
-        .insert(schema.channelMessages)
-        .values({
-          familyId: write.familyId,
-          parentUserId: write.parentUserId,
-          channel: 'imessage',
-          direction: 'out',
-          category: 'village_intro',
-          templateKey: write.templateKey,
-          dedupeKey: write.dedupeKey,
-          status: 'failed',
-          errorCode: `unconfirmed:${write.code}`.slice(0, 80),
-        })
-        .onConflictDoNothing();
-    },
-    page: pageOps,
     threadMessage: threadProactiveMessage,
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);

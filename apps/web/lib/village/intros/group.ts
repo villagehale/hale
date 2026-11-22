@@ -1,10 +1,6 @@
 import { isEnabled } from '@hale/flags';
 import { LinqSendError } from '~/lib/channel/linq/transport';
-import {
-  createLinqChat,
-  outboundLineFrom,
-  sendMayHaveLanded,
-} from '~/lib/channel/outbound-transport';
+import { createLinqChat, outboundLineFrom } from '~/lib/channel/outbound-transport';
 
 /**
  * The village introduction as a three-way iMessage group: Hale opens one Linq chat with
@@ -28,11 +24,6 @@ export function introGroupDedupeKey(proposalId: string, side: 'a' | 'b'): string
   return `${INTRO_GROUP_TEMPLATE_KEY}:${proposalId}:${side}`;
 }
 
-/** Marks a pair whose group Linq may have opened, so no sweep opens a second one. */
-export function introGroupUnconfirmedKey(proposalId: string): string {
-  return `${INTRO_GROUP_TEMPLATE_KEY}:${proposalId}:unconfirmed`;
-}
-
 /** First names only, on both sides: a surname is an identity a parent can be looked up
  * by, and nobody consented to that. */
 export function introFirstName(displayName: string): string {
@@ -43,7 +34,7 @@ export type OpenIntroGroupResult =
   | { status: 'opened'; chatId: string; providerMessageId: string }
   /** No Linq line in this environment — named, never a silent skip (rule #11). */
   | { status: 'not_configured' }
-  | { status: 'refused'; code: string; permanent: boolean; mayHaveLanded?: true };
+  | { status: 'refused'; code: string; permanent: boolean };
 
 export type OpenIntroGroup = (input: {
   to: readonly [string, string];
@@ -58,12 +49,8 @@ export function createLinqIntroGroupOpener(deps: { fetch?: typeof fetch } = {}):
       const opened = await createLinqChat({ from, to, text, fetch: deps.fetch });
       return { status: 'opened', ...opened };
     } catch (err) {
-      const landed = sendMayHaveLanded(err) ? ({ mayHaveLanded: true } as const) : {};
       if (err instanceof LinqSendError) {
-        return { status: 'refused', code: err.code, permanent: err.permanent, ...landed };
-      }
-      if (landed.mayHaveLanded) {
-        return { status: 'refused', code: 'unknown', permanent: false, ...landed };
+        return { status: 'refused', code: err.code, permanent: err.permanent };
       }
       throw err;
     }

@@ -3,7 +3,6 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
-import { LinqSendError } from '~/lib/channel/linq/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -760,7 +759,6 @@ describe('telling a parent a kind turned on', () => {
   });
 
   it('a refused send leaves no queued text and the covered keys can be tried again', async () => {
-    vi.stubEnv('LINQ_REFUSED_FOR_CERTAIN_ENABLED', 'false');
     const parent = await seedParent();
     const grantId = await grant(parent.familyId, parent.parentUserId, 'send_email');
     const actionId = await recordActed(parent.familyId, 'send_email');
@@ -849,65 +847,3 @@ async function recordActed(
   });
   return actionId;
 }
-
-describe('a notice Linq may have taken', () => {
-  const FLAG = 'LINQ_REFUSED_FOR_CERTAIN_ENABLED';
-
-  async function twoPasses(status: number) {
-    const parent = await seedParent();
-    await grant(parent.familyId, parent.parentUserId, 'send_email');
-    const actionId = await recordActed(parent.familyId, 'send_email');
-    const transport = new FakeTransport();
-    const realSend = transport.send.bind(transport);
-    let attempts = 0;
-    transport.send = async (input) => {
-      attempts += 1;
-      if (attempts === 1) throw new LinqSendError(`http_${status}`, status, true);
-      return realSend(input);
-    };
-    const { sendPorts } = ports(async () => ({ message: `model acted ${households}` }), transport);
-    const pass = () =>
-      dispatchAutonomyNotices(
-        db.database,
-        { now: MORNING, familyId: parent.familyId, slot: 'now' },
-        sendPorts,
-      );
-    const first = await pass();
-    const second = await pass();
-    return { parent, actionId, first, second, attempts: () => attempts };
-  }
-
-  it('flag on: a 409 keeps the claim as unconfirmed, so the next pass sends nothing', async () => {
-    vi.stubEnv(FLAG, 'true');
-    const { parent, actionId, first, second, attempts } = await twoPasses(409);
-
-    expect(first.sendFailed).toBe(1);
-    expect(second.sent).toBe(0);
-    expect(attempts()).toBe(1);
-    const claimed = (await messageRows(parent.familyId)).filter((row) => row.dedupeKey !== null);
-    expect(claimed).toHaveLength(1);
-    expect(claimed[0]).toMatchObject({ status: 'failed', errorCode: 'unconfirmed:http_409' });
-    expect(await auditDedupeKeys(parent.familyId, 'autonomy_notice_cover_released')).toEqual([]);
-    expect(await auditDedupeKeys(parent.familyId, 'autonomy_notice_covered')).toEqual([
-      `autonomy_acted:${actionId}:${parent.parentUserId}`,
-    ]);
-  });
-
-  it('flag on: a 422 proved a refusal, so the next pass sends it', async () => {
-    vi.stubEnv(FLAG, 'true');
-    const { first, second, attempts } = await twoPasses(422);
-
-    expect(first.sendFailed).toBe(1);
-    expect(second.sent).toBe(1);
-    expect(attempts()).toBe(2);
-  });
-
-  it('flag off: a 409 is released and sent again, as main does', async () => {
-    vi.stubEnv(FLAG, 'false');
-    const { first, second, attempts } = await twoPasses(409);
-
-    expect(first.sendFailed).toBe(1);
-    expect(second.sent).toBe(1);
-    expect(attempts()).toBe(2);
-  });
-});

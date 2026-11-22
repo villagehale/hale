@@ -236,16 +236,6 @@ export const OPS_PAGE_VOCABULARY = {
   registration_review_placed_order: {},
   registration_review_unread: {},
   linq_effect_delivery_unknown: {},
-  /** A text Linq may have taken and Hale will not write again: someone checks whether it came. */
-  linq_send_unconfirmed: {
-    lane: [
-      'proactive_review',
-      'autonomy_notice',
-      'signup_prep',
-      'parent_name_ask',
-      'village_intro',
-    ],
-  },
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},

@@ -12,7 +12,6 @@ import {
   outboundChatConfigured,
   readSendRefusal,
   sendLinqChatMessage,
-  sendMayHaveLanded,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -154,7 +153,7 @@ export type FamilyOutboundDelivery =
       linkOmitted?: 'link_on_new_chat';
     }
   | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
-  | { status: 'skipped'; reason: string; mayHaveLanded?: true };
+  | { status: 'skipped'; reason: string };
 
 async function skippedRefusal(
   database: Database,
@@ -169,14 +168,6 @@ async function skippedRefusal(
     await recordGarbledRefusal(database, { familyId, surface: 'family_outbound' });
   }
   return { status: 'skipped', reason: refusal.code };
-}
-
-function mayHaveLandedDelivery(err: unknown): FamilyOutboundDelivery {
-  return {
-    status: 'skipped',
-    reason: readSendRefusal(err)?.code ?? 'unknown',
-    mayHaveLanded: true,
-  };
 }
 
 function isCoparentAsk(body: string): boolean {
@@ -215,9 +206,6 @@ export async function deliverFamilyOutbound(
     mediaUrls?: string[];
     replyIn?: { chatId: string; messageId: string };
     now?: Date;
-    /** For a caller that writes a failed send again with no Linq key: a failure that does
-     * not prove a refusal comes back as `mayHaveLanded`, thrown or not, so it can stop. */
-    reportMayHaveLanded?: true;
   },
 ): Promise<FamilyOutboundDelivery> {
   const target: FamilyOutboundTarget = input.replyIn
@@ -260,7 +248,6 @@ export async function deliverFamilyOutbound(
         chatId: target.chatId,
       };
     } catch (err) {
-      if (input.reportMayHaveLanded && sendMayHaveLanded(err)) return mayHaveLandedDelivery(err);
       const skipped = await skippedRefusal(database, input.familyId, err);
       if (skipped) return skipped;
       throw err;
@@ -282,7 +269,6 @@ export async function deliverFamilyOutbound(
       ...(sent.linkOmitted ? { linkOmitted: sent.linkOmitted } : {}),
     };
   } catch (err) {
-    if (input.reportMayHaveLanded && sendMayHaveLanded(err)) return mayHaveLandedDelivery(err);
     const skipped = await skippedRefusal(database, input.familyId, err);
     if (skipped) return skipped;
     throw err;
