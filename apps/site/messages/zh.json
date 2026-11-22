@@ -57,6 +57,7 @@
     "metaDescription": "Hale 是一个通过 iMessage 和短信工作的助手，帮美国和加拿大的家长安排孩子的活动和全家的一年。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
   },
   "Pricing": {
+    "noCharge": "你没有被扣款。",
     "metaTitle": "价格 · Hale",
     "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。"
   },
@@ -110,12 +111,32 @@
     "plan": "你现在用的是 {plan}。",
     "metaTitle": "已经完成 · Hale",
     "heading": "已经完成。",
-    "lede": "先给 Hale 发短信。Hale 不会先发消息。",
+    "lede": "给 Hale 发条短信就能开始。",
     "textHale": "给 Hale 发短信",
     "unpaidTitle": "结账 · Hale",
     "unpaidHeading": "结账",
     "unpaidLede": "只有 Stripe 确认收款后，这里才会显示成功。",
-    "continue": "打开 Hale"
+    "continue": "打开 Hale",
+    "thanks": "谢谢。",
+    "keepTexting": "照常给 Hale 发消息就行。",
+    "checkIn": "Hale 很快会在对话里联系你。",
+    "upgradedHeading": "你现在用的是 Max。",
+    "upgradedLede": "你只付了今年剩余时间的差价。所有内容都保留。",
+    "alreadyHeading": "你已经在用 {plan} 了。",
+    "alreadyLede": "这笔付款不会保留。我们会在几天内全额退款。",
+    "startFromPhone": "用手机给 Hale 发短信开始。",
+    "number": "Hale 的号码：{number}",
+    "copyNumber": "复制号码",
+    "copyMessage": "复制消息",
+    "copied": "已复制",
+    "pendingHeading": "快好了。",
+    "pendingLede": "你的付款还在处理中。这个页面会自动更新。",
+    "pendingSlowLede": "可能要几分钟。到账后你会在 Hale 里看到。",
+    "receiptLede": "这次结账已完成。打开 Hale 查看你的方案。",
+    "notFoundLede": "这里没有找到已完成的付款。",
+    "notCharged": "你没有被扣款。",
+    "seePricing": "查看价格",
+    "emailUs": "发邮件给我们"
   },
   "Jsonld": {
     "orgDescription": "Hale 是孩子这一年的规划——帮你看看附近有什么、盯着报名，再回来问问怎么样。",

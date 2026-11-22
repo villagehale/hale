@@ -30,6 +30,7 @@ export function RedesignPricing({
   priceSurface = 'legacy',
   currency = 'CAD',
   regionBlocked = false,
+  noChargeLine = null,
 }: {
   locale: Locale;
   smsNumber: string;
@@ -42,6 +43,8 @@ export function RedesignPricing({
   currency?: BillingCurrency;
   /** Checkout is refused for this visitor's country; show the line instead of buy buttons. */
   regionBlocked?: boolean;
+  /** Set when a cancelled Stripe checkout returned here. */
+  noChargeLine?: string | null;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
@@ -66,6 +69,7 @@ export function RedesignPricing({
     <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list ? t("Plus, by the year or the month.") : t("Free, with unlimited chat.")}</h1>
     <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and Free stays free with unlimited chat. Join by Dec 31 and your price is locked in for as long as you’re a member. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(FREE_TIER_LINE)}</p>
     {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
+    {noChargeLine ? <p className="hs-meta">{noChargeLine}</p> : null}
     
    </div>
    
