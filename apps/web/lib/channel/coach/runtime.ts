@@ -72,6 +72,7 @@ import {
   undoGroupListWrites,
 } from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
+import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { readHealthPlace } from '~/lib/channel/off-domain/place';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -550,10 +551,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Postal town is home. A separate file so the standing coach-channel recordings,
       // keyed on sms + nearby-find, stay put until they are re-recorded.
       const homePlace = await loadCronSkill('coach-home-place');
-      const baseSkill = {
-        ...groupedSkill,
-        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
-      };
+      // VIL-744: overrides the way out in "When they doubt you", on every turn. Dark, the
+      // skill text and its recordings are unchanged.
+      const baseSkill = appendNoStopKeywordSkill(
+        {
+          ...groupedSkill,
+          instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
+        },
+        noStopKeywordCopyEnabled() ? await loadCronSkill('coach-no-stop-keyword') : null,
+      );
       // coach-nearby-find itself stays byte-identical, so coach-channel and
       // group-privacy recordings stay keyed on the prompt they already have.
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
@@ -1126,6 +1132,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+function appendNoStopKeywordSkill(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null) return skill;
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 /** Null returns the same skill object. A turn without a .vcf does not grow the prompt. */

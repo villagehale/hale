@@ -95,6 +95,8 @@ export interface ComposeVoiceArgs<TVoice> {
   agentName: RecordAgentRunInput['agentName'];
   traceName: AgentTraceName;
   maxTokens: number;
+  /** Addendums after the cached system prefix. Absent: the request keeps its bytes. */
+  systemExtras?: readonly string[];
 }
 
 /**
@@ -171,6 +173,7 @@ export async function composeVoice<TVoice>(
           maxTokens: args.maxTokens,
           toolContext: { familyId: args.familyId, actor: 'system' },
           guardDeps,
+          ...(args.systemExtras ? { systemExtras: args.systemExtras } : {}),
         });
         trace.recordGeneration(`${args.traceName}-compose`, {
           model: modelUsed,
