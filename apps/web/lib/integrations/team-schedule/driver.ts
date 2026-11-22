@@ -27,6 +27,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -266,6 +267,34 @@ export async function reanchorCarpoolReminders(
     .where(eq(schema.linqGroupCarpools.id, target.id));
 }
 
+/**
+ * VIL-719 · the drivers who are this family's own parents. Anyone else, another family's
+ * parent or this family's caregiver, is a third party under docs/ask-policy.md.
+ */
+export async function parentDrivers(
+  database: Database,
+  familyId: string,
+  drivers: readonly TeamScheduleDriver[],
+): Promise<TeamScheduleDriver[]> {
+  if (drivers.length === 0) return [];
+  const members = await database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        inArray(
+          schema.familyMembers.userId,
+          drivers.map((driver) => driver.userId),
+        ),
+      ),
+    );
+  const parents = new Set(
+    members.filter((member) => isParentRole(member.role)).map((member) => member.userId),
+  );
+  return drivers.filter((driver) => parents.has(driver.userId));
+}
+
 /** What a try at the driver's text is written from. */
 export interface DriverNotice {
   change: SpokenChange;
@@ -302,7 +331,6 @@ export async function notifyDrivers(
   input: DriverNotice & {
     changeId: string;
     familyId: string;
-    actionId: string;
     drivers: readonly TeamScheduleDriver[];
     now: Date;
   },
@@ -340,7 +368,7 @@ export async function notifyDrivers(
         ? await ports.pager.page({
             site: 'team_schedule_driver_unwritten',
             facts: { change: input.change },
-            ref: input.actionId,
+            ref: input.changeId,
           })
         : null;
       console.info(

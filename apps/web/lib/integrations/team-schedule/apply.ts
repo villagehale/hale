@@ -40,6 +40,7 @@ import {
   driverNotice,
   loadAffectedDrivers,
   notifyDrivers,
+  parentDrivers,
   productionDriverNotifyPorts,
   reanchorCarpoolReminders,
   reanchorEventReminders,
@@ -76,7 +77,6 @@ export type TeamScheduleOutcome =
   | 'schedule_change_asked'
   | 'schedule_change_applied'
   | 'schedule_change_unwritten'
-  | 'schedule_change_not_applied'
   | 'send_failed'
   | 'no_send_target'
   | 'no_chat'
@@ -173,6 +173,80 @@ async function actionExecuted(database: Database, actionId: string): Promise<boo
     .where(eq(schema.actions.id, actionId))
     .limit(1);
   return row?.userVisibleState === 'autonomous' && row.executedAt !== null;
+}
+
+/**
+ * VIL-719 · this change would text someone outside the family's own parents, which is ask
+ * first. The whole change waits for the parent's yes, because a grant covers the family's
+ * calendar and not a message to someone else.
+ */
+async function changeTextsOutsider(
+  database: Database,
+  input: { familyId: string; familyEventId: string; originalStartsAt: Date; timeZone: string },
+): Promise<boolean> {
+  if (!askPolicyTiersEnabled(input.familyId)) return false;
+  const drivers = await loadAffectedDrivers(database, input);
+  return (await parentDrivers(database, input.familyId, drivers)).length < drivers.length;
+}
+
+/**
+ * VIL-719 · the executor did not land a change made under a grant. A refused one is taken
+ * off the parent's yes list, because they were never asked about it. A failed one is
+ * already off it and pages #ops. Either way the normal email notice tells the parent.
+ */
+async function settleUnrunChange(
+  database: Database,
+  input: { familyId: string; actionId: string; change: SpokenChange; threw: boolean },
+  pager: OpsPager,
+): Promise<TeamScheduleResult> {
+  const [action] = await database
+    .select({
+      userVisibleState: schema.actions.userVisibleState,
+      executedAt: schema.actions.executedAt,
+    })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, input.actionId))
+    .limit(1);
+  const failed =
+    input.threw || (action?.userVisibleState === 'needs_human' && action.executedAt !== null);
+  const page = failed
+    ? await pager.page({
+        site: 'team_schedule_not_applied',
+        facts: { change: input.change },
+        ref: input.actionId,
+      })
+    : null;
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const held = await tx
+      .update(schema.actions)
+      .set({ userVisibleState: 'needs_human' })
+      .where(
+        and(
+          eq(schema.actions.id, input.actionId),
+          eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+        ),
+      )
+      .returning({ id: schema.actions.id });
+    if (held.length === 0) return;
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'team_schedule_change_not_run',
+      targetTable: 'actions',
+      targetId: input.actionId,
+      after: { change: input.change },
+    });
+  });
+  console.info(
+    {
+      familyId: input.familyId,
+      outcome: failed ? 'schedule_change_failed' : 'schedule_change_refused',
+      ...(page ? { page } : {}),
+    },
+    'team schedule: the change did not run, the email notice takes over',
+  );
+  return { handled: false };
 }
 
 export async function calendarKindAutonomous(
@@ -290,7 +364,17 @@ export async function applyTeamScheduleChange(
     ...(spoken === 'location' || spoken === 'both' ? { updateLocation: true as const } : {}),
   };
 
-  const standing = await ports.autonomous(actionType);
+  const granted = await ports.autonomous(actionType);
+  const standing =
+    granted.autonomous &&
+    (await changeTextsOutsider(database, {
+      familyId: input.familyId,
+      familyEventId: live.id,
+      originalStartsAt: live.startsAt,
+      timeZone: input.timeZone,
+    }))
+      ? { autonomous: false, parentUserId: null }
+      : granted;
   const mode: TeamScheduleVoiceMode = standing.autonomous ? 'applied' : 'ask';
   const language = await ports.parentLanguage(input.parentUserId);
   const text = await ports.composeParent({
@@ -345,18 +429,28 @@ export async function applyTeamScheduleChange(
   });
 
   if (standing.autonomous && standing.parentUserId) {
-    await ports.execute(drafted.actionId, standing.parentUserId);
+    let threw = false;
+    try {
+      await ports.execute(drafted.actionId, standing.parentUserId);
+    } catch (err) {
+      if (!askPolicyTiersEnabled(input.familyId)) throw err;
+      threw = true;
+      console.error(
+        { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'team schedule: the executor threw',
+      );
+    }
     // VIL-719 · the executor refuses a change outside the action window and can fail one.
     // With the policy on, a change that did not land is not told or acted on as applied.
     if (
       askPolicyTiersEnabled(input.familyId) &&
       !(await actionExecuted(database, drafted.actionId))
     ) {
-      console.info(
-        { familyId: input.familyId, outcome: 'schedule_change_not_applied' },
-        'team schedule: the change did not run, nobody told',
+      return settleUnrunChange(
+        database,
+        { familyId: input.familyId, actionId: drafted.actionId, change: spoken, threw },
+        ports.pager,
       );
-      return { handled: true, outcome: 'schedule_change_not_applied' };
     }
     await applyTeamScheduleEffects(
       database,
@@ -364,6 +458,7 @@ export async function applyTeamScheduleChange(
         actionId: drafted.actionId,
         familyId: input.familyId,
         now: input.now,
+        parentDriversOnly: askPolicyTiersEnabled(input.familyId),
       },
       ports.driver,
     );
@@ -519,7 +614,13 @@ async function sendParentNotice(
 
 export async function applyTeamScheduleEffects(
   database: Database,
-  input: { actionId: string; familyId: string; now?: Date },
+  input: {
+    actionId: string;
+    familyId: string;
+    now?: Date;
+    /** A run under a grant: nobody outside the family's own parents is texted. */
+    parentDriversOnly?: boolean;
+  },
   driverPorts?: DriverNotifyPorts,
 ): Promise<void> {
   const now = input.now ?? new Date();
@@ -597,18 +698,26 @@ export async function applyTeamScheduleEffects(
           .where(eq(schema.children.id, event.childId))
           .limit(1)
       : [undefined];
-    const drivers = await loadAffectedDrivers(database, {
+    const affected = await loadAffectedDrivers(database, {
       familyId: input.familyId,
       familyEventId: event.id,
       originalStartsAt,
       timeZone,
     });
+    const drivers = input.parentDriversOnly
+      ? await parentDrivers(database, input.familyId, affected)
+      : affected;
+    if (drivers.length < affected.length) {
+      console.warn(
+        { familyId: input.familyId, held: affected.length - drivers.length },
+        'team schedule: a driver outside the family was not texted under the grant',
+      );
+    }
     await notifyDrivers(
       database,
       {
         changeId: row.id,
         familyId: input.familyId,
-        actionId: input.actionId,
         drivers,
         ...driverNotice(row, event, child?.name ?? null),
         now,

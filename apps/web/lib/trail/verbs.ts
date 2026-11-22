@@ -347,6 +347,8 @@ export const AUDIT_VERBS = [
   'team_schedule_driver_unsent',
   // VIL-734 · that text ended on one adult's own stop, consent, missing number or leaving.
   'team_schedule_driver_unreachable',
+  // VIL-719 · a change from an email that did not run under a grant; it left the yes list.
+  'team_schedule_change_not_run',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -1407,6 +1409,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // in their own copy.
   team_schedule_driver_unreachable: {
     sentence: 'Hale did not text you about a schedule change',
+    family: 'note',
+  },
+  // VIL-719. The row's `after` is the kind of change only.
+  team_schedule_change_not_run: {
+    sentence: 'Hale did not make a schedule change from an email',
     family: 'note',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent

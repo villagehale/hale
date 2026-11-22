@@ -213,9 +213,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'schedule_change_applied',
   /** VIL-662 · the model could not write the parent text. Nothing was sent. */
   'schedule_change_unwritten',
-  /** VIL-719 · a grant's change the executor refused or failed, with the ask policy on.
-   * Nobody was told it moved. */
-  'schedule_change_not_applied',
   /** VIL-662 · a matched change, but no claimed 1:1 chat to tell the driver. */
   'no_chat',
   /** A quiet-hours hold Hale still owes, and the gate still says quiet hours. No Gmail

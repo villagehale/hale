@@ -270,6 +270,8 @@ export const OPS_PAGE_VOCABULARY = {
   calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },
   team_schedule_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
   team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  /** A team-schedule change under a grant whose execution failed. The email notice still goes. */
+  team_schedule_not_applied: { change: ['time', 'location', 'both', 'cancel'] },
   offer_receipt_unwritten: {},
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {

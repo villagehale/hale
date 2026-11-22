@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
+import { recordExecution } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { defaultApprovalSpine } from '~/lib/channel/router/wiring';
 import {
   type TestDb,
   createTestDb,
@@ -147,6 +149,8 @@ function ports(over: {
   autonomous?: boolean;
   /** False: the executor refused it (outside the action window) and the row stays drafted. */
   executes?: boolean;
+  /** The executor ran it and it failed: the row the real recordExecution leaves. */
+  executionFails?: boolean;
   payloads?: CalendarPlacementPayload[];
 }): TeamScheduleApplyPorts {
   const transport = new FakeTransport();
@@ -169,6 +173,18 @@ function ports(over: {
       parentUserId: over.autonomous ? family.parentUserId : null,
     }),
     execute: async (actionId) => {
+      if (over.executionFails) {
+        await recordExecution(
+          {
+            actionId,
+            result: { error: 'provider failed' },
+            ok: false,
+            decision: { source: 'human', reason: 'grant' },
+          },
+          db.database,
+        );
+        return;
+      }
       if (over.executes !== false) await markExecuted(actionId);
     },
     gate: async () => ({ allowed: true, optOut: 'short' }),
@@ -530,16 +546,19 @@ describe('VIL-719 the driver text after an applied change', () => {
   async function applyWithDriverText(text: string | null) {
     const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
     const drafted = await draftAction();
-    await db.database.insert(schema.teamScheduleChanges).values({
-      familyId: family.familyId,
-      actionId: drafted.actionId,
-      familyEventId: eventId,
-      gmailMessageId: 'gmail-1',
-      changeKind: 'time',
-      originalStartsAt: START,
-      timeZone: TZ,
-      newStartsAt: NEW_START,
-    });
+    const [change] = await db.database
+      .insert(schema.teamScheduleChanges)
+      .values({
+        familyId: family.familyId,
+        actionId: drafted.actionId,
+        familyEventId: eventId,
+        gmailMessageId: 'gmail-1',
+        changeKind: 'time',
+        originalStartsAt: START,
+        timeZone: TZ,
+        newStartsAt: NEW_START,
+      })
+      .returning({ id: schema.teamScheduleChanges.id });
     await markExecuted(drafted.actionId);
     const base = ports({}).driver;
     const transport = new FakeTransport();
@@ -549,16 +568,16 @@ describe('VIL-719 the driver text after an applied change', () => {
       { actionId: drafted.actionId, familyId: family.familyId, now: NOW },
       { ...base, transport, composeDriver },
     );
-    return { actionId: drafted.actionId, transport, composeDriver };
+    return { changeId: change?.id, transport, composeDriver };
   }
 
   it('policy on: a text the model could not write sends nothing and pages #ops', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
-    const { actionId, transport, composeDriver } = await applyWithDriverText(null);
+    const { changeId, transport, composeDriver } = await applyWithDriverText(null);
     expect(composeDriver).toHaveBeenCalledTimes(1);
     expect(transport.sent).toEqual([]);
     expect(pages).toEqual([
-      { site: 'team_schedule_driver_unwritten', facts: { change: 'time' }, ref: actionId },
+      { site: 'team_schedule_driver_unwritten', facts: { change: 'time' }, ref: changeId },
     ]);
   });
 
@@ -612,13 +631,14 @@ describe('VIL-719 a change the executor did not run', () => {
     return rows.map((row) => row.effectsAppliedAt);
   }
 
-  async function applyUnderGrant(eventId: string, executes: boolean) {
+  async function applyUnderGrant(eventId: string, executes: boolean, executionFails = false) {
     process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
     const p = ports({
       match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
       parentText: 'Leo’s hockey moved to 2.',
       autonomous: true,
       executes,
+      executionFails,
     });
     const result = await applyTeamScheduleChange(
       db.database,
@@ -637,21 +657,133 @@ describe('VIL-719 a change the executor did not run', () => {
     return { result, sent: (p.transport as FakeTransport).sent };
   }
 
-  it('policy on: nobody is told it moved, reminders stay, and the draft waits', async () => {
+  async function actionRows() {
+    return db.database
+      .select({
+        id: schema.actions.id,
+        state: schema.actions.userVisibleState,
+        executedAt: schema.actions.executedAt,
+      })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+  }
+
+  async function auditFor(actionId: string) {
+    const rows = await db.database
+      .select({ verb: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, actionId));
+    return rows.map((row) => row.verb);
+  }
+
+  it('policy on: a refused change leaves the yes list and the email notice takes over', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
     const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
     const reminderId = await seedReminder(eventId);
     const { result, sent } = await applyUnderGrant(eventId, false);
-    expect(result).toEqual({ handled: true, outcome: 'schedule_change_not_applied' });
+    expect(result).toEqual({ handled: false });
     expect(sent).toEqual([]);
     expect(pages).toEqual([]);
     expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
     expect(await effectsStamp()).toEqual([null]);
-    const actions = await db.database
-      .select({ state: schema.actions.userVisibleState })
-      .from(schema.actions)
-      .where(eq(schema.actions.familyId, family.familyId));
-    expect(actions.map((row) => row.state)).toEqual(['drafted_for_approval']);
+    const [action] = await actionRows();
+    expect(action?.state).toBe('needs_human');
+    expect(action?.executedAt).toBeNull();
+    expect(await auditFor(action?.id as string)).toContain('team_schedule_change_not_run');
+    expect(await defaultApprovalSpine().listPending(db.database, family.familyId)).toEqual([]);
+  });
+
+  it('policy on: a failed run pages #ops and the email notice takes over', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const reminderId = await seedReminder(eventId);
+    const { result, sent } = await applyUnderGrant(eventId, true, true);
+    expect(result).toEqual({ handled: false });
+    expect(sent).toEqual([]);
+    const [action] = await actionRows();
+    expect(pages).toEqual([
+      { site: 'team_schedule_not_applied', facts: { change: 'time' }, ref: action?.id },
+    ]);
+    expect(action?.state).toBe('needs_human');
+    expect(action?.executedAt).not.toBeNull();
+    expect(await reminderFireAt(reminderId)).toBe(REMINDER_AT.toISOString());
+    expect(await effectsStamp()).toEqual([null]);
+    expect(await defaultApprovalSpine().listPending(db.database, family.familyId)).toEqual([]);
+  });
+
+  it('policy on: an executor that throws is a failed run, paged and off the yes list', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const p = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+      parentText: 'Leo’s hockey moved to 2.',
+      autonomous: true,
+    });
+    p.execute = async () => {
+      throw new Error('executor unavailable');
+    };
+    const result = await applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      p,
+    );
+    expect(result).toEqual({ handled: false });
+    expect((p.transport as FakeTransport).sent).toEqual([]);
+    const [action] = await actionRows();
+    expect(pages).toEqual([
+      { site: 'team_schedule_not_applied', facts: { change: 'time' }, ref: action?.id },
+    ]);
+    expect(action?.state).toBe('needs_human');
+    expect(await defaultApprovalSpine().listPending(db.database, family.familyId)).toEqual([]);
+  });
+
+  it('policy off: an executor that throws still throws, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const p = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+      parentText: 'Leo’s hockey moved to 2.',
+      autonomous: true,
+    });
+    p.execute = async () => {
+      throw new Error('executor unavailable');
+    };
+    await expect(
+      applyTeamScheduleChange(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId: randomUUID(),
+          messageId: 'gmail-1',
+          timeZone: TZ,
+          now: NOW,
+          classification: classified(),
+          children: children(),
+        },
+        p,
+      ),
+    ).rejects.toThrow('executor unavailable');
+    expect(pages).toEqual([]);
+  });
+
+  it('policy off: a failed run ends as it does today, handled with no page', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const { result } = await applyUnderGrant(eventId, true, true);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(pages).toEqual([]);
   });
 
   it('positive control, policy on: a change that ran is told and its effects land', async () => {
@@ -712,6 +844,141 @@ describe('VIL-719 a change the executor did not run', () => {
       new Date(NEW_START.getTime() - 3600_000).toISOString(),
     );
     expect(await effectsStamp()).toEqual([NOW]);
+  });
+});
+
+describe('VIL-719 a driver outside the family’s own parents', () => {
+  const match = (eventId: string): ScheduleMatch => ({
+    eventId,
+    change: 'time',
+    newStartsAt: NEW_START.toISOString(),
+    newLocation: null,
+  });
+
+  function grantPorts(eventId: string) {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const p = ports({ match: match(eventId), parentText: 'Leo’s hockey moved.', autonomous: true });
+    const modes: string[] = [];
+    const compose = p.composeParent;
+    p.composeParent = async (input) => {
+      modes.push(input.mode);
+      return compose(input);
+    };
+    const execute = vi.fn(p.execute);
+    p.execute = execute;
+    const composedFor: string[] = [];
+    p.driver.composeDriver = async (input) => {
+      composedFor.push(input.userId);
+      return 'Pickup moved to 2.';
+    };
+    return { p, modes, execute, composedFor };
+  }
+
+  const apply = (p: TeamScheduleApplyPorts) =>
+    applyTeamScheduleChange(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: randomUUID(),
+        messageId: 'gmail-1',
+        timeZone: TZ,
+        now: NOW,
+        classification: classified(),
+        children: children(),
+      },
+      p,
+    );
+
+  async function caregiverInFamily(): Promise<string> {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:sitter-${randomUUID()}`, name: 'Sitter' })
+      .returning({ id: schema.users.id });
+    const userId = user?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: family.familyId, userId, role: 'grandparent' });
+    return userId;
+  }
+
+  it('policy on: another family’s driver holds the change for the parent’s yes', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const other = await seedFamily(db.database, 'Other family');
+    const eventId = await seedGame({ dutyOwnerUserId: other.parentUserId });
+    const { p, modes, execute, composedFor } = grantPorts(eventId);
+
+    const result = await apply(p);
+
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+    expect(modes).toEqual(['ask']);
+    expect(execute).not.toHaveBeenCalled();
+    expect(composedFor).toEqual([]);
+    const [action] = await db.database
+      .select({ id: schema.actions.id, state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(action?.state).toBe('drafted_for_approval');
+
+    await markExecuted(action?.id as string);
+    await applyTeamScheduleEffects(
+      db.database,
+      { actionId: action?.id as string, familyId: family.familyId, now: NOW },
+      p.driver,
+    );
+    expect(composedFor).toEqual([other.parentUserId]);
+  });
+
+  it('policy on: a caregiver who is not a parent is held the same way', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const caregiver = await caregiverInFamily();
+    const eventId = await seedGame({ dutyOwnerUserId: caregiver });
+    const { p, modes, execute, composedFor } = grantPorts(eventId);
+
+    expect(await apply(p)).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+    expect(modes).toEqual(['ask']);
+    expect(execute).not.toHaveBeenCalled();
+    expect(composedFor).toEqual([]);
+  });
+
+  it('positive control, policy on: the family’s own parent is told under the grant', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const { p, modes, execute, composedFor } = grantPorts(eventId);
+
+    expect(await apply(p)).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(modes).toEqual(['applied']);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(composedFor).toEqual([family.parentUserId]);
+  });
+
+  it('policy on: a driver swapped in after the check is not texted under the grant', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const other = await seedFamily(db.database, 'Other family');
+    const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
+    const { p, composedFor } = grantPorts(eventId);
+    const compose = p.composeParent;
+    p.composeParent = async (input) => {
+      await db.database
+        .update(schema.familyEvents)
+        .set({ dutyOwnerUserId: other.parentUserId })
+        .where(eq(schema.familyEvents.id, eventId));
+      return compose(input);
+    };
+
+    expect(await apply(p)).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(composedFor).toEqual([]);
+  });
+
+  it('policy off: another family’s driver is texted under the grant, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const other = await seedFamily(db.database, 'Other family');
+    const eventId = await seedGame({ dutyOwnerUserId: other.parentUserId });
+    const { p, modes, composedFor } = grantPorts(eventId);
+
+    expect(await apply(p)).toEqual({ handled: true, outcome: 'schedule_change_applied' });
+    expect(modes).toEqual(['applied']);
+    expect(composedFor).toEqual([other.parentUserId]);
   });
 });
 
