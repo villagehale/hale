@@ -14,6 +14,12 @@ export const META_CAPI_ENABLED_ENV = 'META_CAPI_ENABLED';
  */
 export const CHECKOUT_SERVER_CURRENCY_ENABLED_ENV = 'CHECKOUT_SERVER_CURRENCY_ENABLED';
 /**
+ * The checkout success page picks one state per buyer from Stripe and the DB.
+ * Read by this app and by apps/site; both Vercel projects carry it. Off unless
+ * the value is exactly `true`.
+ */
+export const CHECKOUT_SUCCESS_STATES_ENABLED_ENV = 'CHECKOUT_SUCCESS_STATES_ENABLED';
+/**
  * Refund and dispute webhooks revoke the tier, checkout stays closed until a
  * signed billing event has been applied, and the reconcile cron pages #ops.
  * Off unless the value is exactly `true`. Signature verification itself still
@@ -54,6 +60,12 @@ export function checkoutServerCurrencyEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[CHECKOUT_SERVER_CURRENCY_ENABLED_ENV] === 'true';
+}
+
+export function checkoutSuccessStatesEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[CHECKOUT_SUCCESS_STATES_ENABLED_ENV] === 'true';
 }
 
 export function stripeBillingRevokeEnabled(

@@ -195,6 +195,8 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** A family already on a paid plan paid again. Nothing refunds it on its own. */
+  checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
   /** VIL-735 · a billing text owed to a parent that was not sent. Each is one family's money. */
@@ -269,6 +271,7 @@ type OpsPageFacts<S extends OpsPageSite> = {
  * so a second family's in the same hour pages too. Their `ref` is required.
  */
 const OPS_PAGE_PER_REF = [
+  'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
   'billing_notice_unsent',
