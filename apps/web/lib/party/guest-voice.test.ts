@@ -222,6 +222,21 @@ describe('acceptPartyGuestLine', () => {
         { ...REMINDER, where: 'Text WIN to 55512' },
         "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Text WIN to 55512.",
       ],
+      [
+        'a place with a code split by a slash',
+        { ...REMINDER, where: 'Text win to 55/555' },
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Text win to 55/555.",
+      ],
+      [
+        'a place with a number in mid-sentence',
+        { ...REMINDER, where: 'Text win to 55512 today' },
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Text win to 55512 today.",
+      ],
+      [
+        'a place with a code split by a comma',
+        { ...REMINDER, where: 'Hall 55,555' },
+        "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Hall 55,555.",
+      ],
     ])('refuses %s', (_name, line, draft) => {
       expect(acceptPartyGuestLine(draft, line)).toBeNull();
     });
@@ -248,6 +263,16 @@ describe('acceptPartyGuestLine', () => {
       '12 3456',
       '1234 5',
       '1 2345',
+      '122026',
+      '12026',
+      '12 2026',
+      '12:34:56',
+      '12:34 5',
+      '1 23:45',
+      '2:00:55',
+      '2:00 55',
+      '55555, 12',
+      '55\n555',
     ])('refuses a code written as %s', (code) => {
       expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win to ${code}.`, REMINDER)).toBeNull();
     });
@@ -284,12 +309,22 @@ describe('acceptPartyGuestLine', () => {
   });
 
   it.each([
-    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12 2026 at 2:00 PM at 14 Elm St.",
-    "It's Hale with the reminder you asked for: Nora's party is tomorrow, 12/12/2026 14:00 at 14 Elm St.",
-    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2026 at 2:00 PM at 14 Elm St.",
     "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2:00 PM at 14 Elm St.",
-  ])('passes an ordinary date and time: %s', (draft) => {
+    "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 14:00 at 14 Elm St.",
+  ])("passes the party's own day and time: %s", (draft) => {
     expect(acceptPartyGuestLine(draft, REMINDER)).toBe(draft);
+  });
+
+  it("refuses a code built on the party's own clock, written before the real time", () => {
+    const draft =
+      "It's Hale. Text win to 2:00:55. Nora's party is tomorrow, December 12 at 2:00 PM at 14 Elm St.";
+    expect(acceptPartyGuestLine(draft, REMINDER)).toBeNull();
+  });
+
+  it('refuses a year the party was not given', () => {
+    const draft =
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2026 at 2:00 PM at 14 Elm St.";
+    expect(acceptPartyGuestLine(draft, REMINDER)).toBeNull();
   });
 
   it('refuses a code written right after the clock', () => {
@@ -305,13 +340,21 @@ describe('acceptPartyGuestLine', () => {
       expect(withoutTextBackNumbers('Text win to 12 3456')).toBe('Text win to');
     });
 
-    it.each(['Party Dec 12 2026', 'Party Dec 12 2:30'])('leaves the date in %s', (title) => {
+    it.each(['Party Dec 12', 'Party at 2:30'])('leaves the short date or time in %s', (title) => {
       expect(withoutTextBackNumbers(title)).toBe(title);
+    });
+
+    it('keeps a full phone number in a place, and no shorter one', () => {
+      const phone = 'Party Palace, 416-555-0100';
+      expect(placeWithoutTextBackNumbers(phone)).toBe(phone);
+      expect(placeWithoutTextBackNumbers('Party Palace, 555-0100')).toBe('Party Palace');
     });
 
     it.each([
       ['Text WIN to 55512', 'Text WIN to'],
+      ['Text win to 55/555', 'Text win to'],
       ['Hall 55-555', 'Hall'],
+      ['Unit 12345, 14 Elm St', 'Unit, 14 Elm St'],
       ['123 Main St, Austin, TX 78701', '123 Main St, Austin, TX'],
       ['12345', ''],
     ])('takes the number out of the place %s', (place, expected) => {
@@ -321,7 +364,7 @@ describe('acceptPartyGuestLine', () => {
     it.each([
       ['Text WIN to 55555', 'Text WIN to'],
       ['123 Main St, Austin, TX 78701', '123 Main St, Austin, TX'],
-      ['Unit 12345, 14 Elm St', 'Unit, 14 Elm St'],
+      ['Nora party, call 416-555-0199', 'Nora party, call'],
       ['Hall 55-555', 'Hall'],
       ['Hall 5 5 5 5 5', 'Hall'],
       ['Hall 555.555', 'Hall'],
@@ -330,16 +373,12 @@ describe('acceptPartyGuestLine', () => {
       expect(withoutTextBackNumbers(fact)).toBe(expected);
     });
 
-    it.each([
-      '14 Elm St',
-      'Suite 12',
-      'Room 1234',
-      'Party Palace, 416-555-0100',
-      "Nora's party 12-12-2026",
-      'Birthday party for Nora',
-    ])('leaves %s alone', (fact) => {
-      expect(withoutTextBackNumbers(fact)).toBe(fact);
-    });
+    it.each(['14 Elm St', 'Suite 12', 'Room 1234', 'Birthday party for Nora'])(
+      'leaves %s alone',
+      (fact) => {
+        expect(withoutTextBackNumbers(fact)).toBe(fact);
+      },
+    );
   });
 
   describe('a number to text back when a fact holds digits', () => {

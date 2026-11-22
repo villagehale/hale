@@ -68,35 +68,26 @@ const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const LETTER = /\p{L}/u;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
 /**
- * A number to text back in a draft: five or six digits with only spaces or punctuation
- * between them. Too short for the phone check, and a longer run is that check's to read.
+ * Five digits in a draft with only spaces or punctuation between them: more than a day or
+ * a time needs, so it can be a number to text back. `\n` marks a number already lifted.
  */
-const NUMBER_IN_DRAFT =
-  /(?<!\p{Nd}[^\p{L}\p{N}\n]*)\p{Nd}(?:[^\p{L}\p{N}\n]*\p{Nd}){4,5}(?![^\p{L}\p{N}\n]*\p{Nd})/gu;
-/**
- * The same in a host's title or place, read more narrowly: a comma parts an address and a
- * colon a time. A number this leaves in a fact still has to pass the draft's check.
- */
-const NUMBER_IN_FACT =
-  /(?<!\p{Nd}[\s.()-]{0,2})\p{Nd}(?:[\s.()-]{0,2}\p{Nd}){4,5}(?![\s.()-]{0,2}\p{Nd})/gu;
-/** A real clock time only, so "55:555" stays a number. */
-const CLOCK_TIME = /(?<!\p{Nd})(?:[01]?\d|2[0-3]):[0-5]\d(?!\p{Nd})/gu;
-/** "12 2026" or "12, 2026". */
-const DAY_AND_YEAR = /^(?:[1-9]|[12]\d|3[01])[^\p{L}\p{N}\n]*(?:19|20)\d{2}$/u;
-const STREET_NAME_NEXT = /^,?\s+\p{L}/u;
+const LONG_NUMBER = /\p{Nd}(?:[^\p{L}\p{N}\n]*\p{Nd}){4}/u;
+const LONG_NUMBER_IN_TITLE = /\p{Nd}(?:[^\p{L}\p{N}]*\p{Nd}){4,}/gu;
+/** Read within one part of a place, because a comma parts an address. */
+const LONG_NUMBER_IN_PLACE = /\p{Nd}(?:[^\p{L}\p{N},]*\p{Nd}){4,}/gu;
+/** Opens the place or a comma part, with a street name next: "12-345 Main St". */
+const STREET_NUMBER = /(?<=^|,\s*)\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+\p{L})/gu;
+/** A full phone number in one part of a place, which a host may hand to guests. */
+const PLACE_PHONE = /\p{Nd}(?:[^\p{L}\p{N},]*\p{Nd}){9,}/gu;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 
-function holdsTextBackNumber(text: string): boolean {
-  return [...text.replace(CLOCK_TIME, '\n').matchAll(NUMBER_IN_DRAFT)].some(
-    ([run]) => !DAY_AND_YEAR.test(run),
-  );
+function numbersAPlaceMayHold(place: string) {
+  return [...place.matchAll(STREET_NUMBER), ...place.matchAll(PLACE_PHONE)];
 }
 
-function cutNumbers(fact: string, keeps: (run: string, at: number) => boolean): string {
-  const cut = fact.replace(NUMBER_IN_FACT, (run: string, at: number) =>
-    DAY_AND_YEAR.test(run) || keeps(run, at) ? run : ' ',
-  );
+function cutNumbers(fact: string, numbers: RegExp, keeps: (at: number) => boolean): string {
+  const cut = fact.replace(numbers, (run: string, at: number) => (keeps(at) ? run : ' '));
   if (cut === fact) return fact;
   return cut
     .replace(/\s+([,.;:!?])/g, '$1')
@@ -111,20 +102,16 @@ function cutNumbers(fact: string, keeps: (run: string, at: number) => boolean): 
  * they typed to reach their guests.
  */
 export function withoutTextBackNumbers(title: string): string {
-  return cutNumbers(title, () => false);
+  return cutNumbers(title, LONG_NUMBER_IN_TITLE, () => false);
 }
 
 /**
- * The same for a place, which keeps a street number: one that opens the place or a comma
- * part with a street name after it, like "12-345 Main St". A ZIP code goes, because a guest
- * does not need it in a text.
+ * The same for a place, which keeps a street number and a full phone number. A ZIP code
+ * goes, because a guest does not need it in a text.
  */
 export function placeWithoutTextBackNumbers(place: string): string {
-  return cutNumbers(place, (run, at) => {
-    const before = place.slice(0, at).trimEnd();
-    const opensPart = before === '' || before.endsWith(',');
-    return opensPart && STREET_NAME_NEXT.test(place.slice(at + run.length));
-  });
+  const handed = new Set(numbersAPlaceMayHold(place).map((number) => number.index));
+  return cutNumbers(place, LONG_NUMBER_IN_PLACE, (at) => handed.has(at));
 }
 
 /** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
@@ -157,10 +144,25 @@ function outsideFacts(body: string, line: PartyGuestLine): string {
   return factsIn(line).reduce(lessOneMention, inShape(body));
 }
 
-/** Only what survives the cut may be lifted, so one mention of a street number stands. */
-function lessPlaceMention(body: string, where: string | null): string {
-  const place = where === null ? '' : placeWithoutTextBackNumbers(inShape(where));
-  return place.length === 0 ? inShape(body) : lessOneMention(inShape(body), place);
+/** The party's own time, once, unless it runs on into more digits: "2:00" but not "2:00:55". */
+function lessPartyClock(text: string, when: string): string {
+  const match = WHEN_CLOCK.exec(inShape(when));
+  if (match === null) return text;
+  const [, hour, minutes, half] = match;
+  const hour24 = (Number(hour) % 12) + (half === 'P' ? 12 : 0);
+  const clock = `(?<!\\p{Nd})(?:${hour}|${hour24}):${minutes}(?![^\\p{L}\\p{N}\\n]*\\p{Nd})`;
+  return text.replace(new RegExp(clock, 'u'), '\n');
+}
+
+/**
+ * Whether the draft holds a long number the party did not give it. Only the place's street
+ * and phone numbers and the party's own time are given, and each covers one mention.
+ */
+function holdsTextBackNumber(body: string, line: PartyGuestLine): boolean {
+  const handed =
+    line.where === null ? [] : numbersAPlaceMayHold(inShape(line.where)).map(([number]) => number);
+  const rest = handed.reduce(lessOneMention, inShape(body));
+  return LONG_NUMBER.test(lessPartyClock(rest, line.when));
 }
 
 /**
@@ -216,7 +218,7 @@ export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string
     if (!carriesClock(outside, line.when)) return null;
   }
   if (contactsOutside(body, line.where === null ? [] : [line.where]).length > 0) return null;
-  if (holdsTextBackNumber(lessPlaceMention(body, line.where))) return null;
+  if (holdsTextBackNumber(body, line)) return null;
   if (namesKeyword(body, factsIn(line)) !== null) return null;
   return shoutsOutsideFacts(outside, line.when) ? null : body;
 }
