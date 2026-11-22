@@ -177,6 +177,20 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
+  it('answers 503 on retry so Stripe redelivers, and reports no conversion', async () => {
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+    applyMock.mockResolvedValue({ status: 'retry', reason: 'stripe_unavailable' });
+    const body = '{"id":"evt_1","type":"charge.refunded"}';
+    const t = Math.floor(Date.now() / 1000);
+    const hex = createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+
+    const res = await callPost('stripe', body, { 'stripe-signature': `t=${t},v1=${hex}` });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ status: 'retry', reason: 'stripe_unavailable' });
+    expect(reportMock).not.toHaveBeenCalled();
+  });
+
   it('does not send conversions when a paid session is refund-ready', async () => {
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
     applyMock.mockResolvedValue({ status: 'refund_ready' });
