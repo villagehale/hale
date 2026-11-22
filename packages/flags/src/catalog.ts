@@ -163,7 +163,7 @@ export const FLAGS = [
   }),
   exact('orphan-user-sweep', 'ORPHAN_USER_SWEEP_ENABLED'),
   exact('parent-calendar-mirror', 'PARENT_CALENDAR_MIRROR_ENABLED'),
-  exact('party-guest-model-copy', 'PARTY_GUEST_MODEL_COPY_ENABLED'),
+  exact('party-guest-model-copy', 'PARTY_GUEST_MODEL_COPY_ENABLED', { envOnly: true }),
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),

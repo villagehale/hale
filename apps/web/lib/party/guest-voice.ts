@@ -72,15 +72,19 @@ const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
  * a time needs, so it can be a number to text back. `\n` marks a number already lifted.
  */
 const LONG_NUMBER = /\p{Nd}(?:[^\p{L}\p{N}\n]*\p{Nd}){4}/u;
-const LONG_NUMBER_IN_TITLE = /\p{Nd}(?:[^\p{L}\p{N}]*\p{Nd}){4,}/gu;
 /**
- * Read within one part of a place. A comma and a space part an address; a comma with no
- * space is inside a number, as in "55,555".
+ * A number to text back as one word of a title or place: five or more digits joined only by
+ * punctuation, as in "55-555". A space ends it, because an address puts numbers side by
+ * side: "1632 14 Ave NW".
  */
-const LONG_NUMBER_IN_PLACE = /\p{Nd}(?:(?:[^\p{L}\p{N},]|,(?!\s))*\p{Nd}){4,}/gu;
-/** Opens the place, with a street name next: "12-345 Main St". */
-const STREET_NUMBER = /^\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+\p{L})/u;
-const CUT_EDGE = /[\s,;:(+-]/;
+const LONG_NUMBER_IN_FACT = /\p{Nd}(?:[^\p{L}\p{N}\s]*\p{Nd}){4,}/gu;
+/** A phone in its usual groups, which spaces do not end: "416 555 0199", "(416) 555-0199". */
+const PHONE_IN_FACT =
+  /(?<!\p{Nd})(?:\+?1[\s.-]?)?\(?\p{Nd}{3}\)?[\s.-]?\p{Nd}{3}[\s.-]?\p{Nd}{4}(?!\p{Nd})/gu;
+/** Opens the place, with the street next: "12-345 Main St", "13450 102 Ave". */
+const STREET_NUMBER = /^\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+[\p{L}\p{N}])/u;
+const STREET_NUMBER_MAX_DIGITS = 6;
+const CUT_EDGE = /[\s,;:(+/-]/;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 /** The day `partyWhen` puts before its clock: "December 12 at". */
@@ -98,7 +102,9 @@ function cutNumbers(
   numbers: RegExp,
   keeps: (run: string, at: number) => boolean,
 ): string {
-  const cut = fact.replace(numbers, (run: string, at: number) => (keeps(run, at) ? run : ' '));
+  const cut = fact
+    .replace(PHONE_IN_FACT, ' ')
+    .replace(numbers, (run: string, at: number) => (keeps(run, at) ? run : ' '));
   if (cut === fact) return fact;
   const tidied = withoutTrailing(
     cut
@@ -116,7 +122,7 @@ function cutNumbers(
  * they typed to reach their guests.
  */
 export function withoutTextBackNumbers(title: string): string {
-  return cutNumbers(title, LONG_NUMBER_IN_TITLE, () => false);
+  return cutNumbers(title, LONG_NUMBER_IN_FACT, () => false);
 }
 
 /**
@@ -124,8 +130,13 @@ export function withoutTextBackNumbers(title: string): string {
  * phone number go, because a guest does not need them in a text.
  */
 export function placeWithoutTextBackNumbers(place: string): string {
-  const streetNumber = STREET_NUMBER.exec(place)?.[0];
-  return cutNumbers(place, LONG_NUMBER_IN_PLACE, (run, at) => at === 0 && run === streetNumber);
+  const opening = STREET_NUMBER.exec(place)?.[0];
+  const street =
+    opening !== undefined &&
+    Array.from(opening.matchAll(/\p{Nd}/gu)).length <= STREET_NUMBER_MAX_DIGITS
+      ? opening
+      : null;
+  return cutNumbers(place, LONG_NUMBER_IN_FACT, (run, at) => at === 0 && run === street);
 }
 
 /** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
@@ -169,35 +180,40 @@ function lessPartyClock(text: string, when: string): string {
   const [, hour, minutes, half] = match;
   const hour24 = (Number(hour) % 12) + (half === 'P' ? 12 : 0);
   const day = WHEN_DAY.exec(shaped)?.[1];
-  const ownDay = day === undefined ? '' : `(?:${day}[,\\s]+)?`;
+  const ownDay = day === undefined ? '' : `(?:${day}[^\\p{L}\\p{N}\\n]*)?`;
   const clock = `(?<!\\p{Nd}[^\\p{L}\\p{N}\\n]*)${ownDay}(?:${hour}|${hour24}):${minutes}(?![^\\p{L}\\p{N}\\n]*\\p{Nd})`;
   return text.replace(new RegExp(clock, 'u'), '\n');
 }
 
-/** The draft less one whole mention of the place, as it stands after the cut. */
-function lessPlaceMention(text: string, where: string): string {
-  const place = withoutTrailing(placeWithoutTextBackNumbers(inShape(where)), TRAILING_PUNCTUATION);
-  return LETTER.test(place) ? lessOneMention(text, place) : text;
-}
-
 /**
- * Whether the draft holds a long number the party did not give it. Only the place and the
- * party's own time are given, and each covers one mention.
+ * Whether the draft holds a long number the party did not give it. One whole mention each
+ * of the title and place, with their long numbers cut, and the party's own time are given.
  */
 function holdsTextBackNumber(body: string, line: PartyGuestLine): boolean {
-  const shaped = inShape(body);
-  const rest = line.where === null ? shaped : lessPlaceMention(shaped, line.where);
+  const title = withoutTextBackNumbers(inShape(line.title));
+  const place = line.where === null ? '' : placeWithoutTextBackNumbers(inShape(line.where));
+  const rest = [title, place]
+    .map((fact) => withoutTrailing(fact, TRAILING_PUNCTUATION))
+    .filter((fact) => LETTER.test(fact))
+    .reduce(lessOneMention, inShape(body));
   return LONG_NUMBER.test(lessPartyClock(rest, line.when));
 }
 
 /**
- * Whether the draft shouts a word the party's facts do not hold. A keyword to text back is
- * written in capitals in every language, so this needs no list of keywords. The time's PM
- * is a fact. A lowercase keyword is the skill's and the eval's to catch.
+ * Whether the draft shouts a word more often than the party's facts hold it. A keyword to
+ * text back is written in capitals in every language, so this needs no list of keywords.
+ * The time's PM is a fact. A lowercase keyword is the skill's and the eval's to catch.
  */
-function shoutsOutsideFacts(outside: string, when: string): boolean {
-  const timeWords = new Set(inShape(when).match(SHOUTED_WORD));
-  return (outside.match(SHOUTED_WORD) ?? []).some((word) => !timeWords.has(word));
+function shoutsOutsideFacts(body: string, line: PartyGuestLine): boolean {
+  const timeWords = new Set(inShape(line.when).match(SHOUTED_WORD));
+  const held = factsIn(line).flatMap((fact) => fact.match(SHOUTED_WORD) ?? []);
+  for (const word of inShape(body).match(SHOUTED_WORD) ?? []) {
+    if (timeWords.has(word)) continue;
+    const at = held.indexOf(word);
+    if (at === -1) return true;
+    held.splice(at, 1);
+  }
+  return false;
 }
 
 function carriesPlace(body: string, where: string): boolean {
@@ -218,12 +234,13 @@ function carriesClock(outside: string, when: string): boolean {
   const hour12 = Number(hour);
   const hour24 = (hour12 % 12) + (half === 'P' ? 12 : 0);
   const hours = `(?<!\\d)(?:${hour12}|${hour24})`;
+  const hourMark = `(?<!\\d)${hour24}\\s?h`;
   const marker = (letter: string) => `\\s?${letter}(?:\\.\\s?)?m\\b`;
   const notWrongHalf = `(?!${marker(half === 'P' ? 'a' : 'p')})`;
   const clock =
     minutes === '00'
-      ? `${hours}(?::00(?!\\d)${notWrongHalf}|${marker(half as string)}|\\s?h(?!\\s?(?:[1-5]\\d|0[1-9])))`
-      : `${hours}\\s?[:h]\\s?${minutes}(?!\\d)${notWrongHalf}`;
+      ? `${hours}(?::00(?!\\d)${notWrongHalf}|${marker(half as string)})|${hourMark}(?!\\s?(?:[1-5]\\d|0[1-9]))`
+      : `${hours}\\s?:\\s?${minutes}(?!\\d)${notWrongHalf}|${hourMark}\\s?${minutes}(?!\\d)`;
   return new RegExp(clock, 'i').test(outside);
 }
 
@@ -245,7 +262,7 @@ export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string
   if (contactsOutside(body, line.where === null ? [] : [line.where]).length > 0) return null;
   if (holdsTextBackNumber(body, line)) return null;
   if (namesKeyword(body, factsIn(line)) !== null) return null;
-  return shoutsOutsideFacts(outside, line.when) ? null : body;
+  return shoutsOutsideFacts(body, line) ? null : body;
 }
 
 export function createPartyGuestLineWriter(

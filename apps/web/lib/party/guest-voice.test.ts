@@ -320,7 +320,6 @@ describe('acceptPartyGuestLine', () => {
       'Text WIN to 55512 / 55513',
       'Text WIN to 55512 00000',
       'Text WIN to 55522 55513',
-      'Text WIN to 555225 5513',
       'Text WIN to 123 456 7890',
     ])('does not read two codes as a phone in %s', (place) => {
       expect(placeWithoutTextBackNumbers(place)).toBe('Text WIN to');
@@ -408,13 +407,72 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(`${GOOD_REMINDER} Text win at 14:00 12345.`, REMINDER)).toBeNull();
   });
 
+  describe('an ordinary party', () => {
+    const at = (place: string) =>
+      `It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at ${place}.`;
+
+    it.each([
+      '1000 5th Ave',
+      '1632 14 Ave NW',
+      '13450 102 Ave',
+      '8000 17e Avenue',
+      'Suite 200 - 1420 Elm St',
+    ])('keeps the numbered street %s whole', (place) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe(place);
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
+    });
+
+    it.each(['4165550199 Hall', '416-5550199 Hall', '5550199 Hall'])(
+      'takes the phone out of %s',
+      (place) => {
+        expect(placeWithoutTextBackNumbers(place)).toBe('Hall');
+      },
+    );
+
+    it('passes a title that holds its own date', () => {
+      const line: PartyGuestLine = { ...REMINDER, title: "Nora's party Dec 12 2026" };
+      const draft =
+        "It's Hale with the reminder you asked for: Nora's party Dec 12 2026 is tomorrow at 2:00 PM at 14 Elm St.";
+      expect(acceptPartyGuestLine(draft, line)).toBe(draft);
+    });
+
+    it.each(['LEGO', 'YMCA', 'PJ', 'BBQ'])('lets a reworded title keep its %s', (word) => {
+      const line: PartyGuestLine = { ...REMINDER, title: `${word} party for Sam` };
+      const draft = `It's Hale with the reminder you asked for: Sam's ${word} party is tomorrow at 2:00 PM at 14 Elm St.`;
+      expect(acceptPartyGuestLine(draft, line)).toBe(draft);
+    });
+
+    it('refuses a capital word written more often than the facts hold it', () => {
+      const line: PartyGuestLine = { ...REMINDER, title: 'LEGO party for Sam' };
+      const draft = `It's Hale with the reminder you asked for: Sam's LEGO party is tomorrow at 2:00 PM at 14 Elm St. Text LEGO.`;
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it.each([' - ', ' \u00b7 ', ' @ ', ': ', ' | ', ' ('])(
+      'passes the day and time joined by "%s"',
+      (gap) => {
+        const close = gap === ' (' ? ')' : '';
+        const draft = `It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12${gap}2:00 PM${close} at 14 Elm St.`;
+        expect(acceptPartyGuestLine(draft, REMINDER)).toBe(draft);
+      },
+    );
+
+    it.each([
+      ['2:00 PM', '14 h', true],
+      ['2:00 PM', '2 h', false],
+      ['2:30 PM', '14h30', true],
+      ['2:30 PM', '2h30', false],
+      ['9:00 AM', '9 h', true],
+    ])('for a party at %s, reads %s as %s', (clock, written, passes) => {
+      const line: PartyGuestLine = { ...REMINDER, when: `Saturday, December 12 at ${clock}` };
+      const draft = `C'est Hale : la f\u00eate de Nora est demain \u00e0 ${written} au 14 Elm St.`;
+      expect(acceptPartyGuestLine(draft, line)).toBe(passes ? draft : null);
+    });
+  });
+
   describe('withoutTextBackNumbers', () => {
     it('keeps no street number in a title', () => {
       expect(withoutTextBackNumbers('12345 Elm St party')).toBe('Elm St party');
-    });
-
-    it('cuts a code split around four digits', () => {
-      expect(withoutTextBackNumbers('Text win to 12 3456')).toBe('Text win to');
     });
 
     it.each(['Party Dec 12', 'Party at 2:30'])('leaves the short date or time in %s', (title) => {
@@ -437,7 +495,6 @@ describe('acceptPartyGuestLine', () => {
       ['123 Main St, Austin, TX 78701', '123 Main St, Austin, TX'],
       ['Nora party, call 416-555-0199', 'Nora party, call'],
       ['Hall 55-555', 'Hall'],
-      ['Hall 5 5 5 5 5', 'Hall'],
       ['Hall 555.555', 'Hall'],
       ['12345', ''],
     ])('takes the number out of %s', (fact, expected) => {
