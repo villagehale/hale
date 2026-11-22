@@ -96,9 +96,9 @@ export interface RequesterOnlyExport {
     withheld: 'teen' | null;
   }[];
   /**
-   * VIL-735 · the texts Hale owed this adult about a payment, a cancel or a refund. Only
-   * their own carry amounts. A notice with no resolved payer is in each adult's copy
-   * without any. Stripe ids stay out.
+   * VIL-735 · the texts Hale owed this adult about a payment, a cancel or a refund, with
+   * their amounts and reason. A notice dropped because no payer could be resolved is in
+   * each adult's copy without either. Stripe ids stay out.
    */
   billingNotices: {
     lane: string;
@@ -276,7 +276,14 @@ export async function loadRequesterOnlyExport(
     .where(
       and(
         eq(notices.familyId, familyId),
-        or(eq(notices.parentUserId, requesterUserId), isNull(notices.parentUserId)),
+        or(
+          eq(notices.parentUserId, requesterUserId),
+          and(
+            isNull(notices.parentUserId),
+            eq(notices.status, 'dropped'),
+            eq(notices.dropReason, 'payer_unresolved'),
+          ),
+        ),
       ),
     )
     .orderBy(asc(notices.createdAt));
@@ -349,7 +356,7 @@ export async function loadRequesterOnlyExport(
     billingNotices: noticeRows.map((row) => ({
       lane: row.lane,
       status: row.status,
-      reason: row.dropReason,
+      reason: row.parentUserId === requesterUserId ? row.dropReason : null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       refunds:

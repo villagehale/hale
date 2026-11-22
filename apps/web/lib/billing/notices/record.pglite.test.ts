@@ -1,10 +1,10 @@
-import { schema } from '@hale/db';
+import { type BillingNoticeEventFacts, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
-import { mergeNoticeFacts } from './merge';
+import { addsNoticeSubject, endedSubscriptionIds, mergeNoticeFacts } from './merge';
 import { recordBillingNoticeIntent } from './record';
 
 /**
@@ -372,6 +372,32 @@ describe('one row for a refund and a cancel', () => {
     expect((await noticeRows())[0]?.parentUserId).toBeNull();
   });
 
+  it('a second subscription ending clears the stored recipient and keeps both ids', async () => {
+    await record(deletedEvent());
+    const [first] = await noticeRows();
+    const { parentUserId } = await db.database
+      .select({ parentUserId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, familyId))
+      .then((rows) => rows[0] as { parentUserId: string });
+    await db.database
+      .update(schema.billingNotices)
+      .set({ parentUserId })
+      .where(eq(schema.billingNotices.id, first?.id as string));
+
+    await record(deletedEvent({ id: `evt_deleted_again_${serial}` }));
+    expect((await noticeRows())[0]?.parentUserId).toBe(parentUserId);
+
+    await record(
+      deletedEvent({ id: `evt_deleted_other_${serial}` }, { id: `sub_other_${serial}` }),
+    );
+    const [merged] = await noticeRows();
+    expect(merged?.parentUserId).toBeNull();
+    expect(endedSubscriptionIds(merged?.facts as BillingNoticeEventFacts).sort()).toEqual(
+      [`sub_${serial}`, `sub_other_${serial}`].sort(),
+    );
+  });
+
   it('a held row from before a re-light drops instead of absorbing a new event', async () => {
     await record(refundEvent(), { status: 'no_tier' });
     const relit = new Date(NOW.getTime() + 60 * 60_000);
@@ -583,6 +609,31 @@ describe('mergeNoticeFacts', () => {
       { eventIds: ['evt_2'], refunds: [refund('ch_1', 9000)] },
     );
     expect(merged.refunds).toEqual([{ ...refund('ch_1', 9000), subscriptionId: 'sub_1' }]);
+  });
+
+  it('two ended subscriptions: both stay named, in either order, and a third adds nothing new', () => {
+    const a = { eventIds: ['evt_1'], ended: { subscriptionId: 'sub_1', why: 'cancelled' as const } };
+    const b = { eventIds: ['evt_2'], ended: { subscriptionId: 'sub_2', why: 'cancelled' as const } };
+    const ab = mergeNoticeFacts(a, b);
+    const ba = mergeNoticeFacts(b, a);
+    expect(endedSubscriptionIds(ab).sort()).toEqual(['sub_1', 'sub_2']);
+    expect(endedSubscriptionIds(ba).sort()).toEqual(['sub_1', 'sub_2']);
+    expect(addsNoticeSubject(a, b)).toBe(true);
+    expect(addsNoticeSubject(ab, b)).toBe(false);
+    expect(addsNoticeSubject(a, { ...a, eventIds: ['evt_3'] })).toBe(false);
+  });
+
+  it('two subscriptions that ended for different reasons state no reason', () => {
+    const merged = mergeNoticeFacts(
+      { eventIds: ['evt_1'], ended: { subscriptionId: 'sub_1', why: 'cancelled' } },
+      { eventIds: ['evt_2'], ended: { subscriptionId: 'sub_2', why: 'payment_failed' } },
+    );
+    expect(merged.ended?.why).toBeNull();
+    const same = mergeNoticeFacts(
+      { eventIds: ['evt_1'], ended: { subscriptionId: 'sub_1', why: 'cancelled' } },
+      { eventIds: ['evt_2'], ended: { subscriptionId: 'sub_2', why: 'cancelled' } },
+    );
+    expect(same.ended?.why).toBe('cancelled');
   });
 
   it('marks two different subscriptions in the payment lane', () => {

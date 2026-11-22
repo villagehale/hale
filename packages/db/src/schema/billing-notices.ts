@@ -29,6 +29,8 @@ export interface BillingNoticeEventFacts {
   conflictingPayment?: boolean;
   /** Plan-change lane. `why` is null for anything but a cancel or a failed payment. */
   ended?: { subscriptionId: string; why: 'cancelled' | 'payment_failed' | null };
+  /** Further subscriptions that ended into this row. Each is a subject the payer must own. */
+  alsoEnded?: string[];
   refunds?: {
     chargeId: string;
     refundedMinor: number;

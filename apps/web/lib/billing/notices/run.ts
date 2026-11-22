@@ -291,7 +291,9 @@ async function processNotice(
   const { parentUserId } = payer;
 
   const gate = await sendGates(database, row, parentUserId, now);
-  if (gate.kind === 'drop') return dropNotice(database, row, gate.reason, deps);
+  if (gate.kind === 'drop') {
+    return dropNotice(database, { ...row, parentUserId }, gate.reason, deps);
+  }
   if (gate.kind === 'wait') return waitOpen(database, row, gate.until, now);
 
   const proof = await payerThreadProof(database, parentUserId, {
@@ -301,8 +303,12 @@ async function processNotice(
         : null,
     findDirectChat: deps.findDirectChat,
   });
-  if (proof === 'no_thread') return dropNotice(database, row, 'no_thread', deps);
-  if (proof === 'unread') return failAttempt(database, row, 'thread_unread', deps);
+  if (proof === 'no_thread') {
+    return dropNotice(database, { ...row, parentUserId }, 'no_thread', deps);
+  }
+  if (proof === 'unread') {
+    return failAttempt(database, { ...row, parentUserId }, 'thread_unread', deps);
+  }
 
   const closed = await closeRow(database, row, parentUserId, resolvedFacts, deps);
   if (!closed) return 'skipped';
@@ -801,6 +807,29 @@ function withoutAmounts(facts: BillingNoticeEventFacts): BillingNoticeEventFacts
   } as BillingNoticeEventFacts;
 }
 
+/**
+ * Whose money this dropped row is about. The access export shows a row to its payer alone,
+ * so a drop that came before the drain read the payer reads it here, from the facts as
+ * they stand under the family lock. `row` carries a payer this tick already resolved, which
+ * holds only while no new subject has merged in since.
+ */
+async function payerOnDrop(
+  tx: Pick<Database, 'select' | 'selectDistinct'>,
+  row: BillingNotice,
+  current: Pick<BillingNotice, 'facts' | 'parentUserId'>,
+  reason: DropReason,
+): Promise<string | null> {
+  if (reason === 'payer_unresolved') return null;
+  if (current.parentUserId) return current.parentUserId;
+  if (row.parentUserId && !addsNoticeSubject(row.facts, current.facts)) return row.parentUserId;
+  const payer = await resolveNoticePayer(tx, {
+    familyId: row.familyId,
+    lane: row.lane,
+    facts: current.facts,
+  });
+  return payer.status === 'resolved' ? payer.parentUserId : null;
+}
+
 async function finishDrop(
   database: Database,
   row: BillingNotice,
@@ -811,7 +840,10 @@ async function finishDrop(
   return database.transaction(async (tx) => {
     await lockFamily(tx, row.familyId);
     const [current] = await tx
-      .select({ facts: schema.billingNotices.facts })
+      .select({
+        facts: schema.billingNotices.facts,
+        parentUserId: schema.billingNotices.parentUserId,
+      })
       .from(schema.billingNotices)
       .where(
         and(
@@ -821,17 +853,19 @@ async function finishDrop(
       )
       .limit(1);
     if (!current) return false;
+    const parentUserId = await payerOnDrop(tx, row, current, reason);
     await tx
       .update(schema.billingNotices)
       .set({
         status: 'dropped',
         dropReason: reason,
+        parentUserId,
         attempts,
         updatedAt: now,
-        ...(reason === 'payer_unresolved' ? { facts: withoutAmounts(current.facts) } : {}),
+        ...(parentUserId === null ? { facts: withoutAmounts(current.facts) } : {}),
       })
       .where(eq(schema.billingNotices.id, row.id));
-    await writeNoticeAudit.dropped(tx, row, { reason, attempts });
+    await writeNoticeAudit.dropped(tx, { ...row, parentUserId }, { reason, attempts });
     return true;
   });
 }

@@ -15,6 +15,7 @@ import {
 } from '~/lib/channel/reconcile/billing-text';
 import { dayKeyIn } from '~/lib/plan/spine';
 import type { BillingNoticeFacts } from './compose';
+import { endedSubscriptionIds } from './merge';
 import type { NoticeSubscription, NoticeSubscriptionReader } from './subscription-read';
 
 /**
@@ -158,7 +159,7 @@ function refundFacts(notice: Pick<BillingNotice, 'facts'>) {
 
 function subjectSubscriptions(notice: Pick<BillingNotice, 'facts'>): string[] {
   const ids = new Set<string>();
-  if (notice.facts.ended) ids.add(notice.facts.ended.subscriptionId);
+  for (const id of endedSubscriptionIds(notice.facts)) ids.add(id);
   for (const refund of notice.facts.refunds ?? []) {
     if (refund.subscriptionId) ids.add(refund.subscriptionId);
   }

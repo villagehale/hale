@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { mergeNoticeFacts } from './merge';
 import { resolveNoticePayer } from './payer';
 
 /**
@@ -211,6 +212,33 @@ describe('the plan-change lane', () => {
         }),
       ),
     ).resolves.toEqual({ status: 'payer_unresolved' });
+  });
+
+  const twoEnded = () =>
+    mergeNoticeFacts(
+      { eventIds: ['evt_a'], ended: { subscriptionId: 'sub_a', why: 'cancelled' } },
+      { eventIds: ['evt_b'], ended: { subscriptionId: 'sub_b', why: 'cancelled' } },
+    );
+
+  it('two ended subscriptions paid by two parents tell nobody', async () => {
+    await started(parentA, at(-86_400));
+    await started(parentB, at(-3600));
+    await seedPaid(parentA, 'sub_a');
+    await seedPaid(parentB, 'sub_b');
+    await expect(resolveNoticePayer(db.database, planChange({ ...twoEnded() }))).resolves.toEqual({
+      status: 'payer_unresolved',
+    });
+  });
+
+  it('two ended subscriptions paid by one parent reach that parent', async () => {
+    await started(parentA, at(-86_400));
+    await started(parentB, at(-3600));
+    await seedPaid(parentA, 'sub_a');
+    await seedPaid(parentA, 'sub_b');
+    await expect(resolveNoticePayer(db.database, planChange({ ...twoEnded() }))).resolves.toEqual({
+      status: 'resolved',
+      parentUserId: parentA,
+    });
   });
 
   it('a charge with no subscription falls back to the single actor', async () => {

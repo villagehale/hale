@@ -15,6 +15,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { BillingNoticeCompose, BillingNoticeFacts } from './compose';
 import { recordBillingNoticeIntent } from './record';
@@ -259,6 +260,7 @@ function deps(
         await duringClaimRead?.();
         return { status: 'clean' as const };
       },
+      recordRefusal: async () => 'off' as const,
     },
   });
   const pager: OpsPager = {
@@ -400,6 +402,7 @@ describe('a text the parent gets', () => {
           claimEnforce: {
             enforces: () => true,
             decide: async () => ({ status: 'clean' as const }),
+            recordRefusal: async () => 'off' as const,
           },
         }),
     });
@@ -1173,6 +1176,81 @@ describe('when it may go', () => {
     expect((await noticeRow(notice.id)).dropReason).toBe('category_off');
     expect(linqCalls).toHaveLength(0);
     expect(composed).toHaveLength(0);
+  });
+
+  describe('whose access copy a dropped notice lands in', () => {
+    const seedCoParent = async () => {
+      const [user] = await db.database
+        .insert(schema.users)
+        .values({ email: `${familyId}-co@example.test`, name: 'Co Parent' })
+        .returning({ id: schema.users.id });
+      const coParent = user?.id as string;
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId, userId: coParent, role: 'co_parent' });
+      return coParent;
+    };
+    const copyFor = (actorUserId: string) =>
+      assembleFamilyExport(db.database, familyId, { actorUserId, now: clock.now });
+
+    it('Alerts off: in the payer’s copy with the amount, absent from the co-parent’s', async () => {
+      const coParent = await seedCoParent();
+      await db.database.insert(schema.loopPrefs).values({ userId: parentUserId, catAlert: false });
+      const notice = await refundNotice();
+      await tick();
+
+      const row = await noticeRow(notice.id);
+      expect(row.dropReason).toBe('category_off');
+      expect(row.parentUserId).toBe(parentUserId);
+      const [audit] = await auditRows('billing_notice_dropped');
+      expect(audit?.audience).toBe(parentUserId);
+
+      const payerCopy = await copyFor(parentUserId);
+      expect(payerCopy.requesterOnly.billingNotices).toEqual([
+        expect.objectContaining({
+          status: 'dropped',
+          reason: 'category_off',
+          refunds: [{ refundedMinor: 15900, chargeMinor: 15900, currency: 'cad' }],
+        }),
+      ]);
+      const coParentCopy = await copyFor(coParent);
+      expect(coParentCopy.requesterOnly.billingNotices).toEqual([]);
+      expect(JSON.stringify(coParentCopy)).not.toContain('15900');
+    });
+
+    it('a drop before the payer was read (stale) still names the payer', async () => {
+      const coParent = await seedCoParent();
+      const notice = await refundNotice({ lastEventAt: later(AFTERNOON, -73 * 60) });
+      await tick();
+
+      const row = await noticeRow(notice.id);
+      expect(row.dropReason).toBe('stale');
+      expect(row.parentUserId).toBe(parentUserId);
+      expect((await copyFor(parentUserId)).requesterOnly.billingNotices).toHaveLength(1);
+      expect((await copyFor(coParent)).requesterOnly.billingNotices).toEqual([]);
+    });
+
+    it('a drop with no resolvable payer keeps no amounts and is in no copy unless payer_unresolved', async () => {
+      const coParent = await seedCoParent();
+      await db.database
+        .delete(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
+          ),
+        );
+      const notice = await refundNotice({ lastEventAt: later(AFTERNOON, -73 * 60) });
+      await tick();
+
+      const row = await noticeRow(notice.id);
+      expect(row.dropReason).toBe('stale');
+      expect(row.parentUserId).toBeNull();
+      expect(row.facts.refunds?.[0]).not.toHaveProperty('refundedMinor');
+      for (const adult of [parentUserId, coParent]) {
+        expect((await copyFor(adult)).requesterOnly.billingNotices).toEqual([]);
+      }
+    });
   });
 
   it('a family scheduled for deletion: dropped, zero Linq calls', async () => {

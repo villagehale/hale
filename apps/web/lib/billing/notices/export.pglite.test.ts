@@ -7,8 +7,9 @@ import { writeNoticeAudit } from './store';
 
 /**
  * VIL-735 · a billing notice is about one adult's money. Each adult's access copy carries
- * their own notices with their amounts; a row with no resolved payer appears in both
- * copies with none, and no row carries a Stripe id.
+ * their own notices with their amounts. A row dropped because no payer could be resolved
+ * appears in both copies with neither amount nor reason; any other row with no payer is
+ * in no copy. No row carries a Stripe id.
  */
 
 const NOW = new Date('2026-11-23T18:00:00Z');
@@ -91,7 +92,7 @@ describe('billing notices in the access copy', () => {
     expect(JSON.stringify(sam)).not.toContain('15900');
   });
 
-  it('a row with no resolved payer is in both copies, with no amount', async () => {
+  it('a row dropped as payer_unresolved is in both copies, with no amount and no reason', async () => {
     await notice(null, {
       status: 'dropped',
       dropReason: 'payer_unresolved',
@@ -106,12 +107,26 @@ describe('billing notices in the access copy', () => {
         {
           lane: 'plan_change',
           status: 'dropped',
-          reason: 'payer_unresolved',
+          reason: null,
           createdAt: NOW.toISOString(),
           updatedAt: NOW.toISOString(),
           refunds: [],
         },
       ]);
+    }
+  });
+
+  it.each([
+    ['open', null],
+    ['sending', null],
+    ['dropped', 'category_off'],
+    ['dropped', 'merged'],
+  ] as const)('a %s row (%s) with no payer is in no copy', async (status, dropReason) => {
+    await notice(null, { status, dropReason });
+    for (const parent of [anaId, samId]) {
+      const copy = await copyFor(parent);
+      expect(copy.requesterOnly.billingNotices).toEqual([]);
+      expect(JSON.stringify(copy)).not.toContain('15900');
     }
   });
 

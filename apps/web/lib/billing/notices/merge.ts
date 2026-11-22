@@ -3,8 +3,8 @@ import type { BillingNoticeEventFacts } from '@hale/db';
 type NoticeRefund = NonNullable<BillingNoticeEventFacts['refunds']>[number];
 
 /**
- * VIL-735 · one notice's facts from two events, whichever arrived first: an ended
- * subscription is set once, refunds merge per charge at the highest total Stripe has
+ * VIL-735 · one notice's facts from two events, whichever arrived first: every ended
+ * subscription stays named, refunds merge per charge at the highest total Stripe has
  * reported, and event ids are unioned. Two different subscriptions in the payment lane
  * are not one purchase, so the merge says so instead of keeping whichever came first.
  */
@@ -30,11 +30,36 @@ export function mergeNoticeFacts(
   ) {
     merged.conflictingPayment = true;
   }
-  const ended = a.ended ?? b.ended;
-  if (ended !== undefined) merged.ended = ended;
+  Object.assign(merged, mergeEnded(a, b));
   const refunds = mergeRefunds(a.refunds ?? [], b.refunds ?? []);
   if (refunds.length > 0) merged.refunds = refunds;
   return merged;
+}
+
+/** Every subscription this notice says ended. */
+export function endedSubscriptionIds(facts: BillingNoticeEventFacts): string[] {
+  return facts.ended ? [facts.ended.subscriptionId, ...(facts.alsoEnded ?? [])] : [];
+}
+
+/** Two subscriptions that ended for different reasons have no one reason to state. */
+function mergeEnded(
+  a: BillingNoticeEventFacts,
+  b: BillingNoticeEventFacts,
+): Pick<BillingNoticeEventFacts, 'ended' | 'alsoEnded'> {
+  const first = a.ended ?? b.ended;
+  if (!first) return {};
+  const alsoEnded = [
+    ...new Set([...endedSubscriptionIds(a), ...endedSubscriptionIds(b)]),
+  ].filter((id) => id !== first.subscriptionId);
+  const reasonsDiffer =
+    a.ended !== undefined &&
+    b.ended !== undefined &&
+    a.ended.subscriptionId !== b.ended.subscriptionId &&
+    a.ended.why !== b.ended.why;
+  return {
+    ended: reasonsDiffer ? { ...first, why: null } : first,
+    ...(alsoEnded.length > 0 ? { alsoEnded } : {}),
+  };
 }
 
 function mergeRefunds(a: readonly NoticeRefund[], b: readonly NoticeRefund[]): NoticeRefund[] {
@@ -60,7 +85,8 @@ export function addsNoticeSubject(
   existing: BillingNoticeEventFacts,
   incoming: BillingNoticeEventFacts,
 ): boolean {
-  if (incoming.ended && !existing.ended) return true;
+  const endedKnown = new Set(endedSubscriptionIds(existing));
+  if (endedSubscriptionIds(incoming).some((id) => !endedKnown.has(id))) return true;
   const known = new Set((existing.refunds ?? []).map((refund) => refund.chargeId));
   return (incoming.refunds ?? []).some((refund) => !known.has(refund.chargeId));
 }

@@ -1,6 +1,9 @@
 import { type BillingNotice, type Database, schema } from '@hale/db';
 import { and, eq, gte, isNotNull, lte, sql } from 'drizzle-orm';
 import { isParentRole } from '~/lib/channel/role-scope';
+import { endedSubscriptionIds } from './merge';
+
+type PayerDb = Pick<Database, 'select' | 'selectDistinct'>;
 
 export type NoticePayer =
   | { status: 'resolved'; parentUserId: string }
@@ -23,7 +26,7 @@ const SESSION_BIND_AFTER_MS = 60_000;
  * payment.
  */
 export async function resolveNoticePayer(
-  database: Database,
+  database: PayerDb,
   notice: Pick<BillingNotice, 'familyId' | 'lane' | 'facts'>,
 ): Promise<NoticePayer> {
   const parentUserId =
@@ -36,7 +39,7 @@ export async function resolveNoticePayer(
 
 /** The payer must still hold a parent's seat in this family. */
 export async function confirmPayerSeat(
-  database: Database,
+  database: PayerDb,
   familyId: string,
   parentUserId: string,
 ): Promise<NoticePayer> {
@@ -55,7 +58,7 @@ export async function confirmPayerSeat(
 }
 
 async function checkoutActors(
-  database: Database,
+  database: PayerDb,
   familyId: string,
   window?: { from: Date; to: Date },
 ): Promise<string[]> {
@@ -73,13 +76,13 @@ async function checkoutActors(
   return rows.map((row) => row.actor);
 }
 
-async function singleCheckoutActor(database: Database, familyId: string): Promise<string | null> {
+async function singleCheckoutActor(database: PayerDb, familyId: string): Promise<string | null> {
   const actors = await checkoutActors(database, familyId);
   return actors.length === 1 ? (actors[0] as string) : null;
 }
 
 async function paymentPayer(
-  database: Database,
+  database: PayerDb,
   notice: Pick<BillingNotice, 'familyId' | 'facts'>,
 ): Promise<string | null> {
   const created = notice.facts.sessionCreatedAt;
@@ -96,12 +99,12 @@ async function paymentPayer(
 }
 
 async function planChangePayer(
-  database: Database,
+  database: PayerDb,
   notice: Pick<BillingNotice, 'familyId' | 'facts'>,
 ): Promise<string | null> {
   const subjects = new Set<string>();
   let needsSingleActor = false;
-  if (notice.facts.ended) subjects.add(notice.facts.ended.subscriptionId);
+  for (const id of endedSubscriptionIds(notice.facts)) subjects.add(id);
   for (const refund of notice.facts.refunds ?? []) {
     if (refund.subscriptionId) subjects.add(refund.subscriptionId);
     else needsSingleActor = true;
@@ -124,7 +127,7 @@ async function planChangePayer(
 
 /** The parent a payment notice resolved for exactly this subscription. */
 async function subscriptionPayer(
-  database: Database,
+  database: PayerDb,
   familyId: string,
   subscriptionId: string,
 ): Promise<string | null> {
