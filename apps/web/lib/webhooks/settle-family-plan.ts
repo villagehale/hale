@@ -321,8 +321,11 @@ async function decide(
   const decision = decidePlanTier({
     subscriptions,
     refundReadyIds: new Set(family.refundReadyIds),
+    openHoldIds: openRefundHoldIds(family, subscriptions),
+    currentTier: family.planTier,
     comped: family.comped,
     priceTierMap,
+    eventSubscriptionId: signal.subscriptionId,
     eventGrant:
       signal.kind === 'lifecycle' && signal.subscriptionId && signal.eventTier
         ? { subscriptionId: signal.subscriptionId, tier: signal.eventTier }
@@ -394,7 +397,8 @@ async function judgeRefund(
     throw new RefundStillPending(refund.reason, currentPeriodEnd(target));
   }
   if (refund.state !== 'settled') return refundHold('refund_not_settled');
-  if (target.periodInvoices.some((row) => row.id !== signal.invoice.id && !row.refunded)) {
+  const ownInvoiceListed = target.periodInvoices.some((row) => row.id === signal.invoice.id);
+  if (!ownInvoiceListed || target.periodInvoices.some((row) => !row.refunded)) {
     return refundHold('period_partly_refunded');
   }
   if (await reader.otherOpenInvoices(target.customerId, target.id)) {
@@ -403,6 +407,29 @@ async function judgeRefund(
   await reader.cancelSubscription(target.id);
   target.status = 'canceled';
   return null;
+}
+
+/** A refund hold ends with its subscription, or with a new period someone actually paid for. */
+function refundHoldEnded(row: HeldPlan, subscription: StripeSubscriptionRead): boolean {
+  if (ENDED_SUBSCRIPTION.has(subscription.status)) return true;
+  const end = currentPeriodEnd(subscription);
+  const rolledOver = row.periodEnd !== null && end !== null && end > row.periodEnd;
+  return rolledOver && subscription.periodInvoices.some((invoice) => !invoice.refunded);
+}
+
+function openRefundHoldIds(
+  family: FamilyRead,
+  subscriptions: readonly StripeSubscriptionRead[],
+): Set<string> {
+  const open = subscriptions.filter((subscription) =>
+    family.holds.some(
+      (row) =>
+        row.clearsOn === 'subscription_ended' &&
+        row.subscriptionId === subscription.id &&
+        !refundHoldEnded(row, subscription),
+    ),
+  );
+  return new Set(open.map((subscription) => subscription.id));
 }
 
 function clearedEventIds(
@@ -419,12 +446,7 @@ function clearedEventIds(
       if (outcome.kind === 'set') cleared.add(row.stripeEventId);
     } else {
       const subscription = subscriptions.find((sub) => sub.id === row.subscriptionId);
-      if (!subscription) continue;
-      const end = currentPeriodEnd(subscription);
-      const rolledOver = row.periodEnd !== null && end !== null && end > row.periodEnd;
-      if (ENDED_SUBSCRIPTION.has(subscription.status) || rolledOver) {
-        cleared.add(row.stripeEventId);
-      }
+      if (subscription && refundHoldEnded(row, subscription)) cleared.add(row.stripeEventId);
     }
   }
   return [...cleared];

@@ -148,6 +148,9 @@ export async function applyStripeBillingEvent(
       if (stripeRefundEndsSubscriptionEnabled(env) && isFullRefund(revoke)) {
         return settleRefund(event, eventId, database, priceTierMap, deps);
       }
+      if (stripeRefundEndsSubscriptionEnabled(env) && revoke.kind === 'dispute') {
+        return settleDispute(event, eventId, revoke, database, deps);
+      }
       return applyChargeRevoke(event, eventId, revoke, database, deps);
     }
   }
@@ -262,14 +265,15 @@ function lifecycleSignal(
   };
 }
 
-async function settleRefund(
+/** Links the charge through the pinned read. `done` is an outcome to return as it stands. */
+async function readLinkedCharge(
   event: unknown,
   eventId: string,
+  refund: boolean,
   database: Database,
-  priceTierMap: PriceTierMap,
   deps: ApplyStripeBillingDeps,
-): Promise<ApplyStripeBillingResult> {
-  if (await eventAlreadyClaimed(database, eventId)) return { status: 'duplicate' };
+): Promise<{ done: ApplyStripeBillingResult } | { charge: RefundedCharge; familyId: string }> {
+  if (await eventAlreadyClaimed(database, eventId)) return { done: { status: 'duplicate' } };
   const { chargeId } = chargeLinkFromStripeEvent(event);
   const knownFamily = await familyIdForLinkedCharge(
     {
@@ -278,11 +282,19 @@ async function settleRefund(
     },
     database,
   );
-  const eventCreated = eventCreatedSeconds(event);
   if (!chargeId) {
-    return knownFamily
-      ? unresolvedRevoke(eventId, 'subscription_unresolved', knownFamily, database, deps, true)
-      : unresolvedRevoke(eventId, 'no_family', null, database, deps, true);
+    return {
+      done: knownFamily
+        ? await unresolvedRevoke(
+            eventId,
+            'subscription_unresolved',
+            knownFamily,
+            database,
+            deps,
+            true,
+          )
+        : await unresolvedRevoke(eventId, 'no_family', null, database, deps, true),
+    };
   }
   let charge: RefundedCharge;
   try {
@@ -290,11 +302,17 @@ async function settleRefund(
   } catch (err) {
     const retry = await retryFromFailure(
       err,
-      { eventId, familyId: knownFamily, eventCreated, refund: true, subscriptionId: null },
+      {
+        eventId,
+        familyId: knownFamily,
+        eventCreated: eventCreatedSeconds(event),
+        refund,
+        subscriptionId: null,
+      },
       database,
       deps,
     );
-    if (retry) return retry;
+    if (retry) return { done: retry };
     throw err;
   }
   const familyId =
@@ -303,7 +321,22 @@ async function settleRefund(
       { familyId: charge.familyId, customerId: charge.customerId },
       database,
     ));
-  if (!familyId) return unresolvedRevoke(eventId, 'no_family', null, database, deps, true);
+  if (!familyId) {
+    return { done: await unresolvedRevoke(eventId, 'no_family', null, database, deps, true) };
+  }
+  return { charge, familyId };
+}
+
+async function settleRefund(
+  event: unknown,
+  eventId: string,
+  database: Database,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, true, database, deps);
+  if ('done' in read) return read.done;
+  const { charge, familyId } = read;
   if (!charge.subscriptionId || !charge.invoice) {
     return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps, true);
   }
@@ -312,7 +345,7 @@ async function settleRefund(
     {
       kind: 'refund',
       eventId,
-      eventCreated,
+      eventCreated: eventCreatedSeconds(event),
       customerId: charge.customerId,
       subscriptionId: charge.subscriptionId,
       invoice: charge.invoice,
@@ -323,6 +356,28 @@ async function settleRefund(
     priceTierMap,
     deps,
   );
+}
+
+/** A dispute never cancels. It drops the plan only on a proven link to a dead subscription. */
+async function settleDispute(
+  event: unknown,
+  eventId: string,
+  decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, false, database, deps);
+  if ('done' in read) return read.done;
+  const { charge, familyId } = read;
+  if (!charge.subscriptionId || !charge.subscriptionStatus) {
+    return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps, true);
+  }
+  return applyChargeRevoke(event, eventId, decision, database, deps, {
+    familyId,
+    customerId: charge.customerId,
+    subscriptionId: charge.subscriptionId,
+    subscriptionStatus: charge.subscriptionStatus,
+  });
 }
 
 interface LinkedCharge {
@@ -338,8 +393,9 @@ async function applyChargeRevoke(
   decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>,
   database: Database,
   deps: ApplyStripeBillingDeps,
+  provenLink?: LinkedCharge,
 ): Promise<ApplyStripeBillingResult> {
-  const linked = await linkCharge(event, deps);
+  const linked = provenLink ?? (await linkCharge(event, deps));
   const familyId = await familyIdForLinkedCharge(linked, database);
   const claimUnresolved = isFullRefund(decision);
   if (!familyId) {

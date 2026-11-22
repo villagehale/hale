@@ -158,6 +158,7 @@ export interface RefundedCharge {
   customerId: string | null;
   familyId: string | null;
   subscriptionId: string | null;
+  subscriptionStatus: string | null;
   invoice: StripeInvoiceFacts | null;
 }
 
@@ -240,6 +241,7 @@ async function refundedCharge(get: StripeRead, chargeId: string): Promise<Refund
     customerId: readId(charge.customer),
     familyId: familyFromMetadata(charge),
     subscriptionId: null,
+    subscriptionStatus: null,
     invoice: null,
   };
   const paymentIntentId = readId(charge.payment_intent);
@@ -261,10 +263,15 @@ async function refundedCharge(get: StripeRead, chargeId: string): Promise<Refund
     base.familyId ?? familyFromMetadata(invoice) ?? familyFromSubscriptionDetails(invoice);
   const customerId = base.customerId ?? readId(invoice.customer);
   if (!subscriptionId) return { ...base, familyId: family, customerId };
-  const familyId =
-    family ??
-    familyFromMetadata(await get(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`));
-  return { ...base, familyId, customerId, subscriptionId, invoice: invoiceFacts(invoice) };
+  const subscription = await get(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+  return {
+    ...base,
+    familyId: family ?? familyFromMetadata(subscription),
+    customerId,
+    subscriptionId,
+    subscriptionStatus: readString(subscription.status)?.toLowerCase() ?? null,
+    invoice: invoiceFacts(invoice),
+  };
 }
 
 async function familySubscriptions(

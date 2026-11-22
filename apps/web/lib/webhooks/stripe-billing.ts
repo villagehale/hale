@@ -433,13 +433,27 @@ export interface SubscriptionFacts {
 
 export type PlanDecision =
   | { action: 'set'; tier: PlanTier; entitledIds: readonly string[] }
-  | { action: 'hold'; reason: 'mixed_tiers' | 'unmapped_price' };
+  | { action: 'hold'; reason: 'mixed_tiers' | 'unmapped_price' | 'current_period_unproven' };
 
-function entitles(subscription: SubscriptionFacts, refundReadyIds: ReadonlySet<string>): boolean {
-  if (!LIVE_SUBSCRIPTION.has(subscription.status)) return false;
-  if (refundReadyIds.has(subscription.id)) return false;
+const TIER_RANK: Record<PlanTier, number> = { free: 0, plus: 1, family: 2 };
+
+/**
+ * What one subscription says about its current period. `grants` is a period someone paid
+ * for. `holds` is a live subscription whose payment is not proven, so it can keep a tier
+ * the family already has but can never give one.
+ */
+function planStanding(
+  subscription: SubscriptionFacts,
+  refundReadyIds: ReadonlySet<string>,
+  openHoldIds: ReadonlySet<string>,
+): 'none' | 'grants' | 'holds' {
+  if (!LIVE_SUBSCRIPTION.has(subscription.status)) return 'none';
+  if (refundReadyIds.has(subscription.id)) return 'none';
   const invoices = subscription.periodInvoices;
-  return invoices.length === 0 || invoices.some((invoice) => !invoice.refunded);
+  if (invoices.length > 0 && invoices.every((invoice) => invoice.refunded)) return 'none';
+  if (openHoldIds.has(subscription.id)) return 'holds';
+  if (subscription.status === 'trialing') return 'grants';
+  return subscription.status === 'active' && invoices.length > 0 ? 'grants' : 'holds';
 }
 
 /**
@@ -450,24 +464,42 @@ function entitles(subscription: SubscriptionFacts, refundReadyIds: ReadonlySet<s
 export function decidePlanTier(input: {
   subscriptions: readonly SubscriptionFacts[];
   refundReadyIds: ReadonlySet<string>;
+  /** Subscriptions with an open refund hold: none of them may grant until a new paid period. */
+  openHoldIds: ReadonlySet<string>;
+  currentTier: PlanTier;
   comped: boolean;
   priceTierMap: PriceTierMap;
+  eventSubscriptionId: string | null;
   eventGrant: { subscriptionId: string; tier: PaidTier } | null;
 }): PlanDecision {
-  const entitling = input.subscriptions.filter((row) => entitles(row, input.refundReadyIds));
-  const entitledIds = entitling.map((row) => row.id);
+  const standings = input.subscriptions.map((row) => ({
+    row,
+    standing: planStanding(row, input.refundReadyIds, input.openHoldIds),
+  }));
+  const entitledIds = standings.filter((s) => s.standing === 'grants').map((s) => s.row.id);
   if (input.comped) return { action: 'set', tier: 'family', entitledIds };
   const tiers = new Set<PlanTier>();
-  for (const row of entitling) {
+  let eventHeldTier: PlanTier | null = null;
+  for (const { row, standing } of standings) {
+    if (standing === 'none') continue;
     const mapped = row.priceId ? input.priceTierMap[row.priceId] : undefined;
     const tier =
       mapped ?? (input.eventGrant?.subscriptionId === row.id ? input.eventGrant.tier : null);
     if (!tier) return { action: 'hold', reason: 'unmapped_price' };
-    tiers.add(tier);
+    if (standing === 'grants') {
+      tiers.add(tier);
+      continue;
+    }
+    const carried = TIER_RANK[input.currentTier] < TIER_RANK[tier] ? input.currentTier : tier;
+    if (carried !== 'free') tiers.add(carried);
+    if (row.id === input.eventSubscriptionId) eventHeldTier = tier;
   }
   if (tiers.size > 1) return { action: 'hold', reason: 'mixed_tiers' };
-  const [tier] = tiers;
-  return { action: 'set', tier: tier ?? 'free', entitledIds };
+  const [decided = 'free'] = tiers;
+  if (eventHeldTier && TIER_RANK[eventHeldTier] > TIER_RANK[decided]) {
+    return { action: 'hold', reason: 'current_period_unproven' };
+  }
+  return { action: 'set', tier: decided, entitledIds };
 }
 
 export type ChargeRevokeDecision =

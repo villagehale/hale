@@ -292,8 +292,11 @@ describe('decidePlanTier', () => {
     decidePlanTier({
       subscriptions,
       refundReadyIds: new Set(),
+      openHoldIds: new Set(),
+      currentTier: 'free',
       comped: false,
       priceTierMap: TIERS,
+      eventSubscriptionId: null,
       eventGrant: null,
       ...over,
     });
@@ -301,7 +304,7 @@ describe('decidePlanTier', () => {
   it.each([
     ['active', 'plus'],
     ['trialing', 'plus'],
-    ['past_due', 'plus'],
+    ['past_due', 'free'],
     ['unpaid', 'free'],
     ['paused', 'free'],
     ['incomplete', 'free'],
@@ -311,11 +314,20 @@ describe('decidePlanTier', () => {
     expect(decide([sub({ status })])).toMatchObject({ action: 'set', tier });
   });
 
-  it('a proven-refunded period does not entitle; a period with no invoice does', () => {
+  it('a proven-refunded period grants nothing; a period with no invoice only keeps', () => {
     expect(decide([sub({ periodInvoices: [{ id: 'in_a', refunded: true }] })])).toMatchObject({
       tier: 'free',
     });
-    expect(decide([sub({ periodInvoices: [] })])).toMatchObject({ tier: 'plus' });
+    expect(decide([sub({ periodInvoices: [] })])).toEqual({
+      action: 'set',
+      tier: 'free',
+      entitledIds: [],
+    });
+    expect(decide([sub({ periodInvoices: [] })], { currentTier: 'plus' })).toEqual({
+      action: 'set',
+      tier: 'plus',
+      entitledIds: [],
+    });
     expect(
       decide([
         sub({
@@ -326,6 +338,57 @@ describe('decidePlanTier', () => {
         }),
       ]),
     ).toMatchObject({ tier: 'plus' });
+  });
+
+  it.each([
+    ['free', 'price_plus', 'free'],
+    ['plus', 'price_plus', 'plus'],
+    ['plus', 'price_max', 'plus'],
+    ['family', 'price_plus', 'plus'],
+    ['family', 'price_max', 'family'],
+  ] as const)('past_due on %s with %s carries %s', (currentTier, priceId, tier) => {
+    expect(decide([sub({ status: 'past_due', priceId })], { currentTier })).toEqual({
+      action: 'set',
+      tier,
+      entitledIds: [],
+    });
+  });
+
+  it('an open refund hold keeps the tier and stops a paid subscription granting', () => {
+    const held = { openHoldIds: new Set(['sub_a']) };
+    expect(decide([sub()], { ...held, currentTier: 'plus' })).toEqual({
+      action: 'set',
+      tier: 'plus',
+      entitledIds: [],
+    });
+    expect(decide([sub()], held)).toMatchObject({ tier: 'free', entitledIds: [] });
+  });
+
+  it('a held tier beside a different granted tier is mixed', () => {
+    expect(decide([sub(), sub({ id: 'sub_b', status: 'past_due' })])).toEqual({
+      action: 'set',
+      tier: 'plus',
+      entitledIds: ['sub_a'],
+    });
+    expect(
+      decide([sub(), sub({ id: 'sub_b', status: 'past_due', priceId: 'price_max' })], {
+        currentTier: 'family',
+      }),
+    ).toEqual({ action: 'hold', reason: 'mixed_tiers' });
+  });
+
+  it('the event own subscription pages only when it is held above the outcome', () => {
+    const own = sub({ status: 'past_due', priceId: 'price_max' });
+    const event = { eventSubscriptionId: 'sub_a' };
+    expect(decide([own], { ...event, currentTier: 'plus' })).toEqual({
+      action: 'hold',
+      reason: 'current_period_unproven',
+    });
+    expect(decide([own], { ...event, currentTier: 'family' })).toMatchObject({
+      action: 'set',
+      tier: 'family',
+    });
+    expect(decide([own], { currentTier: 'plus' })).toMatchObject({ action: 'set', tier: 'plus' });
   });
 
   it('a refund-ready subscription never supplies a tier', () => {
@@ -362,6 +425,9 @@ describe('decidePlanTier', () => {
     ).toMatchObject({ action: 'set', tier: 'family' });
     expect(
       decide([unmapped], { eventGrant: { subscriptionId: 'sub_other', tier: 'family' } }),
+    ).toEqual({ action: 'hold', reason: 'unmapped_price' });
+    expect(
+      decide([sub({ status: 'past_due', priceId: 'price_gone' })], { currentTier: 'plus' }),
     ).toEqual({ action: 'hold', reason: 'unmapped_price' });
   });
 });
@@ -1350,6 +1416,17 @@ describe('refusals, holds and the hourly count', () => {
     await h.apply(event);
 
     advancePeriod(h.fake, 'sub_rr');
+    const renewed = h.fake.subscriptions.get('sub_rr')?.items.data[0];
+    if (!renewed) throw new Error('fixture');
+    h.fake.addPaidInvoice({
+      subscriptionId: 'sub_rr',
+      invoiceId: 'in_rr_renewal',
+      chargeId: 'ch_rr_renewal',
+      paymentIntentId: 'pi_rr_renewal',
+      periodStart: renewed.current_period_start,
+      periodEnd: renewed.current_period_end,
+      billingReason: 'subscription_cycle',
+    });
     await h.apply(updatedEvent(h.fake, 'sub_rr'));
     expect(
       (await afters(familyId, 'billing_plan_unsettled')).filter((row) => row.state === 'cleared'),
@@ -1387,6 +1464,376 @@ describe('refusals, holds and the hourly count', () => {
       /billing: plan_tier disagrees with Stripe\. free_despite_paid=\d+ paid_despite_revoke=\d+ paid_without_customer=\d+ revoke_unresolved=\d+\./,
     );
     expect(posted[0]).not.toContain('plan_unsettled');
+  });
+});
+
+describe('only a paid period grants a tier', () => {
+  function holdCancelOnRefund(h: ReturnType<typeof harness>, suffix: string) {
+    h.fake.addOpenInvoice({
+      id: `in_other_${suffix}`,
+      customer: `cus_${suffix}`,
+      subscriptionId: null,
+      created: NOW_S,
+    });
+    return refundEvent(h.fake, `ch_${suffix}`);
+  }
+
+  function setStatus(fake: FakeStripe, subscriptionId: string, status: string): void {
+    const subscription = fake.subscriptions.get(subscriptionId);
+    if (!subscription) throw new Error(`no ${subscriptionId}`);
+    subscription.status = status;
+  }
+
+  function payCurrentPeriod(
+    fake: FakeStripe,
+    subscriptionId: string,
+    suffix: string,
+    refunded = false,
+  ): string {
+    const item = fake.subscriptions.get(subscriptionId)?.items.data[0];
+    if (!item) throw new Error(`no ${subscriptionId}`);
+    const invoiceId = `in_paid_${suffix}`;
+    fake.addPaidInvoice({
+      subscriptionId,
+      invoiceId,
+      chargeId: `ch_paid_${suffix}`,
+      paymentIntentId: `pi_paid_${suffix}`,
+      periodStart: item.current_period_start,
+      periodEnd: item.current_period_end,
+      billingReason: 'subscription_cycle',
+      refunded,
+    });
+    return invoiceId;
+  }
+
+  async function clearedHolds(familyId: string): Promise<unknown[]> {
+    return (await afters(familyId, 'billing_plan_unsettled'))
+      .filter((row) => row.state === 'cleared')
+      .map((row) => row.clearsEventId);
+  }
+
+  it('finding 9: a refunded, then renewed-unpaid, past_due subscription cannot restore the plan, and it pages', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_nine', 'sub_nine');
+    buy(h.fake, 'nine', familyId);
+
+    expect(await h.apply(holdCancelOnRefund(h, 'nine'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'cancel_would_stop_collection',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+
+    await h.apply(updatedEvent(h.fake, 'sub_nine'));
+    expect(await planTier(familyId)).toBe('free');
+
+    advancePeriod(h.fake, 'sub_nine');
+    setStatus(h.fake, 'sub_nine', 'past_due');
+    const pagesBefore = h.held.length;
+    const pastDue = updatedEvent(h.fake, 'sub_nine');
+
+    expect(await h.apply(pastDue)).toMatchObject({
+      status: 'unresolved',
+      reason: 'current_period_unproven',
+    });
+    expect(await planTier(familyId)).toBe('free');
+    expect(h.held.slice(pagesBefore)).toEqual([
+      { eventId: pastDue.id, reason: 'current_period_unproven' },
+    ]);
+    expect(await isClaimed(pastDue.id)).toBe(true);
+  });
+
+  it('a Plus family going past_due stays Plus with no page', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_late', 'sub_late');
+    buy(h.fake, 'late', familyId);
+    advancePeriod(h.fake, 'sub_late');
+    setStatus(h.fake, 'sub_late', 'past_due');
+
+    expect(await h.apply(updatedEvent(h.fake, 'sub_late'))).toEqual({
+      status: 'kept',
+      reason: 'not_entitled',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(h.held).toEqual([]);
+  });
+
+  it('an active subscription between renewal and payment keeps its tier with no page', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_gap', 'sub_gap');
+    buy(h.fake, 'gap', familyId);
+    advancePeriod(h.fake, 'sub_gap');
+
+    await h.apply(updatedEvent(h.fake, 'sub_gap'));
+    expect(await planTier(familyId)).toBe('plus');
+    expect(h.held).toEqual([]);
+  });
+
+  it('an active subscription with no paid invoice does not raise a Free family, and pages', async () => {
+    const h = harness();
+    const familyId = await family('free', 'cus_nopay', null);
+    buy(h.fake, 'nopay', familyId);
+    advancePeriod(h.fake, 'sub_nopay');
+    const event = updatedEvent(h.fake, 'sub_nopay');
+
+    expect(await h.apply(event)).toMatchObject({
+      status: 'unresolved',
+      reason: 'current_period_unproven',
+    });
+    expect(await planTier(familyId)).toBe('free');
+    expect(h.held).toEqual([{ eventId: event.id, reason: 'current_period_unproven' }]);
+  });
+
+  it('an upgrade whose difference is unpaid stays Plus', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_upg', 'sub_upg');
+    buy(h.fake, 'upg', familyId);
+    setPrice(h.fake, 'sub_upg', 'price_max');
+    setStatus(h.fake, 'sub_upg', 'past_due');
+
+    expect(await h.apply(updatedEvent(h.fake, 'sub_upg'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'current_period_unproven',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+  });
+
+  it('finding 12: an item replaced with Max plus a full refund stays Plus on the next update', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_twelve', 'sub_twelve');
+    buy(h.fake, 'twelve', familyId);
+    h.fake.replaceItem('sub_twelve', 'price_max');
+
+    expect(await h.apply(refundEvent(h.fake, 'ch_twelve'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'current_period_unproven',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+
+    await h.apply(updatedEvent(h.fake, 'sub_twelve'));
+    expect(await planTier(familyId)).toBe('plus');
+  });
+
+  it('an open refund hold on a subscription with a paid invoice does not raise the tier', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_heldup', 'sub_heldup');
+    buy(h.fake, 'heldup', familyId);
+    expect(await h.apply(refundEvent(h.fake, 'ch_heldup', { status: 'failed' }))).toMatchObject({
+      status: 'unresolved',
+      reason: 'refund_not_settled',
+    });
+    setPrice(h.fake, 'sub_heldup', 'price_max');
+
+    expect(await h.apply(updatedEvent(h.fake, 'sub_heldup'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'current_period_unproven',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+  });
+
+  it('a refund hold clears on rollover only once the new period has a paid, unrefunded invoice', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_roll', 'sub_roll');
+    buy(h.fake, 'roll', familyId);
+    const refund = holdCancelOnRefund(h, 'roll');
+    await h.apply(refund);
+    await h.apply(updatedEvent(h.fake, 'sub_roll'));
+    expect(await planTier(familyId)).toBe('free');
+
+    advancePeriod(h.fake, 'sub_roll');
+    await h.apply(updatedEvent(h.fake, 'sub_roll'));
+    expect(await clearedHolds(familyId)).not.toContain(refund.id);
+    expect(await planTier(familyId)).toBe('free');
+
+    payCurrentPeriod(h.fake, 'sub_roll', 'roll_refunded', true);
+    await h.apply(updatedEvent(h.fake, 'sub_roll'));
+    expect(await clearedHolds(familyId)).not.toContain(refund.id);
+    expect(await planTier(familyId)).toBe('free');
+
+    const paid = payCurrentPeriod(h.fake, 'sub_roll', 'roll_paid');
+    expect(await h.apply(invoicePaid(h.fake, paid))).toEqual({ status: 'applied', tier: 'plus' });
+    expect(await clearedHolds(familyId)).toContain(refund.id);
+    expect(await planTier(familyId)).toBe('plus');
+  });
+
+  it('finding 10: a partly refunded covering invoice holds and is not cancelled', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_part', 'sub_part');
+    buy(h.fake, 'part', familyId);
+    const charge = h.fake.charges.get('ch_part');
+    const payment = h.fake.invoicePayments.at(-1);
+    if (!charge || !payment) throw new Error('fixture');
+    h.fake.charges.set('ch_part_two', {
+      ...charge,
+      id: 'ch_part_two',
+      payment_intent: 'pi_part_two',
+    });
+    h.fake.invoicePayments.push({
+      ...payment,
+      id: 'inpay_part_two',
+      payment: { type: 'payment_intent', payment_intent: 'pi_part_two' },
+    });
+
+    expect(await h.apply(refundEvent(h.fake, 'ch_part'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'period_partly_refunded',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+    expect(await planTier(familyId)).toBe('plus');
+  });
+
+  it('finding 10: a covering invoice missing from the period list holds and is not cancelled', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_gone', 'sub_gone');
+    buy(h.fake, 'gone', familyId);
+    h.fake.intercept(
+      (call) => call.path === '/v1/invoices' && call.query.get('subscription') === 'sub_gone',
+      (call) => Response.json({ object: 'list', url: call.path, has_more: false, data: [] }),
+    );
+
+    expect(await h.apply(refundEvent(h.fake, 'ch_gone'))).toMatchObject({
+      status: 'unresolved',
+      reason: 'period_partly_refunded',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+  });
+
+  describe('positive controls: a real payment grants with no page', () => {
+    it('a Free family first purchase, active with a paid invoice', async () => {
+      const h = harness();
+      const familyId = await family('free');
+      buy(h.fake, 'first', familyId);
+
+      expect(await h.apply(checkout(familyId, 'first'))).toEqual({
+        status: 'applied',
+        tier: 'plus',
+      });
+      expect(await planTier(familyId)).toBe('plus');
+      expect(h.held).toEqual([]);
+    });
+
+    it('a trial with no invoice yet', async () => {
+      const h = harness();
+      const familyId = await family('free');
+      h.fake.addSubscription({
+        id: 'sub_trial',
+        customer: 'cus_trial',
+        familyId,
+        status: 'trialing',
+        created: BOUGHT,
+        periodStart: BOUGHT,
+        periodEnd: BOUGHT + 30 * DAY,
+      });
+
+      expect(await h.apply(checkout(familyId, 'trial'))).toEqual({
+        status: 'applied',
+        tier: 'plus',
+      });
+      expect(h.held).toEqual([]);
+    });
+
+    it('a $0 paid invoice, which Stripe records with no invoice payment', async () => {
+      const h = harness();
+      const familyId = await family('free');
+      h.fake.addSubscription({
+        id: 'sub_zero',
+        customer: 'cus_zero',
+        familyId,
+        created: BOUGHT,
+        periodStart: BOUGHT,
+        periodEnd: BOUGHT + 365 * DAY,
+      });
+      h.fake.addPaidInvoice({
+        subscriptionId: 'sub_zero',
+        invoiceId: 'in_zero',
+        chargeId: 'ch_zero',
+        paymentIntentId: 'pi_zero',
+        periodStart: BOUGHT,
+        periodEnd: BOUGHT + 365 * DAY,
+        amount: 0,
+      });
+      h.fake.invoicePayments.length = 0;
+
+      expect(await h.apply(checkout(familyId, 'zero'))).toEqual({
+        status: 'applied',
+        tier: 'plus',
+      });
+      expect(h.held).toEqual([]);
+    });
+  });
+});
+
+describe('a dispute with the flag on links through the pinned read', () => {
+  function disputeEvent(chargeId: string, customer: string) {
+    return {
+      id: nextEventId('dispute'),
+      type: 'charge.dispute.created',
+      created: NOW_S,
+      data: { object: { id: `dp_${chargeId}`, object: 'dispute', charge: chargeId, customer } },
+    };
+  }
+
+  it('a live subscription keeps the plan for a family with no stored id, and nothing is cancelled', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_dlive', null);
+    buy(h.fake, 'dlive', familyId);
+    expect(h.fake.charges.get('ch_dlive')).not.toHaveProperty('invoice');
+
+    expect(await h.apply(disputeEvent('ch_dlive', 'cus_dlive'))).toEqual({
+      status: 'kept',
+      reason: 'active_subscription',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(h.fake.deletes()).toEqual([]);
+    expect(h.fake.calls.map((call) => call.path)).toContain('/v1/invoice_payments');
+    expect(h.fake.calls.map((call) => call.headers.get('stripe-version'))).toEqual(
+      h.fake.calls.map(() => '2026-11-18.endive'),
+    );
+  });
+
+  it('a Stripe 5xx retries, claims nothing, and does not drop the plan', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_d5xx', null);
+    buy(h.fake, 'd5xx', familyId);
+    h.fake.intercept(
+      (call) => call.path === '/v1/invoice_payments',
+      () => stripeError(503),
+    );
+    const event = disputeEvent('ch_d5xx', 'cus_d5xx');
+
+    expect(await h.apply(event)).toEqual({ status: 'retry', reason: 'stripe_unavailable' });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(await isClaimed(event.id)).toBe(false);
+  });
+
+  it('a link it cannot prove does not drop the plan, and pages', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_dnone', null);
+    buy(h.fake, 'dnone', familyId);
+    const charge = h.fake.charges.get('ch_dnone');
+    if (!charge) throw new Error('fixture');
+    charge.payment_intent = null;
+    const event = disputeEvent('ch_dnone', 'cus_dnone');
+
+    expect(await h.apply(event)).toMatchObject({
+      status: 'unresolved',
+      reason: 'subscription_unresolved',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'subscription_unresolved' }]);
+    expect(h.fake.deletes()).toEqual([]);
+  });
+
+  it('positive control: a dispute on a proven dead subscription still drops the plan', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_ddead', 'sub_ddead');
+    buy(h.fake, 'ddead', familyId, { status: 'canceled' });
+
+    expect(await h.apply(disputeEvent('ch_ddead', 'cus_ddead'))).toEqual({
+      status: 'applied',
+      tier: 'free',
+    });
+    expect(await planTier(familyId)).toBe('free');
+    expect(h.fake.deletes()).toEqual([]);
   });
 });
 
@@ -1474,25 +1921,21 @@ describe('flag off is main plus one claim', () => {
     assertNoNewReads(h.fake);
   });
 
-  it('a dispute with the flag on never enters settle', async () => {
-    const h = harness();
-    vi.stubGlobal('fetch', h.fake.fetch);
-    const familyId = await family('plus', 'cus_dison', 'sub_dison');
-    buy(h.fake, 'dison', familyId);
+  it('a dispute with no stored id still drops to Free, the bug the flag fixes', async () => {
+    const h = offHarness();
+    const familyId = await family('plus', 'cus_disfree', null);
+    buy(h.fake, 'disfree', familyId);
     const event = {
       id: nextEventId('dispute'),
       type: 'charge.dispute.created',
       created: NOW_S,
       data: {
-        object: { id: 'dp_2', object: 'dispute', charge: 'ch_dison', customer: 'cus_dison' },
+        object: { id: 'dp_3', object: 'dispute', charge: 'ch_disfree', customer: 'cus_disfree' },
       },
     };
 
-    expect(await h.apply(event)).toMatchObject({
-      status: 'unresolved',
-      reason: 'subscription_unresolved',
-    });
-    expect(await planTier(familyId)).toBe('plus');
+    expect(await h.apply(event)).toEqual({ status: 'applied', tier: 'free' });
+    expect(await planTier(familyId)).toBe('free');
     assertNoNewReads(h.fake);
   });
 });
