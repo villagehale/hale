@@ -48,7 +48,7 @@ export function dutyFailureCode(err: unknown): string {
   return `${MAY_HAVE_LANDED_PREFIX}${err instanceof LinqSendError ? err.code : 'unknown'}`;
 }
 
-function mayHaveLanded(code: string | null): boolean {
+export function mayHaveLanded(code: string | null): boolean {
   return code === DUTY_SEND_IN_FLIGHT || code?.startsWith(MAY_HAVE_LANDED_PREFIX) === true;
 }
 

@@ -26,6 +26,7 @@ import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { buildDistillTools } from '~/lib/cron/inference-tools';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type GroupReminderTurnPorts, takeGroupReminderTurn } from './capture';
@@ -1752,6 +1753,284 @@ describe('when a group reminder is due', () => {
       .from(schema.channelMessages)
       .where(eq(schema.channelMessages.templateKey, 'linq:group_reminder'));
     expect(line).toEqual({ status: 'failed', dedupeKey: `linq:group_reminder:${row.id}` });
+  });
+
+  describe('a reminder that closes without reaching anyone (VIL-734)', () => {
+    const UNSENT_PAGE_ENV = 'GROUP_REMINDER_UNSENT_PAGE_ENABLED';
+    const pagerInto = (pages: OpsPage[]) => ({
+      page: async (page: OpsPage) => {
+        pages.push(page);
+        return 'paged' as const;
+      },
+    });
+    const refusedWith = (err: LinqSendError) => async () => {
+      throw err;
+    };
+
+    beforeEach(() => {
+      vi.stubEnv(UNSENT_PAGE_ENV, 'true');
+    });
+
+    it('pages #ops when Linq refuses the line for good', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const refused = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        send: refusedWith(new LinqSendError('http_403', 403, true)),
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, refused)).toMatchObject({ failed: 1 });
+
+      expect(await onlyReminder()).toMatchObject({ status: 'failed', statusReason: 'http_403' });
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'send_refused' }, count: 1 },
+      ]);
+    });
+
+    it('pages a timeout as unconfirmed, since it may have landed', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const timedOut = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        send: refusedWith(new LinqSendError('timeout', 0, false)),
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, timedOut)).toMatchObject({ failed: 1 });
+
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+      ]);
+    });
+
+    it('pages a 1:1 text Linq took with an unreadable receipt as unconfirmed', async () => {
+      vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+      await seedHousehold();
+      await setFor(PRIYA);
+      const pages: OpsPage[] = [];
+      const tookItNoReceipt = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        oneToOne: {
+          send: refusedWith(new LinqSendError('missing_chat_id', 201, false)),
+        },
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, tookItNoReceipt)).toMatchObject({
+        failed: 1,
+      });
+
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+      ]);
+    });
+
+    it('pages a send a dead tick left with no answer from Linq', async () => {
+      vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+      const home = await seedHousehold();
+      await setFor(PRIYA);
+      const { id } = await onlyReminder();
+      await diedSendingDirect(home, id, null);
+      const pages: OpsPage[] = [];
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(AFTER_STALE).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ failed: 1 });
+
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
+      ]);
+    });
+
+    it('pages a reminder with nothing left to say', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      await db.database.update(schema.groupReminders).set({ what: null });
+      const pages: OpsPage[] = [];
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(THURSDAY_FOUR).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ failed: 1 });
+
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'no_what' }, count: 1 },
+      ]);
+    });
+
+    it('does not page a line that went out', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(THURSDAY_FOUR).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ sent: 1 });
+
+      expect(pages).toEqual([]);
+    });
+
+    it('does not page a temporary refusal, which is tried again', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const busy = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        send: refusedWith(new LinqSendError('503', 503, false)),
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, busy)).toMatchObject({ retrying: 1 });
+
+      expect(pages).toEqual([]);
+    });
+
+    /** Every send refused for now, on a tick each time the last claim has gone stale. */
+    async function refusedUntil(until: Date, pages: OpsPage[], from = THURSDAY_FOUR) {
+      const portsAt = (now: Date) => ({
+        ...tickPorts(now).ports,
+        send: refusedWith(new LinqSendError('http_503', 503, false)),
+        pager: pagerInto(pages),
+      });
+      expect(await runGroupReminderTick(db.database, portsAt(from))).toMatchObject({
+        retrying: 1,
+      });
+      expect(pages).toEqual([]);
+      for (let at = from.getTime(); at <= until.getTime(); at += SENDING_STALE_MS + 60_000) {
+        await runGroupReminderTick(db.database, portsAt(new Date(at + SENDING_STALE_MS + 60_000)));
+      }
+    }
+
+    it('pages a reminder Linq refused on every try until it was too late', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS), pages);
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'retries_ran_out' }, count: 1 },
+      ]);
+    });
+
+    it('pages a reminder Linq refused until quiet hours closed the day', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      // 20:55 in New York: the first retry lands after the 21:00 quiet start.
+      const lateEvening = new Date('2026-10-30T00:55:00.000Z');
+      await db.database.update(schema.groupReminders).set({ deliverAt: lateEvening });
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(lateEvening, pages, lateEvening);
+
+      expect(await onlyReminder()).toMatchObject({
+        status: 'dropped',
+        statusReason: 'quiet_hours',
+      });
+      expect(pages).toEqual([
+        { site: 'group_reminder_unsent', facts: { reason: 'retries_ran_out' }, count: 1 },
+      ]);
+    });
+
+    it('positive control: a reminder no tick ever tried is dropped as missed, unpaged', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const afterTheGap = new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS + 60_000);
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(afterTheGap).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ dropped: 1 });
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([]);
+    });
+
+    it('with the flag off, a reminder refused until too late pages nobody', async () => {
+      vi.stubEnv(UNSENT_PAGE_ENV, 'true\n');
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      await refusedUntil(new Date(THURSDAY_FOUR.getTime() + LATE_LIMIT_MS), pages);
+
+      expect(await onlyReminder()).toMatchObject({ status: 'dropped', statusReason: 'missed' });
+      expect(pages).toEqual([]);
+    });
+
+    it('does not page a member who stopped Hale as it was being sent', async () => {
+      vi.stubEnv(GROUP_REMINDER_INFLIGHT_CANCEL_ENV, 'true');
+      await seedHousehold();
+      await setFor(RUTH);
+      const tick = tickPorts(THURSDAY_FOUR);
+      const pages: OpsPage[] = [];
+      const leftWhileWriting: GroupReminderVoice = {
+        async write(facts) {
+          await db.database
+            .update(schema.linqGroupMembers)
+            .set({ removedAt: THURSDAY_FOUR })
+            .where(eq(schema.linqGroupMembers.phoneE164Hash, phoneBlindIndex(RUTH)));
+          return tick.voice.write(facts);
+        },
+      };
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tick.ports,
+          voice: leftWhileWriting,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ lost: 1 });
+
+      expect(pages).toEqual([]);
+    });
+
+    it('does not page a second time for one the model could not write', async () => {
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tickPorts(THURSDAY_FOUR, { voiceFails: true }).ports,
+          pager: pagerInto(pages),
+        }),
+      ).toMatchObject({ failed: 1 });
+
+      expect(pages).toEqual([]);
+    });
+
+    it('with the flag off, the same refusal closes failed and pages nobody', async () => {
+      vi.stubEnv(UNSENT_PAGE_ENV, 'true\n');
+      await seedHousehold();
+      await setFor(RUTH);
+      const pages: OpsPage[] = [];
+      const refused = {
+        ...tickPorts(THURSDAY_FOUR).ports,
+        send: refusedWith(new LinqSendError('http_403', 403, true)),
+        pager: pagerInto(pages),
+      };
+
+      expect(await runGroupReminderTick(db.database, refused)).toMatchObject({ failed: 1 });
+
+      expect(await onlyReminder()).toMatchObject({ status: 'failed', statusReason: 'http_403' });
+      expect(pages).toEqual([]);
+    });
   });
 
   it('drops one whose asker left the chat before it fired, by name', async () => {
