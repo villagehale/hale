@@ -186,6 +186,22 @@ function classifyEndedCalendarItem(job: IngestedEventPayload): FreshClassificati
 }
 
 /**
+ * The payload to store for a classified signal. events.payload holds what the classifier
+ * wrote from a redacted copy of the signal, so an id it carried across can be the redacted
+ * form, and the Gmail draft path reads a Gmail row's `id` back as the message to reply to.
+ * Only an id the classifier already wrote is replaced, and only with Gmail's own.
+ */
+function withGmailMessageId(
+  job: IngestedEventPayload,
+  classified: Record<string, unknown>,
+): Record<string, unknown> {
+  const messageId = job.payload.id;
+  return job.source === 'gmail' && typeof messageId === 'string' && 'id' in classified
+    ? { ...classified, id: messageId }
+    : classified;
+}
+
+/**
  * The collaborators the pipeline cannot build for itself: the calendar-invite sender,
  * the Google Calendar writer and the Gmail email sender all live in apps/web (they
  * need the A2 dispatch or the OAuth token vault) and are bound by the web drain.
@@ -337,11 +353,12 @@ export async function runOrchestrator(
     const teenContent =
       fresh.teenContent ||
       (knownChild !== undefined && stageFromAgeInMonths(knownChild.ageInMonths) === 'teenager');
+    const storedPayload = withGmailMessageId(job, fresh.payload);
     const { eventId, duplicate } = await recordEvent({
       familyId,
       source: job.source,
       eventType: fresh.eventType,
-      payload: fresh.payload,
+      payload: storedPayload,
       classifierConfidence: fresh.confidence.score,
       // The stored key is the one computed at the top of the run, BEFORE the
       // resume probe read it — so a crash-and-retry probes to this same row.
@@ -359,7 +376,7 @@ export async function runOrchestrator(
     classified = {
       eventId,
       eventType: fresh.eventType,
-      payload: fresh.payload,
+      payload: storedPayload,
       confidence: fresh.confidence.score,
       suggestion: fresh.suggestion,
       teenContent,

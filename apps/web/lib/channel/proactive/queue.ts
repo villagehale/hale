@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne, or, sql } from 'drizzle-orm';
+import type { FamilySendKey } from '~/lib/channel/family-send-key';
 import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
 import { proactiveCadence } from './flag';
 
@@ -172,4 +173,43 @@ export async function isQueuedForDecider(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * VIL-740 · whether this family's candidate under a key from before the family was in it
+ * still speaks for this text. Any status does, as it does in {@link isQueuedForDecider}, so
+ * a text the decider chose not to send is not offered again. The one exception is an
+ * `already_sent` drop: callers read the ledger first, so by here it was another family's
+ * row that dropped it, and this family is still owed the text. `IS DISTINCT FROM` because
+ * the decider's own drop has a null reason, and `NOT (true AND NULL)` would let it through.
+ */
+export async function legacyCandidateHolds(
+  database: Database,
+  familyId: string,
+  legacyDedupeKey: string,
+): Promise<boolean> {
+  const c = schema.proactiveCandidates;
+  const [row] = await database
+    .select({ id: c.id })
+    .from(c)
+    .where(
+      and(
+        eq(c.familyId, familyId),
+        eq(c.dedupeKey, legacyDedupeKey),
+        or(ne(c.status, 'dropped'), sql`${c.reason} IS DISTINCT FROM 'already_sent'`),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/** {@link isQueuedForDecider} for a family send key, in either of its shapes. */
+export async function isFamilySendQueued(
+  database: Database,
+  familyId: string,
+  key: FamilySendKey,
+): Promise<boolean> {
+  if (await isQueuedForDecider(database, familyId, key.dedupeKey)) return true;
+  if (key.legacyDedupeKey === null || proactiveCadence() !== 'live') return false;
+  return legacyCandidateHolds(database, familyId, key.legacyDedupeKey);
 }

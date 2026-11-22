@@ -86,6 +86,10 @@ export interface GroupClashInput {
 }
 
 export interface GroupClash {
+  /**
+   * The same in every family that holds these two plans, so it is never claimed on its own:
+   * a send goes through `familySendKey`.
+   */
   dedupeKey: string;
   first: ClashPlan;
   /** The plan it collides with, or the busy time of the person it rests on. */

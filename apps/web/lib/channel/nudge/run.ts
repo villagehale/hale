@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
@@ -74,6 +75,7 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import { type OpsPage, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import {
@@ -90,6 +92,7 @@ import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/hou
 import { proactiveSearchSubject } from '~/lib/seasonal/moments';
 import { recordActivityOffers } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import { nudgeModelOnlyEnabled, writeNudgeModelOnly } from './model-only';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { composeNudgeMessage } from './nudge-voice';
 import { type SaturdayPlans, loadSaturdayPlans } from './saturday-plans';
@@ -153,6 +156,20 @@ const WEATHER_DAYS = 8;
  * oldest N of their slot forever. */
 const MAX_NUDGE_FAMILIES_PER_RUN = 100;
 
+/**
+ * The weekday-care asks that name no day are the one nudge with no date to end it, so a
+ * failure that never clears would be tried every day for good. Such an ask rests once it
+ * has failed this many times, for any reason, inside the window below. Old failures leave
+ * the window, so a writer that has been fixed sends it. Every other nudge is about a date
+ * and simply keeps trying until that date passes.
+ */
+export const MAX_UNDATED_ASK_FAILURES = 3;
+export const UNDATED_ASK_FAILURE_WINDOW_DAYS = 7;
+
+/** The recipient slot of an ask's audit ref: the household, because one compose serves
+ * every parent in it. A real dedupe key has a user id here, so the two never collide. */
+const HOUSEHOLD_REF_SEAT = 'household';
+
 /** Whether `now` sits in this family's local send hour. */
 export function isNudgeSlot(now: Date, timeZone: string): boolean {
   return Math.floor(localParts(now, timeZone).minutes / 60) === NUDGE_SEND_HOUR_LOCAL;
@@ -198,6 +215,7 @@ export interface NudgeAuditRow {
   actionTaken: string;
   targetTable: string;
   targetId: string;
+  occurredAt?: Date;
   after: Record<string, unknown>;
 }
 
@@ -350,6 +368,21 @@ export interface NudgeRunDeps {
   createDateReader(): RegistrationReader | null;
 }
 
+/** What the sweep needs only while NUDGE_MODEL_ONLY_ENABLED is on. All required (rule #11). */
+export interface NudgeModelOnlyDeps {
+  /** The model's turn on this nudge. A nudge it cannot write is not sent (Dec 1 rule 1). */
+  composeMessage: typeof writeNudgeModelOnly;
+  /** #ops, for a nudge no model could write. Closed facts only, never a body. */
+  page(database: Database, page: OpsPage): Promise<OpsPagerOutcome>;
+  /** How many times this undated ask could not be written since `since`. */
+  countAskFailures(
+    database: Database,
+    familyId: string,
+    nudgeRef: string,
+    since: Date,
+  ): Promise<number>;
+}
+
 export interface NudgeRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
   enabled: boolean;
@@ -371,6 +404,12 @@ export interface NudgeRunResult {
    * is what misses them.
    */
   shadowUnqueued: number;
+  /** Families whose nudge the model could not write this run. Nothing was sent and #ops
+   * was paged. They are also in `quiet`, which only says no text went out. */
+  unwritten: number;
+  /** Families whose undated ask was not tried this run: it failed
+   * {@link MAX_UNDATED_ASK_FAILURES} times inside the window. Also in `quiet`. */
+  resting: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
   /**
@@ -400,6 +439,8 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     deduped: 0,
     queued: 0,
     shadowUnqueued: 0,
+    unwritten: 0,
+    resting: 0,
     failed: 0,
     held: {
       not_enrolled: 0,
@@ -471,6 +512,17 @@ export function dedupeKeyFor(
     default:
       return assertNever(nudge);
   }
+}
+
+/**
+ * The undated weekday-care ask as one thing across the sweep's days, or null for a nudge
+ * with a date of its own. A digest, because the audit row it rides on is family-visible
+ * and immutable: no child id.
+ */
+function undatedAskRef(nudge: Nudge, familyId: string): string | null {
+  if (nudge.kind !== 'weekday_care' || nudge.ask.prompt === 'verified_break') return null;
+  const key = weekdayFinderDedupeKey(familyId, nudge.ask, HOUSEHOLD_REF_SEAT);
+  return createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
 /**
@@ -723,6 +775,8 @@ type FamilyTally = {
   deduped: number;
   queued: number;
   shadowUnqueued: number;
+  unwritten: number;
+  resting: number;
   held: ProactiveHoldReason[];
   /** The decide's own reasons for this family. A property of the DECISION, so it is
    * the household's like `quiet` is, not the recipient's. */
@@ -736,16 +790,69 @@ function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
     deduped: 0,
     queued: 0,
     shadowUnqueued: 0,
+    unwritten: 0,
+    resting: 0,
     held: [],
     skips: {},
     ...overrides,
   };
 }
 
+/**
+ * The flag-on write: the model's text, or one audit row and one #ops page naming why
+ * there is none. An undated ask that keeps failing rests instead of being tried again.
+ */
+async function writeOrNameTheFailure(
+  database: Database,
+  family: NudgeFamily,
+  nudge: Nudge,
+  deps: NudgeRunDeps,
+  modelOnly: NudgeModelOnlyDeps,
+  now: Date,
+): Promise<{ message: string } | { outcome: { unwritten: 1 } | { resting: 1 } }> {
+  const askRef = undatedAskRef(nudge, family.familyId);
+  if (askRef !== null) {
+    const since = new Date(now.getTime() - UNDATED_ASK_FAILURE_WINDOW_DAYS * 86_400_000);
+    const failures = await modelOnly.countAskFailures(database, family.familyId, askRef, since);
+    if (failures >= MAX_UNDATED_ASK_FAILURES) return { outcome: { resting: 1 } };
+  }
+  const written = await modelOnly.composeMessage(nudge, {
+    familyId: family.familyId,
+    database,
+    client: deps.client,
+  });
+  if ('message' in written) return { message: written.message };
+  await deps.audit(database, {
+    familyId: family.familyId,
+    actor: 'system',
+    actionTaken: 'proactive_nudge_unwritten',
+    targetTable: 'families',
+    targetId: family.familyId,
+    // The ask's rest is measured on the sweep's clock, so the row is stamped by it too.
+    occurredAt: now,
+    after: {
+      reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+      kind: nudge.kind,
+      unwritten: written.unwritten,
+      ...(askRef === null ? {} : { nudgeRef: askRef }),
+    },
+  });
+  const page = await modelOnly.page(database, {
+    site: 'nudge_unwritten',
+    facts: { kind: nudge.kind, reason: written.unwritten },
+  });
+  console.warn(
+    { familyId: family.familyId, kind: nudge.kind, reason: written.unwritten, page },
+    'nudge: not written, nothing sent',
+  );
+  return { outcome: { unwritten: 1 } };
+}
+
 async function runForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  modelOnly: NudgeModelOnlyDeps,
   checker: DateChecker,
   now: Date,
 ): Promise<FamilyTally> {
@@ -827,24 +934,34 @@ async function runForFamily(
   // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
   // about a parent, so composing it twice would spend the model twice to say the same
   // thing — and risk saying it two different ways to two people in one house.
-  const message = await composeNudgeMessage(nudge, {
-    familyId: family.familyId,
-    database,
-    client: deps.client,
-  });
-  if (message === null) {
-    await deps.audit(database, {
+  let message: string;
+  if (nudgeModelOnlyEnabled()) {
+    const written = await writeOrNameTheFailure(database, family, nudge, deps, modelOnly, now);
+    if ('outcome' in written) {
+      return emptyTally({ quiet: true, deduped, held, ...written.outcome });
+    }
+    message = written.message;
+  } else {
+    const composed = await composeNudgeMessage(nudge, {
       familyId: family.familyId,
-      actor: 'system',
-      actionTaken: 'proactive_nudge_skipped',
-      targetTable: 'families',
-      targetId: family.familyId,
-      after: {
-        reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
-        kind: nudge.kind,
-      },
+      database,
+      client: deps.client,
     });
-    return emptyTally({ quiet: true });
+    if (composed === null) {
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: {
+          reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+          kind: nudge.kind,
+        },
+      });
+      return emptyTally({ quiet: true });
+    }
+    message = composed;
   }
 
   // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
@@ -1112,7 +1229,7 @@ async function runForFamily(
       await deps.recordActivityOffers(database, family.familyId, [decision.offeredPick], now);
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
-  return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
+  return emptyTally({ sent, deduped, shadowUnqueued, held, skips: decision.skips });
 }
 
 /**
@@ -1144,6 +1261,7 @@ export async function runNudgeCron(
   database: Database,
   deps: NudgeRunDeps = defaultNudgeRunDeps(),
   now: Date = new Date(),
+  modelOnly: NudgeModelOnlyDeps = defaultNudgeModelOnlyDeps(),
 ): Promise<NudgeRunResult> {
   const allFamilies = f14Enabled();
   const allowlist = f14Allowlist();
@@ -1167,7 +1285,7 @@ export async function runNudgeCron(
   for (const family of families) {
     result.evaluated += 1;
     try {
-      const outcome = await runForFamily(database, family, deps, checker, now);
+      const outcome = await runForFamily(database, family, deps, modelOnly, checker, now);
       // The DECISION is per family and the SENDING is per recipient, so the two are
       // added differently and deliberately.
       if (outcome.quiet) result.quiet += 1;
@@ -1175,6 +1293,8 @@ export async function runNudgeCron(
       result.deduped += outcome.deduped;
       result.queued += outcome.queued;
       result.shadowUnqueued += outcome.shadowUnqueued;
+      result.unwritten += outcome.unwritten;
+      result.resting += outcome.resting;
       for (const reason of outcome.held) result.held[reason] += 1;
       for (const [reason, count] of Object.entries(outcome.skips)) {
         const key = reason as keyof NudgeSkipCounts;
@@ -1213,6 +1333,29 @@ async function nameAskLanguage(
   return copyLanguage(await readParentLanguage(database, { familyId, parentUserId })) === 'fr'
     ? 'fr'
     : 'en';
+}
+
+/** How many times this undated ask could not be written since `since`, whatever the
+ * cause, read off its audit rows. Stops at the bound: past it the answer is the same. */
+export async function countRecentAskFailures(
+  database: Database,
+  familyId: string,
+  nudgeRef: string,
+  since: Date,
+): Promise<number> {
+  const rows = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        gte(schema.auditLog.occurredAt, since),
+        eq(schema.auditLog.actionTaken, 'proactive_nudge_unwritten'),
+        sql`${schema.auditLog.after}->>'nudgeRef' = ${nudgeRef}`,
+      ),
+    )
+    .limit(MAX_UNDATED_ASK_FAILURES);
+  return rows.length;
 }
 
 export async function selectNudgeFamilies(database: Database, now: Date): Promise<NudgeFamily[]> {
@@ -1265,6 +1408,14 @@ async function readNudgeChildren(database: Database, familyId: string): Promise<
     ...row,
     dobPrecision: row.dobPrecision === 'derived' ? ('derived' as const) : ('exact' as const),
   }));
+}
+
+export function defaultNudgeModelOnlyDeps(): NudgeModelOnlyDeps {
+  return {
+    composeMessage: writeNudgeModelOnly,
+    page: pageOps,
+    countAskFailures: countRecentAskFailures,
+  };
 }
 
 export function defaultNudgeRunDeps(): NudgeRunDeps {

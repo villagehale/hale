@@ -26,6 +26,44 @@ beforeEach(() => {
   process.env.AUTH_SECRET = 'test-auth-secret';
 });
 
+describe('the sign-in form gets NO_STOP_KEYWORD_COPY_ENABLED from the server (VIL-744)', () => {
+  const formProps = async (load: () => Promise<unknown>) => {
+    const stage = (await load()) as { props: { children: { props: { noStopKeyword?: boolean } } } };
+    return stage.props.children.props;
+  };
+
+  it.each([
+    [
+      '/sign-in',
+      async () =>
+        (await import('~/app/sign-in/page')).default({ searchParams: Promise.resolve({}) }),
+    ],
+    [
+      '/demo/sign-in',
+      async () =>
+        (await import('~/app/demo/sign-in/page')).default({ searchParams: Promise.resolve({}) }),
+    ],
+  ])('%s passes the flag state', async (_path, page) => {
+    try {
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'false');
+      expect((await formProps(page)).noStopKeyword).toBe(false);
+      vi.stubEnv('NO_STOP_KEYWORD_COPY_ENABLED', 'true');
+      expect((await formProps(page)).noStopKeyword).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('the form renders the note from the flag, with no keyword sentence of its own', () => {
+    const form = readFileSync(
+      fileURLToPath(new URL('./claim-by-phone-form.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(form).toContain('{claimCodeNote(noStopKeyword)}');
+    expect(form).not.toContain('reply START');
+  });
+});
+
 describe('/sign-in is the phone door', () => {
   it('does not render an email form or a Google button', () => {
     const src = source('sign-in/page.tsx');

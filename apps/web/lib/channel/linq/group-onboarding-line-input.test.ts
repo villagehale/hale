@@ -60,6 +60,23 @@ describe('group onboarding line facts', () => {
     expect(ack.mustMention).not.toContain('STOP');
   });
 
+  it('leaves STOP off the connect link only when told to name no keyword (VIL-744)', () => {
+    const request = {
+      kind: 'connect_link_1to1',
+      name: 'Sam',
+      knownParentName: 'Riley',
+      providers: ['Google Calendar', 'Gmail'],
+    } as const;
+
+    const today = groupOnboardingLineInput(request, 'en');
+    expect(today.mustMention).toEqual(['Hale', 'Sam', 'Riley', 'STOP']);
+
+    const keywordFree = groupOnboardingLineInput(request, 'en', { noKeyword: true });
+    expect(keywordFree.mustMention).toEqual(['Hale', 'Sam', 'Riley']);
+    expect(keywordFree).toMatchObject({ wayOut: true, linkFollows: true, address: 'tu' });
+    expect({ ...keywordFree, mustMention: today.mustMention }).toEqual(today);
+  });
+
   it('echoes the role word someone already gave, and does not ask a question', () => {
     const confirmed = groupOnboardingLineInput(
       { kind: 'role_confirmed', name: 'Sam', role: 'aunt' },

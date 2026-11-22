@@ -104,6 +104,7 @@ export const AUDIT_VERBS = [
   'billing_refund_ready',
   'billing_grant_blocked',
   'billing_revoke_unresolved',
+  'billing_plan_unsettled',
   'family_intents_updated',
   'parent_name_updated',
   'invite_created',
@@ -267,6 +268,9 @@ export const AUDIT_VERBS = [
   'duty_calendar_cleared',
   'duty_memory_recorded',
   'duty_memory_undone',
+  'duty_send_accepted',
+  'duty_send_failed',
+  'duty_send_dropped',
   'reply_copy_composed',
   'reply_copy_fallback',
   'voice_call_received',
@@ -302,6 +306,8 @@ export const AUDIT_VERBS = [
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
   'proactive_nudge_skipped',
+  // A nudge the model could not write. Not a choice, so not the skipped row.
+  'proactive_nudge_unwritten',
   // VIL-226 · the per-family proactive queue and its hourly decider.
   'proactive_nudge_queued',
   // VIL-612 · another class's sweep handed its text to the decider.
@@ -334,6 +340,13 @@ export const AUDIT_VERBS = [
   'reminder_held_at_send',
   // VIL-730 · a reminder send that did not reach the parent, back to the run to retry.
   'reminder_send_failed',
+  // VIL-734 · a driver's schedule-change text: Linq took it, it was refused and goes
+  // again, or it never reached them.
+  'team_schedule_driver_sent',
+  'team_schedule_driver_send_failed',
+  'team_schedule_driver_unsent',
+  // VIL-734 · that text ended on one adult's own stop, consent, missing number or leaving.
+  'team_schedule_driver_unreachable',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -508,6 +521,9 @@ export const AUDIT_VERBS = [
   'promo_join_family_created',
   'promo_join_verified',
   'billing_refunded',
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
   'upgrade_ask_sent',
   'upgrade_link_sent',
   'upgrade_declined',
@@ -1161,6 +1177,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   duty_memory_recorded: { sentence: 'Hale noted a duty answer', family: 'note' },
   duty_memory_undone: { sentence: 'Hale updated a duty note', family: 'note' },
+  // These three rows' `after` is the surface, failure code and try count only: no names, no text.
+  duty_send_accepted: { sentence: 'Hale sent a duty message', family: 'done' },
+  duty_send_failed: {
+    sentence: 'Hale held a duty message back to try sending it again',
+    family: 'note',
+  },
+  duty_send_dropped: { sentence: 'Hale could not send a duty message', family: 'note' },
   reply_copy_composed: {
     sentence: 'Hale wrote a reply from the facts it already had',
     family: 'note',
@@ -1361,6 +1384,27 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale held a reminder back to try sending it again',
     family: 'note',
   },
+  // VIL-734. They name no adult. The row's `after` is the try, the channel or the failure
+  // code only: no text, no time, no place.
+  team_schedule_driver_sent: {
+    sentence: 'Hale told the driver about a schedule change',
+    family: 'done',
+  },
+  team_schedule_driver_send_failed: {
+    sentence: 'Hale could not reach the driver about a schedule change and will try again',
+    family: 'note',
+  },
+  team_schedule_driver_unsent: {
+    sentence: 'Hale could not reach the driver about a schedule change',
+    family: 'problem',
+  },
+  // About the one adult who stopped Hale, left no number, left the household, or has a text
+  // Hale could not read: their audience, off History and the family export (rights/export.ts),
+  // in their own copy.
+  team_schedule_driver_unreachable: {
+    sentence: 'Hale did not text you about a schedule change',
+    family: 'note',
+  },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
   // said a connector item is theirs, so Hale stopped tracking it.
   kid_relevance_untracked: {
@@ -1501,6 +1545,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     // The quiet-operator promise, made visible: a deliberate silence is a real
     // outcome, and a parent should be able to see Hale choosing not to interrupt.
     sentence: 'Hale had nothing worth interrupting you for',
+    family: 'note',
+  },
+  proactive_nudge_unwritten: {
+    // Hale had something to say and could not write it, so the line above would be false.
+    // History hides the row (INTERNAL_TRAIL_VERBS); the rights export keeps it.
+    sentence: 'Hale could not write a heads-up, so it sent nothing',
     family: 'note',
   },
   proactive_watch_granted: { sentence: 'you let Hale watch for things to flag', family: 'done' },
@@ -1931,17 +1981,29 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
   promo_join_family_created: {
-    sentence: 'you started a founding family from a text code',
+    sentence: 'you joined Hale with a text code',
     family: 'note',
   },
   promo_join_verified: {
-    sentence: 'you confirmed the founding text code',
+    sentence: 'you confirmed your text code',
     family: 'note',
   },
   billing_refunded: { sentence: 'Hale refunded a payment', family: 'done' },
+  // VIL-735. Hidden from History; each adult's own copy carries their notices.
+  billing_notice_sent: { sentence: 'Hale texted you about your plan', family: 'done' },
+  billing_notice_send_failed: {
+    sentence: 'a text about your plan did not go through',
+    family: 'problem',
+  },
+  billing_notice_dropped: { sentence: 'Hale did not send a text about your plan', family: 'note' },
   billing_revoke_unresolved: {
     sentence: 'a refund could not be matched to this plan, so the plan was left as it is',
     family: 'problem',
+  },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS. The family's export still carries it.
+  billing_plan_unsettled: {
+    sentence: 'Hale could not tell which plan your payments cover, so your plan stayed as it was',
+    family: 'note',
   },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
   upgrade_link_sent: { sentence: 'Hale sent the link to keep it for the year', family: 'done' },
@@ -2402,6 +2464,16 @@ export const INTERNAL_TRAIL_VERBS = [
   'activity_deep_dispatched',
   // VIL-686. One giver's own draw text: about that adult alone.
   'linq_secret_santa_draw_sent',
+  // A failed write. The parent's History would otherwise read it as Hale choosing quiet.
+  'proactive_nudge_unwritten',
+  // VIL-734. One driver's own stop, consent, missing number or leaving the household.
+  'team_schedule_driver_unreachable',
+  // VIL-735. About one adult's payment: the other parent never sees it.
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
+  // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
+  'billing_plan_unsettled',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

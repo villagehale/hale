@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertNoPII, redactEventPayload, redactText } from './redact.js';
+import { assertNoPII, EMAIL_RE, redactEventPayload, redactText } from './redact.js';
 
 /**
  * The redactor is the rule-#1 gate for the shadow eval: it strips family PII from
@@ -90,19 +90,18 @@ describe('redactEventPayload', () => {
     expect(() => assertNoPII(JSON.stringify(out), ['Maya'])).not.toThrow();
   });
 
-  // Google sync stores this payload (events.payload), and the Gmail draft path reads
-  // `id` back as the message id. Each id below holds a ZIP or a Canadian code glued to
-  // letters, which the shared matcher takes out of free text.
+  // /api/events/ingest spreads a provider's `extra` onto the top level, so a top-level id
+  // can hold anything a person wrote.
   it.each([
-    ['gmail', { id: '0e14f18e70064eda', subject: 'Swim', snippet: 'pool near 99999' }],
-    ['gcal', { id: 'k9k9k9q2e1v0u7a3', summary: 'Swim', description: 'pool near 99999' }],
-    ['gdrive', { id: '1aB2Z9Z9Z9xYz0000aaaa', name: 'Swim', mimeType: 'text/plain' }],
-  ])('leaves a %s id as the provider sent it', (_provider, payload) => {
-    const out = redactEventPayload(payload, []);
-    expect(out.id).toBe(payload.id);
-    // Positive control: the same string in a text field is rewritten, so the id above
-    // was kept by the redactor, not missed by the matcher.
-    expect(redactEventPayload({ note: payload.id }, []).note).not.toBe(payload.id);
+    ["a child's first name", 'Maya', '[CHILD]'],
+    ['ten digits', '5555550123', '[PHONE]'],
+    ['a ZIP', '99999', '[POSTAL]'],
+  ])('redacts a top-level id holding %s', (_label, id, redacted) => {
+    expect(redactEventPayload({ id }, ['Maya']).id).toBe(redacted);
+  });
+
+  it('leaves a top-level id with nothing in it to redact (positive control)', () => {
+    expect(redactEventPayload({ id: 'plain-id_token' }, ['Maya']).id).toBe('plain-id_token');
   });
 
   it('still scrubs the text fields beside a provider id', () => {
@@ -118,5 +117,87 @@ describe('redactEventPayload', () => {
   it('scrubs a nested id, which no provider sends, as text', () => {
     const out = redactEventPayload({ extra: { id: 'near 99999' } }, []);
     expect(out.extra.id).toBe('near [POSTAL]');
+  });
+});
+
+describe('the address pass', () => {
+  /** The pattern as it was before it stopped retrying inside a run, as the reference. */
+  const EVERY_START = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+
+  /** A deterministic stream (mulberry32), so a failure replays. */
+  function seeded(seed: number): () => number {
+    let state = seed;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // No digits, so no other pass in redactText can touch these strings.
+  const PIECES = ['a', 'b.c', 'd-e', 'f_g', '+', '+', '@', '@', '.', '-', ' ', ','];
+
+  function corpus(size: number): string[] {
+    const next = seeded(620);
+    return Array.from({ length: size }, () => {
+      const pieces = 2 + Math.floor(next() * 12);
+      return Array.from({ length: pieces }, () => PIECES[Math.floor(next() * PIECES.length)]).join(
+        '',
+      );
+    });
+  }
+
+  it('redacts both addresses when a plus joins them', () => {
+    expect(redactText('a@b.ca+c@d.ca', [])).toBe('[EMAIL][EMAIL]');
+    expect(() => assertNoPII(redactText('a@b.ca+c@d.ca+e@f.ca', []))).not.toThrow();
+  });
+
+  it('takes the same matches as trying every start', () => {
+    const strings = corpus(20_000);
+    // Positive control: the corpus holds the case a start-of-run guard alone would miss.
+    expect(strings.some((s) => /@[\w-]+\.[\w.-]+\+[\w.+-]*@[\w-]+\.\w/.test(s))).toBe(true);
+    for (const s of strings) {
+      expect(redactText(s, [])).toBe(s.replace(EVERY_START, '[EMAIL]'));
+    }
+  });
+
+  /** The pattern's guards alone, sticky: true at a position where a match may begin. */
+  function guardsOf(pattern: RegExp): RegExp {
+    const opening = pattern.source.indexOf(String.raw`[\w.+-]+@`);
+    if (opening < 0) throw new Error('no address opening in the pattern');
+    return new RegExp(pattern.source.slice(0, opening), 'y');
+  }
+
+  /** The starts the guards admit on `text`, and the work of them: one for each start and
+   * one for each character the pattern's opening repeat then reads. A count, so a loaded
+   * machine cannot move it the way it moves a clock. */
+  function startWork(guards: RegExp, text: string): { starts: number; work: number } {
+    const opening = /[\w.+-]*/y;
+    let starts = 0;
+    let work = 0;
+    for (let at = 0; at <= text.length; at += 1) {
+      guards.lastIndex = at;
+      if (!guards.test(text)) continue;
+      opening.lastIndex = at;
+      starts += 1;
+      work += 1 + (opening.exec(text) as RegExpExecArray)[0].length;
+    }
+    return { starts, work };
+  }
+
+  it('starts once in a run of address characters, however long it is', () => {
+    expect(startWork(guardsOf(EMAIL_RE), 'a'.repeat(2_000)).starts).toBe(1);
+    expect(startWork(guardsOf(EMAIL_RE), 'a'.repeat(4_000)).starts).toBe(1);
+  });
+
+  it.each(['a', 'a+', 'a@b.ca+'])('does work proportional to a run of %j', (piece) => {
+    const work = (copies: number) => startWork(guardsOf(EMAIL_RE), piece.repeat(copies)).work;
+    expect(work(4_000) / work(2_000)).toBeLessThan(2.1);
+  });
+
+  it('counts the pattern as it was going quadratic (positive control)', () => {
+    const work = (copies: number) => startWork(guardsOf(EVERY_START), 'a'.repeat(copies)).work;
+    expect(work(4_000) / work(2_000)).toBeGreaterThan(3);
   });
 });

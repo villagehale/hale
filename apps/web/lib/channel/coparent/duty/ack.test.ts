@@ -19,7 +19,10 @@ function ledgerDb(): Database {
   const orderBy = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ orderBy }) });
   const select = vi.fn().mockReturnValue({ from });
-  return { insert, update, select } as unknown as Database;
+  const db = { insert, update, select } as unknown as Database;
+  return Object.assign(db, {
+    transaction: async (run: (tx: Database) => Promise<void>) => run(db),
+  });
 }
 
 const CHAT = 'chat-parent-started';

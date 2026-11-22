@@ -1,5 +1,6 @@
-import { type SQL, and, isNotNull, isNull } from 'drizzle-orm';
+import { type SQL, and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { familyEvents } from './schema/family-events.js';
+import { kidRelevanceVerdicts } from './schema/kid-relevance-verdicts.js';
 
 /**
  * A live family_events row the whole household may see: not soft-deleted, and not a
@@ -10,6 +11,24 @@ import { familyEvents } from './schema/family-events.js';
  */
 export function householdFamilyEvent(): SQL {
   return and(isNull(familyEvents.deletedAt), isNull(familyEvents.googleEventId)) as SQL;
+}
+
+/**
+ * A live family_events row Hale may tell one parent about: the household's rows, plus
+ * the mirrors of that parent's own connected Google Calendar (`created_by` is the parent
+ * who connected it) that a live `kid` verdict covers, the mirrors the reminder cron
+ * reminds that parent of (VIL-548). For a reader whose output reaches that one parent.
+ */
+export function familyEventForParent(userId: string): SQL {
+  return or(
+    householdFamilyEvent(),
+    and(
+      isNull(familyEvents.deletedAt),
+      isNotNull(familyEvents.googleEventId),
+      eq(familyEvents.createdBy, userId),
+      sql`exists (select 1 from ${kidRelevanceVerdicts} where ${kidRelevanceVerdicts.id} = ${familyEvents.kidVerdictId} and ${kidRelevanceVerdicts.verdict} = 'kid')`,
+    ),
+  ) as SQL;
 }
 
 /**

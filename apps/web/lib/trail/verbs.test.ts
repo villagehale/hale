@@ -323,3 +323,12 @@ describe('trail sentences stay on the receipts trail', () => {
     expect(hits).toEqual([]);
   });
 });
+
+describe('promo join trail rows', () => {
+  it('read as joining Hale, with no founding wording', () => {
+    expect(trailVerb('promo_join_family_created').sentence).toBe(
+      'you joined Hale with a text code',
+    );
+    expect(trailVerb('promo_join_verified').sentence).toBe('you confirmed your text code');
+  });
+});

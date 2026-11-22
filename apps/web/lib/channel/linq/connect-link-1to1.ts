@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { familySendKey } from '~/lib/channel/family-send-key';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
-import { acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus, familySendSpent } from '~/lib/channel/ledger';
 import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -572,12 +573,17 @@ export async function noticeIfGroupQuiet(
   const familyId = roster.familyId;
   const primary = await primaryParentId(database, familyId);
   if (!primary) return { outcome: 'no_primary_parent' };
-  const dedupeKey = `${QUIET_TEMPLATE}:${input.chatId}`;
-  const [prior] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
-  if (prior) return { outcome: 'already_sent' };
+  const sendKey = familySendKey(`${QUIET_TEMPLATE}:${input.chatId}`, familyId);
+  const spent =
+    sendKey.legacyDedupeKey === null
+      ? (
+          await database
+            .select({ id: schema.channelMessages.id })
+            .from(schema.channelMessages)
+            .where(eq(schema.channelMessages.dedupeKey, sendKey.dedupeKey))
+        ).length > 0
+      : await familySendSpent(database, familyId, sendKey);
+  if (spent) return { outcome: 'already_sent' };
 
   const notFamily = roster.members.filter((member) => NOT_FAMILY.includes(member.status)).length;
   const stopped = roster.members.filter((member) => member.status === 'declined').length;
@@ -602,7 +608,7 @@ export async function noticeIfGroupQuiet(
     body: composed.body,
     recordBody: false,
     templateKey: QUIET_TEMPLATE,
-    dedupeKey,
+    dedupeKey: sendKey.dedupeKey,
     now: input.now,
     send: input.oneToOne ?? defaultOneToOneSend(),
   });
