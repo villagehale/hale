@@ -14,6 +14,13 @@ export type {
   FamilyEventNotes,
   NewFamilyEvent,
 } from './schema/family-events.js';
+export type {
+  BillingNotice,
+  BillingNoticeEventFacts,
+  BillingNoticeLane,
+  BillingNoticeStatus,
+  NewBillingNotice,
+} from './schema/billing-notices.js';
 export {
   familyEventForParent,
   householdFamilyEvent,

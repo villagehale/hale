@@ -54,6 +54,10 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-734. That one driver stopped Hale, left no number, left the household, or has a text
   // still unread.
   'team_schedule_driver_unreachable',
+  // VIL-735. A text about one adult's payment. Their own copy carries the notice itself.
+  'billing_notice_sent',
+  'billing_notice_send_failed',
+  'billing_notice_dropped',
 ] as const satisfies readonly AuditVerb[];
 
 /** Of those, the rows the adult they are about gets in their own copy (right of access). */

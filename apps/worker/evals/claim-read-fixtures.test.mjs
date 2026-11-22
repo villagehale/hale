@@ -197,6 +197,9 @@ describe('the JS compatibility table agrees with the production verifier', () =>
       delivered: false,
     },
     { source: 'cancelled', kind: 'cancelled', startsAt: null },
+    { source: 'billing_fact', kind: 'registration_done', fact: 'plan', currentPlan: 'Plus' },
+    { source: 'billing_fact', kind: 'cancelled', fact: 'ended', currentPlan: 'Plus' },
+    { source: 'billing_fact', kind: 'send_done', fact: 'refund', currentPlan: 'Plus' },
   ];
   it('for every kind and every source', () => {
     for (const kind of READ_CLAIM_KINDS) {
@@ -207,7 +210,8 @@ describe('the JS compatibility table agrees with the production verifier', () =>
         const verdict = verifyClaimRead(
           {
             status: 'read',
-            segments: [{ index: 0, text: 'Plain words.', start: 0, end: 12 }],
+            // A billing plan row backs only a sentence that names the plan.
+            segments: [{ index: 0, text: 'You are on Plus now.', start: 0, end: 20 }],
             claims: [{ segment: 0, kind, row: alias }],
             usage: { input: 0, output: 0 },
             latencyMs: 0,

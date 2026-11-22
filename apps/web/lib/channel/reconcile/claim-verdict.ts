@@ -1,3 +1,4 @@
+import { namesCurrentPlan } from './billing-text';
 import type { ClaimCandidateRow, ClaimCandidateSet, ClaimRowAlias } from './candidates';
 import type { ClaimReadOutcome, ReadClaim } from './claim-reader';
 import { dayTimeConflict } from './day-time';
@@ -29,7 +30,8 @@ type MatchedBy =
   | 'booking_row'
   | 'parent_reported'
   | 'send_receipt'
-  | 'cancellation_row';
+  | 'cancellation_row'
+  | 'billing_fact';
 type MintableWindow = Extract<ClaimCandidateRow, { source: 'mintable_window' }>;
 
 export type ReadClaimResolution =
@@ -46,6 +48,14 @@ export interface ClaimReadVerdict {
 
 /** Which row can back which claim kind, and as what. Null: it cannot. */
 function backing(kind: ReadClaim['kind'], row: ClaimCandidateRow): MatchedBy | 'minted' | null {
+  // VIL-735 · first, so no existing arm can match a row only the billing lane offers.
+  if (row.source === 'billing_fact') {
+    if (row.fact === 'plan') {
+      return kind === 'registration_done' || kind === 'scheduled_event' ? 'billing_fact' : null;
+    }
+    if (row.fact === 'ended') return kind === 'cancelled' ? 'billing_fact' : null;
+    return kind === 'send_done' ? 'billing_fact' : null;
+  }
   switch (kind) {
     case 'scheduled_event':
       if (row.source === 'calendar') return 'scheduled_row';
@@ -146,6 +156,15 @@ function resolve(
   if (by === null) return refused('kind_incompatible');
   if (by === 'minted') {
     return { claim, status: 'minted', alias: 'w1', window: row as MintableWindow };
+  }
+  // The plan row reads as a confirmed registration, so without this "she's registered for
+  // swim" cited to it would be backed. It backs a sentence only about the plan they are on.
+  if (
+    row.source === 'billing_fact' &&
+    row.fact === 'plan' &&
+    !namesCurrentPlan(sentence, row.currentPlan, ctx.locale)
+  ) {
+    return refused('kind_incompatible');
   }
   if (
     'startsAt' in row &&
