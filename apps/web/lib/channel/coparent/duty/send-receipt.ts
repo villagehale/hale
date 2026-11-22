@@ -3,7 +3,8 @@ import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { linqRefusedForCertainEnabled } from '~/lib/channel/linq/config';
-import { LinqSendError, linqRefusedForCertain } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import {
   COMPOSE_HOLD_FIRST_GAP_MS,
   COMPOSE_HOLD_MAX_ATTEMPTS,
