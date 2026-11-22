@@ -100,9 +100,9 @@ export function launchSetEnv(flags, paymentEnvOnly) {
       paymentEnvOnly.filter(isLaunchPayment),
     ),
     unset: [
-      ...flags.filter(isHeldOff),
-      ...paymentEnvOnly.filter((row) => !isLaunchPayment(row)),
-    ].map((row) => row.env),
+      ...LAUNCH_HELD_OFF_ENV,
+      ...paymentEnvOnly.filter((row) => !isLaunchPayment(row)).map((row) => row.env),
+    ],
   };
 }
 

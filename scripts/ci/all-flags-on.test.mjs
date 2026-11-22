@@ -37,6 +37,14 @@ function printedEnv(args) {
   );
 }
 
+describe('launchSetEnv with a held flag the catalog has not declared', () => {
+  it('still unsets it, so a value in the shell cannot turn it on', () => {
+    const { env, unset } = launchSetEnv([], []);
+    expect(env).toEqual({});
+    expect(unset).toContain('PROACTIVE_WEEKLY_CAP_ENABLED');
+  });
+});
+
 describe('forcedOnEnv', () => {
   it('sets an on value per parser and leaves default-on flags unset', () => {
     const flags = [
