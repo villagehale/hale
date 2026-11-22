@@ -20,7 +20,12 @@ import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { BillingNoticeCompose, BillingNoticeFacts } from './compose';
 import { recordBillingNoticeIntent } from './record';
-import { type BillingNoticeRunDeps, guardedChannels, runBillingNoticeTick } from './run';
+import {
+  type BillingNoticeRunDeps,
+  type NoticeSendGuard,
+  guardedChannels,
+  runBillingNoticeTick,
+} from './run';
 import type { NoticeSubscription } from './subscription-read';
 
 /**
@@ -251,9 +256,9 @@ function deps(
       );
     },
   };
-  const portsFor = (beforeSend: () => Promise<void>) => ({
+  const portsFor = (guard: NoticeSendGuard) => ({
     ...buildDispatchPorts(db.database, {
-      channels: guardedChannels({ sms }, beforeSend),
+      channels: guardedChannels({ sms }, guard),
       renderer: loopTemplateRenderer,
       now: () => clock.now,
     }),
@@ -298,8 +303,7 @@ function deps(
       if (typeof next === 'function') return next(signal);
       return next ?? { status: 'written', text: defaultText(facts) };
     },
-    dispatch: (message: LoopMessage, beforeSend) =>
-      dispatchLoopMessage(message, portsFor(beforeSend)),
+    dispatch: (message: LoopMessage, guard) => dispatchLoopMessage(message, portsFor(guard)),
     ...rest,
   };
   return built;
@@ -419,10 +423,10 @@ describe('a text the parent gets', () => {
     const notice = await insertNotice({});
 
     await tick({
-      dispatch: (message, beforeSend) =>
+      dispatch: (message, guard) =>
         dispatchLoopMessage(message, {
           ...buildDispatchPorts(db.database, {
-            channels: guardedChannels({ sms: realSms }, beforeSend),
+            channels: guardedChannels({ sms: realSms }, guard),
             renderer: loopTemplateRenderer,
             now: () => clock.now,
           }),
@@ -464,7 +468,8 @@ describe('a send that does not reach them', () => {
     linqAnswers = [refused];
     await tick();
     let row = await noticeRow(notice.id);
-    expect(row.status).toBe('open');
+    expect(row.status).toBe('unconfirmed');
+    expect(row.mayHaveLanded).toBe(true);
     expect(row.attempts).toBe(1);
     expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
     expect(await auditRows('billing_notice_sent')).toHaveLength(0);
@@ -481,6 +486,28 @@ describe('a send that does not reach them', () => {
     expect(linqCalls).toHaveLength(2);
   });
 
+  it('four sends the channel skipped: nothing can have landed, so exhausted and paged as refused', async () => {
+    const notice = await insertNotice({});
+    const skipped: ChannelSendOutcome = { status: 'skipped', reason: 'no_address' };
+    linqAnswers = [skipped, skipped, skipped, skipped];
+    await tick();
+    for (const gap of [5, 10, 20]) {
+      clock.now = later(clock.now, gap);
+      await tick();
+    }
+    const row = await noticeRow(notice.id);
+    expect(linqCalls).toHaveLength(4);
+    expect(row.dropReason).toBe('send_retries_exhausted');
+    expect(row.mayHaveLanded).toBe(false);
+    expect(pages).toEqual([
+      {
+        site: 'billing_notice_unsent',
+        ref: notice.id,
+        facts: { lane: 'payment', reason: 'send_refused' },
+      },
+    ]);
+  });
+
   it('four refusals: four tries at 5, 10 and 20 minutes, one page, then never offered again', async () => {
     const notice = await insertNotice({});
     linqAnswers = [refused, refused, refused, refused];
@@ -493,12 +520,12 @@ describe('a send that does not reach them', () => {
     const row = await noticeRow(notice.id);
     expect(linqCalls).toHaveLength(4);
     expect(row.status).toBe('dropped');
-    expect(row.dropReason).toBe('send_retries_exhausted');
+    expect(row.dropReason).toBe('send_unconfirmed');
     expect(pages).toEqual([
       {
         site: 'billing_notice_unsent',
         ref: notice.id,
-        facts: { lane: 'payment', reason: 'send_refused' },
+        facts: { lane: 'payment', reason: 'not_confirmed' },
       },
     ]);
     clock.now = later(clock.now, 60);
@@ -655,9 +682,9 @@ describe('a crash mid-send', () => {
     const keys: (string | undefined)[] = [];
     clock.now = later(AFTERNOON, 5);
     await tick({
-      dispatch: async (message, beforeSend) => {
+      dispatch: async (message, guard) => {
         keys.push(message.sendKey);
-        return deps().dispatch(message, beforeSend);
+        return deps().dispatch(message, guard);
       },
     });
     expect(keys).toEqual([`billing_notice:${notice.id}`]);
@@ -748,7 +775,10 @@ describe('a send Linq may have taken', () => {
   const written = (text: string): ComposeAnswer => ({ status: 'written', text });
 
   /** The real dispatch, adapter and Linq transport, with only `fetch` stood in. */
-  function realLinq(answers: Array<() => Response>) {
+  function realLinq(
+    answers: Array<() => Response>,
+    hooks: { duringClaimRead?: () => Promise<void> } = {},
+  ) {
     vi.stubEnv('LINQ_FROM_E164', '+15555550100');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     const posts: { text: string; key: unknown }[] = [];
@@ -771,21 +801,46 @@ describe('a send Linq may have taken', () => {
       configured: true,
       transport: createLinqPhoneTransport({ fetch: wire }),
     });
-    const dispatch: BillingNoticeRunDeps['dispatch'] = (message, beforeSend) =>
+    const dispatch: BillingNoticeRunDeps['dispatch'] = (message, guard) =>
       dispatchLoopMessage(message, {
         ...buildDispatchPorts(db.database, {
-          channels: guardedChannels({ sms }, beforeSend),
+          channels: guardedChannels({ sms }, guard),
           renderer: loopTemplateRenderer,
           now: () => clock.now,
         }),
         claimEnforce: {
           enforces: () => true,
-          decide: async () => ({ status: 'clean' as const }),
+          decide: async () => {
+            await hooks.duringClaimRead?.();
+            return { status: 'clean' as const };
+          },
           recordRefusal: async () => 'off' as const,
         },
       });
     return { posts, dispatch };
   }
+
+  /** After the dispatch's consent read, so the real adapter answers `no_address`. */
+  const setPhoneRevoked = async (revokedAt: Date | null) => {
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt })
+      .where(eq(schema.parentChannels.userId, parentUserId));
+  };
+  const losesPhoneMidSend = () =>
+    realLinq([], { duringClaimRead: () => setPhoneRevoked(clock.now) });
+  const ledgerFailures = async () =>
+    (
+      await db.database
+        .select({ errorCode: schema.channelMessages.errorCode })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.parentUserId, parentUserId),
+            eq(schema.channelMessages.status, 'failed'),
+          ),
+        )
+    ).map((row) => row.errorCode);
 
   it.each([
     ['a 502', badGateway],
@@ -819,9 +874,9 @@ describe('a send Linq may have taken', () => {
   it('a 502 and then a failed ledger read: unconfirmed, and the next try carries the same key', async () => {
     const linq = realLinq([badGateway, accepted]);
     const notice = await insertNotice({});
-    const dispatch: BillingNoticeRunDeps['dispatch'] = async (message, beforeSend) => {
+    const dispatch: BillingNoticeRunDeps['dispatch'] = async (message, guard) => {
       try {
-        return await linq.dispatch(message, beforeSend);
+        return await linq.dispatch(message, guard);
       } finally {
         vi.spyOn(db.database, 'select').mockImplementationOnce(() => {
           throw new Error('connection lost');
@@ -1023,22 +1078,94 @@ describe('a send Linq may have taken', () => {
     expect(pages[0]?.facts).toEqual({ lane: 'payment', reason: 'send_abandoned' });
   });
 
-  it('a first-try definite refusal leaves the column false and returns to open', async () => {
-    const linq = realLinq([refused]);
+  it.each([400, 409])(
+    'a first-try %i says nothing about the POST: unconfirmed, one key, and an equal refund is stale',
+    async (httpStatus) => {
+      const answer = () => Response.json({}, { status: httpStatus });
+      const linq = realLinq([answer, answer, answer, answer]);
+      const notice = await refundNotice({ parentUserId });
+      await tick({ dispatch: linq.dispatch });
+      const first = await noticeRow(notice.id);
+      expect(first.status).toBe('unconfirmed');
+      expect(first.mayHaveLanded).toBe(true);
+
+      for (const gap of [5, 10, 20]) {
+        clock.now = later(clock.now, gap);
+        await tick({ dispatch: linq.dispatch });
+      }
+      const last = await noticeRow(notice.id);
+      expect(linq.posts).toHaveLength(4);
+      expect(linq.posts[0]?.key).toEqual(expect.stringMatching(/^[0-9a-f]{64}$/));
+      expect(new Set(linq.posts.map((post) => post.key)).size).toBe(1);
+      expect(last.dropReason).toBe('send_unconfirmed');
+      expect(last.mayHaveLanded).toBe(true);
+      expect(pages).toEqual([
+        {
+          site: 'billing_notice_unsent',
+          ref: notice.id,
+          facts: { lane: 'plan_change', reason: 'not_confirmed' },
+        },
+      ]);
+
+      await expect(lowerRefund(`evt_after_${httpStatus}`, 15900)).resolves.toBe('stale_refund');
+    },
+  );
+
+  it('a first-try skip (no_address): no POST, the column back to false, an ordinary retry', async () => {
+    const linq = losesPhoneMidSend();
     const notice = await insertNotice({});
     await tick({ dispatch: linq.dispatch });
     const row = await noticeRow(notice.id);
-    expect(linq.posts).toHaveLength(1);
+    expect(linq.posts).toHaveLength(0);
+    expect(await ledgerFailures()).toEqual(['no_address']);
     expect(row.status).toBe('open');
     expect(row.mayHaveLanded).toBe(false);
+    expect(row.attempts).toBe(1);
+
+    await setPhoneRevoked(null);
+    clock.now = later(clock.now, 5);
+    const retry = realLinq([accepted]);
+    await tick({ dispatch: retry.dispatch });
+    expect(retry.posts).toHaveLength(1);
+    expect((await noticeRow(notice.id)).status).toBe('sent');
   });
 
-  it('a first-try refusal later dropped by a gate does not count as told', async () => {
-    const linq = realLinq([refused]);
+  it('a first-try garbled-text refusal: no POST, the column back to false, an ordinary retry', async () => {
+    const linq = realLinq([accepted]);
+    const notice = await insertNotice({});
+    await tick({ dispatch: linq.dispatch, answers: [written('You are on Plus\uFFFD now.')] });
+    const row = await noticeRow(notice.id);
+    expect(linq.posts).toHaveLength(0);
+    expect(await ledgerFailures()).toEqual(['garbled_text']);
+    expect(row.status).toBe('open');
+    expect(row.mayHaveLanded).toBe(false);
+    expect(row.attempts).toBe(1);
+
+    clock.now = later(clock.now, 5);
+    await tick({ dispatch: linq.dispatch });
+    expect(linq.posts).toHaveLength(1);
+    expect((await noticeRow(notice.id)).status).toBe('sent');
+  });
+
+  it('a row that may already have landed and is then skipped keeps the column true', async () => {
+    const linq = losesPhoneMidSend();
+    const notice = await insertNotice({ status: 'unconfirmed', attempts: 1, parentUserId });
+    await tick({ dispatch: linq.dispatch });
+    const row = await noticeRow(notice.id);
+    expect(linq.posts).toHaveLength(0);
+    expect(await ledgerFailures()).toEqual(['no_address']);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.mayHaveLanded).toBe(true);
+    expect(row.attempts).toBe(2);
+  });
+
+  it('a first-try skip later dropped by a gate does not count as told', async () => {
+    const linq = losesPhoneMidSend();
     const notice = await refundNotice({ parentUserId });
     await tick({ dispatch: linq.dispatch });
     expect((await noticeRow(notice.id)).status).toBe('open');
 
+    await setPhoneRevoked(null);
     clock.now = later(AFTERNOON, 5);
     await db.database
       .update(schema.billingNotices)
@@ -1049,7 +1176,7 @@ describe('a send Linq may have taken', () => {
     expect(dropped.dropReason).toBe('stale');
     expect(dropped.mayHaveLanded).toBe(false);
 
-    await expect(lowerRefund('evt_after_refusal')).resolves.toBe('recorded');
+    await expect(lowerRefund('evt_after_skip')).resolves.toBe('recorded');
   });
 
   it('a definite refusal on a retry of a may-have-landed row keeps the column true', async () => {
@@ -1070,12 +1197,12 @@ describe('a send Linq may have taken', () => {
     const linq = realLinq([]);
     const notice = await insertNotice({});
     const summary = await tick({
-      dispatch: async (message, beforeSend) => {
+      dispatch: async (message, guard) => {
         await db.database
           .update(schema.billingNotices)
           .set({ status: 'open' })
           .where(eq(schema.billingNotices.id, notice.id));
-        return linq.dispatch(message, beforeSend);
+        return linq.dispatch(message, guard);
       },
     });
     expect(linq.posts).toHaveLength(0);
@@ -1096,10 +1223,13 @@ describe('a send Linq may have taken', () => {
       },
     ]);
     await tick({
-      dispatch: (message, beforeSend) =>
-        linq.dispatch(message, async () => {
-          await beforeSend();
-          atPost = (await noticeRow(notice.id)).mayHaveLanded;
+      dispatch: (message, guard) =>
+        linq.dispatch(message, {
+          ...guard,
+          beforeSend: async () => {
+            await guard.beforeSend();
+            atPost = (await noticeRow(notice.id)).mayHaveLanded;
+          },
         }),
     });
     expect(linq.posts).toHaveLength(1);
@@ -1191,27 +1321,48 @@ describe('a send Linq may have taken', () => {
       expect(linqCalls).toHaveLength(0);
     });
 
-    it('payer_unresolved: the row holds no amount and the charge still counts as told', async () => {
-      const notice = await unconfirmedRefund({ parentUserId: null });
-      await db.database
-        .delete(schema.auditLog)
-        .where(
-          and(
-            eq(schema.auditLog.familyId, familyId),
-            eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
-          ),
-        );
-      await tick();
-      const dropped = await noticeRow(notice.id);
-      expect(dropped.dropReason).toBe('payer_unresolved');
-      expect(dropped.mayHaveLanded).toBe(true);
-      expect(dropped.parentUserId).toBeNull();
-      expect(dropped.facts.refunds?.[0]?.chargeId).toBe('ch_1');
-      expect(dropped.facts.refunds?.[0]).not.toHaveProperty('refundedMinor');
-      expect(dropped.facts.refunds?.[0]).not.toHaveProperty('chargeMinor');
+    describe('payer_unresolved', () => {
+      const PARTIAL = { ...REFUND, refundedMinor: 9000, full: false, subscriptionId: 'sub_1' };
+      const droppedNoPayer = async () => {
+        const notice = await unconfirmedRefund({
+          parentUserId: null,
+          facts: { eventIds: ['evt_refund'], refunds: [PARTIAL] },
+        });
+        await db.database
+          .delete(schema.auditLog)
+          .where(
+            and(
+              eq(schema.auditLog.familyId, familyId),
+              eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
+            ),
+          );
+        await tick();
+        const dropped = await noticeRow(notice.id);
+        expect(dropped.dropReason).toBe('payer_unresolved');
+        expect(dropped.mayHaveLanded).toBe(true);
+        expect(dropped.parentUserId).toBeNull();
+        expect(dropped.facts.refunds?.[0]).toEqual(PARTIAL);
+        return dropped;
+      };
 
-      await expect(lowerRefund('evt_after_payer', 15900)).resolves.toBe('stale_refund');
-      expect(linqCalls).toHaveLength(0);
+      it.each([
+        ['the same', 9000],
+        ['a lower', 5000],
+      ])('keeps its amounts: %s refund is stale_refund', async (_label, total) => {
+        await droppedNoPayer();
+        await expect(lowerRefund('evt_after_payer', total)).resolves.toBe('stale_refund');
+        expect(linqCalls).toHaveLength(0);
+      });
+
+      it('keeps its amounts: a higher refund on that charge is told', async () => {
+        await droppedNoPayer();
+        await expect(lowerRefund('evt_higher', 12000)).resolves.toBe('recorded');
+        await seedCheckout(parentUserId, familyId);
+        clock.now = later(AFTERNOON, 11);
+        await tick();
+        expect(linqCalls).toHaveLength(1);
+        expect(composed.at(-1)).toMatchObject({ refunds: [{ amount: '$120.00' }] });
+      });
     });
   });
 });
@@ -1808,6 +1959,31 @@ describe('when it may go', () => {
       expect(row.parentUserId).toBe(parentUserId);
       expect((await copyFor(parentUserId)).requesterOnly.billingNotices).toHaveLength(1);
       expect((await copyFor(coParent)).requesterOnly.billingNotices).toEqual([]);
+    });
+
+    it('a may-have-landed row dropped with no payer keeps its amounts and shows them to no adult', async () => {
+      const coParent = await seedCoParent();
+      await db.database
+        .delete(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
+          ),
+        );
+      const notice = await refundNotice({ status: 'unconfirmed', attempts: 1 });
+      await tick();
+
+      const row = await noticeRow(notice.id);
+      expect(row.dropReason).toBe('payer_unresolved');
+      expect(row.facts.refunds?.[0]?.refundedMinor).toBe(15900);
+      for (const adult of [parentUserId, coParent]) {
+        const copy = await copyFor(adult);
+        expect(copy.requesterOnly.billingNotices).toEqual([
+          expect.objectContaining({ status: 'dropped', reason: null, refunds: [] }),
+        ]);
+        expect(JSON.stringify(copy)).not.toContain('refundedMinor');
+      }
     });
 
     it('a drop with no resolvable payer keeps no amounts and is in no copy unless payer_unresolved', async () => {

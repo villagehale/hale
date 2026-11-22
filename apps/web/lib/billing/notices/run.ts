@@ -15,9 +15,10 @@ import {
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
+import { GARBLED_TEXT } from '~/lib/channel/linq/transport';
 import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
 import type { BillingClaimFacts, BillingPlanName } from '~/lib/channel/reconcile/billing-text';
-import type { Channel, ChannelKind, LoopMessage } from '~/lib/channel/types';
+import type { Channel, ChannelKind, ChannelSendOutcome, LoopMessage } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { categoryEnabled, deliverableNow, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { nextComposeHold } from '~/lib/loop/reminders/schedule';
@@ -55,9 +56,10 @@ import { payerThreadProof } from './thread';
  * is ever sent in place of the model's text.
  *
  * `may_have_landed` is the one record of whether a text may be on the parent's phone. It is
- * set right before the POST and cleared only by a definite refusal of a row's first POST.
- * While it is true the row retries as `unconfirmed` under the same Linq key and takes no
- * merges, because Linq could drop the merged text as a repeat.
+ * set right before the POST and no answer from Linq clears it: a 4xx can follow a POST that
+ * landed. It goes back to its earlier value only when the channel made no POST at all. While
+ * it is true the row retries as `unconfirmed` under the same Linq key and takes no merges,
+ * because Linq could drop the merged text as a repeat.
  */
 
 const DUE_BATCH = 25;
@@ -75,6 +77,8 @@ const OPT_OUT_HELD = 'opt_out_held';
 const FACTS_MOVED = 'facts_moved';
 /** Another run owns the row now, so this one neither sends nor records a failure. */
 const LEFT_SENDING = 'left_sending';
+/** The transport's refusals raised before any fetch. Every other error may follow a POST. */
+const REFUSED_BEFORE_POST: readonly string[] = [GARBLED_TEXT, 'preview_capture'];
 
 /** The route's ceiling is 800s and the queues may use 700. No notice starts past this. */
 const LAST_START_MS = 640_000;
@@ -143,9 +147,15 @@ export interface BillingNoticeRunDeps {
     familyId: string;
     signal: AbortSignal;
   }) => Promise<BillingNoticeCompose>;
-  /** The dispatch, with `beforeSend` run on the adapter: after the claim read, right
-   * before the text leaves. It stops the send by throwing. */
-  dispatch: (message: LoopMessage, beforeSend: () => Promise<void>) => Promise<DispatchResult>;
+  /** The dispatch, with the guard run on the adapter, after the claim read. */
+  dispatch: (message: LoopMessage, guard: NoticeSendGuard) => Promise<DispatchResult>;
+}
+
+export interface NoticeSendGuard {
+  /** Right before the text leaves. It stops the send by throwing. */
+  beforeSend: () => Promise<void>;
+  /** The channel answered having made no POST, so nothing of this attempt can have landed. */
+  noPostMade: () => Promise<void>;
 }
 
 export interface BillingNoticeTick {
@@ -186,11 +196,11 @@ export function defaultBillingNoticeDeps(
           await recordAgentRun(database, run);
         },
       }),
-    dispatch: (message, beforeSend) =>
+    dispatch: (message, guard) =>
       dispatchLoopMessage(
         message,
         buildDispatchPorts(database, {
-          channels: guardedChannels(channels, beforeSend),
+          channels: guardedChannels(channels, guard),
           renderer: loopTemplateRenderer,
         }),
       ),
@@ -200,7 +210,7 @@ export function defaultBillingNoticeDeps(
 /** The channels, with this lane's last check in front of the provider call. */
 export function guardedChannels(
   channels: Partial<Record<ChannelKind, Channel>>,
-  beforeSend: () => Promise<void>,
+  guard: NoticeSendGuard,
 ): Partial<Record<ChannelKind, Channel>> {
   const { sms } = channels;
   if (!sms) return channels;
@@ -209,11 +219,20 @@ export function guardedChannels(
     sms: {
       kind: sms.kind,
       async send(input) {
-        await beforeSend();
-        return sms.send(input);
+        await guard.beforeSend();
+        const outcome = await sms.send(input);
+        if (madeNoPost(outcome)) await guard.noPostMade();
+        return outcome;
       },
     },
   };
+}
+
+function madeNoPost(outcome: ChannelSendOutcome): boolean {
+  return (
+    outcome.status === 'skipped' ||
+    (outcome.status === 'error' && REFUSED_BEFORE_POST.includes(outcome.code))
+  );
 }
 
 export async function runBillingNoticeTick(
@@ -386,9 +405,18 @@ async function writeAndSend(
       throw new ChannelRetryableError('sms', LEFT_SENDING, 'billing notice: row left sending');
     }
   };
+  // `row` is as it stood before this attempt, so an earlier POST stays on the record.
+  const noPostMade = async () => {
+    await database
+      .update(schema.billingNotices)
+      .set({ mayHaveLanded: row.mayHaveLanded, updatedAt: deps.now() })
+      .where(
+        and(eq(schema.billingNotices.id, row.id), eq(schema.billingNotices.status, 'sending')),
+      );
+  };
   let result: DispatchResult;
   try {
-    result = await deps.dispatch(message, beforeSend);
+    result = await deps.dispatch(message, { beforeSend, noPostMade });
   } catch (err) {
     if (err instanceof ChannelRetryableError && err.code === LEFT_SENDING) return 'skipped';
     // A throw after Linq accepted (the thread write, say) is still a text they received.
@@ -483,19 +511,10 @@ async function settleDispatch(
     case 'suppressed_consent':
       return dropNotice(database, row, 'no_consent', deps);
     case 'failed':
-      // `row` is as it stood before this attempt: a refusal says nothing about an earlier POST.
-      if (!row.mayHaveLanded) await clearMayHaveLanded(database, row.id, deps.now());
       return failAttempt(database, row, failureOf(leg.reason ?? 'unknown'), deps);
     case 'suppressed_cap':
       return failAttempt(database, row, 'send_refused', deps);
   }
-}
-
-async function clearMayHaveLanded(database: Database, id: string, now: Date): Promise<void> {
-  await database
-    .update(schema.billingNotices)
-    .set({ mayHaveLanded: false, updatedAt: now })
-    .where(and(eq(schema.billingNotices.id, id), eq(schema.billingNotices.status, 'sending')));
 }
 
 /** The ledger row Linq accepted for this notice: written only from Linq's own answer. */
@@ -886,6 +905,7 @@ async function finishDrop(
       .select({
         facts: schema.billingNotices.facts,
         parentUserId: schema.billingNotices.parentUserId,
+        mayHaveLanded: schema.billingNotices.mayHaveLanded,
       })
       .from(schema.billingNotices)
       .where(

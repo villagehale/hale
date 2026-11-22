@@ -87,12 +87,14 @@ async function payerOnDrop(
 
 /**
  * The one way a held row is dropped, by the drain or the webhook, inside a transaction
- * that holds the family lock: the row names its payer, or holds no amount.
+ * that holds the family lock: the row names its payer, or holds no amount. A row that may
+ * have landed keeps its amounts either way, because a later refund on that charge is
+ * compared with them. The access export shows them to the payer alone.
  */
 export async function writeNoticeDrop(
   tx: NoticeDb & Pick<Database, 'selectDistinct'>,
   row: BillingNotice,
-  current: Pick<BillingNotice, 'facts' | 'parentUserId'>,
+  current: Pick<BillingNotice, 'facts' | 'parentUserId' | 'mayHaveLanded'>,
   drop: { reason: string; attempts: number; now: Date },
 ): Promise<void> {
   const parentUserId = await payerOnDrop(tx, row, current, drop.reason);
@@ -104,7 +106,9 @@ export async function writeNoticeDrop(
       parentUserId,
       attempts: drop.attempts,
       updatedAt: drop.now,
-      ...(parentUserId === null ? { facts: withoutAmounts(current.facts) } : {}),
+      ...(parentUserId === null && !current.mayHaveLanded
+        ? { facts: withoutAmounts(current.facts) }
+        : {}),
     })
     .where(eq(schema.billingNotices.id, row.id));
   await writeNoticeAudit.dropped(

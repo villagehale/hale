@@ -402,9 +402,8 @@ async function writeIntent(
 
 /**
  * An older refund event cannot lower a total Hale already told the parent. A row that may
- * have landed counts as told whatever it was dropped for. If that drop removed its amounts
- * the total cannot be compared, so the charge counts as told: a second text is the worse way
- * to be wrong.
+ * have landed counts as told whatever it was dropped for, and it always keeps its amounts,
+ * so a genuinely higher refund on that charge is still told.
  */
 async function refundAlreadyTold(
   tx: Parameters<Parameters<Database['transaction']>[0]>[0],
@@ -428,9 +427,7 @@ async function refundAlreadyTold(
     );
   return told.some((row) =>
     (row.facts.refunds ?? []).some(
-      (seen) =>
-        seen.chargeId === refund.chargeId &&
-        (typeof seen.refundedMinor !== 'number' || refund.refundedMinor <= seen.refundedMinor),
+      (seen) => seen.chargeId === refund.chargeId && refund.refundedMinor <= seen.refundedMinor,
     ),
   );
 }

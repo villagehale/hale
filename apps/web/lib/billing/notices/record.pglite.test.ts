@@ -6,6 +6,7 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 import { addsNoticeSubject, endedSubscriptionIds, mergeNoticeFacts } from './merge';
 import { recordBillingNoticeIntent } from './record';
+import { withoutAmounts } from './store';
 
 /**
  * VIL-735 · the webhook's half of a billing notice: one durable row, recorded only for a
@@ -341,6 +342,21 @@ describe('idempotency', () => {
     const rows = await noticeRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.dropReason).toBe('send_unconfirmed');
+  });
+
+  it('a row with no amount on it never hides a refund, even one that may have landed', async () => {
+    await droppedRefund('send_unconfirmed', true);
+    const [row] = await noticeRows();
+    await db.database
+      .update(schema.billingNotices)
+      .set({ facts: withoutAmounts((row as NonNullable<typeof row>).facts) })
+      .where(eq(schema.billingNotices.familyId, familyId));
+    await expect(
+      record(
+        refundEvent({ id: `evt_r_after_${serial}` }, { amount_refunded: 5000, refunded: false }),
+        { status: 'no_tier' },
+      ),
+    ).resolves.toBe('recorded');
   });
 
   it('a drop reason alone is not the fact: send_unconfirmed with the column false counts as nothing', async () => {
