@@ -230,6 +230,9 @@ export function guardedChannels(
   };
 }
 
+/** This lane's own hold. A class, because a Linq error body can carry any code string. */
+class NoticeHeldAtSend extends ChannelRetryableError {}
+
 /** Decided from Hale's own state, because a Linq error body can carry any code string. */
 function madeNoPost(
   rendered: Parameters<Channel['send']>[0]['rendered'],
@@ -403,14 +406,14 @@ async function writeAndSend(
   };
   const beforeSend = async () => {
     const held = await heldAtSend(database, row, facts.writer.plan);
-    if (held) throw new ChannelRetryableError('sms', held, 'billing notice: held at send');
+    if (held) throw new NoticeHeldAtSend('sms', held, 'billing notice: held at send');
     const marked = await database
       .update(schema.billingNotices)
       .set({ mayHaveLanded: true, updatedAt: deps.now() })
       .where(and(eq(schema.billingNotices.id, row.id), eq(schema.billingNotices.status, 'sending')))
       .returning({ id: schema.billingNotices.id });
     if (marked.length === 0) {
-      throw new ChannelRetryableError('sms', LEFT_SENDING, 'billing notice: row left sending');
+      throw new NoticeHeldAtSend('sms', LEFT_SENDING, 'billing notice: row left sending');
     }
   };
   // `row` is as it stood before this attempt, so an earlier POST stays on the record.
@@ -426,11 +429,11 @@ async function writeAndSend(
   try {
     result = await deps.dispatch(message, { beforeSend, noPostMade });
   } catch (err) {
-    if (err instanceof ChannelRetryableError && err.code === LEFT_SENDING) return 'skipped';
+    if (err instanceof NoticeHeldAtSend && err.code === LEFT_SENDING) return 'skipped';
     // A throw after Linq accepted (the thread write, say) is still a text they received.
     if (await settleIfAccepted(database, row, deps)) return 'sent';
     if (!(err instanceof ChannelRetryableError)) throw err;
-    if (err.code === OPT_OUT_HELD || err.code === FACTS_MOVED) {
+    if (err instanceof NoticeHeldAtSend) {
       const wait = err.code === OPT_OUT_HELD ? OPT_OUT_RETRY_MS : FACTS_MOVED_RETRY_MS;
       await returnToOpen(
         database,

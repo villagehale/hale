@@ -1111,6 +1111,20 @@ describe('a send Linq may have taken', () => {
     },
   );
 
+  it.each(['opt_out_held', 'facts_moved', 'left_sending'])(
+    'a Linq 502 carrying the code %s is a try that may have landed, not this lane\'s hold',
+    async (code) => {
+      const linq = realLinq([() => Response.json({ error: { code } }, { status: 502 }), accepted]);
+      const notice = await insertNotice({});
+      await tick({ dispatch: linq.dispatch });
+      const row = await noticeRow(notice.id);
+      expect(linq.posts).toHaveLength(1);
+      expect(row.status).toBe('unconfirmed');
+      expect(row.mayHaveLanded).toBe(true);
+      expect(row.attempts).toBe(1);
+    },
+  );
+
   it.each(['garbled_text', 'preview_capture'])(
     'Linq answering a real POST with the code %s does not clear the column',
     async (code) => {

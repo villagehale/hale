@@ -2,6 +2,7 @@ import { type BillingNoticeEventFacts, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
+import { createFakeStripe } from '~/lib/testing/fake-stripe';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 import { addsNoticeSubject, endedSubscriptionIds, mergeNoticeFacts } from './merge';
@@ -662,6 +663,95 @@ describe('a redelivery proves the first outcome through the real apply', () => {
   it('a duplicate with no audit row at all records nothing', async () => {
     await expect(record(deletedEvent(), { status: 'duplicate' })).resolves.toBe('not_applied');
     expect(await noticeRows()).toHaveLength(0);
+  });
+});
+
+describe('a redelivery after the plan settled from Stripe', () => {
+  const priceMap = { price_plus: 'plus' } as const;
+  const periodStart = secs(minutesBefore(60));
+  const periodEnd = periodStart + 365 * 86_400;
+
+  function settling(refunded: boolean, otherPaidSubscription = false) {
+    const fake = createFakeStripe();
+    if (otherPaidSubscription) {
+      fake.addSubscription({
+        id: `sub_other_${serial}`,
+        customer: `cus_family_${serial}`,
+        familyId,
+        created: periodStart,
+        periodStart,
+        periodEnd,
+      });
+      fake.addPaidInvoice({
+        invoiceId: `in_other_${serial}`,
+        chargeId: `ch_other_${serial}`,
+        paymentIntentId: `pi_other_${serial}`,
+        subscriptionId: `sub_other_${serial}`,
+        periodStart,
+        periodEnd,
+      });
+    }
+    const subscriptionId = `sub_${serial}`;
+    fake.addSubscription({
+      id: subscriptionId,
+      customer: `cus_family_${serial}`,
+      familyId,
+      created: periodStart,
+      periodStart,
+      periodEnd,
+    });
+    fake.addPaidInvoice({
+      invoiceId: `in_${serial}`,
+      chargeId: `ch_${serial}`,
+      paymentIntentId: `pi_${serial}`,
+      subscriptionId,
+      periodStart,
+      periodEnd,
+      refunded,
+    });
+    const deps = {
+      now: NOW,
+      env: {
+        STRIPE_BILLING_REVOKE_ENABLED: 'true',
+        STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'true',
+        STRIPE_SECRET_KEY: 'sk_test_not_a_secret',
+      } as Record<string, string | undefined>,
+      stripeFetch: fake.fetch,
+      onUnresolvedRevoke: async () => 'sent' as const,
+      onPlanUnsettled: async () => 'sent' as const,
+      onDisallowedPrice: async () => 'sent' as const,
+    };
+    return (event: unknown) => applyStripeBillingEvent(event, db.database, priceMap, {}, deps);
+  }
+
+  it('a tier move the event did not earn records no payment notice, first or on redelivery', async () => {
+    const apply = settling(true, true);
+    const event = checkoutEvent();
+
+    const first = await apply(event);
+    expect(first).toEqual({ status: 'kept', reason: 'not_entitled' });
+    const [family] = await db.database
+      .select({ planTier: schema.families.planTier })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId));
+    expect(family?.planTier).toBe('plus');
+    await expect(record(event, first)).resolves.toBe('not_applied');
+
+    expect((await apply(event)).status).toBe('duplicate');
+    await expect(record(event, { status: 'duplicate' })).resolves.toBe('not_applied');
+    expect(await noticeRows()).toHaveLength(0);
+  });
+
+  it('positive control: a paid grant through the same path records on its redelivery', async () => {
+    const apply = settling(false);
+    const event = checkoutEvent();
+
+    expect(await apply(event)).toEqual({ status: 'applied', tier: 'plus' });
+    expect((await apply(event)).status).toBe('duplicate');
+    await expect(record(event, { status: 'duplicate' })).resolves.toBe('recorded');
+    const [row] = await noticeRows();
+    expect(row?.lane).toBe('payment');
+    expect(row?.facts.sessionTier).toBe('plus');
   });
 });
 
