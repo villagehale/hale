@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import { hasInviteAStopWouldClose } from '~/lib/channel/caregiver/invites';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { hasDrawAStopWouldHold } from '~/lib/channel/linq/secret-santa-send';
 import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { threadIfParent } from '~/lib/channel/thread';
@@ -26,9 +28,19 @@ import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/pr
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
-import { MESSAGE_HOLD, placeHold, releaseHeldMessage } from './opt-out-hold';
+import {
+  MESSAGE_HOLD,
+  STOP_PENDING_HOLD,
+  markStopPending,
+  placeHold,
+  releaseHeldMessage,
+  releaseStoppedMessage,
+} from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
-import { optOutUnreadHoldTurnEnabled } from './opt-out-turn-flags';
+import {
+  optOutHoldUntilStopCommitsEnabled,
+  optOutUnreadHoldTurnEnabled,
+} from './opt-out-turn-flags';
 import {
   type IntakeSession,
   type TranscriptEntry,
@@ -57,7 +69,9 @@ import type { ChannelTransport } from './transport';
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
  * that number alone, silently: a stop read late is applied at once and nothing is texted
  * to the number, day or night. Its owner already said stop; only a text they send later,
- * which the live path answers, opens the thread again.
+ * which the live path answers, opens the thread again. A row marked as a pending stop was
+ * already read as one on a live turn whose stop did not record: it is retried as a stop
+ * and never read again.
  *
  * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
@@ -272,10 +286,13 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
-  if (row.kind !== MESSAGE_HOLD) return 'held_for_operator';
+  const stopPending = row.kind === STOP_PENDING_HOLD;
+  if (row.kind !== MESSAGE_HOLD && !stopPending) return 'held_for_operator';
   // A reply to this text was sent: nothing is read, and nothing is sent again. One still
-  // leaving is waited for; one that never left is not a reply.
-  const reply = await crisisReplyState(database, row.providerMessageId, now);
+  // leaving is waited for; one that never left is not a reply. A pending stop still runs.
+  const reply = stopPending
+    ? 'unanswered'
+    : await crisisReplyState(database, row.providerMessageId, now);
   if (reply === 'in_flight') return 'crisis_reply_in_flight';
   if (reply === 'answered') {
     await releaseHeldMessage(database, row.providerMessageId);
@@ -290,7 +307,10 @@ async function recoverRow(
       // and the failure-page sweep pages it as "not in ledger".
       return 'unrecorded';
     }
-    await releaseHeldMessage(database, row.providerMessageId);
+    // The stop may not have reached these, and with no text it cannot be run again. A stop
+    // that did commit has cleared them, so it is not held forever.
+    if (stopPending && (await stopNotYetApplied(database, row))) return 'unrecorded';
+    await releaseRow(database, row, stopPending);
     return 'no_channel';
   }
 
@@ -298,7 +318,11 @@ async function recoverRow(
   // text is never handed to the model again: the reply is written from what was read then.
   const crisis = await crisisClaimFor(database, row.providerMessageId);
   let outcome: HeldReadOutcome;
-  if (crisis) {
+  let stopMarked = stopPending;
+  if (stopPending) {
+    // Already read as a stop on a live turn: retried as one, never handed to the model.
+    outcome = await lateStop(database, deps, row, held);
+  } else if (crisis) {
     const { language, situation, who } = crisis;
     outcome = await lateCrisis(database, deps, row, held, crisis.kind, {
       language,
@@ -312,6 +336,15 @@ async function recoverRow(
       late: { receivedAt: held.inbound.receivedAt, readAt: now },
     });
     if (reading === null) return 'read_failed';
+    // Before anything acts on the read: whatever fails after this, a later "none" cannot
+    // release a parent who said stop. A mark that throws leaves the row to be read again.
+    if (reading.intent === 'stop' && optOutHoldUntilStopCommitsEnabled()) {
+      await markStopPending(database, {
+        phoneHash: row.phoneHash,
+        providerMessageId: row.providerMessageId,
+      });
+      stopMarked = true;
+    }
     outcome = await settleReading(database, deps, row, held, reading);
   }
   if (KEPT.has(outcome)) return outcome;
@@ -335,8 +368,23 @@ async function recoverRow(
     // is the record, as on the live path.
     console.info({ outcome }, 'opt-out recovery: held text read for a sender with no family');
   }
-  await releaseHeldMessage(database, row.providerMessageId);
+  await releaseRow(database, row, stopMarked);
   return outcome;
+}
+
+/** `stopMarked` is what this pass claimed or wrote, so a stop another turn marked pending
+ * meanwhile is not released by a read of the ordinary text it was. */
+function releaseRow(
+  database: Database,
+  row: HeldRow,
+  stopMarked: boolean,
+): Promise<'released' | 'not_held'> {
+  return stopMarked
+    ? releaseStoppedMessage(database, {
+        phoneHash: row.phoneHash,
+        providerMessageId: row.providerMessageId,
+      })
+    : releaseHeldMessage(database, row.providerMessageId);
 }
 
 /**
@@ -977,6 +1025,20 @@ async function numberReachable(database: Database, phoneHash: string): Promise<b
     )
     .limit(1);
   return session !== undefined;
+}
+
+/** A record on this number that {@link handleStop} writes first and that still stands: an
+ * invite it would close, a guest's reminder opt-in, or a Secret Santa draw it could get. */
+async function stopNotYetApplied(database: Database, row: HeldRow): Promise<boolean> {
+  const timeline = await numberHolderTimeline(database, row.phoneHash);
+  const guestOptIn = timeline.some(
+    (holding) => holding.kind === 'guest_reminders' && holding.end === null,
+  );
+  return (
+    guestOptIn ||
+    (await hasInviteAStopWouldClose(database, row.phoneHash, row.heldAt)) ||
+    hasDrawAStopWouldHold(database, row.phoneHash)
+  );
 }
 
 /**
