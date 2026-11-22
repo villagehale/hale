@@ -184,6 +184,33 @@ describe('syncConnection — Calendar', () => {
     expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
   });
 
+  it('enqueues the event id as Google sent it, beside a redacted summary', async () => {
+    // The id holds a ZIP glued to hex letters. A scrubbed id could give two events one
+    // dedup hash.
+    const glued = '0e14f18e70064eda';
+    const { fetchImpl } = routedFetch([
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: {
+          items: [
+            {
+              id: glued,
+              summary: 'Mila swim near 99999',
+              start: { dateTime: '2026-07-10T15:00:00Z' },
+            },
+          ],
+          nextSyncToken: 'SYNC-2',
+        },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    const event = onlyEvent(cap);
+    expect(event.payload.id).toBe(glued);
+    expect(event.payload.summary).toBe('[CHILD] swim near [POSTAL]');
+  });
+
   it('on 410 GONE drops the stale syncToken and full-resyncs', async () => {
     let calls = 0;
     const fetchImpl: GoogleFetch = async (url) => {
@@ -1498,6 +1525,33 @@ describe('syncConnection — Drive', () => {
     expect(event.source).toBe('gdrive');
     expect(JSON.stringify(event.payload)).not.toContain('Mila');
     expect(cap.cursor).toEqual({ pageToken: 'P2' });
+  });
+
+  it('enqueues the file id as Google sent it, beside a redacted name', async () => {
+    // The id holds a ZIP glued to hex letters. A scrubbed id could give two files one
+    // dedup hash.
+    const glued = '0e14f18e70064eda';
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('changes/startPageToken')) {
+        return { ok: true, status: 200, json: async () => ({ startPageToken: 'P1' }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          changes: [
+            { file: { id: glued, name: 'Mila report card.pdf', mimeType: 'application/pdf' } },
+          ],
+          newStartPageToken: 'P2',
+        }),
+      };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gdrive', {}), deps);
+
+    const event = onlyEvent(cap);
+    expect(event.payload.id).toBe(glued);
+    expect(event.payload.name).toBe('[CHILD] report card.pdf');
   });
 });
 

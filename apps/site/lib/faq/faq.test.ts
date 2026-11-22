@@ -83,7 +83,7 @@ describe('the FAQ this build serves', () => {
   it('drops place names and the outside-Canada question', () => {
     const blob = FAQ.map((item) => `${item.question} ${item.answer}`).join('\n');
     expect(blob).not.toMatch(/Georgetown|GTA|EarlyON|Stouffville|outside Canada|stored in Canada/i);
-    expect(blob).toContain('Village Hale Technologies Inc., a small parent-founded company');
+    expect(blob).toContain('Village Hale Technologies Inc., a parent-founded company');
     expect(blob).toContain('Is Hale official?');
   });
 

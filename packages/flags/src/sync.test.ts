@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FLAGS, PAYMENT_ENV_ONLY } from './catalog.js';
+import { FLAGS, type FlagSpec, PAYMENT_ENV_ONLY } from './catalog.js';
 import { syncFlags } from './sync.js';
+
+const SYNCED = (FLAGS as readonly FlagSpec[]).filter((spec) => !spec.envOnly);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -19,7 +21,7 @@ describe('syncFlags', () => {
     });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(result.dry).toBe(true);
-    expect(result.flags.length).toBe(FLAGS.length);
+    expect(result.flags.length).toBe(SYNCED.length);
     expect(result.flags.every((row) => row.action === 'would-create')).toBe(true);
     expect(result.skippedPayments).toEqual(PAYMENT_ENV_ONLY.map((row) => row.env));
     expect(result.flags.some((row) => row.env.includes('PAYMENT'))).toBe(false);
@@ -62,7 +64,8 @@ describe('syncFlags', () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(result.flags.find((row) => row.key === 'f14')?.action).toBe('unchanged');
-    expect(created.length).toBe(FLAGS.length - 1);
+    expect(created.length).toBe(SYNCED.length - 1);
+    expect(created).not.toContain('ingest-body-max');
     expect(created).not.toContain('browser-use-signup-payment');
     expect(created).toContain('authorized-signup');
     expect(created).toContain('claim-reader-mode');

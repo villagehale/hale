@@ -1422,7 +1422,7 @@ export function readListedDirectChatId(payload: unknown): string | null {
   return null;
 }
 
-async function findLinqDirectChat(input: {
+export async function findLinqDirectChat(input: {
   from: string;
   to: string;
   fetch?: typeof fetch;
