@@ -3,12 +3,13 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
+import { forceToolJson } from '~/lib/pipeline/structured';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
-import { NUDGE_OPT_OUT } from './shell';
+import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 import {
   WEEKDAY_ASK_MAX_TOKENS,
   WEEKDAY_ASK_TOOL,
@@ -24,7 +25,7 @@ import {
  * venue, the day, the kids' names, the weather claim — is injected by DECIDE, and the
  * composed message is checked back against those facts before it is allowed near a
  * parent. The model cannot invent a venue Hale never found, because a message carrying
- * one is discarded and nothing goes out in its place.
+ * one is discarded and the DETERMINISTIC render goes out in its place.
  *
  * The one addition over M3's shape, and it is the reason this file is not just a copy:
  * this message is UNSOLICITED. {@link NUDGE_OPT_OUT} is not the model's to write — a
@@ -32,11 +33,11 @@ import {
  * (founder decision, 2026-10-01).
  */
 
-const VOICE_MAX_TOKENS = 300;
+export const VOICE_MAX_TOKENS = 300;
 
-// Re-exported so every existing importer keeps its import path: this moved to ./shell
+// Re-exported so every existing importer keeps its import path: these moved to ./shell
 // only to break the cycle between this file and the static health renderer.
-export { NUDGE_OPT_OUT };
+export { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT };
 
 export interface NudgeVoice {
   message: string;
@@ -56,8 +57,8 @@ export interface NudgeVoice {
  */
 export type VoicedNudge = Exclude<Nudge, WeekdayCareAsk>;
 
-/** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and
- * nothing is sent. */
+/** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
+ * caller falls back to the deterministic render. */
 const nudgeVoiceSchema = z.object({ message: z.string() }).strict();
 
 /**
@@ -166,24 +167,80 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded and free of the opt-out line.
- * Its length is the model's to choose (Dec 1 rule 2); VOICE_MAX_TOKENS bounds a runaway. */
+/** Whether a composed message may be sent as-is: grounded, free of the opt-out line,
+ * and inside the segment budget. The budget still reserves the old line so a message
+ * that used to fit still fits; the line itself is not appended. */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
-  return !message.includes(NUDGE_OPT_OUT);
+  if (message.includes(NUDGE_OPT_OUT)) return false;
+  return smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
+}
+
+function joinNames(names: readonly string[]): string {
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0] as string;
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+function dayLabel(day: string): string {
+  return sentenceCase(day);
+}
+
+/** Capitalize a phrase authored to sit mid-sentence, at the point it becomes the start
+ * of one. `weatherFact` is written as a clause ("the weekend forecast is wet") because
+ * the composer weaves it into its own sentence; the deterministic render leads with it. */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
- * Why a nudge has no text: four problems with four different fixes. A missing key or the
- * voice kill switch, a deploy without its skill, a provider that did not answer, and an
- * answer that came back but could not be used. Named on the audit row and the #ops page.
+ * The grounded render: every fact from the decision, no model involved. It is what
+ * goes out whenever the composed voice is unusable or unavailable — so an outage, a
+ * bad answer, or a fabricated venue costs a parent WARMTH, never accuracy.
+ *
+ * DELIBERATELY a grounded terminal substitute, not a deferral: unlike the intro and
+ * follow-up composers, which send nothing when they cannot compose, a nudge is
+ * time-sensitive (a registration window, a dated swap), so an on-time plain render
+ * beats silence. This divergence from the followup-defers doctrine is intended.
+ *
+ * Plain ASCII on purpose: one typographic dash would flip the whole SMS to UCS-2 and
+ * halve the character budget (see sms-segments.ts).
  */
-export type NudgeUnwrittenReason = 'no_client' | 'skill_load' | 'model_failed' | 'unusable';
+export function renderNudgeDeterministically(nudge: Nudge): string {
+  // Weekday care and empty Saturday have no canned sentence. The writer speaks,
+  // or the send does not happen.
+  if (nudge.kind === 'weekday_care' || nudge.kind === 'empty_saturday') {
+    throw new Error(`renderNudgeDeterministically: ${nudge.kind} has no template`);
+  }
 
-/** The text for one decision, or why there is none. No fixed sentence stands behind it. */
-export type NudgeWrite = { message: string } | { unwritten: NudgeUnwrittenReason };
+  if (nudge.kind === 'registration') {
+    const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
+    const resident = nudge.residentNote ? ` - ${nudge.residentNote}` : '';
+    // The hedge is the whole point of ageApproximate: the match rests on a ±6-month
+    // tolerance around an age the parent gave in words, so asserting the band would be
+    // asserting something Hale does not know.
+    const hedge = nudge.ageApproximate ? ' Worth a look if they are still in that band.' : '';
+    return `${townLabel(nudge.windowRef.municipality)} ${nudge.windowRef.cycleLabel} registration opens ${nudge.opensAtLocal}${who}${resident}.${hedge}`;
+  }
 
-function withActivityLink(message: string, url: string | null): string {
+  if (nudge.kind === 'weekday_dropin') {
+    const venue = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
+    const kids = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
+    return `${dayLabel(nudge.weekday)} weekday drop-in: ${nudge.candidateRef.title}${venue}${kids}.`;
+  }
+
+  const where = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
+  const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
+  const why = nudge.whyFacts.length > 0 ? ` (${nudge.whyFacts.join(', ')})` : '';
+  return `${sentenceCase(nudge.weatherFact)}, so ${dayLabel(nudge.day)}: ${nudge.candidateRef.title}${where}${who}${why}.`;
+}
+
+/**
+ * The nudge message for one decision. The model composes; the checks decide whether
+ * its words ship. A null client (no API key, or the voice kill switch) skips the call
+ * entirely — the deterministic render is a first-class outcome, not an error path.
+ */
+export function withActivityLink(message: string, url: string | null): string {
   if (url === null || message.includes(url)) return message;
   return `${message} ${url}`;
 }
@@ -196,16 +253,16 @@ function withActivityLink(message: string, url: string | null): string {
 async function composeEmptySaturday(
   nudge: EmptySaturdayNudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
-): Promise<NudgeWrite> {
-  if (!deps.client) return { unwritten: 'no_client' };
+): Promise<string | null> {
+  if (!deps.client) return null;
   let skill: Awaited<ReturnType<typeof loadNudgeVoiceSkill>>;
   try {
     skill = await loadNudgeVoiceSkill();
   } catch (err) {
     console.error({ err, familyId: deps.familyId }, 'nudge: skill load failed - saturday unvoiced');
-    return { unwritten: 'skill_load' };
+    return null;
   }
-  const { voice, reason } = await composeVoice<NudgeVoice>({
+  const { voice } = await composeVoice<NudgeVoice>({
     skill,
     context: nudgeVoiceContext(nudge),
     factSlots: nudgeFactSlots(nudge),
@@ -218,11 +275,11 @@ async function composeEmptySaturday(
     traceName: 'nudge-voice',
     maxTokens: VOICE_MAX_TOKENS,
   });
-  if (!voice) return { unwritten: reason === 'unavailable' ? 'model_failed' : 'unusable' };
-  if (!usableNudgeMessage(voice.message, nudge)) return { unwritten: 'unusable' };
+  if (!voice || !usableNudgeMessage(voice.message, nudge)) return null;
   const linked = withActivityLink(voice.message, nudge.url);
-  if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return { unwritten: 'unusable' };
-  return { message: linked };
+  if (smsSegments(`${linked}\n\n${NUDGE_OPT_OUT}`) > MAX_NUDGE_SEGMENTS) return null;
+  if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return null;
+  return linked;
 }
 
 export const WEEKDAY_ASK_SKILL = 'weekday-care-ask';
@@ -236,16 +293,10 @@ export const WEEKDAY_ASK_SKILL = 'weekday-care-ask';
 async function composeWeekdayCareAsk(
   nudge: WeekdayCareAsk,
   deps: { familyId: string; database: Database; client: AgentClient | null },
-): Promise<NudgeWrite> {
-  if (!deps.client) return { unwritten: 'no_client' };
+): Promise<string | null> {
+  if (!deps.client) return null;
   const language = await familySpeechLanguage(deps.database, deps.familyId);
-  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-  try {
-    skill = await loadCronSkill(WEEKDAY_ASK_SKILL);
-  } catch (err) {
-    console.error({ err, familyId: deps.familyId }, 'nudge: skill load failed - ask unvoiced');
-    return { unwritten: 'skill_load' };
-  }
+  const skill = await loadCronSkill(WEEKDAY_ASK_SKILL);
   let value: unknown;
   try {
     const result = await forceToolJson({
@@ -266,9 +317,7 @@ async function composeWeekdayCareAsk(
       { err: err instanceof Error ? err.constructor.name : 'unknown', familyId: deps.familyId },
       'nudge: weekday ask model call failed - unvoiced',
     );
-    // An answer that came back with nothing usable is a bad draft. Only a call that did
-    // not come back at all is an outage.
-    return { unwritten: err instanceof StructuredOutputError ? 'unusable' : 'model_failed' };
+    return null;
   }
   const read = readWeekdayAsk(value, nudge.ask);
   if ('skipped' in read) {
@@ -276,33 +325,36 @@ async function composeWeekdayCareAsk(
       { familyId: deps.familyId, reason: read.skipped, prompt: nudge.ask.prompt },
       'nudge: weekday ask refused - unvoiced',
     );
-    return { unwritten: 'unusable' };
+    return null;
   }
-  return { message: read.message };
+  return read.message;
 }
 
-/**
- * The nudge message for one decision. The model composes; the checks decide whether its
- * words ship. When it cannot be written there is nothing to send, and the caller is told
- * why (Dec 1 rule 1).
- */
 export async function composeNudgeMessage(
   nudge: Nudge,
   deps: { familyId: string; database: Database; client: AgentClient | null },
-): Promise<NudgeWrite> {
+): Promise<string | null> {
   if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
   if (nudge.kind === 'weekday_care') return composeWeekdayCareAsk(nudge, deps);
-  if (!deps.client) return { unwritten: 'no_client' };
+  const deterministic = renderNudgeDeterministically(nudge);
+  if (!deps.client) {
+    return deterministic;
+  }
 
+  // Inside the fallback boundary, like M3's: a proactive send that is otherwise ready
+  // should still go out in Hale's plainest words rather than not go out at all.
   let skill: Awaited<ReturnType<typeof loadNudgeVoiceSkill>>;
   try {
     skill = await loadNudgeVoiceSkill();
   } catch (err) {
-    console.error({ err, familyId: deps.familyId }, 'nudge: skill load failed - unvoiced');
-    return { unwritten: 'skill_load' };
+    console.error(
+      { err, familyId: deps.familyId },
+      'nudge: skill load failed - deterministic render',
+    );
+    return deterministic;
   }
 
-  const { voice, reason } = await composeVoice<NudgeVoice>({
+  const { voice } = await composeVoice<NudgeVoice>({
     skill,
     context: nudgeVoiceContext(nudge),
     factSlots: nudgeFactSlots(nudge),
@@ -316,13 +368,14 @@ export async function composeNudgeMessage(
     maxTokens: VOICE_MAX_TOKENS,
   });
 
-  if (!voice) return { unwritten: reason === 'unavailable' ? 'model_failed' : 'unusable' };
-  if (!usableNudgeMessage(voice.message, nudge)) {
-    console.error(
-      { familyId: deps.familyId },
-      'nudge: composed message failed the grounding check - unvoiced',
-    );
-    return { unwritten: 'unusable' };
+  if (!voice || !usableNudgeMessage(voice.message, nudge)) {
+    if (voice) {
+      console.error(
+        { familyId: deps.familyId },
+        'nudge: composed message failed the grounding/budget check - deterministic render',
+      );
+    }
+    return deterministic;
   }
-  return { message: voice.message };
+  return voice.message;
 }

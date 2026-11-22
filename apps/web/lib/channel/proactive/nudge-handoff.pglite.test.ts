@@ -17,7 +17,6 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { matchHealthCheckpoints } from '~/lib/health/match';
-import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type ProactiveReviewDeps, runProactiveReview } from './review';
 
@@ -41,10 +40,9 @@ vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
 
 /**
  * VIL-226 · the nudge sweep's hand-off to the family queue, over real Postgres and the
- * real decide. A weekday drop-in find is the subject, and its words are a line of its
- * facts (testing/nudge-writer.ts): what the model writes is the nudge eval's job, so the
- * three modes differ only in what the flag does. Unset is the positive control — the
- * find goes out and nothing is queued.
+ * real decide. A weekday drop-in find is the subject because it needs no model: the
+ * deterministic render IS its text, so the three modes differ only in what the flag
+ * does. Unset is the positive control — the find goes out and nothing is queued.
  */
 
 const TZ = 'America/New_York';
@@ -166,7 +164,6 @@ function deps(transport: FakeTransport): NudgeRunDeps {
     buildGate: openGate,
     transport,
     client: null,
-    composeMessage: factNudgeWriter,
   };
 }
 

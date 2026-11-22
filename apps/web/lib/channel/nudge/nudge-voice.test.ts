@@ -4,24 +4,10 @@ vi.mock('~/lib/channel/linq/family-outbound', async (importOriginal) => ({
   ...(await importOriginal<typeof import('~/lib/channel/linq/family-outbound')>()),
   familySpeechLanguage: async () => 'en',
 }));
-
-/** A skill that cannot be loaded, switched on per test: the real loader otherwise. */
-const skillLoad = vi.hoisted(() => ({ fail: false }));
-vi.mock('~/lib/cron/skill', async (importOriginal) => {
-  const real = await importOriginal<typeof import('~/lib/cron/skill')>();
-  const guarded = <T>(load: () => Promise<T>) => {
-    if (skillLoad.fail) throw new Error('skill missing');
-    return load();
-  };
-  return {
-    ...real,
-    loadCronSkill: async (name: string) => guarded(() => real.loadCronSkill(name)),
-    loadNudgeVoiceSkill: async () => guarded(() => real.loadNudgeVoiceSkill()),
-  };
-});
-import type { AgentClient } from '@hale/agent';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type { Nudge } from './nudge-decide.js';
 import {
+  MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
   type VoicedNudge,
   composeNudgeMessage,
@@ -29,6 +15,7 @@ import {
   nudgeVoiceContext,
   nudgeVoiceStrings,
   parseNudgeVoiceAnswer,
+  renderNudgeDeterministically,
   usableNudgeMessage,
 } from './nudge-voice.js';
 
@@ -39,9 +26,10 @@ import {
  *
  * What is proved:
  *   - the model is handed the decision's facts and no internal identifiers;
- *   - a message that invents a time or a link, or writes the opt-out line itself, is
- *     REJECTED, and its length is never a reason (Dec 1 rule 2);
- *   - when the model cannot write it, nothing is written: there is no fixed sentence.
+ *   - a message that invents a time or a link, writes the opt-out line itself, or
+ *     blows the segment budget once the opt-out is appended, is REJECTED;
+ *   - the deterministic render is honest, grounded, in budget, and plain ASCII in
+ *     every shape — so a model outage costs a parent warmth, never accuracy.
  */
 
 const REGISTRATION: Nudge = {
@@ -67,6 +55,15 @@ const SWAP: Nudge = {
   whyFacts: ['free', 'indoor'],
 };
 
+const BARE_SWAP: Nudge = {
+  kind: 'weather_swap',
+  candidateRef: { id: 'cand-uuid-2', title: 'Splash pad', venueName: null },
+  day: 'sunday',
+  kidNames: [],
+  weatherFact: 'the forecast looks dry',
+  whyFacts: [],
+};
+
 const DROP_IN: Nudge = {
   kind: 'weekday_dropin',
   candidateRef: { id: 'cand-uuid-3', title: 'EarlyON drop-in', venueName: 'Armour Heights' },
@@ -75,16 +72,17 @@ const DROP_IN: Nudge = {
   kidNames: ['Mia'],
 };
 
-const SATURDAY: Nudge = {
-  kind: 'empty_saturday',
-  kidName: 'Maya',
-  saturday: '2026-10-10',
-  candidateId: 'sat-1',
-  title: 'Fanous Lantern Craft',
-  venueName: 'North York Central Library',
-  whenLabel: '2:00 p.m.',
-  url: 'https://tpl.example/lantern',
+const BARE_DROP_IN: Nudge = {
+  kind: 'weekday_dropin',
+  candidateRef: { id: 'cand-uuid-4', title: 'Baby storytime', venueName: null },
+  eventDate: '2026-08-05',
+  weekday: 'wednesday',
+  kidNames: [],
 };
+
+/** The kinds a model may compose. M8's health checkpoints are deliberately absent —
+ * they are static copy and never touch the voice path (see health/copy.ts). */
+const ALL: VoicedNudge[] = [REGISTRATION, SWAP, BARE_SWAP, DROP_IN, BARE_DROP_IN];
 
 describe('nudgeVoiceContext', () => {
   it('hands the model the facts and no internal identifiers', () => {
@@ -191,9 +189,93 @@ describe('usableNudgeMessage', () => {
     expect(usableNudgeMessage(`Saturday looks good. ${NUDGE_OPT_OUT}`, SWAP)).toBe(false);
   });
 
-  it('never refuses a grounded message for its length', () => {
+  it('rejects a message that blows the segment budget once the opt-out is appended', () => {
     const long = 'Library story time suits Maya. '.repeat(20);
-    expect(usableNudgeMessage(long, SWAP)).toBe(true);
+    expect(smsSegments(`${long}\n\n${NUDGE_OPT_OUT}`)).toBeGreaterThan(MAX_NUDGE_SEGMENTS);
+    expect(usableNudgeMessage(long, SWAP)).toBe(false);
+  });
+});
+
+describe('renderNudgeDeterministically', () => {
+  it('names the town, the cycle, when it opens, and the kids it is for', () => {
+    const message = renderNudgeDeterministically(REGISTRATION);
+    expect(message).toContain('Richmond Hill');
+    expect(message).toContain('Fall 2026');
+    expect(message).toContain('Aug 5, 10:30 a.m.');
+    expect(message).toContain('Maya');
+    expect(message).toContain('Leo');
+    expect(message).toContain('residents can register first');
+  });
+
+  it('hedges an approximate age fit rather than asserting the band', () => {
+    const message = renderNudgeDeterministically({
+      ...REGISTRATION,
+      ageApproximate: true,
+    } as Nudge);
+    expect(message.toLowerCase()).toContain('if');
+  });
+
+  it('names the swap, its day, its weather reason, and the kids it fits', () => {
+    const message = renderNudgeDeterministically(SWAP);
+    expect(message).toContain('Library story time');
+    expect(message).toContain('Riverdale Library');
+    expect(message).toContain('Saturday');
+    expect(message).toContain('The weekend forecast is wet');
+    expect(message).toContain('Maya');
+  });
+
+  it('says nothing about a venue or kids it was not given', () => {
+    const message = renderNudgeDeterministically(BARE_SWAP);
+    expect(message).toContain('Splash pad');
+    expect(message).not.toContain(' at ');
+    expect(message).not.toContain(' for ');
+  });
+
+  /**
+   * VIL-360 · the weekday find. The day is the only time-shaped fact there is — the
+   * candidate reader does not select a clock time — so the render says the weekday and
+   * stops rather than reaching for one.
+   */
+  it('names the weekday, the session and the venue, and no clock time', () => {
+    const message = renderNudgeDeterministically(DROP_IN);
+    expect(message).toBe('Tuesday weekday drop-in: EarlyON drop-in at Armour Heights for Mia.');
+    expect(message).not.toMatch(/\d/);
+  });
+
+  it('says nothing about a venue or kids the weekday find was not given', () => {
+    const message = renderNudgeDeterministically(BARE_DROP_IN);
+    expect(message).toContain('Baby storytime');
+    expect(message).toContain('Wednesday');
+    expect(message).not.toContain(' at ');
+    expect(message).not.toContain(' for ');
+  });
+
+  it('starts the sentence with a capital — the weather fact is a mid-sentence phrase', () => {
+    // weatherFact is authored as a clause ('the weekend forecast is wet'), and the swap
+    // render puts it FIRST. Uncapitalized it is the only Hale text that opens lowercase.
+    for (const nudge of [SWAP, BARE_SWAP]) {
+      const first = renderNudgeDeterministically(nudge).charAt(0);
+      expect(first).toBe(first.toUpperCase());
+    }
+  });
+
+  it('never writes the opt-out line — the shell appends it exactly once', () => {
+    for (const nudge of ALL) {
+      expect(renderNudgeDeterministically(nudge)).not.toContain(NUDGE_OPT_OUT);
+    }
+  });
+
+  it('is itself grounded and within budget in every shape', () => {
+    for (const nudge of ALL) {
+      expect(usableNudgeMessage(renderNudgeDeterministically(nudge), nudge)).toBe(true);
+    }
+  });
+
+  it('stays plain ASCII so the payload is billed as GSM-7, not UCS-2', () => {
+    for (const nudge of ALL) {
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
+      expect(renderNudgeDeterministically(nudge)).toMatch(/^[\x0A\x20-\x7E]*$/);
+    }
   });
 });
 
@@ -209,36 +291,7 @@ describe('composeNudgeMessage — weekday care', () => {
       { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
       { familyId: 'fam-1', database: {} as never, client: null },
     );
-    expect(message).toEqual({ unwritten: 'no_client' });
-  });
-
-  it('names a skill that will not load instead of throwing out of the sweep', async () => {
-    skillLoad.fail = true;
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const written = await composeNudgeMessage(
-        { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
-        { familyId: 'fam-1', database: {} as never, client: answering('{"message":"unread"}') },
-      );
-      expect(written).toEqual({ unwritten: 'skill_load' });
-    } finally {
-      skillLoad.fail = false;
-      errors.mockRestore();
-    }
-  });
-
-  it('counts an answer that came back unreadable as a bad draft, not an outage', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(
-      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
-      { familyId: 'fam-1', database: {} as never, client: answering('this is not json') },
-    );
-    const logged = errors.mock.calls.find(
-      ([, line]) => line === 'nudge: weekday ask model call failed - unvoiced',
-    );
-    errors.mockRestore();
-    expect(logged?.[0]).toEqual({ err: 'StructuredOutputError', familyId: 'fam-1' });
-    expect(written).toEqual({ unwritten: 'unusable' });
+    expect(message).toBeNull();
   });
 
   it('logs a failed model call by its error class, never the message', async () => {
@@ -257,7 +310,7 @@ describe('composeNudgeMessage — weekday care', () => {
         client: { messages: { create: fail, stream: fail } } as never,
       },
     );
-    expect(message).toEqual({ unwritten: 'model_failed' });
+    expect(message).toBeNull();
     const logged = errors.mock.calls.find(
       ([, line]) => line === 'nudge: weekday ask model call failed - unvoiced',
     );
@@ -265,208 +318,23 @@ describe('composeNudgeMessage — weekday care', () => {
     expect(JSON.stringify(errors.mock.calls)).not.toContain('QUOTED-REQUEST');
     errors.mockRestore();
   });
-
-  it('a draft the check refuses sends nothing', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(
-      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
-      {
-        familyId: 'fam-1',
-        database: {} as never,
-        client: answering(JSON.stringify({ message: 'Want weekday stuff too? Tuesday at 9:15?' })),
-      },
-    );
-    errors.mockRestore();
-    expect(written).toEqual({ unwritten: 'unusable' });
-  });
-
-  it('positive control: a good draft is what goes out, word for word', async () => {
-    // Claude's own answer for this ask (weekday-care-ask eval, weekend-fallback).
-    const draft =
-      "Hey, I just noticed everything I've sent you so far has been for the weekend. Want me to look at weekday stuff too?";
-    const written = await composeNudgeMessage(
-      { kind: 'weekday_care', ask: { prompt: 'weekend_fallback' } },
-      {
-        familyId: 'fam-1',
-        database: {} as never,
-        client: answering(JSON.stringify({ message: draft })),
-      },
-    );
-    expect(written).toEqual({ message: draft });
-  });
-});
-
-/**
- * The transport only: the fake drives the seam and its failure paths (rule #8). What
- * the model writes is the cached-real nudge eval's job (apps/worker/evals).
- */
-function answering(text: string): AgentClient {
-  return {
-    messages: {
-      create: vi.fn(async () => ({
-        content: [{ type: 'text', text }],
-        usage: { input_tokens: 100, output_tokens: 20 },
-      })),
-    },
-  } as unknown as AgentClient;
-}
-
-const failingCall = {
-  messages: {
-    create: vi.fn(async () => {
-      throw new Error('model unavailable');
-    }),
-  },
-} as unknown as AgentClient;
-
-/** Just enough database for composeVoice to record its agent_runs row. */
-const agentRunsDb = {
-  insert: () => ({ values: () => ({ returning: async () => [{ id: 'run-1' }] }) }),
-} as never;
-
-describe('composeNudgeMessage — when the model cannot write it, nothing is written', () => {
-  const KINDS: Array<[string, VoicedNudge, string]> = [
-    ['registration', REGISTRATION, 'Fall 2026 registration opens at 9:15.'],
-    ['weather_swap', SWAP, 'Library story time starts at 9:15 on Saturday.'],
-    ['weekday_dropin', DROP_IN, 'EarlyON drop-in starts at 9:15 on Tuesday.'],
-    ['empty_saturday', SATURDAY as VoicedNudge, 'Fanous Lantern Craft starts at 9:15 on Saturday.'],
-  ];
-
-  it.each(KINDS)('%s: no client', async (_kind, nudge) => {
-    const written = await composeNudgeMessage(nudge, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: null,
-    });
-    expect(written).toEqual({ unwritten: 'no_client' });
-  });
-
-  it.each(KINDS)('%s: the skill would not load', async (_kind, nudge) => {
-    skillLoad.fail = true;
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const written = await composeNudgeMessage(nudge, {
-        familyId: 'fam-1',
-        database: agentRunsDb,
-        client: answering('{"message":"never read"}'),
-      });
-      expect(written).toEqual({ unwritten: 'skill_load' });
-    } finally {
-      skillLoad.fail = false;
-      errors.mockRestore();
-    }
-  });
-
-  it.each(KINDS)('%s: a draft that fails the check', async (_kind, nudge, draft) => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(nudge, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: draft })),
-    });
-    errors.mockRestore();
-    expect(written).toEqual({ unwritten: 'unusable' });
-  });
-
-  it('a draft that passes the fact lint but writes the opt-out line', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(SWAP, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: `Saturday looks good. ${NUDGE_OPT_OUT}` })),
-    });
-    errors.mockRestore();
-    expect(written).toEqual({ unwritten: 'unusable' });
-  });
-
-  it('a correct draft naming a child outside the SMS alphabet goes out word for word', async () => {
-    const draft =
-      'Zoë could do Library story time at Riverdale Library on Saturday, since the weekend forecast is wet and it is free, indoors and easy to drop into.';
-    const written = await composeNudgeMessage({ ...SWAP, kidNames: ['Zoë'] } as VoicedNudge, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: draft })),
-    });
-    expect(written).toEqual({ message: draft });
-  });
-
-  it('a model call that throws is named apart from a bad draft', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(REGISTRATION, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: failingCall,
-    });
-    errors.mockRestore();
-    expect(written).toEqual({ unwritten: 'model_failed' });
-  });
-
-  it('positive control: a good draft is what goes out, word for word', async () => {
-    // Claude's own answer for this fixture (nudge eval, 2kid-window-soon-resident-head-start).
-    const draft =
-      'Richmond Hill Fall 2026 registration opens Aug 5, 10:30 a.m. for Maya and Leo - residents can register first.';
-    const written = await composeNudgeMessage(REGISTRATION, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: draft })),
-    });
-    expect(written).toEqual({ message: draft });
-  });
 });
 
 describe('composeNudgeMessage — empty Saturday', () => {
-  const GOOD_DRAFT =
-    'Maya could make Fanous Lantern Craft at North York Central Library on Saturday at 2:00 p.m.';
-
   it('does not fall back to the fixed sentence when there is no model', async () => {
-    const message = await composeNudgeMessage(SATURDAY, {
-      familyId: 'fam-1',
-      database: {} as never,
-      client: null,
-    });
-    expect(message).toEqual({ unwritten: 'no_client' });
-  });
-
-  it('a model call that throws is named apart from a bad draft', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const written = await composeNudgeMessage(SATURDAY, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: failingCall,
-    });
-    errors.mockRestore();
-    expect(written).toEqual({ unwritten: 'model_failed' });
-  });
-
-  it.each([
-    ['does not name the session', 'Maya could make a craft at the library on Saturday.'],
-    ['writes the opt-out line', `Fanous Lantern Craft on Saturday suits Maya. ${NUDGE_OPT_OUT}`],
-  ])('a draft that passes the fact lint but %s sends nothing', async (_why, draft) => {
-    const written = await composeNudgeMessage(SATURDAY, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: draft })),
-    });
-    expect(written).toEqual({ unwritten: 'unusable' });
-  });
-
-  it('a correct draft is not refused for its length once the link is on it', async () => {
-    const draft =
-      'Zoë could make Fanous Lantern Craft at North York Central Library on Saturday at 2:00 p.m.';
-    const written = await composeNudgeMessage({ ...SATURDAY, kidName: 'Zoë' } as VoicedNudge, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: draft })),
-    });
-    expect(written).toEqual({ message: `${draft} https://tpl.example/lantern` });
-  });
-
-  it('positive control: a good draft goes out word for word, with its link', async () => {
-    const written = await composeNudgeMessage(SATURDAY, {
-      familyId: 'fam-1',
-      database: agentRunsDb,
-      client: answering(JSON.stringify({ message: GOOD_DRAFT })),
-    });
-    expect(written).toEqual({ message: `${GOOD_DRAFT} https://tpl.example/lantern` });
+    const message = await composeNudgeMessage(
+      {
+        kind: 'empty_saturday',
+        kidName: 'Maya',
+        saturday: '2026-10-10',
+        candidateId: 'sat-1',
+        title: 'Fanous Lantern Craft',
+        venueName: 'North York Central Library',
+        whenLabel: '2:00 p.m.',
+        url: 'https://tpl.example/lantern',
+      },
+      { familyId: 'fam-1', database: {} as never, client: null },
+    );
+    expect(message).toBeNull();
   });
 });

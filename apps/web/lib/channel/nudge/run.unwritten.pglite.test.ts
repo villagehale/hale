@@ -10,15 +10,17 @@ import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   MAX_UNDATED_ASK_FAILURES,
+  type NudgeModelOnlyDeps,
   type NudgeRunDeps,
   UNDATED_ASK_FAILURE_WINDOW_DAYS,
   countRecentAskFailures,
+  defaultNudgeModelOnlyDeps,
   defaultNudgeRunDeps,
   runNudgeCron,
 } from './run';
 
 /**
- * Dec 1 rule 1 over real Postgres, with the REAL composer, audit writer, #ops pager and
+ * Dec 1 rule 1 (NUDGE_MODEL_ONLY_ENABLED on) over real Postgres, with the REAL composer, audit writer, #ops pager and
  * draft count. Only the world is faked: the phone, the Slack post, and the model's
  * transport, which answers with a stated draft so the check is what decides.
  */
@@ -110,6 +112,13 @@ function deps(transport: FakeTransport, client: AgentClient | null): NudgeRunDep
     buildGate: openGate,
     transport,
     client,
+  };
+}
+
+/** The real writer, count and pager; only the Slack post is faked. */
+function modelOnlyDeps(): NudgeModelOnlyDeps {
+  return {
+    ...defaultNudgeModelOnlyDeps(),
     page: (database, page) =>
       pageOps(database, page, {
         post: async (text) => {
@@ -119,6 +128,9 @@ function deps(transport: FakeTransport, client: AgentClient | null): NudgeRunDep
       }),
   };
 }
+
+const sweep = (runDeps: NudgeRunDeps, at: Date) =>
+  runNudgeCron(db.database, runDeps, at, modelOnlyDeps());
 
 /** The undated weekday-care ask is the only rung this family reaches. */
 function askDeps(transport: FakeTransport, client: AgentClient | null): NudgeRunDeps {
@@ -165,6 +177,7 @@ beforeEach(async () => {
   await db.exec('truncate table families, users, rate_limits cascade');
   vi.unstubAllEnvs();
   vi.stubEnv('F14_ENABLED', 'true');
+  vi.stubEnv('NUDGE_MODEL_ONLY_ENABLED', 'true');
   // With every default-off flag on (CI's advisory job), these stop or reroute a send
   // before the writer runs. Off here, so the writer's failure is what the test sees.
   vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
@@ -204,7 +217,7 @@ beforeEach(async () => {
 describe('a nudge the model could not write, over real Postgres', () => {
   it('with no client: nothing sent, nothing on the ledger, one audit row, one page', async () => {
     const transport = new FakeTransport();
-    const result = await runNudgeCron(db.database, deps(transport, null), NOW);
+    const result = await sweep(deps(transport, null), NOW);
 
     expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0, failed: 0 });
     expect(transport.sent).toEqual([]);
@@ -221,14 +234,14 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const transport = new FakeTransport();
     const bad = answering(INVENTED_DRAFT);
     for (const day of [0, 1, 2]) {
-      const result = await runNudgeCron(db.database, deps(transport, bad.client), at(day));
+      const result = await sweep(deps(transport, bad.client), at(day));
       expect(result).toMatchObject({ sent: 0, unwritten: 1, failed: 0 });
     }
     expect(await unwrittenRows()).toHaveLength(3);
     expect(transport.sent).toEqual([]);
 
     const good = answering(GOOD_DRAFT);
-    const recovered = await runNudgeCron(db.database, deps(transport, good.client), at(3));
+    const recovered = await sweep(deps(transport, good.client), at(3));
 
     expect(recovered).toMatchObject({ sent: 1, unwritten: 0, failed: 0 });
     expect(transport.bodies()).toEqual([GOOD_DRAFT]);
@@ -238,11 +251,11 @@ describe('a nudge the model could not write, over real Postgres', () => {
   it('a dated nudge ends with its own date: past the opening nothing asks the model', async () => {
     const transport = new FakeTransport();
     const bad = answering(INVENTED_DRAFT);
-    await runNudgeCron(db.database, deps(transport, bad.client), at(0));
+    await sweep(deps(transport, bad.client), at(0));
     const drafted = bad.create.mock.calls.length;
 
     // Aug 6: the Aug 5 window has opened, so the decide no longer picks it.
-    const after = await runNudgeCron(db.database, deps(transport, bad.client), at(6));
+    const after = await sweep(deps(transport, bad.client), at(6));
 
     expect(after).toMatchObject({ sent: 0, unwritten: 0, quiet: 1, failed: 0 });
     // The preflight probe is the only call left: no draft is asked for.
@@ -262,7 +275,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     ];
     expect(failures).toHaveLength(MAX_UNDATED_ASK_FAILURES);
     for (const [day, client] of failures) {
-      const result = await runNudgeCron(db.database, askDeps(transport, client), at(day));
+      const result = await sweep(askDeps(transport, client), at(day));
       expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0, failed: 0 });
     }
     const rows = await unwrittenRows();
@@ -274,7 +287,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const pagesBefore = posted.length;
 
     const good = answering(GOOD_ASK);
-    const resting = await runNudgeCron(db.database, askDeps(transport, good.client), at(3));
+    const resting = await sweep(askDeps(transport, good.client), at(3));
     expect(resting).toMatchObject({ sent: 0, unwritten: 0, resting: 1, failed: 0 });
     // The preflight probe is the only call: no draft is asked for.
     expect(good.create).toHaveBeenCalledTimes(1);
@@ -283,7 +296,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
 
     // Day 8 is the first slot where the day-0 failure is outside the window.
     const day = UNDATED_ASK_FAILURE_WINDOW_DAYS + 1;
-    const back = await runNudgeCron(db.database, askDeps(transport, good.client), at(day));
+    const back = await sweep(askDeps(transport, good.client), at(day));
     expect(back).toMatchObject({ sent: 1, unwritten: 0, resting: 0, failed: 0 });
     expect(transport.bodies()).toEqual([GOOD_ASK]);
   }, 60_000);
@@ -293,7 +306,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
     const transport = new FakeTransport();
     const attempted: number[] = [];
     for (let day = 0; day < 21; day += 1) {
-      const result = await runNudgeCron(db.database, askDeps(transport, throwing()), at(day));
+      const result = await sweep(askDeps(transport, throwing()), at(day));
       if (result.unwritten === 1) attempted.push(day);
     }
     expect(attempted).toEqual([0, 1, 2, 8, 9, 10, 16, 17, 18]);
@@ -329,7 +342,7 @@ describe('a nudge the model could not write, over real Postgres', () => {
   it('History leaves out a failed write, and the rights export keeps it', async () => {
     const DELIBERATE_QUIET = 'Hale had nothing worth interrupting you for';
     const FAILED_WRITE = 'Hale could not write a heads-up, so it sent nothing';
-    await runNudgeCron(db.database, deps(new FakeTransport(), null), NOW);
+    await sweep(deps(new FakeTransport(), null), NOW);
     // The positive control: a deliberate quiet is still on History.
     await db.database.insert(schema.auditLog).values({
       familyId,
@@ -351,10 +364,23 @@ describe('a nudge the model could not write, over real Postgres', () => {
     expect(copy.trail.map((row) => row.summary)).toContain(FAILED_WRITE);
   }, 30_000);
 
+  it('flag off: the same family gets the fixed sentence, no failure row and no page', async () => {
+    vi.stubEnv('NUDGE_MODEL_ONLY_ENABLED', '');
+    const transport = new FakeTransport();
+    const result = await sweep(deps(transport, null), NOW);
+
+    expect(result).toMatchObject({ sent: 1, unwritten: 0, resting: 0, failed: 0 });
+    expect(transport.bodies()).toEqual([
+      'Richmond Hill Fall 2026 registration opens Aug 5, 10:30 a.m. for Maya.',
+    ]);
+    expect(await unwrittenRows()).toEqual([]);
+    expect(posted).toEqual([]);
+  }, 30_000);
+
   it('positive control: the good draft goes out word for word and pages nobody', async () => {
     const transport = new FakeTransport();
     const { client } = answering(GOOD_DRAFT);
-    const result = await runNudgeCron(db.database, deps(transport, client), NOW);
+    const result = await sweep(deps(transport, client), NOW);
 
     expect(result).toMatchObject({ sent: 1, unwritten: 0, resting: 0, failed: 0 });
     expect(transport.bodies()).toEqual([GOOD_DRAFT]);

@@ -1,7 +1,7 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-name';
@@ -9,19 +9,15 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
-import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
-import { NUDGE_OPT_OUT, type NudgeUnwrittenReason, composeNudgeMessage } from './nudge-voice.js';
+import { NUDGE_OPT_OUT } from './nudge-voice.js';
 import {
-  MAX_UNDATED_ASK_FAILURES,
   type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
-  countRecentAskFailures,
   defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
@@ -125,8 +121,6 @@ interface Harness {
   offers: Array<{ ref: string; channelMessageId: string | null }>;
   /** Every nudge that landed in the parent's own text thread (lib/channel/thread.ts). */
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
-  /** Every #ops page, exactly as it would leave. */
-  pages: OpsPage[];
 }
 
 function harness(
@@ -175,8 +169,6 @@ function harness(
     /** VIL-423 · the date check's reader factory. The default throws, so a read while
      * REGISTRATION_DATE_CHECK is off is a failure rather than a silent page fetch. */
     createDateReader?: NudgeRunDeps['createDateReader'];
-    /** What the model does with this nudge. Default: it writes a line from the facts. */
-    composeMessage?: NudgeRunDeps['composeMessage'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -184,7 +176,6 @@ function harness(
   const closed: Harness['closed'] = [];
   const offers: Harness['offers'] = [];
   const threaded: Harness['threaded'] = [];
-  const pages: OpsPage[] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: NudgeRunDeps = {
@@ -254,23 +245,6 @@ function harness(
     },
     transport,
     client: null,
-    composeMessage: options.composeMessage ?? factNudgeWriter,
-    page: async (_db, page) => {
-      pages.push(page);
-      return 'paged';
-    },
-    // Mirrors prod: the count is read back off the audit rows this sweep wrote. The
-    // window itself is the pglite suite's subject; here every row is inside it.
-    countAskFailures: async (_db, familyId, nudgeRef) =>
-      writes.filter((write) => {
-        const after = write.payload.after as { nudgeRef?: unknown } | undefined;
-        return (
-          write.table === schema.auditLog &&
-          write.payload.familyId === familyId &&
-          write.payload.actionTaken === 'proactive_nudge_unwritten' &&
-          after?.nudgeRef === nudgeRef
-        );
-      }).length,
     // The model writes the name ask; the harness answers with a marker per kind so a
     // test can tell the open ask from the confirm without any fixed copy existing.
     composeNameAsk: async ({ ask }) =>
@@ -313,7 +287,7 @@ function harness(
       }),
   };
 
-  return { deps, transport, writes, dedupeKeys, closed, offers, threaded, pages };
+  return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
 }
 
 /** The ledger rows of one text are written in one transaction; the fake runs it inline. */
@@ -322,35 +296,6 @@ function db() {
     transaction: async <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(fake),
   };
   return fake as never;
-}
-
-/** With every default-off flag on (CI's advisory job), these three stop or reroute a send
- * before the writer runs. Off here, so the writer's failure is what the test sees. */
-function keepTheDirectSendPath() {
-  vi.stubEnv('PROACTIVE_SENDS_PAUSED', 'false');
-  vi.stubEnv('PROACTIVE_CADENCE', 'off');
-  vi.stubEnv('REGISTRATION_DATE_CHECK', 'off');
-}
-
-const failingWriter = (reason: NudgeUnwrittenReason = 'unusable') =>
-  vi.fn<NudgeRunDeps['composeMessage']>(async () => ({ unwritten: reason }));
-
-/**
- * A nudge with a date of its own has no count against it: it is tried at every slot, past
- * the point an undated ask would rest, and the slot its writer works is the one it sends.
- */
-async function expectTriedEverySlot(h: Harness, composeMessage: ReturnType<typeof failingWriter>) {
-  keepTheDirectSendPath();
-  const failedSlots = MAX_UNDATED_ASK_FAILURES + 2;
-  for (let slot = 1; slot <= failedSlots; slot += 1) {
-    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result).toMatchObject({ sent: 0, unwritten: 1, resting: 0 });
-    expect(composeMessage).toHaveBeenCalledTimes(slot);
-  }
-  composeMessage.mockResolvedValue({ message: 'Written once the model was back.' });
-  const back = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-  expect(back).toMatchObject({ sent: 1, unwritten: 0, resting: 0 });
-  expect(h.transport.bodies()).toEqual(['Written once the model was back.']);
 }
 
 function auditActions(writes: Harness['writes']): string[] {
@@ -594,146 +539,6 @@ describe('runNudgeCron — sending', () => {
     await runNudgeCron(db(), settled.deps, FRIDAY_10AM);
     const settledAudit = settled.writes.find((w) => w.table === schema.auditLog);
     expect(settledAudit?.payload.after).toMatchObject({ cohort: 'weekly_rhythm' });
-  });
-});
-
-/**
- * Dec 1 rule 1: if the model cannot write it, send nothing and page #ops. The failure
- * reasons are stipulated here because this block is about the sweep's reaction; that
- * the real composer returns each of them is pinned in nudge-voice.test.ts.
- */
-describe('runNudgeCron — a nudge the model could not write', () => {
-  const REASONS = ['no_client', 'skill_load', 'model_failed', 'unusable'] as const;
-
-  beforeEach(keepTheDirectSendPath);
-
-  function ledgerRows(h: Harness) {
-    return h.writes.filter((write) => write.table === schema.channelMessages);
-  }
-
-  function unwrittenRows(h: Harness) {
-    return h.writes.filter(
-      (write) =>
-        write.table === schema.auditLog &&
-        write.payload.actionTaken === 'proactive_nudge_unwritten',
-    );
-  }
-
-  it.each(REASONS)('%s: sends nothing, audits it by name and pages #ops', async (reason) => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({
-      windows: [win()],
-      composeMessage: async () => ({ unwritten: reason }),
-    });
-    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-
-    expect(result).toMatchObject({ sent: 0, quiet: 1, unwritten: 1, resting: 0, failed: 0 });
-    expect(h.transport.sent).toEqual([]);
-    expect(ledgerRows(h)).toEqual([]);
-    expect(h.threaded).toEqual([]);
-    expect(h.closed).toEqual([]);
-    expect(unwrittenRows(h)).toHaveLength(1);
-    expect(unwrittenRows(h)[0]?.payload.familyId).toBe('fam-1');
-    expect(unwrittenRows(h)[0]?.payload.after).toEqual({
-      reason: 'unvoiced',
-      kind: 'registration',
-      unwritten: reason,
-    });
-    expect(h.pages).toEqual([{ site: 'nudge_unwritten', facts: { kind: 'registration', reason } }]);
-  });
-
-  it('carries no fact of the nudge on the page or the audit row', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({
-      windows: [win()],
-      composeMessage: async () => ({ unwritten: 'unusable' }),
-    });
-    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    const trail = JSON.stringify({
-      page: h.pages,
-      skip: unwrittenRows(h).map((row) => row.payload),
-    });
-    expect(trail).toContain('nudge_unwritten');
-    for (const fact of ['Maya', 'Richmond Hill', 'Fall 2026', 'Aug']) {
-      expect(trail).not.toContain(fact);
-    }
-  });
-
-  it('a household with one parent held still names that hold', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({
-      windows: [win()],
-      recipients: [
-        { parentUserId: 'user-1', timeZone: TZ, role: 'primary_parent' },
-        { parentUserId: 'user-2', timeZone: TZ, role: 'co_parent' },
-      ],
-      consentedFor: (parentUserId) => parentUserId === 'user-1',
-      composeMessage: async () => ({ unwritten: 'model_failed' }),
-    });
-    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-    expect(result.unwritten).toBe(1);
-    expect(result.held.no_watch_consent).toBe(1);
-  });
-
-  it.each(REASONS)(
-    '%s: a registration nudge is tried at every slot and still goes',
-    async (reason) => {
-      vi.stubEnv('F14_ENABLED', 'true');
-      const composeMessage = failingWriter(reason);
-      await expectTriedEverySlot(harness({ windows: [win()], composeMessage }), composeMessage);
-    },
-  );
-
-  it('a weather swap is tried at every slot and still goes', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = failingWriter();
-    const h = harness({
-      candidates: [candidate({ id: 'swap-a', title: 'Library story time' })],
-      weather: WET,
-      composeMessage,
-    });
-    await expectTriedEverySlot(h, composeMessage);
-    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('weather_swap');
-  });
-
-  it('an empty Saturday is tried at every slot and still goes', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const composeMessage = failingWriter();
-    const h = harness({
-      saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
-      candidates: [
-        candidate({
-          id: 'sat-a',
-          title: 'EarlyON Saturday',
-          source: 'web',
-          eventDate: SATURDAY,
-          sourceUrl: 'https://tpl.example/sat-a',
-        }),
-      ],
-      composeMessage,
-    });
-    await expectTriedEverySlot(h, composeMessage);
-    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('empty_saturday');
-  });
-
-  it('positive control: a written nudge sends those words and pages nobody', async () => {
-    vi.stubEnv('F14_ENABLED', 'true');
-    const line = 'Richmond Hill Fall 2026 registration opens Tuesday, and Maya is in the band.';
-    const h = harness({ windows: [win()], composeMessage: async () => ({ message: line }) });
-    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-
-    expect(result).toMatchObject({ sent: 1, quiet: 0, unwritten: 0, resting: 0 });
-    expect(h.transport.bodies()).toEqual([line]);
-    expect(ledgerRows(h)).toHaveLength(1);
-    expect(unwrittenRows(h)).toEqual([]);
-    expect(h.pages).toEqual([]);
-  });
-
-  it('production wires the real writer, the real pager and the real count', () => {
-    const wired = defaultNudgeRunDeps();
-    expect(wired.composeMessage).toBe(composeNudgeMessage);
-    expect(wired.page).toBe(pageOps);
-    expect(wired.countAskFailures).toBe(countRecentAskFailures);
   });
 });
 
@@ -1252,20 +1057,6 @@ describe('runNudgeCron — the weekday drop-in', () => {
    * decide between the weekend and the weekday rather than against a paperwork window. */
   const NO_REGION = [family({ areaCoarse: null })];
 
-  it('a drop-in is tried at every slot and still goes', async () => {
-    armed();
-    const composeMessage = failingWriter();
-    const h = harness({
-      families: NO_REGION,
-      children: SIX_MONTH_OLD,
-      candidates: CIVIC,
-      weekdayCare: AT_HOME,
-      composeMessage,
-    });
-    await expectTriedEverySlot(h, composeMessage);
-    expect(composeMessage.mock.calls[0]?.[0].kind).toBe('weekday_dropin');
-  });
-
   it('sends the find and keys it apart from a weather swap', async () => {
     armed();
     const h = harness({
@@ -1413,7 +1204,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
 
   const NO_REGION = [family({ areaCoarse: null })];
 
-  function ask(children: NudgeChildRow[], composeMessage?: NudgeRunDeps['composeMessage']) {
+  function ask(children: NudgeChildRow[]) {
     vi.stubEnv('F14_ENABLED', 'true');
     vi.stubEnv('WEEKDAY_CARE_ENABLED', 'true');
     return harness({
@@ -1421,7 +1212,6 @@ describe('runNudgeCron — the weekday-care ask', () => {
       children,
       candidates: CIVIC,
       weekdayCare: UNASKED,
-      composeMessage,
     });
   }
 
@@ -1431,7 +1221,7 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expect(h.writes.some((w) => w.table === schema.channelMessages)).toBe(false);
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload).toMatchObject({
-      actionTaken: 'proactive_nudge_unwritten',
+      actionTaken: 'proactive_nudge_skipped',
       after: { reason: 'unvoiced', kind: 'weekday_care' },
     });
     const text = JSON.stringify(audit?.payload);
@@ -1463,39 +1253,6 @@ describe('runNudgeCron — the weekday-care ask', () => {
     expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
   });
 
-  /** Seven on FRIDAY_10AM: the one school-age child the named ask is for. */
-  const SCHOOLER: NudgeChildRow = {
-    id: 'child-sam',
-    name: 'Sam',
-    dateOfBirth: '2019-03-04',
-    dobPrecision: 'exact',
-  };
-
-  it.each([
-    ['weekend_fallback', TODDLER],
-    ['after_school_named', SCHOOLER],
-    ['after_school_household', TEEN],
-  ] as const)('%s has no date, so it rests after failing for any reason', async (prompt, child) => {
-    keepTheDirectSendPath();
-    const reasons: NudgeUnwrittenReason[] = ['no_client', 'model_failed', 'unusable'];
-    expect(reasons).toHaveLength(MAX_UNDATED_ASK_FAILURES);
-    const composeMessage = failingWriter();
-    for (const reason of reasons) composeMessage.mockResolvedValueOnce({ unwritten: reason });
-    const h = ask([child], composeMessage);
-    for (const _reason of reasons) {
-      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-      expect(result).toMatchObject({ unwritten: 1, resting: 0 });
-    }
-    const asked = composeMessage.mock.calls[0]?.[0];
-    expect(asked?.kind === 'weekday_care' && asked.ask.prompt).toBe(prompt);
-
-    const rested = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
-
-    expect(rested).toMatchObject({ sent: 0, quiet: 1, unwritten: 0, resting: 1 });
-    expect(composeMessage).toHaveBeenCalledTimes(MAX_UNDATED_ASK_FAILURES);
-    expect(h.transport.bodies()).toEqual([]);
-  });
-
   describe('VIL-685 · the winter-break question while weekday care itself is off', () => {
     const BREAK_KNOWN: WeekdayCareContext = {
       stated: [],
@@ -1520,22 +1277,6 @@ describe('runNudgeCron — the weekday-care ask', () => {
       });
       // No model in this harness: reaching the ask shows up as the unvoiced weekday ask.
       expectUnvoiced(h, await runNudgeCron(db(), h.deps, FRIDAY_10AM));
-    });
-
-    it('a verified break has its own date, so it is tried at every slot', async () => {
-      vi.stubEnv('F14_ENABLED', 'true');
-      vi.stubEnv('SCHOOL_BREAK_ENABLED', 'true');
-      const composeMessage = failingWriter();
-      const h = harness({
-        families: NO_REGION,
-        children: [TODDLER],
-        candidates: CIVIC,
-        weekdayCare: BREAK_KNOWN,
-        composeMessage,
-      });
-      await expectTriedEverySlot(h, composeMessage);
-      const asked = composeMessage.mock.calls[0]?.[0];
-      expect(asked?.kind === 'weekday_care' && asked.ask.prompt).toBe('verified_break');
     });
 
     it('is silent when SCHOOL_BREAK_ENABLED=false', async () => {
@@ -1752,7 +1493,7 @@ describe('runNudgeCron — empty Saturday', () => {
     expect(h.transport.bodies().join(' ')).not.toContain('looks open');
     const audit = h.writes.find((w) => w.table === schema.auditLog);
     expect(audit?.payload).toMatchObject({
-      actionTaken: 'proactive_nudge_unwritten',
+      actionTaken: 'proactive_nudge_skipped',
       after: { reason: 'saturday_unvoiced', kind: 'empty_saturday' },
     });
     expect(JSON.stringify(audit?.payload)).not.toContain('sat-1');

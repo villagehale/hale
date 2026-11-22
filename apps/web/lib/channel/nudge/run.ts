@@ -92,6 +92,7 @@ import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/hou
 import { proactiveSearchSubject } from '~/lib/seasonal/moments';
 import { recordActivityOffers } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
+import { nudgeModelOnlyEnabled, writeNudgeModelOnly } from './model-only';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { composeNudgeMessage } from './nudge-voice';
 import { type SaturdayPlans, loadSaturdayPlans } from './saturday-plans';
@@ -361,11 +362,16 @@ export interface NudgeRunDeps {
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
   /**
-   * The model's turn on this nudge. REQUIRED (rule #11), and a dep so a sweep test can
-   * state what the model did. Nothing stands behind it: a nudge it cannot write is not
-   * sent (Dec 1 rule 1).
+   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
+   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
    */
-  composeMessage: typeof composeNudgeMessage;
+  createDateReader(): RegistrationReader | null;
+}
+
+/** What the sweep needs only while NUDGE_MODEL_ONLY_ENABLED is on. All required (rule #11). */
+export interface NudgeModelOnlyDeps {
+  /** The model's turn on this nudge. A nudge it cannot write is not sent (Dec 1 rule 1). */
+  composeMessage: typeof writeNudgeModelOnly;
   /** #ops, for a nudge no model could write. Closed facts only, never a body. */
   page(database: Database, page: OpsPage): Promise<OpsPagerOutcome>;
   /** How many times this undated ask could not be written since `since`. */
@@ -375,11 +381,6 @@ export interface NudgeRunDeps {
     nudgeRef: string,
     since: Date,
   ): Promise<number>;
-  /**
-   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
-   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
-   */
-  createDateReader(): RegistrationReader | null;
 }
 
 export interface NudgeRunResult {
@@ -797,10 +798,61 @@ function emptyTally(overrides: Partial<FamilyTally> = {}): FamilyTally {
   };
 }
 
+/**
+ * The flag-on write: the model's text, or one audit row and one #ops page naming why
+ * there is none. An undated ask that keeps failing rests instead of being tried again.
+ */
+async function writeOrNameTheFailure(
+  database: Database,
+  family: NudgeFamily,
+  nudge: Nudge,
+  deps: NudgeRunDeps,
+  modelOnly: NudgeModelOnlyDeps,
+  now: Date,
+): Promise<{ message: string } | { outcome: { unwritten: 1 } | { resting: 1 } }> {
+  const askRef = undatedAskRef(nudge, family.familyId);
+  if (askRef !== null) {
+    const since = new Date(now.getTime() - UNDATED_ASK_FAILURE_WINDOW_DAYS * 86_400_000);
+    const failures = await modelOnly.countAskFailures(database, family.familyId, askRef, since);
+    if (failures >= MAX_UNDATED_ASK_FAILURES) return { outcome: { resting: 1 } };
+  }
+  const written = await modelOnly.composeMessage(nudge, {
+    familyId: family.familyId,
+    database,
+    client: deps.client,
+  });
+  if ('message' in written) return { message: written.message };
+  await deps.audit(database, {
+    familyId: family.familyId,
+    actor: 'system',
+    actionTaken: 'proactive_nudge_unwritten',
+    targetTable: 'families',
+    targetId: family.familyId,
+    // The ask's rest is measured on the sweep's clock, so the row is stamped by it too.
+    occurredAt: now,
+    after: {
+      reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+      kind: nudge.kind,
+      unwritten: written.unwritten,
+      ...(askRef === null ? {} : { nudgeRef: askRef }),
+    },
+  });
+  const page = await modelOnly.page(database, {
+    site: 'nudge_unwritten',
+    facts: { kind: nudge.kind, reason: written.unwritten },
+  });
+  console.warn(
+    { familyId: family.familyId, kind: nudge.kind, reason: written.unwritten, page },
+    'nudge: not written, nothing sent',
+  );
+  return { outcome: { unwritten: 1 } };
+}
+
 async function runForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  modelOnly: NudgeModelOnlyDeps,
   checker: DateChecker,
   now: Date,
 ): Promise<FamilyTally> {
@@ -879,50 +931,38 @@ async function runForFamily(
   }
   if (pending.length === 0) return emptyTally({ deduped, held });
 
-  const askRef = undatedAskRef(nudge, family.familyId);
-  if (askRef !== null) {
-    const since = new Date(now.getTime() - UNDATED_ASK_FAILURE_WINDOW_DAYS * 86_400_000);
-    const failures = await deps.countAskFailures(database, family.familyId, askRef, since);
-    if (failures >= MAX_UNDATED_ASK_FAILURES) {
-      return emptyTally({ quiet: true, deduped, held, resting: 1 });
-    }
-  }
-
   // ONE COMPOSE FOR THE HOUSEHOLD. The nudge is a fact about this family's week, not
   // about a parent, so composing it twice would spend the model twice to say the same
   // thing — and risk saying it two different ways to two people in one house.
-  const written = await deps.composeMessage(nudge, {
-    familyId: family.familyId,
-    database,
-    client: deps.client,
-  });
-  if ('unwritten' in written) {
-    await deps.audit(database, {
+  let message: string;
+  if (nudgeModelOnlyEnabled()) {
+    const written = await writeOrNameTheFailure(database, family, nudge, deps, modelOnly, now);
+    if ('outcome' in written) {
+      return emptyTally({ quiet: true, deduped, held, ...written.outcome });
+    }
+    message = written.message;
+  } else {
+    const composed = await composeNudgeMessage(nudge, {
       familyId: family.familyId,
-      actor: 'system',
-      actionTaken: 'proactive_nudge_unwritten',
-      targetTable: 'families',
-      targetId: family.familyId,
-      // The ask's rest is measured on the sweep's clock, so the row is stamped by it too.
-      occurredAt: now,
-      after: {
-        reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
-        kind: nudge.kind,
-        unwritten: written.unwritten,
-        ...(askRef === null ? {} : { nudgeRef: askRef }),
-      },
+      database,
+      client: deps.client,
     });
-    const page = await deps.page(database, {
-      site: 'nudge_unwritten',
-      facts: { kind: nudge.kind, reason: written.unwritten },
-    });
-    console.warn(
-      { familyId: family.familyId, kind: nudge.kind, reason: written.unwritten, page },
-      'nudge: not written, nothing sent',
-    );
-    return emptyTally({ quiet: true, deduped, held, unwritten: 1 });
+    if (composed === null) {
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'proactive_nudge_skipped',
+        targetTable: 'families',
+        targetId: family.familyId,
+        after: {
+          reason: nudge.kind === 'empty_saturday' ? 'saturday_unvoiced' : 'unvoiced',
+          kind: nudge.kind,
+        },
+      });
+      return emptyTally({ quiet: true });
+    }
+    message = composed;
   }
-  const message = written.message;
 
   // VIL-226 · the family queue. Unset sends as before and writes nothing; shadow queues
   // and still sends; live queues and the hourly decider sends.
@@ -1221,6 +1261,7 @@ export async function runNudgeCron(
   database: Database,
   deps: NudgeRunDeps = defaultNudgeRunDeps(),
   now: Date = new Date(),
+  modelOnly: NudgeModelOnlyDeps = defaultNudgeModelOnlyDeps(),
 ): Promise<NudgeRunResult> {
   const allFamilies = f14Enabled();
   const allowlist = f14Allowlist();
@@ -1244,7 +1285,7 @@ export async function runNudgeCron(
   for (const family of families) {
     result.evaluated += 1;
     try {
-      const outcome = await runForFamily(database, family, deps, checker, now);
+      const outcome = await runForFamily(database, family, deps, modelOnly, checker, now);
       // The DECISION is per family and the SENDING is per recipient, so the two are
       // added differently and deliberately.
       if (outcome.quiet) result.quiet += 1;
@@ -1369,6 +1410,14 @@ async function readNudgeChildren(database: Database, familyId: string): Promise<
   }));
 }
 
+export function defaultNudgeModelOnlyDeps(): NudgeModelOnlyDeps {
+  return {
+    composeMessage: writeNudgeModelOnly,
+    page: pageOps,
+    countAskFailures: countRecentAskFailures,
+  };
+}
+
 export function defaultNudgeRunDeps(): NudgeRunDeps {
   return {
     selectFamilies: selectNudgeFamilies,
@@ -1395,9 +1444,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     transport: createOutboundTransport(),
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),
-    composeMessage: composeNudgeMessage,
-    page: pageOps,
-    countAskFailures: countRecentAskFailures,
     fulfillCommitment,
     threadMessage: threadProactiveMessage,
     loadParentCallName,

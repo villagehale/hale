@@ -57,7 +57,6 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
-import { factNudgeWriter } from '~/lib/testing/nudge-writer';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -588,9 +587,6 @@ async function runToddlerJourney(): Promise<Journey> {
     },
     transport,
     client: null,
-    composeMessage: factNudgeWriter,
-    page: async () => 'paged',
-    countAskFailures: async () => 0,
     // MEM-10 · the REAL writer over the same store: a nudge that lands pays off the
     // intake radar's forward promise, and the journey is where that has to be true.
     fulfillCommitment,
