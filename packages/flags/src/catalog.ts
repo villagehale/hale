@@ -47,6 +47,12 @@ export interface FlagSpec {
   envAlso?: { env: string; value: string };
   /** Catalog + sync only — no reader is wired on this branch. */
   upcoming?: boolean;
+  /**
+   * Read from the env in every mode and never created in PostHog. For a gate that runs
+   * before any family is known: PostHog answers a family-scoped flag "off" for no family,
+   * and a 100% rollout would turn it on with no env value at all.
+   */
+  envOnly?: boolean;
 }
 
 function exact<K extends string>(
@@ -254,6 +260,7 @@ export const FLAGS = [
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
+  exact('ingest-body-max', 'INGEST_BODY_MAX_ENABLED', { envOnly: true }),
   {
     key: 'proactive-cadence',
     env: 'PROACTIVE_CADENCE',
