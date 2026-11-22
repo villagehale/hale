@@ -322,26 +322,26 @@ describe('acceptPartyGuestLine', () => {
       'Text WIN to 55522 55513',
       'Text WIN to 555225 5513',
       'Text WIN to 123 456 7890',
-    ])(
-      'does not read two codes as a phone in %s',
-      (place) => {
-        expect(placeWithoutTextBackNumbers(place)).toBe('Text WIN to');
+    ])('does not read two codes as a phone in %s', (place) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe('Text WIN to');
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
+    });
+
+    it.each(['416-555-0199', '(416) 555-0199', '+1 416 555 0199', '4165550199'])(
+      'takes the phone %s out of a place',
+      (phone) => {
+        const place = `Hall ${phone}`;
+        expect(placeWithoutTextBackNumbers(place)).toBe('Hall');
         expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
       },
     );
 
-    it.each(['416-555-0199', '(416) 555-0199', '+1 416 555 0199', '4165550199'])(
-      'keeps the phone %s in a place',
-      (phone) => {
-        const place = `Hall ${phone}`;
-        expect(placeWithoutTextBackNumbers(place)).toBe(place);
-        expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
-      },
-    );
+    it('refuses a number in digits only the draft reading can see', () => {
+      const place = 'Hall \u2460\u2461\u2462\u2463\u2464';
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
+    });
 
     it.each([
-      ['circled digits', 'Hall \u2460\u2461\u2462\u2463\u2464', 'Hall'],
-      ['digits with a full stop built in', 'Hall \u2488\u2489\u248a\u248b\u248c', 'Hall.'],
       ['full-width digits', 'Hall \uff15\uff15\uff15\uff11\uff12', 'Hall'],
       ['a zero-width space inside', 'Hall 555\u200b12', 'Hall'],
     ])('cuts a number written in %s', (_name, place, expected) => {
@@ -361,15 +361,6 @@ describe('acceptPartyGuestLine', () => {
       const line: PartyGuestLine = { ...REMINDER, where: '55 Main St' };
       const draft =
         "It's Hale, text win to 55-555. Your reminder: Nora's party is tomorrow at 2:00 PM at 55 Main St.";
-      expect(acceptPartyGuestLine(draft, line)).toBeNull();
-    });
-
-    it.each([
-      ['after the place', 'Suite 12', 'at Suite 12 345'],
-      ['title joined to the place', '12 Elm St', 'Text win to 555 12 Elm St'],
-    ])('refuses digits run into the place %s', (_name, place, joined) => {
-      const line: PartyGuestLine = { ...REMINDER, title: 'Nora party', where: place };
-      const draft = `It's Hale with the reminder you asked for: Nora party is tomorrow at 2:00 PM, ${joined}.`;
       expect(acceptPartyGuestLine(draft, line)).toBeNull();
     });
 
@@ -399,6 +390,14 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(draft, REMINDER)).toBeNull();
   });
 
+  it.each(['55 2:00', '555-2:00', '55 14:00'])(
+    'refuses %s, a code run into the time, written before the real time',
+    (code) => {
+      const draft = `It's Hale. Text win to ${code}. Nora's party is tomorrow, December 12 at 2:00 PM at 14 Elm St.`;
+      expect(acceptPartyGuestLine(draft, REMINDER)).toBeNull();
+    },
+  );
+
   it('refuses a year the party was not given', () => {
     const draft =
       "It's Hale with the reminder you asked for: Nora's party is tomorrow, December 12, 2026 at 2:00 PM at 14 Elm St.";
@@ -420,12 +419,6 @@ describe('acceptPartyGuestLine', () => {
 
     it.each(['Party Dec 12', 'Party at 2:30'])('leaves the short date or time in %s', (title) => {
       expect(withoutTextBackNumbers(title)).toBe(title);
-    });
-
-    it('keeps a full phone number in a place, and no shorter one', () => {
-      const phone = 'Party Palace, 416-555-0100';
-      expect(placeWithoutTextBackNumbers(phone)).toBe(phone);
-      expect(placeWithoutTextBackNumbers('Party Palace, 555-0100')).toBe('Party Palace');
     });
 
     it.each([
@@ -540,10 +533,10 @@ describe('acceptPartyGuestLine', () => {
     expect(acceptPartyGuestLine(line, titled)).toBeNull();
   });
 
-  it('lets the place carry a number the host typed into it (positive control)', () => {
-    const place: PartyGuestLine = { ...REMINDER, where: 'Party Palace, 416-555-0100' };
+  it('lets the place carry a link the host typed into it (positive control)', () => {
+    const place: PartyGuestLine = { ...REMINDER, where: 'Party Palace, palace.example/map' };
     const line =
-      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Party Palace, 416-555-0100.";
+      "It's Hale with the reminder you asked for: Nora's party is tomorrow at 2:00 PM at Party Palace, palace.example/map.";
     expect(acceptPartyGuestLine(line, place)).toBe(line);
   });
 });

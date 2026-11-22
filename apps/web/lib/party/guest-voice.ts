@@ -5,7 +5,6 @@ import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { namesKeyword } from '~/lib/channel/no-stop-keyword';
 import { smallerLane } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { contactsOutside } from '~/lib/format/contact-shape';
 import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
@@ -67,8 +66,6 @@ const NAMES_HALE = /\bHale\b/;
 const TRAILING_PUNCTUATION = /[\s.,;:!?]/;
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const LETTER = /\p{L}/u;
-const NOT_A_LETTER = /\P{L}/u;
-const LONG_NUMBER_DIGITS = 5;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
 /**
  * Five digits in a draft with only spaces or punctuation between them: more than a day or
@@ -83,11 +80,11 @@ const LONG_NUMBER_IN_TITLE = /\p{Nd}(?:[^\p{L}\p{N}]*\p{Nd}){4,}/gu;
 const LONG_NUMBER_IN_PLACE = /\p{Nd}(?:(?:[^\p{L}\p{N},]|,(?!\s))*\p{Nd}){4,}/gu;
 /** Opens the place, with a street name next: "12-345 Main St". */
 const STREET_NUMBER = /^\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+\p{L})/u;
-const CUT_EDGE = /[\s,;:-]/;
-/** Five or six digits standing alone: a short code, which no phone is written with. */
-const SHORT_CODE_GROUP = /(?<!\d)\d{5,6}(?!\d)/;
+const CUT_EDGE = /[\s,;:(+-]/;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
+/** The day `partyWhen` puts before its clock: "December 12 at". */
+const WHEN_DAY = /(\d{1,2}) at /;
 
 /** Walks back one character at a time, because a `+$` pattern rescans a long run. */
 function withoutTrailing(text: string, edge: RegExp): string {
@@ -96,24 +93,13 @@ function withoutTrailing(text: string, edge: RegExp): string {
   return text.slice(0, end);
 }
 
-/** Any character the gate reads as a digit, as that digit: "５" and "⑤" are 5. */
-function withPlainDigits(text: string): string {
-  return text.replace(/\P{ASCII}/gu, (char) => {
-    const shape = inShape(char);
-    return /\d/.test(shape) ? shape : char;
-  });
-}
-
 function cutNumbers(
   fact: string,
   numbers: RegExp,
-  keeps: (run: string, at: number, whole: string) => boolean,
+  keeps: (run: string, at: number) => boolean,
 ): string {
-  const plain = withPlainDigits(fact);
-  const cut = plain.replace(numbers, (run: string, at: number) =>
-    keeps(run, at, plain) ? run : ' ',
-  );
-  if (cut === plain) return fact;
+  const cut = fact.replace(numbers, (run: string, at: number) => (keeps(run, at) ? run : ' '));
+  if (cut === fact) return fact;
   const tidied = withoutTrailing(
     cut
       .replace(/\s+/g, ' ')
@@ -134,17 +120,12 @@ export function withoutTextBackNumbers(title: string): string {
 }
 
 /**
- * The same for a place, which keeps a number that opens it and a real phone number. A ZIP
- * code goes, because a guest does not need it in a text.
+ * The same for a place, which keeps only a street number that opens it. A ZIP code and a
+ * phone number go, because a guest does not need them in a text.
  */
 export function placeWithoutTextBackNumbers(place: string): string {
-  return cutNumbers(
-    place,
-    LONG_NUMBER_IN_PLACE,
-    (run, at, whole) =>
-      (at === 0 && STREET_NUMBER.exec(whole)?.[0] === run) ||
-      (normalizePhoneE164(run) !== null && !SHORT_CODE_GROUP.test(run)),
-  );
+  const streetNumber = STREET_NUMBER.exec(place)?.[0];
+  return cutNumbers(place, LONG_NUMBER_IN_PLACE, (run, at) => at === 0 && run === streetNumber);
 }
 
 /** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
@@ -177,39 +158,26 @@ function outsideFacts(body: string, line: PartyGuestLine): string {
   return factsIn(line).reduce(lessOneMention, inShape(body));
 }
 
-/** The party's own time, once, unless it runs on into more digits: "2:00" but not "2:00:55". */
+/**
+ * The party's own time, once, when no other digit runs into it: "2:00" but not "2:00:55" or
+ * "55 2:00". Its own day may stand right before it, as in "December 12, 2:00 PM".
+ */
 function lessPartyClock(text: string, when: string): string {
-  const match = WHEN_CLOCK.exec(inShape(when));
+  const shaped = inShape(when);
+  const match = WHEN_CLOCK.exec(shaped);
   if (match === null) return text;
   const [, hour, minutes, half] = match;
   const hour24 = (Number(hour) % 12) + (half === 'P' ? 12 : 0);
-  const clock = `(?<!\\p{Nd})(?:${hour}|${hour24}):${minutes}(?![^\\p{L}\\p{N}\\n]*\\p{Nd})`;
+  const day = WHEN_DAY.exec(shaped)?.[1];
+  const ownDay = day === undefined ? '' : `(?:${day}[,\\s]+)?`;
+  const clock = `(?<!\\p{Nd}[^\\p{L}\\p{N}\\n]*)${ownDay}(?:${hour}|${hour24}):${minutes}(?![^\\p{L}\\p{N}\\n]*\\p{Nd})`;
   return text.replace(new RegExp(clock, 'u'), '\n');
 }
 
-/** The digits at one edge of a place, unless they are already a long number it may hold. */
-function shortEdge(edge: string): string {
-  const digits = edge.replace(/\D/g, '').length;
-  return digits > 0 && digits < LONG_NUMBER_DIGITS ? edge : '';
-}
-
-/**
- * The draft less one whole mention of the place. A short number at either edge stays, so
- * digits written against the place still count as one number, unless a comma and a space
- * part them: "December 12, 14 Elm St".
- */
+/** The draft less one whole mention of the place, as it stands after the cut. */
 function lessPlaceMention(text: string, where: string): string {
-  const place = withoutTrailing(inShape(placeWithoutTextBackNumbers(where)), TRAILING_PUNCTUATION);
-  if (!LETTER.test(place)) return text;
-  const at = wholeRunAt(text, place);
-  if (at === -1) return text;
-  const before = text.slice(0, at);
-  const after = text.slice(at + place.length);
-  const opening = /^\P{L}*/u.exec(place)?.[0] as string;
-  const closing = place.slice(withoutTrailing(place, NOT_A_LETTER).length);
-  const keptOpening = /,\s+$/.test(before) ? '' : shortEdge(opening);
-  const keptClosing = /^,\s/.test(after) ? '' : shortEdge(closing);
-  return `${before}${keptOpening}\n${keptClosing}${after}`;
+  const place = withoutTrailing(placeWithoutTextBackNumbers(inShape(where)), TRAILING_PUNCTUATION);
+  return LETTER.test(place) ? lessOneMention(text, place) : text;
 }
 
 /**
@@ -262,7 +230,7 @@ function carriesClock(outside: string, when: string): boolean {
 /**
  * The text as it may be sent, or null. It must say it is from Hale, because the guest has
  * no idea whose number this is. A reminder must carry the place the host typed and the
- * party's time. Only the place may carry a link, phone or email: a title is the host's
+ * party's time. Only the place may carry a link or an email: a title is the host's
  * free text, and a contact in it is not grounds to repeat it to a stranger.
  */
 export function acceptPartyGuestLine(text: string, line: PartyGuestLine): string | null {
