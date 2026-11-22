@@ -139,23 +139,27 @@ Migrations are additive. A bad migration is fixed forward. Do not drop columns f
 
 A flag change needs a redeploy, and a plan already running holds its lease for up to 15 minutes and can still reach the payment. `pnpm signup:stop-plans` stops every day-before plan running at that moment, with no redeploy: a plan not yet past its paying checkpoint can no longer start a payment. A plan already past it is counted under `paying`. Its payment can still run, and the sweep reads what it did and tells its parent. The script needs `DATABASE_URL`. Running it against Production needs Barton's go.
 
+**Light the flag before an incident.** `PLAN_OPS_STOP_ENABLED` must be exactly `true` in two places: on hale-web in Production, so the sweep reads a stop, and in the shell that runs `--apply`, which refuses without it. Lit, it changes nothing until someone runs `--apply`. The dry run works either way. If it is lit only in the shell, the stop still blocks new payments, but the sweep treats it as a parent's own take-back and each run's ending goes to its parent as usual.
+
 **It covers day-before plans only.** A one-shot signup is not a plan, so the stop does not touch it, and a one-shot run can pay when `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` is on. To close that path, turn `BROWSER_USE_SIGNUP_PAYMENT_ENABLED` off with the redeploy steps above. A one-shot run already going keeps the wallet it started with until it ends.
 
-Run it before you turn the flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off the sweep returns at once, so a checkpointed run is never let go and keeps its browser.
+Run it before you turn the run flag off. With `REGISTRATION_PLAN_RUN_ENABLED` off the sweep returns at once, so a checkpointed run is never let go and keeps its browser.
 
 1. `pnpm signup:stop-plans`. This is a dry run. It writes nothing and prints counts only: `wouldStop` is the running plans with no ops stop on them yet, and `stillRunning` is every running plan, by phase.
-2. With the flag still on, run `pnpm signup:stop-plans -- --apply`.
-3. Run the same `--apply` command once a minute until `stillRunning` is zero in both phases. Running it again never changes an earlier stop. While the flag is on, a sweep can still claim a plan as it comes due, and **that plan starts a real run**. Only a later `--apply`, read by the check before payment, keeps it from paying, so do not stop repeating early. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
+2. With the run flag still on, run `PLAN_OPS_STOP_ENABLED=true pnpm signup:stop-plans -- --apply`.
+3. Repeat `--apply` once a minute until `stillRunning` is zero in both phases. Running it again never changes an earlier stop. A run that holds its lease can take up to 15 minutes to be let go, and a plan in `paying` stays counted until the sweep has read what the payment did.
 4. Turn `REGISTRATION_PLAN_RUN_ENABLED` off with the redeploy steps above.
-5. When the new deployment is Production, run the dry run once more. If `stillRunning` is not zero, a sweep claimed a plan just before the redeploy. Run `--apply`, turn the flag back on until the count is zero, then turn it off again.
+5. When the new deployment is Production, run `--apply` once more and confirm `stillRunning` is zero. If it is not, a sweep claimed a plan just before the redeploy, and with the run flag off nothing will let it go: turn the run flag back on until the count is zero, then turn it off again.
 
-**What a parent hears.** The stop sends nothing, and there is no fixed line for it, so a parent whose plan was stopped hears nothing until someone follows up. A run that ends after the stop sends no notice and asks nothing, and its browser is closed. If that parent asks what happened, the send gate will not let Hale say it was cancelled, because the run may have left something at the provider. To find those families, each stopped plan has one `plan_ops_stop` row in `audit_log`, and its `plan_finished` row keeps how the run really ended under `stoppedFrom`. Three things can still reach a parent:
+**What remains.** A plan that comes due between the last `--apply` and the redeploy can start a real run. The `--apply` in step 5 stops it before it pays, unless it has already passed its paying checkpoint. There is no durable stop that refuses new claims.
 
-- A plan past its paying checkpoint is still read, and the parent is told what its payment did, including a declined card. A plan whose checkout review may have placed the order tells the parent a charge may exist and pages #ops.
-- A plan a sweep claimed after the last `--apply` runs as usual until a later `--apply` marks it. If it ends first, its parent gets the usual notice, which is why step 3 repeats.
-- A run that had already ended when the stop landed still sends its usual notice.
+**What a parent hears.** The stop itself sends nothing. What each run's end does depends on whether it can prove it left nothing at the provider:
 
-**Follow up on these first.** Three stopped endings can leave something at the provider that the parent has not heard about. All three are under `stoppedFrom` on the `plan_finished` row. `submit_boundary` means the agent on an assisted town said it added the registration to a cart, submitted it or checked out, which it must never do. `payment_boundary` means the agent said it entered payment details, which it must also never do. No charge is recorded. `waitlist` means the run may have joined the waitlist the parent asked for.
+- **Silent, with no page.** The run never reached the provider, or its answer was read and it stopped short: a blocker, a cart it did not pay for, sold out, not open. The cart lapses with the browser the stop closes. This parent hears nothing until someone follows up.
+- **Told, and #ops is paged once (`registration_stop_unverified`, ref = the offer id).** Everything else: the agent said it submitted (`submit_boundary`) or entered payment details (`payment_boundary`), a `waitlist` ending, a run that failed, timed out or threw, an answer Hale could not read, and any detail added later. **A queued run the sweep lets go is in this group**, because it is cancelled before anyone reads what it did, so a stop during a busy open can text many parents. These endings are recorded with `charged: 'unknown'`, so the parent is told Hale cannot say what happened, and the send gate will not let Hale say it was cancelled.
+- **Money is always reported.** A plan past its paying checkpoint is read, and its parent is told what the payment did, including a declined card. A checkout review that may have placed the order tells the parent and pages #ops on its own site.
+
+A run that had already ended when the stop landed sends its usual notice. To find stopped families, each has one `plan_ops_stop` row in `audit_log`, and its `plan_finished` row keeps how the run really ended under `stoppedFrom`. Follow up on the paged ones first.
 
 ## Rotating APP_ENCRYPTION_KEY
 

@@ -1,13 +1,8 @@
 import { schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadClaimShadowContext } from '~/lib/channel/reconcile/candidate-rows';
-import { createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
-import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
-import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   type BrowserUsePlanInput,
@@ -19,14 +14,24 @@ import {
 import { storeProviderSession } from '../browser-use/vault';
 import { recordSignupOffer } from '../store';
 import type { PlanNoticePart } from './bubbles';
-import { REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import {
+  PLAN_OPS_STOP_ENABLED_ENV,
+  REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV,
+  REGISTRATION_PLAN_RUN_ENABLED_ENV,
+} from './flag';
 import type { PlanPrepFacts } from './prep';
-import { type PlanOutcomeNotice, type PlanSignupRunner, runDueSignupPlans } from './run';
+import {
+  type PlanOutcomeNotice,
+  type PlanRunDetail,
+  type PlanSignupRunner,
+  runDueSignupPlans,
+} from './run';
 import {
   approveSignupPlan,
   cancelSignupPlan,
   countRunningPlans,
   loadConversablePlans,
+  parkUnlessOpsStopped,
   planTakenBack,
   requestStopForRunningPlans,
   runPlanStop,
@@ -133,6 +138,11 @@ const OPEN_BROWSER: PlanResumeToken = {
   browserId: 'browser-1',
 };
 const RELEASED_COST = '0.120000';
+/** A sweep-level detail on an engine result: the ending is judged the same on either path. */
+const atDetail = (detail: PlanRunDetail): BrowserUsePlanResult => ({
+  ...CLOSED,
+  detail: detail as BrowserUsePlanResult['detail'],
+});
 const SITE_CHOICES = [
   {
     id: 'nov-21',
@@ -159,6 +169,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.delete(schema.authorizedSignupOffers);
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'true');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {
@@ -282,6 +293,19 @@ function runEndingAt(ending: BrowserUsePlanResult, during: () => Promise<unknown
 
 const opsStop = () => requestStopForRunningPlans(db.database, { now: NOW });
 const nothingLands = async () => undefined;
+
+/** Every #ops page the sweep posts. */
+function opsPages() {
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops-fixture');
+  const paged: string[] = [];
+  vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
+    paged.push(JSON.parse(init?.body ?? '{}').text);
+    return new Response('ok', { status: 200 });
+  });
+  return paged;
+}
+const stopPage = (offerId: string) =>
+  `Hale: ops page. site registration_stop_unverified. ref ${offerId}.`;
 
 /** Sweep wiring that records every text a plan's end would send. */
 function hearing(runner: PlanSignupRunner) {
@@ -429,9 +453,40 @@ describe('an ops stop of every running plan', () => {
     ).toBe(true);
   });
 
-  it('the next sweep lets a stopped run go and texts nobody', async () => {
+  it('a run let go with its answer unread tells the parent Hale cannot say what it did', async () => {
+    const paged = opsPages();
     const plan = await runningPlan(QUEUED);
     await requestStopForRunningPlans(db.database, { now: NOW });
+    const { runner, notices, deps } = sweepDeps();
+
+    const result = await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
+
+    expect(result.plans).toEqual([
+      { offerId: plan.offerId, outcome: 'needs_human', detail: 'unconfirmed', notice: 'sent' },
+    ]);
+    expect(runner.release).toHaveBeenCalledWith(QUEUED);
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(notices.map((n) => [n.offerId, n.outcome, n.detail, n.charged, n.liveViewUrl])).toEqual([
+      [plan.offerId, 'needs_human', 'unconfirmed', 'unknown', null],
+    ]);
+    expect(paged).toEqual([stopPage(plan.offerId)]);
+    expect((await offerRow(plan.offerId)).status).toBe('handed_back');
+    expect(await finishedRow(plan.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
+      charged: 'unknown',
+      notice: 'sent',
+      stoppedFrom: { outcome: 'cancelled', detail: 'authorization_lapsed' },
+    });
+  });
+
+  it("a parent's own take-back of a queued run stays silent, with no page", async () => {
+    const paged = opsPages();
+    const plan = await runningPlan(QUEUED);
+    await db.database
+      .update(offers)
+      .set({ planCancelRequestedAt: NOW })
+      .where(eq(offers.id, plan.offerId));
     const { runner, notices, deps } = sweepDeps();
 
     const result = await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
@@ -445,9 +500,9 @@ describe('an ops stop of every running plan', () => {
       },
     ]);
     expect(runner.release).toHaveBeenCalledWith(QUEUED);
-    expect(runner.run).not.toHaveBeenCalled();
     expect(notices).toEqual([]);
-    expect((await offerRow(plan.offerId)).status).toBe('handed_back');
+    expect(paged).toEqual([]);
+    expect(await finishedRow(plan.offerId)).not.toHaveProperty('stoppedFrom');
   });
 
   it('marks a plan in paying, and the sweep still reads the payment and tells the parent', async () => {
@@ -619,16 +674,39 @@ describe('a stop that lands while the run is going', () => {
     ['a price change', { ...UNPAID, detail: 'price_change' }],
     ['the spending cap', { ...UNPAID, detail: 'spending_cap' }],
     ['the payment switch off', { ...UNPAID, detail: 'payment_off' }],
+    ['a total not read at review', { ...UNPAID, detail: 'total_unread' }],
+    ['a currency not read at review', { ...UNPAID, detail: 'currency_unknown' }],
+    ['a choice it could not read', { ...CLOSED, detail: 'choice_unreadable' }],
+    ['a cart with no live view', { ...CLOSED, outcome: 'error', detail: 'no_live_view' }],
     ['a login wall', { ...UNPAID, outcome: 'needs_login', detail: 'login_wall' }],
+    ['a verification code', { ...UNPAID, detail: 'verification_code' }],
     ['a waiver', { ...UNPAID, detail: 'waiver' }],
+    ['a medical question', { ...UNPAID, detail: 'medical' }],
+    ['an unexpected field', { ...CLOSED, detail: 'unexpected_field' }],
+    ['a captcha', { ...CLOSED, detail: 'captcha' }],
+    ['a waiting room', { ...CLOSED, outcome: 'not_open', detail: 'waiting_room' }],
+    ['a timed open', { ...CLOSED, outcome: 'not_open', detail: 'timed_open' }],
+    ['a session it could not find', { ...CLOSED, detail: 'session_not_found' }],
+    ['a page error', { ...CLOSED, outcome: 'error', detail: 'page_error' }],
     ['a form filled for the parent', { ...UNPAID, outcome: 'ready_for_parent', detail: 'none' }],
     ['sold out', { ...CLOSED, outcome: 'sold_out', detail: 'none' }],
-    ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
     ['not open yet', { ...CLOSED, outcome: 'not_open', detail: 'none' }],
-    ['a failed run', { ...CLOSED, outcome: 'error', detail: 'run_failed' }],
-    ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
-    ['payment details entered', { ...CLOSED, outcome: 'error', detail: 'payment_boundary' }],
+    ['a stop with no detail', { ...CLOSED, detail: 'none' }],
+    ['a login with no detail', { ...CLOSED, outcome: 'needs_login', detail: 'none' }],
+    ['no seed browser', { ...CLOSED, outcome: 'error', detail: 'browser_unavailable' }],
+    ['no seeder', { ...CLOSED, outcome: 'error', detail: 'seed_unavailable' }],
+    ['a failed seed', { ...CLOSED, outcome: 'error', detail: 'seed_failed' }],
+    ['a refused URL', atDetail('url_refused')],
+    ['a missed open', atDetail('missed_open')],
+    ['a parent town', atDetail('parent_town')],
+    ['choices gone', atDetail('choices_gone')],
+    ['a missing detail', atDetail('missing_detail')],
+    ['a missing consent', atDetail('consent_missing')],
+    ['a wider consent', atDetail('consent_wider')],
+    ['no city login', { ...atDetail('no_provider_session'), outcome: 'needs_login' }],
+    ['the spend reserve', { ...atDetail('spend_reserve_reached'), outcome: 'error' }],
   ])('ending at %s, the parent hears nothing and the browser is let go', async (_name, ending) => {
+    const paged = opsPages();
     const plan = await dueFamily();
     const runner = runEndingAt(ending, opsStop);
     const stopped = hearing(runner);
@@ -651,6 +729,7 @@ describe('a stop that lands while the run is going', () => {
       notice: 'withheld',
       stoppedFrom: { outcome: ending.outcome, detail: ending.detail },
     });
+    expect(paged).toEqual([]);
 
     const control = await dueFamily();
     const heard = hearing(runEndingAt(ending, nothingLands));
@@ -660,43 +739,91 @@ describe('a stop that lands while the run is going', () => {
     ]);
   });
 
-  it('a run whose engine throws before any payment texts nobody', async () => {
-    const threw = () =>
-      new PlanEngineThrew(new TypeError('fetch failed'), {
-        runId: 'run-1',
-        sessionId: 'bu-session-1',
-        browserId: null,
-        sessionCostUsd: '0.010000',
-        reviewStarted: false,
-      });
+  it.each<[string, BrowserUsePlanResult]>([
+    ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
+    ['payment details entered', { ...CLOSED, outcome: 'error', detail: 'payment_boundary' }],
+    ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
+    ['a waitlist with a listed detail', { ...CLOSED, outcome: 'waitlist', detail: 'page_error' }],
+    ['a failed run', { ...CLOSED, outcome: 'error', detail: 'run_failed' }],
+    ['a cancelled run', { ...CLOSED, outcome: 'error', detail: 'run_cancelled' }],
+    ['a run that timed out', { ...CLOSED, outcome: 'needs_human', detail: 'timeout' }],
+    ['an answer it could not read', { ...CLOSED, outcome: 'error', detail: 'unreadable_output' }],
+    ['an API error', { ...CLOSED, outcome: 'error', detail: 'api_error' }],
+    ['an error with no detail', { ...CLOSED, outcome: 'error', detail: 'none' }],
+    [
+      'a detail added later',
+      { ...atDetail('a_detail_added_later' as PlanRunDetail), outcome: 'error' },
+    ],
+  ])('ending at %s, the parent is told and #ops is paged once', async (_name, ending) => {
+    const paged = opsPages();
     const plan = await dueFamily();
-    const stopped = hearing({
-      ...runEndingAt(UNPAID, nothingLands),
-      run: async () => {
-        await opsStop();
-        throw threw();
-      },
+    const runner = runEndingAt(ending, opsStop);
+    const stopped = hearing(runner);
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([
+      { offerId: plan.offerId, outcome: ending.outcome, detail: ending.detail, notice: 'sent' },
+    ]);
+    expect(stopped.notices.map((n) => [n.offerId, n.outcome, n.detail, n.charged])).toEqual([
+      [plan.offerId, ending.outcome, ending.detail, 'unknown'],
+    ]);
+    expect(paged).toEqual([stopPage(plan.offerId)]);
+    expect(await finishedRow(plan.offerId)).toMatchObject({
+      outcome: ending.outcome,
+      detail: ending.detail,
+      charged: 'unknown',
+      notice: 'sent',
+      stoppedFrom: { outcome: ending.outcome, detail: ending.detail },
     });
+  });
+
+  it('ending at the check before payment, the parent hears nothing and #ops is not paged', async () => {
+    const paged = opsPages();
+    const plan = await dueFamily();
+    const ending: BrowserUsePlanResult = {
+      ...CLOSED,
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+    };
+    const stopped = hearing(runEndingAt(ending, opsStop));
 
     const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
 
     expect(result.plans).toEqual([{ offerId: plan.offerId, ...STOPPED_SUMMARY }]);
     expect(stopped.notices).toEqual([]);
-    expect(await finishedRow(plan.offerId)).toMatchObject({
-      stoppedFrom: { outcome: 'error', detail: 'engine_threw' },
-    });
+    expect(paged).toEqual([]);
+  });
 
-    const control = await dueFamily();
-    const heard = hearing({
+  it.each([
+    ['once a session started', 'run-1', 'bu-session-1'],
+    ['naming no session, since the create call may have reached the provider', null, null],
+  ])('an engine that throws %s tells the parent and pages once', async (_name, runId, sessionId) => {
+    const paged = opsPages();
+    const plan = await dueFamily();
+    const stopped = hearing({
       ...runEndingAt(UNPAID, nothingLands),
       run: async () => {
-        throw threw();
+        await opsStop();
+        throw new PlanEngineThrew(new TypeError('fetch failed'), {
+          runId,
+          sessionId,
+          browserId: null,
+          sessionCostUsd: null,
+          reviewStarted: false,
+        });
       },
     });
-    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
-    expect(heard.notices.map((n) => [n.offerId, n.detail])).toEqual([
-      [control.offerId, 'engine_threw'],
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, stopped.deps);
+
+    expect(result.plans).toEqual([
+      { offerId: plan.offerId, outcome: 'error', detail: 'engine_threw', notice: 'sent' },
     ]);
+    expect(stopped.notices.map((n) => [n.offerId, n.detail])).toEqual([
+      [plan.offerId, 'engine_threw'],
+    ]);
+    expect(paged).toEqual([stopPage(plan.offerId)]);
   });
 
   it.each<[string, BrowserUsePlanResult, string]>([
@@ -848,59 +975,74 @@ describe('a stop that lands while the run is going', () => {
   });
 });
 
-describe('what a stopped run lets Hale tell its parent', () => {
-  const CANCELLED = 'That registration was cancelled.';
-  const noShadow: ClaimShadow = {
-    sweep: () => 'off',
-    coachTurn: () => 'off',
-    dispatch: () => 'off',
-  };
-  /** The real claim gate on the family's real rows; only the reader's answer is scripted. */
-  const claimGate = (familyId: string) =>
-    refuseUnbackedSend(
-      db.database,
-      { familyId, body: CANCELLED, now: NOW, lane: 'activity_followup' },
-      noShadow,
-      createClaimEnforcer({
-        enforces: () => true,
-        reader: scriptedClaimReader(() => [{ segment: 0, kind: 'cancelled', row: 'x1' }]),
-        loadContext: loadClaimShadowContext,
-      }),
-    );
+describe('with the ops-stop flag off', () => {
+  beforeEach(() => {
+    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, '');
+  });
 
-  it.each<[string, BrowserUsePlanResult]>([
-    ['an agent that says it submitted', { ...CLOSED, outcome: 'error', detail: 'submit_boundary' }],
-    ['a waitlist', { ...CLOSED, outcome: 'waitlist', detail: 'none' }],
-    ['payment details entered', { ...CLOSED, outcome: 'error', detail: 'payment_boundary' }],
-    [
-      'the check before payment',
-      { ...CLOSED, outcome: 'cancelled', detail: 'authorization_lapsed' },
-    ],
-  ])('ending at %s, "cancelled" stays unbacked after a stop', async (_name, ending) => {
-    const stopped = await dueFamily();
-    await runDueSignupPlans(db.database, { now: NOW }, hearing(runEndingAt(ending, opsStop)).deps);
-    expect(await finishedRow(stopped.offerId)).toMatchObject({
-      charged: 'nothing',
-      stoppedFrom: { outcome: ending.outcome, detail: ending.detail },
-    });
-    expect(await claimGate(stopped.familyId)).toEqual(['no_cancel_record']);
+  it('a stop row changes no ending: the parent hears the run as on main, with no page', async () => {
+    const paged = opsPages();
+    const plan = await dueFamily();
+    const runner = runEndingAt(UNPAID, opsStop);
+    const heard = hearing(runner);
 
-    const tookBack = await dueFamily();
-    const parentTakesBack = () =>
-      cancelSignupPlan(db.database, {
-        offerId: tookBack.offerId,
-        familyId: tookBack.familyId,
-        actor: tookBack.parentUserId,
-        now: NOW,
-      });
-    await runDueSignupPlans(
-      db.database,
-      { now: NOW },
-      hearing(runEndingAt(ending, parentTakesBack)).deps,
-    );
-    expect(await finishedRow(tookBack.offerId)).toMatchObject({ charged: 'nothing' });
-    expect(await finishedRow(tookBack.offerId)).not.toHaveProperty('stoppedFrom');
-    expect(await claimGate(tookBack.familyId)).toEqual([]);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+
+    expect(result.plans).toEqual([
+      { offerId: plan.offerId, outcome: 'needs_human', detail: 'no_saved_card', notice: 'sent' },
+    ]);
+    expect(heard.notices.map((n) => [n.offerId, n.detail, n.liveViewUrl])).toEqual([
+      [plan.offerId, 'no_saved_card', UNPAID.liveViewUrl],
+    ]);
+    expect(runner.release).not.toHaveBeenCalled();
+    expect(paged).toEqual([]);
+    expect(await finishedRow(plan.offerId)).not.toHaveProperty('stoppedFrom');
+  });
+
+  it('a stop row does not keep a run from parking and asking', async () => {
+    const plan = await dueFamily();
+    const ending: BrowserUsePlanResult = {
+      ...CLOSED,
+      outcome: 'options_mismatch',
+      detail: 'none',
+      siteChoices: SITE_CHOICES,
+    };
+    const heard = hearing(runEndingAt(ending, opsStop));
+
+    await runDueSignupPlans(db.database, { now: NOW }, heard.deps);
+
+    expect(firstBody(heard.asks)).toBe('ask for options_mismatch');
+    expect((await offerRow(plan.offerId)).status).toBe('planned');
+  });
+
+  it('parks on the plain path, with no stop transaction', async () => {
+    const plan = await runningPlan(QUEUED);
+    const park = { ...plan, availability: { kind: 'password_rejected' as const }, now: NOW };
+    const transaction = vi.spyOn(db.database, 'transaction');
+
+    expect(await parkUnlessOpsStopped(db.database, park)).toBe('parked');
+    expect(transaction).not.toHaveBeenCalled();
+    expect((await offerRow(plan.offerId)).status).toBe('planned');
+
+    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'true');
+    const lit = await runningPlan(QUEUED);
+    transaction.mockClear();
+    expect(await parkUnlessOpsStopped(db.database, { ...park, ...lit })).toBe('parked');
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stop row does not keep a plan out of the before-open release', async () => {
+    vi.stubEnv(REGISTRATION_PLAN_AT_OPEN_ENABLED_ENV, 'true');
+    const plan = await runningPlan(UNSTARTED);
+    await requestStopForRunningPlans(db.database, { now: NOW });
+    const { runner, notices, deps } = sweepDeps();
+
+    const result = await runDueSignupPlans(db.database, { now: NEXT_SWEEP }, deps);
+
+    expect(result.plans).toEqual([]);
+    expect((await offerRow(plan.offerId)).status).toBe('planned');
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(notices).toEqual([]);
   });
 });
 
@@ -1005,6 +1147,33 @@ describe('the stop-signup-plans script', () => {
     const printed = stderr.join('\n');
     for (const part of [user, password, host]) expect(printed).not.toContain(part);
     expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it('with --apply and the flag off, refuses, names the flag and writes nothing', async () => {
+    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, 'TRUE');
+    const plan = await runningPlan(QUEUED);
+    const before = await offerRow(plan.offerId);
+
+    const { stdout, stderr, exit } = await runScript(db.database, { args: ['--apply'] });
+
+    expect(stdout).toEqual([]);
+    expect(stderr.at(-1)).toBe('{"mode":"apply","refused":"PLAN_OPS_STOP_ENABLED"}');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(exit).not.toHaveBeenCalledWith(0);
+    expect(await offerRow(plan.offerId)).toEqual(before);
+    expect(await stopRows(plan.offerId)).toEqual([]);
+  });
+
+  it('the dry run works with the flag off', async () => {
+    vi.stubEnv(PLAN_OPS_STOP_ENABLED_ENV, '');
+    await runningPlan(QUEUED);
+
+    const { stdout, exit } = await runScript(db.database);
+
+    expect(stdout).toEqual([
+      '{"mode":"dry_run","wouldStop":{"signup":1,"paying":0},"stillRunning":{"signup":1,"paying":0}}',
+    ]);
+    expect(exit).toHaveBeenCalledWith(0);
   });
 
   it('with --apply, marks the running plan and writes its one audit row', async () => {

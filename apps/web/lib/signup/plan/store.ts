@@ -20,6 +20,7 @@ import {
 } from '../store';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
+import { planOpsStopEnabled } from './flag';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;
@@ -335,7 +336,7 @@ export async function releaseUnstartedPlansBeforeOpen(
         eq(offers.status, 'submitting'),
         gt(offers.planOpensAt, input.now),
         or(isNull(offers.planAlreadyOpen), eq(offers.planAlreadyOpen, false)),
-        not(hasOpsStop),
+        planOpsStopEnabled() ? not(hasOpsStop) : undefined,
         sql`(
           ${offers.planResume} is null
           or (
@@ -613,11 +614,15 @@ export async function runPlanStop(
   return { mode: 'apply', stopped, stillRunning: running };
 }
 
-/** An ops stop is on this plan, as opposed to only its parent's own take-back. */
+/**
+ * An ops stop is on this plan, as opposed to only its parent's own take-back. Always false
+ * with the flag off, with no read.
+ */
 export async function planOpsStopped(
   database: Database,
   input: { offerId: string; familyId: string },
 ): Promise<boolean> {
+  if (!planOpsStopEnabled()) return false;
   const offers = schema.authorizedSignupOffers;
   const [row] = await database
     .select({ id: offers.id })
@@ -636,6 +641,10 @@ export async function parkUnlessOpsStopped(
   database: Database,
   input: Parameters<typeof parkSignupPlan>[1],
 ): Promise<'parked' | 'ops_stopped'> {
+  if (!planOpsStopEnabled()) {
+    await parkSignupPlan(database, input);
+    return 'parked';
+  }
   const offers = schema.authorizedSignupOffers;
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
