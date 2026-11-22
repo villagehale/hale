@@ -29,6 +29,7 @@ import {
 } from './settle-family-plan.js';
 import {
   type ChargeRevokeDecision,
+  ENDED_SUBSCRIPTION,
   LIVE_SUBSCRIPTION,
   type PaidTier,
   type PriceTierMap,
@@ -88,10 +89,12 @@ export type ApplyStripeBillingResult =
     }
   | {
       status: 'unresolved';
-      reason: 'no_family' | PlanHoldReason;
+      reason: 'no_family' | 'dispute_needs_review' | PlanHoldReason;
       opsAlert: OpsPageOutcome;
     }
   | PlanRetry;
+
+type UnresolvedRevokeReason = 'no_family' | 'subscription_unresolved' | 'dispute_needs_review';
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -112,7 +115,7 @@ export interface ApplyStripeBillingDeps {
   /** Test seam for the unresolved #ops page. */
   onUnresolvedRevoke?: (info: {
     eventId: string;
-    reason: 'no_family' | 'subscription_unresolved';
+    reason: UnresolvedRevokeReason;
   }) => Promise<OpsPageOutcome | undefined>;
   /** The Stripe transport for the flag-on reads and the cancel. */
   stripeFetch?: typeof fetch;
@@ -287,7 +290,7 @@ async function readLinkedCharge(
       done: knownFamily
         ? await unresolvedRevoke(
             eventId,
-            'subscription_unresolved',
+            refund ? 'subscription_unresolved' : 'dispute_needs_review',
             knownFamily,
             database,
             deps,
@@ -359,7 +362,10 @@ async function settleRefund(
   );
 }
 
-/** A dispute never cancels. It drops the plan only on a proven link to a dead subscription. */
+/**
+ * A dispute never cancels and never writes a refund row. It drops the plan only when the
+ * pinned read proves the family's own subscription has ended. Anything else goes to a person.
+ */
 async function settleDispute(
   event: unknown,
   eventId: string,
@@ -371,7 +377,7 @@ async function settleDispute(
   if ('done' in read) return read.done;
   const { charge, familyId } = read;
   if (!charge.subscriptionId || !charge.subscriptionStatus) {
-    return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps, true);
+    return unresolvedRevoke(eventId, 'dispute_needs_review', familyId, database, deps, true);
   }
   return applyChargeRevoke(event, eventId, decision, database, deps, {
     familyId,
@@ -405,7 +411,8 @@ async function applyChargeRevoke(
 
   type ChargeTxResult =
     | Exclude<ApplyStripeBillingResult, { status: 'unresolved' }>
-    | { status: 'leave_unresolved' };
+    | { status: 'leave_unresolved' }
+    | { status: 'dispute_needs_review' };
 
   return database
     .transaction(async (tx): Promise<ChargeTxResult> => {
@@ -439,6 +446,12 @@ async function applyChargeRevoke(
         current.stripeSubscriptionId !== null &&
         linked.subscriptionId === current.stripeSubscriptionId;
       const nothingLiveOnFile = !current.stripeSubscriptionId;
+      const provenEnded =
+        linked.subscriptionStatus !== null && ENDED_SUBSCRIPTION.has(linked.subscriptionStatus);
+
+      if (provenLink && !(provenEnded && (tiedToCurrent || nothingLiveOnFile))) {
+        return { status: 'dispute_needs_review' };
+      }
 
       if (partial || live || otherSubscription) {
         const reason = partial ? 'partial_refund' : 'active_subscription';
@@ -488,6 +501,9 @@ async function applyChargeRevoke(
       return { status: 'applied', tier: 'free' };
     })
     .then(async (result): Promise<ApplyStripeBillingResult> => {
+      if (result.status === 'dispute_needs_review') {
+        return unresolvedRevoke(eventId, 'dispute_needs_review', familyId, database, deps, true);
+      }
       if (result.status === 'leave_unresolved') {
         return unresolvedRevoke(
           eventId,
@@ -560,7 +576,7 @@ async function unresolvedAlreadyRecorded(
 
 async function unresolvedRevoke(
   eventId: string,
-  reason: 'no_family' | 'subscription_unresolved',
+  reason: UnresolvedRevokeReason,
   familyId: string | null,
   database: Database,
   deps: ApplyStripeBillingDeps,

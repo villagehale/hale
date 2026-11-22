@@ -166,7 +166,7 @@ export interface StripeSubscriptionRead extends SubscriptionFacts {
   customerId: string;
   latestInvoiceId: string | null;
   items: ReadonlyArray<{ id: string; currentPeriodEnd: number | null }>;
-  periodInvoices: Array<{ id: string; refunded: boolean }>;
+  periodInvoices: Array<{ id: string; refunded: boolean; disputed: boolean }>;
 }
 
 export type RefundPendingReason =
@@ -359,7 +359,7 @@ function subscriptionRead(id: string, row: StripeObject): StripeSubscriptionRead
 async function periodInvoices(
   get: StripeRead,
   subscription: StripeSubscriptionRead,
-): Promise<{ invoices: Array<{ id: string; refunded: boolean }>; truncated: boolean }> {
+): Promise<{ invoices: StripeSubscriptionRead['periodInvoices']; truncated: boolean }> {
   const query = new URLSearchParams({
     subscription: subscription.id,
     status: 'paid',
@@ -369,42 +369,61 @@ async function periodInvoices(
   const rows = listData(page).map(invoiceFacts);
   const covering = rows.filter((row) => invoicePeriodFit(row, subscription) === 'covers');
   const oldest = rows.at(-1);
-  const truncated =
+  let truncated =
     page.has_more === true &&
     oldest !== undefined &&
     invoicePeriodFit(oldest, subscription) === 'covers';
-  const invoices: Array<{ id: string; refunded: boolean }> = [];
+  const invoices: StripeSubscriptionRead['periodInvoices'] = [];
   for (const row of covering) {
-    invoices.push({ id: row.id, refunded: await invoiceRefunded(get, row.id) });
+    const payments = await invoicePaymentFacts(get, row.id);
+    if (payments.truncated) truncated = true;
+    invoices.push({ id: row.id, refunded: payments.refunded, disputed: payments.disputed });
   }
   return { invoices, truncated };
 }
 
-/** Refunded only on proof. An invoice with no card payment counts as paid. */
-async function invoiceRefunded(get: StripeRead, invoiceId: string): Promise<boolean> {
+/**
+ * `refunded` only on proof for every payment; an invoice with no card payment counts as
+ * paid. `disputed` if any payment's charge is. An unread page could hold a disputed
+ * payment, so it is `truncated` rather than a clean answer.
+ */
+async function invoicePaymentFacts(
+  get: StripeRead,
+  invoiceId: string,
+): Promise<{ refunded: boolean; disputed: boolean; truncated: boolean }> {
   const query = new URLSearchParams({
     invoice: invoiceId,
     status: 'paid',
     limit: PERIOD_INVOICE_LIMIT,
   });
   const page = await get(`/v1/invoice_payments?${query}`);
+  if (page.has_more === true) return { refunded: false, disputed: false, truncated: true };
   const payments = listData(page);
-  if (page.has_more === true || payments.length === 0) return false;
+  let refunded = payments.length > 0;
+  let disputed = false;
   for (const row of payments) {
     const payment = isRecord(row.payment) ? row.payment : null;
     const intentId = payment?.type === 'payment_intent' ? readId(payment.payment_intent) : null;
-    if (!intentId) return false;
+    if (!intentId) {
+      refunded = false;
+      continue;
+    }
     const expand = new URLSearchParams({ 'expand[]': 'latest_charge' });
     const intent = await get(`/v1/payment_intents/${encodeURIComponent(intentId)}?${expand}`);
     const charge = isRecord(intent.latest_charge) ? intent.latest_charge : null;
-    const chargeId = charge ? readId(charge.id) : null;
-    if (!charge || !chargeId || charge.refunded !== true) return false;
-    if (typeof charge.amount_captured !== 'number') return false;
-    const refunds = new URLSearchParams({ charge: chargeId, limit: STRIPE_LIST_LIMIT });
-    const state = refundStateOf(await get(`/v1/refunds?${refunds}`), charge.amount_captured);
-    if (state.state !== 'settled') return false;
+    if (charge?.disputed === true) disputed = true;
+    refunded = refunded && charge !== null && (await chargeRefundSettled(get, charge));
   }
-  return true;
+  return { refunded, disputed, truncated: false };
+}
+
+async function chargeRefundSettled(get: StripeRead, charge: StripeObject): Promise<boolean> {
+  const chargeId = readId(charge.id);
+  if (!chargeId || charge.refunded !== true) return false;
+  if (typeof charge.amount_captured !== 'number') return false;
+  const refunds = new URLSearchParams({ charge: chargeId, limit: STRIPE_LIST_LIMIT });
+  const state = refundStateOf(await get(`/v1/refunds?${refunds}`), charge.amount_captured);
+  return state.state === 'settled';
 }
 
 function refundStateOf(page: StripeObject, amountCaptured: number): RefundState {

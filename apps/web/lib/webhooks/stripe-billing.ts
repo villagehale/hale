@@ -428,7 +428,7 @@ export interface SubscriptionFacts {
   status: string;
   priceId: string | null;
   /** The paid invoices covering the current period. `refunded` is true only on proof. */
-  periodInvoices: ReadonlyArray<{ id: string; refunded: boolean }>;
+  periodInvoices: ReadonlyArray<{ id: string; refunded: boolean; disputed: boolean }>;
 }
 
 export type PlanDecision =
@@ -446,14 +446,21 @@ function planStanding(
   subscription: SubscriptionFacts,
   refundReadyIds: ReadonlySet<string>,
   openHoldIds: ReadonlySet<string>,
+  lapsedHoldIds: ReadonlySet<string>,
 ): 'none' | 'grants' | 'holds' {
   if (!LIVE_SUBSCRIPTION.has(subscription.status)) return 'none';
   if (refundReadyIds.has(subscription.id)) return 'none';
+  if (lapsedHoldIds.has(subscription.id)) return 'none';
   const invoices = subscription.periodInvoices;
   if (invoices.length > 0 && invoices.every((invoice) => invoice.refunded)) return 'none';
   if (openHoldIds.has(subscription.id)) return 'holds';
   if (subscription.status === 'trialing') return 'grants';
-  return subscription.status === 'active' && invoices.length > 0 ? 'grants' : 'holds';
+  return subscription.status === 'active' && invoices.some(provesPayment) ? 'grants' : 'holds';
+}
+
+/** A refund took the money back. A dispute may yet, so neither proves the period is paid. */
+export function provesPayment(invoice: { refunded: boolean; disputed: boolean }): boolean {
+  return !invoice.refunded && !invoice.disputed;
 }
 
 /**
@@ -466,6 +473,8 @@ export function decidePlanTier(input: {
   refundReadyIds: ReadonlySet<string>;
   /** Subscriptions with an open refund hold: none of them may grant until a new paid period. */
   openHoldIds: ReadonlySet<string>;
+  /** Open refund holds that rolled past their period with nothing paid. They carry no tier. */
+  lapsedHoldIds: ReadonlySet<string>;
   currentTier: PlanTier;
   comped: boolean;
   priceTierMap: PriceTierMap;
@@ -474,7 +483,7 @@ export function decidePlanTier(input: {
 }): PlanDecision {
   const standings = input.subscriptions.map((row) => ({
     row,
-    standing: planStanding(row, input.refundReadyIds, input.openHoldIds),
+    standing: planStanding(row, input.refundReadyIds, input.openHoldIds, input.lapsedHoldIds),
   }));
   const entitledIds = standings.filter((s) => s.standing === 'grants').map((s) => s.row.id);
   if (input.comped) return { action: 'set', tier: 'family', entitledIds };

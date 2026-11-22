@@ -18,6 +18,7 @@ import {
   type PaidTier,
   type PriceTierMap,
   decidePlanTier,
+  provesPayment,
 } from './stripe-billing.js';
 
 /**
@@ -125,6 +126,8 @@ type Outcome =
       reason: PlanHoldReason;
       clearsOn: ClearsOn;
       subscription: StripeSubscriptionRead | null;
+      /** Set when the money is proven gone and only the Stripe cancel is blocked. */
+      tier?: PlanTier;
     }
   | { kind: 'older_invoice'; subscription: StripeSubscriptionRead }
   | {
@@ -314,15 +317,15 @@ async function decide(
   const own = subscriptions.find((row) => row.id === signal.subscriptionId) ?? null;
   if (truncated) return { outcome: hold('truncated', 'decision', own), subscriptions };
 
-  if (signal.kind === 'refund') {
-    const judged = await judgeRefund(signal, own, reader);
-    if (judged) return { outcome: judged, subscriptions };
-  }
+  const judged = signal.kind === 'refund' ? await judgeRefund(signal, own, reader) : null;
+  const cancelHeld = judged?.kind === 'hold' && judged.reason === 'cancel_would_stop_collection';
+  if (judged && !cancelHeld) return { outcome: judged, subscriptions };
 
   const decision = decidePlanTier({
     subscriptions,
     refundReadyIds: new Set(family.refundReadyIds),
-    openHoldIds: openRefundHoldIds(family, subscriptions),
+    openHoldIds: refundHoldIds(family, subscriptions, (row, sub) => !refundHoldEnded(row, sub)),
+    lapsedHoldIds: refundHoldIds(family, subscriptions, refundHoldLapsed),
     currentTier: family.planTier,
     comped: family.comped,
     priceTierMap,
@@ -332,6 +335,10 @@ async function decide(
         ? { subscriptionId: signal.subscriptionId, tier: signal.eventTier }
         : null,
   });
+  if (cancelHeld) {
+    const outcome = decision.action === 'set' ? { ...judged, tier: decision.tier } : judged;
+    return { outcome, subscriptions };
+  }
   if (decision.action === 'hold') {
     return { outcome: hold(decision.reason, 'decision', own), subscriptions };
   }
@@ -417,27 +424,36 @@ async function judgeRefund(
   return null;
 }
 
+function rolledPastHold(row: HeldPlan, subscription: StripeSubscriptionRead): boolean {
+  const end = currentPeriodEnd(subscription);
+  return row.periodEnd !== null && end !== null && end > row.periodEnd;
+}
+
 /** A refund hold ends with its subscription, or with a new period someone actually paid for. */
 function refundHoldEnded(row: HeldPlan, subscription: StripeSubscriptionRead): boolean {
   if (ENDED_SUBSCRIPTION.has(subscription.status)) return true;
-  const end = currentPeriodEnd(subscription);
-  const rolledOver = row.periodEnd !== null && end !== null && end > row.periodEnd;
-  return rolledOver && subscription.periodInvoices.some((invoice) => !invoice.refunded);
+  return rolledPastHold(row, subscription) && subscription.periodInvoices.some(provesPayment);
 }
 
-function openRefundHoldIds(
+/** Past its period with nothing proven paid: the row stays open but carries no tier. */
+function refundHoldLapsed(row: HeldPlan, subscription: StripeSubscriptionRead): boolean {
+  return rolledPastHold(row, subscription) && !refundHoldEnded(row, subscription);
+}
+
+function refundHoldIds(
   family: FamilyRead,
   subscriptions: readonly StripeSubscriptionRead[],
+  matches: (row: HeldPlan, subscription: StripeSubscriptionRead) => boolean,
 ): Set<string> {
-  const open = subscriptions.filter((subscription) =>
+  const found = subscriptions.filter((subscription) =>
     family.holds.some(
       (row) =>
         row.clearsOn === 'subscription_ended' &&
         row.subscriptionId === subscription.id &&
-        !refundHoldEnded(row, subscription),
+        matches(row, subscription),
     ),
   );
-  return new Set(open.map((subscription) => subscription.id));
+  return new Set(found.map((subscription) => subscription.id));
 }
 
 function clearedEventIds(
@@ -464,7 +480,15 @@ interface PlannedCommit {
   result: ApplyStripeBillingResult;
   tier: PlanTier | null;
   storeRefs: boolean;
-  row: { actionTaken: string; before?: unknown; after: Record<string, unknown> } | null;
+  row: PlannedRow | null;
+  /** The plan move a held refund commits beside its held row. */
+  heldPlanRow?: PlannedRow | null;
+}
+
+interface PlannedRow {
+  actionTaken: string;
+  before?: unknown;
+  after: Record<string, unknown>;
 }
 
 function planCommit(family: FamilyRead, signal: PlanSignal, outcome: Outcome): PlannedCommit {
@@ -477,12 +501,21 @@ function planCommit(family: FamilyRead, signal: PlanSignal, outcome: Outcome): P
       : {}),
   };
   const before = { planTier: family.planTier };
+  const planRow = (tier: PlanTier, after: Record<string, unknown>): PlannedRow => ({
+    actionTaken: 'family_plan_updated',
+    before,
+    after: { ...facts, planTier: tier, ...after },
+  });
 
   if (outcome.kind === 'hold') {
+    const movedTier = outcome.tier && outcome.tier !== family.planTier ? outcome.tier : null;
     return {
       result: { status: 'unresolved', reason: outcome.reason, opsAlert: 'sent' },
-      tier: null,
+      tier: movedTier,
       storeRefs: false,
+      heldPlanRow: movedTier
+        ? planRow(movedTier, { stripeEventId: signal.eventId, reason: 'refund' })
+        : null,
       row: {
         actionTaken: 'billing_plan_unsettled',
         after: {
@@ -518,11 +551,7 @@ function planCommit(family: FamilyRead, signal: PlanSignal, outcome: Outcome): P
   }
 
   const moved = outcome.tier !== family.planTier;
-  const updatedRow = (after: Record<string, unknown>) => ({
-    actionTaken: 'family_plan_updated',
-    before,
-    after: { ...facts, planTier: outcome.tier, ...after },
-  });
+  const updatedRow = (after: Record<string, unknown>) => planRow(outcome.tier, after);
 
   if (signal.kind === 'refund') {
     return moved
@@ -586,6 +615,9 @@ async function commit(
     if (updated.length === 0) throw new FamilyChangedDuringSettle();
 
     const audit = { familyId, actor: 'system', targetTable: 'families', targetId: familyId };
+    if (planned.heldPlanRow) {
+      await tx.insert(schema.auditLog).values({ ...audit, ...planned.heldPlanRow });
+    }
     if (planned.row) await tx.insert(schema.auditLog).values({ ...audit, ...planned.row });
     for (const clearsEventId of cleared) {
       await tx.insert(schema.auditLog).values({
