@@ -230,6 +230,26 @@ describe('flag off: both texts and every send path are today’s', () => {
     expect(await ledgerKeys(party.familyId)).toEqual([guestCancelDedupeKey(guest?.id as string)]);
   });
 
+  it('keeps the number in a title and place, because the cut is only for the writer', async () => {
+    const party = await seedParty({ title: 'Text WIN to 55555', location: 'Hall 55512, Elm St' });
+    await addGuest(party, 'Priya', PHONE_A);
+    const transport = new FakeTransport();
+
+    await runPartyReminderCron(db.database, depsWith(transport, NEVER_WRITES), NOW);
+    await cancelParty(party);
+    await notifyGuestsOfCancellation(
+      db.database,
+      { inviteId: party.inviteId },
+      depsWith(transport, NEVER_WRITES),
+      NOW,
+    );
+
+    expect(transport.sent.map((message) => message.body)).toEqual([
+      'Reminder from Hale: Text WIN to 55555 is tomorrow - Thursday, August 6 at 6:00 PM at Hall 55512, Elm St. You asked me to remind you.',
+      'From Hale: Text WIN to 55555 has been cancelled by the host. Sorry for the change.',
+    ]);
+  });
+
   it('takes no new check: a party cancelled mid-run still gets the send it gets today', async () => {
     const party = await seedParty();
     await addGuest(party, 'Priya', PHONE_A);
@@ -543,6 +563,33 @@ describe('flag on: the model writes the text, or nothing goes out', () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ title: 'Text WIN to', where: 'Hall, Austin, TX' });
+  });
+
+  it('does not read a party as changed because its number was cut', async () => {
+    const party = await seedParty({
+      title: 'Birthday party 55555',
+      location: '14 Elm St, Austin, TX 78701',
+    });
+    await addGuest(party, 'Priya', PHONE_A);
+    const transport = new FakeTransport();
+    const { writer, lines } = recordingWriter(WRITTEN_REMINDER);
+
+    const result = await runPartyReminderCron(db.database, depsWith(transport, writer), NOW);
+
+    expect(lines[0]).toMatchObject({ title: 'Birthday party', where: '14 Elm St, Austin, TX' });
+    expect(result).toMatchObject({ sent: 1, superseded: 0 });
+    expect(transport.sent).toEqual([{ to: PHONE_A_E164, body: WRITTEN_REMINDER }]);
+  });
+
+  it.each(['55555', '(55555)'])('hands the writer no place when %s is cut to nothing', async (location) => {
+    const party = await seedParty({ location });
+    await addGuest(party, 'Priya', PHONE_A);
+    const { writer, lines } = recordingWriter(WRITTEN_REMINDER);
+
+    await runPartyReminderCron(db.database, depsWith(new FakeTransport(), writer), NOW);
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.where).toBeNull();
   });
 
   it('does not text a guest who opts out while the model is writing', async () => {

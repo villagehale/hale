@@ -5,6 +5,7 @@ import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { namesKeyword } from '~/lib/channel/no-stop-keyword';
 import { smallerLane } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { contactsOutside } from '~/lib/format/contact-shape';
 import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
@@ -63,9 +64,11 @@ export function partyGuestLineUserMessage(line: PartyGuestLine): string {
 }
 
 const NAMES_HALE = /\bHale\b/;
-const TRAILING_PUNCTUATION = /[\s.,;:!?]+$/;
+const TRAILING_PUNCTUATION = /[\s.,;:!?]/;
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 const LETTER = /\p{L}/u;
+const NOT_A_LETTER = /\P{L}/u;
+const LONG_NUMBER_DIGITS = 5;
 const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
 /**
  * Five digits in a draft with only spaces or punctuation between them: more than a day or
@@ -73,27 +76,52 @@ const SHOUTED_WORD = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
  */
 const LONG_NUMBER = /\p{Nd}(?:[^\p{L}\p{N}\n]*\p{Nd}){4}/u;
 const LONG_NUMBER_IN_TITLE = /\p{Nd}(?:[^\p{L}\p{N}]*\p{Nd}){4,}/gu;
-/** Read within one part of a place, because a comma parts an address. */
-const LONG_NUMBER_IN_PLACE = /\p{Nd}(?:[^\p{L}\p{N},]*\p{Nd}){4,}/gu;
-/** Opens the place or a comma part, with a street name next: "12-345 Main St". */
-const STREET_NUMBER = /(?<=^|,\s*)\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+\p{L})/gu;
-/** A full phone number in one part of a place, which a host may hand to guests. */
-const PLACE_PHONE = /\p{Nd}(?:[^\p{L}\p{N},]*\p{Nd}){9,}/gu;
+/**
+ * Read within one part of a place. A comma and a space part an address; a comma with no
+ * space is inside a number, as in "55,555".
+ */
+const LONG_NUMBER_IN_PLACE = /\p{Nd}(?:(?:[^\p{L}\p{N},]|,(?!\s))*\p{Nd}){4,}/gu;
+/** Opens the place, with a street name next: "12-345 Main St". */
+const STREET_NUMBER = /^\p{Nd}+(?:-\p{Nd}+)?(?=,?\s+\p{L})/u;
+const CUT_EDGE = /[\s,;:-]/;
+/** Five or six digits standing alone: a short code, which no phone is written with. */
+const SHORT_CODE_GROUP = /(?<!\d)\d{5,6}(?!\d)/;
 /** The clock `partyWhen` ends on: "2:30 PM". */
 const WHEN_CLOCK = /(\d{1,2}):(\d{2}) ([AP])M$/;
 
-function numbersAPlaceMayHold(place: string) {
-  return [...place.matchAll(STREET_NUMBER), ...place.matchAll(PLACE_PHONE)];
+/** Walks back one character at a time, because a `+$` pattern rescans a long run. */
+function withoutTrailing(text: string, edge: RegExp): string {
+  let end = text.length;
+  while (end > 0 && edge.test(text.charAt(end - 1))) end -= 1;
+  return text.slice(0, end);
 }
 
-function cutNumbers(fact: string, numbers: RegExp, keeps: (at: number) => boolean): string {
-  const cut = fact.replace(numbers, (run: string, at: number) => (keeps(at) ? run : ' '));
-  if (cut === fact) return fact;
-  return cut
-    .replace(/\s+([,.;:!?])/g, '$1')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/[\s,;:-]+$/, '')
-    .trim();
+/** Any character the gate reads as a digit, as that digit: "５" and "⑤" are 5. */
+function withPlainDigits(text: string): string {
+  return text.replace(/\P{ASCII}/gu, (char) => {
+    const shape = inShape(char);
+    return /\d/.test(shape) ? shape : char;
+  });
+}
+
+function cutNumbers(
+  fact: string,
+  numbers: RegExp,
+  keeps: (run: string, at: number, whole: string) => boolean,
+): string {
+  const plain = withPlainDigits(fact);
+  const cut = plain.replace(numbers, (run: string, at: number) =>
+    keeps(run, at, plain) ? run : ' ',
+  );
+  if (cut === plain) return fact;
+  const tidied = withoutTrailing(
+    cut
+      .replace(/\s+/g, ' ')
+      .replace(/ ([,.;:!?])/g, '$1')
+      .replace(/^[\s,;:-]+/, ''),
+    CUT_EDGE,
+  );
+  return WORD_CHARACTER.test(tidied) ? tidied : '';
 }
 
 /**
@@ -106,12 +134,17 @@ export function withoutTextBackNumbers(title: string): string {
 }
 
 /**
- * The same for a place, which keeps a street number and a full phone number. A ZIP code
- * goes, because a guest does not need it in a text.
+ * The same for a place, which keeps a number that opens it and a real phone number. A ZIP
+ * code goes, because a guest does not need it in a text.
  */
 export function placeWithoutTextBackNumbers(place: string): string {
-  const handed = new Set(numbersAPlaceMayHold(place).map((number) => number.index));
-  return cutNumbers(place, LONG_NUMBER_IN_PLACE, (at) => handed.has(at));
+  return cutNumbers(
+    place,
+    LONG_NUMBER_IN_PLACE,
+    (run, at, whole) =>
+      (at === 0 && STREET_NUMBER.exec(whole)?.[0] === run) ||
+      (normalizePhoneE164(run) !== null && !SHORT_CODE_GROUP.test(run)),
+  );
 }
 
 /** A fact of digits alone exempts nothing: it cannot be told from a number to text back. */
@@ -154,14 +187,38 @@ function lessPartyClock(text: string, when: string): string {
   return text.replace(new RegExp(clock, 'u'), '\n');
 }
 
+/** The digits at one edge of a place, unless they are already a long number it may hold. */
+function shortEdge(edge: string): string {
+  const digits = edge.replace(/\D/g, '').length;
+  return digits > 0 && digits < LONG_NUMBER_DIGITS ? edge : '';
+}
+
 /**
- * Whether the draft holds a long number the party did not give it. Only the place's street
- * and phone numbers and the party's own time are given, and each covers one mention.
+ * The draft less one whole mention of the place. A short number at either edge stays, so
+ * digits written against the place still count as one number, unless a comma and a space
+ * part them: "December 12, 14 Elm St".
+ */
+function lessPlaceMention(text: string, where: string): string {
+  const place = withoutTrailing(inShape(placeWithoutTextBackNumbers(where)), TRAILING_PUNCTUATION);
+  if (!LETTER.test(place)) return text;
+  const at = wholeRunAt(text, place);
+  if (at === -1) return text;
+  const before = text.slice(0, at);
+  const after = text.slice(at + place.length);
+  const opening = /^\P{L}*/u.exec(place)?.[0] as string;
+  const closing = place.slice(withoutTrailing(place, NOT_A_LETTER).length);
+  const keptOpening = /,\s+$/.test(before) ? '' : shortEdge(opening);
+  const keptClosing = /^,\s/.test(after) ? '' : shortEdge(closing);
+  return `${before}${keptOpening}\n${keptClosing}${after}`;
+}
+
+/**
+ * Whether the draft holds a long number the party did not give it. Only the place and the
+ * party's own time are given, and each covers one mention.
  */
 function holdsTextBackNumber(body: string, line: PartyGuestLine): boolean {
-  const handed =
-    line.where === null ? [] : numbersAPlaceMayHold(inShape(line.where)).map(([number]) => number);
-  const rest = handed.reduce(lessOneMention, inShape(body));
+  const shaped = inShape(body);
+  const rest = line.where === null ? shaped : lessPlaceMention(shaped, line.where);
   return LONG_NUMBER.test(lessPartyClock(rest, line.when));
 }
 
@@ -176,7 +233,7 @@ function shoutsOutsideFacts(outside: string, when: string): boolean {
 }
 
 function carriesPlace(body: string, where: string): boolean {
-  const place = inShape(where).toLowerCase().replace(TRAILING_PUNCTUATION, '');
+  const place = withoutTrailing(inShape(where).toLowerCase(), TRAILING_PUNCTUATION);
   if (place.length === 0) return true;
   return wholeRunAt(inShape(body).toLowerCase(), place) !== -1;
 }

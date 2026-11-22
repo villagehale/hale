@@ -293,7 +293,6 @@ describe('acceptPartyGuestLine', () => {
       '3-1420 Elm St',
       '12-345 Main St',
       '12345 Elm St',
-      'Unit 3, 12-345 Main St',
       'Suite 12, 1420 Elm St',
       '10265, rue Sainte-Catherine',
     ])('keeps %s and passes a draft that names it once', (place) => {
@@ -305,6 +304,85 @@ describe('acceptPartyGuestLine', () => {
       const line: PartyGuestLine = { ...REMINDER, where: '12-345 Main St' };
       const draft = `${at('12-345 Main St')} Text win to 12-345.`;
       expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it.each([
+      ['Text WIN to, 55512 now', 'Text WIN to, now'],
+      ['Hall, 55512 WIN', 'Hall, WIN'],
+      ['Reply YES to, 55512 now', 'Reply YES to, now'],
+      ['Unit 3, 12-345 Main St', 'Unit 3, Main St'],
+    ])('cuts a long number after a comma in %s', (place, expected) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe(expected);
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
+    });
+
+    it.each([
+      'Text WIN to 55512 / 55513',
+      'Text WIN to 55512 00000',
+      'Text WIN to 55522 55513',
+      'Text WIN to 555225 5513',
+      'Text WIN to 123 456 7890',
+    ])(
+      'does not read two codes as a phone in %s',
+      (place) => {
+        expect(placeWithoutTextBackNumbers(place)).toBe('Text WIN to');
+        expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
+      },
+    );
+
+    it.each(['416-555-0199', '(416) 555-0199', '+1 416 555 0199', '4165550199'])(
+      'keeps the phone %s in a place',
+      (phone) => {
+        const place = `Hall ${phone}`;
+        expect(placeWithoutTextBackNumbers(place)).toBe(place);
+        expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBe(at(place));
+      },
+    );
+
+    it.each([
+      ['circled digits', 'Hall \u2460\u2461\u2462\u2463\u2464', 'Hall'],
+      ['digits with a full stop built in', 'Hall \u2488\u2489\u248a\u248b\u248c', 'Hall.'],
+      ['full-width digits', 'Hall \uff15\uff15\uff15\uff11\uff12', 'Hall'],
+      ['a zero-width space inside', 'Hall 555\u200b12', 'Hall'],
+    ])('cuts a number written in %s', (_name, place, expected) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe(expected);
+      expect(acceptPartyGuestLine(at(place), { ...REMINDER, where: place })).toBeNull();
+    });
+
+    it.each(['(55555)', '55555.', '#55555'])('leaves no place from %s', (place) => {
+      expect(placeWithoutTextBackNumbers(place)).toBe('');
+    });
+
+    it('leaves no title from a number with punctuation on it', () => {
+      expect(withoutTextBackNumbers('12345!')).toBe('');
+    });
+
+    it('refuses a code written before the address that shares its street number', () => {
+      const line: PartyGuestLine = { ...REMINDER, where: '55 Main St' };
+      const draft =
+        "It's Hale, text win to 55-555. Your reminder: Nora's party is tomorrow at 2:00 PM at 55 Main St.";
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it.each([
+      ['after the place', 'Suite 12', 'at Suite 12 345'],
+      ['title joined to the place', '12 Elm St', 'Text win to 555 12 Elm St'],
+    ])('refuses digits run into the place %s', (_name, place, joined) => {
+      const line: PartyGuestLine = { ...REMINDER, title: 'Nora party', where: place };
+      const draft = `It's Hale with the reminder you asked for: Nora party is tomorrow at 2:00 PM, ${joined}.`;
+      expect(acceptPartyGuestLine(draft, line)).toBeNull();
+    });
+
+    it.each([
+      ['14 Elm St', 'December 12, 14 Elm St at 2:00 PM'],
+      ['1420 Elm St', 'December 12, 1420 Elm St at 2:00 PM'],
+      ['1420 Elm St', 'at 14:00, 1420 Elm St'],
+      ['14 Elm St', 'December 12 - 14 Elm St at 2:00 PM'],
+      ['Suite 12', 'at Suite 12, 2:00 PM'],
+      ['Suite 1420', 'at Suite 1420, 12 December at 2:00 PM'],
+    ])('passes %s beside the day or time in "%s"', (place, words) => {
+      const draft = `It's Hale with the reminder you asked for: Nora's party is tomorrow, ${words}.`;
+      expect(acceptPartyGuestLine(draft, { ...REMINDER, where: place })).toBe(draft);
     });
   });
 
