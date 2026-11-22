@@ -1916,6 +1916,65 @@ describe('the driver text, a try that may have landed', () => {
       { site: 'team_schedule_driver_unsent', facts: { reason: 'send_unconfirmed' }, count: 1 },
     ]);
   });
+
+  describe('a Linq answer that does not prove a refusal', () => {
+    const REFUSED_FOR_CERTAIN_FLAG = 'LINQ_REFUSED_FOR_CERTAIN_ENABLED';
+    const DOORS = ['phone', 'chat'] as const;
+
+    async function failThenAccept(door: (typeof DOORS)[number], first: number) {
+      if (door === 'chat') await inboundOnChat();
+      const { changeId } = await seedChange();
+      const h = door === 'phone' ? phoneDoor([first, 'accept']) : chatDoor([first, 'accept']);
+      await firstTry(changeId, h.ports);
+      await tick(h.ports, at(5));
+      return { changeId, keys: h.posts.map((post) => post.key) };
+    }
+
+    describe.each(DOORS)('%s door', (door) => {
+      it.each([408, 409, 425])(
+        'flag on: a %i then an accept is two POSTs under one key and one sent row',
+        async (first) => {
+          vi.stubEnv(REFUSED_FOR_CERTAIN_FLAG, 'true');
+          const { changeId, keys } = await failThenAccept(door, first);
+
+          expect(keys).toEqual([linqKey(changeId, 1), linqKey(changeId, 1)]);
+          expect(await ledger()).toMatchObject([
+            {
+              dedupeKey: legKey(changeId, 1),
+              status: 'failed',
+              errorCode: `unconfirmed:http_${first}`,
+            },
+            { dedupeKey: legKey(changeId, 2), errorCode: null, providerMessageId: 'linq-2' },
+          ]);
+          expect(await accepted()).toHaveLength(1);
+        },
+      );
+
+      it('flag on: a 400 then an accept proved a refusal, so it takes a new key', async () => {
+        vi.stubEnv(REFUSED_FOR_CERTAIN_FLAG, 'true');
+        const { changeId, keys } = await failThenAccept(door, 400);
+
+        expect(keys).toEqual([linqKey(changeId, 1), linqKey(changeId, 2)]);
+        expect(await ledger()).toMatchObject([
+          { dedupeKey: legKey(changeId, 1), status: 'failed', errorCode: 'http_400' },
+          { dedupeKey: legKey(changeId, 2), errorCode: null, providerMessageId: 'linq-2' },
+        ]);
+        expect(await accepted()).toHaveLength(1);
+      });
+
+      it('flag off: a 409 then an accept takes a new key, as main does', async () => {
+        vi.stubEnv(REFUSED_FOR_CERTAIN_FLAG, 'false');
+        const { changeId, keys } = await failThenAccept(door, 409);
+
+        expect(keys).toEqual([linqKey(changeId, 1), linqKey(changeId, 2)]);
+        expect(await ledger()).toMatchObject([
+          { dedupeKey: legKey(changeId, 1), status: 'failed', errorCode: 'http_409' },
+          { dedupeKey: legKey(changeId, 2), errorCode: null, providerMessageId: 'linq-2' },
+        ]);
+        expect(await accepted()).toHaveLength(1);
+      });
+    });
+  });
 });
 
 describe('the driver text, flag off', () => {
