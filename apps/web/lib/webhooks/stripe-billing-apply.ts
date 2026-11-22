@@ -308,6 +308,7 @@ async function readLinkedCharge(
         eventCreated: eventCreatedSeconds(event),
         refund,
         subscriptionId: null,
+        periodEnd: null,
       },
       database,
       deps,

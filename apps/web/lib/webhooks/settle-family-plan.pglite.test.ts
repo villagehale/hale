@@ -1655,6 +1655,27 @@ describe('only a paid period grants a tier', () => {
     expect(await planTier(familyId)).toBe('plus');
   });
 
+  it('a refund hold written during a long Stripe outage still clears on a paid rollover', async () => {
+    const h = harness();
+    const familyId = await family('plus', 'cus_outage', 'sub_outage');
+    buy(h.fake, 'outage', familyId);
+    h.fake.intercept(
+      (call) => call.path === '/v1/subscriptions/search',
+      () => stripeError(503),
+    );
+    const refund = refundEvent(h.fake, 'ch_outage', undefined, NOW_S - 2 * DAY);
+    expect(await h.apply(refund)).toEqual({ status: 'retry', reason: 'stripe_unavailable' });
+    h.fake.clearIntercepts();
+    await h.apply(updatedEvent(h.fake, 'sub_outage'));
+    expect(await planTier(familyId)).toBe('free');
+
+    advancePeriod(h.fake, 'sub_outage');
+    const paid = payCurrentPeriod(h.fake, 'sub_outage', 'outage_paid');
+
+    expect(await h.apply(invoicePaid(h.fake, paid))).toEqual({ status: 'applied', tier: 'plus' });
+    expect(await clearedHolds(familyId)).toContain(refund.id);
+  });
+
   it('finding 10: a partly refunded covering invoice holds and is not cancelled', async () => {
     const h = harness();
     const familyId = await family('plus', 'cus_part', 'sub_part');

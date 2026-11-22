@@ -215,6 +215,7 @@ export async function settleFamilyPlan(
         eventCreated: signal.eventCreated,
         refund: signal.kind === 'refund',
         subscriptionId: signal.subscriptionId,
+        periodEnd: signal.kind === 'refund' ? refundedPeriodEnd(signal) : null,
       },
       database,
       deps,
@@ -359,6 +360,13 @@ function hold(
   subscription: StripeSubscriptionRead | null,
 ): Outcome {
   return { kind: 'hold', reason, clearsOn, subscription };
+}
+
+function refundedPeriodEnd(signal: Extract<PlanSignal, { kind: 'refund' }>): number | null {
+  const ends = signal.invoice.lines.flatMap((line) =>
+    line.subscriptionId === signal.subscriptionId && line.periodEnd !== null ? line.periodEnd : [],
+  );
+  return ends.length > 0 ? Math.max(...ends) : null;
 }
 
 function currentPeriodEnd(subscription: StripeSubscriptionRead): number | null {
@@ -630,6 +638,7 @@ export interface RetryContext {
   eventCreated: number | null;
   refund: boolean;
   subscriptionId: string | null;
+  periodEnd: number | null;
 }
 
 /**
@@ -653,7 +662,7 @@ export async function retryFromFailure(
       { site: 'billing_stripe_refused', facts: { call: 'lookup', status: 'no_key' } },
       deps.pageDeps,
     );
-    await recordUnsettled(context, 'stripe_refused', null, database, deps);
+    await recordUnsettled(context, 'stripe_refused', context.periodEnd, database, deps);
     return { status: 'retry', reason: 'stripe_not_configured', opsAlert };
   }
   if (err instanceof RefundStillPending) {
@@ -674,7 +683,7 @@ export async function retryFromFailure(
   if (!(err instanceof StripeLookupError)) return null;
   if (err.kind === 'transient') {
     logRetry('stripe_unavailable');
-    await recordUnsettled(context, 'stripe_unavailable', null, database, deps);
+    await recordUnsettled(context, 'stripe_unavailable', context.periodEnd, database, deps);
     return { status: 'retry', reason: 'stripe_unavailable' };
   }
   const reason = err.call === 'cancel' ? 'stripe_cancel_failed' : 'stripe_refused';
@@ -687,7 +696,7 @@ export async function retryFromFailure(
     },
     deps.pageDeps,
   );
-  await recordUnsettled(context, 'stripe_refused', null, database, deps);
+  await recordUnsettled(context, 'stripe_refused', context.periodEnd, database, deps);
   return { status: 'retry', reason, opsAlert };
 }
 
