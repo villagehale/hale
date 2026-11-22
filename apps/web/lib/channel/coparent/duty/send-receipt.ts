@@ -2,7 +2,9 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { linqRefusedForCertainEnabled } from '~/lib/channel/linq/config';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import { linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import {
   COMPOSE_HOLD_FIRST_GAP_MS,
   COMPOSE_HOLD_MAX_ATTEMPTS,
@@ -39,12 +41,19 @@ const STRANDED_LOOKBACK_MS = 48 * DUTY_SWEEP_EVERY_MS;
 
 /**
  * On a row whose failure does not prove the text stayed home: a timeout, a network error,
- * a 5xx, an answer with no id. Only a permanent LinqSendError says Linq did not take it.
+ * a 5xx, an answer with no id. Only a definite refusal says Linq did not take it: with
+ * LINQ_REFUSED_FOR_CERTAIN_ENABLED, {@link linqRefusedForCertain}; without it, any permanent
+ * LinqSendError, which wrongly includes a 408, 409 or 425.
  */
 const MAY_HAVE_LANDED_PREFIX = 'unconfirmed:';
 
 export function dutyFailureCode(err: unknown): string {
-  if (err instanceof LinqSendError && err.permanent) return err.code;
+  if (
+    err instanceof LinqSendError &&
+    (linqRefusedForCertainEnabled() ? linqRefusedForCertain(err) : err.permanent)
+  ) {
+    return err.code;
+  }
   return `${MAY_HAVE_LANDED_PREFIX}${err instanceof LinqSendError ? err.code : 'unknown'}`;
 }
 
