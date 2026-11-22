@@ -5,6 +5,7 @@ import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import { defaultKickedDrainTiming, runKickedDrain } from '~/lib/cron/kicked-drain';
+import type { DriverRetrySummary } from '~/lib/integrations/team-schedule/driver';
 import type { GroupReminderTickSummary } from '~/lib/loop/reminders/group/fire';
 import type { HeldReminderRecheck } from '~/lib/loop/reminders/run';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
@@ -96,6 +97,10 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // again here, since its next hourly slot is after the event starts. Before the queues,
   // for the same reason as the group reminders.
   const heldReminders = preview ? { skipped: 'preview' as const } : await runHeldReminderLeg();
+  // VIL-734: a driver's schedule-change text Linq refused goes again on its backoff.
+  const teamScheduleDrivers = preview
+    ? { skipped: 'preview' as const }
+    : await runTeamScheduleDriverLeg();
   try {
     const summary = await runDrainCron({ queues });
     // Signup-open watches need a tick inside two minutes of registration_opens_at.
@@ -136,6 +141,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         firstReply,
         groupReminders,
         heldReminders,
+        teamScheduleDrivers,
         optOutRecovery,
         anthropicCredit,
         billingNotices,
@@ -236,6 +242,36 @@ async function runAnthropicCreditLeg(): Promise<
     console.error(
       { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
       'cron/drain anthropic credit leg failed',
+    );
+    return { skipped: 'tick_failed' };
+  }
+}
+
+async function runTeamScheduleDriverLeg(): Promise<
+  DriverRetrySummary | { skipped: 'tick_failed' }
+> {
+  try {
+    const { teamScheduleSendReceiptEnabled } = await import(
+      '~/lib/integrations/team-schedule/flag'
+    );
+    if (!teamScheduleSendReceiptEnabled()) return { skipped: 'flag_off' };
+    const { retryTeamScheduleDrivers, teamSchedulePortsFor } = await import(
+      '~/lib/integrations/team-schedule'
+    );
+    const { createOutboundTransport } = await import('~/lib/channel/outbound-transport');
+    const { db } = await import('~/lib/db');
+    const database = db();
+    const now = new Date();
+    return await retryTeamScheduleDrivers(database, {
+      now,
+      portsFor: (familyId) =>
+        teamSchedulePortsFor(database, createOutboundTransport(), familyId, now).driver,
+    });
+  } catch (err) {
+    // The name only: a message from inside the leg may carry what it was writing.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain team schedule driver leg failed',
     );
     return { skipped: 'tick_failed' };
   }
