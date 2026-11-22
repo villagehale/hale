@@ -17,6 +17,7 @@ import {
   SANTA_DONE_TEMPLATE,
   type SecretSantaLineWriter,
   composeSantaDoneLine,
+  drawRowsAStopReaches,
   foldName,
   nameAppears,
   secretSantaEnabled,
@@ -600,26 +601,25 @@ async function sendOrganizerNote(
 const TERMINAL: readonly HeldReason[] = ['claim_stuck', 'stopped', 'draw_stale', 'cannot_open_1to1'];
 const RETRIED: readonly HeldReason[] = ['send_failed', 'line_unwritten'];
 
-/** A live draw this number has not been sent and could still be: what a 1:1 stop would mark
- * `opted_out` (optOutSecretSantaOnStop). */
+/** A row a 1:1 stop would mark `opted_out` ({@link drawRowsAStopReaches}), not marked yet, on
+ * a live draw, and still sendable: a reason the giver's own text lifts is not terminal here. */
 export async function hasDrawAStopWouldHold(
   database: Database,
   phoneHash: string,
 ): Promise<boolean> {
   const p = schema.secretSantaParticipants;
   const d = schema.secretSantaDraws;
-  const people = schema.linqSharedGroupPeople;
+  const neverSent = TERMINAL.filter((reason) => !RELEASABLE.includes(reason));
   const [draw] = await database
     .select({ id: p.id })
     .from(p)
-    .innerJoin(people, eq(people.id, p.personId))
     .innerJoin(d, eq(d.id, p.drawId))
     .where(
       and(
-        eq(people.phoneE164Hash, phoneHash),
-        isNull(p.deliveredAt),
+        drawRowsAStopReaches(database, phoneHash),
         inArray(d.status, ['collecting', 'drawn']),
-        or(isNull(p.heldReason), notInArray(p.heldReason, ['opted_out', ...TERMINAL])),
+        isNull(d.staleAt),
+        or(isNull(p.heldReason), notInArray(p.heldReason, ['opted_out', ...neverSent])),
       ),
     )
     .limit(1);

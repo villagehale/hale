@@ -91,7 +91,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await db.exec(
-    'truncate table opt_out_held_messages, opt_out_read_holds, channel_messages, parent_channels, consent_records, audit_log, sms_intake_sessions, caregiver_invites, rate_limits, family_members, families, users cascade',
+    'truncate table opt_out_held_messages, opt_out_read_holds, channel_messages, parent_channels, consent_records, audit_log, sms_intake_sessions, caregiver_invites, secret_santa_participants, secret_santa_draws, linq_shared_group_people, party_rsvps, party_invites, rate_limits, family_members, families, users cascade',
   );
 });
 
@@ -165,20 +165,30 @@ const REFUSED = 'refused for the test';
 /** A real database fault on one table's writes, not a mock of the code that writes it. */
 async function withRefused<T>(
   operation: 'update' | 'delete',
-  table: 'parent_channels' | 'sms_intake_sessions' | 'opt_out_held_messages',
+  table: RefusableTable,
   run: () => Promise<T>,
 ): Promise<T> {
-  await db.exec(`
+  await refuseWrites(operation, table);
+  try {
+    return await run();
+  } finally {
+    await allowWrites(table);
+  }
+}
+
+type RefusableTable = 'parent_channels' | 'sms_intake_sessions' | 'opt_out_held_messages';
+
+function refuseWrites(operation: 'update' | 'delete', table: RefusableTable) {
+  return db.exec(`
     create function refuse_write() returns trigger language plpgsql
       as $$ begin raise exception '${REFUSED}'; end $$;
     create trigger refuse_write before ${operation} on ${table}
       for each row execute function refuse_write();
   `);
-  try {
-    return await run();
-  } finally {
-    await db.exec(`drop trigger refuse_write on ${table}; drop function refuse_write();`);
-  }
+}
+
+function allowWrites(table: RefusableTable) {
+  return db.exec(`drop trigger refuse_write on ${table}; drop function refuse_write();`);
 }
 
 const withRevokeRefused = <T>(run: () => Promise<T>): Promise<T> =>
@@ -750,8 +760,118 @@ describe('a stop the recovery sweep read itself', () => {
   }, 30_000);
 });
 
+describe('a stop is written down before anything else happens', () => {
+  /** Reads stop, then a table the number timeline needs is gone: a real fault inside settling. */
+  const stopThenTimelineBreaks: OptOutReader = {
+    read: async () => {
+      await db.exec('alter table party_rsvps rename to party_rsvps_away');
+      return STOP;
+    },
+  };
+  const timelineRestored = () => db.exec('alter table party_rsvps_away rename to party_rsvps');
+
+  it('flag on: a throw while settling cannot lose the stop to a later reading of none', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    const transport = new FakeTransport();
+
+    const first = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(stopThenTimelineBreaks, transport, NOW),
+    ).finally(timelineRestored);
+
+    expect(first.outcomes.recovery_failed).toBe(1);
+    expect(await heldKind()).toBe(STOP_PENDING_HOLD);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+
+    const later = scriptedReader(NONE);
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(later.reader, transport, PAST_BACKOFF),
+    );
+
+    expect(second.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(second.outcomes.read_not_stop).toBe(0);
+    expect(later.asked()).toBe(0);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await withdrawals(family.parentUserId)).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+    expect(transport.sent).toEqual([]);
+  }, 30_000);
+
+  it('flag off: the same throw leaves an ordinary row that a reading of none releases, as on main', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'false');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    const transport = new FakeTransport();
+
+    const first = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(stopThenTimelineBreaks, transport, NOW),
+    ).finally(timelineRestored);
+
+    expect(first.outcomes.recovery_failed).toBe(1);
+    expect(await heldKind()).toBe(MESSAGE_HOLD);
+
+    const later = scriptedReader(NONE);
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(later.reader, transport, PAST_BACKOFF),
+    );
+
+    expect(second.outcomes.read_not_stop).toBe(1);
+    expect(later.asked()).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it('flag on: when the mark itself fails, nothing is acted on and the hold stays', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await heldParent(ownText());
+    const markRefused: OptOutReader = {
+      read: async () => {
+        await refuseWrites('update', 'opt_out_held_messages');
+        return STOP;
+      },
+    };
+
+    const swept = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(markRefused, new FakeTransport(), NOW),
+    ).finally(() => allowWrites('opt_out_held_messages'));
+
+    expect(swept.outcomes.recovery_failed).toBe(1);
+    expect(await heldKind()).toBe(MESSAGE_HOLD);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+    expect(await channelRevoked(family.parentUserId)).toBe(false);
+    expect(await withdrawals(family.parentUserId)).toBe(0);
+  }, 30_000);
+
+  it('flag on: a stop marked and recorded in one pass is released in that pass', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    const family = await heldParent(ownText());
+    const model = scriptedReader(STOP);
+
+    const swept = await recoverHeldOptOutReads(
+      db.database,
+      sweepDeps(model.reader, new FakeTransport(), NOW),
+    );
+
+    expect(swept.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await heldKind()).toBeUndefined();
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+});
+
 describe('a pending stop whose text is in no store', () => {
-  async function seedInvite(): Promise<void> {
+  async function seedInvite(
+    state: typeof schema.caregiverInvites.$inferInsert.state = 'awaiting_caregiver_reply',
+    { createdAt = new Date(SENT_AT.getTime() - 3_600_000) }: { createdAt?: Date } = {},
+  ): Promise<void> {
     const inviter = await seedFamily(db.database, 'Inviting Family');
     await db.database.insert(schema.caregiverInvites).values({
       familyId: inviter.familyId,
@@ -760,9 +880,10 @@ describe('a pending stop whose text is in no store', () => {
       displayName: 'Sam',
       phoneE164Encrypted: encryptString(PHONE),
       phoneE164Hash: HASH(),
-      state: 'awaiting_caregiver_reply',
+      state,
+      closedAt: state === 'awaiting_caregiver_reply' ? null : new Date(SENT_AT.getTime() - 60_000),
       expiresAt: new Date(NOW.getTime() + 72 * 3_600_000),
-      createdAt: new Date(SENT_AT.getTime() - 3_600_000),
+      createdAt,
     });
   }
 
@@ -795,6 +916,7 @@ describe('a pending stop whose text is in no store', () => {
   async function seedDraw(
     status: 'drawn' | 'cancelled' = 'drawn',
     deliveredAt: Date | null = null,
+    held: { heldReason: schema.SecretSantaHeldReason | null; staleAt?: Date } | null = null,
   ): Promise<void> {
     const [person] = await db.database
       .insert(schema.linqSharedGroupPeople)
@@ -806,12 +928,13 @@ describe('a pending stop whose text is in no store', () => {
       .returning({ id: schema.linqSharedGroupPeople.id });
     const [draw] = await db.database
       .insert(schema.secretSantaDraws)
-      .values({ chatId: 'chat-stop-hold', status })
+      .values({ chatId: 'chat-stop-hold', status, staleAt: held?.staleAt ?? null })
       .returning({ id: schema.secretSantaDraws.id });
     await db.database.insert(schema.secretSantaParticipants).values({
       drawId: draw?.id as string,
       personId: person?.id as string,
       deliveredAt,
+      heldReason: held?.heldReason ?? null,
     });
   }
 
@@ -847,9 +970,15 @@ describe('a pending stop whose text is in no store', () => {
     );
 
   const records: [string, () => Promise<void>][] = [
-    ['an open caregiver invite', seedInvite],
+    ['an open caregiver invite', () => seedInvite()],
+    ['an expired invite nobody answered', () => seedInvite('expired')],
+    ['a seat_taken invite', () => seedInvite('seat_taken')],
     ['a guest reminder opt-in', seedGuest],
     ['an undelivered Secret Santa draw', () => seedDraw()],
+    [
+      'a draw whose 1:1 could not open',
+      () => seedDraw('drawn', null, { heldReason: 'cannot_open_1to1' }),
+    ],
   ];
 
   it.each(records)(
@@ -886,6 +1015,55 @@ describe('a pending stop whose text is in no store', () => {
     30_000,
   );
 
+  it('releases after the stop commits even though it closes only the newest unanswered invite', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    await seedInvite('expired', { createdAt: new Date(SENT_AT.getTime() - 7_200_000) });
+    await seedInvite('seat_taken');
+    await heldNoText('pending');
+
+    expect((await sweep(NOW)).outcomes.unrecorded).toBe(1);
+
+    await theStopCommits();
+    const second = await sweep(PAST_BACKOFF);
+
+    const states = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites);
+    expect(states.map((row) => row.state).sort()).toEqual(['declined', 'expired']);
+    expect(second.outcomes.no_channel).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
+  it('is not released by a decline from before the hold', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    await seedInvite('declined', { createdAt: new Date(SENT_AT.getTime() - 7_200_000) });
+    await seedInvite('expired');
+    await heldNoText('pending');
+
+    const swept = await sweep(NOW);
+
+    expect(swept.outcomes.unrecorded).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+  }, 30_000);
+
+  it('holds a draw whose 1:1 could not open until the stop marks it opted out', async () => {
+    vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
+    await seedDraw('drawn', null, { heldReason: 'cannot_open_1to1' });
+    await heldNoText('pending');
+
+    expect((await sweep(NOW)).outcomes.unrecorded).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+
+    await theStopCommits();
+    const [participant] = await db.database
+      .select({ heldReason: schema.secretSantaParticipants.heldReason })
+      .from(schema.secretSantaParticipants);
+    expect(participant?.heldReason).toBe('opted_out');
+
+    expect((await sweep(PAST_BACKOFF)).outcomes.no_channel).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(false);
+  }, 30_000);
+
   it('is released once nothing remains on the number', async () => {
     vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
     await heldNoText('pending');
@@ -899,6 +1077,12 @@ describe('a pending stop whose text is in no store', () => {
   it.each<[string, () => Promise<void>]>([
     ['a delivered draw', () => seedDraw('drawn', new Date(SENT_AT.getTime() - 60_000))],
     ['a cancelled draw', () => seedDraw('cancelled')],
+    ['a draw gone stale', () => seedDraw('drawn', null, { heldReason: null, staleAt: SENT_AT })],
+    ['a row held as draw_stale', () => seedDraw('drawn', null, { heldReason: 'draw_stale' })],
+    ['a row held as claim_stuck', () => seedDraw('drawn', null, { heldReason: 'claim_stuck' })],
+    ['a row a group stop held', () => seedDraw('drawn', null, { heldReason: 'stopped' })],
+    ['an invite the person accepted', () => seedInvite('accepted')],
+    ['an invite the person declined', () => seedInvite('declined')],
   ])(
     'is released when the only record is %s',
     async (_name, seed) => {

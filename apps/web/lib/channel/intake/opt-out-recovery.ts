@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import { hasInviteAStopWouldClose } from '~/lib/channel/caregiver/invites';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { hasDrawAStopWouldHold } from '~/lib/channel/linq/secret-santa-send';
@@ -308,8 +309,8 @@ async function recoverRow(
     }
     // The stop may not have reached these, and with no text it cannot be run again. A stop
     // that did commit has cleared them, so it is not held forever.
-    if (stopPending && (await stopNotYetApplied(database, row.phoneHash))) return 'unrecorded';
-    await releaseRow(database, row);
+    if (stopPending && (await stopNotYetApplied(database, row))) return 'unrecorded';
+    await releaseRow(database, row, stopPending);
     return 'no_channel';
   }
 
@@ -317,6 +318,7 @@ async function recoverRow(
   // text is never handed to the model again: the reply is written from what was read then.
   const crisis = await crisisClaimFor(database, row.providerMessageId);
   let outcome: HeldReadOutcome;
+  let stopMarked = stopPending;
   if (stopPending) {
     // Already read as a stop on a live turn: retried as one, never handed to the model.
     outcome = await lateStop(database, deps, row, held);
@@ -334,15 +336,16 @@ async function recoverRow(
       late: { receivedAt: held.inbound.receivedAt, readAt: now },
     });
     if (reading === null) return 'read_failed';
-    outcome = await settleReading(database, deps, row, held, reading);
-    // A stop this read found and could not record is not read again: a later "none" would
-    // release a parent who said stop.
-    if (reading.intent === 'stop' && KEPT.has(outcome) && optOutHoldUntilStopCommitsEnabled()) {
+    // Before anything acts on the read: whatever fails after this, a later "none" cannot
+    // release a parent who said stop. A mark that throws leaves the row to be read again.
+    if (reading.intent === 'stop' && optOutHoldUntilStopCommitsEnabled()) {
       await markStopPending(database, {
         phoneHash: row.phoneHash,
         providerMessageId: row.providerMessageId,
       });
+      stopMarked = true;
     }
+    outcome = await settleReading(database, deps, row, held, reading);
   }
   if (KEPT.has(outcome)) return outcome;
   // An ordinary read of a text this door held unread is no longer unread. The row
@@ -365,14 +368,18 @@ async function recoverRow(
     // is the record, as on the live path.
     console.info({ outcome }, 'opt-out recovery: held text read for a sender with no family');
   }
-  await releaseRow(database, row);
+  await releaseRow(database, row, stopMarked);
   return outcome;
 }
 
-/** Keyed on the kind this pass claimed, so a stop marked pending meanwhile is not released
- * by a read of the ordinary text it was. */
-function releaseRow(database: Database, row: HeldRow): Promise<'released' | 'not_held'> {
-  return row.kind === STOP_PENDING_HOLD
+/** `stopMarked` is what this pass claimed or wrote, so a stop another turn marked pending
+ * meanwhile is not released by a read of the ordinary text it was. */
+function releaseRow(
+  database: Database,
+  row: HeldRow,
+  stopMarked: boolean,
+): Promise<'released' | 'not_held'> {
+  return stopMarked
     ? releaseStoppedMessage(database, {
         phoneHash: row.phoneHash,
         providerMessageId: row.providerMessageId,
@@ -1021,14 +1028,17 @@ async function numberReachable(database: Database, phoneHash: string): Promise<b
 }
 
 /** A record on this number that {@link handleStop} writes first and that still stands: an
- * open caregiver invite, a guest's reminder opt-in, or a Secret Santa draw it could get. */
-async function stopNotYetApplied(database: Database, phoneHash: string): Promise<boolean> {
-  const timeline = await numberHolderTimeline(database, phoneHash);
-  const openRecord = timeline.some(
-    (holding) =>
-      (holding.kind === 'invite' || holding.kind === 'guest_reminders') && holding.end === null,
+ * invite it would close, a guest's reminder opt-in, or a Secret Santa draw it could get. */
+async function stopNotYetApplied(database: Database, row: HeldRow): Promise<boolean> {
+  const timeline = await numberHolderTimeline(database, row.phoneHash);
+  const guestOptIn = timeline.some(
+    (holding) => holding.kind === 'guest_reminders' && holding.end === null,
   );
-  return openRecord || hasDrawAStopWouldHold(database, phoneHash);
+  return (
+    guestOptIn ||
+    (await hasInviteAStopWouldClose(database, row.phoneHash, row.heldAt)) ||
+    hasDrawAStopWouldHold(database, row.phoneHash)
+  );
 }
 
 /**
