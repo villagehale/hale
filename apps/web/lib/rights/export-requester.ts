@@ -95,6 +95,19 @@ export interface RequesterOnlyExport {
     sentAt: string;
     withheld: 'teen' | null;
   }[];
+  /**
+   * VIL-735 · the texts Hale owed this adult about a payment, a cancel or a refund, with
+   * their amounts and reason. A notice dropped because no payer could be resolved is in
+   * each adult's copy without either. Stripe ids stay out.
+   */
+  billingNotices: {
+    lane: string;
+    status: string;
+    reason: string | null;
+    createdAt: string;
+    updatedAt: string;
+    refunds: { refundedMinor: number; chargeMinor: number; currency: string }[];
+  }[];
   /** The stored verdict on each text to this adult that the claim gate refused: what each
    * claim cited and why, never the text. Absent when none is stored. */
   refusedClaims?: {
@@ -248,6 +261,33 @@ export async function loadRequesterOnlyExport(
     )
     .orderBy(asc(refusal.createdAt));
 
+  const notices = schema.billingNotices;
+  const noticeRows = await database
+    .select({
+      parentUserId: notices.parentUserId,
+      lane: notices.lane,
+      status: notices.status,
+      dropReason: notices.dropReason,
+      facts: notices.facts,
+      createdAt: notices.createdAt,
+      updatedAt: notices.updatedAt,
+    })
+    .from(notices)
+    .where(
+      and(
+        eq(notices.familyId, familyId),
+        or(
+          eq(notices.parentUserId, requesterUserId),
+          and(
+            isNull(notices.parentUserId),
+            eq(notices.status, 'dropped'),
+            eq(notices.dropReason, 'payer_unresolved'),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(notices.createdAt));
+
   const round2 = accessExportRound2Enabled();
   return {
     textThread: turns
@@ -313,6 +353,24 @@ export async function loadRequesterOnlyExport(
         withheld,
       };
     }),
+    billingNotices: noticeRows.map((row) => ({
+      lane: row.lane,
+      status: row.status,
+      reason: row.parentUserId === requesterUserId ? row.dropReason : null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      refunds:
+        row.parentUserId === requesterUserId
+          ? (row.facts.refunds ?? [])
+              // A merged row's amounts moved to the row it folded into, which shows them.
+              .filter((refund) => refund.refundedMinor !== undefined)
+              .map((refund) => ({
+                refundedMinor: refund.refundedMinor,
+                chargeMinor: refund.chargeMinor,
+                currency: refund.currency,
+              }))
+          : [],
+    })),
     ...(refusalRows.length > 0
       ? {
           refusedClaims: refusalRows.map((row) => ({
