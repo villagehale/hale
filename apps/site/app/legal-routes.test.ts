@@ -113,23 +113,33 @@ describe('legal pages (long-form shell)', () => {
   });
 
   it('dates both policies on the Toronto day the text was last edited', async () => {
-    // Hard-coded calendar day, formatted in America/Toronto. UTC had already
-    // rolled to October 8 when the terms were edited.
-    expect(privacyHtml).toContain('Last updated November 16, 2026');
-    expect(termsHtml).toContain('Last updated October 9, 2026');
-    expect(termsHtml).not.toContain('October 8, 2026');
+    // Hard-coded calendar day, formatted in America/Toronto, so a UTC day
+    // boundary cannot move it to the day before.
+    expect(privacyHtml).toContain('Last updated November 21, 2026');
+    expect(termsHtml).toContain('Last updated November 21, 2026');
+    expect(termsHtml).not.toContain('November 20, 2026');
     const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
     const zh = { params: Promise.resolve({ locale: 'zh' as const }) };
     const frPrivacy = renderToStaticMarkup(await PrivacyPage(fr));
     const frTerms = renderToStaticMarkup(await TermsPage(fr));
     const zhPrivacy = renderToStaticMarkup(await PrivacyPage(zh));
     const zhTerms = renderToStaticMarkup(await TermsPage(zh));
-    expect(frPrivacy).toContain('Dernière mise à jour le 16 novembre 2026');
-    expect(frTerms).toContain('Dernière mise à jour le 9 octobre 2026');
-    expect(frTerms).not.toContain('8 octobre 2026');
-    expect(zhPrivacy).toContain('最后更新于 2026年11月16日');
-    expect(zhTerms).toContain('最后更新于 2026年10月9日');
-    expect(zhTerms).not.toContain('10月8日');
+    expect(frPrivacy).toContain('Dernière mise à jour le 21 novembre 2026');
+    expect(frTerms).toContain('Dernière mise à jour le 21 novembre 2026');
+    expect(frTerms).not.toContain('20 novembre 2026');
+    expect(zhPrivacy).toContain('最后更新于 2026年11月21日');
+    expect(zhTerms).toContain('最后更新于 2026年11月21日');
+    expect(zhTerms).not.toContain('11月20日');
+  });
+
+  it('tells parents Hale changes without calling it early', () => {
+    expect(termsHtml).toContain('Hale changes over time. We may add, change, or withdraw features');
+    expect(termsHtml).not.toContain('Hale is early');
+  });
+
+  it('describes the Meta Purchase event without founding wording', () => {
+    expect(privacyHtml).toContain('A paid checkout sends a Purchase event');
+    expect(privacyHtml).not.toMatch(/founding/i);
   });
 
   it('names exactly the Google scopes the connect flow asks for, and no Drive', () => {
