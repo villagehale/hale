@@ -5,7 +5,7 @@ import {
   type Database,
   schema,
 } from '@hale/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { billingThreadNoticesArmedAt } from '~/lib/billing/flags';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
@@ -400,7 +400,10 @@ async function writeIntent(
   return 'recorded';
 }
 
-/** An older refund event cannot lower a total Hale already told the parent. */
+/**
+ * An older refund event cannot lower a total Hale already told the parent. A row dropped
+ * as `send_unconfirmed` may be on their phone, so it counts as told.
+ */
 async function refundAlreadyTold(
   tx: Parameters<Parameters<Database['transaction']>[0]>[0],
   familyId: string,
@@ -415,7 +418,13 @@ async function refundAlreadyTold(
       and(
         eq(schema.billingNotices.familyId, familyId),
         eq(schema.billingNotices.lane, 'plan_change'),
-        inArray(schema.billingNotices.status, ['sending', 'unconfirmed', 'sent']),
+        or(
+          inArray(schema.billingNotices.status, ['sending', 'unconfirmed', 'sent']),
+          and(
+            eq(schema.billingNotices.status, 'dropped'),
+            eq(schema.billingNotices.dropReason, 'send_unconfirmed'),
+          ),
+        ),
       ),
     );
   return told.some((row) =>

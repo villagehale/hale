@@ -300,6 +300,60 @@ describe('idempotency', () => {
       expect(rows[0]?.status).toBe(status);
     },
   );
+
+  const droppedRefund = (dropReason: string) =>
+    db.database.insert(schema.billingNotices).values({
+      familyId,
+      parentUserId: userId,
+      lane: 'plan_change',
+      status: 'dropped',
+      dropReason,
+      facts: {
+        eventIds: [`evt_r_told_${serial}`],
+        refunds: [
+          {
+            chargeId: `ch_${serial}`,
+            refundedMinor: 9000,
+            chargeMinor: 15900,
+            currency: 'cad',
+            full: false,
+          },
+        ],
+      },
+      lastEventAt: minutesBefore(30),
+      nextTryAt: minutesBefore(30),
+      createdAt: minutesBefore(30),
+      updatedAt: minutesBefore(30),
+    });
+
+  it.each([
+    ['the same', 9000],
+    ['a lower', 5000],
+  ])('dropped as send_unconfirmed may have reached them: %s total queues nothing', async (_label, total) => {
+    await droppedRefund('send_unconfirmed');
+    await expect(
+      record(
+        refundEvent({ id: `evt_r_after_${serial}` }, { amount_refunded: total, refunded: false }),
+        { status: 'no_tier' },
+      ),
+    ).resolves.toBe('stale_refund');
+    const rows = await noticeRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.dropReason).toBe('send_unconfirmed');
+  });
+
+  it('dropped as send_retries_exhausted never reached Linq: a lower total still queues a text', async () => {
+    await droppedRefund('send_retries_exhausted');
+    await expect(
+      record(
+        refundEvent({ id: `evt_r_after_${serial}` }, { amount_refunded: 5000, refunded: false }),
+        { status: 'no_tier' },
+      ),
+    ).resolves.toBe('recorded');
+    const rows = await noticeRows();
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((row) => row.status === 'open')).toHaveLength(1);
+  });
 });
 
 describe('one row for a refund and a cancel', () => {

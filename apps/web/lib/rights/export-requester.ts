@@ -361,11 +361,14 @@ export async function loadRequesterOnlyExport(
       updatedAt: row.updatedAt.toISOString(),
       refunds:
         row.parentUserId === requesterUserId
-          ? (row.facts.refunds ?? []).map((refund) => ({
-              refundedMinor: refund.refundedMinor,
-              chargeMinor: refund.chargeMinor,
-              currency: refund.currency,
-            }))
+          ? (row.facts.refunds ?? [])
+              // A merged row's amounts moved to the row it folded into, which shows them.
+              .filter((refund) => refund.refundedMinor !== undefined)
+              .map((refund) => ({
+                refundedMinor: refund.refundedMinor,
+                chargeMinor: refund.chargeMinor,
+                currency: refund.currency,
+              }))
           : [],
     })),
     ...(refusalRows.length > 0

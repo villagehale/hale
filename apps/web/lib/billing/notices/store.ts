@@ -54,7 +54,7 @@ export const writeNoticeAudit = {
 };
 
 /** Amounts nobody will ever be told do not stay on the row. */
-function withoutAmounts(facts: BillingNoticeEventFacts): BillingNoticeEventFacts {
+export function withoutAmounts(facts: BillingNoticeEventFacts): BillingNoticeEventFacts {
   if (!facts.refunds) return facts;
   return {
     ...facts,

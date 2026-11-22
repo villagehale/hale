@@ -626,6 +626,26 @@ describe('a crash mid-send', () => {
     expect(linqCalls).toHaveLength(0);
   });
 
+  it('a second drain during a write that runs to the model deadline leaves the row alone', async () => {
+    const notice = await insertNotice({});
+    let second: Awaited<ReturnType<typeof tick>> | undefined;
+    await tick({
+      answers: [
+        async () => {
+          clock.now = new Date(AFTERNOON.getTime() + 739_000);
+          second = await tick();
+          return { status: 'written', text: "You're on Plus now." };
+        },
+      ],
+    });
+    expect(second).toMatchObject({ due: 0, sent: 0, retrying: 0 });
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('sent');
+    expect(row.attempts).toBe(0);
+    expect(linqCalls).toHaveLength(1);
+    expect(await auditRows('billing_notice_send_failed')).toEqual([]);
+  });
+
   it('a lease still running is left alone', async () => {
     const notice = await insertNotice({
       status: 'sending',
@@ -717,6 +737,54 @@ describe('a send Linq may have taken', () => {
     ]);
     expect(linq.posts[0]?.key).toMatch(/^[0-9a-f]{64}$/);
     expect(linq.posts[1]?.key).toBe(linq.posts[0]?.key);
+  });
+
+  it('a 502 and then a failed ledger read: unconfirmed, and the next try carries the same key', async () => {
+    const linq = realLinq([badGateway, accepted]);
+    const notice = await insertNotice({});
+    const dispatch: BillingNoticeRunDeps['dispatch'] = async (message, beforeSend) => {
+      try {
+        return await linq.dispatch(message, beforeSend);
+      } finally {
+        vi.spyOn(db.database, 'select').mockImplementationOnce(() => {
+          throw new Error('connection lost');
+        });
+      }
+    };
+    await tick({ dispatch, answers: [written("You're on Plus now.")] });
+
+    let row = await noticeRow(notice.id);
+    expect(row.status).toBe('unconfirmed');
+    expect(row.attempts).toBe(1);
+    expect(row.nextTryAt).toEqual(later(AFTERNOON, 5));
+    const [failed] = await auditRows('billing_notice_send_failed');
+    expect(failed?.audience).toBe(parentUserId);
+
+    clock.now = later(AFTERNOON, 5);
+    await tick({ dispatch: linq.dispatch, answers: [written('All set, you have Plus.')] });
+
+    row = await noticeRow(notice.id);
+    expect(row.status).toBe('sent');
+    expect(linq.posts).toHaveLength(2);
+    expect(linq.posts[0]?.key).toMatch(/^[0-9a-f]{64}$/);
+    expect(linq.posts[1]?.key).toBe(linq.posts[0]?.key);
+  });
+
+  it('a failed ledger read before the send began does not count as may-have-landed', async () => {
+    const linq = realLinq([]);
+    const notice = await insertNotice({});
+    const dispatch: BillingNoticeRunDeps['dispatch'] = async () => {
+      vi.spyOn(db.database, 'select').mockImplementationOnce(() => {
+        throw new Error('connection lost');
+      });
+      throw new Error('dispatch failed before the channel');
+    };
+    await tick({ dispatch, answers: [written("You're on Plus now.")] });
+
+    const row = await noticeRow(notice.id);
+    expect(row.status).toBe('open');
+    expect(row.attempts).toBe(1);
+    expect(linq.posts).toHaveLength(0);
   });
 
   it('two notices never share a key', async () => {
@@ -1574,6 +1642,57 @@ describe('one message for a refund and a cancel', () => {
     await tick();
     expect(linqCalls).toHaveLength(1);
     expect(composed.at(-1)).toMatchObject({ ended: { why: 'cancelled' } });
+  });
+
+  it('a merged row keeps no amounts, the survivor keeps both, and the payer’s copy shows them once', async () => {
+    const notice = await refundNotice();
+    await tick({
+      answers: [
+        async () => {
+          const at = later(AFTERNOON, 1);
+          await db.database
+            .update(schema.families)
+            .set({ planTier: 'free' })
+            .where(eq(schema.families.id, familyId));
+          await recordBillingNoticeIntent(
+            db.database,
+            cancelEvent(at),
+            { status: 'applied', tier: 'free' },
+            { env: ARMED, now: at },
+          );
+          return { status: 'failed', reason: 'unwritten' };
+        },
+      ],
+    });
+
+    const merged = await noticeRow(notice.id);
+    expect(merged.dropReason).toBe('merged');
+    expect(merged.facts.refunds).toEqual([
+      { chargeId: 'ch_1', currency: 'cad', full: true, subscriptionId: 'sub_1' },
+    ]);
+    const rows = await db.database
+      .select()
+      .from(schema.billingNotices)
+      .where(eq(schema.billingNotices.familyId, familyId));
+    const survivor = rows.find((row) => row.id !== notice.id);
+    expect(survivor?.facts.refunds?.[0]).toMatchObject({
+      refundedMinor: 15900,
+      chargeMinor: 15900,
+    });
+
+    clock.now = later(AFTERNOON, 30);
+    await tick();
+    expect((await noticeRow(survivor?.id as string)).status).toBe('sent');
+
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: clock.now,
+    });
+    const shown = copy.requesterOnly.billingNotices;
+    expect(shown.map((entry) => [entry.status, entry.refunds])).toEqual([
+      ['dropped', []],
+      ['sent', [{ refundedMinor: 15900, chargeMinor: 15900, currency: 'cad' }]],
+    ]);
   });
 
   it('Stripe says it ended and the tier is still paid: the row waits, then one text', async () => {
