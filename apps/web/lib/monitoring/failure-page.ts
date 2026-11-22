@@ -195,6 +195,11 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** VIL-745 · a party guest's text the model could not write: nothing was sent. */
+  party_guest_unwritten: {
+    why: ['asked_for_reminder', 'host_cancelled'],
+    stage: ['skill_load', 'after_retry'],
+  },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
