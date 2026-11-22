@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
+import { familySendKey, unscopedSendKey } from '~/lib/channel/family-send-key';
 import { coldStartLadderEnabled } from '~/lib/channel/intake/cold-start/flags';
 import { gateOptionalAsk, recordOptionalAsk } from '~/lib/channel/intake/cold-start/ledger';
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
@@ -28,7 +29,7 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import { readParentCopyLanguage } from '~/lib/channel/parent-language';
-import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
+import { handOffProactive, isFamilySendQueued } from '~/lib/channel/proactive/queue';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
@@ -1286,7 +1287,13 @@ export async function deliverDutyGroupLine(
     now: input.now,
   });
   if (attempt.kind !== 'try') return dutySendStopped([attempt]);
-  if (await isQueuedForDecider(database, input.familyId, input.dedupeKey)) {
+  if (
+    await isFamilySendQueued(
+      database,
+      input.familyId,
+      familySendKey(input.dedupeKey, input.familyId),
+    )
+  ) {
     return { status: 'queued' };
   }
   const handedOff = await handOffProactive(
@@ -1328,7 +1335,7 @@ export async function deliverDutyGroupLine(
       familyId: input.familyId,
       now: input.now,
       sendClass: 'duty_ask',
-      askKey: input.dedupeKey,
+      askKey: unscopedSendKey(input.dedupeKey, input.familyId),
     });
     if (!budget.allow) return { status: 'held', reason: 'ask_budget' };
   }
@@ -1385,7 +1392,7 @@ export async function deliverDutyGroupLine(
       familyId: input.familyId,
       now: input.now,
       sendClass: 'duty_ask',
-      askKey: input.dedupeKey,
+      askKey: unscopedSendKey(input.dedupeKey, input.familyId),
     });
   }
   return { status: 'sent', chatId: target.chatId };
@@ -1571,8 +1578,11 @@ export async function deliverDutyDirectLines(
   return { status: 'skipped', reason: 'no_group' };
 }
 
-function dutyAskKey(line: CadenceLine | undefined, ymd: string): string {
-  return `${DUTY_ASK_KEY_PREFIX}${line?.mode ?? 'none'}:${line?.eventKey ?? 'none'}:${line?.role ?? 'none'}:${ymd}`;
+function dutyAskKey(familyId: string, line: CadenceLine | undefined, ymd: string): string {
+  return familySendKey(
+    `${DUTY_ASK_KEY_PREFIX}${line?.mode ?? 'none'}:${line?.eventKey ?? 'none'}:${line?.role ?? 'none'}:${ymd}`,
+    familyId,
+  ).dedupeKey;
 }
 
 async function applyNightBefore(
@@ -1596,7 +1606,11 @@ async function applyNightBefore(
     );
     return { status: 'held', reason: 'model_unsent' };
   }
-  const dedupeKey = dutyAskKey(input.lines[0], localYmd(input.now, input.view.timeZone));
+  const dedupeKey = dutyAskKey(
+    input.familyId,
+    input.lines[0],
+    localYmd(input.now, input.view.timeZone),
+  );
   const blocked = await dutySendBlocked(database, {
     familyId: input.familyId,
     dedupeKeys: [dedupeKey],
@@ -1664,7 +1678,11 @@ async function applyPlan(
   const split = input.lines.some((row) => row.mode === 'split_duty');
   const target = split ? await ports.target(database, input.familyId) : null;
   const audience = target?.channel === 'legacy' ? 'direct' : 'group';
-  const dedupeKey = dutyAskKey(input.lines[0], localYmd(input.now, input.view.timeZone));
+  const dedupeKey = dutyAskKey(
+    input.familyId,
+    input.lines[0],
+    localYmd(input.now, input.view.timeZone),
+  );
   const reach =
     split && audience === 'direct'
       ? await dutyDirectReach(
@@ -1806,7 +1824,10 @@ export async function sweepDutyAsks(
       continue;
     }
     offered.add(
-      dutySendScope(family.id, dutyAskKey(view.plan.sendLines[0], localYmd(now, view.timeZone))),
+      dutySendScope(
+        family.id,
+        dutyAskKey(family.id, view.plan.sendLines[0], localYmd(now, view.timeZone)),
+      ),
     );
     const delivered = await applyPlan(database, {
       familyId: family.id,

@@ -1,3 +1,8 @@
+import {
+  POSTHOG_FLAGS_ENABLED_ENV,
+  POSTHOG_ID_SALT_ENV,
+  setFlagEvaluatorForTests,
+} from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FAMILY_SCOPED_SEND_KEYS_ENV, familySendKey, providerPollKey } from './family-send-key';
 import { midActivityAskRef } from './mid-activity/claim';
@@ -8,6 +13,7 @@ const HASH = 'a'.repeat(32);
 const AT = '2026-09-25T19:00:00.000Z';
 
 afterEach(() => {
+  setFlagEvaluatorForTests(null);
   vi.unstubAllEnvs();
 });
 
@@ -29,6 +35,16 @@ const SHAPES: ReadonlyArray<readonly [lane: string, oldKey: string, newKey: stri
     `mid-activity:ask:said:${FAMILY}#2026-06-02:${CANDIDATE}`,
   ],
   ['quiet notice', 'linq:group_quiet_notice:chat-1', `linq:group_quiet_notice:${FAMILY}:chat-1`],
+  [
+    'duty ask',
+    'duty_ask:night_before:evt-1:pickup:2026-09-27',
+    `duty_ask:${FAMILY}:night_before:evt-1:pickup:2026-09-27`,
+  ],
+  [
+    "a split ask's 1:1 door",
+    `duty_ask:split_duty:evt-1:pickup:2026-09-27:${CANDIDATE}`,
+    `duty_ask:${FAMILY}:split_duty:evt-1:pickup:2026-09-27:${CANDIDATE}`,
+  ],
 ];
 
 describe('familySendKey with the flag on', () => {
@@ -49,6 +65,7 @@ describe('familySendKey with the flag on', () => {
     ['a chat-scoped intro key', 'linq:multi_family_intro:chat-1'],
     ['a mid-activity plan key', 'mid-activity:ask:plan:evt-1:none'],
     ['a key that already names the family', `registration_sequence:${FAMILY}:x`],
+    ['the duty ack key, which already names the family', `linq:duty_ack:${FAMILY}:in-1`],
   ])('leaves %s as passed', (_name, key) => {
     vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'true');
     expect(familySendKey(key, FAMILY)).toEqual({ dedupeKey: key, legacyDedupeKey: null });
@@ -61,6 +78,29 @@ describe('familySendKey with the flag on', () => {
       dedupeKey: `linq-group:${FAMILY}:kids:${FAMILY}:evt-2`,
       legacyDedupeKey: oldKey,
     });
+  });
+});
+
+describe('familySendKey on the PostHog path', () => {
+  const oldKey = 'duty_ask:night_before:evt-1:pickup:2026-09-27';
+
+  it('env true lights it even when a family-group flag answers false', () => {
+    vi.stubEnv(POSTHOG_FLAGS_ENABLED_ENV, 'true');
+    vi.stubEnv(POSTHOG_ID_SALT_ENV, 'test-salt');
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, 'true');
+    setFlagEvaluatorForTests(() => false);
+    expect(familySendKey(oldKey, FAMILY)).toEqual({
+      dedupeKey: `duty_ask:${FAMILY}:night_before:evt-1:pickup:2026-09-27`,
+      legacyDedupeKey: oldKey,
+    });
+  });
+
+  it('a synced 100% rollout does not light it with the env unset', () => {
+    vi.stubEnv(POSTHOG_FLAGS_ENABLED_ENV, 'true');
+    vi.stubEnv(POSTHOG_ID_SALT_ENV, 'test-salt');
+    vi.stubEnv(FAMILY_SCOPED_SEND_KEYS_ENV, undefined);
+    setFlagEvaluatorForTests(() => true);
+    expect(familySendKey(oldKey, FAMILY)).toEqual({ dedupeKey: oldKey, legacyDedupeKey: null });
   });
 });
 

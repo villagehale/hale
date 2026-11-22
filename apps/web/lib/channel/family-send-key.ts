@@ -26,6 +26,7 @@ export interface FamilySendKey {
   legacyDedupeKey: string | null;
 }
 
+export const DUTY_ASK_KEY_PREFIX = 'duty_ask:';
 const GROUP_PREFIX = 'linq-group:';
 const GROUP_KINDS = ['who-takes', 'conflict', 'handoff', 'kids', 'followup', 'clash'];
 const SAID_PREFIX = `${MID_ACTIVITY_ASK_TEMPLATE_KEY}:said:`;
@@ -35,6 +36,7 @@ const FAMILY_SLOTS = [
   { prefix: GROUP_PREFIX, separator: ':' },
   { prefix: QUIET_PREFIX, separator: ':' },
   { prefix: SAID_PREFIX, separator: '#' },
+  { prefix: DUTY_ASK_KEY_PREFIX, separator: ':' },
 ] as const;
 
 function withoutFamily(key: string, familyId: string): string {
@@ -52,6 +54,9 @@ function scopedForm(legacy: string, familyId: string): string | null {
   }
   if (legacy.startsWith(QUIET_PREFIX)) {
     return `${QUIET_PREFIX}${familyId}:${legacy.slice(QUIET_PREFIX.length)}`;
+  }
+  if (legacy.startsWith(DUTY_ASK_KEY_PREFIX)) {
+    return `${DUTY_ASK_KEY_PREFIX}${familyId}:${legacy.slice(DUTY_ASK_KEY_PREFIX.length)}`;
   }
   if (!legacy.startsWith(GROUP_PREFIX)) return null;
   const rest = legacy.slice(GROUP_PREFIX.length);
@@ -73,6 +78,11 @@ export function familySendKey(key: string, familyId: string): FamilySendKey {
   return scoped === null
     ? { dedupeKey: key, legacyDedupeKey: null }
     : { dedupeKey: scoped, legacyDedupeKey: legacy };
+}
+
+/** The key with no family in it, so one send compares equal under either shape. */
+export function unscopedSendKey(key: string, familyId: string): string {
+  return familySendKey(key, familyId).legacyDedupeKey ?? key;
 }
 
 /** A key Linq sees. A scoped key names the family, so only its hash leaves. */
