@@ -1791,6 +1791,32 @@ export async function noteDeadLetteredTurn(
   return pageFailureAlerts(database, deps);
 }
 
+/**
+ * Whether this text's turn ran out of retries. {@link noteDeadLetteredTurn}'s claim row is
+ * the durable record of it, whichever job id it carries.
+ */
+export async function turnWasDeadLettered(
+  database: Database,
+  input: { familyId: string; channelMessageId: string },
+): Promise<boolean> {
+  const subject = `${input.familyId}:${input.channelMessageId}`;
+  const rows = await database
+    .select({ id: schema.rateLimits.id })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, DEAD_LETTER_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        or(
+          eq(schema.rateLimits.identifier, subject),
+          like(schema.rateLimits.identifier, `${subject}:%`),
+        ),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 function pagerOutcome(outcome: OpsPageOutcome): OpsPagerOutcome {
   if (outcome === 'sent') return 'paged';
   if (outcome === 'skipped_not_configured') return 'page_not_configured';

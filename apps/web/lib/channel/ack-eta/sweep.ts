@@ -1,12 +1,13 @@
 import type { AckPromiseOutcome, Database } from '@hale/db';
 import type { ProactiveHoldReason, ProactiveSendVerdict } from '~/lib/channel/outbound-gate';
+import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import {
   linqRefusedForCertain,
   readSendRefusal,
   refusalStopsRetry,
+  sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { LineHold } from '~/lib/channel/proactive/review';
-import type { ReplyRoute, ReplyTransport } from '~/lib/channel/router/reply-route';
 import type { AckComposeFallback, AckLineWriter, LateNoteFacts } from './compose';
 import {
   type AckReplyState,
@@ -35,10 +36,12 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  *   stale        the tick reached it long after it could first have gone; a note then
  *                would only confuse, so nothing is sent.
  *   held         the outbound gate refused it for good (no live channel, no watch consent),
- *                refused it at the send, or the family asked to be erased; nothing is sent.
+ *                before the write or at the send, or the family asked to be erased; nothing
+ *                is sent.
  *   unwritten    the model could not write a sendable note; nothing is sent, #ops paged.
  *   send_failed  Linq refused it for certain; nothing landed, #ops paged.
- *   sent         the note went, in the ask's own 1:1 (threaded under it on iMessage).
+ *   sent         the note went to the parent's number now: under the ask while that chat is
+ *                still their 1:1 on this line, otherwise in their current 1:1.
  *
  * A SEND THAT DID NOT CONFIRM IS NOT AN ENDING. A rate limit, a 5xx, a timeout or any
  * refusal that cannot prove the text stayed home gives the claim back, and the next tick
@@ -60,7 +63,8 @@ import { lateWindowMinutes, retryCeilingMs } from './window';
  * claim and again on the send's own clock. A hold that can lift leaves the row unclaimed:
  * the parent's night until the first tick after the floor opens, as a recovered first reply
  * does (intake/first-reply-recovery.ts), and the operator pause or an unread opt-out until
- * they clear or the note goes stale. A refusal that will not lift settles it, named.
+ * they clear or the note goes stale. Caught on the send's clock, after the claim, the same
+ * holds give the claim back. A refusal that will not lift settles it, named.
  *
  * THE LINE-HEALTH PAUSE HOLDS IT TOO. Routed `immediate`, the note is outside the decider
  * that honours the pause, so it reads the same hold itself (proactive/review.ts
@@ -127,7 +131,8 @@ export interface AckDeadlinePorts {
   /** The parent's sendable number, read now and never stored on the promise. Null when
    * they have no live, verified channel (a stop revokes it), which holds the note. */
   phone(parentUserId: string): Promise<string | null>;
-  transport: ReplyTransport;
+  /** The phone door: it threads into the ask's chat only while that is still this number's 1:1. */
+  transport: ChannelTransport;
   /** Pages #ops once per hour per site (failure-page.ts `pageOps`). Never throws. */
   page(page: LateNotePage): Promise<unknown>;
   /** Puts the sent note in the parent's thread, so the coach can read their answer to it. */
@@ -167,17 +172,19 @@ function errName(err: unknown): string {
   return err instanceof Error ? err.name : 'unknown';
 }
 
-/** The route the ask came in on, rebuilt for the note: its own 1:1 chat, under the ask. */
-function noteRoute(promise: DueAckPromise, phone: string): ReplyRoute {
-  if (promise.channel === 'imessage' && promise.providerChatId) {
-    return {
-      channel: 'imessage',
-      to: phone,
-      chatId: promise.providerChatId,
-      replyToMessageId: promise.replyToMessageId,
-    };
+/** Under the ask when there is one to thread under. The door decides whether that chat is
+ * still this parent's: a number that moved gets the note in its own 1:1 instead. */
+function noteThread(promise: DueAckPromise): Pick<OutboundMessage, 'replyIn'> {
+  if (promise.channel !== 'imessage' || !promise.providerChatId || !promise.replyToMessageId) {
+    return {};
   }
-  return { channel: 'sms', to: phone };
+  return {
+    replyIn: {
+      chatId: promise.providerChatId,
+      messageId: promise.replyToMessageId,
+      plainResendOnlyIfRefused: true,
+    },
+  };
 }
 
 /** Past saying: longer than {@link ACK_LATE_NOTE_STALE_MS} after it could first have gone. */
@@ -300,12 +307,23 @@ async function writeNote(
     parentUserId: promise.parentUserId,
     now: sendClock(),
   });
-  if (!atSend.allowed) return { outcome: 'held', reason: atSend.reason };
+  if (!atSend.allowed) {
+    switch (atSend.reason) {
+      case 'quiet_hours':
+      case 'sends_paused':
+      case 'opt_out_unread':
+        return { release: atSend.reason, sendAttempted: false };
+      case 'not_enrolled':
+      case 'no_watch_consent':
+        return { outcome: 'held', reason: atSend.reason };
+    }
+  }
 
-  let sent: Awaited<ReturnType<ReplyTransport['send']>>;
+  let sent: Awaited<ReturnType<ChannelTransport['send']>>;
   try {
-    sent = await ports.transport.send({
-      route: noteRoute(promise, phone),
+    sent = await sendResolvingNewChat(ports.transport, {
+      to: phone,
+      ...noteThread(promise),
       body: composed.line,
       // Linq drops a resend under the same key, so a retry of a send that landed is no
       // second text, and every attempt for this promise is the same send.
@@ -330,8 +348,8 @@ async function writeNote(
       promise,
       sent: {
         providerMessageId: sent.providerMessageId,
-        channel: sent.channel,
-        chatId: sent.chatId ?? (promise.channel === 'imessage' ? promise.providerChatId : null),
+        channel: sent.transport === 'imessage' ? 'imessage' : 'sms',
+        chatId: sent.chatId ?? null,
       },
       now,
     });

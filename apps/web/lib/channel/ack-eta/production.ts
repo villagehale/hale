@@ -9,7 +9,6 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readLineHold } from '~/lib/channel/proactive/review';
-import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { pageOps } from '~/lib/monitoring/failure-page';
@@ -75,8 +74,7 @@ export function ackDeadlinePorts(database: Database): AckDeadlinePorts {
     quietUntil: (parentUserId, now) => proactiveFloorClosedUntil(gatePorts, parentUserId, now),
     lineHold: () => readLineHold(database),
     phone: (parentUserId) => resolveSendablePhone(database, parentUserId),
-    // The router's own way out: Linq for both doors, the 1:1 chat on iMessage.
-    transport: createReplyTransport({ phone: createOutboundTransport() }),
+    transport: createOutboundTransport(),
     page: (page) => pageUnwritten(database, page),
     thread: (input) => threadProactiveMessage(database, input),
     log: console,

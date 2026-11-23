@@ -2,14 +2,10 @@ import { schema } from '@hale/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { holdSender } from '~/lib/channel/intake/opt-out-hold';
+import { type ChannelTransport, FakeTransport } from '~/lib/channel/intake/transport';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { inProactiveQuietHours, proactiveFloorOpensAt } from '~/lib/channel/outbound-gate';
-import {
-  FakeReplyTransport,
-  type ReplySent,
-  type ReplyTransport,
-} from '~/lib/channel/router/reply-route';
 import { auditTurnLedger } from '~/lib/channel/router/wiring';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -111,7 +107,7 @@ function ports(overrides: Partial<AckDeadlinePorts> & { line?: AckCompose } = {}
   const facts: LateNoteFacts[] = [];
   const pages: unknown[] = [];
   const threaded: string[] = [];
-  const transport = new FakeReplyTransport();
+  const transport = new FakeTransport();
   const { line, ...rest } = overrides;
   const built: AckDeadlinePorts = {
     enabled: () => true,
@@ -244,11 +240,11 @@ describe('VIL-717 · the deadline sweep', () => {
     expect(second).toMatchObject({ due: 0, claimed: 0 });
     expect(p.transport.sent).toEqual([
       {
-        route: {
-          channel: 'imessage',
-          to: '+15550000000',
+        to: '+15550000000',
+        replyIn: {
           chatId: 'chat-one',
-          replyToMessageId: 'parent-msg-1',
+          messageId: 'parent-msg-1',
+          plainResendOnlyIfRefused: true,
         },
         body: 'a stand-in late note',
         sendKey: `ack_eta_late_note:${seeded.promiseId}`,
@@ -284,7 +280,9 @@ describe('VIL-717 · the deadline sweep', () => {
     await runAckDeadlineSweep(db.database, p.ports, AFTER_DUE);
 
     expect(p.facts.map((f) => [f.status, f.newWithinMinutes])).toEqual([['stopped', null]]);
-    expect(p.transport.sent.map((s) => s.route)).toEqual([{ channel: 'sms', to: '+15550000000' }]);
+    expect(p.transport.sent.map((s) => ({ to: s.to, replyIn: s.replyIn }))).toEqual([
+      { to: '+15550000000', replyIn: undefined },
+    ]);
   });
 
   it('owes the note when the turn was claimed but nothing reached the parent', async () => {
@@ -608,7 +606,7 @@ describe('VIL-717 · the deadline sweep', () => {
     }
 
     function wired(lateNote?: AckLineWriter['lateNote']) {
-      const transport = new FakeReplyTransport();
+      const transport = new FakeTransport();
       const built: AckDeadlinePorts = {
         ...ackDeadlinePorts(db.database),
         writer: {
@@ -1102,13 +1100,13 @@ describe('VIL-717 · a late note the send did not confirm', () => {
     const left = [...refusals];
     const keys: Array<string | undefined> = [];
     const taken: string[] = [];
-    const transport: ReplyTransport = {
-      async send({ body, route, sendKey }): Promise<ReplySent> {
+    const transport: ChannelTransport = {
+      async send({ body, sendKey }) {
         keys.push(sendKey);
         const refusal = left.shift();
         if (refusal) throw refusal;
         taken.push(body);
-        return { providerMessageId: 'an-invented-id', channel: route.channel };
+        return { providerMessageId: 'an-invented-id' };
       },
     };
     return { transport, keys, taken };

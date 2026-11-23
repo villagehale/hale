@@ -26,6 +26,7 @@ export function createReplyTransport(deps: {
     replyToMessageId: string | null;
     mention?: string;
     sendKey?: string;
+    plainResendOnlyIfRefused?: boolean;
   }) => Promise<{ providerMessageId: string }>;
   /**
    * VIL-475 — pick one seated handle for this group reply, or undefined.
@@ -41,6 +42,7 @@ export function createReplyTransport(deps: {
       replyToMessageId: string | null;
       mention?: string;
       sendKey?: string;
+      plainResendOnlyIfRefused?: boolean;
     }) =>
       sendLinqChatMessage({
         chatId: input.chatId,
@@ -48,9 +50,10 @@ export function createReplyTransport(deps: {
         replyTo: input.replyToMessageId ? { messageId: input.replyToMessageId } : undefined,
         ...(input.mention ? { mention: input.mention } : {}),
         ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+        ...(input.plainResendOnlyIfRefused ? { plainResendOnlyIfRefused: true } : {}),
       }));
   return {
-    async send({ route, body, sendKey }): Promise<ReplySent> {
+    async send({ route, body, sendKey, plainResendOnlyIfRefused }): Promise<ReplySent> {
       switch (route.channel) {
         case 'sms': {
           const sent = await sendResolvingNewChat(deps.phone, {
@@ -75,6 +78,7 @@ export function createReplyTransport(deps: {
             replyToMessageId: route.replyToMessageId,
             ...(mention ? { mention } : {}),
             ...(sendKey ? { sendKey } : {}),
+            ...(plainResendOnlyIfRefused ? { plainResendOnlyIfRefused } : {}),
           });
           return { providerMessageId: sent.providerMessageId, channel: 'imessage' };
         }

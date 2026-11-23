@@ -1972,6 +1972,7 @@ async function routeChannelMessageInner(
             templateKey: ACK_ETA_TEMPLATE_KEY,
             // One key per text: a death between this send and the promise cannot text twice.
             sendKey: `${ACK_ETA_TEMPLATE_KEY}:${job.channel_message_id}`,
+            plainResendOnlyIfRefused: true,
             openAsks: 'untouched',
             onSent: async () => {
               accepted = true;
@@ -4041,6 +4042,8 @@ type SendReplyArgs = {
   stamp?: SendStamp;
   /** Linq's idempotency key for this one send, when the caller owns its identity. */
   sendKey?: string;
+  /** See `sendLinqChatMessage`: an unclear answer to the threaded try is not resent plain. */
+  plainResendOnlyIfRefused?: boolean;
 };
 
 /**
@@ -4221,13 +4224,20 @@ interface StampedSend {
  */
 async function sendStamped(
   deps: ChannelRouterDeps,
-  args: { route: ReplyRoute; body: string; sendKey?: string; stamp?: SendStamp },
+  args: {
+    route: ReplyRoute;
+    body: string;
+    sendKey?: string;
+    plainResendOnlyIfRefused?: boolean;
+    stamp?: SendStamp;
+  },
 ): Promise<StampedSend> {
   const keep = args.stamp ? await args.stamp() : null;
   const sent = await deps.transport.send({
     route: args.route,
     body: args.body,
     ...(args.sendKey ? { sendKey: args.sendKey } : {}),
+    ...(args.plainResendOnlyIfRefused ? { plainResendOnlyIfRefused: true } : {}),
   });
   return { sent, keep };
 }

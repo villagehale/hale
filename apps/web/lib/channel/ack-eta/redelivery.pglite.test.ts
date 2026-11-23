@@ -46,16 +46,21 @@ afterAll(async () => {
 });
 
 /** Linq's side of the wire: one bubble per idempotency key. */
-function stubLinq() {
+function stubLinq(input: { firstThreadedStatus?: number } = {}) {
   const bubbles: string[] = [];
   const keys: string[] = [];
   const seen = new Set<string>();
   let id = 0;
+  let threadedAnswer = input.firstThreadedStatus;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as {
-        message?: { idempotency_key?: string; parts?: Array<{ value?: string }> };
+        message?: {
+          idempotency_key?: string;
+          reply_to?: { message_id?: string };
+          parts?: Array<{ value?: string }>;
+        };
       };
       const key = body.message?.idempotency_key;
       const text = body.message?.parts?.[0]?.value;
@@ -64,9 +69,21 @@ function stubLinq() {
         if (!key || !seen.has(key)) bubbles.push(text);
         if (key) seen.add(key);
       }
+      if (body.message?.reply_to && threadedAnswer !== undefined) {
+        // Linq took the text above and answered badly anyway.
+        const status = threadedAnswer;
+        threadedAnswer = undefined;
+        return new Response(JSON.stringify({ error: { code: `http_${status}` } }), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       id += 1;
       return new Response(
-        JSON.stringify({ chat: { id: 'chat-sms', message: { id: `linq-${id}` } } }),
+        JSON.stringify({
+          chat: { id: 'chat-sms', message: { id: `linq-${id}` } },
+          message: { id: `linq-${id}` },
+        }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     }),
@@ -74,7 +91,7 @@ function stubLinq() {
   return { bubbles, keys };
 }
 
-async function seedText() {
+async function seedText(channel: 'sms' | 'imessage' = 'sms') {
   const fam = await seedFamily(db.database, 'Redelivery');
   await db.database.insert(schema.parentChannels).values({
     familyId: fam.familyId,
@@ -90,10 +107,11 @@ async function seedText() {
     .values({
       familyId: fam.familyId,
       parentUserId: fam.parentUserId,
-      channel: 'sms',
+      channel,
       direction: 'in',
       category: 'reply',
       providerMessageId: 'prov-redelivery',
+      providerChatId: channel === 'imessage' ? 'chat-imessage' : null,
       status: 'delivered',
       body: 'an invented slow ask',
       inGroup: false,
@@ -272,5 +290,16 @@ describe('VIL-717 · one inbound, delivered twice, one ack', () => {
     // The answer carries no caller key; both of the ack's attempts carry the same one.
     expect(linq.keys).toHaveLength(2);
     expect(linq.keys[0]).toBe(linq.keys[1]);
+  });
+
+  it('a threaded ack Linq took but answered 409: no plain resend, one bubble', async () => {
+    const linq = stubLinq({ firstThreadedStatus: 409 });
+    const { job } = await seedText('imessage');
+    const ports = ackPorts(recordAckPromise);
+
+    await deliverTwice(routerDeps(ports), job);
+
+    expect(linq.bubbles.filter((bubble) => bubble === ACK)).toEqual([ACK]);
+    expect(linq.bubbles).toContain(ANSWER);
   });
 });

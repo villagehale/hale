@@ -11,6 +11,7 @@ import {
   TURN_NOTHING_SENT,
   type TurnFailureReason,
 } from '~/lib/channel/router/turn-ledger';
+import { turnWasDeadLettered } from '~/lib/monitoring/failure-page';
 import type { AckTask } from './read';
 
 /**
@@ -426,7 +427,13 @@ export async function ackReplyState(
     .from(schema.channelTurnAnswerClaims)
     .where(eq(schema.channelTurnAnswerClaims.channelMessageId, promise.inboundChannelMessageId))
     .limit(1);
-  if (closed.length === 0) return 'open';
+  if (closed.length === 0) {
+    const deadLettered = await turnWasDeadLettered(database, {
+      familyId: promise.familyId,
+      channelMessageId: promise.inboundChannelMessageId,
+    });
+    return deadLettered ? 'closed_unanswered' : 'open';
+  }
   return (await replyOnLedgerBeforeClose(database, promise)) ? 'answered' : 'closed_unanswered';
 }
 
