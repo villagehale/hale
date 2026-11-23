@@ -32,7 +32,7 @@ export type KidProfileFactsOutcome =
 
 interface ChildRow {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 
