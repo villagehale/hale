@@ -340,27 +340,13 @@ export async function lookupTakeoverLink(
   };
 }
 
-/**
- * The live view behind an open takeover card, for the page's POST only. `gone` when the card
- * is spent, ran out, or its browser handle is no longer on the row.
- */
-export async function takeoverLiveView(
-  database: Database,
-  code: string,
-  now: Date,
-): Promise<
-  | { ok: true; link: Extract<TakeoverLinkLookup, { ok: true }>; liveViewUrl: string }
-  | { ok: false; reason: 'unknown' | 'expired' | 'used' | 'gone' }
-> {
-  const link = await lookupTakeoverLink(database, code, now);
-  if (!link.ok) return link;
+/** The live view sealed on an unspent card, or null when its browser handle is gone. */
+export async function cardLiveView(database: Database, linkId: string): Promise<string | null> {
   const links = schema.providerLoginLinks;
   const [row] = await database
     .select({ handle: links.browserHandleCiphertext })
     .from(links)
-    .where(and(eq(links.id, link.id), isNull(links.consumedAt)))
+    .where(and(eq(links.id, linkId), isNull(links.consumedAt)))
     .limit(1);
-  const url = openLiveView(row?.handle ?? null);
-  if (!url) return { ok: false, reason: 'gone' };
-  return { ok: true, link, liveViewUrl: url };
+  return openLiveView(row?.handle ?? null);
 }

@@ -473,6 +473,17 @@ export async function planLapse(
 }
 
 /**
+ * A plan parked on its takeover card holds the lease to the card's end with no sweep driving
+ * it: a stop frees it so the next sweep lets the browser go. A lease a sweep took since then
+ * stays its own.
+ */
+const leaseFreedFromParkedCard = sql`case
+  when ${schema.authorizedSignupOffers.planResume}->>'phase' = 'takeover'
+    and ${schema.authorizedSignupOffers.planResume}->>'doneAt' is null
+    and ${schema.authorizedSignupOffers.planLeaseUntil} = (${schema.authorizedSignupOffers.planResume}->>'expiresAt')::timestamptz
+  then null else ${schema.authorizedSignupOffers.planLeaseUntil} end`;
+
+/**
  * A parent of the family takes back a plan, with one audit row either way.
  *
  * - `cancelled`: before the open, `planned` to `handed_back`, with the take-back time stamped
@@ -508,13 +519,7 @@ export async function cancelSignupPlan(
     .update(offers)
     .set({
       planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
-      // A plan parked on its takeover card holds the lease to the card's end with no sweep
-      // driving it: the next sweep lets it go. A lease a sweep took since then stays its own.
-      planLeaseUntil: sql`case
-        when ${offers.planResume}->>'phase' = 'takeover'
-          and ${offers.planResume}->>'doneAt' is null
-          and ${offers.planLeaseUntil} = (${offers.planResume}->>'expiresAt')::timestamptz
-        then null else ${offers.planLeaseUntil} end`,
+      planLeaseUntil: leaseFreedFromParkedCard,
       updatedAt: input.now,
     })
     .where(and(ours, eq(offers.status, 'submitting'), isNotNull(offers.planResume)))
@@ -573,6 +578,7 @@ export async function requestStopForRunningPlans(
       .update(offers)
       .set({
         planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
+        planLeaseUntil: leaseFreedFromParkedCard,
         updatedAt: input.now,
       })
       .where(and(isRunningPlan, not(hasOpsStop)))

@@ -12,10 +12,15 @@ import type {
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import { hashLoginCode } from '../login-link/code';
-import { lookupLoginLink, takeoverLiveView } from '../login-link/store';
+import { lookupLoginLink } from '../login-link/store';
 import { recordSignupOffer } from '../store';
 import { TAKEOVER_LINK_ENABLED_ENV } from '../takeover/flag';
-import { type TakeoverToken, finishTakeover, lapseTakeover } from '../takeover/store';
+import {
+  type TakeoverToken,
+  finishTakeover,
+  lapseTakeover,
+  takeoverLiveView,
+} from '../takeover/store';
 import type { PlanNoticePart } from './bubbles';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import type { PlanPrepFacts } from './prep';
@@ -983,25 +988,93 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     expect(finished?.stoppedFrom).toEqual({ outcome: 'needs_login', detail: 'passkey' });
   });
 
-  it('an ops stop on a parked plan ends without a text or a page once the card closes', async () => {
+  it('an ops stop on a parked plan is let go by the next sweep and never reads as nothing charged', async () => {
     const posted = stubOpsSlack();
     const { family } = await parkedCaptcha();
     await requestStopForRunningPlans(db.database, { now: NOW });
     const { runner, released } = runnerReturning();
     const door = takeoverDoor();
     const swept = sweepDeps(runner, door);
-    const late = new Date(NOW.getTime() + 14 * 60_000);
-    const result = await runDueSignupPlans(db.database, { now: late }, swept.deps);
+    // The next minute, long before the card would have run out.
+    const next = new Date(NOW.getTime() + 60_000);
+    const result = await runDueSignupPlans(db.database, { now: next }, swept.deps);
 
     expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
-      outcome: 'cancelled',
-      detail: 'authorization_lapsed',
-      notice: 'withheld',
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
     });
     expect(door.facts).toEqual([]);
-    expect(swept.notices).toEqual([]);
+    expect(swept.notices).toEqual([
+      expect.objectContaining({ charged: 'unknown', liveViewUrl: null }),
+    ]);
     expect(released).toHaveLength(1);
-    expect(posted.join('\n')).not.toContain('registration_stop_unverified');
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(posted.join('\n')).toContain('registration_stop_unverified');
+  });
+
+  it('an ops stop after the parent tapped done still reads as unknown', async () => {
+    const posted = stubOpsSlack();
+    const { family, code } = await parkedCaptcha();
+    const tapped = new Date(NOW.getTime() + 60_000);
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+    await requestStopForRunningPlans(db.database, { now: tapped });
+    const { runner, released } = runnerReturning();
+    const swept = sweepDeps(runner, takeoverDoor());
+    const next = new Date(tapped.getTime() + 60_000);
+    const result = await runDueSignupPlans(db.database, { now: next }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
+    });
+    expect(swept.notices).toEqual([expect.objectContaining({ charged: 'unknown' })]);
+    expect(released).toHaveLength(1);
+    expect(runner.run).not.toHaveBeenCalled();
+    expect(posted.join('\n')).toContain('registration_stop_unverified');
+  });
+
+  it.each([
+    [
+      'the parent took the plan back',
+      (family: { offerId: string; familyId: string; parentUserId: string }) =>
+        cancelSignupPlan(db.database, {
+          offerId: family.offerId,
+          familyId: family.familyId,
+          actor: family.parentUserId,
+          now: NOW,
+        }),
+    ],
+    ['an ops stop is on the plan', () => requestStopForRunningPlans(db.database, { now: NOW })],
+    [
+      'the parent left the family',
+      (family: { familyId: string; parentUserId: string }) =>
+        db.database
+          .delete(schema.familyMembers)
+          .where(
+            and(
+              eq(schema.familyMembers.familyId, family.familyId),
+              eq(schema.familyMembers.userId, family.parentUserId),
+            ),
+          ),
+    ],
+    [
+      'the family asked to be erased',
+      (family: { familyId: string }) =>
+        db.database
+          .update(schema.families)
+          .set({ scheduledDeletionAt: NOW })
+          .where(eq(schema.families.id, family.familyId)),
+    ],
+  ] as const)('the live view opens nothing once %s', async (_why, change) => {
+    const { family, code } = await parkedCaptcha();
+    expect(await takeoverLiveView(db.database, code, NOW)).toMatchObject({
+      ok: true,
+      liveViewUrl: LIVE,
+    });
+
+    await change(family);
+
+    expect(await takeoverLiveView(db.database, code, NOW)).toEqual({ ok: false, reason: 'gone' });
   });
 });
 

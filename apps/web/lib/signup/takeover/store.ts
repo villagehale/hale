@@ -1,8 +1,8 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { hashLoginCode } from '../login-link/code';
-import { lookupTakeoverLink } from '../login-link/store';
-import { writePlanAudit } from '../plan/store';
+import { type TakeoverLinkLookup, cardLiveView, lookupTakeoverLink } from '../login-link/store';
+import { planLapse, writePlanAudit } from '../plan/store';
 import { type TakeoverPurpose, isTakeoverPurpose } from './purpose';
 
 /** VIL-718 · where a plan stands while the parent holds its takeover link. */
@@ -56,6 +56,39 @@ function waiting(input: { offerId: string; familyId: string; loginLinkId: string
     sql`(${offers.planResume}->>'doneAt') is null`,
     sql`(${offers.planResume}->>'lapsedAt') is null`,
   );
+}
+
+/**
+ * The live view behind an open takeover card, for the page's POST only. It hands over the
+ * browser itself, so it opens only while the plan still waits on this card, nobody has
+ * stopped it and the parent's yes still stands. A refusal leaves the card to the sweep, which
+ * closes it and lets the browser go.
+ */
+export async function takeoverLiveView(
+  database: Database,
+  code: string,
+  now: Date,
+): Promise<
+  | { ok: true; link: Extract<TakeoverLinkLookup, { ok: true }>; liveViewUrl: string }
+  | { ok: false; reason: 'unknown' | 'expired' | 'used' | 'gone' }
+> {
+  const link = await lookupTakeoverLink(database, code, now);
+  if (!link.ok) return link;
+  const offers = schema.authorizedSignupOffers;
+  const [plan] = await database
+    .select({ id: offers.id })
+    .from(offers)
+    .where(
+      and(
+        waiting({ offerId: link.offerId, familyId: link.familyId, loginLinkId: link.id }),
+        isNull(offers.planCancelRequestedAt),
+      ),
+    )
+    .limit(1);
+  if (!plan || (await planLapse(database, link)) !== null) return { ok: false, reason: 'gone' };
+  const liveViewUrl = await cardLiveView(database, link.id);
+  if (!liveViewUrl) return { ok: false, reason: 'gone' };
+  return { ok: true, link, liveViewUrl };
 }
 
 class TakeoverNotWaiting extends Error {

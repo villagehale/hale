@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
-import { takeoverLiveView } from '~/lib/signup/login-link/store';
 import { writePlanAudit } from '~/lib/signup/plan/store';
 import { takeoverLinkEnabled } from '~/lib/signup/takeover/flag';
+import { takeoverLiveView } from '~/lib/signup/takeover/store';
 
 export const runtime = 'nodejs';
 

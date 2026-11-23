@@ -477,9 +477,9 @@ async function runOnePlan(
     // that ran is always reported.
     const opsStopped =
       ending.charged === 'nothing' && !paymentMayExist && (await planOpsStopped(database, plan));
-    // A run let go here was cancelled before anyone read what it did. A takeover's run was
-    // read: it stopped at the step the parent was asked to do.
-    const letGoUnread = held !== null && held.phase !== 'takeover' && !engineRan;
+    // A run let go here was cancelled before anyone read what it did, and a takeover's browser
+    // may have been in the parent's hands since.
+    const letGoUnread = held !== null && !engineRan;
     const silenced = opsStopped && !letGoUnread && leftNothingAtProvider(ending);
     const result = silenced
       ? {
