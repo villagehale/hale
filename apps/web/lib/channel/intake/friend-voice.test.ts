@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -32,6 +32,11 @@ import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
 import { FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV } from './friend-voice-model-fields';
 
 const EASTERN = 'America/Toronto';
+
+// Dark is the default. A process that exports the flag must not flip these cases.
+beforeEach(() => {
+  vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', undefined);
+});
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
