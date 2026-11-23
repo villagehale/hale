@@ -122,6 +122,14 @@ export async function editChildAction(
     return { status: ctx.status };
   }
 
+  // A blank name is legal only when this child already has none, which needs the
+  // row. Every other shape error is knowable here, so a bad date never resolves
+  // the family.
+  const shape = validateChild(input, new Date(), { allowBlankName: true });
+  if (!shape.ok) {
+    return { status: 'invalid', error: shape.error };
+  }
+
   const { database, externalAuthId } = ctx;
   const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
@@ -150,11 +158,10 @@ export async function editChildAction(
     if (!before) {
       return { ok: false as const, missing: true as const };
     }
-    const validated = validateChild(input, new Date(), {
-      allowBlankName: (before.name ?? '').trim().length === 0,
-    });
-    if (!validated.ok) {
-      return { ok: false as const, missing: false as const, error: validated.error };
+    // Wiping a name the parent already gave is still invalid. Keeping a name
+    // they never gave stays blank.
+    if (shape.child.name.length === 0 && (before.name ?? '').trim().length > 0) {
+      return { ok: false as const, missing: false as const, error: 'name_required' as const };
     }
 
     // PARTIAL update: write only the fields the caller actually SENT. Writing
@@ -167,21 +174,21 @@ export async function editChildAction(
       dateOfBirth: string;
       dobPrecision: 'exact';
       lastName?: string | null;
-      gender?: (typeof validated.child)['gender'];
+      gender?: (typeof shape.child)['gender'];
       biologicalSex?: string | null;
       interests?: string[];
     } = {
-      name: validated.child.name.length > 0 ? validated.child.name : null,
-      dateOfBirth: validated.child.dateOfBirth,
+      name: shape.child.name.length > 0 ? shape.child.name : null,
+      dateOfBirth: shape.child.dateOfBirth,
       // A date a parent typed into a date field is a BIRTHDAY, not an estimate — so
       // this is also the one correction path for a row provisioned from a spoken age.
       // Leaving it 'derived' would keep granting ±6 months of matcher tolerance to a
       // date that no longer needs any.
       dobPrecision: 'exact',
     };
-    if (input.lastName !== undefined) after.lastName = validated.child.lastName;
-    if (input.gender !== undefined) after.gender = validated.child.gender;
-    if (input.biologicalSex !== undefined) after.biologicalSex = validated.child.biologicalSex;
+    if (input.lastName !== undefined) after.lastName = shape.child.lastName;
+    if (input.gender !== undefined) after.gender = shape.child.gender;
+    if (input.biologicalSex !== undefined) after.biologicalSex = shape.child.biologicalSex;
     if (input.interests !== undefined) after.interests = interests;
 
     await tx
