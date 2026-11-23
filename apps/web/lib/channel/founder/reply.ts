@@ -164,9 +164,9 @@ export async function handleFounderWelcomeReply(
     return { status: 'offer_declined', reply: FOUNDER_NOTE_DECLINED_ACK };
   }
 
-  // The poster this family walked in from, read back off the offer's own `topic`. A code
-  // this build no longer knows cannot name a place, and a note with a blank where the
-  // town should be is worse than no note — so the offer is closed rather than guessed at.
+  // The poster this family walked in from, read back off the offer's own `topic`. The
+  // note does not print the town. A code this build no longer knows cannot name a place,
+  // and an offer that cannot name its poster is closed rather than sent.
   const location = posterLocation(offer.topic);
   const targetFamilyId = offer.subjectFamilyId;
   if (targetFamilyId === null || location === null) {
@@ -192,7 +192,7 @@ export async function handleFounderWelcomeReply(
     return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK };
   }
 
-  const body = founderNote(location);
+  const body = founderNote();
   let providerMessageId: string;
   let carried: 'sms' | 'imessage' = 'sms';
   let chatId: string | null = null;

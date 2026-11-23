@@ -419,7 +419,7 @@ describe("the founder's welcome note", () => {
 
     // Two sends: the note to the family, and the ack to the founder.
     expect(transport.sent).toEqual([
-      { to: PARENT_PHONE, body: founderNote('Georgetown') },
+      { to: PARENT_PHONE, body: founderNote() },
       { to: FOUNDER_PHONE, body: FOUNDER_NOTE_SENT_ACK },
     ]);
 
@@ -487,7 +487,7 @@ describe("the founder's welcome note", () => {
     const familyTurns = await threadTurns(familyId, parentUserId);
     expect(familyTurns.at(-1)).toEqual({
       role: 'assistant',
-      content: founderNote('Georgetown'),
+      content: founderNote(),
     });
     expect(familyTurns.at(0)?.content).toEqual(expect.any(String)); // model-written
     expect(familyTurns.at(0)?.content).not.toContain('Want me to keep an eye');
