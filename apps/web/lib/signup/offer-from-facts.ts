@@ -196,7 +196,7 @@ async function offerWithTerms(
     mode: 'auto' | 'assisted';
     host: string;
     href: string;
-    child: { id: string; name: string; dateOfBirth: string; dobPrecision: string };
+    child: { id: string; name: string | null; dateOfBirth: string; dobPrecision: string };
   },
 ): Promise<OfferSignupResult> {
   const activityKey = activityKeyFor(known.href);
@@ -278,7 +278,7 @@ async function offerWithTerms(
 async function writeOffer(
   input: OfferSignupInput,
   deps: OfferSignupDeps,
-  known: { childName: string; registrationUrl: string },
+  known: { childName: string | null; registrationUrl: string },
 ): Promise<string | null> {
   const writer = deps.writer ?? defaultWriter();
   const facts: SignupOfferFacts = {
@@ -306,7 +306,7 @@ async function writePlanOffer(
   known: {
     mode: 'auto' | 'assisted';
     opensAt: Date;
-    childName: string;
+    childName: string | null;
     registrationUrl: string;
     terms?: PlanReplyTerms;
   },

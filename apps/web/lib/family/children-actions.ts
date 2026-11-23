@@ -117,14 +117,17 @@ export async function editChildAction(
   childId: string,
   input: ChildInput,
 ): Promise<EditChildResult> {
-  const validated = validateChild(input);
-  if (!validated.ok) {
-    return { status: 'invalid', error: validated.error };
-  }
-
   const ctx = await mutationContext();
   if (ctx.status !== 'ready') {
     return { status: ctx.status };
+  }
+
+  // A blank name is legal only when this child already has none, which needs the
+  // row. Every other shape error is knowable here, so a bad date never resolves
+  // the family.
+  const shape = validateChild(input, new Date(), { allowBlankName: true });
+  if (!shape.ok) {
+    return { status: 'invalid', error: shape.error };
   }
 
   const { database, externalAuthId } = ctx;
@@ -153,7 +156,12 @@ export async function editChildAction(
       .limit(1);
     const before = existing[0];
     if (!before) {
-      return false;
+      return { ok: false as const, missing: true as const };
+    }
+    // Wiping a name the parent already gave is still invalid. Keeping a name
+    // they never gave stays blank.
+    if (shape.child.name.length === 0 && (before.name ?? '').trim().length > 0) {
+      return { ok: false as const, missing: false as const, error: 'name_required' as const };
     }
 
     // PARTIAL update: write only the fields the caller actually SENT. Writing
@@ -162,25 +170,25 @@ export async function editChildAction(
     // interests a parent set elsewhere (e.g. on mobile). Name + DOB are the
     // required contract; the rest key off raw-input presence.
     const after: {
-      name: string;
+      name: string | null;
       dateOfBirth: string;
       dobPrecision: 'exact';
       lastName?: string | null;
-      gender?: (typeof validated.child)['gender'];
+      gender?: (typeof shape.child)['gender'];
       biologicalSex?: string | null;
       interests?: string[];
     } = {
-      name: validated.child.name,
-      dateOfBirth: validated.child.dateOfBirth,
+      name: shape.child.name.length > 0 ? shape.child.name : null,
+      dateOfBirth: shape.child.dateOfBirth,
       // A date a parent typed into a date field is a BIRTHDAY, not an estimate — so
       // this is also the one correction path for a row provisioned from a spoken age.
       // Leaving it 'derived' would keep granting ±6 months of matcher tolerance to a
       // date that no longer needs any.
       dobPrecision: 'exact',
     };
-    if (input.lastName !== undefined) after.lastName = validated.child.lastName;
-    if (input.gender !== undefined) after.gender = validated.child.gender;
-    if (input.biologicalSex !== undefined) after.biologicalSex = validated.child.biologicalSex;
+    if (input.lastName !== undefined) after.lastName = shape.child.lastName;
+    if (input.gender !== undefined) after.gender = shape.child.gender;
+    if (input.biologicalSex !== undefined) after.biologicalSex = shape.child.biologicalSex;
     if (input.interests !== undefined) after.interests = interests;
 
     await tx
@@ -197,11 +205,12 @@ export async function editChildAction(
       before,
       after,
     });
-    return true;
+    return { ok: true as const };
   });
 
-  if (!updated) {
-    return { status: 'not_found' };
+  if (!updated.ok) {
+    if (updated.missing) return { status: 'not_found' };
+    return { status: 'invalid', error: updated.error };
   }
   revalidatePath('/family');
   return { status: 'updated' };

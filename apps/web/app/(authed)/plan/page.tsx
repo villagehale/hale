@@ -65,7 +65,7 @@ export default async function PlanPage() {
   // 13+ child is never named (rule #1).
   const planKids: WeekPlanKid[] = children.map((child) => ({
     id: child.id,
-    name: child.name ?? 'your child',
+    name: child.name,
     dateOfBirth: child.dateOfBirth,
     stage: child.stage,
   }));

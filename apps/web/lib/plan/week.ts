@@ -83,7 +83,8 @@ export function planChildItems(
       continue;
     }
 
-    const childName = child.name ?? 'your child';
+    const given = child.name?.trim() ?? '';
+    const childName = given.length > 0 ? given : null;
 
     const health = child.nextHealth[0];
     if (health) {

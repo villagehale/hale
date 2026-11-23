@@ -56,7 +56,7 @@ export function headerNames(
   }
   const anyTeen = children.some((c) => isTeen(c, now));
   if (level === 'first_name' && !anyTeen) {
-    return joinNames(distinct(children.map((c) => c.name)));
+    return joinNames(distinct(children.flatMap((c) => (c.name ? [c.name] : []))));
   }
   return KIDS_SUBJECT;
 }
@@ -122,7 +122,7 @@ export function leveledWhat(
   now: Date,
 ): string {
   const child = itemChild(item, children);
-  if (!child) return item.title;
+  if (!child?.name) return item.title;
   const leveled = loopChildName(child, level, now);
   if (leveled === child.name) return item.title;
   return item.title.includes(child.name) ? item.title.replace(child.name, leveled) : item.title;
@@ -159,6 +159,7 @@ export function relevelNames(
 ): string {
   let out = text;
   for (const child of children) {
+    if (!child.name) continue;
     const leveled = loopChildName(child, level, now);
     if (leveled === child.name) continue;
     out = out.replace(nameWordRegExp(child.name, 'gu'), leveled);
@@ -178,6 +179,7 @@ export function safeVoiceLine(
 ): string | null {
   const releveled = relevelNames(text, children, level, now);
   for (const child of children) {
+    if (!child.name) continue;
     if (loopChildName(child, level, now) === child.name) continue;
     if (nameWordRegExp(child.name, 'iu').test(releveled)) return null;
   }

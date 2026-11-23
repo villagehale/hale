@@ -136,4 +136,25 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: null,
     expect: { names: ['21', 'jan'], urls: [] },
   },
+  {
+    // VIL-763 · a generic evening check-in the night after one that already asked
+    // how things are going. Nothing new is in the items. Nothing should be sent,
+    // and a text that is sent is graded on meaning against the earlier one.
+    id: 'no-repeat-evening-check-in',
+    items: [
+      {
+        id: 'checkin',
+        what: 'how the day went',
+        why: 'evening check-in',
+        sourceUrl: null,
+        worthlessAfter: '2026-10-09T12:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    recentTexts: [
+      'Hey, just checking in this evening. How is everything going, and is there anything you want a hand with?',
+    ],
+    expect: { names: [], urls: [] },
+  },
 ];
