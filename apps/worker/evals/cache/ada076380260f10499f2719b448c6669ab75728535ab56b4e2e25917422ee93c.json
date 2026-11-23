@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi, I keep Ana's family's week straight, and Ana added you as their nanny. If you're okay with it, I'll text you the week's schedule, pickup reminders, and the time and address for anything you're helping with, and nothing else. You can tell me anytime, in your own words, that you'd rather not hear from me."
+  },
+  "latencyMs": 1705,
+  "usage": {
+    "input_tokens": 204,
+    "output_tokens": 109,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1303
+  }
+}

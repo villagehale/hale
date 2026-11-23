@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Welcome! You're in as a co-parent now, so you'll see everything your partner sees here, and you can text me anytime."
+  },
+  "latencyMs": 1206,
+  "usage": {
+    "input_tokens": 1226,
+    "output_tokens": 46,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}
