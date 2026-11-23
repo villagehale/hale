@@ -38,7 +38,7 @@ import {
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
-import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
+import { inboundMediaFromStored, readInboundMedia } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { deliveredAsk, sendRecordedAt } from '~/lib/channel/ledger';
@@ -72,9 +72,15 @@ import {
   loadOpenEmailAlertOffers,
 } from '~/lib/integrations/email-alert-offer';
 import { createOfferReceiptWriter } from '~/lib/integrations/offer-receipt';
+import { productionBringItemsReader } from '~/lib/loop/reminders/bring/reader';
 import { familyMemoryKindsHandler } from '~/lib/memory/handler';
 import { rememberWorkstreamTurn, workstreamExtractClient } from '~/lib/memory/workstream-extract';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import {
+  HOT_SMS_CLIENT_OPTIONS,
+  activityClient,
+  budgetedAnthropic,
+  pipelineClient,
+} from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import {
@@ -843,6 +849,13 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     groupPlanActionIds,
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
+    // VIL-720 · read only while BRING_ITEMS_REMINDER_ENABLED is on, after a coach offer
+    // that a 1:1 photo turn produced. Images only (loop/reminders/bring/photo.ts).
+    bringItems: {
+      readImages: async (parts) =>
+        (await readInboundMedia(parts, fetch)).blocks.filter((block) => block.type === 'image'),
+      readBringItems: productionBringItemsReader(pipelineClient),
+    },
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),

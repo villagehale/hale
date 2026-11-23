@@ -163,6 +163,10 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
+import {
+  type CoachBringPorts,
+  captureCoachOfferBringItems,
+} from '~/lib/loop/reminders/bring/photo';
 import { noteCrisisReplySent, pageOps, reportTurnFailures } from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
@@ -560,6 +564,13 @@ export interface ChannelRouterDeps {
    * no model.
    */
   calendarOffers: CalendarOfferPorts;
+  /**
+   * VIL-720 · reads what a flyer the parent sent 1:1 asks them to bring, once the coach's
+   * answer offered to add its occasion (loop/reminders/bring/photo.ts). Read only while
+   * BRING_ITEMS_REMINDER_ENABLED is on. Absent is `not_configured`, logged; nothing else
+   * about the turn changes.
+   */
+  bringItems?: CoachBringPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
   /** Pages #ops when a crisis moment gets no reply. Absent: the real pager
@@ -2740,6 +2751,10 @@ async function recordCoachOfferFromReply(
     said: string;
     channelMessageId: string;
     now: Date;
+    /** VIL-720 · the parent's own words this turn, and the photos they sent with them. */
+    parentWords: string;
+    inboundMedia: readonly InboundMediaPart[];
+    audience: 'direct' | 'group';
   },
 ): Promise<void> {
   if (input.said.trim() === '') return;
@@ -2761,6 +2776,24 @@ async function recordCoachOfferFromReply(
       now: input.now,
     });
     deps.log.info({ outcome }, 'channel router: coach calendar offer');
+    // VIL-720 · the offer stands on this turn's flyer: what it says to bring waits on the
+    // parent's yes. Dark while the flag is off; never throws; the answer already went.
+    if (outcome === 'recorded') {
+      await captureCoachOfferBringItems(
+        deps.database,
+        {
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+          channelMessageId: input.channelMessageId,
+          parentWords: input.parentWords,
+          event: { title: extracted.title, startsAt: extracted.startsAt.toISOString() },
+          media: input.inboundMedia,
+          audience: input.audience,
+          now: input.now,
+        },
+        deps.bringItems,
+      );
+    }
   } catch (err) {
     deps.log.error(
       { detail: err instanceof Error ? err.constructor.name : 'unknown' },
@@ -3141,6 +3174,9 @@ async function runAgentTurn(
       said,
       channelMessageId,
       now: args.turn.now,
+      parentWords: args.turn.body,
+      inboundMedia: args.turn.inboundMedia ?? [],
+      audience: args.audience,
     });
     // THE MENU THE COACH JUST OFFERED (VIL-304). This turn was an answer Hale could not
     // place, so the coach was handed the candidates and asked which — in its own words,

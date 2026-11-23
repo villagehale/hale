@@ -46,6 +46,9 @@ const NOT_IN_FAMILY_EXPORT = [
   'integration_google_revoke_cancelled',
   // VIL-635. A rail refusal names one adult; the family copy never carries it.
   'tool_refused',
+  // VIL-720. That one parent's own email or flyer was read for what to bring.
+  'bring_items_recorded',
+  'bring_items_attached',
   // That one adult's own 1:1 ask went on the deep queue (VIL-682).
   'activity_deep_dispatched',
   // VIL-717. That one adult's own slow ask was given a time, how that time was kept, and the

@@ -55,6 +55,9 @@ const DOORS: Record<string, Door> = {
   'apps/web/lib/cron/inference-tools.ts': 'household',
   'apps/worker/src/tools/registry.ts': 'household',
   'apps/web/lib/loop/reminders/run.ts': 'owner',
+  // VIL-720: one event by id, the one household correlation already matched, to
+  // compare its start with the email. It does not list the calendar.
+  'apps/web/lib/loop/reminders/bring/email.ts': 'scoped',
   // household rows plus the mirror of the one parent the activity watch is owed to;
   // the model's answer only closes that parent's watch, nothing is sent (VIL-564)
   'apps/web/lib/channel/activity/calendar-check.ts': 'owner',

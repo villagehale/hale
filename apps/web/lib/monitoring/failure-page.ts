@@ -204,6 +204,8 @@ export const OPS_PAGE_VOCABULARY = {
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-720. A due reminder that carried what to bring could not be written. `count` is how many. Nothing was sent. */
+  reminder_bring_unwritten: {},
   /** VIL-734 · a driver's schedule-change text that reached them on no try. */
   team_schedule_driver_unsent: {
     reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started', 'held_too_long'],
