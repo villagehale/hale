@@ -1050,7 +1050,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
       // stopped being answerable — and listing one would let a YES two days later text a
-      // family "thank you for giving Hale a try" about a week they have already had.
+      // family the welcome note about a week they have already had.
       founderWelcomeOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
