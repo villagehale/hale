@@ -94,6 +94,8 @@ const MAX_TEXT_CHARS = 1600;
 const MAX_QUESTION_CHARS = 320;
 /** A program's name, not a paragraph: the longest activity label a reader is shown. */
 export const MAX_ACTIVITY_LABEL_CHARS = 80;
+/** Room for a level and a course name, and little else a page might try to say. */
+const MAX_PREREQUISITE_QUOTE_CHARS = 200;
 export const SIGNUP_PLAN_READ_SKILL = 'signup-plan-read';
 /** VIL-715 · the addendum for an ask with terms. Loaded only when they are present. */
 export const SIGNUP_PLAN_READ_TERMS_SKILL = 'signup-plan-read-terms';
@@ -177,6 +179,10 @@ type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
  * strip), every link-shaped word goes, and it is cut to a name's length.
  */
 export function untrustedActivityLabel(raw: string | null): string | null {
+  return untrustedPageWords(raw, MAX_ACTIVITY_LABEL_CHARS);
+}
+
+function untrustedPageWords(raw: string | null, maxChars: number): string | null {
   if (raw === null) return null;
   const visible = raw
     .normalize('NFKC')
@@ -184,7 +190,18 @@ export function untrustedActivityLabel(raw: string | null): string | null {
     .replace(/\p{Cc}/gu, ' ');
   const text = withoutLinks(visible).replace(/\s+/g, ' ').trim();
   if (!text) return null;
-  return [...text].slice(0, MAX_ACTIVITY_LABEL_CHARS).join('').trim();
+  return [...text].slice(0, maxChars).join('').trim();
+}
+
+/** The terms as the reader sees them: the prerequisite's words are a web page's. */
+function readerTerms({ prerequisiteQuote, ...terms }: PlanReadTerms) {
+  return {
+    ...terms,
+    untrusted_prerequisite_quote: untrustedPageWords(
+      prerequisiteQuote,
+      MAX_PREREQUISITE_QUOTE_CHARS,
+    ),
+  };
 }
 
 /** The user turn: the plan the parent is answering, then their words. No child data. */
@@ -205,7 +222,7 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
         priceCents: session.priceCents,
       })),
       plan: input.offer.plan,
-      ...(input.offer.terms ? { terms: input.offer.terms } : {}),
+      ...(input.offer.terms ? { terms: readerTerms(input.offer.terms) } : {}),
     },
     text: input.text.slice(0, MAX_TEXT_CHARS),
   });
