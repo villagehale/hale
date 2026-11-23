@@ -162,7 +162,21 @@ export type ProactiveSendKind =
    * VIL-131 · Hale just did a kind without asking. One text per execution, same
    * reason the turn-on text is not a counter.
    */
-  | 'autonomy_acted';
+  | 'autonomy_acted'
+  /**
+   * VIL-717 · Hale told a parent when to expect an answer and that time passed. A cron
+   * writes this one, so it is an unprompted text however much it is about their own ask.
+   * The bound is the promise: one claim per text, and no count.
+   */
+  | 'ack_late_note'
+  /**
+   * VIL-735 · the text that answers a payment the parent just made. The bound is the
+   * payment, held by the notice row. It may claim urgency only while the payment is
+   * minutes old (run.ts): an older one waits for daytime like anything else.
+   */
+  | 'billing_receipt'
+  /** VIL-735 · a cancel or a refund the parent did not just trigger: waits for daytime. */
+  | 'billing_change';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -305,6 +319,14 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // of what the text is for, and execution waits until the text has gone out.
   autonomy_armed: false,
   autonomy_acted: false,
+  // "Still on it" is worth as much at 08:00, and a parent who texted at 23:00 is not woken
+  // to hear it. The ack's sweep waits the night out rather than being refused.
+  ack_late_note: false,
+  // It answers what the parent did a moment ago. Silence after a payment reads as a failed
+  // payment, and they are holding the phone.
+  billing_receipt: true,
+  // A plan that ended or money that went back is just as true at 08:00.
+  billing_change: false,
 };
 
 /**
@@ -375,6 +397,33 @@ export function proactiveFloorOpensAt(now: Date, timeZone: string): Date {
     : zonedLocalInstant(addDaysToKey(today, 1), PROACTIVE_QUIET_HOURS.end, timeZone);
 }
 
+/** How soon a parent with no single zone is read again while it is night in one of them. */
+const NO_SINGLE_ZONE_RECHECK_MS = 60 * 60 * 1000;
+
+/**
+ * VIL-717 · when the floor next opens for this parent, or null when it is open now, on the
+ * clock {@link assertProactiveSendAllowed} reads. For a lane that waits the night out
+ * instead of being refused (the ack's late note). With no single zone there is no one
+ * morning to name, so it says when to look again.
+ */
+export async function proactiveFloorClosedUntil(
+  ports: Pick<OutboundGatePorts, 'parentTimeZone' | 'parentClock' | 'parentPhone'>,
+  parentUserId: string,
+  now: Date,
+): Promise<Date | null> {
+  const clock = ports.parentClock ? await ports.parentClock(parentUserId) : null;
+  const parentPhone = ports.parentPhone?.bind(ports);
+  const phone = parentPhone && (() => parentPhone(parentUserId));
+  if (clock?.kind === 'unresolved') {
+    const quiet = await quietAcrossZones({ now, zones: clock.zones, phone });
+    return quiet ? new Date(now.getTime() + NO_SINGLE_ZONE_RECHECK_MS) : null;
+  }
+  const timeZone =
+    clock?.kind === 'zone' ? clock.timeZone : await ports.parentTimeZone(parentUserId);
+  const quiet = await proactiveQuietNow({ now, timeZone, phone });
+  return quiet ? proactiveFloorOpensAt(now, timeZone) : null;
+}
+
 /**
  * The `channel_messages.category` each proactive class is counted under. A class of
  * its own per kind, so one class's volume can never consume another's budget — with
@@ -403,6 +452,7 @@ export const PROACTIVE_CATEGORY: Record<
   | 'duty_ask'
   | 'autonomy_armed'
   | 'autonomy_acted'
+  | 'alert'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
@@ -428,6 +478,11 @@ export const PROACTIVE_CATEGORY: Record<
   duty_ask: 'duty_ask',
   autonomy_armed: 'autonomy_armed',
   autonomy_acted: 'autonomy_acted',
+  // Hale following up on a thread it is in the middle of, as the next-day check-back does.
+  ack_late_note: 'followup',
+  // The parent's Alerts switch governs these. No other writer sends `alert` rows.
+  billing_receipt: 'alert',
+  billing_change: 'alert',
 };
 
 export interface OutboundGatePorts {

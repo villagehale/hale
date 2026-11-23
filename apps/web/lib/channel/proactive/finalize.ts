@@ -48,6 +48,7 @@ export interface ProactiveAuditRow {
   actionTaken: string;
   targetTable: string;
   targetId: string;
+  occurredAt?: Date;
   after: Record<string, unknown>;
 }
 

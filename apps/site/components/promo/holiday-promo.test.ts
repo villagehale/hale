@@ -1,9 +1,10 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { RedesignHome } from '~/components/redesign/home';
 import { RedesignPricing } from '~/components/redesign/pricing';
-import { type PromoPhase, buildHolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import { FOUNDING_REFUND_LINE, type PromoPhase, buildHolidayPromo } from '~/lib/promo/holiday';
+import { foundingCheckoutTarget } from './founding-checkout-link';
 import {
   PromoBanner,
   PromoFaqItems,
@@ -103,7 +104,9 @@ for (const { phase, currency } of CASES) {
           expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
           expect(c).toContain(FOUNDING_REFUND_LINE);
           expect(text(c)).toContain(`Lock in ${sale}`);
-          expect(c).toContain(`/settings/founding?plan=${tier === 'max' ? 'family' : 'plus'}`);
+          expect(c).toContain('href="https://app.villagehale.com/founding"');
+          expect(c).not.toContain('/settings/founding');
+          expect(c).not.toContain('plan=');
           expect(c).not.toContain('Coming soon');
           expect(c).not.toMatch(/\/mo\b/);
         }
@@ -115,8 +118,20 @@ for (const { phase, currency } of CASES) {
         const faq = text(renderToStaticMarkup(createElement(PromoFaqItems, { promo })));
         expect(faq).toContain(foundingAfterLine(promo));
         expect(foundingAfterLine(promo)).toBe(
-          `Founding families who join by Dec 31 keep ${want.max[1]} for Max or ${want.plus[1]} for Plus for as long as they’re members. Families who join after that pay the regular price.`,
+          `Families who join by Dec 31 keep ${want.max[1]} for Max or ${want.plus[1]} for Plus for as long as they’re members. Families who join after that pay the regular price.`,
         );
+      });
+
+      it('leads with the sale and never calls anyone a founding family', () => {
+        expect(body).toContain('Our biggest sale of the year');
+        expect(body).toContain(
+          'Our lowest price of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
+        );
+        expect(body).toContain(
+          'Billed once a year. Sale prices are for families who join by Dec 31, 2026.',
+        );
+        expect(body).toContain('If you cancel, the sale price ends with the membership.');
+        expect(body).not.toMatch(/founding/i);
       });
 
       it('never uses was / save / % off wording', () => {
@@ -163,12 +178,40 @@ for (const { phase, currency } of CASES) {
 
       it('offers the founding checkout door and a mobile sticky CTA', () => {
         expect(html).toContain('data-cta="promo_cta_click"');
-        expect(html).toContain('https://app.villagehale.com/settings/founding?plan=family');
+        expect(html).toContain('https://app.villagehale.com/founding');
+        expect(html).not.toContain('/settings/founding');
+        expect(html).not.toContain('plan=');
         expect(html).toContain('promo-sticky');
       });
     });
   }
 }
+
+describe('promo lock-in door', () => {
+  it('opens the new-visitor /founding path and keeps a click id off the plan query', () => {
+    expect(foundingCheckoutTarget()).toBe('https://app.villagehale.com/founding');
+    expect(foundingCheckoutTarget('utm_source=meta&fbclid=abc')).toBe(
+      'https://app.villagehale.com/founding?utm_source=meta&fbclid=abc',
+    );
+    expect(foundingCheckoutTarget('gclid=1')).not.toContain('plan=');
+    expect(foundingCheckoutTarget('gclid=1')).not.toContain('/settings/founding');
+  });
+
+  it('uses that same door on home and pricing in en, fr, and zh', () => {
+    const promo = buildHolidayPromo('black_friday', 'CAD');
+    for (const locale of ['en', 'fr', 'zh'] as const) {
+      for (const Page of [RedesignHome, RedesignPricing]) {
+        const html = renderToStaticMarkup(createElement(Page, { ...door, locale, promo }));
+        const hrefs = [...html.matchAll(/href="([^"]+)"/g)]
+          .map((match) => match[1] ?? '')
+          .filter((href) => href.includes('villagehale.com') && href.includes('founding'));
+        expect(hrefs.length).toBeGreaterThan(0);
+        expect(new Set(hrefs)).toEqual(new Set(['https://app.villagehale.com/founding']));
+        expect(html).not.toContain('/settings/founding');
+      }
+    }
+  });
+});
 
 describe('promo off', () => {
   it('leaves the regular page untouched', () => {

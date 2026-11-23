@@ -54,6 +54,7 @@ import { FakeReplyTransport } from './reply-route';
 import { type ChannelRouterDeps, type RouterStatus, routeChannelMessage } from './route';
 import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 /**
  * Back-to-back texts through the PRODUCTION drain (VIL-679): the real pg-boss on pglite,
@@ -161,6 +162,7 @@ function routerDeps(
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    ackEta: quietAckEtaPorts(),
     sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
     recordPlanOffer: async () => ({ status: 'recorded' }),

@@ -4,10 +4,19 @@ import {
   type RegisteredTool,
   defineTool,
   invokeTool,
+  markUntrusted,
 } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { READ_EMAIL_TOOL, type ReadEmailResult, taintTurnOnEmailRead } from './read-email-tool';
+import { dropEmailOnlyTokens } from './email-only-tokens';
+import {
+  READ_EMAIL_MAX_CHARS,
+  READ_EMAIL_TOOL,
+  type ReadEmailResult,
+  coachEmailReader,
+  readEmailTool,
+  taintTurnOnEmailRead,
+} from './read-email-tool';
 
 /**
  * VIL-615 · once `read_email` hands the turn an email's text, nothing that writes or
@@ -75,6 +84,14 @@ function turnTools(result: ReadEmailResult, ran: string[], audits: AuditEntry[] 
 }
 
 describe('taintTurnOnEmailRead (VIL-615)', () => {
+  beforeEach(() => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('a write before any email is read runs (positive control)', async () => {
     const ran: string[] = [];
     const { call } = turnTools(READ, ran);
@@ -171,4 +188,115 @@ describe('taintTurnOnEmailRead (VIL-615)', () => {
       touchesChildContent: false,
     });
   });
+});
+
+/**
+ * VIL-560 · the mark's `&lt;` puts letters between digits, so the reply gate must read the
+ * email as written while the model reads it marked. Real reader, tool, wrapper and gate.
+ */
+describe('read_email with the untrusted mark (VIL-560)', () => {
+  const FLAG_STATES = [
+    ['off', ''],
+    ['on', 'true'],
+  ] as const;
+  const ONE_CODE = { phone: 0, code: 1, host: 0 };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  async function readThroughTheWrapper(flag: string, email: string) {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', flag);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const reader = coachEmailReader({
+      alertedSource: async () => ({
+        kind: 'gmail',
+        eventId: null,
+        gmailMessageId: 'gm-1',
+        private: false,
+      }),
+      familyChildren: async () => [],
+      gmailConnection: async () => ({ id: 'integration-1' }),
+      accessToken: async () => 'token-1',
+      fetchBody: async () => email,
+    });
+    const turn = taintTurnOnEmailRead([
+      readEmailTool((gmailMessageId) =>
+        reader.read({
+          familyId: 'family-1',
+          parentUserId: 'parent-1',
+          conversationId: 'conversation-1',
+          gmailMessageId,
+        }),
+      ),
+    ]);
+    const tool = turn.tools.find((t) => t.name === READ_EMAIL_TOOL);
+    if (!tool) throw new Error(`no ${READ_EMAIL_TOOL}`);
+    const handed = await invokeTool(tool, { gmailMessageId: 'gm-1' }, CTX, {
+      writeAudit: async () => {},
+    });
+    return { handed: handed as ReadEmailResult, emails: turn.emailTexts() };
+  }
+
+  describe.each(FLAG_STATES)('flag %s', (_state, flag) => {
+    it.each([
+      ['digits split with <', 'Enter code 48<29<13 at the door.', 'Enter code 48 29 13.'],
+      ['a PIN that reads as a year', 'Your PIN is 19<87.', 'Your PIN is 1987.'],
+      ['letters and digits split with <', 'Show AB<12<CD at the door.', 'Show AB 12 CD now.'],
+      ['full-width <', 'Enter code 48\uFF1C29\uFF1C13 at the door.', 'Enter code 48 29 13.'],
+      ['a CJK angle bracket', 'Enter code 48\u300829\u300813 at the door.', 'Enter code 48 29 13.'],
+      ['the invisible tag <', 'Enter code 48\u{E003C}29\u{E003C}13 now.', 'Enter code 48 29 13.'],
+    ])('drops a code the email split with %s', async (_label, email, reply) => {
+      const { emails } = await readThroughTheWrapper(flag, email);
+      expect(dropEmailOnlyTokens(reply, { emails, trusted: [] })).toEqual({
+        text: '',
+        dropped: ONE_CODE,
+      });
+    });
+
+    it('drops the same code split with a dash (positive control)', async () => {
+      const { emails } = await readThroughTheWrapper(flag, 'Enter code 48-29-13 at the door.');
+      expect(dropEmailOnlyTokens('Enter code 48 29 13.', { emails, trusted: [] })).toEqual({
+        text: '',
+        dropped: ONE_CODE,
+      });
+    });
+
+    it('leaves a reply that holds no email token byte for byte (positive control)', async () => {
+      const { emails } = await readThroughTheWrapper(flag, 'Enter code 48<29<13 at the door.');
+      const reply = 'Picture day is Friday.';
+      expect(dropEmailOnlyTokens(reply, { emails, trusted: [] })).toEqual({
+        text: reply,
+        dropped: { phone: 0, code: 0, host: 0 },
+      });
+    });
+  });
+
+  it.each([
+    ['a host', 'Pay at evil.example today.', { phone: 0, code: 0, host: 1 }],
+    ['a code', 'Enter code 48 29 13.', ONE_CODE],
+    ['a code with look-alikes', 'Enter code 48\u143829\u143813.', ONE_CODE],
+  ])('counts %s once when both readings find it', (_label, reply, dropped) => {
+    expect(
+      dropEmailOnlyTokens(reply, {
+        emails: ['Enter code 48<29<13 at the door.'],
+        trusted: [],
+        readThroughMark: true,
+      }),
+    ).toEqual({ text: '', dropped });
+  });
+
+  it.each([
+    ['off', '', (cut: string) => cut],
+    ['on', 'true', (cut: string) => markUntrusted('email', 'body', cut)],
+  ])(
+    'flag %s: the gate holds the raw cut text and the model gets its exact form',
+    async (_state, flag, forModel) => {
+      const cut = `${'x'.repeat(READ_EMAIL_MAX_CHARS - 1)}<`;
+      const { handed, emails } = await readThroughTheWrapper(flag, `${cut} past the cut`);
+      expect(emails).toEqual([cut]);
+      expect(handed).toEqual({ read: true, body: forModel(cut), truncated: true });
+    },
+  );
 });

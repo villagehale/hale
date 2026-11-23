@@ -1,5 +1,6 @@
 import type { AgentClient, AgentUsage, ModelId } from '@hale/agent';
-import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, pickLane, presentUntrustedJson, untrustedSourceFor } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { loadDraftActionSkill } from './skill';
@@ -34,6 +35,8 @@ const draftOutputJsonSchema = {
 
 export interface DraftInput {
   familyId: string;
+  /** Where the event came from (`events.source`): the label on its untrusted fields. */
+  source: string;
   event: { eventId: string; eventType: string; payload: Record<string, unknown> };
   actionType: ActionType;
   memorySlice?: { relevantFacts: unknown[]; relevantEpisodes: unknown[] };
@@ -51,7 +54,15 @@ export async function draftAction(input: DraftInput, client: AgentClient): Promi
   const skill = await loadDraftActionSkill();
   const userMessage = JSON.stringify({
     action_type: input.actionType,
-    event: input.event,
+    event: {
+      ...input.event,
+      payload: presentUntrustedJson(
+        isEnabled('untrusted-field-marking'),
+        untrustedSourceFor(input.source),
+        'payload',
+        input.event.payload,
+      ),
+    },
     memory_slice: input.memorySlice ?? null,
   });
 

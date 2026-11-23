@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, notInArray, or } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
@@ -25,10 +25,19 @@ export const MESSAGE_HOLD = 'message';
 /** A number whose text shares its provider id with another number's hold. No store can
  * place it, so only an operator clears it ({@link clearCollisionHold}). */
 export const ID_COLLISION_HOLD = 'id_collision';
+/** A text the model read as a stop whose stop is not recorded yet. A later read cannot make
+ * it ordinary again: only the stop path releases it, once it is recorded or superseded. */
+export const STOP_PENDING_HOLD = 'stop_pending';
 
-/** The only rows a read or a recovery pass may release. A kind this code does not know is
- * not one, so it is kept like a collision (fail closed). */
+/** The only rows a read may release. A pending stop goes by {@link releaseStoppedMessage};
+ * a kind this code does not know is kept like a collision (fail closed). */
 const releasableHold = eq(schema.optOutHeldMessages.kind, MESSAGE_HOLD);
+
+/** What only an operator clears: a hold neither a read nor a recorded stop will release. */
+export const operatorOnlyHold = notInArray(schema.optOutHeldMessages.kind, [
+  MESSAGE_HOLD,
+  STOP_PENDING_HOLD,
+]);
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -97,9 +106,10 @@ export async function placeHold(
 }
 
 /**
- * The operator path, and the only one, that clears a hold that is not a message hold
+ * The operator path, and the only one, that clears a hold no read or stop can release
  * (scripts/clear-opt-out-collision-hold.ts). A message hold is never taken here: it goes
- * when its text is read. The number's verified holders each get an audit row about them.
+ * when its text is read, and a pending stop when it is recorded. The number's verified
+ * holders each get an audit row about them.
  */
 export async function clearCollisionHold(
   database: Database,
@@ -108,12 +118,7 @@ export async function clearCollisionHold(
   return database.transaction(async (tx) => {
     const [cleared] = await tx
       .delete(schema.optOutHeldMessages)
-      .where(
-        and(
-          eq(schema.optOutHeldMessages.providerMessageId, holdKey),
-          ne(schema.optOutHeldMessages.kind, MESSAGE_HOLD),
-        ),
-      )
+      .where(and(eq(schema.optOutHeldMessages.providerMessageId, holdKey), operatorOnlyHold))
       .returning({ phoneHash: schema.optOutHeldMessages.phoneHash });
     if (!cleared) return 'not_a_collision_hold';
     const holders = await tx
@@ -156,6 +161,41 @@ export async function releaseHeldMessage(
   const deleted = await database
     .delete(schema.optOutHeldMessages)
     .where(and(eq(schema.optOutHeldMessages.providerMessageId, providerMessageId), releasableHold))
+    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+  return deleted.length > 0 ? 'released' : 'not_held';
+}
+
+function heldTextOf(input: { phoneHash: string; providerMessageId: string }) {
+  return and(
+    eq(schema.optOutHeldMessages.providerMessageId, input.providerMessageId),
+    eq(schema.optOutHeldMessages.phoneHash, input.phoneHash),
+  );
+}
+
+/** This number's held text was read as a stop. From here only the stop path releases it. */
+export async function markStopPending(
+  database: Database,
+  input: { phoneHash: string; providerMessageId: string },
+): Promise<void> {
+  await database
+    .update(schema.optOutHeldMessages)
+    .set({ kind: STOP_PENDING_HOLD })
+    .where(and(heldTextOf(input), releasableHold));
+}
+
+/** The stop on this number's text is recorded or superseded: its hold goes, marked or not. */
+export async function releaseStoppedMessage(
+  database: Database,
+  input: { phoneHash: string; providerMessageId: string },
+): Promise<'released' | 'not_held'> {
+  const deleted = await database
+    .delete(schema.optOutHeldMessages)
+    .where(
+      and(
+        heldTextOf(input),
+        inArray(schema.optOutHeldMessages.kind, [MESSAGE_HOLD, STOP_PENDING_HOLD]),
+      ),
+    )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   return deleted.length > 0 ? 'released' : 'not_held';
 }

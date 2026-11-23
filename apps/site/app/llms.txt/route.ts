@@ -35,7 +35,7 @@ function buildLlmsTxt(): string {
     '- Sign-ups and payment: Hale signs your kid up when you say yes, then hands you the payment step. You always pay yourself.',
     '- How it works: text Hale, tell it where you are and your kids\' ages, and it shows what\'s on this week. It texts only when there is a reason. Reply STOP any time.',
     `- Price: Free is $0 with unlimited chat. In Canada, Plus is ${PLUS_LIST_PRICE_DISPLAY.CAD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.CAD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.CAD.annualLabel}. In the US, Plus is ${PLUS_LIST_PRICE_DISPLAY.USD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.USD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.USD.annualLabel}. The number on the site follows where you are. ${REFUND_LINE}`,
-    '- Company: Village Hale Technologies Inc., Georgetown, Ontario. Founders Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
+    '- Company: Village Hale Technologies Inc., Georgetown, Ontario. Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
     `- Pages: [About](${SITE_URL}/about), [FAQ](${SITE_URL}/faq), [Pricing](${SITE_URL}/pricing)`,
     '',
     '## Answer pages',

@@ -1,4 +1,20 @@
 {
+  "ack-eta-judge.md": {
+    "file": "ack-eta-judge.md",
+    "sha256": "e9b9a506ea400a929cf4d7b3fbe6755683d5d4159b7972b2a5e9fec24c98f64a"
+  },
+  "ack-eta-miss.md": {
+    "file": "ack-eta-miss.md",
+    "sha256": "29363a197e0096ed4f4d01a9339027d7a9f193ef0c9eb92eaa9b6065d67392b8"
+  },
+  "ack-eta-read.md": {
+    "file": "ack-eta-read.md",
+    "sha256": "3b874fb7c1034fc50471fe7c04273237d16954af629f66204296da2ca55493a1"
+  },
+  "ack-eta.md": {
+    "file": "ack-eta.md",
+    "sha256": "702674db6941985480a3763785d37a290f63abd7d486ff469369069346b7bcc7"
+  },
   "activity-deep.md": {
     "file": "activity-deep.md",
     "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
@@ -38,6 +54,14 @@
   "autonomy-notice.md": {
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
+  },
+  "billing-notice-check.md": {
+    "file": "billing-notice-check.md",
+    "sha256": "0291d52f8458e2444ca83c4f076daf54b3628c1afabf20d2f070b40a0aff4d1e"
+  },
+  "billing-notice.md": {
+    "file": "billing-notice.md",
+    "sha256": "dcc48ca50a67d85bdda79c00641649d613ff2a0e184ab9e07a40929db0b6a415"
   },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
@@ -166,6 +190,10 @@
   "coach-no-group-relay.md": {
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
+  },
+  "coach-no-stop-keyword.md": {
+    "file": "coach-no-stop-keyword.md",
+    "sha256": "339c6245f99f89fe37107926bd2afc34cd74dee9a2c4913f3a2bc4520a2855eb"
   },
   "coach-photo-facts.md": {
     "file": "coach-photo-facts.md",
@@ -322,6 +350,10 @@
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
+  "group-onboarding-no-keyword.md": {
+    "file": "group-onboarding-no-keyword.md",
+    "sha256": "fdb278cd3227ec885bdc622d3482f3cc1201c0bc20e4a7dd7dfcd8b1881b671a"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -554,6 +586,10 @@
   "party-extraction.md": {
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
+  },
+  "party-guest-line.md": {
+    "file": "party-guest-line.md",
+    "sha256": "239bbe828d49ee8734de5c7da3f0f6e44f20bdedeff28e5b2e555fb4ee13d6d9"
   },
   "proactive-decider.md": {
     "file": "proactive-decider.md",

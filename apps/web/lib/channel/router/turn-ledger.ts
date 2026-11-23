@@ -72,6 +72,12 @@ export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
  */
 export const TURN_FAILED_ACTION = 'sms_turn_failed';
 
+/**
+ * The `after` of an answered row whose turn closed with no reply reaching the parent. A
+ * DATA value. The re-drive gate still reads the row as answered, so nothing runs twice.
+ */
+export const TURN_NOTHING_SENT = { nothing_sent: true } as const;
+
 /** A text read into an earlier text's turn. `after: { into, read }` names that turn. */
 export const TURN_FOLDED_ACTION = 'sms_turn_folded';
 
@@ -181,6 +187,11 @@ export interface InboundTurnLedger {
      * with no fold-aware logic of its own. Empty on a lone text.
      */
     folded: readonly string[];
+    /**
+     * The turn is closed but no reply reached the parent (#973's silent claim). The row
+     * still stops a re-drive; this keeps "closed" from reading as "they heard back".
+     */
+    nothingSent?: boolean;
   }): Promise<AnswerClaimOutcome>;
   /**
    * A SIDE TURN'S CLAIM (side-turn.ts), taken BEFORE its reply is sent, the way a fold's

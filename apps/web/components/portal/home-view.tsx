@@ -5,6 +5,7 @@ import { previewIdFor } from '~/components/hale/approval-card';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { DeviceTextLink } from '~/components/hale/device-text-link';
 import { DismissButton } from '~/components/hale/dismiss-button';
+import { PLAN_TIER_LABEL } from '~/lib/billing/price-display';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyConnectorView } from '~/lib/integrations/load';
@@ -136,7 +137,7 @@ export function PortalHome({
             <DisabledRow
               icon={<Sparkles aria-hidden="true" />}
               title="Plan"
-              meta="Founding family"
+              meta={PLAN_TIER_LABEL[basics.planTier]}
             />
             <SetupRow
               basePath={basePath}

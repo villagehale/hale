@@ -33,7 +33,7 @@ import {
  * (founder decision, 2026-10-01).
  */
 
-const VOICE_MAX_TOKENS = 300;
+export const VOICE_MAX_TOKENS = 300;
 
 // Re-exported so every existing importer keeps its import path: these moved to ./shell
 // only to break the cycle between this file and the static health renderer.
@@ -240,7 +240,7 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
  * its words ship. A null client (no API key, or the voice kill switch) skips the call
  * entirely — the deterministic render is a first-class outcome, not an error path.
  */
-function withActivityLink(message: string, url: string | null): string {
+export function withActivityLink(message: string, url: string | null): string {
   if (url === null || message.includes(url)) return message;
   return `${message} ${url}`;
 }

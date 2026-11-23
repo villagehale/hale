@@ -85,6 +85,20 @@ export function refuseGarbledText(text: string): void {
   throw new LinqSendError(GARBLED_TEXT, 0, true);
 }
 
+/** The statuses that prove Linq rejected the request, rather than took it and answered badly. */
+const LINQ_CERTAIN_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 422]);
+
+/**
+ * Did Linq certainly not take this text? `permanent` answers another question (would a retry
+ * earn the same answer), and a 408, 409 or 425 can follow a request Linq took. Status 0 is a
+ * refusal raised before any fetch only when it is also permanent: a timeout or a network error
+ * is status 0 and not permanent, and may have landed.
+ */
+export function linqRefusedForCertain(err: unknown): boolean {
+  if (!(err instanceof LinqSendError) || !err.permanent) return false;
+  return err.httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(err.httpStatus);
+}
+
 /**
  * VIL-226 · the in-call rate-limit retry rides PROACTIVE_CADENCE. Unset, a 429 is
  * today's refusal: one attempt, not retried.
@@ -100,6 +114,11 @@ function cadenceArmed(): boolean {
 const LINQ_RATE_LIMIT_CODE = '1007';
 /** The longest Retry-After a send waits out in-call; a longer one is handed back. */
 const IN_CALL_RETRY_MAX_MS = 1_000;
+
+/** A rate limit is not permanent, but asking again right away only earns another. */
+export function isLinqRateLimit(err: LinqSendError): boolean {
+  return err.httpStatus === 429 || err.code === LINQ_RATE_LIMIT_CODE;
+}
 
 /**
  * VIL-611 · Linq's `message.idempotency_key` for one send. It names the send, never its
@@ -540,6 +559,13 @@ export async function sendLinqChatMessage(input: {
   mention?: string;
   /** The caller's identity for this one send (see `linqSendKey`). */
   sendKey?: string;
+  /**
+   * Resend without the thread target only when Linq certainly refused the first try
+   * ({@link linqRefusedForCertain}). The resend carries its own key, so after a 409, 408 or
+   * 425 that may follow a text Linq took it would be a second bubble. The caller retries
+   * the same key instead.
+   */
+  plainResendOnlyIfRefused?: boolean;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   const send = (
@@ -596,7 +622,8 @@ export async function sendLinqChatMessage(input: {
       !input.replyTo ||
       !(err instanceof LinqSendError) ||
       !err.permanent ||
-      err.httpStatus < 400
+      err.httpStatus < 400 ||
+      (input.plainResendOnlyIfRefused && !linqRefusedForCertain(err))
     ) {
       throw err;
     }
@@ -922,6 +949,8 @@ export async function createLinqChat(input: {
   to: readonly string[];
   text: string;
   decorations?: readonly LinqTextDecoration[];
+  /** The caller's identity for this one send (see `linqSendKey`). Absent: no key is sent. */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ chatId: string; providerMessageId: string }> {
   if (input.to.length < 1) throw new LinqSendError('invalid_recipients', 400, true);
@@ -939,7 +968,10 @@ export async function createLinqChat(input: {
     body: {
       from: input.from,
       to: [...input.to],
-      message: { parts: [wirePart(part)] },
+      message: {
+        parts: [wirePart(part)],
+        ...(input.sendKey ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+      },
     },
     fetch: input.fetch,
   });
@@ -1412,7 +1444,7 @@ export function readListedDirectChatId(payload: unknown): string | null {
   return null;
 }
 
-async function findLinqDirectChat(input: {
+export async function findLinqDirectChat(input: {
   from: string;
   to: string;
   fetch?: typeof fetch;
@@ -1521,7 +1553,7 @@ export async function listLinqChatsPage(input: {
  */
 export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): ChannelTransport {
   return {
-    async send({ to, body, mediaUrls, decorations, replyIn }) {
+    async send({ to, body, mediaUrls, decorations, replyIn, sendKey }) {
       if (mediaUrls && mediaUrls.length === 0) {
         throw new LinqSendError('invalid_parts', 400, true);
       }
@@ -1556,6 +1588,8 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
             text: body,
             decorations,
             replyTo: { messageId: replyIn.messageId },
+            sendKey,
+            ...(replyIn.plainResendOnlyIfRefused ? { plainResendOnlyIfRefused: true } : {}),
             fetch: deps.fetch,
           });
           return {
@@ -1579,6 +1613,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           to: [to],
           text: body,
           decorations,
+          sendKey,
           fetch: deps.fetch,
         });
         return {
@@ -1598,7 +1633,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
           : { type: 'text', value: body },
       ];
       for (const url of media) parts.push({ type: 'media', url });
-      const sent = await sendLinqParts({ chatId, parts, fetch: deps.fetch });
+      const sent = await sendLinqParts({ chatId, parts, sendKey, fetch: deps.fetch });
       return {
         providerMessageId: sent.providerMessageId,
         transport: 'imessage' as const,

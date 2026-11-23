@@ -14,8 +14,23 @@ export type {
   FamilyEventNotes,
   NewFamilyEvent,
 } from './schema/family-events.js';
-export { householdFamilyEvent, householdRemovedFamilyEvent } from './family-event-scope.js';
+export type {
+  BillingNotice,
+  BillingNoticeEventFacts,
+  BillingNoticeLane,
+  BillingNoticeStatus,
+  NewBillingNotice,
+} from './schema/billing-notices.js';
+export {
+  familyEventForParent,
+  householdFamilyEvent,
+  householdRemovedFamilyEvent,
+} from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
+export type {
+  ClaimRefusalCandidates,
+  ClaimRefusalClaim,
+} from './schema/claim-refusals.js';
 export type {
   MedicalReplySourceValue,
   ReplySourceValue,
@@ -55,6 +70,13 @@ export type {
 export type { CandidateAccess } from './schema/village.js';
 export type { AuthorizedSignupPlanResume } from './schema/authorized-signup-offers.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
+export type {
+  AckPromise,
+  AckPromiseOutcome,
+  AckPromiseTask,
+  NewAckPromise,
+} from './schema/ack-promises.js';
+export { ACK_PROMISE_OUTCOMES, ACK_PROMISE_TASKS } from './schema/ack-promises.js';
 export type {
   FamilyWorkstream,
   NewFamilyWorkstream,
