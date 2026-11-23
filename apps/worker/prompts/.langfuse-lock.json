@@ -164,6 +164,11 @@
     "version": null,
     "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
   },
+  "judges/group-join-intro": {
+    "name": "judges/group-join-intro",
+    "version": null,
+    "sha256": "731b139a86424fd9eaa526546f427058de2c80554792bb767058b7630eab342d"
+  },
   "judges/group-lists": {
     "name": "judges/group-lists",
     "version": null,

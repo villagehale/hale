@@ -102,6 +102,18 @@ export function linqGroupOnboardingV2Enabled(): boolean {
 }
 
 /**
+ * VIL-727 — when Hale joins a group, the line it says there carries the ground rules: what
+ * it reads, when it speaks, that private things go to a private text, and that anyone can
+ * remove it, each only while the shipped behaviour makes it true. The model writes it;
+ * nothing is sent when it cannot. Exactly `true` enables it, with no trim. Unset, empty,
+ * `on`, `true\n`, and `false` stay dark: dark says exactly what it did before (the
+ * who's-who ask, the shared-group intro, or nothing where everyone is already known).
+ */
+export function groupJoinIntroEnabled(): boolean {
+  return isEnabled('group-join-intro');
+}
+
+/**
  * VIL-445 (T16) — read who is driving from the group and remind the night before.
  * Exactly `true` enables it. Unset, empty, `on`, and `false` stay dark. Default off.
  */

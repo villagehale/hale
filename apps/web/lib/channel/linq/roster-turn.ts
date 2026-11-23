@@ -2,12 +2,14 @@ import type { Database } from '@hale/db';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { groupJoinIntroEnabled } from './config';
 import {
   deliverConnectLinkOneToOne,
   noticeIfGroupQuiet,
   resumeConnectLink,
 } from './connect-link-1to1';
 import { realHumanPhone } from './group-coparent';
+import { introduceOrAskRoster, rosterWasAsked } from './group-join-intro';
 import type { RoleWordKey } from './group-onboarding-line-input';
 import type { LinqInboundText } from './payload';
 import { type ListChatHandles, attachRosterToFamily, ensureRoster } from './roster';
@@ -15,7 +17,6 @@ import {
   type RosterVoicePorts,
   acknowledgeRole,
   askMember,
-  askRoster,
   firstName,
   liveRosterMember,
   readRosterByChat,
@@ -127,10 +128,15 @@ export async function takeRosterTurn(
     return NOT_HANDLED;
   }
 
-  let askedNow = false;
-  if (roster.status !== 'confirmed' && !roster.askedAt) {
-    const asked = await askRoster(database, { chatId: message.chatId, ...ports });
-    askedNow = asked.outcome === 'roster_asked';
+  let askedNow: string | null = null;
+  // VIL-727: the no-family line sets askedAt, and a roster can settle straight to
+  // confirmed. The intro's own dedupe says whether this join already heard it.
+  if (groupJoinIntroEnabled()) {
+    const asked = await introduceOrAskRoster(database, { chatId: message.chatId, ...ports });
+    if (rosterWasAsked(asked)) askedNow = asked.outcome;
+  } else if (roster.status !== 'confirmed' && !roster.askedAt) {
+    const asked = await introduceOrAskRoster(database, { chatId: message.chatId, ...ports });
+    if (rosterWasAsked(asked)) askedNow = asked.outcome;
   }
   const member = await liveRosterMember(database, roster.id, phoneBlindIndex(phone));
   if (member?.status === 'confirmed') {
@@ -144,7 +150,7 @@ export async function takeRosterTurn(
     return NOT_HANDLED;
   }
   if (member?.status === 'known_parent') return NOT_HANDLED;
-  if (askedNow) return handled('roster_asked', 'intake');
+  if (askedNow) return handled(askedNow, 'intake');
   if (!member || member.status === 'proposed') {
     const asked = await askMember(database, { chatId: message.chatId, phone, ...ports });
     return handled(asked.outcome, 'intake', 'notice' in asked ? { notice: asked.notice } : {});

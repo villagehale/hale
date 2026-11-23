@@ -42,6 +42,14 @@ const EVERY_KIND: { [K in GroupOnboardingKind]: Extract<GroupOnboardingRequest, 
   group_quiet_notice: { kind: 'group_quiet_notice', reason: 'unconfirmed', count: 1 },
   stop_ack: { kind: 'stop_ack' },
   member_welcome: { kind: 'member_welcome', adderName: 'Riley' },
+  join_intro: {
+    kind: 'join_intro',
+    audience: 'household',
+    knownParentName: 'Riley',
+    adderName: null,
+    claims: ['reads_this_chat'],
+    ask: 'none',
+  },
 };
 
 async function requestFor(request: GroupOnboardingRequest) {
