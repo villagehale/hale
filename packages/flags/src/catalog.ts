@@ -92,6 +92,7 @@ export const FLAGS = [
   exact('browser-use-signup', 'BROWSER_USE_SIGNUP_ENABLED'),
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
+  exact('caregiver-reminder-model-copy', 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
   exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
@@ -117,6 +118,11 @@ export const FLAGS = [
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
+  // VIL-762. One alert per real appointment, and a clash with a known commitment
+  // is named in that alert. The model decides both. Exact `true`. Env-only: the
+  // read has to stay exact `true` with no family on the call, and a PostHog
+  // answer must not turn it on from `true\n` or from unset.
+  exact('email-alert-once', 'EMAIL_ALERT_ONCE_ENABLED', { envOnly: true }),
   exact('f14', 'F14_ENABLED', {
     allowlistEnv: 'F14_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
@@ -153,6 +159,7 @@ export const FLAGS = [
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
   exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
+  exact('join-door-model-copy', 'JOIN_DOOR_MODEL_COPY_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',
@@ -404,6 +411,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; customer.subscription.deleted that sets the plan to free clears families.stripe_subscription_id when it is that subscription; a different stored id is left as it is; nothing in PostHog may turn this on',
   },
   {
     env: 'BILLING_THREAD_NOTICES_ENABLED',

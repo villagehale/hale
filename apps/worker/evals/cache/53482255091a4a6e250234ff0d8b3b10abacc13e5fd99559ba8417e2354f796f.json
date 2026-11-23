@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Quick heads up: swim class is today at 4:15 PM, about an hour from now. It's at Stouffville Public School, 2 Park Drive."
+  },
+  "latencyMs": 1955,
+  "usage": {
+    "input_tokens": 692,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

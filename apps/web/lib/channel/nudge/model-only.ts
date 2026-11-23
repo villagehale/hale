@@ -3,13 +3,13 @@ import type { Database } from '@hale/db';
 import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import { carriesExactOptOutLine } from '~/lib/channel/opt-out';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import {
-  NUDGE_OPT_OUT,
   type NudgeVoice,
   VOICE_MAX_TOKENS,
   type VoicedNudge,
@@ -54,7 +54,7 @@ type WriteDeps = { familyId: string; database: Database; client: AgentClient | n
  * rule 2); VOICE_MAX_TOKENS bounds a runaway. */
 export function usableModelOnlyDraft(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
-  return !message.includes(NUDGE_OPT_OUT);
+  return !carriesExactOptOutLine(message);
 }
 
 async function writeEmptySaturday(nudge: EmptySaturdayNudge, deps: WriteDeps): Promise<NudgeWrite> {

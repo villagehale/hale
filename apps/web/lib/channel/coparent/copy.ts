@@ -1,7 +1,8 @@
 import type { CoParentRefusal } from '~/lib/channel/caregiver/invites';
+import { joinDoorModelCopyEnabled } from '~/lib/channel/door-line';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { smsEncoding } from '~/lib/channel/sms-segments';
-import { speak } from '~/lib/channel/spoken-line';
+import { type SpokenLineRequest, speak } from '~/lib/channel/spoken-line';
 
 /**
  * VIL-355 · every word Hale texts about a CO-PARENT invite, in one file.
@@ -11,7 +12,7 @@ import { speak } from '~/lib/channel/spoken-line';
  * PROMISED before Hale texts them is a reviewable diff.
  *
  * WHY THE CAREGIVER STRINGS COULD NOT BE REUSED WHOLESALE. They name the wrong thing to
- * the wrong person: `NUMBER_IN_USE` says "I can't add it as a caregiver", and the scope
+ * the wrong person: the number-in-use line refuses to add "a caregiver", and the scope
  * sentences enumerate a slice ("the week's schedule and nothing else") that is the exact
  * opposite of what a co-parent gets. A co-parent's scope is not a list, it is "what you
  * see", and saying it as a list would understate it.
@@ -30,16 +31,14 @@ import { speak } from '~/lib/channel/spoken-line';
  * stranger's first message into three. copy.test.ts holds the line.
  */
 
-/** The longest inviter name this path will spend budget on — the same ceiling the
- * forwardable link keeps (join/copy.ts), because the two bodies are the same size. */
+/** The longest inviter name this path will spend budget on. The join door does not
+ * use this ceiling: the model is handed the name whole. */
 const MAX_INVITER_NAME_CHARS = 24;
 
 /**
  * Whether the invite can afford to NAME the person who asked for it.
  *
- * DIVERGES DELIBERATELY from `affordableInviterName` (join/copy.ts), which drops an
- * unaffordable name and sends an anonymous body. A forwarded link is handed over by a
- * human who is standing right there; this is a cold text. "A parent added you as their
+ * A cold text is not a link a person forwards while they are standing there. "A parent added you as their
  * co-parent" from a number nobody recognises is the message this whole feature exists to
  * not send, so an unnameable inviter REFUSES the invite (`referrer_unnamed`) rather than
  * sending it anonymously.
@@ -75,16 +74,25 @@ export function inviterNameIsAffordable(inviterName: string | null): inviterName
  */
 /**
  * The first text a co-parent receives is written per send (consent-ask, kind
- * coparent_invite). It names who asked, what agreeing gets them, and the carrier
- * opt-out (STOP, or ARRET in French). There is no fixed sentence.
+ * coparent_invite). It names who asked, what agreeing gets them, and how to opt out:
+ * dark, the carrier keyword (STOP, or ARRET in French); with JOIN_DOOR_MODEL_COPY_ENABLED
+ * lit, in plain words with no keyword (VIL-706). There is no fixed sentence.
  */
+
+/**
+ * With the door flag lit, a co-parent line that names an opt-out keyword is refused like
+ * the join and caregiver door lines (VIL-706). Dark, the request is exactly what it was.
+ */
+function speakDoor(request: SpokenLineRequest): Promise<string | null> {
+  return speak(joinDoorModelCopyEnabled() ? { ...request, refuseOptOutKeyword: true } : request);
+}
 
 /** Said to the parent once the invite is on its way. */
 export function coParentInviteSentAck(
   name: string,
   language: ReplyLanguage | null,
 ): Promise<string | null> {
-  return speak({ purpose: 'coparent_invite_sent', language, facts: { name } });
+  return speakDoor({ purpose: 'coparent_invite_sent', language, facts: { name } });
 }
 
 /** Said to the parent when they answer the scope question with a no. */
@@ -92,7 +100,7 @@ export function coParentInviteDroppedAck(
   name: string,
   language: ReplyLanguage | null,
 ): Promise<string | null> {
-  return speak({ purpose: 'coparent_invite_dropped', language, facts: { name } });
+  return speakDoor({ purpose: 'coparent_invite_dropped', language, facts: { name } });
 }
 
 /** The partner's first message AFTER they accept. */
@@ -100,7 +108,7 @@ export function coParentWelcome(
   inviterName: string | null,
   language: ReplyLanguage | null,
 ): Promise<string | null> {
-  return speak({
+  return speakDoor({
     purpose: 'coparent_welcome',
     language,
     facts: { inviterName: inviterName ?? '' },
@@ -109,27 +117,27 @@ export function coParentWelcome(
 
 /** The invitee said no. The inviting parent is told nothing. */
 export function coParentDeclineAck(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_decline_ack', language });
+  return speakDoor({ purpose: 'coparent_decline_ack', language });
 }
 
 export function coParentReferrerUnnamed(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_referrer_unnamed', language });
+  return speakDoor({ purpose: 'coparent_referrer_unnamed', language });
 }
 
 export function coParentUnavailable(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_unavailable', language });
+  return speakDoor({ purpose: 'coparent_unavailable', language });
 }
 
 export function coParentSeatTakenLate(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_seat_taken_late', language });
+  return speakDoor({ purpose: 'coparent_seat_taken_late', language });
 }
 
 export function coParentDepartedNotice(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_departed_notice', language });
+  return speakDoor({ purpose: 'coparent_departed_notice', language });
 }
 
 export function coParentInviteExpired(language: ReplyLanguage | null): Promise<string | null> {
-  return speak({ purpose: 'coparent_invite_expired', language });
+  return speakDoor({ purpose: 'coparent_invite_expired', language });
 }
 
 const REFUSAL_PURPOSE: Record<CoParentRefusal, string> = {
@@ -148,7 +156,7 @@ export function coParentRefusal(
   reason: CoParentRefusal,
   language: ReplyLanguage | null,
 ): Promise<string | null> {
-  return speak({ purpose: REFUSAL_PURPOSE[reason], language });
+  return speakDoor({ purpose: REFUSAL_PURPOSE[reason], language });
 }
 
 /**

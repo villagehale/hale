@@ -11,17 +11,25 @@ import type { BillingClaimFacts } from './reconcile/billing-text';
  * out of A2 scope — A2 owns the interfaces + the dispatch + the ledger, and ships
  * Fakes so the policy is tested without any live provider.
  *
- * VIL-229 · VOICE CONTRACT (binding): a template MAY carry a model-composed `voice`
- * on its payload/content, but that field is NULLABLE BY CONSTRUCTION and every
- * template MUST keep a deterministic fallback for each voiced slot. The renderer is
- * always `voice ? voiced(voice, facts) : deterministic(facts)` — never
- * `voiced(voice)` unconditionally. FACTS (times, dates, child names, links) stay in
- * the deterministic shell and are INJECTED into the render; the model composes only
- * the surrounding words, schema-constrained to the voice fields and lint-guarded so a
- * voiced string can carry no invented time/link (apps/web/lib/loop/voice/*). This is
- * rule #8 made structural: voice is composed at COMPOSE time (or inline at trigger),
- * NEVER at send time, and a send is never blocked on model availability — a null
- * voice renders the deterministic copy and still sends.
+ * VIL-229 · VOICE CONTRACT (binding; corrected in VIL-706). The words a loop message
+ * puts on the wire are the model's, written from facts at COMPOSE time (or inline at
+ * the trigger) and carried on the payload, NEVER composed at send time. FACTS (times,
+ * dates, child names, links) are resolved by code and handed to the model; a link is
+ * handed verbatim and checked on the way out.
+ *
+ * A NULL VOICE HOLDS THE SEND. There is no deterministic fallback: when the model writes
+ * nothing usable, nothing is sent and the hold is named. The compose stage enqueues
+ * nothing and records why (the reminder run's `unwritten` drop with its
+ * `reminder_suppressed` audit row, the calendar invite's `compose_deferred`), and a
+ * renderer handed a payload without its composed text throws rather than render around
+ * it (`asReminderPayload`, `asCalendarInviteSmsPayload`, `asCalendarCancelSmsPayload`,
+ * `defaultLoopRenderer`), so the leg fails and sends nothing. A send IS blocked on the
+ * model, by design: hard rule, "if the model cannot write it, send nothing".
+ *
+ * The one registered template that still renders code-built words is the caregiver
+ * reminder while CAREGIVER_REMINDER_MODEL_COPY_ENABLED is off (VIL-706). Lit, it holds
+ * like the rest (templates/caregiver/reminder-sms.ts). `types.contract.test.ts` pins
+ * this against every registered template.
  */
 
 /** The live delivery leg. The persisted channel_message_channel enum still

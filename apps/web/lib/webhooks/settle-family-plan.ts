@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { and, eq, sql } from 'drizzle-orm';
+import { stripeClearDeletedSubscriptionEnabled } from '~/lib/billing/flags';
 import {
   type RefundPendingReason,
   type StripeInvoiceFacts,
@@ -196,7 +197,15 @@ export async function settleFamilyPlan(
         priceTierMap,
       );
       try {
-        const committed = await commit(familyId, family, signal, outcome, subscriptions, database);
+        const committed = await commit(
+          familyId,
+          family,
+          signal,
+          outcome,
+          subscriptions,
+          database,
+          deps,
+        );
         if (committed.result.status === 'unresolved') {
           return await pageHold(committed.result, signal.eventId, deps, committed.planChanged);
         }
@@ -594,6 +603,26 @@ function planCommit(family: FamilyRead, signal: PlanSignal, outcome: Outcome): P
   };
 }
 
+function clearMatchingDeletedSubscription(
+  env: Record<string, string | undefined> | undefined,
+  signal: PlanSignal,
+  outcome: Outcome,
+  storedSubscriptionId: string | null,
+): boolean {
+  if (!stripeClearDeletedSubscriptionEnabled(env)) return false;
+  if (signal.kind !== 'lifecycle' || signal.paidEvent !== false) return false;
+  if (outcome.kind !== 'set' || outcome.tier !== 'free') return false;
+  return signal.subscriptionId !== null && signal.subscriptionId === storedSubscriptionId;
+}
+
+function clearedSubscriptionRow(row: PlannedRow, storedSubscriptionId: string | null): PlannedRow {
+  const before =
+    typeof row.before === 'object' && row.before !== null && !Array.isArray(row.before)
+      ? { ...row.before, stripeSubscriptionId: storedSubscriptionId }
+      : { stripeSubscriptionId: storedSubscriptionId };
+  return { ...row, before, after: { ...row.after, stripeSubscriptionId: null } };
+}
+
 async function commit(
   familyId: string,
   family: FamilyRead,
@@ -601,8 +630,15 @@ async function commit(
   outcome: Outcome,
   subscriptions: readonly StripeSubscriptionRead[],
   database: Database,
+  deps: ApplyStripeBillingDeps,
 ): Promise<{ result: ApplyStripeBillingResult; planChanged: boolean }> {
   const planned = planCommit(family, signal, outcome);
+  const clearStoredSubscription = clearMatchingDeletedSubscription(
+    deps.env,
+    signal,
+    outcome,
+    family.storedSubscriptionId,
+  );
   const cleared = clearedEventIds(family, signal, outcome, subscriptions);
   const result = await database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
     if (!(await claimEvent(tx, signal.eventId))) return { status: 'duplicate' };
@@ -612,9 +648,11 @@ async function commit(
         updatedAt: new Date(),
         ...(planned.tier ? { planTier: planned.tier } : {}),
         ...(planned.storeRefs && signal.customerId ? { stripeCustomerId: signal.customerId } : {}),
-        ...(planned.storeRefs && signal.subscriptionId
-          ? { stripeSubscriptionId: signal.subscriptionId }
-          : {}),
+        ...(clearStoredSubscription
+          ? { stripeSubscriptionId: null }
+          : planned.storeRefs && signal.subscriptionId
+            ? { stripeSubscriptionId: signal.subscriptionId }
+            : {}),
       })
       .where(and(eq(schema.families.id, familyId), sql`families.xmin = ${family.version}::xid`))
       .returning({ id: schema.families.id });
@@ -624,7 +662,27 @@ async function commit(
     if (planned.heldPlanRow) {
       await tx.insert(schema.auditLog).values({ ...audit, ...planned.heldPlanRow });
     }
-    if (planned.row) await tx.insert(schema.auditLog).values({ ...audit, ...planned.row });
+    const planRow = planned.row
+      ? clearStoredSubscription
+        ? clearedSubscriptionRow(planned.row, family.storedSubscriptionId)
+        : planned.row
+      : clearStoredSubscription
+        ? {
+            actionTaken: 'family_plan_updated',
+            before: {
+              planTier: family.planTier,
+              stripeSubscriptionId: family.storedSubscriptionId,
+            },
+            after: {
+              source: 'stripe',
+              planTier: family.planTier,
+              stripeSubscriptionId: null,
+              settledByEventId: signal.eventId,
+              tierChanged: false,
+            },
+          }
+        : null;
+    if (planRow) await tx.insert(schema.auditLog).values({ ...audit, ...planRow });
     for (const clearsEventId of cleared) {
       await tx.insert(schema.auditLog).values({
         ...audit,
