@@ -1,9 +1,11 @@
+import { canaryCaptureExtras } from '@hale/agent/canary-analytics';
 import { hashFamilyIdForEvents } from '@hale/flags';
 import { after } from 'next/server';
+import { familyIsCanary } from './canary-tag';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
-import { posthogWebEnabled } from './flags';
-import { productClient } from './posthog-node';
+import { errorTrackingEnabled, posthogWebEnabled } from './flags';
+import { productClient, projectTracingEnabled } from './posthog-node';
 
 /**
  * Server-side analytics capture for the paths a client hook can't reach.
@@ -50,7 +52,7 @@ export async function captureServerEvent(
   event: AnalyticsEvent,
   distinctId: string,
   properties: Record<string, unknown> = {},
-  options: { setOnce?: Record<string, unknown> } = {},
+  options: { setOnce?: Record<string, unknown>; set?: Record<string, unknown> } = {},
 ): Promise<CaptureOutcome> {
   const key = keyOrNull();
   if (!key) {
@@ -59,12 +61,16 @@ export async function captureServerEvent(
   const client = productClient();
   if (!client) return 'not_configured';
   const { event: name, properties: safe } = buildEvent(event, properties);
-  // `$set_once` goes through the SAME gate: a person property is still a property.
+  // `$set` and `$set_once` go through the SAME gate: a person property is still a property.
   const setOnce = options.setOnce ? buildEvent(event, options.setOnce).properties : null;
+  const set = options.set ? buildEvent(event, options.set).properties : null;
+  const stamped: Record<string, unknown> = { ...safe };
+  if (setOnce && Object.keys(setOnce).length > 0) stamped.$set_once = setOnce;
+  if (set && Object.keys(set).length > 0) stamped.$set = set;
   client.capture({
     distinctId,
     event: name,
-    properties: setOnce && Object.keys(setOnce).length > 0 ? { ...safe, $set_once: setOnce } : safe,
+    properties: stamped,
   });
   await client.flush();
   return 'sent';
@@ -248,17 +254,24 @@ export async function captureInboundRouted(
   }
   const client = productClient();
   if (!client) return 'not_configured';
+  // `handed_off_canary` is assigned from the probe number (isCanaryInbound),
+  // not from the body. The distinct id is the door, shared with real traffic,
+  // so this stamps the event only — never the person.
+  const distinctId = `door:${door}`;
+  const safeOutcome = ENUM_TOKEN.test(outcome) ? outcome : 'unclassified';
+  const extras = canaryCaptureExtras(safeOutcome === 'handed_off_canary', distinctId);
   const { event, properties } = buildEvent('inbound_routed', {
     door,
-    outcome: ENUM_TOKEN.test(outcome) ? outcome : 'unclassified',
+    outcome: safeOutcome,
+    ...extras.event,
   });
   try {
     client.capture({
       // The door itself, mirroring `lane:` — an inbound refusal often has no
       // resolved person, and the ones that do must not be joined back to one.
-      distinctId: `door:${door}`,
+      distinctId,
       event,
-      properties,
+      properties: extras.set ? { ...properties, $set: extras.set } : properties,
     });
     // posthog-node's own requestTimeout (4s, posthog-node.ts) bounds this inside the
     // webhook budget; the race is a second bound in case a flush never settles.
@@ -279,6 +292,18 @@ export async function captureInboundRouted(
 }
 
 /**
+ * A product event or a flagged exception will leave this process. The canary lookup
+ * is a database read, and the coach awaits this reporter before it rewrites a reply,
+ * so the read runs only when one of those sends will actually happen.
+ */
+function agentReportWillSend(): boolean {
+  return (
+    Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY) ||
+    (errorTrackingEnabled() && projectTracingEnabled())
+  );
+}
+
+/**
  * Report a typed agent failure. Fire-and-forget by construction: it NEVER throws, so a
  * call site sitting inside a `catch` mid-send cannot be made worse by reporting. The
  * outcome is returned rather than swallowed, so a caller (and a test) can see which of
@@ -286,18 +311,31 @@ export async function captureInboundRouted(
  */
 export async function captureAgentError(error: AgentError): Promise<CaptureOutcome> {
   const { event, distinctId, properties } = buildAgentErrorPayload(error);
+  const isCanary =
+    error.familyId && agentReportWillSend() ? await familyIsCanary(error.familyId) : false;
+  const extras = canaryCaptureExtras(isCanary, distinctId);
   // The same failure, also as an $exception in error tracking (dark until
   // POSTHOG_PROJECT_API_KEY is set). Class + lane only — a synthetic error named for the
   // failure class, so the stack is this reporter's, never the parent's message.
   const synthetic = new Error('redacted');
   synthetic.name = `AgentError_${error.lane}`;
-  void captureSafeException(synthetic, distinctId, {
-    hale_surface: 'agent',
-    stage: error.lane,
-    code: String(properties.error_class),
-  });
+  void captureSafeException(
+    synthetic,
+    distinctId,
+    {
+      hale_surface: 'agent',
+      stage: error.lane,
+      code: String(properties.error_class),
+    },
+    { canary: isCanary },
+  );
   try {
-    return await captureServerEvent(event, distinctId, properties);
+    return await captureServerEvent(
+      event,
+      distinctId,
+      { ...properties, ...extras.event },
+      extras.set ? { set: extras.set } : {},
+    );
   } catch (err) {
     // The ONE place this module swallows, and the reason it is safe only here: an error
     // REPORTER that throws turns every quiet failure into a loud one, and every call
