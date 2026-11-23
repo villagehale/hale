@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: buildAlternates(locale, '/contact'),
-    ...socialMetadata(locale, '/contact', title, description),
+    ...socialMetadata(locale, '/contact', title, description, 'contact'),
   };
 }
 

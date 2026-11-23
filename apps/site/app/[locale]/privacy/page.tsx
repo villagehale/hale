@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/legal-layout';
-import { buildAlternates } from '~/i18n/metadata';
+import { absolutePageUrl, buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { pageSource } from '~/lib/page-source';
+import { shareCardImage } from '~/lib/site/share-cards';
 
 /**
  * villagehale.com/privacy — the canonical home for the Privacy Policy
@@ -88,11 +89,14 @@ export async function generateMetadata({
     openGraph: {
       title: TITLE,
       description: DESCRIPTION,
-      url: localeHref(locale, '/privacy'),
+      url: absolutePageUrl(locale, '/privacy'),
+      images: [shareCardImage('privacy')],
     },
     twitter: {
+      card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
+      images: [shareCardImage('privacy')],
     },
     robots: { index: false, follow: false },
   };
@@ -285,9 +289,9 @@ export default async function PrivacyPage({
           . On the public website, Google Ads and the Meta Pixel measure a visit only after the
           visitor taps Accept in the cookie banner, so we can tell whether an advertisement led them
           there. If they choose No thanks, or make no choice, that measurement does not run. It does
-          not include family data or children&rsquo;s information. We do not buy personal information
-          about your family from data brokers, and we do not collect it from social media or other
-          public sources.
+          not include family data or children&rsquo;s information. We do not buy personal
+          information about your family from data brokers, and we do not collect it from social
+          media or other public sources.
         </p>
       </LegalSectionBlock>
 
@@ -562,16 +566,15 @@ export default async function PrivacyPage({
             <strong>Meta</strong> — advertising measurement. The Meta Pixel (dataset
             1460101092968766) records a PageView on the marketing site (villagehale.com) after the
             visitor taps Accept in the cookie banner, and on the product app (app.villagehale.com)
-            when conversions measurement is on. A paid checkout sends a Purchase
-            event to Meta&rsquo;s Conversions API from Hale&rsquo;s servers, using the Stripe
-            Checkout Session id so a matching browser Purchase can be deduplicated. That event may
-            include a hashed email, a hashed phone number, Meta click cookies, and the IP address
-            and browser type saved at checkout. It does not include family data, message content, or
+            when conversions measurement is on. A paid checkout sends a Purchase event to
+            Meta&rsquo;s Conversions API from Hale&rsquo;s servers, using the Stripe Checkout
+            Session id so a matching browser Purchase can be deduplicated. That event may include a
+            hashed email, a hashed phone number, Meta click cookies, and the IP address and browser
+            type saved at checkout. It does not include family data, message content, or
             children&rsquo;s information. No child data is sent. Hale still shows no advertising. If
             they choose No thanks on the public website, or make no choice, the Pixel does not load
-            there.
-            Visitors can change that choice at any time with Cookie settings in the site footer.
-            Processed in the United States.
+            there. Visitors can change that choice at any time with Cookie settings in the site
+            footer. Processed in the United States.
           </li>
           <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
@@ -700,9 +703,9 @@ export default async function PrivacyPage({
           Message content, including messages from other members of a group chat Hale is in and from
           people who are not Hale users, is deleted or redacted 12 months after it was sent, and
           sooner if you or they ask. Your answer to Hale&rsquo;s evening question is kept for thirty
-          days. Disconnecting Gmail or Calendar stops Hale reading that account. The details
-          already saved from it are deleted when your account is deleted, and message content within
-          them is deleted or redacted on the same 12-month schedule.
+          days. Disconnecting Gmail or Calendar stops Hale reading that account. The details already
+          saved from it are deleted when your account is deleted, and message content within them is
+          deleted or redacted on the same 12-month schedule.
         </p>
         <p>
           We keep a record of your consents and approvals, without the text of the messages, until
@@ -797,10 +800,10 @@ export default async function PrivacyPage({
           </li>
           <li>
             <strong>Cookies on the public website.</strong> On villagehale.com, Google Ads, the Meta
-            Pixel, and PostHog (analytics and session replay) load only after the visitor taps Accept
-            in the cookie banner. If they choose No thanks, or make no choice, none of them load.
-            Visitors can change their choice at any time with Cookie settings in the site footer.
-            Vercel Speed Insights runs without that choice. Vercel documents it as anonymous
+            Pixel, and PostHog (analytics and session replay) load only after the visitor taps
+            Accept in the cookie banner. If they choose No thanks, or make no choice, none of them
+            load. Visitors can change their choice at any time with Cookie settings in the site
+            footer. Vercel Speed Insights runs without that choice. Vercel documents it as anonymous
             performance data: it is not tied to a visitor or an IP address, and it does not store
             information that would reconstruct a browsing session or identify someone. Strictly
             necessary storage, such as the theme and language choice, needs no consent. Google Ads

@@ -9,7 +9,7 @@ const messages = (name: string) =>
   JSON.parse(
     readFileSync(fileURLToPath(new URL(`../../../messages/${name}.json`, import.meta.url)), 'utf8'),
   ) as {
-    Faq: { metaDescription: string };
+    Faq: { metaTitle: string; metaDescription: string };
   };
 
 const html = renderToStaticMarkup(
@@ -47,14 +47,15 @@ describe('/faq — canonical product FAQ', () => {
 
   it('locks the share description in English, French, and Chinese', () => {
     expect(messages('en').Faq.metaDescription).toBe(
-      'Straight answers about Hale for parents: Free, Plus, and Max, works for kids 0–18, and never acts without you.',
+      'What Hale does, what it reads, how it keeps your family’s data private, and why it never signs up or pays without your ok.',
     );
     expect(messages('fr').Faq.metaDescription).toBe(
-      "Des réponses claires sur Hale pour les parents : Gratuit, Plus et Max, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi.",
+      'Ce que fait Hale, ce qu’elle lit, comment elle garde privées les données de ta famille, et pourquoi elle n’inscrit personne et ne paie pas sans ton accord.',
     );
     expect(messages('zh').Faq.metaDescription).toBe(
-      '给家长的 Hale 常见问题：有免费版、Plus 和 Max，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。',
+      'Hale 做什么、读什么、如何保护你家的数据，以及为什么没有你的同意它不会报名或付款。',
     );
+    expect(messages('en').Faq.metaTitle).toBe('Questions about Hale · Hale');
   });
 
   it('renders every answer’s text, open or closed', () => {

@@ -1,26 +1,20 @@
+import { SHARE_CARDS } from '~/lib/site/share-cards';
+
 /**
- * The words on the homepage share card, saying what the page metadata and the
- * JSON-LD graph say.
- *
- * The card is the free-traction surface — it is what renders when a parent drops
- * villagehale.com into a group chat — so copy that sells a different product than
- * the page it opens is the loudest seam there is. Pure + exported so the words are
- * asserted without rendering a PNG through satori.
+ * Homepage share-card words. The painted card and its alt live in share-cards.ts
+ * so every page uses one template.
  */
 export interface SocialCardCopy {
-  /** The `alt` Next serves as the og:image:alt. */
   alt: string;
   headline: string;
   subline: string;
 }
 
-const HOME_CARD: SocialCardCopy = {
-  alt: 'Hale — a planner for your kids’ year',
-  headline: 'Find what’s on. Hear how it went.',
-  subline:
-    'What’s worth doing with the kids. The sign-up morning, caught. And someone who asks how it went.',
-};
-
 export function socialCardCopy(): SocialCardCopy {
-  return HOME_CARD;
+  const home = SHARE_CARDS.home;
+  return {
+    alt: home.alt,
+    headline: home.headline,
+    subline: home.subline ?? '',
+  };
 }

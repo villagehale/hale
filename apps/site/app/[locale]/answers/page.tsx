@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: buildAlternates(locale, '/answers'),
-    ...socialMetadata(locale, '/answers', title, description),
+    ...socialMetadata(locale, '/answers', title, description, 'answers'),
     robots: publishedAnswers.length > 0 ? undefined : { index: false, follow: true },
   };
 }
