@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GROUP_JOIN_INTRO_CLAIMS,
   GROUP_JOIN_INTRO_SKILL,
   GROUP_ONBOARDING_SKILL,
   MIN_OTHER_PEOPLE_TO_REMOVE_HALE,
@@ -65,7 +64,12 @@ describe('groupJoinIntroClaims', () => {
   it('drops the email claim while the provider mail notice posts mail facts into the group', () => {
     for (const audience of ['household', 'shared'] as const) {
       expect(
-        groupJoinIntroClaims({ audience, otherPeople: 5, turnReaderLive: true, mailNoticeLive: true }),
+        groupJoinIntroClaims({
+          audience,
+          otherPeople: 5,
+          turnReaderLive: true,
+          mailNoticeLive: true,
+        }),
       ).not.toContain('email_never_shown');
     }
   });
@@ -158,8 +162,10 @@ describe('join_intro line input', () => {
 
   it('leaves every other kind on the onboarding skill', () => {
     expect(
-      groupOnboardingLineInput({ kind: 'roster_ask', knownParentName: 'Riley', rosterSize: 3 }, 'en')
-        .skill,
+      groupOnboardingLineInput(
+        { kind: 'roster_ask', knownParentName: 'Riley', rosterSize: 3 },
+        'en',
+      ).skill,
     ).toBe(GROUP_ONBOARDING_SKILL);
     expect(groupOnboardingLineInput({ kind: 'member_welcome', adderName: null }, 'en').skill).toBe(
       GROUP_ONBOARDING_SKILL,
