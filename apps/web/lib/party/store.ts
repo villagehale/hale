@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, exists, isNull } from 'drizzle-orm';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -387,11 +387,35 @@ export async function claimGuestReminder(
   database: Database,
   rsvpId: string,
   now: Date,
+  opts: { whileLive?: boolean } = {},
 ): Promise<boolean> {
   const claimed = await database
     .update(schema.partyRsvps)
     .set({ reminderSentAt: now, updatedAt: now })
-    .where(and(eq(schema.partyRsvps.id, rsvpId), isNull(schema.partyRsvps.reminderSentAt)))
+    .where(
+      and(
+        eq(schema.partyRsvps.id, rsvpId),
+        isNull(schema.partyRsvps.reminderSentAt),
+        opts.whileLive
+          ? exists(
+              database
+                .select({ id: schema.partyInvites.id })
+                .from(schema.partyInvites)
+                .innerJoin(
+                  schema.familyEvents,
+                  eq(schema.familyEvents.id, schema.partyInvites.familyEventId),
+                )
+                .where(
+                  and(
+                    eq(schema.partyInvites.id, schema.partyRsvps.partyInviteId),
+                    isNull(schema.partyInvites.cancelledAt),
+                    isNull(schema.familyEvents.deletedAt),
+                  ),
+                ),
+            )
+          : undefined,
+      ),
+    )
     .returning({ id: schema.partyRsvps.id });
   return claimed.length > 0;
 }

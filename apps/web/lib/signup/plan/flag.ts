@@ -16,6 +16,18 @@ export function registrationPlanRunEnabled(
 }
 
 /**
+ * The ops stop of every running plan (`pnpm signup:stop-plans`). Env-only, and read only by
+ * the script: off unless PLAN_OPS_STOP_ENABLED is exactly `true` in the shell that runs it,
+ * and off, `--apply` refuses. The sweep never reads this flag. It honours any stop row, and
+ * only `--apply` writes one, so a deployment without the flag cannot misread a stop.
+ */
+export const PLAN_OPS_STOP_ENABLED_ENV = 'PLAN_OPS_STOP_ENABLED';
+
+export function planOpsStopEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return isEnabled('plan-ops-stop', undefined, env);
+}
+
+/**
  * VIL-558 step 6 · the assisted mode's own switch, for ActiveNet towns: Hale joins the open,
  * fills the registration and hands the parent the live browser to submit and pay. Off unless
  * REGISTRATION_ASSISTED_RUN_ENABLED is exactly `true`. It only adds hosts to the plan lane, so

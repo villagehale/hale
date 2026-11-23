@@ -17,6 +17,7 @@ const providerPreflightMock = vi.fn();
 const runGroupReminderTickMock = vi.fn();
 const recoverHeldOptOutReadsMock = vi.fn();
 const recheckHeldRemindersMock = vi.fn();
+const retryTeamScheduleDriversMock = vi.fn();
 
 vi.mock('~/lib/cron/drain', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/cron/drain')>()),
@@ -39,6 +40,11 @@ vi.mock('~/lib/monitoring/provider-health', async (importActual) => ({
 // The route reads nothing else from it, and the real module's graph is a slow cold import.
 vi.mock('~/lib/loop/reminders/run', () => ({
   recheckHeldReminders: (...args: unknown[]) => recheckHeldRemindersMock(...args),
+}));
+// The route reads nothing else from it, and the real module's graph is a slow cold import.
+vi.mock('~/lib/integrations/team-schedule', () => ({
+  retryTeamScheduleDrivers: (...args: unknown[]) => retryTeamScheduleDriversMock(...args),
+  teamSchedulePortsFor: () => ({ driver: {} }),
 }));
 vi.mock('~/lib/loop/reminders/group/fire', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/loop/reminders/group/fire')>()),
@@ -90,6 +96,7 @@ describe('GET /api/cron/drain', () => {
       retrying: 0,
     });
     recheckHeldRemindersMock.mockReset().mockResolvedValue({ held: 0 });
+    retryTeamScheduleDriversMock.mockReset();
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -159,6 +166,7 @@ describe('GET /api/cron/drain', () => {
 
   it('answers the summary on a clean run', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('BILLING_THREAD_NOTICES_ENABLED', undefined);
     const { GET } = await import('./route');
     runDrainCronMock.mockResolvedValue({ processed: 2, failed: 0, dropped: 1 });
 
@@ -174,10 +182,44 @@ describe('GET /api/cron/drain', () => {
       firstReply: expect.any(Object),
       groupReminders: { skipped: 'flag_off' },
       heldReminders: { held: 0 },
+      teamScheduleDrivers: { skipped: 'flag_off' },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
       anthropicCredit: { skipped: 'flag_off' },
+      billingNotices: { skipped: 'flag_off' },
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+    expect(retryTeamScheduleDriversMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-734: retries refused driver texts on the scheduled tick when the flag is on', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'true');
+    const summary = { sent: 1, retrying: 0, closed: 0, waiting: 0, failed: 0 };
+    retryTeamScheduleDriversMock.mockResolvedValue(summary);
+    const { GET } = await import('./route');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ ok: true, teamScheduleDrivers: summary });
+    expect(retryTeamScheduleDriversMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('VIL-734: a driver retry that throws is named and does not stop the drain', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'true');
+    retryTeamScheduleDriversMock.mockRejectedValue(new Error('sweep failed'));
+    const { GET } = await import('./route');
+    runDrainCronMock.mockResolvedValue({ processed: 3, failed: 0, dropped: 0 });
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      processed: 3,
+      teamScheduleDrivers: { skipped: 'tick_failed' },
+    });
+    expect(runDrainCronMock).toHaveBeenCalledTimes(1);
   });
 
   it('VIL-586: asks again for held T-1h reminders every scheduled minute, before the queues', async () => {
@@ -399,6 +441,7 @@ describe('GET /api/cron/drain', () => {
     expect(await response.json()).toMatchObject({
       optOutRecovery: { skipped: 'preview' },
       heldReminders: { skipped: 'preview' },
+      teamScheduleDrivers: { skipped: 'preview' },
       anthropicCredit: { skipped: 'preview' },
     });
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
+import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { parsePortalSourceCode } from '~/lib/text-hale-target';
 
 export const metadata: Metadata = { title: 'Sign in' };
@@ -36,6 +37,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
         callbackUrl={redirectTo}
         smsNumber={haleTextsNumber()}
         source={parsePortalSourceCode(s)}
+        noStopKeyword={noStopKeywordCopyEnabled()}
       />
     </ConnectStage>
   );

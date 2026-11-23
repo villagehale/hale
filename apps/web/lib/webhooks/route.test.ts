@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const sendMock = vi.fn();
 const applyMock = vi.fn();
 const reportMock = vi.fn();
+const recordNoticeMock = vi.fn();
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/queue', () => ({ getQueue: async () => ({ send: sendMock }) }));
 vi.mock('~/lib/webhooks/stripe-billing-apply', () => ({
@@ -18,6 +19,17 @@ vi.mock('~/lib/webhooks/stripe-billing-apply', () => ({
 vi.mock('~/lib/billing/conversions', () => ({
   reportBillingPurchase: (...args: unknown[]) => reportMock(...args),
 }));
+vi.mock('~/lib/billing/notices/record', () => ({
+  recordBillingNoticeIntent: (...args: unknown[]) => recordNoticeMock(...args),
+}));
+
+function signedStripeEvent(id: string): { body: string; signature: string } {
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+  const body = JSON.stringify({ id, type: 'checkout.session.completed', data: { object: {} } });
+  const t = Math.floor(Date.now() / 1000);
+  const hex = createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+  return { body, signature: `t=${t},v1=${hex}` };
+}
 
 function ctx(provider: string) {
   return { params: Promise.resolve({ provider }) };
@@ -40,6 +52,8 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     applyMock.mockReset();
     reportMock.mockReset();
     reportMock.mockResolvedValue({ status: 'skipped', reason: 'not_a_purchase' });
+    recordNoticeMock.mockReset();
+    recordNoticeMock.mockResolvedValue('dark');
   });
 
   afterEach(() => {
@@ -177,6 +191,20 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
+  it('answers 503 on retry so Stripe redelivers, and reports no conversion', async () => {
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+    applyMock.mockResolvedValue({ status: 'retry', reason: 'stripe_unavailable' });
+    const body = '{"id":"evt_1","type":"charge.refunded"}';
+    const t = Math.floor(Date.now() / 1000);
+    const hex = createHmac('sha256', 'whsec_test').update(`${t}.${body}`).digest('hex');
+
+    const res = await callPost('stripe', body, { 'stripe-signature': `t=${t},v1=${hex}` });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ status: 'retry', reason: 'stripe_unavailable' });
+    expect(reportMock).not.toHaveBeenCalled();
+  });
+
   it('does not send conversions when a paid session is refund-ready', async () => {
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
     applyMock.mockResolvedValue({ status: 'refund_ready' });
@@ -203,6 +231,49 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'duplicate' });
     expect(reportMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-735 records the notice intent after apply and conversions, with the apply result', async () => {
+    const { body, signature } = signedStripeEvent('evt_notice_1');
+    applyMock.mockResolvedValue({ status: 'applied', tier: 'plus' });
+    const order: string[] = [];
+    reportMock.mockImplementation(async () => {
+      order.push('conversions');
+      return { status: 'skipped', reason: 'not_a_purchase' };
+    });
+    recordNoticeMock.mockImplementation(async () => {
+      order.push('notice');
+      return 'recorded';
+    });
+
+    const res = await callPost('stripe', body, { 'stripe-signature': signature });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'applied' });
+    expect(order).toEqual(['conversions', 'notice']);
+    expect(recordNoticeMock).toHaveBeenCalledTimes(1);
+    expect(recordNoticeMock.mock.calls[0]?.[1]).toEqual(JSON.parse(body));
+    expect(recordNoticeMock.mock.calls[0]?.[2]).toEqual({ status: 'applied', tier: 'plus' });
+  });
+
+  it('VIL-735 a thrown notice write stays a 500, and the redelivery records without reporting twice', async () => {
+    const { body, signature } = signedStripeEvent('evt_notice_2');
+    applyMock.mockResolvedValueOnce({ status: 'applied', tier: 'plus' });
+    recordNoticeMock.mockRejectedValueOnce(new Error('db down'));
+    await expect(callPost('stripe', body, { 'stripe-signature': signature })).rejects.toThrow(
+      'db down',
+    );
+    expect(reportMock).toHaveBeenCalledTimes(1);
+
+    applyMock.mockResolvedValueOnce({ status: 'duplicate' });
+    recordNoticeMock.mockResolvedValueOnce('recorded');
+    const retried = await callPost('stripe', body, { 'stripe-signature': signature });
+
+    expect(retried.status).toBe(200);
+    expect(await retried.json()).toEqual({ status: 'duplicate' });
+    expect(reportMock).toHaveBeenCalledTimes(1);
+    expect(recordNoticeMock).toHaveBeenCalledTimes(2);
+    expect(recordNoticeMock.mock.calls[1]?.[2]).toEqual({ status: 'duplicate' });
   });
 
   it('rejects a stripe request with a bad signature as 401 (never applies)', async () => {

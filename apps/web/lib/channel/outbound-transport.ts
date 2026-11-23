@@ -80,6 +80,13 @@ export function readSendRefusal(err: unknown): { code: string; permanent: boolea
   return null;
 }
 
+/** Provider errors that cannot prove the text did not go out. */
+export const AMBIGUOUS_SEND_CODES: ReadonlySet<string> = new Set([
+  'timeout',
+  'network',
+  'missing_message_id',
+]);
+
 /**
  * Permanent refusals are not retried. `not_configured` is permanent at the
  * provider and transient for the sweep: a later tick sends once the door exists.
@@ -103,6 +110,13 @@ export function failedSendPatch(code: string): {
   }
   return { status: 'failed', errorCode: code };
 }
+
+/** A rate limit is not permanent, but asking again right away only earns another. */
+export function refusalIsRateLimit(err: unknown): boolean {
+  return err instanceof LinqSendError && linq.isLinqRateLimit(err);
+}
+
+export const linqRefusedForCertain = linq.linqRefusedForCertain;
 
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 
@@ -146,7 +160,13 @@ export async function sendResolvingNewChat(
       { code: 'link_on_new_chat' },
       'outbound: new Linq chat cannot take a link; plain-text version sent',
     );
-    const sent = await transport.send({ to: input.to, body: plain });
+    // Refused before any POST, so this is the key's first use at Linq. A retry of this send
+    // carries the same key, and Linq answers it without a second bubble.
+    const sent = await transport.send({
+      to: input.to,
+      body: plain,
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+    });
     return { ...sent, linkOmitted: 'link_on_new_chat' };
   }
 }
@@ -330,6 +350,20 @@ export function outboundLineFrom(): string | null {
     return PREVIEW_CAPTURE_LINE;
   }
   return linqApiKey() !== null ? linqFromE164() : null;
+}
+
+/**
+ * VIL-735 · the 1:1 chat Linq holds for Hale's line and this number, or null when there is
+ * none. Read-only: it puts nothing on a phone. A missing line or a refused read throws
+ * `LinqSendError`, so a caller can tell "no chat" from "could not read".
+ */
+export async function findHaleDirectChat(
+  to: string,
+  deps: { fetch?: typeof fetch } = {},
+): Promise<string | null> {
+  const from = outboundLineFrom();
+  if (!from) throw new LinqSendError('not_configured', 0, true);
+  return linq.findLinqDirectChat({ from, to, fetch: deps.fetch });
 }
 
 /** VIL-479 · edit one text part of a message already sent. The text is the caller's. */

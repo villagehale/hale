@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { alertBillingTierMismatch } from '~/lib/monitoring/billing-tier-alert';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
-import { stripeBillingRevokeEnabled } from './flags.js';
+import { stripeBillingRevokeEnabled, stripeRefundEndsSubscriptionEnabled } from './flags.js';
 
 /**
  * Checkout stays 501 until Stripe can verify webhooks and at least one signed
@@ -40,6 +40,8 @@ export interface BillingTierMismatchCounts {
   paidWithoutCustomer: number;
   /** A refund or dispute could not be tied to the live subscription, and the tier is still paid. */
   revokeUnresolved: number;
+  /** Families with a held plan nothing has cleared. Present only with the refund flag on. */
+  planUnsettled?: number;
 }
 
 export type ReconcileBillingTiersResult =
@@ -125,16 +127,42 @@ export async function reconcileBillingTiers(
   `);
   const unresolvedRow = rowsOf(unresolved)[0] as { n?: number } | undefined;
   mismatches.revokeUnresolved = Number(unresolvedRow?.n ?? 0);
+  if (stripeRefundEndsSubscriptionEnabled(env)) {
+    mismatches.planUnsettled = await countUnsettledPlans(database);
+  }
 
   const total =
     mismatches.freeDespitePaid +
     mismatches.paidDespiteRevoke +
     mismatches.paidWithoutCustomer +
-    mismatches.revokeUnresolved;
+    mismatches.revokeUnresolved +
+    (mismatches.planUnsettled ?? 0);
   if (total === 0) return { status: 'checked', mismatches, opsAlert: 'not_needed' };
 
-  const text = `billing: plan_tier disagrees with Stripe. free_despite_paid=${mismatches.freeDespitePaid} paid_despite_revoke=${mismatches.paidDespiteRevoke} paid_without_customer=${mismatches.paidWithoutCustomer} revoke_unresolved=${mismatches.revokeUnresolved}.`;
+  const text = `billing: plan_tier disagrees with Stripe. free_despite_paid=${mismatches.freeDespitePaid} paid_despite_revoke=${mismatches.paidDespiteRevoke} paid_without_customer=${mismatches.paidWithoutCustomer} revoke_unresolved=${mismatches.revokeUnresolved}${mismatches.planUnsettled === undefined ? '' : ` plan_unsettled=${mismatches.planUnsettled}`}.`;
   const opsAlert = await alertBillingTierMismatch(text, fetchImpl);
   console.warn('billing reconcile: tier mismatch', { ...mismatches, opsAlert });
   return { status: 'checked', mismatches, opsAlert };
+}
+
+async function countUnsettledPlans(database: Database): Promise<number> {
+  const result = await database.execute(sql`
+    select count(*)::int as n
+    from families f
+    where exists (
+      select 1 from audit_log held
+      where held.family_id = f.id
+        and held.action_taken = 'billing_plan_unsettled'
+        and held.after->>'state' = 'held'
+        and not exists (
+          select 1 from audit_log cleared
+          where cleared.family_id = f.id
+            and cleared.action_taken = 'billing_plan_unsettled'
+            and cleared.after->>'state' = 'cleared'
+            and cleared.after->>'clearsEventId' = held.after->>'stripeEventId'
+        )
+    )
+  `);
+  const row = rowsOf(result)[0] as { n?: number } | undefined;
+  return Number(row?.n ?? 0);
 }

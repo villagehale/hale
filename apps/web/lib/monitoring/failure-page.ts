@@ -195,8 +195,48 @@ export const OPS_PAGE_VOCABULARY = {
   opt_out_hold_unwritten: {},
   opt_out_hold_id_collision: {},
   opt_out_unread: {},
+  /** VIL-745 · a party guest's text the model could not write: nothing was sent. */
+  party_guest_unwritten: {
+    why: ['asked_for_reminder', 'host_cancelled'],
+    stage: ['skill_load', 'after_retry'],
+  },
+  /** A family already on a paid plan paid again. Nothing refunds it on its own. */
+  checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
+  /** VIL-734 · a driver's schedule-change text that reached them on no try. */
+  team_schedule_driver_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'unwritten', 'event_started', 'held_too_long'],
+  },
+  /** VIL-734 · a group reminder that closed unsent: nothing reached the person who asked. */
+  group_reminder_unsent: {
+    reason: ['send_refused', 'send_unconfirmed', 'no_what', 'no_ledger_owner', 'retries_ran_out'],
+  },
+  /** VIL-735 · a billing text owed to a parent that was not sent. Each is one family's money. */
+  billing_notice_unsent: {
+    lane: ['payment', 'plan_change'],
+    reason: [
+      'unwritten',
+      'fact_check',
+      'claim_gate',
+      'send_refused',
+      'send_abandoned',
+      'not_confirmed',
+      'payer_unresolved',
+      'duplicate_payment',
+      'duplicate_under_review',
+      'subscription_unread',
+      'thread_unread',
+      'plan_state_unsettled',
+      'stale',
+      'unrecorded',
+      'unexpected',
+    ],
+  },
+  /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
+  duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
+  /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
+  claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
   registration_review_placed_order: {},
   registration_review_unread: {},
@@ -205,12 +245,19 @@ export const OPS_PAGE_VOCABULARY = {
     purpose: ['sign_in', 'code', 'passkey', 'captcha'],
     moment: ['ask', 'unfinished'],
   },
+  /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
+  registration_stop_unverified: {},
   linq_effect_delivery_unknown: {},
   signup_ask_order_uncertain: {},
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
+  /** A proactive nudge the model could not write: nothing was sent. */
+  nudge_unwritten: {
+    kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],
+    reason: ['no_client', 'skill_load', 'model_failed', 'unusable'],
+  },
   inbound_canary_failed: {
     stage: [
       'not_configured',
@@ -220,6 +267,15 @@ export const OPS_PAGE_VOCABULARY = {
       'never_answered',
       'unexpected',
     ],
+  },
+  /** VIL-736 · Stripe refused a refund lookup or cancel: the event is not claimed. */
+  billing_stripe_refused: {
+    call: ['lookup', 'cancel'],
+    status: ['400', '401', '403', '404', 'other_4xx', 'no_key', 'unknown'],
+  },
+  /** A refund Stripe has not finished, for a reason a person has to act on. */
+  billing_refund_pending: {
+    reason: ['insufficient_funds', 'requires_action', 'unknown'],
   },
   retention_step_failed: {
     step: [
@@ -251,8 +307,11 @@ type OpsPageFacts<S extends OpsPageSite> = {
  * so a second family's in the same hour pages too. Their `ref` is required.
  */
 const OPS_PAGE_PER_REF = [
+  'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  'registration_stop_unverified',
+  'billing_notice_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

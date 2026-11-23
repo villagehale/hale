@@ -39,6 +39,14 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "billing-notice-check.md": {
+    "file": "billing-notice-check.md",
+    "sha256": "0291d52f8458e2444ca83c4f076daf54b3628c1afabf20d2f070b40a0aff4d1e"
+  },
+  "billing-notice.md": {
+    "file": "billing-notice.md",
+    "sha256": "dcc48ca50a67d85bdda79c00641649d613ff2a0e184ab9e07a40929db0b6a415"
+  },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
     "sha256": "cabd063e26d088b26d83ae3424ba546ff9a5e2e5bfe48865e23fd5ea448e08f4"
@@ -170,6 +178,10 @@
   "coach-no-group-relay.md": {
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
+  },
+  "coach-no-stop-keyword.md": {
+    "file": "coach-no-stop-keyword.md",
+    "sha256": "339c6245f99f89fe37107926bd2afc34cd74dee9a2c4913f3a2bc4520a2855eb"
   },
   "coach-photo-facts.md": {
     "file": "coach-photo-facts.md",
@@ -326,6 +338,10 @@
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
+  "group-onboarding-no-keyword.md": {
+    "file": "group-onboarding-no-keyword.md",
+    "sha256": "fdb278cd3227ec885bdc622d3482f3cc1201c0bc20e4a7dd7dfcd8b1881b671a"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -554,6 +570,10 @@
   "party-extraction.md": {
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
+  },
+  "party-guest-line.md": {
+    "file": "party-guest-line.md",
+    "sha256": "239bbe828d49ee8734de5c7da3f0f6e44f20bdedeff28e5b2e555fb4ee13d6d9"
   },
   "proactive-decider.md": {
     "file": "proactive-decider.md",

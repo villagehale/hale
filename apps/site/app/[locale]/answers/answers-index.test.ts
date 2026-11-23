@@ -101,7 +101,7 @@ describe('the index empty library', () => {
     const html = renderToStaticMarkup(
       RedesignAnswers({ locale: 'en', smsNumber: '', prefill: '' }),
     );
-    expect(html).toContain('Our first parenting guides are in review.');
+    expect(html).toContain('Parenting guides are in review.');
     expect(html).not.toContain('Filter guides by stage');
     expect(html).toContain('0 questions parents search.');
     vi.doUnmock('~/lib/answers/index');

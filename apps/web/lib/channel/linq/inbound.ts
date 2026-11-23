@@ -365,7 +365,7 @@ export async function handleLinqInboundRequest(
   if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
   if (parsed.kind === 'line_health') return handleLinqLineHealth(deps, parsed.line);
   if (parsed.kind === 'location') return handleLinqLocation(deps, parsed.location);
-  if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
+  if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message, answerBy);
 
   const message = parsed.message;
   // Read receipt first, overlapping the turn. Linq's mark-as-read is what puts
@@ -847,7 +847,11 @@ export function handleLinqGroupMessage(
   return handleLinqGroup(deps, message);
 }
 
-async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+async function handleLinqGroup(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  answerBy?: Date,
+): Promise<Response> {
   // VIL-686: while this chat's Secret Santa is collecting, "I'm in" and "count me out" are
   // its words, so the RSVP door waits until the shared-group turn has read them. A row,
   // not words, decides it.
@@ -936,7 +940,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return claimGroupFromTrigger(deps, message, coparent);
   }
   if (coparent.type === 'route_member') {
-    return routeClaimedGroup(deps, message);
+    return routeClaimedGroup(deps, message, answerBy);
   }
   if (coparent.type === 'done') {
     deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
@@ -1001,7 +1005,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome, hold: held });
   }
 
-  if (optOut) return routeClaimedGroup(deps, message);
+  if (optOut) return routeClaimedGroup(deps, message, answerBy);
 
   const trigger = matchLinqGroupTrigger(message.text);
   if (trigger) return claimGroupFromTrigger(deps, message, mapped);
@@ -1016,10 +1020,14 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome: 'group_unclaimed' });
   }
 
-  return routeClaimedGroup(deps, message);
+  return routeClaimedGroup(deps, message, answerBy);
 }
 
-async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+async function routeClaimedGroup(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  answerBy?: Date,
+): Promise<Response> {
   const stopping = (await optOutIntentOf(message.text)) === 'stop';
   if (!stopping && !linqGroupOnboardingV2Enabled()) {
     const welcome = await retryMemberWelcome(deps.database, {
@@ -1074,6 +1082,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           inboundChatId: message.chatId,
           inboundMessageId: message.messageId,
           surface: 'group',
+          answerBy,
         });
       } catch (err) {
         deps.log.warn(

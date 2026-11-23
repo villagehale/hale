@@ -29,20 +29,6 @@ export function missingRd(locale: 'fr' | 'zh'): string[] {
   return [...(missing.get(locale) ?? [])].sort();
 }
 
-const CLOSE_LEADS = ['Founding families', 'Les familles fondatrices', '创始家庭'];
-
-/** Keeps the founding-family name on one line of the closing heading. */
-export function closeHeading(text: string): ReactNode {
-  const lead = CLOSE_LEADS.find((item) => text.startsWith(item));
-  if (!lead) return text;
-  return (
-    <>
-      <span className="hs-keep">{lead}</span>
-      {text.slice(lead.length)}
-    </>
-  );
-}
-
 /** A sentence with one phrase linked, in whatever order the translation uses. */
 export function Phrase({
   locale,

@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-client.js';
 
 // createBillingCheckout resolves the caller's family, creates the Stripe session
@@ -63,6 +63,14 @@ function fakeDb(
 }
 
 describe('createBillingCheckout', () => {
+  beforeEach(() => {
+    vi.stubEnv('CHECKOUT_SUCCESS_STATES_ENABLED', undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('creates a session for the resolved family and returns its url', async () => {
     resolveFamilyMock.mockResolvedValue('fam-9');
     ensureUserMock.mockResolvedValue('user-9');
@@ -122,6 +130,58 @@ describe('createBillingCheckout', () => {
       'https://app.example.com/settings/founding?checkout=cancelled',
     );
   });
+
+  it.each([
+    ['the settings default', {}],
+    ['a founding SKU', { sku: 'promo_plus_annual' as const, currency: 'CAD' as const }],
+    ['the /founding join', { cancelUrl: 'https://app.example.com/founding?checkout=cancelled' }],
+  ])('with the page-state flag on, %s cancels back to pricing', async (_name, over) => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb();
+
+    await createBillingCheckout({
+      tier: 'plus',
+      period: 'annual',
+      priceId: 'price_founding_cad',
+      ...CALLER,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+      marketingOrigin: 'https://www.villagehale.com/',
+      env: { CHECKOUT_SUCCESS_STATES_ENABLED: 'true' },
+      ...over,
+    });
+
+    expect(calls[0]?.cancelUrl).toBe('https://www.villagehale.com/pricing?checkout=cancelled');
+  });
+
+  it.each([undefined, 'TRUE', 'true\n'])(
+    'with the page-state flag at %j, the cancel url stays where it is today',
+    async (value) => {
+      resolveFamilyMock.mockResolvedValue('fam-9');
+      ensureUserMock.mockResolvedValue('user-9');
+      const { client, calls } = fakeClient();
+      const { db } = fakeDb();
+
+      await createBillingCheckout({
+        tier: 'plus',
+        period: 'annual',
+        priceId: 'price_plus_annual',
+        ...CALLER,
+        database: db,
+        client,
+        origin: 'https://app.example.com',
+        marketingOrigin: 'https://www.villagehale.com',
+        env: { CHECKOUT_SUCCESS_STATES_ENABLED: value },
+      });
+
+      expect(calls[0]?.cancelUrl).toBe(
+        'https://app.example.com/settings?checkout=cancelled#billing',
+      );
+    },
+  );
 
   it('writes a billing_checkout_started audit row for the family (rule #6)', async () => {
     resolveFamilyMock.mockResolvedValue('fam-9');

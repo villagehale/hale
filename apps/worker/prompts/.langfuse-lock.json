@@ -314,6 +314,11 @@
     "version": null,
     "sha256": "eea20cecf916965c460369e661b5b1bae0bf6dff1cd3341a65d20b2d2e758bdc"
   },
+  "judges/party-guest-line": {
+    "name": "judges/party-guest-line",
+    "version": null,
+    "sha256": "440abc7dc0f73d5112f2551097763d950a41b46a057b8184e1995fc38125ce59"
+  },
   "judges/proactive-writer": {
     "name": "judges/proactive-writer",
     "version": null,

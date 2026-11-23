@@ -120,6 +120,34 @@ describe('composeVoice', () => {
     expect(capture.agentRuns[0]?.status).toBe('failed');
   });
 
+  it('sends systemExtras after the skill, and leaves the request alone without them', async () => {
+    const capture = { agentRuns: [] as Record<string, unknown>[] };
+    const systemOf = async (systemExtras?: readonly string[]) => {
+      const client = fakeClient(JSON.stringify({ line: 'a calm week ahead' }));
+      await composeVoice<TestVoice>({
+        skill: SKILL,
+        context: { hi: true },
+        factSlots: [],
+        parse,
+        voiceStrings: (v) => [v.line],
+        client,
+        database: fakeDb(capture),
+        familyId: FAMILY_ID,
+        agentName: 'weekly-plan-voice',
+        traceName: 'weekly-plan-voice',
+        maxTokens: 256,
+        ...(systemExtras ? { systemExtras } : {}),
+      });
+      const create = client.messages.create as unknown as {
+        mock: { calls: Array<[{ system: Array<{ text: string }> }]> };
+      };
+      return (create.mock.calls[0]?.[0].system ?? []).map((block) => block.text).join('');
+    };
+
+    expect(await systemOf()).toBe('compose the voice');
+    expect(await systemOf(['the addendum'])).toBe('compose the voice\n\nthe addendum');
+  });
+
   it('keeps a voice whose facts are all grounded in the slots', async () => {
     const capture = { agentRuns: [] as Record<string, unknown>[] };
     const { voice, degraded, reason } = await run(
