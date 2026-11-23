@@ -611,9 +611,12 @@ describe('stripe billing revoke', () => {
       {},
       { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' } },
     );
-    expect(deleted).toEqual({ status: 'applied', tier: 'free' });
+    expect(deleted).toEqual({ status: 'kept', reason: 'not_entitled' });
+    expect(await planTier(familyId)).toBe('plus');
     expect(await storedSubscription(familyId)).toBe('sub_vil761_keep');
     expect(await storedCustomer(familyId)).toBe('cus_vil761_other');
+    const audits = await familyAudits(familyId);
+    expect(audits.map((row) => row.actionTaken)).not.toContain('family_plan_updated');
   });
 
   it('does not clear a replacement subscription stored after the deletion was read', async () => {
@@ -668,7 +671,7 @@ describe('stripe billing revoke', () => {
         { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' } },
       );
       expect(swapped).toBe(true);
-      expect(result).toEqual({ status: 'applied', tier: 'free' });
+      expect(result).toEqual({ status: 'kept', reason: 'not_entitled' });
       const [row] = await isolated.database
         .select({
           planTier: schema.families.planTier,
@@ -679,7 +682,7 @@ describe('stripe billing revoke', () => {
         .where(eq(schema.families.id, familyId))
         .limit(1);
       expect(row).toMatchObject({
-        planTier: 'free',
+        planTier: 'plus',
         stripeSubscriptionId: 'sub_vil761_new',
         stripeCustomerId: 'cus_vil761_race',
       });

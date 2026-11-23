@@ -251,6 +251,9 @@ export async function applyStripeBillingEvent(
         return { status: 'applied', tier };
       }
     }
+    if (clearDeletedSubscription && storedSubscriptionId !== null) {
+      return { status: 'kept', reason: 'not_entitled' };
+    }
     const patch: {
       planTier: PlanTier;
       updatedAt: Date;
