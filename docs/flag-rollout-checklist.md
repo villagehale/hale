@@ -19,6 +19,7 @@ The Unset column says what the parser does when the variable is unset:
 - `voice runs`: `VOICE_DISABLED` is inverted; unset, voice compose runs.
 - `off` mode: `PROACTIVE_CADENCE` resolves to its `off` mode. The hourly review reads no family and sends nothing. Sweeps that still send on their own clock keep doing so until `PROACTIVE_SENDS_PAUSED` is exactly `true`. It is a mode, not an on/off flag. `REGISTRATION_DATE_CHECK` works the same way: unset is `off`, and no registration page is read.
 - `200 USD (code default)`: `ANTHROPIC_SPEND_ALERT_USD` is config, not a flag.
+- `5 messages (code default)`: `GROUP_LOOP_GUARD_CAP` is config, not a flag. It tunes `GROUP_LOOP_GUARD_ENABLED`; anything but a whole number from 1 to 50 is the default.
 - `40 USD (code default)`: `ANTHROPIC_CREDIT_ALERT_USD` is config, not a flag. `ANTHROPIC_CREDIT_START_USD` / `ANTHROPIC_CREDIT_START_AT` have no default; unset is `start_not_configured`. `ANTHROPIC_CREDIT_EXPIRES_AT` unset skips expiry warnings. `ANTHROPIC_CREDIT_EXPIRY_WARN_DAYS` unset is 7 then 3.
 - `no runtime chosen`: `SIGNUP_BROWSER_RUNTIME` picks no signup browser runtime.
 - `OFF (preview-only)`: off, and it can only turn on in a Vercel preview.
@@ -106,6 +107,8 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `GROUP_BRING_LIST_ENABLED` | `apps/web/lib/channel/lists/flag.ts:10` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:133` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `GROUP_LINK_CARDS_ENABLED` | `apps/web/lib/channel/linq/config.ts:124` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_LOOP_GUARD_CAP` | `apps/web/lib/channel/linq/group-loop-guard.ts` (`groupLoopGuardCap`; default `GROUP_LOOP_GUARD_CAP_DEFAULT`) | a whole number of Hale group messages, 1 to 50 (config, not a flag) | 5 messages (code default) | n/a (config) | Noah |
+| `GROUP_LOOP_GUARD_ENABLED` | `apps/web/lib/channel/linq/group-loop-guard.ts` (`groupLoopGuardEnabled`; parsed `exact` in `packages/flags/src/catalog.ts`) | `true` | OFF | unset, or anything except exact `true` | Noah |
 | `GROUP_MAIL_NOTICE_ENABLED` | `apps/web/lib/channel/linq/config.ts:150` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:116` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_PRIVATE_QUESTION_ENABLED` | `apps/web/lib/channel/linq/config.ts:142` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
@@ -300,6 +303,7 @@ Dependencies, as the code reads them:
 - `GROUP_CARPOOL_ENABLED` arms the same path as `LINQ_GROUP_CARPOOL_ENABLED`.
 - `GROUP_BRING_LIST_ENABLED` arms the same path as `GROUP_SHARED_LISTS_ENABLED`.
 - `GROUP_MAIL_NOTICE_ENABLED` posts into the household group after a provider time-change; it does not replace the 1:1 email alert.
+- `GROUP_LOOP_GUARD_ENABLED` needs migration `0266_linq_group_loop_guards` applied first. Lit before it, every group message from an unverified sender logs `group_loop_guard_unread` and runs unguarded. It depends on no other flag.
 - `INTEREST_PASSPORT_DEMO` needs `INTEREST_PASSPORT_ENABLED`; a Calendar stamp needs `CALENDAR_ALERT_ENABLED`.
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
 - `MEMORY_DIGEST_APPLY` also needs `MEMORY_DIGEST_FAMILY_ALLOWLIST`.
@@ -354,6 +358,7 @@ Code is merged for every row.
 | `GROUP_BRING_LIST_ENABLED` | A group bring-list (who brings which snack) uses the existing shared-list path. | A list write while the flag is off. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_CARPOOL_ENABLED` | Who is driving, using the existing carpool path. | A carpool ask while both this flag and `LINQ_GROUP_CARPOOL_ENABLED` are off. | empty, or `false` | unassigned |
 | `GROUP_LINK_CARDS_ENABLED` | A posted https link in a group: Hale says the public facts, then registration continues in each family's 1:1. Needs migration `0231_linq_group_experience`. | A login or payment in the multi-family group. | empty, or `false` | Noah (copy: Sloane) |
+| `GROUP_LOOP_GUARD_ENABLED` | In a Linq group, a sender whose number is not a verified Hale channel (a bot, a stranger) is answered only until Hale has sent `GROUP_LOOP_GUARD_CAP` messages there (default 5, counted over the last 30 minutes) with no verified person speaking. Then the chat goes quiet for unverified senders: nothing is sent, nothing is announced, no model reads their messages, except that an opt-out still goes through. The trip writes the internal audit row `linq_group_loop_guard_quiet` for each household in the chat and pages #ops once an hour (`group_loop_guard_tripped`, counts only). A verified person is never held, and their next message reopens the chat. No parent copy. Needs migration `0266_linq_group_loop_guards`. | A `group_loop_guard_quiet` outcome on a message from a verified parent or seated member, more than the cap of Hale lines in one quiet stretch, or any group line announcing the quiet. | unset | Noah |
 | `GROUP_MAIL_NOTICE_ENABLED` | A Gmail provider time-change is posted into the household group. No login. | A time-change in a multi-family group, or a login. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_POLLS_ENABLED` | Yes/no/maybe RSVP and time polls in a Linq group. Native cards also need `LINQ_POLLS`; otherwise Hale asks in model-written plain text. Needs migration `0231_linq_group_experience`. | A poll started while the flag is off, or a fallback Yes/No/Maybe template. | empty, or `false` | Noah (copy: Sloane) |
 | `GROUP_PRIVATE_QUESTION_ENABLED` | A private question (allergy, DOB, address, login, payment) leaves the group for that family's 1:1. | The allergy or another family's calendar spoken in the group. | empty, or `false` | Noah (copy: Sloane) |
