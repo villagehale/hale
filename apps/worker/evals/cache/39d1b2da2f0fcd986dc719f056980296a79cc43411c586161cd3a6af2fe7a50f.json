@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Happy to add someone! Who is it, what's their number, and are they a grandparent, a nanny or a babysitter?"
+  },
+  "latencyMs": 884,
+  "usage": {
+    "input_tokens": 1222,
+    "output_tokens": 46,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

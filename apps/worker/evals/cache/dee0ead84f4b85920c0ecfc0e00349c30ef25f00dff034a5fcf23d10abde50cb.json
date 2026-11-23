@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Merci d'accepter de donner un coup de main, c'est super! Comme vous aidez en tant que nounou, je vous enverrai un petit rappel la veille au soir et environ une heure avant chaque activité où vous êtes impliquée, avec l'heure et le lieu. Rien d'autre, promis."
+  },
+  "latencyMs": 2243,
+  "usage": {
+    "input_tokens": 1231,
+    "output_tokens": 111,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

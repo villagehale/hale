@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "You've added a lot of people today, so I haven't texted anyone new. We can pick this up tomorrow."
+  },
+  "latencyMs": 894,
+  "usage": {
+    "input_tokens": 1222,
+    "output_tokens": 41,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

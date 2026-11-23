@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Petit rappel : natation aujourd'hui à 16 h 15, donc dans environ une heure. Rendez-vous à Piscine du parc, 2 rue du Parc."
+  },
+  "latencyMs": 1449,
+  "usage": {
+    "input_tokens": 692,
+    "output_tokens": 67,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}
