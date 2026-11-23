@@ -121,20 +121,22 @@ describe('keepKidActivities', () => {
     expect(fact?.childId).toBe(only);
   });
 
-  it('puts an activity on the kid its own words name when the model named none', async () => {
+  it('puts it on the household when the model named no kid, whatever its words carry', async () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     await seedChild(db.database, familyId, 'Maya', 72, undefined, NOW);
-    const leo = await seedChild(db.database, familyId, 'Leo', 48, undefined, NOW);
+    await seedChild(db.database, familyId, 'Leo', 48, undefined, NOW);
+
     await keepKidActivities(db.database, {
       familyId,
       parentUserId,
       sessionId: SESSION,
-      activities: [{ child: null, activity: "Leo's hockey", when: null }],
+      activities: [{ child: null, activity: "Maya's swim lessons", when: null }],
       heardIn: 'one_to_one',
       now: NOW,
     });
+
     const [fact] = await factsOf(familyId);
-    expect(fact?.childId).toBe(leo);
+    expect(fact?.childId).toBeNull();
   });
 
   it('keeps no activity whose words name a teen it is not on, and says how many it skipped', async () => {
@@ -296,6 +298,18 @@ describe('kidActivityFactKey', () => {
     // No colon: every memory reader drops colon keys as namespaced.
     expect(key).not.toContain(':');
     expect(kidActivityFactKey('游泳')).toBe(key);
+  });
+
+  it('keeps two long phrases that differ only past the cut as two facts', () => {
+    const stem = 'after school mandarin at the community centre with her cousin';
+    const first = kidActivityFactKey(`${stem} on tuesdays`);
+    const second = kidActivityFactKey(`${stem} on thursdays`);
+
+    expect(first).not.toBe(second);
+    expect(first.length).toBeLessThanOrEqual('kid-activity-'.length + 60);
+    expect(second.length).toBeLessThanOrEqual('kid-activity-'.length + 60);
+    expect(kidActivityFactKey(`${stem} on tuesdays`)).toBe(first);
+    expect(first).not.toContain(':');
   });
 
   it('cuts a long phrase to at most sixty characters with no trailing dash', () => {

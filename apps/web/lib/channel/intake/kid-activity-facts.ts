@@ -21,13 +21,13 @@ import type { KidActivity } from './onboarding-turn';
  *    and `source_user_id` from who said it and where, `inferred_by` this writer,
  *    `sourced_at` and `valid_from` the turn's clock.
  *  - the value is the activity and its "when" as the model read them; code adds no
- *    name to it. The fact points at the child row. An activity that names no kid code
- *    can find is put on the kid its own words name (the shared matcher, `namesAny`),
- *    else the only kid, else the household.
+ *    name to it. The fact points at the child row the model named, else the only kid,
+ *    else the household. Code does not read the parent's words to decide whose it is.
  *  - a 13+ child's name never rides a row that is not that child's (rule #1, stripped
- *    at the source): an activity whose words name a teen but which cannot be placed on
- *    that teen is not kept (`skipped`). A teen's own row is withheld from every
- *    parent-facing read by memory-context.ts (`notTeen`).
+ *    at the source): the one name check here is that privacy gate, never a placement.
+ *    An activity whose words name a teen but which is not on that teen is not kept
+ *    (`skipped`). A teen's own row is withheld from every parent-facing read by
+ *    memory-context.ts (`notTeen`).
  *  - the key carries no colon: every memory reader drops colon keys as namespaced
  *    (memory-context.ts factsForContext), and these facts are meant to be read.
  *
@@ -43,6 +43,7 @@ export const KID_ACTIVITY_CONFIDENCE = 0.9;
 
 const KEY_PREFIX = 'kid-activity-';
 const MAX_SLUG = 60;
+const KEY_HASH_CHARS = 12;
 
 export type KidActivityFactsOutcome =
   /** `skipped`: activities not kept because their words name a teen they are not on. */
@@ -63,12 +64,16 @@ export function kidActivityFactKey(activity: string): string {
     .replace(/\p{M}+/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_SLUG)
-    .replace(/-+$/g, '');
-  if (folded.length > 0) return `${KEY_PREFIX}${folded}`;
-  const digest = createHash('sha256').update(activity.trim().toLowerCase()).digest('hex');
-  return `${KEY_PREFIX}h-${digest.slice(0, 12)}`;
+    .replace(/^-+|-+$/g, '');
+  const digest = createHash('sha256')
+    .update(activity.trim().toLowerCase())
+    .digest('hex')
+    .slice(0, KEY_HASH_CHARS);
+  if (folded.length === 0) return `${KEY_PREFIX}h-${digest}`;
+  if (folded.length <= MAX_SLUG) return `${KEY_PREFIX}${folded}`;
+  // Two long phrases that differ past the cut are two activities, not one superseding the other.
+  const stem = folded.slice(0, MAX_SLUG - KEY_HASH_CHARS - 1).replace(/-+$/g, '');
+  return `${KEY_PREFIX}${stem}-${digest}`;
 }
 
 interface ChildRow {
@@ -77,28 +82,23 @@ interface ChildRow {
   dateOfBirth: string;
 }
 
-/** The kids whose name the activity's own words carry, by the shared matcher. */
+/** The kids whose name the activity's words carry: read only by the teen privacy gate below. */
 function namedIn(item: KidActivity, children: readonly ChildRow[]): ChildRow[] {
   const words = [item.activity, item.when ?? ''].join(' ');
   return children.filter((row) => row.name != null && namesAny(words, [row.name]));
 }
 
-/**
- * The child row an activity is for: the kid the model named, else the one kid its own
- * words name, else the only kid. Null is the household.
- */
+/** The child row an activity is for: the kid the model named, else the only kid. Null is the
+ * household. */
 function childFor(item: KidActivity, children: readonly ChildRow[]): string | null {
   if (item.child) {
     const wanted = kidFirstName(item.child)?.toLowerCase();
     const match = wanted
       ? children.find((row) => kidFirstName(row.name)?.toLowerCase() === wanted)
       : undefined;
-    if (match) return match.id;
+    return match?.id ?? null;
   }
-  const named = namedIn(item, children);
-  if (named.length === 1) return named[0]?.id ?? null;
-  if (!item.child && named.length === 0 && children.length === 1) return children[0]?.id ?? null;
-  return null;
+  return children.length === 1 ? (children[0]?.id ?? null) : null;
 }
 
 export async function keepKidActivities(
