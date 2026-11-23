@@ -5,20 +5,31 @@ import type { ReactNode } from 'react';
 import { ATTRIBUTION_STORAGE_KEY } from '~/lib/analytics/attribution';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { APP_URL } from '~/lib/app-url';
-import { PLAN_TIER, type PromoPhase, type PromoTier } from '~/lib/promo/holiday';
+import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
 
-/** The app page that starts founding checkout for a signed-in family. */
-export const FOUNDING_CHECKOUT_PATH = '/settings/founding';
+/**
+ * The app's new-visitor join (phone code, then Stripe). A signed-in family
+ * who lands there is sent on to the signed-in checkout. `/founding` does not
+ * read a plan query — after the code the parent chooses Plus or Max — so the
+ * chosen tier stays on the analytics event and is not put in the URL.
+ */
+export const FOUNDING_CHECKOUT_PATH = '/founding';
 
 export function foundingCheckoutHref(appUrl: string = APP_URL): string {
   return `${appUrl.replace(/\/$/, '')}${FOUNDING_CHECKOUT_PATH}`;
 }
 
+/** The join URL, plus a query string that has no leading `?`. */
+export function foundingCheckoutTarget(query = '', appUrl: string = APP_URL): string {
+  const href = foundingCheckoutHref(appUrl);
+  return query ? `${href}?${query}` : href;
+}
+
 /**
- * The "lock in the founding price" door. It goes to the app, where a signed-in
- * family starts Stripe Checkout. On tap it carries the tab's first-touch
- * UTMs / gclid / fbclid in the query, so attribution survives even when the
- * visitor declined cookies (no cookie is written here).
+ * The "lock in the founding price" door. It opens the new-visitor join.
+ * On tap it carries the tab's first-touch UTMs / gclid / fbclid in the query,
+ * so attribution survives even when the visitor declined cookies (no cookie
+ * is written here).
  */
 export function FoundingCheckoutLink({
   placement,
@@ -32,16 +43,15 @@ export function FoundingCheckoutLink({
   phase: PromoPhase;
   currency: 'CAD' | 'USD';
   /**
-   * Which paid tier the visitor picked. Sent as `?plan=plus|family` (the app's
-   * PlanTier names; `family` is Max) so the app can open the matching promo
-   * checkout. The app must treat it as a hint only and price server-side.
+   * Which paid tier the visitor picked. Recorded on `promo_cta_click` only.
+   * The join page does not read `plan`, so it is not added to the URL.
    */
   plan: PromoTier;
   className?: string;
   children: ReactNode;
 }) {
   const capture = useAnalytics();
-  const href = `${foundingCheckoutHref()}?plan=${PLAN_TIER[plan]}`;
+  const href = foundingCheckoutTarget();
   return (
     <a
       href={href}
@@ -64,7 +74,7 @@ export function FoundingCheckoutLink({
         const query = serializeAttribution(parseAttribution(stored ?? undefined));
         if (query) {
           event.preventDefault();
-          window.location.assign(`${href}&${query}`);
+          window.location.assign(foundingCheckoutTarget(query));
         }
       }}
     >
