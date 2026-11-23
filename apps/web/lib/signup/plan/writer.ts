@@ -98,6 +98,8 @@ export interface PlanReplyFacts {
   terms?: PlanReplyTerms;
   /** VIL-715 · the labels of the site's options, for a question about them. A page wrote them. */
   siteOptions?: readonly string[];
+  /** VIL-715 · this offer has a terms row, so a page wrote its session labels. */
+  labelsFromPage?: boolean;
 }
 
 export interface PlanReplyWriter {
@@ -297,7 +299,7 @@ function markedTerms({
   };
 }
 
-/** On a text with terms, a session's label can be a site option's: a page wrote it. */
+/** A session's label on these texts can be a site option's: a page wrote it. */
 function markedLabels<T extends Pick<PlanReplyFacts, 'sessions' | 'run'>>(facts: T) {
   const label = (raw: string | null) => untrustedPageWords(raw, SITE_CHOICE_LABEL_MAX_CHARS);
   let run = null;
@@ -321,9 +323,9 @@ function markedSiteOptions(labels: readonly string[]): string[] {
 
 /** The user turn: the facts, and why the last draft could not leave. */
 export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | null): string {
-  const { terms, siteOptions, ...rest } = linkFree(facts);
+  const { terms, siteOptions, labelsFromPage: _labelsFromPage, ...rest } = linkFree(facts);
   const clean = {
-    ...(terms ? markedLabels(rest) : rest),
+    ...(planReplyUsesTermsSkill(facts) ? markedLabels(rest) : rest),
     ...(terms ? { terms: markedTerms(terms) } : {}),
     ...(siteOptions ? { untrusted_site_options: markedSiteOptions(siteOptions) } : {}),
   };
@@ -333,9 +335,11 @@ export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | 
   });
 }
 
-/** Terms or page options in the facts bring the addendum that says how to treat them. */
+/** Terms, page options or page-written labels bring the addendum that says how to treat them. */
 export function planReplyUsesTermsSkill(facts: PlanReplyFacts): boolean {
-  return facts.terms !== undefined || facts.siteOptions !== undefined;
+  return (
+    facts.terms !== undefined || facts.siteOptions !== undefined || facts.labelsFromPage === true
+  );
 }
 
 /** Wall time in the parent's zone, for the writer to restate. */

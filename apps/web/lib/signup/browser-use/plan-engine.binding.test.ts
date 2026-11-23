@@ -103,7 +103,6 @@ const approved = (over: Partial<SignupTermsApproved> = {}): SignupTermsApproved 
   ],
   quantity: 1,
   maxCents: 8488,
-  prerequisiteConfirmed: null,
   countsAgainstSeason: false,
   seasonKey: null,
   hold: null,
@@ -626,6 +625,63 @@ describe('the free path', () => {
     if (result.outcome === 'checkpointed') throw new Error('checkpointed');
     expect(result.detail).toBe('cart_mismatch');
     expect(result.cartDifferences).toEqual(['price']);
+  });
+});
+
+describe('a class that needs something first', () => {
+  const FREE_HELD = { ...FREE_APPROVED, hold: 'prerequisite_unconfirmed' as const };
+  const PRICED_HELD = approved({ hold: 'prerequisite_unconfirmed' });
+
+  it.each([
+    ['a free class with the free switch on', FREE_CHECKOUT, FREE_HELD],
+    ['a priced class with the payment switch on', CHECKOUT, PRICED_HELD],
+  ])('%s stops at checkout: no review, no payment', async (_name, plan, held) => {
+    const h = harness({ plan, review: FREE_REVIEW, payment: FREE_PLACED });
+    const { value } = input({
+      maxPriceCents: held.maxCents,
+      paymentEnabled: true,
+      binding: binding({ approved: held, freeCheckoutEnabled: true }),
+    });
+    const result = await runBrowserUsePlanSignup(value, h.deps);
+    expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.outcome).toBe('needs_human');
+    expect(result.detail).toBe('prerequisite_unconfirmed');
+    expect(result.charged).toBe('nothing');
+    expect(result.liveViewUrl).toBe(LIVE);
+  });
+
+  it('the same free class with no hold is placed (control)', async () => {
+    const h = harness({ plan: FREE_CHECKOUT, review: FREE_REVIEW, payment: FREE_PLACED });
+    const { value } = input({
+      maxPriceCents: 0,
+      binding: binding({ approved: FREE_APPROVED, freeCheckoutEnabled: true }),
+    });
+    const result = await runBrowserUsePlanSignup(value, h.deps);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.outcome).toBe('completed');
+    expect(h.skills()).toHaveLength(3);
+  });
+
+  it('an assisted run names it when it hands over', async () => {
+    const h = harness({
+      plan: CHECKOUT,
+      assisted: {
+        outcome: 'ready_for_parent',
+        detail: 'none',
+        choice_index: 0,
+        page_url: 'https://register.example-rec.test/Enroll',
+        fee_cents: 8488,
+        submitted: false,
+        payment_details_entered: false,
+      },
+    });
+    const { value } = input({ binding: binding({ approved: PRICED_HELD }) });
+    const result = await runBrowserUsePlanForMode({ ...value, mode: 'assisted' }, h.deps);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.outcome).toBe('ready_for_parent');
+    expect(result.detail).toBe('prerequisite_unconfirmed');
+    expect(result.charged).toBe('nothing');
   });
 });
 

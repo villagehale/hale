@@ -34,8 +34,8 @@ import {
   type SignupTermsRow,
   askIsOnTerms,
   loadSignupTerms,
-  prerequisiteAskStamp,
   priorChargeUnknown,
+  someOfferHasTerms,
   termsAskStamp,
 } from '../terms/store';
 import type { SignupTermsShown } from '../terms/types';
@@ -163,14 +163,9 @@ export async function runPlanAsk(
       approvedPriceCents: plan.approvedPriceCents,
       plan: plan.plan,
       asksWaiver: await hasPlanNotice(database, plan.offerId, 'ask_waiver'),
-      ...(terms
-        ? {
-            terms: planReadTerms(terms.shown, {
-              prerequisiteAsked:
-                terms.prerequisiteAskedSeq !== null &&
-                terms.prerequisiteAskedSeq === plan.lastAskedSeq,
-            }),
-          }
+      ...(terms ? { terms: planReadTerms(terms.shown) } : {}),
+      ...((termsRead ? termsRead.status !== 'none' : await offerHasTerms(database, input, plan))
+        ? { labelsFromPage: true }
         : {}),
     },
   });
@@ -302,7 +297,6 @@ const TERMS_DOB_OTHER_QUESTION =
   "The date they gave is someone else's. What is this child's date of birth?";
 const TERMS_DOB_UNCLEAR_QUESTION =
   "The date they gave could not be read for certain. What is this child's date of birth, with the month written out?";
-const TERMS_PREREQUISITE_QUESTION = 'The class needs something first. Has the child done it?';
 const SITE_OPTIONS_QUESTION =
   'Hale cannot email the provider. Which of the options the site currently offers do they want, or should Hale join the waitlist?';
 
@@ -503,7 +497,6 @@ async function approveOnTerms(
     sessions: plan.sessions,
     activityLabel: plan.activityLabel,
     choiceIds: reading.choiceIds,
-    prerequisiteMet: reading.prerequisiteMet ?? null,
     ageFit: shown.age.rule
       ? ageFitFromRule(shown.age.rule, childFor(child), { now: input.now, timeZone })
       : 'unknown',
@@ -530,26 +523,6 @@ async function approveOnTerms(
       refusal: 'age_outside_band',
       terms: writerTerms(shown),
       noLink: true,
-      boundBy,
-    });
-  }
-  if (bound.kind === 'clarify') {
-    // A no to what the class needs answers the ask: asking it again would never end.
-    if (reading.prerequisiteMet === false) {
-      await markOffer(database, {
-        offerId: plan.offerId,
-        familyId: input.familyId,
-        from: 'pending',
-        status: 'handed_back',
-        messageId,
-        now: input.now,
-      });
-      return reply(database, input, deps, plan, 'declined', { boundBy });
-    }
-    return reply(database, input, deps, plan, 'clarify', {
-      question: TERMS_PREREQUISITE_QUESTION,
-      terms: writerTerms(shown),
-      asksPrerequisite: true,
       boundBy,
     });
   }
@@ -869,6 +842,14 @@ export async function childFirstName(
   return child?.name ?? null;
 }
 
+function offerHasTerms(
+  database: Database,
+  input: SignupRunInput,
+  plan: ConversablePlan,
+): Promise<boolean> {
+  return someOfferHasTerms(database, { familyId: input.familyId, offerIds: [plan.offerId] });
+}
+
 async function reply(
   database: Database,
   input: SignupRunInput,
@@ -888,8 +869,6 @@ async function reply(
     siteOptions?: readonly string[];
     /** A refusal that sends the parent nowhere: the class does not fit this child. */
     noLink?: boolean;
-    /** This text asks whether the child has what the class needs. */
-    asksPrerequisite?: boolean;
   },
 ): Promise<SignupRunResult> {
   const choices = extra.choiceIds
@@ -921,6 +900,7 @@ async function reply(
     }),
     ...(extra.terms ? { terms: extra.terms } : {}),
     ...(extra.siteOptions ? { siteOptions: extra.siteOptions } : {}),
+    ...((await offerHasTerms(database, input, plan)) ? { labelsFromPage: true } : {}),
   };
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write(facts);
@@ -967,11 +947,6 @@ async function reply(
     reply: planReplyBody(text, link),
     deliverOnThread: true,
     // Only the text that carries the terms records them as received.
-    stamp:
-      moment === 'offer'
-        ? termsAskStamp(database, asked)
-        : extra.asksPrerequisite
-          ? prerequisiteAskStamp(database, asked)
-          : askStamp(database, asked),
+    stamp: moment === 'offer' ? termsAskStamp(database, asked) : askStamp(database, asked),
   };
 }

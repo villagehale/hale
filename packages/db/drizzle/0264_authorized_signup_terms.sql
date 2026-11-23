@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS "authorized_signup_terms" (
   "approved" jsonb,
   "approving_message_id" text,
   "asked_message_id" uuid REFERENCES "channel_messages"("id") ON DELETE set null,
-  "prerequisite_asked_seq" bigint,
   "approved_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "authorized_signup_terms_approved_check" CHECK (
@@ -23,7 +22,6 @@ CREATE TABLE IF NOT EXISTS "authorized_signup_terms" (
     AND ("approved" IS NULL) = ("approving_message_id" IS NULL)
   )
 );--> statement-breakpoint
-ALTER TABLE "authorized_signup_terms" ADD COLUMN IF NOT EXISTS "prerequisite_asked_seq" bigint;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "authorized_signup_terms_offer_uniq"
   ON "authorized_signup_terms" ("offer_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "authorized_signup_terms_family_idx"

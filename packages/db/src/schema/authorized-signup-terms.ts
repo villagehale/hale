@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigint,
   check,
   index,
   jsonb,
@@ -98,7 +97,9 @@ export type SignupTermsHold =
   | 'age_unconfirmed'
   | 'site_option'
   | 'prior_charge_unknown'
-  | 'price_unstated';
+  | 'price_unstated'
+  /** The class needs something first. Only the parent knows the child has it. */
+  | 'prerequisite_unconfirmed';
 
 /** What the yes bound. Written by code from `shown` and the parent's words, once. */
 export interface SignupTermsApproved {
@@ -108,7 +109,6 @@ export interface SignupTermsApproved {
   quantity: 1;
   /** The most this approval allows. Becomes `plan_max_price_cents`. Never a figure to quote. */
   maxCents: number;
-  prerequisiteConfirmed: boolean | null;
   countsAgainstSeason: boolean;
   /** The season this yes took a sign-up from. Given back if no run reached the provider. */
   seasonKey: string | null;
@@ -152,7 +152,6 @@ export const authorizedSignupTerms = pgTable(
      * The ask number of the text that asked whether the child has what the class needs.
      * While it is still this offer's last asked number, a plain yes answers that question.
      */
-    prerequisiteAskedSeq: bigint('prerequisite_asked_seq', { mode: 'number' }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

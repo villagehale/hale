@@ -358,6 +358,46 @@ describe('page words on their way to the writer', () => {
     expect(seen.run.confirmed).toBe(true);
   });
 
+  it('labels from a page are marked with no terms in hand, and bring the skill', () => {
+    const session = {
+      label: dirty('Public Speaking Sunday'),
+      startsAt: '2026-03-29T10:00:00',
+      endsAt: '2026-03-29T11:00:00',
+      priceCents: null,
+    };
+    const facts: PlanReplyFacts = {
+      ...FACTS,
+      moment: 'declined',
+      sessions: [session],
+      labelsFromPage: true,
+    };
+    const seen = sent(facts);
+    expect(seen).not.toHaveProperty('labelsFromPage');
+    expect(seen).not.toHaveProperty('terms');
+    expect(seen.sessions[0]).not.toHaveProperty('label');
+    expect(seen.sessions[0].untrusted_label.startsWith('Public Speaking Sunday')).toBe(true);
+    expect(seen.sessions[0].untrusted_label).not.toContain('evil.example');
+    expect(seen.sessions[0].untrusted_label).not.toContain('\u200B');
+    expect(planReplyUsesTermsSkill(facts)).toBe(true);
+  });
+
+  it('a reply listing site options marks the session labels beside them', () => {
+    const session = {
+      label: dirty('Public Speaking Sunday'),
+      startsAt: '2026-03-29T10:00:00',
+      endsAt: '2026-03-29T11:00:00',
+      priceCents: null,
+    };
+    const seen = sent({
+      ...FACTS,
+      moment: 'clarify',
+      sessions: [session],
+      siteOptions: ['Public Speaking Monday'],
+    });
+    expect(seen.sessions[0]).not.toHaveProperty('label');
+    expect(seen.sessions[0].untrusted_label).not.toContain('evil.example');
+  });
+
   it('a request with neither terms nor options is byte for byte what it was', () => {
     const facts: PlanReplyFacts = { ...FACTS, moment: 'clarify', question: 'Which one?' };
     expect(planReplyUserMessage(facts, null)).toBe(JSON.stringify({ facts, violation: null }));

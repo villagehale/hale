@@ -51,8 +51,6 @@ const modelYes = (text: string, maxPriceCents: number | null, choiceIds = ['s-1'
   waiverSaid: null,
   waiverAccepted: false,
   question: null,
-  prerequisiteSaid: null as string | null,
-  prerequisiteMet: null as boolean | null,
 });
 
 function run(
@@ -71,7 +69,7 @@ function run(
     plan: null,
     asksWaiver: false,
     sessions: SESSION_ROWS,
-    terms: planReadTerms(shown, { prerequisiteAsked: false }),
+    terms: planReadTerms(shown),
   };
   const reading = toPlanReading(
     { ...modelYes(text, maxPriceCents, choiceIds), ...modelOver },
@@ -85,7 +83,6 @@ function run(
     sessions: SESSION_ROWS,
     activityLabel: 'Parent and Tot Swim',
     choiceIds: reading.choiceIds,
-    prerequisiteMet: reading.prerequisiteMet ?? null,
     ageFit: 'in_band',
     taxBound: { kind: 'rate', basisPoints: 1300 },
     timeZone: 'America/Toronto',
@@ -103,29 +100,20 @@ const EXACT = (cents: number, plusTax: unknown = null) => ({
   plusTax,
 });
 
-describe('a prerequisite Hale has not asked about', () => {
+describe('a class that needs something first', () => {
   const needsLevel: SignupTermsShown = {
     ...shownWith(session('s-1', 12000)),
     prerequisite: { required: 'yes', quote: 'Must have completed Level 1' },
   };
 
-  it('a bare yes the model marked as met binds nothing and asks', () => {
-    const { reading, bound } = run(needsLevel, 'yes', 12000, ['s-1'], {
-      prerequisiteSaid: 'yes',
-      prerequisiteMet: true,
+  for (const text of ['yes', 'yes, she finished level 1']) {
+    it(`"${text}" binds the price and the stop at checkout`, () => {
+      const { reading, bound } = run(needsLevel, text, 12000, ['s-1'], { said: 'yes' });
+      expect(reading?.verdict).toBe('approve');
+      expect(bound?.kind === 'bound' && bound.approved.hold).toBe('prerequisite_unconfirmed');
+      expect(amountOf(bound)).toEqual(EXACT(12000));
     });
-    expect(reading).toMatchObject({ verdict: 'approve', prerequisiteMet: null });
-    expect(bound?.kind).toBe('clarify');
-  });
-
-  it('their own words on it, apart from the go-ahead, bind', () => {
-    const { bound } = run(needsLevel, 'yes, she finished level 1', 12000, ['s-1'], {
-      said: 'yes',
-      prerequisiteSaid: 'she finished level 1',
-      prerequisiteMet: true,
-    });
-    expect(bound?.kind).toBe('bound');
-  });
+  }
 });
 
 describe('what a yes to a stated price binds', () => {

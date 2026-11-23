@@ -85,11 +85,16 @@ export const signupTermsApprovedSchema = z.object({
     .min(1),
   quantity: z.literal(1),
   maxCents: z.number().int().nonnegative(),
-  prerequisiteConfirmed: z.boolean().nullable(),
   countsAgainstSeason: z.boolean(),
   seasonKey: z.string().nullable(),
   hold: z
-    .enum(['age_unconfirmed', 'site_option', 'prior_charge_unknown', 'price_unstated'])
+    .enum([
+      'age_unconfirmed',
+      'site_option',
+      'prior_charge_unknown',
+      'price_unstated',
+      'prerequisite_unconfirmed',
+    ])
     .nullable(),
 });
 
@@ -98,8 +103,6 @@ export interface SignupTermsRow {
   shown: SignupTermsShown;
   approved: SignupTermsApproved | null;
   askedMessageId: string | null;
-  /** The number of the text that asked about the prerequisite. See {@link prerequisiteAskStamp}. */
-  prerequisiteAskedSeq: number | null;
 }
 
 /**
@@ -127,7 +130,6 @@ export async function loadSignupTerms(
     shown: unknown;
     approved: unknown;
     askedMessageId: string | null;
-    prerequisiteAskedSeq: number | null;
   }[];
   try {
     rows = await database
@@ -136,7 +138,6 @@ export async function loadSignupTerms(
         shown: terms.shown,
         approved: terms.approved,
         askedMessageId: terms.askedMessageId,
-        prerequisiteAskedSeq: terms.prerequisiteAskedSeq,
       })
       .from(terms)
       .where(and(eq(terms.offerId, input.offerId), eq(terms.familyId, input.familyId)))
@@ -159,7 +160,6 @@ export async function loadSignupTerms(
       shown: shown.data,
       approved: approved === null ? null : (approved.data as SignupTermsApproved),
       askedMessageId: row.askedMessageId,
-      prerequisiteAskedSeq: row.prerequisiteAskedSeq,
     },
   };
 }
@@ -219,35 +219,6 @@ export async function someOfferHasTerms(
     if (isMissingTable(err)) return false;
     throw err;
   }
-}
-
-/**
- * The stamp for the text that asks whether the child has what the class needs. Once that
- * text is kept, its number goes on the terms row: while it stays this offer's last asked
- * number, the parent's plain yes answers that question. A write that fails loses only that:
- * the question is asked once more.
- */
-export function prerequisiteAskStamp(database: Database, asks: AskedAbout): SendStamp {
-  return askStamp(database, asks, async (seq) => {
-    const terms = schema.authorizedSignupTerms;
-    try {
-      await database
-        .update(terms)
-        .set({ prerequisiteAskedSeq: seq })
-        .where(
-          and(
-            eq(terms.familyId, asks.familyId),
-            inArray(terms.offerId, [...asks.offerIds]),
-            isNull(terms.approvedAt),
-          ),
-        );
-    } catch (err) {
-      console.warn(
-        { error: err instanceof Error ? err.name : 'unknown' },
-        'signup terms: the prerequisite question was not recorded',
-      );
-    }
-  });
 }
 
 /**

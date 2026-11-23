@@ -223,7 +223,7 @@ async function driveAssisted(
     await input.onStep({ step: 'ready', choiceIndex, feeCents: output.fee_cents });
     return end(
       'ready_for_parent',
-      unstated ? (input.binding?.approved.hold ?? 'price_unstated') : 'none',
+      input.binding?.approved.hold ?? (unstated ? 'price_unstated' : 'none'),
       ready,
     );
   } catch (error) {

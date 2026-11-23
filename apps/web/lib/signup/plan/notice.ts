@@ -21,6 +21,7 @@ import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { markLoginLinkSent } from '../login-link/store';
 import { AskOrderUnmarked, type AskedAbout, type SendStamp, askStamp } from '../store';
 import { boundPriceCents, writerTerms } from '../terms/ask';
+import { someOfferHasTerms } from '../terms/store';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
@@ -148,6 +149,14 @@ export function createPlanNotifier(
         parentUserId: notice.parentUserId,
       }),
       ...(terms ? { terms } : {}),
+      // A run can end before it read the row: the labels are still a page's.
+      ...(!terms &&
+      (await someOfferHasTerms(database, {
+        familyId: notice.familyId,
+        offerIds: [notice.offerId],
+      }))
+        ? { labelsFromPage: true }
+        : {}),
     });
     if (text === null) {
       console.warn({ offerId: notice.offerId, code: 'unwritten' }, 'signup plans: notice failed');

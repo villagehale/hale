@@ -123,11 +123,11 @@ async function main() {
       userMessage: reader.signupPlanReadUserMessage({ text: fixture.text, offer: fixture.offer }),
       toolName: reader.SIGNUP_PLAN_READ_TOOL,
       toolDescription: reader.SIGNUP_PLAN_READ_TOOL_DESCRIPTION,
-      toolSchema: reader.SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA,
+      toolSchema: reader.SIGNUP_PLAN_READ_TOOL_SCHEMA,
       maxTokens: reader.SIGNUP_PLAN_READ_MAX_TOKENS,
     });
     if (dry) continue;
-    const parsed = reader.signupPlanReadTermsSchema.safeParse(call.value);
+    const parsed = reader.signupPlanReadSchema.safeParse(call.value);
     const reading = parsed.success
       ? reader.toPlanReading(parsed.data, fixture.offer, fixture.text)
       : null;

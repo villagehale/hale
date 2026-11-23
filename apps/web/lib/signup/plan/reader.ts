@@ -5,7 +5,8 @@ import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shap
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
 import { moneyCentsWritten } from '../terms/money';
-import { MAX_PREREQUISITE_QUOTE_CHARS, untrustedPageWords } from '../terms/page-words';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from '../site-choices';
+import { untrustedPageWords } from '../terms/page-words';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -52,6 +53,8 @@ export interface PlanReadOffer {
   asksWaiver: boolean;
   /** VIL-715 · the terms the ask stated. Absent on an ask without them. */
   terms?: PlanReadTerms;
+  /** VIL-715 · this offer has a terms row, so a page wrote its session labels. Code only. */
+  labelsFromPage?: boolean;
 }
 
 /** VIL-715 · what the ask told the parent, for reading their yes against it. */
@@ -60,10 +63,6 @@ export interface PlanReadTerms {
   sessionPrices: { sessionId: string; cents: number[] }[];
   /** Sessions that cost nothing: a yes to only these has a $0 maximum. */
   freeSessionIds: string[];
-  prerequisiteRequired: boolean;
-  prerequisiteQuote: string | null;
-  /** The last text Hale sent about this ask asked whether the child has it. */
-  prerequisiteAsked: boolean;
 }
 
 /**
@@ -80,8 +79,6 @@ export type PlanReading =
       maxPriceCents: number;
       waiverAccepted: boolean;
       named: PlanNaming | null;
-      /** VIL-715 · on an ask with terms: their own words on the prerequisite. */
-      prerequisiteMet?: boolean | null;
     }
   | { verdict: 'take_back'; named: PlanNaming | null }
   | { verdict: 'unclear'; question: string; named: PlanNaming | null }
@@ -149,43 +146,14 @@ export const SIGNUP_PLAN_READ_TOOL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** The read of an ask with terms: the prerequisite fields are added. */
-export const signupPlanReadTermsSchema = signupPlanReadSchema
-  .extend({
-    prerequisiteSaid: z.string().nullable(),
-    prerequisiteMet: z.boolean().nullable(),
-  })
-  .strict();
-
-export const SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA = {
-  ...SIGNUP_PLAN_READ_TOOL_SCHEMA,
-  properties: {
-    ...SIGNUP_PLAN_READ_TOOL_SCHEMA.properties,
-    prerequisiteSaid: { type: ['string', 'null'] },
-    prerequisiteMet: { type: ['boolean', 'null'] },
-  },
-  required: [...SIGNUP_PLAN_READ_TOOL_SCHEMA.required, 'prerequisiteSaid', 'prerequisiteMet'],
-} as const;
-
-type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
-  prerequisiteSaid?: string | null;
-  prerequisiteMet?: boolean | null;
-};
-
 /** An offer's activity name as a reader may see it: a page or the coach model wrote it. */
 export function untrustedActivityLabel(raw: string | null): string | null {
   return untrustedPageWords(raw, MAX_ACTIVITY_LABEL_CHARS);
 }
 
-/** The terms as the reader sees them: the prerequisite's words are a web page's. */
-function readerTerms({ prerequisiteQuote, ...terms }: PlanReadTerms) {
-  return {
-    ...terms,
-    untrusted_prerequisite_quote: untrustedPageWords(
-      prerequisiteQuote,
-      MAX_PREREQUISITE_QUOTE_CHARS,
-    ),
-  };
+/** Terms on the ask, or a terms row behind it: a page wrote its session labels. */
+export function planReadUsesTermsSkill(offer: PlanReadOffer): boolean {
+  return offer.terms !== undefined || offer.labelsFromPage === true;
 }
 
 /** The user turn: the plan the parent is answering, then their words. No child data. */
@@ -199,14 +167,16 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
       approvedPriceCents: input.offer.approvedPriceCents,
       sessions: input.offer.sessions.map((session) => ({
         id: session.id,
-        label: withoutLinks(session.label),
+        ...(planReadUsesTermsSkill(input.offer)
+          ? { untrusted_label: untrustedPageWords(session.label, SITE_CHOICE_LABEL_MAX_CHARS) }
+          : { label: withoutLinks(session.label) }),
         startsAt: session.startsAt,
         endsAt: session.endsAt,
         full: session.full,
         priceCents: session.priceCents,
       })),
       plan: input.offer.plan,
-      ...(input.offer.terms ? { terms: readerTerms(input.offer.terms) } : {}),
+      ...(input.offer.terms ? { terms: input.offer.terms } : {}),
     },
     text: input.text.slice(0, MAX_TEXT_CHARS),
   });
@@ -318,7 +288,7 @@ function planNaming(
  * unreadable otherwise. A waiver the parent's words do not grant is not ticked.
  */
 export function toPlanReading(
-  raw: RawPlanRead,
+  raw: z.infer<typeof signupPlanReadSchema>,
   offer: PlanReadOffer,
   text: string,
 ): PlanReading | null {
@@ -353,23 +323,10 @@ export function toPlanReading(
       maxPriceCents: max,
       waiverAccepted: waiverGranted(raw, offer, text),
       named,
-      ...(offer.terms ? { prerequisiteMet: prerequisiteAnswer(raw, offer.terms, text) } : {}),
     };
   }
   const question = cleanQuestion(raw.question);
   return question ? { verdict: 'unclear', question, named } : null;
-}
-
-/**
- * Their own words on the prerequisite, whole. A model's verdict without them is nothing.
- * Until Hale has asked the question, those words must also be no part of the go-ahead, as
- * for the waiver: a yes to the ask says nothing about what the class needs.
- */
-function prerequisiteAnswer(raw: RawPlanRead, terms: PlanReadTerms, text: string): boolean | null {
-  const { prerequisiteSaid, said } = raw;
-  if (prerequisiteSaid == null || !quotesParentWords(text, prerequisiteSaid)) return null;
-  if (!terms.prerequisiteAsked && said !== null && nested(said, prerequisiteSaid)) return null;
-  return raw.prerequisiteMet ?? null;
 }
 
 /**
@@ -426,37 +383,24 @@ export function createPlanReader(
       let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_READ_SKILL);
-        system = input.offer.terms
+        system = planReadUsesTermsSkill(input.offer)
           ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_READ_TERMS_SKILL)).instructions}`
           : skill.instructions;
       } catch (err) {
         return unreadable('skill_unavailable', className(err));
       }
       try {
-        const asked = {
+        const { value } = await forceToolJson({
           client: resolved,
           lane: pickLane(skill.meta.task),
           system,
           userMessage: signupPlanReadUserMessage(input),
           toolName: SIGNUP_PLAN_READ_TOOL,
           toolDescription: SIGNUP_PLAN_READ_TOOL_DESCRIPTION,
+          inputJsonSchema: SIGNUP_PLAN_READ_TOOL_SCHEMA,
+          schema: signupPlanReadSchema,
           maxTokens: SIGNUP_PLAN_READ_MAX_TOKENS,
-        };
-        const value: RawPlanRead = input.offer.terms
-          ? (
-              await forceToolJson({
-                ...asked,
-                inputJsonSchema: SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA,
-                schema: signupPlanReadTermsSchema,
-              })
-            ).value
-          : (
-              await forceToolJson({
-                ...asked,
-                inputJsonSchema: SIGNUP_PLAN_READ_TOOL_SCHEMA,
-                schema: signupPlanReadSchema,
-              })
-            ).value;
+        });
         return toPlanReading(value, input.offer, input.text) ?? unreadable('unreadable');
       } catch (err) {
         return unreadable('model_failed', className(err));

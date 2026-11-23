@@ -176,10 +176,7 @@ export function writerTerms(
 }
 
 /** What the plan reader is told the ask stated. */
-export function planReadTerms(
-  shown: SignupTermsShown,
-  context: { prerequisiteAsked: boolean },
-): PlanReadTerms {
+export function planReadTerms(shown: SignupTermsShown): PlanReadTerms {
   return {
     sessionPrices: shown.sessions.map((session) => ({
       sessionId: session.sessionId,
@@ -192,9 +189,6 @@ export function planReadTerms(
           ratesFor(shown.residency, session.rates).every((row) => row.cents === 0),
       )
       .map((session) => session.sessionId),
-    prerequisiteRequired: shown.prerequisite.required === 'yes',
-    prerequisiteQuote: shown.prerequisite.quote,
-    prerequisiteAsked: context.prerequisiteAsked,
   };
 }
 

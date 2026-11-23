@@ -34,7 +34,6 @@ const input = (over: Partial<BindInput> = {}): BindInput => ({
   sessions: [{ id: 's-1', label: 'Sat 9:30', startsAt: '2026-03-28T09:30:00' }],
   activityLabel: null,
   choiceIds: ['s-1'],
-  prerequisiteMet: null,
   ageFit: 'in_band',
   taxBound: { kind: 'rate', basisPoints: 1300 },
   timeZone: 'America/Toronto',
@@ -148,18 +147,46 @@ describe('bindApproval', () => {
     expect(got.kind === 'bound' && got.approved.maxCents).toBe(33627 + 4372 + 1);
   });
 
-  it('an unconfirmed prerequisite does not bind', () => {
-    const needs = shown({ prerequisite: { required: 'yes', quote: 'Level 2 required' } });
-    expect(bindApproval(input({ shown: needs, prerequisiteMet: null }))).toEqual({
-      kind: 'clarify',
-      reason: 'prerequisite',
+  describe('a class that needs something first', () => {
+    const needs = { prerequisite: { required: 'yes' as const, quote: 'Level 2 required' } };
+    const holdOf = (result: ReturnType<typeof bindApproval>) =>
+      result.kind === 'bound' ? result.approved.hold : result.kind;
+
+    it('binds, and holds at checkout', () => {
+      expect(holdOf(bindApproval(input({ shown: shown(needs) })))).toBe('prerequisite_unconfirmed');
     });
-    expect(bindApproval(input({ shown: needs, prerequisiteMet: false }))).toEqual({
-      kind: 'clarify',
-      reason: 'prerequisite',
+
+    it('a page that says nothing about one, or says none, holds nothing', () => {
+      for (const required of ['no', 'unknown'] as const) {
+        const page = shown({ prerequisite: { required, quote: null } });
+        expect(holdOf(bindApproval(input({ shown: page })))).toBeNull();
+      }
     });
-    const met = bindApproval(input({ shown: needs, prerequisiteMet: true }));
-    expect(met.kind === 'bound' && met.approved.prerequisiteConfirmed).toBe(true);
+
+    it('comes after an earlier charge and a site option, and before the other holds', () => {
+      const site = shown({
+        ...needs,
+        sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'site_option' }],
+      });
+      const unpriced = shown({
+        ...needs,
+        sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
+      });
+      expect(holdOf(bindApproval(input({ shown: { ...site, priorChargeUnknown: true } })))).toBe(
+        'prior_charge_unknown',
+      );
+      expect(holdOf(bindApproval(input({ shown: site })))).toBe('site_option');
+      expect(holdOf(bindApproval(input({ shown: shown(needs), ageFit: 'unknown' })))).toBe(
+        'prerequisite_unconfirmed',
+      );
+      expect(holdOf(bindApproval(input({ shown: unpriced })))).toBe('prerequisite_unconfirmed');
+    });
+
+    it('survives the stored approval schema', () => {
+      const bound = bindApproval(input({ shown: shown(needs) }));
+      if (bound.kind !== 'bound') throw new Error(bound.kind);
+      expect(signupTermsApprovedSchema.parse(bound.approved).hold).toBe('prerequisite_unconfirmed');
+    });
   });
 
   it('a child now outside the band does not bind', () => {

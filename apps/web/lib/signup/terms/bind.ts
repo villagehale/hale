@@ -22,8 +22,6 @@ export interface BindInput {
   /** The offer's own name for the class: the program name when the page gave none. */
   activityLabel: string | null;
   choiceIds: readonly string[];
-  /** The parent's own words confirmed the prerequisite. Null when they said nothing about it. */
-  prerequisiteMet: boolean | null;
   /** The age check run again at this yes. */
   ageFit: AgeEligibility;
   /** The tax a `plus_tax` rate may add. */
@@ -36,9 +34,7 @@ export type BindResult =
   /** The offer's text is not known to have reached them: send the terms, bind nothing. */
   | { kind: 'terms_unsent' }
   /** A date of birth given since the ask puts the child outside the band. */
-  | { kind: 'outside_band' }
-  /** One question, and the offer stays open. */
-  | { kind: 'clarify'; reason: 'prerequisite' };
+  | { kind: 'outside_band' };
 
 /** The rates this family can be charged: their own when residency is known, else all. */
 export function ratesFor(
@@ -74,6 +70,8 @@ function holdFor(
 ): SignupTermsHold | null {
   if (input.shown.priorChargeUnknown) return 'prior_charge_unknown';
   if (picked.some((session) => session.source === 'site_option')) return 'site_option';
+  // Hale never decides a child has met this. The parent, who knows, finishes at checkout.
+  if (input.shown.prerequisite.required === 'yes') return 'prerequisite_unconfirmed';
   if (input.ageFit === 'unknown') return 'age_unconfirmed';
   return hasUnstatedPrice(sessions) ? 'price_unstated' : null;
 }
@@ -81,10 +79,6 @@ function holdFor(
 export function bindApproval(input: BindInput): BindResult {
   if (input.askedMessageId === null) return { kind: 'terms_unsent' };
   if (input.ageFit === 'outside_band') return { kind: 'outside_band' };
-  const needsPrerequisite = input.shown.prerequisite.required === 'yes';
-  if (needsPrerequisite && input.prerequisiteMet !== true) {
-    return { kind: 'clarify', reason: 'prerequisite' };
-  }
   const wall = new Map(
     input.sessions.map((session) => [
       session.id,
@@ -124,7 +118,6 @@ export function bindApproval(input: BindInput): BindResult {
       maxCents: hasUnstatedPrice(sessions)
         ? 0
         : Math.max(...sessions.map((session) => mostAllowedCents(session.amount))),
-      prerequisiteConfirmed: needsPrerequisite ? true : null,
       countsAgainstSeason: input.shown.countsAgainstSeason,
       seasonKey: null,
       hold: holdFor(input, picked, sessions),

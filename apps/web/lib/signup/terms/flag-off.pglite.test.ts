@@ -11,11 +11,7 @@ import {
 import { type BrowserUsePlanInput, runBrowserUsePlanSignup } from '../browser-use/plan-engine';
 import { offerSignupFromFacts } from '../offer-from-facts';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from '../plan/flag';
-import {
-  SIGNUP_PLAN_READ_TOOL_SCHEMA,
-  type PlanReadOffer,
-  signupPlanReadUserMessage,
-} from '../plan/reader';
+import { type PlanReadOffer, signupPlanReadUserMessage } from '../plan/reader';
 import {
   REGISTRATION_FREE_CHECKOUT_ENABLED_ENV,
   REGISTRATION_FREE_CHECKOUT_FAMILIES_ENV,
@@ -251,7 +247,6 @@ describe('with the flag off', () => {
       asksWaiver: false,
     };
     expect(signupPlanReadUserMessage({ text: 'yes', offer })).not.toContain('terms');
-    expect(Object.keys(SIGNUP_PLAN_READ_TOOL_SCHEMA.properties)).not.toContain('prerequisiteMet');
     expect(
       signupPlanReadUserMessage({
         text: 'yes',
@@ -260,9 +255,6 @@ describe('with the flag off', () => {
           terms: {
             sessionPrices: [{ sessionId: 's-1', cents: [8488] }],
             freeSessionIds: [],
-            prerequisiteRequired: false,
-            prerequisiteQuote: null,
-            prerequisiteAsked: false,
           },
         },
       }),
