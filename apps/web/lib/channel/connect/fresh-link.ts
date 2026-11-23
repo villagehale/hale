@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { claimGoogleSend, sendClaimedGoogleText } from '~/lib/channel/connect/google-send-receipt';
 import {
   offerConnectorLink,
   offerConnectorLinks,
@@ -45,7 +46,11 @@ export const FRESH_CONNECTOR_LINK_TEMPLATE_KEY = 'connector:fresh_link';
 
 export interface FreshLinkPorts {
   transport: ChannelTransport;
-  imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
+  imessage?: (input: {
+    chatId: string;
+    body: string;
+    sendKey?: string;
+  }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
   /** #868: writes the both-links text. Absent → that text is not sent. */
   saidLine?: SaidLineWriter;
@@ -61,12 +66,19 @@ export type FreshLinkOutcome =
   | 'no_send_target'
   | 'no_chat'
   | 'send_failed'
+  /** VIL-721. A stop, an erasure or a line hold arrived before the send. Nothing went. */
+  | 'gated'
   | 'errored';
 
 export function defaultFreshLinkPorts(): FreshLinkPorts {
   return {
     transport: createOutboundTransport(),
-    imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
+    imessage: (input) =>
+      sendLinqChatMessage({
+        chatId: input.chatId,
+        text: input.body,
+        ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+      }),
     threadMessage: threadProactiveMessage,
     saidLine: createSaidLineWriter(() =>
       budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
@@ -153,6 +165,9 @@ async function sendFresh(
 
   const body = minted.body;
   const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
+  if (args.provider === 'google') {
+    return sendFreshGoogleLink(database, args, ports, { phone, chatId, channel, body });
+  }
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -214,6 +229,74 @@ async function sendFresh(
     { familyId: args.familyId, provider: args.provider },
     'connector link: fresh link sent',
   );
+  return 'sent';
+}
+
+/** VIL-721. The one link's fresh text: sent only on Linq's word (google-send-receipt.ts). */
+async function sendFreshGoogleLink(
+  database: Database,
+  args: { familyId: string; parentUserId: string; now: Date },
+  ports: FreshLinkPorts,
+  out: { phone: string; chatId: string | null; channel: 'sms' | 'imessage'; body: string },
+): Promise<FreshLinkOutcome> {
+  const claimed = await claimGoogleSend(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    channel: out.channel,
+    category: 'reply',
+    templateKey: FRESH_CONNECTOR_LINK_TEMPLATE_KEY,
+    dedupeKey: null,
+    providerChatId: out.chatId,
+    now: args.now,
+  });
+  if (claimed.kind !== 'try') return 'errored';
+  let linkOmitted = false;
+  const outcome = await sendClaimedGoogleText(
+    database,
+    claimed.claim,
+    {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      now: args.now,
+      channel: out.channel,
+      chatId: out.chatId,
+      surface: 'fresh_link',
+    },
+    async (sendKey) => {
+      if (out.channel === 'imessage') {
+        const send = ports.imessage;
+        if (!send || !out.chatId) throw new LinqSendError('imessage_not_configured', 0, true);
+        return send({ chatId: out.chatId, body: out.body, sendKey });
+      }
+      const sent = await sendResolvingNewChat(ports.transport, {
+        to: out.phone,
+        body: out.body,
+        sendKey,
+      });
+      linkOmitted = sent.linkOmitted !== undefined;
+      return sent;
+    },
+  );
+  if (outcome.status === 'gated') return 'gated';
+  if (outcome.status !== 'accepted') {
+    console.error(
+      { familyId: args.familyId, provider: 'google', code: outcome.code },
+      'connector link: fresh link did not reach the parent',
+    );
+    return 'send_failed';
+  }
+  await ports.threadMessage(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    body: linkOmitted ? plainTextWithoutLinks(out.body) : out.body,
+  });
+  if (linkOmitted) {
+    console.warn(
+      { familyId: args.familyId, provider: 'google' },
+      'connector link: fresh link text sent without its link',
+    );
+    return 'link_omitted';
+  }
   return 'sent';
 }
 

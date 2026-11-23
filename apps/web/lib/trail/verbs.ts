@@ -180,6 +180,9 @@ export const AUDIT_VERBS = [
   // VIL-721. The kids' names and ages as the model read them, kept with their provenance.
   // `after` is counts only: no name, no age.
   'onboarding_kids_kept',
+  // VIL-721. A text about connecting Google did not reach this parent. `after` is the
+  // surface and refused/unconfirmed only: no words, no link.
+  'google_connect_text_unsent',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -865,6 +868,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   onboarding_kids_kept: {
     sentence: "you told Hale your kids' names and ages, and it kept that",
     family: 'done',
+  },
+  google_connect_text_unsent: {
+    sentence: 'Hale could not text you about connecting Google',
+    family: 'problem',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },

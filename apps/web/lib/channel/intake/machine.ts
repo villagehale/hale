@@ -2983,6 +2983,8 @@ async function friendColdTurn(
         carried = true;
       } else {
         console.info({ google: label }, 'onboarding-friend: google card not sent');
+        // The words already went, or a stop or an erasure landed: nothing more goes.
+        if (label === 'link_unsent' || label === 'gated') carried = true;
       }
     } else {
       console.info({ reason: gate.reason, ask: 'google' }, 'onboarding-friend: connector held');

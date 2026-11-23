@@ -29,12 +29,14 @@ const PHONE = '+14165551234';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const T0 = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
+const LINK = /https:\/\/\S+/g;
 
 function conversation(
   database: TestDb['database'],
   compose: (input: FriendVoiceInput) => ScriptedTurn = v2Turn,
 ) {
   const transport = new FakeTransport();
+  const events: { event: string; properties: Record<string, unknown> }[] = [];
   let clock = new Date(T0.getTime() - 60_000);
   vi.stubGlobal(
     'fetch',
@@ -74,16 +76,21 @@ function conversation(
         return compose(input);
       },
     },
-    capture: async () => 'sent' as const,
+    capture: async (event, _distinctId, properties) => {
+      events.push({ event, properties: (properties ?? {}) as Record<string, unknown> });
+      return 'sent' as const;
+    },
     now: clock,
   });
   let sequence = 0;
   return {
     transport,
+    events,
     say: async (body: string) => {
       sequence += 1;
       clock = new Date(clock.getTime() + 60_000);
       vi.setSystemTime(clock);
+      const sentFrom = transport.bodies().length;
       const inbound: InboundMessage = {
         from: PHONE,
         body,
@@ -103,8 +110,13 @@ function conversation(
         },
         inbound,
       );
+      return { bodies: transport.bodies().slice(sentFrom) };
     },
   };
+}
+
+function linksIn(bodies: readonly string[]): string[] {
+  return bodies.flatMap((body) => body.match(LINK) ?? []);
 }
 
 describe('VIL-721 what the walk keeps, on Postgres', () => {
@@ -137,6 +149,53 @@ describe('VIL-721 what the walk keeps, on Postgres', () => {
   const facts = () => db.database.select().from(schema.familyMemoryFacts);
   const audited = (action: string) =>
     db.database.select().from(schema.auditLog).where(eq(schema.auditLog.actionTaken, action));
+
+  it('walks postal, kids, ages, the map, activities, name, ONE Google link, schedule, co-parent', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    const talk = conversation(db.database);
+    expect((await talk.say('hi')).bodies.join('\n')).toMatch(/postal code\?$/);
+    expect((await talk.say('M5V 2T6')).bodies.join('\n')).toMatch(/kids' names\?$/);
+    expect((await talk.say('Maya')).bodies.join('\n')).toMatch(/How old are your kids\?$/);
+
+    // The map is the first useful thing, and the activities ask follows it on its own.
+    const shown = await talk.say("she's 4");
+    expect(shown.bodies.length).toBeGreaterThanOrEqual(2);
+    expect(shown.bodies.slice(0, -1).join('\n')).toContain('Swim at the rec centre');
+    expect(shown.bodies.slice(0, -1).join('\n')).not.toContain('?');
+    expect(shown.bodies.at(-1)).toMatch(/already do.*\?$/);
+
+    // First text at T0, the map on the fourth text, three minutes in.
+    const completed = talk.events.find((entry) => entry.event === 'intake_completed');
+    expect(completed?.properties.duration_s).toBe(180);
+    expect(Number(completed?.properties.duration_s)).toBeLessThan(600);
+
+    const named = await talk.say('she swims on Saturdays');
+    expect(named.bodies.join('\n')).toMatch(/What should I call you\?$/);
+
+    // One link, for both. No per-provider link, ever.
+    const google = await talk.say('Dana');
+    const googleText = google.bodies.join('\n');
+    expect(googleText.replace(LINK, '')).toMatch(/connect Gmail and your calendar/);
+    expect(googleText).toMatch(/unverified app/);
+    expect(linksIn(google.bodies)).toHaveLength(1);
+    expect(linksIn(google.bodies)[0]).toContain('to=google');
+
+    const yes = await talk.say('yes');
+    expect(yes.bodies.join('\n')).toContain('Tap it when');
+    expect(yes.bodies.join('\n')).not.toContain('?');
+    expect(linksIn(yes.bodies)).toEqual([]);
+
+    expect((await talk.say('ok')).bodies.join('\n')).toMatch(/weekly reminder\?$/);
+    expect((await talk.say('yes')).bodies.join('\n')).toBe(
+      'Done, a weekly reminder for the first one.',
+    );
+    expect((await talk.say('sounds good')).bodies.join('\n')).toMatch(/other parent\?$/);
+
+    const all = talk.transport.bodies();
+    expect(linksIn(all)).toHaveLength(1);
+    expect(all.join('\n')).not.toMatch(/to=gmail|to=gcal/);
+    expect(all.join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
+  });
 
   it('lit, keeps the name, the age and the activity, each with where it came from', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');

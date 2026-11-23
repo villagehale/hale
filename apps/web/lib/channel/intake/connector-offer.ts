@@ -1,5 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import {
+  claimGoogleSend,
+  freeGoogleSendKey,
+  releaseGoogleClaim,
+  sendClaimedGoogleText,
+} from '~/lib/channel/connect/google-send-receipt';
 import { offerConnectorLinks, offerGoogleBundleLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -84,7 +90,11 @@ export type ConnectorOfferOutcome =
   | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The message did not reach the parent. `code` is the provider's when the provider
    * refused it, and `unexpected` when something else on this path threw. */
-  | { status: 'not_sent'; reason: 'send_failed'; code: string };
+  | { status: 'not_sent'; reason: 'send_failed'; code: string }
+  /** VIL-721. A stop, an erasure or a line hold arrived before the send. Nothing went. */
+  | { status: 'not_sent'; reason: 'gated' }
+  /** VIL-721. The prose reached the parent and its link did not. The offer stays open. */
+  | { status: 'not_sent'; reason: 'link_unsent' };
 
 type NotSentReason = Extract<ConnectorOfferOutcome, { status: 'not_sent' }>['reason'];
 
@@ -185,7 +195,7 @@ export async function sendYearConnectorCards(
     ...(gmailClaim ? [{ spec: gmailSpec, claimId: gmailClaim.id }] : []),
   ];
 
-  const urls = new Map<ConnectorCard['provider'], string>();
+  const urls = new Map<'gcal' | 'gmail', string>();
   if (needed.length > 0) {
     const minted = await offerConnectorLinks(database, {
       familyId: args.familyId,
@@ -279,28 +289,94 @@ export async function sendGoogleConnectorCard(
     );
     return 'suppressed_quiet_hours';
   }
-  const spec: ConnectorCard = {
-    provider: 'google',
+  const prose = cardProse(args.voice);
+  const claimed = await claimGoogleSend(database, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    channel: 'sms',
+    category: 'intake',
     templateKey: INTAKE_GOOGLE_CARD_TEMPLATE_KEY,
     dedupeKey: googleCardDedupeKey(args.familyId),
-    prose: cardProse(args.voice),
-  };
-  const claim = await claimConnectorCard(database, args, spec);
-  if (!claim) return 'already_sent';
+    providerChatId: null,
+    now: args.now,
+  });
+  if (claimed.kind !== 'try') return 'already_sent';
+  const { claim } = claimed;
   const minted = await offerGoogleBundleLink(database, {
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     now: args.now,
   });
   if (minted.status !== 'minted') {
-    await failClaim(database, claim.id, minted.status);
+    await releaseGoogleClaim(database, claim, minted.status);
     console.warn(
       { familyId: args.familyId, reason: minted.status },
       'intake google card: no link to send',
     );
     return minted.status;
   }
-  return finishConnectorCard(database, args, ports, spec, claim.id, minted.url);
+  if (prose == null) {
+    await releaseGoogleClaim(database, claim, 'voice_unsent');
+    return 'voice_unsent';
+  }
+  const outcome = await sendClaimedGoogleText(
+    database,
+    claim,
+    {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      now: args.now,
+      channel: 'sms',
+      chatId: null,
+      surface: 'card',
+    },
+    (sendKey) => ports.transport.send({ to: args.phoneE164, body: prose, sendKey }),
+  );
+  if (outcome.status === 'gated') return 'gated';
+  if (outcome.status !== 'accepted') {
+    console.error(
+      { familyId: args.familyId, provider: 'google', code: outcome.code },
+      'intake google card: the card did not reach the parent',
+    );
+    return 'send_failed';
+  }
+  const carried = outcome.sent.transport === 'imessage' ? 'imessage' : 'sms';
+  let linked = false;
+  try {
+    const link = await sendLinkOnce({
+      transport: ports.transport,
+      to: args.phoneE164,
+      channel: carried,
+      chatId: outcome.sent.chatId ?? null,
+      url: minted.url,
+      database,
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      now: args.now,
+    });
+    linked = link.status !== 'not_sent';
+    if (!linked) await freeGoogleSendKey(database, claim.id);
+    await ports.threadMessage(database, {
+      familyId: args.familyId,
+      parentUserId: args.parentUserId,
+      body: linked ? `${prose}\n${minted.url}` : prose,
+    });
+  } catch (err) {
+    console.error(
+      {
+        familyId: args.familyId,
+        provider: 'google',
+        err: err instanceof Error ? err.constructor.name : 'unknown',
+      },
+      'intake google card: the path after the accepted prose threw',
+    );
+  }
+  if (linked) return 'sent';
+  console.error(
+    { familyId: args.familyId, provider: 'google' },
+    'intake google card: the prose went but the link did not',
+  );
+  return 'link_unsent';
 }
 
 /** The model's prose with any URL it wrote dropped; the minted one is sent after it. */
@@ -311,8 +387,7 @@ function cardProse(prose: string | undefined): string | null {
 }
 
 interface ConnectorCard {
-  /** `google` is VIL-721's one card: one link for Gmail and the calendar together. */
-  provider: 'gcal' | 'gmail' | 'google';
+  provider: 'gcal' | 'gmail';
   templateKey: string;
   dedupeKey: string;
   prose: string | null;
