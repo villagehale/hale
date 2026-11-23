@@ -35,6 +35,14 @@ export const STRIPE_BILLING_REVOKE_ENABLED_ENV = 'STRIPE_BILLING_REVOKE_ENABLED'
 export const STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV =
   'STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED';
 /**
+ * customer.subscription.deleted that sets the plan to free clears
+ * families.stripe_subscription_id when that id is the deleted subscription.
+ * A different stored id is left untouched. Off unless the value is exactly `true`.
+ * Takes effect on the grant path and on the refund-ends settle path.
+ */
+export const STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED_ENV =
+  'STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED';
+/**
  * After a payment, cancel or refund, Hale writes the paying parent one text in their
  * existing 1:1 thread. Armed only together with {@link BILLING_THREAD_NOTICES_SINCE_ENV}:
  * the instant the flag went on, so an event from before it can never text anyone.
@@ -86,6 +94,12 @@ export function stripeRefundEndsSubscriptionEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV] === 'true';
+}
+
+export function stripeClearDeletedSubscriptionEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED_ENV] === 'true';
 }
 
 const STRICT_UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
