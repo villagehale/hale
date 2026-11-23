@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from '~/lib/app-url';
 import { homeMetadata } from '~/lib/site/home-meta';
@@ -23,18 +24,17 @@ import { generateMetadata as textMetadata } from '../../app/[locale]/text/page';
 
 const en = { locale: 'en' as const };
 
-function imageUrl(meta: {
-  openGraph?: { images?: unknown };
-  twitter?: { images?: unknown };
-}): string {
+function imageUrl(meta: Metadata): string {
   const images = meta.openGraph?.images;
   const first = Array.isArray(images) ? images[0] : images;
-  if (first && typeof first === 'object' && first && 'url' in first) return String(first.url);
+  if (first && typeof first === 'object' && 'url' in first) return String(first.url);
   return String(first ?? '');
 }
 
-function twitterCard(meta: { twitter?: { card?: string } }): string | undefined {
-  return meta.twitter?.card;
+function twitterCard(meta: Metadata): string | undefined {
+  const twitter = meta.twitter;
+  if (!twitter || !('card' in twitter) || typeof twitter.card !== 'string') return undefined;
+  return twitter.card;
 }
 
 const BANNED = /\bfree\b|planner for your kids|helper that plans|Find what’s on|sign-up morning/i;
@@ -45,11 +45,7 @@ describe('share previews', () => {
       name: string;
       url: string;
       image: string;
-      meta: {
-        openGraph?: { url?: string; description?: string; title?: string; images?: unknown };
-        twitter?: { card?: string; description?: string; images?: unknown };
-        description?: string;
-      };
+      meta: Metadata;
     }> = [
       { name: 'home', url: `${SITE_URL}/`, image: shareCardUrl('home'), meta: homeMetadata('en') },
       {

@@ -36,7 +36,7 @@ describe('marketing share-card design system', () => {
   it('puts the chat mock only on home and pricing, and never a price', () => {
     expect(SHARE_CARDS.home.chat).toBe(true);
     expect(SHARE_CARDS.pricing.chat).toBe(true);
-    expect(SHARE_CARDS.faq.chat).toBeUndefined();
+    expect('chat' in SHARE_CARDS.faq).toBe(false);
     const painted = Object.values(SHARE_CARDS)
       .flatMap((card) => [card.alt, card.headline, 'subline' in card ? card.subline : ''])
       .join('\n');
