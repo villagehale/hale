@@ -899,13 +899,15 @@ async function executeAndRecord(
   const writesAnotherParentsCalendar = reach !== 'clear';
   const facts: AskFacts = { ...storedAskFacts(approved), writesAnotherParentsCalendar };
   const askTier = policyOn ? askTierFor(approved.actionType, facts) : null;
-  // VIL-719 — the door. Whatever path got here (the autonomous pass, a resume, a parent's
-  // tap that landed on an autonomous checkpoint, a lane calling executeApprovedAction), an
-  // ask-first action runs only on a recorded yes: the `action.approved_by_human` row that
-  // recordHumanApproval writes. An actor id alone is not that row. Refused, it goes back to
-  // the parent as a draft (`reviewed`), never into the failed bucket. Every other gate has
-  // already cleared a calendar kind, so a write to another parent's calendar is held here,
-  // the first point that knows whose calendar it is; that hold is expected, not a backstop.
+  // VIL-719 — the door for the autonomous pass, a resume, and a parent's tap that landed on
+  // an autonomous checkpoint: an ask-first action runs only on a recorded yes, the
+  // `action.approved_by_human` row. It cannot refuse a lane calling executeApprovedAction,
+  // which writes that row itself from the approvedBy it was given, so each such lane must
+  // enforce the tier before calling (team-schedule does, in calendarKindAutonomous).
+  // Refused, it goes back to the parent as a draft (`reviewed`), never into the failed
+  // bucket. Every other gate has already cleared a calendar kind, so a write to another
+  // parent's calendar is held here, the first point that knows whose calendar it is; that
+  // hold is expected, not a backstop.
   if (askTier === 'ask_first' && (await loadHumanApprover(actionId)) === null) {
     await markEventStage(familyId, eventId, 'reviewed');
     if (writesAnotherParentsCalendar) {
