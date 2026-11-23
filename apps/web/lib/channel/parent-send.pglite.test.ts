@@ -214,62 +214,6 @@ describe('deliverParentText through Linq, fetch stubbed', () => {
     expect(second.state).toBe('owned');
   });
 
-  it('leaves a row the old door failed alone, because that text may have landed', async () => {
-    const key = `${LOGICAL}:old-door`;
-    const stamped = new Date(Date.now() - 60 * 60 * 1000);
-    const [row] = await db.database
-      .insert(schema.channelMessages)
-      .values({
-        familyId,
-        parentUserId,
-        channel: 'imessage',
-        direction: 'out',
-        category: 'reply',
-        templateKey: 'linq:coparent_welcome',
-        dedupeKey: key,
-        status: 'failed',
-        errorCode: 'timeout',
-        sentAt: stamped,
-        createdAt: stamped,
-      })
-      .returning({ id: schema.channelMessages.id });
-    const sendSpy = vi.fn(async () => ({ providerMessageId: 'msg-twice', chatId: CHAT }));
-
-    const result = await deliverParentText(db.database, {
-      ...receiptInput(new Date(), key),
-      send: sendSpy,
-    });
-
-    expect(result).toEqual({ outcome: 'already_sent', rowId: row?.id });
-    expect(sendSpy).not.toHaveBeenCalled();
-  });
-
-  it('still tries again after a refusal this door recorded, which cannot have landed', async () => {
-    const key = `${LOGICAL}:refused-here`;
-    const failedAt = new Date(Date.now() - 60 * 60 * 1000);
-    await db.database.insert(schema.channelMessages).values({
-      familyId,
-      parentUserId,
-      channel: 'imessage',
-      direction: 'out',
-      category: 'reply',
-      templateKey: 'linq:coparent_welcome',
-      dedupeKey: key,
-      status: 'failed',
-      errorCode: 'bad_request',
-      createdAt: failedAt,
-    });
-    const sendSpy = vi.fn(async () => ({ providerMessageId: 'msg-retried', chatId: CHAT }));
-
-    const result = await deliverParentText(db.database, {
-      ...receiptInput(new Date(), key),
-      send: sendSpy,
-    });
-
-    expect(result).toMatchObject({ outcome: 'sent', providerMessageId: 'msg-retried' });
-    expect(sendSpy).toHaveBeenCalledTimes(1);
-  });
-
   it('a Linq refusal leaves the row unsent and pages', async () => {
     const key = 'linq:coparent_welcome:refused';
     const fetchImpl: typeof fetch = async () =>

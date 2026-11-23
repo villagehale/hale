@@ -95,7 +95,6 @@ const ROW = {
   status: schema.channelMessages.status,
   errorCode: schema.channelMessages.errorCode,
   providerMessageId: schema.channelMessages.providerMessageId,
-  sentAt: schema.channelMessages.sentAt,
   createdAt: schema.channelMessages.createdAt,
 };
 
@@ -104,7 +103,6 @@ type SendRow = {
   status: string;
   errorCode: string | null;
   providerMessageId: string | null;
-  sentAt: Date | null;
   createdAt: Date;
 };
 
@@ -197,9 +195,7 @@ export async function beginParentSend(
   input: Omit<ParentSendInput, 'send' | 'pager' | 'final'>,
 ): Promise<BegunParentSend> {
   const existing = await readRow(database, input);
-  // Only the flag-off doors leave sent_at on an unsent row. They stamp it before the POST and
-  // give Linq a random key, so that text may have landed and no key here could dedupe it.
-  if (existing && (parentSendClosed(existing) || existing.sentAt !== null)) {
+  if (existing && parentSendClosed(existing)) {
     return { state: 'already_sent', rowId: existing.id };
   }
   if (existing && freshInFlight(existing, input.now)) {
