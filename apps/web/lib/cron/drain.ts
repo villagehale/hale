@@ -956,13 +956,20 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // VIL-443 (T17): a plan the family group made is reported back to that group, one
   // AI-written text with the add-to-calendar link, instead of a link to each parent.
   // Only when GROUP_PLAN_CALENDAR_REPORT_ENABLED is exactly `true` (default off).
+  const { withInviteUnwrittenPage } = await import('~/lib/loop/calendar-invite-page');
+  const { failurePageOpsPager } = await import('~/lib/monitoring/failure-page');
+  // VIL-719: an invite text the model could not write tells #ops (only while
+  // ASK_POLICY_TIERS_ENABLED is exactly `true`); the report is returned untouched.
   const calendarInvites = withGroupPlanReport(
-    createCalendarInviteSender(db(), {
-      channels,
-      renderer: loopTemplateRenderer,
-      inviteVoice: productionCalendarInviteVoice(),
-      cancelVoice: productionCalendarCancelVoice(),
-    }),
+    withInviteUnwrittenPage(
+      createCalendarInviteSender(db(), {
+        channels,
+        renderer: loopTemplateRenderer,
+        inviteVoice: productionCalendarInviteVoice(),
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+      failurePageOpsPager(db),
+    ),
     productionGroupPlanReportPorts(db()),
   );
   // Approved send_email actions leave from the approving parent's own Gmail.

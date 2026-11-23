@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { composeAutonomyNotice } from './compose';
 import { type AutonomyNoticePorts, autonomyNoticeReaders } from './notice';
 
@@ -14,5 +15,6 @@ export function autonomyNoticePorts(database: Database): AutonomyNoticePorts {
     compose: (input) => composeAutonomyNotice(input),
     transport: createOutboundTransport(),
     threadMessage: threadProactiveMessage,
+    pager: failurePageOpsPager(() => database),
   };
 }

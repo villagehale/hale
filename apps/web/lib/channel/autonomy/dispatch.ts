@@ -1,4 +1,6 @@
 import { type Database, schema } from '@hale/db';
+import { askTierFor, isAskPolicyKind } from '@hale/tools-contracts';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
@@ -31,6 +33,12 @@ import {
  * The morning pass only sends inside the re-drive hour. The drain pass tries
  * now, including right after an execution, and the gate holds quiet hours.
  * Nothing sends while the execute lane is off.
+ *
+ * VIL-719 · while ASK_POLICY_TIERS_ENABLED is on for a family (read per family, the way the
+ * worker reads it): an execution the ask policy ran as just do owes no on-its-own text, and
+ * a turn-on text for an ask-first kind is withheld, because Hale will never do that kind on
+ * its own and the text would say it will. Both are decided at dispatch, so turning the flag
+ * off owes them again. Neither is claimed or aged out; both are counted and logged.
  */
 
 interface OpenArmed {
@@ -73,6 +81,10 @@ export interface AutonomyNoticeDispatchResult {
   laneOff: number;
   /** On-its-own notices marked this pass as older than the redrive window. */
   agedOut: number;
+  /** VIL-719 · executions the ask policy ran as just do: no on-its-own text is owed. */
+  justDo: number;
+  /** VIL-719 · turn-on texts withheld because the ask policy puts the kind in ask first. */
+  askFirstWithheld: number;
 }
 
 export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
@@ -90,6 +102,8 @@ export function emptyAutonomyNoticeDispatch(): AutonomyNoticeDispatchResult {
     noSendTarget: 0,
     laneOff: 0,
     agedOut: 0,
+    justDo: 0,
+    askFirstWithheld: 0,
   };
 }
 
@@ -131,11 +145,23 @@ async function agedOutMarks(database: Database, actionIds: string[]): Promise<Se
   return keys;
 }
 
+/** VIL-719 · true when the ask policy, on for this family, puts the kind in ask first. */
+function askFirstKindFor(familyId: string, actionType: string): boolean {
+  if (!askPolicyTiersEnabled(familyId)) return false;
+  // A scope this policy does not know fails closed, the same as askTierFor.
+  return !isAskPolicyKind(actionType) || askTierFor(actionType) === 'ask_first';
+}
+
 export async function selectOpenAutonomyNotices(
   database: Database,
   now: Date,
   familyId?: string,
-): Promise<{ notices: OpenNotice[]; aged: AgedActed[] }> {
+): Promise<{
+  notices: OpenNotice[];
+  aged: AgedActed[];
+  justDo: number;
+  askFirstWithheld: number;
+}> {
   const armed = await selectLiveArmed(database, familyId);
   const since = new Date(now.getTime() - REDRIVE_MAX_AGE_MS);
   const executions = await database
@@ -143,6 +169,7 @@ export async function selectOpenAutonomyNotices(
       familyId: schema.auditLog.familyId,
       actionId: schema.auditLog.targetId,
       occurredAt: schema.auditLog.occurredAt,
+      askTier: sql<string | null>`${schema.auditLog.after} -> 'decision' ->> 'askTier'`,
     })
     .from(schema.auditLog)
     .where(
@@ -157,8 +184,15 @@ export async function selectOpenAutonomyNotices(
     .orderBy(asc(schema.auditLog.occurredAt));
 
   const actedRows: Array<OpenActed & { occurredAt: Date }> = [];
+  let justDo = 0;
   for (const row of executions) {
     if (!row.actionId) continue;
+    // The tier the action ran under, stamped on its row only while the policy was on. Not an
+    // obligation, so never aged out; counted only inside the redrive window, like `open`.
+    if (row.askTier === 'just_do' && askPolicyTiersEnabled(row.familyId)) {
+      if (row.occurredAt.getTime() >= since.getTime()) justDo += 1;
+      continue;
+    }
     const actionType = await actionTypeOf(database, row.actionId);
     if (!actionType) continue;
     const parentUserIds = await recipientsForActed(database, row.familyId, actionType);
@@ -180,9 +214,11 @@ export async function selectOpenAutonomyNotices(
   ];
   const claimed = await claimedKeys(database, keys);
   const marked = await agedOutMarks(database, [...new Set(actedRows.map((row) => row.actionId))]);
-  const openArmed = armed.filter(
+  const unclaimedArmed = armed.filter(
     (row) => !claimed.has(autonomyArmedDedupeKey(row.consentRecordId)),
   );
+  const openArmed = unclaimedArmed.filter((row) => !askFirstKindFor(row.familyId, row.actionType));
+  const askFirstWithheld = unclaimedArmed.length - openArmed.length;
   const openActed: OpenActed[] = [];
   const aged: AgedActed[] = [];
   for (const row of actedRows) {
@@ -205,7 +241,7 @@ export async function selectOpenAutonomyNotices(
       actionType: row.actionType,
     });
   }
-  return { notices: [...openArmed, ...openActed], aged };
+  return { notices: [...openArmed, ...openActed], aged, justDo, askFirstWithheld };
 }
 
 /**
@@ -343,6 +379,18 @@ export async function dispatchAutonomyNotices(
   const open = selected.notices;
   result.open = open.length;
   result.agedOut = selected.aged.length;
+  result.justDo = selected.justDo;
+  result.askFirstWithheld = selected.askFirstWithheld;
+  if (selected.justDo > 0 || selected.askFirstWithheld > 0) {
+    console.info(
+      {
+        justDo: selected.justDo,
+        askFirstWithheld: selected.askFirstWithheld,
+        familyId: input.familyId ?? null,
+      },
+      'autonomy notice: ask policy owes these no text',
+    );
+  }
   await markAgedOut(database, selected.aged);
   if (selected.aged.length > 0) {
     console.info(

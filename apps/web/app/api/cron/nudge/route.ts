@@ -23,10 +23,12 @@ import {
   createCalendarInviteSender,
   retryDeferredCalendarCancels,
 } from '~/lib/loop/calendar-invite';
+import { withInviteUnwrittenPage } from '~/lib/loop/calendar-invite-page';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
 import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { runWorkstreamFollowupSweep } from '~/lib/memory/workstream-followup';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
@@ -145,13 +147,18 @@ export const GET = cronRoute('nudge', async () => {
     const autonomyNotices = await runAutonomyNoticeRedrive(db(), {
       ports: autonomyNoticePorts(db()),
     });
+    // VIL-719: a re-driven text the model still cannot write tells #ops (only while
+    // ASK_POLICY_TIERS_ENABLED is exactly `true`); the report is returned untouched.
     const calendarInvites = withGroupPlanReport(
-      createCalendarInviteSender(db(), {
-        channels: productionChannels(db()),
-        renderer: loopTemplateRenderer,
-        inviteVoice: productionCalendarInviteVoice(),
-        cancelVoice: productionCalendarCancelVoice(),
-      }),
+      withInviteUnwrittenPage(
+        createCalendarInviteSender(db(), {
+          channels: productionChannels(db()),
+          renderer: loopTemplateRenderer,
+          inviteVoice: productionCalendarInviteVoice(),
+          cancelVoice: productionCalendarCancelVoice(),
+        }),
+        failurePageOpsPager(db),
+      ),
       productionGroupPlanReportPorts(db()),
     );
     const groupPlanReports = await runGroupPlanReportRedrive(db(), { sender: calendarInvites });
