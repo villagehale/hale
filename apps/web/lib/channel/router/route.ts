@@ -104,12 +104,7 @@ import {
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
 import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
-import {
-  GARBLED_TEXT,
-  LinqSendError,
-  linqSendMayHaveLanded,
-  refuseGarbledText,
-} from '~/lib/channel/linq/transport';
+import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
   productionVoiceReplyDeps,
@@ -126,7 +121,7 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
-import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
+import { linqSendMayHaveLanded, sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
