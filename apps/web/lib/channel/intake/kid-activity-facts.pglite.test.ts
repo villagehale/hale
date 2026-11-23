@@ -312,6 +312,17 @@ describe('kidActivityFactKey', () => {
     expect(first).not.toContain(':');
   });
 
+  it('keeps two activities apart when their only difference is in another script', () => {
+    const swim = kidActivityFactKey('游泳 class');
+    const piano = kidActivityFactKey('钢琴 class');
+
+    expect(swim).not.toBe(piano);
+    expect(kidActivityFactKey('游泳 class')).toBe(swim);
+    expect(swim).not.toContain(':');
+    // Positive control: an accent folds away and the plain key stays readable.
+    expect(kidActivityFactKey('Natation École')).toBe('kid-activity-natation-ecole');
+  });
+
   it('cuts a long phrase to at most sixty characters with no trailing dash', () => {
     const key = kidActivityFactKey(`${'a'.repeat(59)} b and more words`);
     const slug = key.slice('kid-activity-'.length);

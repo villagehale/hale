@@ -161,6 +161,14 @@ describe('the capture', () => {
     expect(capture.activities).toEqual([{ child: 'Maya', activity: long, when: long }]);
   });
 
+  it('lit, keeps a time written only in digits', () => {
+    lit();
+    const capture = acceptOnboardingCapture({
+      activities: [{ child: 'Maya', activity: 'swim', when: ' 18:00 ' }],
+    });
+    expect(capture.activities).toEqual([{ child: 'Maya', activity: 'swim', when: '18:00' }]);
+  });
+
   it('lit, caps one message at twelve activities', () => {
     lit();
     const many = Array.from({ length: 15 }, (_, i) => ({ child: null, activity: `class ${i}` }));

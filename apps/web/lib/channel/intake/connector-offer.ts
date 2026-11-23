@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import {
   claimGoogleSend,
   freeGoogleSendKey,
+  googleSendGate,
   releaseGoogleClaim,
   sendClaimedGoogleText,
 } from '~/lib/channel/connect/google-send-receipt';
@@ -343,6 +344,16 @@ export async function sendGoogleConnectorCard(
   const carried = outcome.sent.transport === 'imessage' ? 'imessage' : 'sms';
   let linked = false;
   try {
+    // The link is its own send: a stop that landed while Linq took the words stops it.
+    if ((await googleSendGate(database, args)) !== 'open') {
+      await freeGoogleSendKey(database, claim.id);
+      await ports.threadMessage(database, {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        body: prose,
+      });
+      return 'gated';
+    }
     const link = await sendLinkOnce({
       transport: ports.transport,
       to: args.phoneE164,

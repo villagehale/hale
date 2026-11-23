@@ -59,18 +59,19 @@ export type KidActivityFactsOutcome =
  * This names the fact; it decides nothing about what the parent meant.
  */
 export function kidActivityFactKey(activity: string): string {
-  const folded = activity
+  const plain = activity
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .toLowerCase();
+  const folded = plain.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const digest = createHash('sha256')
     .update(activity.trim().toLowerCase())
     .digest('hex')
     .slice(0, KEY_HASH_CHARS);
   if (folded.length === 0) return `${KEY_PREFIX}h-${digest}`;
-  if (folded.length <= MAX_SLUG) return `${KEY_PREFIX}${folded}`;
+  // Letters the fold drops (another script) may be all that tells two activities apart.
+  const droppedLetters = /\p{L}/u.test(plain.replace(/[a-z]+/g, ''));
+  if (folded.length <= MAX_SLUG && !droppedLetters) return `${KEY_PREFIX}${folded}`;
   // Two long phrases that differ past the cut are two activities, not one superseding the other.
   const stem = folded.slice(0, MAX_SLUG - KEY_HASH_CHARS - 1).replace(/-+$/g, '');
   return `${KEY_PREFIX}${stem}-${digest}`;

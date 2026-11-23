@@ -99,7 +99,7 @@ export function landingCopy(provider: TextConnectProvider | GoogleBundleLink): L
         'So Hale can flag daycare and school notices and catch class invites for ',
         { nw: 'the kids.' },
       ],
-      note: `Google may show an “unverified app” screen. Tap Advanced, then continue. Make sure the boxes for ${BUNDLE_BOXES} are${NBSP}ticked.`,
+      note: `Google may show an “unverified app” screen. Tap Advanced, then continue. Make sure the boxes for ${BUNDLE_BOXES} and your name are${NBSP}ticked.`,
       reads: [...gmail.reads, ...gcal.reads],
       never: [gmail.never[0] ?? [], gcal.never[0] ?? [], ...NEVER_SHARED],
       disconnect: [
@@ -296,10 +296,10 @@ function denied(
 function bundlePartial(fresh: boolean | undefined): StatusCopy {
   const lede: CopyPart[] = fresh
     ? [
-        'Hale needs at least one of those boxes to connect, so nothing changed. A fresh link is in ',
+        'Hale needs those boxes ticked to connect, so nothing changed. A fresh link is in ',
         { nw: 'your texts.' },
       ]
-    : ['Hale needs at least one of those boxes to connect, so nothing changed.'];
+    : ['Hale needs those boxes ticked to connect, so nothing changed.'];
   return {
     aria: `The boxes for ${BUNDLE_BOXES} weren’t ticked`,
     tabTitle: 'Boxes not ticked',
@@ -309,8 +309,8 @@ function bundlePartial(fresh: boolean | undefined): StatusCopy {
     help: {
       title: 'Next time',
       body: [
-        `On Google’s screen, tick the boxes for ${BUNDLE_BOXES}. The box for your name `,
-        { nw: 'is optional.' },
+        `On Google’s screen, tick the boxes for ${BUNDLE_BOXES} and for your name. Hale uses it to tell your account from `,
+        { nw: 'your co-parent’s.' },
       ],
     },
     sms: true,

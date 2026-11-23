@@ -28,6 +28,7 @@ import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
 import { asGoogleBundleLink, asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
 import {
   type FounderReplyDeps,
   handleFounderWelcomeReply,
@@ -305,11 +306,12 @@ async function latestConnectOfferTarget(
       )
       .orderBy(desc(schema.messages.createdAt))
       .limit(6);
-    for (const row of rows) {
-      if (row.role !== 'assistant') continue;
-      return connectOfferTarget(row.content);
-    }
-    return null;
+    const said = rows.filter((row) => row.role === 'assistant');
+    const newest = said[0] ? connectOfferTarget(said[0].content) : null;
+    if (newest || !threadOnboardingV2Enabled()) return newest;
+    // VIL-721. Lit, the walk keeps talking after the one link, so a later reply does not
+    // hide it. Only the one link: an older per-provider offer stays hidden as it is dark.
+    return said.some((row) => connectOfferTarget(row.content) === 'google') ? 'google' : null;
   } catch (err) {
     console.error(
       { err: err instanceof Error ? err.name : 'unknown' },

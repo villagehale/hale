@@ -332,6 +332,29 @@ describe('the texts the one Google link adds', () => {
     });
   });
 
+  describe('the link after the card’s words', () => {
+    it('does not go to a parent who stopped while Linq was taking the words', async () => {
+      const transport = transportOf(async () => {
+        await db.database
+          .update(schema.parentChannels)
+          .set({ revokedAt: NOW })
+          .where(eq(schema.parentChannels.userId, parentUserId));
+        return { providerMessageId: 'linq-prose' };
+      });
+
+      const label = await card(transport);
+
+      expect(label).toBe('gated');
+      expect(transport.calls.map((call) => call.body)).toEqual([PROSE]);
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      expect(row).toMatchObject({
+        status: 'queued',
+        providerMessageId: 'linq-prose',
+        dedupeKey: null,
+      });
+    });
+  });
+
   describe('a co-parent’s connect', () => {
     let otherUserId: string;
 

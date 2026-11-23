@@ -137,13 +137,15 @@ beforeEach(() => {
   }
   vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
   vi.stubEnv('APP_URL', 'https://app.example.com');
+  // The blind index of the Google account id needs the app key; a test-only constant.
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   freshMock.mockResolvedValue('not_enrolled');
   settleSupersededMock.mockResolvedValue('revoked');
   kickMock.mockResolvedValue({ outcome: 'completed' });
   readProfileMock.mockResolvedValue(null);
-  readSubMock.mockResolvedValue(null);
+  readSubMock.mockResolvedValue('google-sub-1');
   accountHeldMock.mockResolvedValue(false);
   holdNameMock.mockResolvedValue('held');
   burnMock.mockResolvedValue({ ok: true });
@@ -222,7 +224,7 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
   });
 
   it('stores only the calendar when the Gmail box was left unticked, and kicks no Gmail backfill', async () => {
-    granted(GCAL);
+    granted(GCAL, PROFILE);
     const res = await callCallback(await bundleState());
 
     expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=ok');
@@ -279,7 +281,7 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
 
   it('still completes a granted consent that was in flight when the flag went off', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
-    granted(GMAIL, GCAL);
+    granted(GMAIL, GCAL, PROFILE);
     const res = await callCallback(await bundleState());
 
     expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=ok');
@@ -317,7 +319,6 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
   });
 
   it('spends the texted link before the code is exchanged, so a state completes once', async () => {
-    granted(GMAIL, GCAL);
     const order: string[] = [];
     burnMock.mockImplementation(async () => {
       order.push('burn');
@@ -325,7 +326,7 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
     });
     exchangeMock.mockImplementation(async () => {
       order.push('exchange');
-      return { accessToken: 'ya29.bundle', scope: `${GMAIL} ${GCAL}` };
+      return { accessToken: 'ya29.bundle', scope: `${GMAIL} ${GCAL} ${PROFILE}` };
     });
     const res = await callCallback(await bundleState());
 
@@ -377,6 +378,27 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
     expect(exchangeMock).not.toHaveBeenCalled();
     expect(saveConnectionMock).not.toHaveBeenCalled();
     expect(freshMock).not.toHaveBeenCalled();
+  });
+
+  it('stores nothing when Google will not say whose account this is, and sends one fresh link', async () => {
+    granted(GMAIL, GCAL, PROFILE);
+    readSubMock.mockResolvedValue(null);
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=error');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(noticeMock).not.toHaveBeenCalled();
+    expect(freshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores nothing when the profile box was left unticked: the account cannot be told apart', async () => {
+    granted(GMAIL, GCAL);
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=partial');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(readSubMock).not.toHaveBeenCalled();
+    expect(freshMock).toHaveBeenCalledTimes(1);
   });
 
   it("stores nothing when the Google account is the other parent's", async () => {

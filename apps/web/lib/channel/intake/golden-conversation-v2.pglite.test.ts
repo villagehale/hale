@@ -37,6 +37,7 @@ function conversation(
 ) {
   const transport = new FakeTransport();
   const events: { event: string; properties: Record<string, unknown> }[] = [];
+  const seen: FriendVoiceInput[] = [];
   let clock = new Date(T0.getTime() - 60_000);
   vi.stubGlobal(
     'fetch',
@@ -73,6 +74,7 @@ function conversation(
     limiter: new FakeRateLimiter(() => clock.getTime()),
     friendVoice: {
       async compose(input: FriendVoiceInput) {
+        seen.push(input);
         return compose(input);
       },
     },
@@ -86,6 +88,7 @@ function conversation(
   return {
     transport,
     events,
+    seen,
     say: async (body: string) => {
       sequence += 1;
       clock = new Date(clock.getTime() + 60_000);
@@ -195,6 +198,39 @@ describe('VIL-721 what the walk keeps, on Postgres', () => {
     expect(linksIn(all)).toHaveLength(1);
     expect(all.join('\n')).not.toMatch(/to=gmail|to=gcal/);
     expect(all.join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
+  });
+
+  it.each(['give me a fresh one', 'disconnect my gmail'])(
+    'lit, hands %j from an open walk to the handlers that can act on it',
+    async (ask) => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+      const talk = conversation(db.database);
+      for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays', 'Dana']) {
+        await talk.say(words);
+      }
+      await talk.say('yes');
+
+      const turn = await talk.say(ask);
+
+      expect(turn.bodies).toEqual([]);
+      expect(talk.seen.map((input) => input.parentWords)).not.toContain(ask);
+      const inbound = await db.database
+        .select({ body: schema.channelMessages.body })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.direction, 'in'));
+      expect(inbound.map((row) => row.body)).toContain(ask);
+      const [session] = await db.database.select().from(schema.smsIntakeSessions);
+      expect(session?.closedAt).toBeNull();
+    },
+  );
+
+  it('dark, the same words stay in the walk, as they do on main', async () => {
+    const talk = conversation(db.database);
+    for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'Dana']) await talk.say(words);
+
+    await talk.say('give me a fresh one');
+
+    expect(talk.seen.map((input) => input.parentWords)).toContain('give me a fresh one');
   });
 
   it('lit, keeps the name, the age and the activity, each with where it came from', async () => {

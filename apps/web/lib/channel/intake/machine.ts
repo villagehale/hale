@@ -103,6 +103,10 @@ import {
   findRevokedChannelOwner,
   reenrolOnStart,
 } from './channel-state';
+import {
+  matchConnectorDisconnectRequest,
+  matchFreshConnectorFollowUp,
+} from '~/lib/channel/connect/detect';
 import { coldStartLadderEnabled } from './cold-start/flags';
 import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
@@ -3121,6 +3125,16 @@ async function runColdStartTurn(
       'cold-start: question is stale, handing the text to the coach',
     );
     await closeColdStartForCoach(database, session, inbound, now);
+    return { status: 'ignored', reason: 'no_open_conversation' };
+  }
+  // VIL-721. Lit, an open walk does not swallow a disconnect or a new-link ask: the
+  // router's handlers are what can act on them, and the walk resumes on the next text.
+  // A disconnect still acts only on the model's read (connectorDisconnectHandler).
+  if (
+    threadOnboardingV2Enabled() &&
+    (matchConnectorDisconnectRequest(inbound.body) !== null ||
+      (progress.googleOffered === true && matchFreshConnectorFollowUp(inbound.body)))
+  ) {
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
   return friendColdTurn(database, args, deps);

@@ -289,7 +289,8 @@ export function acceptKidActivity(raw: unknown): KidActivity | null {
   return {
     child: acceptName(row.child),
     activity,
-    when: acceptActivityText(row.when),
+    // A time can be all digits ("18:00"): only an activity has to carry a letter.
+    when: typeof row.when === 'string' ? row.when.trim().replace(/\s+/gu, ' ') || null : null,
   };
 }
 

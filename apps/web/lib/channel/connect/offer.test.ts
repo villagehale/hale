@@ -624,6 +624,47 @@ describe('connectorLinkHandler', () => {
       vi.unstubAllGlobals();
     });
 
+    it('lit, finds the one link behind a later reply, so the ask still gets one link', async () => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      const conversationId = await threadOffer(GOOGLE_OFFER);
+      await db.database.insert(schema.messages).values({
+        conversationId,
+        role: 'assistant',
+        content: 'A later reply with no link (test fixture).',
+        createdAt: new Date(Date.now() + 60_000),
+      });
+
+      const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
+        db.database,
+        turn('give me a fresh one', conversationId),
+      );
+
+      expect(verdict).toMatchObject({ claimed: true, outcome: 'sent' });
+      const reply = verdict.claimed ? (verdict.reply ?? '') : '';
+      expect(reply.match(/to=google/g)).toHaveLength(1);
+    });
+
+    it('dark, a later reply still hides an older offer, as it does on main', async () => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+      const conversationId = await threadOffer(
+        'Connect Gmail: https://app.villagehale.com/connect?t=old-one&to=gmail',
+      );
+      await db.database.insert(schema.messages).values({
+        conversationId,
+        role: 'assistant',
+        content: 'A later reply with no link (test fixture).',
+        createdAt: new Date(Date.now() + 60_000),
+      });
+
+      const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
+        db.database,
+        turn('give me a fresh one', conversationId),
+      );
+
+      expect(verdict).toEqual({ claimed: false });
+    });
+
     it('dark, the same ask goes to the coach and mints nothing', async () => {
       vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
       const conversationId = await threadOffer(GOOGLE_OFFER);

@@ -681,33 +681,36 @@ async function completeGoogleBundle(
       return freshAfter(grantStatus);
     }
     granted = split.granted;
-    let googleAccountKey: string | undefined;
-    if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
-      const sub = await readGoogleAccountSub(tokens.accessToken);
-      if (!sub) {
-        console.info({ familyId: bound.familyId }, 'google account: identity unread');
-      } else {
-        const accountKey = googleAccountBlindIndex(sub);
-        const held = await otherParentHoldsGoogleAccount(database, {
-          familyId: bound.familyId,
-          userId: bound.userId,
-          accountKey,
-        });
-        if (held) {
-          console.info(
-            { familyId: bound.familyId, provider: 'google' },
-            'google account: held by the other parent',
-          );
-          const named = await ownLinkWho(database, bound);
-          return back(
-            'own_link',
-            'text',
-            'google',
-            named.who ? { who: named.who, lang: named.lang } : undefined,
-          );
-        }
-        googleAccountKey = accountKey;
-      }
+    // Whose Google account this is decides whether it may land here at all, so a grant
+    // that cannot say is stored nowhere: one parent's inbox never lands on the other's.
+    const profileGranted = scopes.includes(GOOGLE_PROFILE_SCOPE);
+    const sub =
+      profileGranted && tokens.accessToken ? await readGoogleAccountSub(tokens.accessToken) : null;
+    if (!sub) {
+      console.info(
+        { familyId: bound.familyId, provider: 'google', profileGranted },
+        'google account: identity unread - nothing stored',
+      );
+      return freshAfter(profileGranted ? 'error' : 'partial');
+    }
+    const googleAccountKey = googleAccountBlindIndex(sub);
+    const held = await otherParentHoldsGoogleAccount(database, {
+      familyId: bound.familyId,
+      userId: bound.userId,
+      accountKey: googleAccountKey,
+    });
+    if (held) {
+      console.info(
+        { familyId: bound.familyId, provider: 'google' },
+        'google account: held by the other parent',
+      );
+      const named = await ownLinkWho(database, bound);
+      return back(
+        'own_link',
+        'text',
+        'google',
+        named.who ? { who: named.who, lang: named.lang } : undefined,
+      );
     }
     // One row per granted connector, each holding the token as granted: the row's
     // scopes are the token's scopes, so no row claims less power than its token has.
