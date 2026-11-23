@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "New booking at a different shop and time from existing haircut; storytime ends before this visit starts",
+    "same_as": "",
+    "clashes_with": [
+      "rami-haircut"
+    ]
+  },
+  "stopReason": "tool_use"
+}

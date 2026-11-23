@@ -8,6 +8,7 @@ import {
   metaCapiEnabled,
   promoNewVisitorCheckoutEnabled,
   stripeBillingRevokeEnabled,
+  stripeClearDeletedSubscriptionEnabled,
   stripeRefundEndsSubscriptionEnabled,
 } from './flags.js';
 
@@ -87,6 +88,18 @@ describe('billingThreadNoticesArmedAt', () => {
     const read = (value?: string) =>
       stripeRefundEndsSubscriptionEnabled({ STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: value });
     expect(stripeRefundEndsSubscriptionEnabled({})).toBe(false);
+    expect(read('on')).toBe(false);
+    expect(read('TRUE')).toBe(false);
+    expect(read('true\n')).toBe(false);
+    expect(read('true')).toBe(true);
+  });
+
+  it('turns on clear-deleted-subscription only for the exact value true', () => {
+    const read = (value?: string) =>
+      stripeClearDeletedSubscriptionEnabled({
+        STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: value,
+      });
+    expect(stripeClearDeletedSubscriptionEnabled({})).toBe(false);
     expect(read('on')).toBe(false);
     expect(read('TRUE')).toBe(false);
     expect(read('true\n')).toBe(false);

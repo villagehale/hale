@@ -41,6 +41,51 @@ async function planTier(familyId: string): Promise<string | undefined> {
   return row?.planTier;
 }
 
+async function storedSubscription(familyId: string): Promise<string | null> {
+  const [row] = await db.database
+    .select({ stripeSubscriptionId: schema.families.stripeSubscriptionId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return row?.stripeSubscriptionId ?? null;
+}
+
+async function storedCustomer(familyId: string): Promise<string | null> {
+  const [row] = await db.database
+    .select({ stripeCustomerId: schema.families.stripeCustomerId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return row?.stripeCustomerId ?? null;
+}
+
+async function familyAudits(familyId: string) {
+  return db.database
+    .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.familyId, familyId));
+}
+
+function deletedSubscription(
+  id: string,
+  familyId: string,
+  subscriptionId: string,
+  customerId: string,
+) {
+  return {
+    id,
+    type: 'customer.subscription.deleted',
+    data: {
+      object: {
+        id: subscriptionId,
+        customer: customerId,
+        items: { data: [] },
+        metadata: { familyId },
+      },
+    },
+  };
+}
+
 function refund(input: {
   id: string;
   familyId: string;
@@ -334,6 +379,443 @@ describe('stripe billing revoke', () => {
     );
     expect(resolved).toEqual({ status: 'applied', tier: 'free' });
     expect(await planTier(familyId)).toBe('free');
+  });
+
+  it('keeps a full refund of a live stored subscription and does not page', async () => {
+    const { familyId } = await seedFamily(db.database, 'Live refund');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_live',
+        stripeSubscriptionId: 'sub_vil761_live',
+      })
+      .where(eq(schema.families.id, familyId));
+    const paged: string[] = [];
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_live_keep',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_live_keep',
+            amount: 5900,
+            amount_refunded: 5900,
+            refunded: true,
+            customer: 'cus_vil761_live',
+            metadata: { familyId },
+            invoice: { subscription: { id: 'sub_vil761_live', status: 'active' } },
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        onUnresolvedRevoke: async () => {
+          paged.push('paged');
+          return 'sent';
+        },
+      },
+    );
+    expect(result).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(paged).toEqual([]);
+    expect(await planTier(familyId)).toBe('plus');
+    const audits = await familyAudits(familyId);
+    expect(audits.map((row) => row.actionTaken)).not.toContain('billing_revoke_unresolved');
+    expect(audits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionTaken: 'billing_refunded',
+          after: expect.objectContaining({
+            reason: 'active_subscription',
+            tierChanged: false,
+            stripeEventId: 'evt_live_keep',
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('keeps a live subscription when the charge payload has none and the lookup finds it', async () => {
+    const { familyId } = await seedFamily(db.database, 'Lookup refund');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_lookup',
+        stripeSubscriptionId: 'sub_vil761_lookup',
+      })
+      .where(eq(schema.families.id, familyId));
+    const paged: string[] = [];
+    const lookedUp: string[] = [];
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_lookup_keep',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_lookup',
+            amount: 5900,
+            amount_refunded: 5900,
+            refunded: true,
+            customer: 'cus_vil761_lookup',
+            invoice: null,
+            payment_intent: 'pi_lookup',
+            metadata: { familyId },
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        onUnresolvedRevoke: async () => {
+          paged.push('paged');
+          return 'sent';
+        },
+        chargeLookup: {
+          async lookupCharge(chargeId) {
+            lookedUp.push(chargeId);
+            return {
+              customerId: 'cus_vil761_lookup',
+              subscriptionId: 'sub_vil761_lookup',
+              subscriptionStatus: 'active',
+              familyId,
+            };
+          },
+        },
+      },
+    );
+    expect(lookedUp).toEqual(['ch_lookup']);
+    expect(result).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(paged).toEqual([]);
+    expect(await planTier(familyId)).toBe('plus');
+    expect((await familyAudits(familyId)).map((row) => row.actionTaken)).not.toContain(
+      'billing_revoke_unresolved',
+    );
+  });
+
+  it('still pages when the charge cannot be tied to any subscription', async () => {
+    const { familyId } = await seedFamily(db.database, 'Unknown refund');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_unknown',
+        stripeSubscriptionId: 'sub_vil761_unknown',
+      })
+      .where(eq(schema.families.id, familyId));
+    const paged: Array<{ eventId: string; reason: string }> = [];
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_unknown_sub',
+        type: 'charge.refunded',
+        data: {
+          object: {
+            id: 'ch_unknown',
+            amount: 5900,
+            amount_refunded: 5900,
+            refunded: true,
+            customer: 'cus_vil761_unknown',
+            invoice: null,
+            payment_intent: 'pi_unknown',
+            metadata: { familyId },
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        onUnresolvedRevoke: async (info) => {
+          paged.push(info);
+          return 'sent';
+        },
+        chargeLookup: {
+          async lookupCharge() {
+            return {
+              customerId: 'cus_vil761_unknown',
+              subscriptionId: null,
+              subscriptionStatus: null,
+              familyId,
+            };
+          },
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      status: 'unresolved',
+      reason: 'subscription_unresolved',
+      opsAlert: 'sent',
+    });
+    expect(paged).toEqual([{ eventId: 'evt_unknown_sub', reason: 'subscription_unresolved' }]);
+    expect(await planTier(familyId)).toBe('plus');
+    expect(await familyAudits(familyId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionTaken: 'billing_revoke_unresolved',
+          after: expect.objectContaining({
+            reason: 'subscription_unresolved',
+            tierChanged: false,
+            stripeEventId: 'evt_unknown_sub',
+          }),
+        }),
+      ]),
+    );
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+  });
+
+  it('clears a matching subscription id when subscription.deleted sets the plan to free', async () => {
+    const { familyId } = await seedFamily(db.database, 'Deleted sub');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_del',
+        stripeSubscriptionId: 'sub_vil761_del',
+      })
+      .where(eq(schema.families.id, familyId));
+    const deleted = await applyStripeBillingEvent(
+      deletedSubscription('evt_del_match', familyId, 'sub_vil761_del', 'cus_vil761_del'),
+      db.database,
+      {},
+      {},
+      { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' } },
+    );
+    expect(deleted).toEqual({ status: 'applied', tier: 'free' });
+    expect(await planTier(familyId)).toBe('free');
+    expect(await storedSubscription(familyId)).toBeNull();
+  });
+
+  it('leaves a different stored subscription id when another subscription is deleted', async () => {
+    const { familyId } = await seedFamily(db.database, 'Other deleted sub');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_other',
+        stripeSubscriptionId: 'sub_vil761_keep',
+      })
+      .where(eq(schema.families.id, familyId));
+    const deleted = await applyStripeBillingEvent(
+      deletedSubscription('evt_del_other', familyId, 'sub_vil761_other', 'cus_vil761_canceled'),
+      db.database,
+      {},
+      {},
+      { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' } },
+    );
+    expect(deleted).toEqual({ status: 'applied', tier: 'free' });
+    expect(await storedSubscription(familyId)).toBe('sub_vil761_keep');
+    expect(await storedCustomer(familyId)).toBe('cus_vil761_other');
+  });
+
+  it('does not clear a replacement subscription stored after the deletion was read', async () => {
+    const isolated = await createTestDb();
+    try {
+      const { familyId } = await seedFamily(isolated.database, 'Replacement race');
+      await isolated.database
+        .update(schema.families)
+        .set({
+          planTier: 'plus',
+          stripeCustomerId: 'cus_vil761_race',
+          stripeSubscriptionId: 'sub_vil761_old',
+        })
+        .where(eq(schema.families.id, familyId));
+      let swapped = false;
+      const client = isolated.client as unknown as {
+        transaction: (
+          fn: (tx: {
+            query: (query: string, params?: unknown[], config?: unknown) => Promise<unknown>;
+          }) => Promise<unknown>,
+        ) => Promise<unknown>;
+      };
+      const originalTransaction = client.transaction.bind(client);
+      client.transaction = async (fn) =>
+        originalTransaction(async (txClient) => {
+          const originalQuery = txClient.query.bind(txClient);
+          txClient.query = async (query, params, config) => {
+            const result = await originalQuery(query, params, config);
+            const text = typeof query === 'string' ? query : '';
+            if (
+              !swapped &&
+              /stripe_subscription_id/i.test(text) &&
+              /families/i.test(text) &&
+              !/^\s*update/i.test(text)
+            ) {
+              swapped = true;
+              await originalQuery(
+                `update families set stripe_subscription_id = 'sub_vil761_new' where id = $1`,
+                [familyId],
+              );
+            }
+            return result;
+          };
+          return fn(txClient);
+        });
+
+      const result = await applyStripeBillingEvent(
+        deletedSubscription('evt_race', familyId, 'sub_vil761_old', 'cus_vil761_race'),
+        isolated.database,
+        {},
+        {},
+        { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' } },
+      );
+      expect(swapped).toBe(true);
+      expect(result).toEqual({ status: 'applied', tier: 'free' });
+      const [row] = await isolated.database
+        .select({
+          planTier: schema.families.planTier,
+          stripeSubscriptionId: schema.families.stripeSubscriptionId,
+          stripeCustomerId: schema.families.stripeCustomerId,
+        })
+        .from(schema.families)
+        .where(eq(schema.families.id, familyId))
+        .limit(1);
+      expect(row).toMatchObject({
+        planTier: 'free',
+        stripeSubscriptionId: 'sub_vil761_new',
+        stripeCustomerId: 'cus_vil761_race',
+      });
+    } finally {
+      await isolated.close();
+    }
+  });
+
+  it('does not record a dispute as a refund when the charge lookup finds a live subscription', async () => {
+    const { familyId } = await seedFamily(db.database, 'Live dispute');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_dispute',
+        stripeSubscriptionId: 'sub_vil761_dispute',
+      })
+      .where(eq(schema.families.id, familyId));
+    const paged: Array<{ eventId: string; reason: string }> = [];
+    const lookedUp: string[] = [];
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_live_dispute',
+        type: 'charge.dispute.created',
+        data: {
+          object: { id: 'dp_live', charge: 'ch_live_dispute', customer: 'cus_vil761_dispute' },
+        },
+      },
+      db.database,
+      {},
+      {},
+      {
+        env: REVOKE,
+        onUnresolvedRevoke: async (info) => {
+          paged.push(info);
+          return 'sent';
+        },
+        chargeLookup: {
+          async lookupCharge(chargeId) {
+            lookedUp.push(chargeId);
+            return {
+              customerId: 'cus_vil761_dispute',
+              subscriptionId: 'sub_vil761_dispute',
+              subscriptionStatus: 'active',
+              familyId,
+            };
+          },
+        },
+      },
+    );
+    expect(lookedUp).toEqual(['ch_live_dispute']);
+    expect(result).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(paged).toEqual([]);
+    const audits = await familyAudits(familyId);
+    expect(audits.map((row) => row.actionTaken)).not.toContain('billing_refunded');
+    expect(audits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionTaken: 'billing_revoke_unresolved',
+          after: expect.objectContaining({ reason: 'dispute_needs_review', tierChanged: false }),
+        }),
+      ]),
+    );
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+  });
+
+  it('does not record a dispute whose payload already shows a live subscription as a refund', async () => {
+    const { familyId } = await seedFamily(db.database, 'Expanded dispute');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_expanded',
+        stripeSubscriptionId: 'sub_vil761_expanded',
+      })
+      .where(eq(schema.families.id, familyId));
+    const result = await applyStripeBillingEvent(
+      {
+        id: 'evt_expanded_dispute',
+        type: 'charge.dispute.created',
+        data: {
+          object: {
+            id: 'dp_expanded',
+            charge: 'ch_expanded',
+            customer: 'cus_vil761_expanded',
+            metadata: { familyId },
+            subscription: { id: 'sub_vil761_expanded', status: 'active' },
+          },
+        },
+      },
+      db.database,
+      {},
+      {},
+      { env: REVOKE, onUnresolvedRevoke: async () => 'sent' },
+    );
+    expect(result).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(await planTier(familyId)).toBe('plus');
+    const audits = await familyAudits(familyId);
+    expect(audits.map((row) => row.actionTaken)).not.toContain('billing_refunded');
+    expect(audits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionTaken: 'billing_revoke_unresolved',
+          after: expect.objectContaining({ reason: 'dispute_needs_review', tierChanged: false }),
+        }),
+      ]),
+    );
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'free' })
+      .where(eq(schema.families.id, familyId));
+  });
+
+  it('does not clear the subscription id unless the clear flag is exactly true', async () => {
+    const { familyId } = await seedFamily(db.database, 'Clear flag off');
+    await db.database
+      .update(schema.families)
+      .set({
+        planTier: 'plus',
+        stripeCustomerId: 'cus_vil761_flag',
+        stripeSubscriptionId: 'sub_vil761_flag',
+      })
+      .where(eq(schema.families.id, familyId));
+    await applyStripeBillingEvent(
+      deletedSubscription('evt_del_off', familyId, 'sub_vil761_gone', 'cus_vil761_flag'),
+      db.database,
+      {},
+      {},
+      { env: { ...REVOKE, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true\n' } },
+    );
+    expect(await planTier(familyId)).toBe('free');
+    expect(await storedSubscription(familyId)).toBe('sub_vil761_gone');
   });
 
   it('does not revoke while STRIPE_BILLING_REVOKE_ENABLED is off', async () => {
