@@ -96,7 +96,12 @@ function ports(channel = fakeChannel('sms')): DispatchPorts {
     channels: { sms: channel },
     renderer: loopTemplateRenderer,
     claimShadow: { dispatch: () => 'off' },
-    claimEnforce: { enforces: () => false, decide: async () => ({ status: 'off' as const }) },
+    opsPager: { page: async () => 'paged' as const },
+    claimEnforce: {
+      enforces: () => false,
+      decide: async () => ({ status: 'off' as const }),
+      recordRefusal: async () => 'off' as const,
+    },
   };
 }
 
