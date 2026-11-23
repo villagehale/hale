@@ -1865,15 +1865,28 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
  * VIL-721. What the kids already do, as the model is handed it. Lit only, so a dark
  * turn's input (and its prompt bytes) is what it was.
  */
-function kidActivitiesFor(given: FirstTouchGiven | null): { kidActivities?: KidActivity[] } {
-  return threadOnboardingV2Enabled() ? { kidActivities: given?.activities ?? [] } : {};
+function kidActivitiesFor(
+  given: FirstTouchGiven | null,
+  inGroup: boolean,
+): { kidActivities?: KidActivity[] } {
+  if (!threadOnboardingV2Enabled()) return {};
+  const activities = given?.activities ?? [];
+  // Health stays in DMs: what a group turn is not handed, the model cannot say there.
+  return { kidActivities: inGroup ? activities.filter((item) => !item.health) : activities };
 }
 
-/** VIL-721. The two lit checklist items from what the session holds. Dark adds nothing. */
-function threadV2Known(given: FirstTouchGiven | null): ReturnType<typeof threadV2Checklist> {
+/**
+ * VIL-721. The two lit checklist items from what the session holds. Dark adds nothing.
+ * A group turn holds the Google item as settled so the walk moves past it: its link signs
+ * the holder in, so the ask waits for this parent's own thread.
+ */
+function threadV2Known(
+  given: FirstTouchGiven | null,
+  inGroup: boolean,
+): ReturnType<typeof threadV2Checklist> {
   return threadV2Checklist({
     activities: activitiesAnswered(given),
-    google: googleAnswered(given),
+    google: inGroup || googleAnswered(given),
   });
 }
 
@@ -2184,7 +2197,7 @@ async function friendOnboardingTurn(
     calendar: calendarAnswered(priorGiven),
     schedule: false,
     coparent: false,
-    ...threadV2Known(priorGiven),
+    ...threadV2Known(priorGiven, ctx.pipe.isGroup),
   };
   const prior = {
     children: session.collected.children,
@@ -2226,7 +2239,7 @@ async function friendOnboardingTurn(
         checklist,
         ...(priorGiven?.coarseCodeAsked ? { coarseCodeAsked: true } : {}),
         ...(priorGiven?.placeDeclined ? { placeDeclined: true } : {}),
-        ...kidActivitiesFor(priorGiven),
+        ...kidActivitiesFor(priorGiven, ctx.pipe.isGroup),
       },
     ),
     {
@@ -2722,7 +2735,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(given),
     schedule: scheduleKnown(given, lines.length),
     coparent: coparentKnown(given),
-    ...threadV2Known(given),
+    ...threadV2Known(given, ctx.pipe.isGroup),
   };
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
@@ -2757,7 +2770,7 @@ async function friendColdTurn(
       coparentJoin: join,
       checklist,
       householdGroup,
-      ...kidActivitiesFor(given),
+      ...kidActivitiesFor(given, ctx.pipe.isGroup),
     }),
     {
       // A card rides only the ask for its own connector, and only the first time.
@@ -2913,7 +2926,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(nextGiven),
     schedule: scheduleKnown(nextGiven, lines.length) || everyLineScheduled,
     coparent: coparentKnown(nextGiven),
-    ...threadV2Known(nextGiven),
+    ...threadV2Known(nextGiven, ctx.pipe.isGroup),
   };
   const next = onboardingMissing(after)[0];
   const nextProgress: ColdStartProgress = {
@@ -2971,7 +2984,14 @@ async function friendColdTurn(
         : spoken.step === 'google' && next === 'google' && !progress.googleOffered
           ? 'google'
           : null;
-  const pending = pendingConnector(nextGiven, progress) ?? askCard;
+  const wantedCard = pendingConnector(nextGiven, progress) ?? askCard;
+  // The one link never goes into a group. The reply still does, and the card waits for
+  // this parent's own thread.
+  const pending = ctx.pipe.isGroup && wantedCard === 'google' ? null : wantedCard;
+  const googleOwedInOwnThread =
+    ctx.pipe.isGroup &&
+    threadOnboardingV2Enabled() &&
+    (wantedCard === 'google' || !googleAnswered(nextGiven));
   let voicedOut = true;
   if (pending === 'google') {
     // VIL-721. The one card: this reply, then one link for Gmail and the calendar. The
@@ -2992,6 +3012,7 @@ async function friendColdTurn(
           phoneE164: session.phoneE164,
           now,
           ridesReply: true,
+          inGroup: ctx.pipe.isGroup,
           voice: spoken.prose,
         },
         { transport: deps.transport, threadMessage: deps.threadMessage },
@@ -3055,7 +3076,7 @@ async function friendColdTurn(
     await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
   }
   // A connector card is its own turn. The next ask rides the receipt or the next text.
-  const complete = next == null && !pending;
+  const complete = next == null && !pending && !googleOwedInOwnThread;
   await saveSession(
     database,
     session,
@@ -3592,7 +3613,7 @@ async function provision(
       calendar: calendarAnswered(given),
       schedule: empty,
       coparent: false,
-      ...threadV2Known(given),
+      ...threadV2Known(given, ctx.pipe.isGroup),
     };
     const gap = onboardingMissing(checklist)[0];
     const common = {
@@ -3605,7 +3626,7 @@ async function provision(
       checklist,
       // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
       ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
-      ...kidActivitiesFor(given),
+      ...kidActivitiesFor(given, ctx.pipe.isGroup),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3677,6 +3698,7 @@ async function provision(
           phoneE164,
           now,
           ridesReply: true,
+          inGroup: ctx.pipe.isGroup,
           voice: spoken.prose,
         },
         { transport: deps.transport, threadMessage: deps.threadMessage },
@@ -3927,7 +3949,9 @@ async function handleWatchReply(
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
   const safety = await crisisReply(database, session, inbound, language, deps);
-  const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
+  const body = safety
+    ? safety.body
+    : await helpBody(deps, session, language, inbound.body, ctx.pipe.isGroup);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
     database,
@@ -4267,6 +4291,7 @@ async function helpBody(
   session: IntakeSession | null,
   language: ReplyLanguage | null,
   parentWords: string,
+  inGroup: boolean,
 ): Promise<string | null> {
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
@@ -4282,7 +4307,7 @@ async function helpBody(
       linesOfFind(session?.firstTouch?.coldStart?.findBody ?? '').length,
     ),
     coparent: coparentKnown(given),
-    ...threadV2Known(given),
+    ...threadV2Known(given, inGroup),
   };
   const spoken = await friendSpeak(
     deps,
@@ -4295,7 +4320,7 @@ async function helpBody(
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,
-      ...kidActivitiesFor(given),
+      ...kidActivitiesFor(given, inGroup),
     }),
   );
   return friendOutbound(spoken);

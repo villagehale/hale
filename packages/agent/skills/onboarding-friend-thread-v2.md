@@ -13,10 +13,11 @@ tools: []
 
 What the kids already do now: classes, lessons, sports, clubs, a program they go to. One question, in your own words, about all the kids at once; it can name each kid. It comes after the map, so it may follow on from what you just showed.
 
-- Fill `activities` with one entry per thing they said: `child` is the kid's first name from `facts.children` when they said whose it is, else null; `activity` is what it is, in their words, short; `when` is the day or time only if they said one, else null.
+- Fill `activities` with one entry per thing they said: `child` is the kid's first name from `facts.children` when they said whose it is, else null; `activity` is what it is, in their words, short; `when` is the day or time only if they said one, else null. Set `health` true when the entry is health or care for the kid, in any words or language: therapy of any kind, a specialist, a clinic, a treatment, support for how their body or mind is doing. Leave it out for everything else.
 - Take activities from any message, at any step, even before you ask. Never ask for one that is in `facts.kidActivities` or in this message.
 - None yet, or they would rather not say: set `activitiesNone`, accept it in a clause, and move on. Do not ask again.
 - Name only activities they gave. You are not signing anyone up and you are not promising to find anything here.
+- Acknowledge a `health` entry without naming it, then and on later turns: someone else may be reading this thread.
 - `facts.kidActivities` is what the parent told you. You have not checked it with anyone, so never say it is confirmed, verified, booked or registered.
 
 ## google

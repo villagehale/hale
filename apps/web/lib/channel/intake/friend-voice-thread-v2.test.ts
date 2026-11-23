@@ -212,6 +212,17 @@ describe('lit: the in-thread walk', () => {
     expect((await friendVoiceSystem({ step: 'google' }, true)).extras).toContain(addendum);
   });
 
+  it('lets the model mark an activity as health or care', () => {
+    lit();
+    const schema = onboardingReplyToolSchema({ step: 'activities' }) as unknown as {
+      properties: {
+        activities: { items: { properties: Record<string, unknown>; required: string[] } };
+      };
+    };
+    expect(schema.properties.activities.items.properties.health).toEqual({ type: 'boolean' });
+    expect(schema.properties.activities.items.required).toEqual(['activity']);
+  });
+
   it('keeps the activities the model read, shape-checked', () => {
     lit();
     const composed = parseReplyTool({

@@ -24,6 +24,8 @@ export interface KidActivity {
   activity: string;
   /** When, as the parent said it ("Tuesdays after school"). Null when they did not say. */
   when: string | null;
+  /** The model read this as health or care for the kid: it stays with the parent who said it. */
+  health?: true;
 }
 
 /**
@@ -294,6 +296,7 @@ export function acceptKidActivity(raw: unknown): KidActivity | null {
     activity,
     // A time can be all digits ("18:00"): only an activity has to carry a letter.
     when: typeof row.when === 'string' ? row.when.trim().replace(/\s+/gu, ' ') || null : null,
+    ...(row.health === true ? { health: true as const } : {}),
   };
 }
 

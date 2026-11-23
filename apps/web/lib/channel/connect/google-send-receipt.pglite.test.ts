@@ -130,7 +130,15 @@ describe('the texts the one Google link adds', () => {
   const card = (transport: ChannelTransport, now = NOW) =>
     sendGoogleConnectorCard(
       db.database,
-      { familyId, parentUserId, phoneE164: PHONE, now, ridesReply: true, voice: PROSE },
+      {
+        familyId,
+        parentUserId,
+        phoneE164: PHONE,
+        now,
+        ridesReply: true,
+        inGroup: false,
+        voice: PROSE,
+      },
       { transport, threadMessage: async () => 'conversation-id' },
     );
 

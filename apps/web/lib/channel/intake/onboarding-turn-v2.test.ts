@@ -169,6 +169,22 @@ describe('the capture', () => {
     expect(capture.activities).toEqual([{ child: 'Maya', activity: 'swim', when: '18:00' }]);
   });
 
+  it("lit, keeps the model's health mark only when it is exactly true", () => {
+    lit();
+    const capture = acceptOnboardingCapture({
+      activities: [
+        { child: 'Maya', activity: 'speech therapy', when: null, health: true },
+        { child: 'Maya', activity: 'ballet', when: null, health: false },
+        { child: 'Leo', activity: 'soccer', when: null, health: 'true' },
+      ],
+    });
+    expect(capture.activities).toEqual([
+      { child: 'Maya', activity: 'speech therapy', when: null, health: true },
+      { child: 'Maya', activity: 'ballet', when: null },
+      { child: 'Leo', activity: 'soccer', when: null },
+    ]);
+  });
+
   it('lit, caps one message at twelve activities', () => {
     lit();
     const many = Array.from({ length: 15 }, (_, i) => ({ child: null, activity: `class ${i}` }));

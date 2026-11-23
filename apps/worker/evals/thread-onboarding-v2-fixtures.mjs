@@ -120,6 +120,32 @@ export const THREAD_V2_FIXTURES = [
     sendable: true,
   },
   {
+    id: 'activities-health-marked',
+    over: {
+      step: 'activities',
+      parentWords: 'Maya has speech therapy on Mondays and does ballet on Tuesdays',
+      children: MAYA,
+      ageMonths: [72],
+      agesLabel: 'Maya, 6',
+      placeLabel: 'Toronto',
+      checklist: DONE_THROUGH_AGES,
+      kidActivities: [],
+      recentTurns: [
+        MAP_TURN,
+        { role: 'hale', body: 'What does Maya already do, like a class or a sport?', asked: true },
+      ],
+    },
+    activityWords: [
+      { child: 'Maya', words: 'speech' },
+      { child: 'Maya', words: 'ballet' },
+    ],
+    healthWords: ['speech'],
+    notHealthWords: ['ballet'],
+    unsaidWords: ['speech', 'therapy'],
+    expect: { asks: true },
+    sendable: true,
+  },
+  {
     id: 'activities-none',
     over: {
       step: 'activities',
@@ -316,6 +342,24 @@ export function threadV2Misses(fixture, value, { judged = null } = {}) {
     if (!found) misses.push(`activities:missing:${child}:${words}`);
   }
   if (fixture.noActivities && activities.length > 0) misses.push('activities:kept');
+  const marked = (words) =>
+    activities.find(
+      (item) => typeof item?.activity === 'string' && item.activity.toLowerCase().includes(words),
+    )?.health === true;
+  for (const words of fixture.healthWords ?? []) {
+    if (!marked(words)) misses.push(`health:unmarked:${words}`);
+  }
+  for (const words of fixture.notHealthWords ?? []) {
+    if (marked(words)) misses.push(`health:marked:${words}`);
+  }
+  for (const words of fixture.unsaidWords ?? []) {
+    if (
+      String(value.reply ?? '')
+        .toLowerCase()
+        .includes(words)
+    )
+      misses.push(`reply:names:${words}`);
+  }
   if (fixture.noYes && value.connectGoogle === true) misses.push('connectGoogle:yes_kept');
   for (const token of fixture.convey ?? []) {
     if (!String(value.reply ?? '').includes(token)) misses.push(`convey:${token}`);

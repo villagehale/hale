@@ -2,6 +2,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { factsForContext } from '@hale/worker/memory-context';
 import { forgetFamilyFact } from '~/lib/memory/forget';
 import { recallFamilyMemory } from '~/lib/memory/store';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
@@ -284,6 +285,101 @@ describe("a kept activity is the parent's", () => {
     expect(result).toMatchObject({ forgotten: 1, refusedWriter: 0 });
     expect(await recallFamilyMemory(db.database, { familyId, now: LATER, reader })).toEqual([]);
   });
+});
+
+describe('an activity the model marked as health or care', () => {
+  let db: TestDb;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  async function twoParents() {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const [other] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:other-${familyId}`, name: 'Other' })
+      .returning({ id: schema.users.id });
+    const otherUserId = other?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: otherUserId, role: 'co_parent' });
+    await seedChild(db.database, familyId, 'Ava', 60, undefined, NOW);
+    return { familyId, parentUserId, otherUserId };
+  }
+
+  const keys = (rows: readonly { factKey: string }[]) => rows.map((row) => row.factKey).sort();
+
+  it.each(['one_to_one', 'family'] as const)(
+    'said in %s, stays with the parent who said it while an ordinary activity is shared',
+    async (heardIn) => {
+      const { familyId, parentUserId, otherUserId } = await twoParents();
+      await keepKidActivities(db.database, {
+        familyId,
+        parentUserId,
+        sessionId: SESSION,
+        activities: [
+          { child: 'Ava', activity: 'speech therapy', when: 'Mondays', health: true },
+          { child: 'Ava', activity: 'ballet', when: 'Tuesdays' },
+        ],
+        heardIn,
+        now: NOW,
+      });
+
+      const therapy = 'kid-activity-speech-therapy';
+      const ballet = 'kid-activity-ballet';
+      const heardBy = (reader: { adult: string } | 'every_adult') =>
+        factsForContext(db.database, familyId, { now: LATER, reader, limit: 10 });
+
+      expect(keys(await heardBy({ adult: parentUserId }))).toEqual([ballet, therapy]);
+      expect(keys(await heardBy({ adult: otherUserId }))).toEqual([ballet]);
+      expect(keys(await heardBy('every_adult'))).toEqual([ballet]);
+      expect(
+        keys(
+          await recallFamilyMemory(db.database, { familyId, now: LATER, reader: 'every_adult' }),
+        ),
+      ).toEqual([ballet]);
+      expect(
+        keys(
+          await recallFamilyMemory(db.database, {
+            familyId,
+            now: LATER,
+            reader: { adult: otherUserId },
+          }),
+        ),
+      ).toEqual([ballet]);
+      expect(
+        keys(
+          await recallFamilyMemory(db.database, {
+            familyId,
+            now: LATER,
+            reader: { adult: parentUserId },
+          }),
+        ),
+      ).toEqual([ballet, therapy]);
+
+      const rows = await db.database
+        .select({
+          factKey: schema.familyMemoryFacts.factKey,
+          factType: schema.familyMemoryFacts.factType,
+          sourceAudience: schema.familyMemoryFacts.sourceAudience,
+          sourceUserId: schema.familyMemoryFacts.sourceUserId,
+        })
+        .from(schema.familyMemoryFacts)
+        .where(eq(schema.familyMemoryFacts.familyId, familyId));
+      expect(rows.find((row) => row.factKey === therapy)).toEqual({
+        factKey: therapy,
+        factType: 'medical',
+        sourceAudience: 'one_to_one',
+        sourceUserId: parentUserId,
+      });
+      expect(rows.find((row) => row.factKey === ballet)?.factType).toBe('routine');
+    },
+  );
 });
 
 describe('kidActivityFactKey', () => {

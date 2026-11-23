@@ -102,7 +102,10 @@ export type ConnectorOfferOutcome =
    * offer stands: a retry would need a second URL, because a token is unrecoverable once
    * minted (hash-only at rest), and a parent who has no link asks for one in the thread.
    */
-  | { status: 'not_sent'; reason: 'link_unconfirmed' };
+  | { status: 'not_sent'; reason: 'link_unconfirmed' }
+  /** VIL-721. The turn is in a group chat. The link signs its holder in, so it never goes
+   * there: no token is minted, and the family's one offer is not spent. */
+  | { status: 'not_sent'; reason: 'group_thread' };
 
 type NotSentReason = Extract<ConnectorOfferOutcome, { status: 'not_sent' }>['reason'];
 
@@ -272,11 +275,17 @@ export async function sendGoogleConnectorCard(
     phoneE164: string;
     now: Date;
     ridesReply?: boolean;
+    /** Whether this turn's transport is bound to a group chat, where `phoneE164` is ignored. */
+    inGroup: boolean;
     /** The model's prose for the ask. Absent or empty sends no card. */
     voice: string | undefined;
   },
   ports: ConnectorOfferPorts,
 ): Promise<ConnectorOfferLabel> {
+  if (args.inGroup) {
+    console.info({ familyId: args.familyId }, 'intake google card: not sent into a group chat');
+    return 'group_thread';
+  }
   if (
     !args.ridesReply &&
     inProactiveQuietHours(args.now, await parentTimeZone(database, args.parentUserId))

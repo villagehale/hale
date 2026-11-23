@@ -105,7 +105,7 @@ function ports(transport: ChannelTransport): ConnectorOfferPorts {
 function offer(
   parent: { familyId: string; parentUserId: string },
   transport: ChannelTransport,
-  over: { voice?: string | undefined; now?: Date; ridesReply?: boolean } = {},
+  over: { voice?: string | undefined; now?: Date; ridesReply?: boolean; inGroup?: boolean } = {},
 ) {
   return sendGoogleConnectorCard(
     db.database,
@@ -114,6 +114,7 @@ function offer(
       phoneE164: PHONE,
       now: over.now ?? NOW,
       ridesReply: over.ridesReply ?? true,
+      inGroup: over.inGroup ?? false,
       voice: 'voice' in over ? over.voice : PROSE,
     },
     ports(transport),
@@ -163,6 +164,21 @@ describe('sendGoogleConnectorCard (VIL-721)', () => {
       }),
     ]);
     expect(await mints(parent.familyId)).toEqual([{ after: { provider: 'google' } }]);
+  });
+
+  it('never goes on a group turn: no send, no token, and the family keeps its one offer', async () => {
+    const parent = await seedParent();
+    const group = imessage();
+
+    expect(await offer(parent, group, { inGroup: true })).toBe('group_thread');
+
+    expect(group.bodies).toEqual([]);
+    expect(await cards(parent.familyId)).toEqual([]);
+    expect(await mints(parent.familyId)).toEqual([]);
+
+    const own = imessage();
+    expect(await offer(parent, own)).toBe('sent');
+    expect(own.bodies.filter((body) => body.includes('to=google'))).toHaveLength(1);
   });
 
   it('is the family’s one offer: a second call sends and mints nothing', async () => {

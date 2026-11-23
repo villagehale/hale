@@ -555,6 +555,7 @@ function decodeActivities(value: unknown): KidActivity[] {
       child: typeof row.child === 'string' && row.child.trim() ? row.child : null,
       activity: row.activity,
       when: typeof row.when === 'string' && row.when.trim() ? row.when : null,
+      ...(row.health === true ? { health: true as const } : {}),
     });
   }
   return out;

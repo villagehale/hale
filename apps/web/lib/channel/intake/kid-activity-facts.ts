@@ -17,6 +17,8 @@ import type { KidActivity } from './onboarding-turn';
  *  - `routine`: a kid's regular activity is household logistics, shared with the
  *    other parent under R7 (memory-context.ts SHARED_FACT_TYPES), the same as the
  *    calendar it will end up on.
+ *  - `medical`, when the model marked the entry as health or care: private to the parent
+ *    who said it, wherever they said it, because health stays in DMs (Dec 1 rule 12).
  *  - provenance on the row itself: `memory_source` parent_message, `source_audience`
  *    and `source_user_id` from who said it and where, `inferred_by` this writer,
  *    `sourced_at` and `valid_from` the turn's clock.
@@ -159,7 +161,7 @@ export async function keepKidActivities(
         await writeFact(tx, {
           familyId: input.familyId,
           childId,
-          factType: 'routine',
+          factType: item.health ? 'medical' : 'routine',
           factKey: kidActivityFactKey(item.activity),
           factValue: {
             schemaVersion: 1,
@@ -169,7 +171,7 @@ export async function keepKidActivities(
           },
           confidence: KID_ACTIVITY_CONFIDENCE,
           inferredBy: KID_ACTIVITY_INFERRED_BY,
-          heard,
+          heard: item.health ? { in: 'one_to_one', userId: input.parentUserId } : heard,
           validFrom: input.now,
           memoryKind: 'lasting',
           memorySource: 'parent_message',

@@ -17,6 +17,7 @@ import type { FriendVoiceInput } from './friend-voice';
 import { type ScriptedTurn, findResult, v2Turn } from './golden-conversation-v2.fixture';
 import { KID_PROFILE_FACT_KEY } from './kid-profile-facts';
 import type { IntakeDeps } from './machine';
+import type { KidActivity } from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
 
 /**
@@ -28,6 +29,7 @@ import { FakeTransport, type InboundMessage } from './transport';
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
+const GROUP_CHAT = '5b7c1e52-0d55-4a0e-9c55-0c4a4f6f2b11';
 const T0 = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
 const LINK = /https:\/\/\S+/g;
@@ -90,7 +92,7 @@ function conversation(
     transport,
     events,
     seen,
-    say: async (body: string) => {
+    say: async (body: string, where: { group?: boolean } = {}) => {
       sequence += 1;
       clock = new Date(clock.getTime() + 60_000);
       vi.setSystemTime(clock);
@@ -101,7 +103,8 @@ function conversation(
         providerId: `v2-pg-${sequence}`,
         receivedAt: clock,
         transport: 'imessage',
-        chatId: CHAT,
+        chatId: where.group ? GROUP_CHAT : CHAT,
+        ...(where.group ? { isGroup: true } : {}),
       };
       await routeInboundText(
         {
@@ -320,6 +323,107 @@ describe('VIL-721 what the walk keeps, on Postgres', () => {
       if (kind === 'unclear') expect(attempts[1]?.key).toBe(attempts[0]?.key);
       else expect(attempts[1]?.key).not.toBe(attempts[0]?.key);
       expect(linksIn(talk.transport.bodies())).toHaveLength(1);
+    });
+  });
+
+  describe('lit, with group onboarding off, a group turn', () => {
+    const UP_TO_NAME = ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays'];
+
+    beforeEach(() => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'false');
+    });
+
+    const openSession = async () => {
+      const [session] = await db.database.select().from(schema.smsIntakeSessions);
+      return { state: session?.state, closedAt: session?.closedAt };
+    };
+
+    it('never carries the sign-in link, and the parent gets it in their own thread', async () => {
+      const talk = conversation(db.database);
+      for (const words of UP_TO_NAME) await talk.say(words);
+
+      const inGroup = await talk.say('Dana', { group: true });
+
+      expect(inGroup.bodies.length).toBeGreaterThan(0);
+      expect(linksIn(inGroup.bodies)).toEqual([]);
+      expect(inGroup.bodies.join('\n')).not.toContain('unverified');
+
+      const own = await talk.say('hello?');
+
+      expect(linksIn(own.bodies)).toHaveLength(1);
+      expect(linksIn(own.bodies)[0]).toContain('to=google');
+      expect(linksIn(talk.transport.bodies())).toHaveLength(1);
+    });
+
+    it('holds a yes said in the group until their own thread', async () => {
+      const yesInGroup = (input: FriendVoiceInput) => {
+        const turn = v2Turn(input);
+        return input.parentWords === 'connect my google'
+          ? { ...turn, capture: { ...turn.capture, connectGoogle: true } }
+          : turn;
+      };
+      const talk = conversation(db.database, yesInGroup);
+      for (const words of [...UP_TO_NAME.slice(0, -1), 'she swims on Saturdays']) {
+        await talk.say(words);
+      }
+
+      const inGroup = await talk.say('connect my google', { group: true });
+      expect(linksIn(inGroup.bodies)).toEqual([]);
+
+      const own = await talk.say('Dana');
+      expect(linksIn(own.bodies)).toHaveLength(1);
+    });
+
+    it('does not close the walk while the Google item is still owed', async () => {
+      const closing = (input: FriendVoiceInput) => {
+        const turn = v2Turn(input);
+        return input.parentWords === 'no group for us'
+          ? { ...turn, capture: { ...turn.capture, coparentGroup: false } }
+          : turn;
+      };
+      const talk = conversation(db.database, closing);
+      for (const words of UP_TO_NAME) await talk.say(words);
+      await talk.say('Dana', { group: true });
+      await talk.say('yes', { group: true });
+      await talk.say('no group for us', { group: true });
+
+      const held = await openSession();
+      expect(held.closedAt).toBeNull();
+      expect(held.state).not.toBe('complete');
+      expect(linksIn(talk.transport.bodies())).toEqual([]);
+
+      const own = await talk.say('hello?');
+      expect(linksIn(own.bodies)).toHaveLength(1);
+    });
+
+    it('hands the model no health activity, and its own thread still does', async () => {
+      const therapy: KidActivity = {
+        child: 'Maya',
+        activity: 'speech therapy',
+        when: 'Mondays',
+        health: true,
+      };
+      const withTherapy = (input: FriendVoiceInput) => {
+        const turn = v2Turn(input);
+        return input.parentWords === 'she has speech therapy'
+          ? { ...turn, capture: { ...turn.capture, activities: [therapy] } }
+          : turn;
+      };
+      const talk = conversation(db.database, withTherapy);
+      for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she has speech therapy']) {
+        await talk.say(words);
+      }
+
+      await talk.say('Dana', { group: true });
+      const groupInput = talk.seen.at(-1);
+      expect(groupInput?.parentWords).toBe('Dana');
+      expect(groupInput?.kidActivities).toEqual([]);
+
+      await talk.say('hello?');
+      const ownInput = talk.seen.at(-1);
+      expect(ownInput?.parentWords).toBe('hello?');
+      expect(ownInput?.kidActivities).toEqual([therapy]);
     });
   });
 

@@ -818,6 +818,7 @@ const THREAD_V2_FIELDS_JSON = {
         child: { type: ['string', 'null'] },
         activity: { type: 'string' },
         when: { type: ['string', 'null'] },
+        health: { type: 'boolean' },
       },
       required: ['activity'],
     },
