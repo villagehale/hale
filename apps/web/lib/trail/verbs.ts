@@ -176,6 +176,9 @@ export const AUDIT_VERBS = [
   // VIL-721. What the kids already do, told in the onboarding thread and kept as
   // family memory. `after` is counts only: no activity, no name.
   'onboarding_activities_kept',
+  // VIL-721. The kids' names and ages as the model read them, kept with their provenance.
+  // `after` is counts only: no name, no age.
+  'onboarding_kids_kept',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -836,6 +839,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   onboarding_activities_kept: {
     sentence: 'you told Hale what the kids already do, and it kept that',
+    family: 'done',
+  },
+  onboarding_kids_kept: {
+    sentence: "you told Hale your kids' names and ages, and it kept that",
     family: 'done',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },

@@ -146,6 +146,7 @@ import { identityChallengeReply } from './identity-challenge';
 import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { keepKidActivities } from './kid-activity-facts';
+import { keepKidProfiles } from './kid-profile-facts';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
   type CoparentGroupMode,
@@ -2782,6 +2783,20 @@ async function friendColdTurn(
       mergedChildren,
       now,
     );
+    // VIL-721. What the model just read about these kids, kept with where it came from.
+    if (threadOnboardingV2Enabled()) {
+      await keepKidProfiles(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        children: mergedChildren.filter((child, index) => {
+          const before = session.collected.children[index];
+          return child.name !== before?.name || child.ageMonths !== before?.ageMonths;
+        }),
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
   }
   if (agesChanged) {
     const corrected = mergedChildren.find(
@@ -3505,8 +3520,19 @@ async function provision(
       });
     }
     await keepParentRole(database, { familyId, userId, guess: given?.parentRole });
-    // VIL-721. Anything the kids do that the parent said before the family existed is
-    // kept now that there is a family to keep it on. A miss is named and logged there.
+    // VIL-721. The kids' names and ages the model read, and anything they do that the
+    // parent said before the family existed, kept now that there is a family to keep
+    // them on. A miss is named and logged there.
+    if (threadOnboardingV2Enabled()) {
+      await keepKidProfiles(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        children,
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
     if (threadOnboardingV2Enabled() && (given?.activities?.length ?? 0) > 0) {
       await keepKidActivities(database, {
         familyId,
