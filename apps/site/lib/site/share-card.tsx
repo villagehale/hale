@@ -22,13 +22,21 @@ const IM_OUT = '#0088ff';
 const IM_IN = '#e9e9eb';
 const IM_META = '#6e6e73';
 
-const FONT_DIR = fileURLToPath(new URL('../../assets/og-fonts/', import.meta.url));
 // Satori cannot read the site's variable woff2 masters. These are static
 // instances of the same OFL files (Figtree 400/500/600, Source Serif 4 400).
-const FIGTREE_400 = readFileSync(`${FONT_DIR}figtree-400.ttf`);
-const FIGTREE_500 = readFileSync(`${FONT_DIR}figtree-500.ttf`);
-const FIGTREE_600 = readFileSync(`${FONT_DIR}figtree-600.ttf`);
-const SOURCE_SERIF = readFileSync(`${FONT_DIR}source-serif-4-400.ttf`);
+// Each file is its own URL so the production bundler can trace it.
+const FIGTREE_400 = readFileSync(
+  fileURLToPath(new URL('../../assets/og-fonts/figtree-400.ttf', import.meta.url)),
+);
+const FIGTREE_500 = readFileSync(
+  fileURLToPath(new URL('../../assets/og-fonts/figtree-500.ttf', import.meta.url)),
+);
+const FIGTREE_600 = readFileSync(
+  fileURLToPath(new URL('../../assets/og-fonts/figtree-600.ttf', import.meta.url)),
+);
+const SOURCE_SERIF = readFileSync(
+  fileURLToPath(new URL('../../assets/og-fonts/source-serif-4-400.ttf', import.meta.url)),
+);
 
 const LOGO = `data:image/png;base64,${readFileSync(
   fileURLToPath(new URL('../../app/icon.png', import.meta.url)),
