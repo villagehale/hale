@@ -731,6 +731,11 @@ async function runOnePlan(
       holdExpiresAt: null,
     });
   }
+  const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
+  if (lapse) {
+    console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
+    return handBack('authorization_lapsed', 'cancelled');
+  }
   // VIL-715. A stored approval is enforced whatever the flag says now, so turning the flag
   // off in an incident cannot leave a bound plan payable on its maximum alone. A row code
   // cannot trust, or a plan with none while the flag is on, is handed back unpaid.
@@ -745,11 +750,6 @@ async function runOnePlan(
     });
     console.warn({ offerId: plan.offerId, page }, 'signup plans: no readable approval');
     return handBack('terms_unreadable');
-  }
-  const lapse = plan.takenBack ? 'taken_back' : await planLapse(database, plan);
-  if (lapse) {
-    console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
-    return handBack('authorization_lapsed', 'cancelled');
   }
   if (!allowed.ok || !host) return handBack('url_refused');
   if (!plan.alreadyOpen && now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {

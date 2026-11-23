@@ -4,6 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
+import { moneyCentsWritten } from '../terms/money';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -101,9 +102,9 @@ export const SIGNUP_PLAN_READ_TOOL = 'signup_plan_read';
 export const SIGNUP_PLAN_READ_TOOL_DESCRIPTION =
   'Decide whether the parent approved the registration plan, took it back, or neither.';
 export const SIGNUP_PLAN_READ_MAX_TOKENS = 2048;
-/** A fact for the writer, who words it. Asked when a yes carries money that is not the price. */
+/** A fact for the writer, who words it. Asked when a yes carries an amount of money. */
 const TERMS_STATED_PRICE_QUESTION =
-  'They put an amount of their own beside their yes. May Hale pay the stated price?';
+  'They wrote an amount beside their yes. May Hale pay the stated price?';
 
 const VERDICTS = ['approve', 'take_back', 'unclear', 'unrelated'] as const;
 
@@ -354,7 +355,7 @@ export function toPlanReading(
       ...(offer.terms
         ? {
             prerequisiteMet: prerequisiteAnswer(raw, text),
-            ceilingCents: max > 0 && moneyWritten(text).includes(max) ? max : null,
+            ceilingCents: ceilingWritten(offer.terms, ids, max, text),
           }
         : {}),
     };
@@ -370,10 +371,10 @@ function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
 }
 
 /**
- * Backs up the model's read of a yes to a stated price, and only ever makes Hale ask: its
- * maximum is one of those prices, and any money in their words repeats one. A bare number
- * is the model's to read, so "the 4pm one" is never a question. A choice with no stated
- * price has nothing to repeat: its ceiling is read from their money.
+ * Backs up the model's read of a yes to a stated price, and only ever makes Hale ask. Any
+ * money beside the yes is a question, even the price said back: with two rates or a tax on
+ * top, an echo and a cap are the same digits. A bare number is the model's to read, so
+ * "the 4pm one" is never a question.
  */
 function yesTakesStatedPrice(
   terms: PlanReadTerms,
@@ -385,7 +386,24 @@ function yesTakesStatedPrice(
     .filter((session) => ids.includes(session.sessionId))
     .flatMap((session) => session.cents);
   if (stated.length === 0) return true;
-  return stated.includes(max) && moneyWritten(text).every((cents) => stated.includes(cents));
+  return (
+    stated.includes(max) && moneyWritten(text).length === 0 && moneyCentsWritten(text).length === 0
+  );
+}
+
+/** A ceiling only where no chosen session has a price: the one amount of money they wrote. */
+function ceilingWritten(
+  terms: PlanReadTerms,
+  ids: readonly string[],
+  max: number,
+  text: string,
+): number | null {
+  const anyStated = terms.sessionPrices.some(
+    (session) => ids.includes(session.sessionId) && session.cents.length > 0,
+  );
+  if (anyStated || max <= 0) return null;
+  const amounts = new Set(moneyWritten(text));
+  return amounts.size === 1 && amounts.has(max) ? max : null;
 }
 
 function className(err: unknown): string {

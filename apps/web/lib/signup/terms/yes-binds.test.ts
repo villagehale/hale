@@ -102,7 +102,6 @@ const EXACT = (cents: number, plusTax: unknown = null) => ({
 describe('what a yes to a stated price binds', () => {
   for (const [text, cents] of [
     ['yes please', 8488],
-    ['yes, $84.88 is fine', 8488],
     ['sure, the 4pm one', 12000],
     ['yes for level 3', 12000],
   ] as const) {
@@ -114,15 +113,53 @@ describe('what a yes to a stated price binds', () => {
     });
   }
 
-  it('a plus-tax class with the price echoed binds the price and its tax', () => {
-    const { reading, bound } = run(
-      shownWith(session('s-1', 12000, 'plus_tax')),
-      'yes, $120 plus tax is fine',
-      12000,
-    );
+  it('a plain yes to a plus-tax class binds the price and its tax (control)', () => {
+    const { reading, bound } = run(shownWith(session('s-1', 12000, 'plus_tax')), 'yes', 12000);
     expect(reading?.verdict).toBe('approve');
     expect(amountOf(bound)).toEqual(EXACT(12000, { kind: 'rate', basisPoints: 1300 }));
   });
+
+  it('the price said back on a plus-tax class asks: it could be a cap on the total', () => {
+    const { reading, bound } = run(
+      shownWith(session('s-1', 12000, 'plus_tax')),
+      'yes, $120 is fine',
+      12000,
+    );
+    expect(reading?.verdict).toBe('unclear');
+    expect(bound).toBeNull();
+  });
+
+  it('"up to $80" on a class with two rates asks, although $80 is one of them', () => {
+    const twoRates: Session = {
+      ...session('s-1', 8000),
+      rates: [
+        { rate: 'resident', cents: 8000 },
+        { rate: 'non_resident', cents: 12000 },
+      ],
+    };
+    const { reading, bound } = run(
+      { ...shownWith(twoRates), residency: 'unknown' },
+      'yes, up to $80',
+      12000,
+    );
+    expect(reading?.verdict).toBe('unclear');
+    expect(bound).toBeNull();
+  });
+
+  it('money beside a two-session pick asks, although it is the price of one of them', () => {
+    const shown = shownWith(session('s-1', 8000), session('s-2', 12000));
+    const { reading, bound } = run(shown, 'yes both, $80', 12000, ['s-1', 's-2']);
+    expect(reading?.verdict).toBe('unclear');
+    expect(bound).toBeNull();
+  });
+
+  for (const text of ['yes, $84.88 is fine', 'oui, 84,88 $ ça va', '可以，84.88加币']) {
+    it(`money in any format beside the yes asks, even the price itself: ${text}`, () => {
+      const { reading, bound } = run(shownWith(session('s-1', 8488)), text, 8488);
+      expect(reading?.verdict).toBe('unclear');
+      expect(bound).toBeNull();
+    });
+  }
 
   for (const text of [
     'yes up to $100',
@@ -173,6 +210,18 @@ describe('what a yes to a session with no stated price binds', () => {
     const { reading, bound } = run(shownWith(session('s-1', null)), 'yes up to 150', 15000);
     expect(reading?.verdict === 'approve' && reading.ceilingCents).toBeNull();
     expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
+  });
+
+  it('two amounts set no ceiling, and Hale asks for the amount', () => {
+    const { bound } = run(shownWith(session('s-1', null)), 'yes, $100 or $150', 15000);
+    expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
+  });
+
+  it('money beside a pick of one priced and one unpriced session sets no ceiling', () => {
+    const shown = shownWith(session('s-1', 12000), session('s-2', null));
+    const { reading, bound } = run(shown, 'yes both, up to $120', 12000, ['s-1', 's-2']);
+    expect(reading?.verdict).toBe('unclear');
+    expect(bound).toBeNull();
   });
 
   it('a figure the parent never wrote sets no ceiling', () => {

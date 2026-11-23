@@ -1536,6 +1536,30 @@ describe('the run', () => {
     expect(posted.join(' ')).toContain('registration_terms_unreadable');
   });
 
+  it('a running plan the parent took back hears nothing, even with no terms row', async () => {
+    const posted = stubOps();
+    const f = await household();
+    const offerId = await approveAndClaimable(f);
+    await db.database
+      .delete(schema.authorizedSignupTerms)
+      .where(eq(schema.authorizedSignupTerms.offerId, offerId));
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'submitting',
+        planResume: { phase: 'signup', runId: 'run-1', sessionId: null, browserId: null },
+        planLeaseUntil: null,
+        planCancelRequestedAt: NOW,
+      })
+      .where(eq(schema.authorizedSignupOffers.id, offerId));
+    const { deps, inputs, notices } = sweepDeps();
+    await sweep(deps, new Date(NOW.getTime() + 60_000));
+    expect(inputs).toHaveLength(0);
+    expect(notices).toEqual([]);
+    expect(posted.join(' ')).not.toContain('registration_terms_unreadable');
+    expect((await offerRow(offerId)).status).toBe('handed_back');
+  });
+
   it('with the flag off, a plan with no terms row runs as it does today', async () => {
     const f = await household();
     const offerId = await approveAndClaimable(f);
