@@ -5,14 +5,13 @@
 // the read found a clash. The decision is the model's ids. Nothing here matches
 // titles or times.
 //
-// Named without the run- prefix until its one paid recording lands, so the
-// every-eval cached-only sweep does not replay an empty cache. When recorded,
-// rename to run-email-alert-appointment-eval.mjs and add the CI step.
+// Recorded 2026-11-23 on the test key (5 calls, $0.0195); the every-eval
+// cached-only sweep replays it from the committed cache.
 //
-//   node evals/email-alert-appointment-eval.mjs --dry
-//   node evals/email-alert-appointment-eval.mjs --cached-only
+//   node evals/run-email-alert-appointment-eval.mjs --dry
+//   node evals/run-email-alert-appointment-eval.mjs --cached-only
 //   ANTHROPIC_API_KEY_TEST=... HALE_SPEND_LEDGER=... \
-//     node evals/email-alert-appointment-eval.mjs --max-usd 2
+//     node evals/run-email-alert-appointment-eval.mjs --max-usd 2
 
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
