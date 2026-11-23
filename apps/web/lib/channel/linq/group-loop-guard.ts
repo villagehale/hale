@@ -4,6 +4,7 @@ import { and, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from 'd
 import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { type OpsPage, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
+import { linqChatAuditKey } from './family-audit';
 import { realHumanPhone } from './group-coparent';
 import { presentHouseholds } from './multi-family';
 
@@ -137,10 +138,19 @@ export type GroupLoopGuardVerdict =
  * One group message, before any group path may answer it. Writes the run state; sends
  * nothing. Throws only when the database does, and the door runs the turn unguarded then.
  */
+export interface GroupLoopGuardCheckPorts {
+  /**
+   * Test seam. Runs after the send count and before the quiet write, so a test can
+   * delete this run and open another between the two.
+   */
+  beforeQuiet?: () => Promise<void>;
+}
+
 export async function checkGroupLoopGuard(
   database: Database,
   input: { chatId: string; senderHandle: string; now: Date },
   env: Record<string, string | undefined> = process.env,
+  ports: GroupLoopGuardCheckPorts = {},
 ): Promise<GroupLoopGuardVerdict> {
   if (!groupLoopGuardEnabled()) return { verdict: 'off' };
   const guards = schema.linqGroupLoopGuards;
@@ -164,21 +174,71 @@ export async function checkGroupLoopGuard(
     .where(eq(guards.chatId, input.chatId));
   // A person spoke between the insert and this read and closed the run: nothing to count.
   if (!run) return { verdict: 'open', haleSince: 0, cap };
-  if (run.quietSince) return { verdict: 'quiet', tripped: false, haleSince: null, cap };
+  if (run.quietSince) {
+    const healed = await auditGroupLoopGuardQuiet(database, {
+      chatId: input.chatId,
+      haleSince: cap,
+      cap,
+    });
+    return { verdict: 'quiet', tripped: healed > 0, haleSince: null, cap };
+  }
 
   const windowStart = new Date(input.now.getTime() - GROUP_LOOP_GUARD_WINDOW_MS);
   const since = run.runStartedAt > windowStart ? run.runStartedAt : windowStart;
   const haleSince = await countHaleGroupSends(database, input.chatId, since);
   if (haleSince < cap) return { verdict: 'open', haleSince, cap };
 
-  // Only one message takes the chat quiet, however many arrive at once: that one audits
-  // and pages, and the rest are ordinary quiet messages.
-  const took = await database
-    .update(guards)
-    .set({ quietSince: input.now, updatedAt: input.now })
-    .where(and(eq(guards.chatId, input.chatId), isNull(guards.quietSince)))
-    .returning({ chatId: guards.chatId });
-  return { verdict: 'quiet', tripped: took.length > 0, haleSince, cap };
+  await ports.beforeQuiet?.();
+
+  // The quiet mark and the household audit commit together. The update names the run
+  // that was counted, so a person who reset the chat in between is not muted by it.
+  // A thrown write rolls the quiet mark back; this message is still held, and the next
+  // one tries again.
+  try {
+    const committed = await database.transaction(async (tx) => {
+      const took = await tx
+        .update(guards)
+        .set({ quietSince: input.now, updatedAt: input.now })
+        .where(
+          and(
+            eq(guards.chatId, input.chatId),
+            eq(guards.runStartedAt, run.runStartedAt),
+            isNull(guards.quietSince),
+          ),
+        )
+        .returning({ chatId: guards.chatId });
+      if (took.length === 0) return false;
+      await auditGroupLoopGuardQuiet(tx, { chatId: input.chatId, haleSince, cap });
+      return true;
+    });
+    if (committed) return { verdict: 'quiet', tripped: true, haleSince, cap };
+  } catch (err) {
+    console.error(
+      {
+        outcome: 'group_loop_guard_audit_failed',
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'group loop guard: the quiet mark was not kept because the audit row was not written',
+    );
+    return { verdict: 'quiet', tripped: false, haleSince, cap };
+  }
+
+  const [again] = await database
+    .select({ runStartedAt: guards.runStartedAt, quietSince: guards.quietSince })
+    .from(guards)
+    .where(eq(guards.chatId, input.chatId));
+  if (!again || again.runStartedAt.getTime() !== run.runStartedAt.getTime()) {
+    return { verdict: 'open', haleSince: 0, cap };
+  }
+  if (again.quietSince) {
+    const healed = await auditGroupLoopGuardQuiet(database, {
+      chatId: input.chatId,
+      haleSince,
+      cap,
+    });
+    return { verdict: 'quiet', tripped: healed > 0, haleSince: null, cap };
+  }
+  return { verdict: 'open', haleSince, cap };
 }
 
 export interface GroupLoopGuardPorts {
@@ -218,9 +278,46 @@ async function familiesInChat(database: Database, chatId: string): Promise<strin
 }
 
 /**
- * The ops event for the one message that took a chat quiet: an internal audit row for each
- * household in the chat (the counts only, no handle, no words) and one #ops page. Never
- * throws: a failure here does not undo the quiet, it is named in the result and logged.
+ * One audit row per household that does not already have one for this chat. The chat is
+ * named by its keyed index, never the raw Linq id. Returns how many rows were written.
+ * Throws when the write throws, so a caller inside the quiet transaction can roll it back.
+ */
+async function auditGroupLoopGuardQuiet(
+  database: Database,
+  input: { chatId: string; haleSince: number; cap: number },
+): Promise<number> {
+  const families = await familiesInChat(database, input.chatId);
+  if (families.length === 0) return 0;
+  const chatKey = linqChatAuditKey(input.chatId).chatKey;
+  const existing = await database
+    .select({ familyId: schema.auditLog.familyId })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'linq_group_loop_guard_quiet'),
+        sql`${schema.auditLog.after}->>'chatKey' = ${chatKey}`,
+      ),
+    );
+  const have = new Set(existing.map((row) => row.familyId));
+  const missing = families.filter((familyId) => !have.has(familyId));
+  if (missing.length === 0) return 0;
+  await database.insert(schema.auditLog).values(
+    missing.map((familyId) => ({
+      familyId,
+      actor: 'system',
+      actionTaken: 'linq_group_loop_guard_quiet',
+      targetTable: 'linq_group_loop_guards',
+      targetId: chatKey,
+      after: { haleSince: input.haleSince, cap: input.cap, chatKey },
+    })),
+  );
+  return missing.length;
+}
+
+/**
+ * The ops event for the one message that took a chat quiet: the household audit (idempotent;
+ * the quiet transaction already wrote it) and one ops page. Never throws: a failure here
+ * does not undo the quiet, it is named in the result and logged.
  */
 export async function noteGroupLoopGuardTrip(
   database: Database,
@@ -230,20 +327,7 @@ export async function noteGroupLoopGuardTrip(
   let audited = 0;
   let auditFailed = false;
   try {
-    const families = await familiesInChat(database, input.chatId);
-    if (families.length > 0) {
-      await database.insert(schema.auditLog).values(
-        families.map((familyId) => ({
-          familyId,
-          actor: 'system',
-          actionTaken: 'linq_group_loop_guard_quiet',
-          targetTable: 'linq_group_loop_guards',
-          targetId: input.chatId,
-          after: { haleSince: input.haleSince, cap: input.cap },
-        })),
-      );
-      audited = families.length;
-    }
+    audited = await auditGroupLoopGuardQuiet(database, input);
   } catch (err) {
     auditFailed = true;
     console.error(

@@ -357,6 +357,32 @@ describe('the trip', () => {
     expect(raced.filter((v) => v.verdict === 'quiet' && v.tripped)).toHaveLength(1);
   });
 
+  it('does not mute a run a person opened while the count was in flight', async () => {
+    const owner = await seedParent(MEI, 'Mei');
+    tick();
+    await guard(BOT);
+    for (let i = 0; i < 5; i += 1) {
+      tick();
+      await haleSays(owner);
+    }
+    tick();
+    const verdict = await checkGroupLoopGuard(
+      db.database,
+      { chatId: CHAT, senderHandle: BOT, now: clock },
+      process.env,
+      {
+        beforeQuiet: async () => {
+          await guard(MEI);
+          tick();
+          await guard(BOT);
+        },
+      },
+    );
+    expect(verdict).toEqual({ verdict: 'open', haleSince: 0, cap: 5 });
+    const [row] = await guardRows();
+    expect(row?.quietSince).toBeNull();
+  });
+
   it('audits every household in the chat and pages #ops once, with counts only', async () => {
     const mei = await seedParent(MEI, 'Mei');
     await db.database
@@ -393,12 +419,16 @@ describe('the trip', () => {
       expect(row).toMatchObject({
         actor: 'system',
         targetTable: 'linq_group_loop_guards',
-        targetId: CHAT,
         after: { haleSince: 5, cap: 5 },
       });
+      const after = row.after as { chatKey?: string };
+      expect(after.chatKey).toEqual(expect.any(String));
+      expect(row.targetId).toBe(after.chatKey);
+      expect(row.targetId).not.toBe(CHAT);
     }
     const written = JSON.stringify(rows);
     for (const phone of [MEI, ADA, BOT]) expect(written).not.toContain(phone);
+    expect(written).not.toContain(CHAT);
   });
 
   it('a chat no household has claimed audits nobody and still pages', async () => {

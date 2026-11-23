@@ -202,7 +202,9 @@ export const FLAGS = [
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-728. After a run of Hale group messages with no verified person speaking, Hale
   // answers no unverified sender in that chat until a verified person speaks. Exact `true`.
-  exact('group-loop-guard', 'GROUP_LOOP_GUARD_ENABLED'),
+  // Env-only: the guard runs per chat before any family is known, so a family-scoped
+  // PostHog answer must not turn it on or off.
+  exact('group-loop-guard', 'GROUP_LOOP_GUARD_ENABLED', { envOnly: true }),
   // VIL-719. The three-tier ask policy: an ask-first kind runs only on the parent's
   // recorded yes, a just-do kind sends no on-its-own text, and a tell-after text the
   // model cannot write pages #ops. Exact `true`. Env-only (VIL-755): a PostHog sync must
