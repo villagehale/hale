@@ -84,7 +84,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      "Who Hale is: an AI agent you text for the kids' year, not only a planner. A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts or a 1:1. One question: who each person is and which kid they are with; no role list and no child named.",
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. English throughout. The address field is vous on every group line and is not a word in the message: do not write vous, and do not treat it as present. A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Do not require a private-text claim, and say nothing about private texts or a 1:1. One question: who each person is and which kid they are with; no role list and no child named.",
   },
   {
     id: 'es-shared-no-adder',
@@ -97,7 +97,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      "Who Hale is: an AI agent you text for the kids' year, not only a planner. Written in Spanish, plural you to the whole group (ustedes). Names nobody as the adder and no household. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts or a 1:1. One question about who they are and which kid they are with.",
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. Spanish, with every accent a native speaker writes (ñ, á, é, í, ó, ú), never the unaccented letter in their place. Plural you to the whole group (ustedes), never tú. Names nobody as the adder and no household. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Do not require a private-text claim, and say nothing about private texts or a 1:1. One question about who they are and which kid they are with.",
   },
   {
     id: 'fr-shared-small',
