@@ -491,7 +491,7 @@ function readAge(
   return { fit: 'unknown', outsideBandChildIds };
 }
 
-const NON_RESIDENT = /non[- ]?resident/i;
+export const NON_RESIDENT = /non[- ]?resident/i;
 
 /**
  * What the page says the course costs, or nothing.

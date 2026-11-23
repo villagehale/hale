@@ -69,6 +69,16 @@ export type {
 } from './schema/social-watchlist.js';
 export type { CandidateAccess } from './schema/village.js';
 export type { AuthorizedSignupPlanResume } from './schema/authorized-signup-offers.js';
+export type {
+  SignupTermsAgeRule,
+  SignupTermsAmount,
+  SignupTermsApproved,
+  SignupTermsApprovedSession,
+  SignupTermsHold,
+  SignupTermsRate,
+  SignupTermsShown,
+  SignupTermsTaxBound,
+} from './schema/authorized-signup-terms.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {
   AckPromise,
