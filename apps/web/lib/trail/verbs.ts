@@ -1416,7 +1416,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not text you about a schedule change',
     family: 'note',
   },
-  // VIL-719. The row's `after` is the kind of change only.
+  // VIL-719. About one parent's email: their audience, off History and the family export
+  // (rights/export.ts), in their own copy. `after` is the action id and the kind of change.
   team_schedule_change_not_run: {
     sentence: 'Hale did not make a schedule change from an email',
     family: 'note',
@@ -2540,6 +2541,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'proactive_nudge_unwritten',
   // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
+  // VIL-719. A change from one parent's email that Hale did not make.
+  'team_schedule_change_not_run',
   // VIL-735. About one adult's payment: the other parent never sees it.
   'billing_notice_sent',
   'billing_notice_send_failed',

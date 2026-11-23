@@ -115,6 +115,8 @@ Each text is written by the model. When it cannot be written, nothing is sent an
 
 A team-schedule change the executor refused (outside the action window), failed or threw on did not land, so nobody is told it moved and no reminder moves. The action leaves the parent's yes list as `needs_human`, because they were never asked about it (a refused one writes `team_schedule_change_not_run`). A failed or thrown run pages #ops (`team_schedule_not_applied`). The email then goes through the normal email notice and its quiet-hours hold, so the parent still hears what the email said.
 
+An ask that did not reach the parent leaves the yes list the same way, so a later plain yes cannot approve a change they never heard about. After a gate hold, the email goes through the normal notice, and its quiet-hours hold runs this lane again later, which asks again. After a failed send, a missing number or chat, or a send another run already made, that email's send key is spent, so no second text goes. The `team_schedule_change_not_run` row belongs to the parent whose inbox the email came from: it is off History and the family export, and in that parent's own copy.
+
 `calendar_invite_unwritten` pages for every deferral that left a parent without the text: `client_unavailable`, `skill_unavailable`, `model_failed`, `gate_exhausted` (every draft refused), `time_unjudged`, and a summary held before the model call (`summary_too_long`, `summary_carries_destination`). The time judge failing and an unreadable zone share `time_unjudged` on the invite leg, so both page. Every invite sender that follows a calendar change is wrapped: the drain, the nudge cron's cancel re-drive, the group common-time plan, and an undo's withdrawal.
 
 ## Just do

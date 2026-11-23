@@ -190,13 +190,52 @@ async function changeTextsOutsider(
 }
 
 /**
+ * VIL-719 · a draft the parent was never asked about leaves the yes list, so a later plain
+ * yes cannot approve it. The row names one parent's email, so it stays with that parent.
+ */
+async function takeOffYesList(
+  database: Database,
+  input: { familyId: string; parentUserId: string; actionId: string; change: SpokenChange },
+): Promise<void> {
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const held = await tx
+      .update(schema.actions)
+      .set({ userVisibleState: 'needs_human' })
+      .where(
+        and(
+          eq(schema.actions.id, input.actionId),
+          eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+        ),
+      )
+      .returning({ id: schema.actions.id });
+    if (held.length === 0) return;
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'team_schedule_change_not_run',
+      audience: input.parentUserId,
+      targetTable: 'users',
+      targetId: input.parentUserId,
+      after: { actionId: input.actionId, change: input.change },
+    });
+  });
+}
+
+/**
  * VIL-719 · the executor did not land a change made under a grant. A refused one is taken
  * off the parent's yes list, because they were never asked about it. A failed one is
  * already off it and pages #ops. Either way the normal email notice tells the parent.
  */
 async function settleUnrunChange(
   database: Database,
-  input: { familyId: string; actionId: string; change: SpokenChange; threw: boolean },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    actionId: string;
+    change: SpokenChange;
+    threw: boolean;
+  },
   pager: OpsPager,
 ): Promise<TeamScheduleResult> {
   const [action] = await database
@@ -216,28 +255,7 @@ async function settleUnrunChange(
         ref: input.actionId,
       })
     : null;
-  await database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    const held = await tx
-      .update(schema.actions)
-      .set({ userVisibleState: 'needs_human' })
-      .where(
-        and(
-          eq(schema.actions.id, input.actionId),
-          eq(schema.actions.userVisibleState, 'drafted_for_approval'),
-        ),
-      )
-      .returning({ id: schema.actions.id });
-    if (held.length === 0) return;
-    await tx.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: 'system',
-      actionTaken: 'team_schedule_change_not_run',
-      targetTable: 'actions',
-      targetId: input.actionId,
-      after: { change: input.change },
-    });
-  });
+  await takeOffYesList(database, input);
   console.info(
     {
       familyId: input.familyId,
@@ -448,7 +466,13 @@ export async function applyTeamScheduleChange(
     ) {
       return settleUnrunChange(
         database,
-        { familyId: input.familyId, actionId: drafted.actionId, change: spoken, threw },
+        {
+          familyId: input.familyId,
+          parentUserId: input.parentUserId,
+          actionId: drafted.actionId,
+          change: spoken,
+          threw,
+        },
         ports.pager,
       );
     }
@@ -484,7 +508,20 @@ export async function applyTeamScheduleChange(
   }
 
   const sent = await sendParentNotice(database, input, ports, text);
-  if (sent.outcome !== 'sent') return { handled: true, outcome: sent.outcome };
+  if (sent.outcome !== 'sent') {
+    if (!standing.autonomous && askPolicyTiersEnabled(input.familyId)) {
+      await takeOffYesList(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        actionId: drafted.actionId,
+        change: spoken,
+      });
+      // A gate hold spent no send key, so the email notice can run and keep the quiet-hours
+      // debt that asks again later. Every other ending spent it, and the notice would stop.
+      if (sent.outcome.startsWith('gate_refused:')) return { handled: false };
+    }
+    return { handled: true, outcome: sent.outcome };
+  }
   return {
     handled: true,
     outcome: standing.autonomous ? 'schedule_change_applied' : 'schedule_change_asked',

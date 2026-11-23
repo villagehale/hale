@@ -2,11 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { recordExecution } from '@hale/worker/memory-writer';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { defaultApprovalSpine } from '~/lib/channel/router/wiring';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
+import { AUDIT_LOG_AUDIENCE_ENABLED_ENV } from '~/lib/privacy/audit-audience';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import {
   type TestDb,
   createTestDb,
@@ -597,6 +600,173 @@ describe('VIL-719 the driver text after an applied change', () => {
   });
 });
 
+/** The one row that says a change from this parent's email did not run. */
+async function notRunRows() {
+  return db.database
+    .select({
+      audience: schema.auditLog.audience,
+      targetTable: schema.auditLog.targetTable,
+      targetId: schema.auditLog.targetId,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, family.familyId),
+        eq(schema.auditLog.actionTaken, 'team_schedule_change_not_run'),
+      ),
+    );
+}
+
+describe('VIL-719 an ask that never reached the parent', () => {
+  class RefusingTransport extends FakeTransport {
+    override async send(): Promise<{ providerMessageId: string }> {
+      throw new Error('provider unavailable');
+    }
+  }
+
+  async function applyAsk(
+    eventId: string,
+    adjust: (p: TeamScheduleApplyPorts) => void = () => {},
+    integrationId: string = randomUUID(),
+  ) {
+    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    const p = ports({
+      match: { eventId, change: 'time', newStartsAt: NEW_START.toISOString(), newLocation: null },
+    });
+    adjust(p);
+    return {
+      result: await applyTeamScheduleChange(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId,
+          messageId: 'gmail-1',
+          timeZone: TZ,
+          now: NOW,
+          classification: classified(),
+          children: children(),
+        },
+        p,
+      ),
+      sent: p.transport instanceof FakeTransport ? p.transport.sent : [],
+    };
+  }
+
+  async function onlyActionState() {
+    const rows = await db.database
+      .select({ id: schema.actions.id, state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    return rows[0] as { id: string; state: string };
+  }
+
+  const pending = () => defaultApprovalSpine().listPending(db.database, family.familyId);
+  const quietHours = (p: TeamScheduleApplyPorts) => {
+    p.gate = async () => ({ allowed: false, reason: 'quiet_hours' });
+  };
+
+  it('policy on: a quiet-hours hold leaves the yes list and the email notice takes over', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const { result, sent } = await applyAsk(eventId, quietHours);
+    expect(result).toEqual({ handled: false });
+    expect(sent).toEqual([]);
+    const action = await onlyActionState();
+    expect(action.state).toBe('needs_human');
+    expect(await pending()).toEqual([]);
+    expect(await notRunRows()).toEqual([
+      {
+        audience: family.parentUserId,
+        targetTable: 'users',
+        targetId: family.parentUserId,
+        after: { actionId: action.id, change: 'time' },
+      },
+    ]);
+    expect(pages).toEqual([]);
+  });
+
+  it('policy on: a failed send leaves the yes list and stays the recorded outcome', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const { result } = await applyAsk(eventId, (p) => {
+      p.transport = new RefusingTransport();
+    });
+    expect(result).toEqual({ handled: true, outcome: 'send_failed' });
+    expect((await onlyActionState()).state).toBe('needs_human');
+    expect(await pending()).toEqual([]);
+    expect(await notRunRows()).toHaveLength(1);
+  });
+
+  it('policy on: no number to text leaves the yes list', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const { result, sent } = await applyAsk(eventId, (p) => {
+      p.resolvePhone = async () => null;
+    });
+    expect(result).toEqual({ handled: true, outcome: 'no_send_target' });
+    expect(sent).toEqual([]);
+    expect((await onlyActionState()).state).toBe('needs_human');
+    expect(await pending()).toEqual([]);
+  });
+
+  it('policy on: a draft that lost the send to an earlier text is not left on the yes list', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const integrationId = randomUUID();
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'email_alert',
+      templateKey: 'team_schedule:parent',
+      dedupeKey: `email_alert:${integrationId}:gmail-1`,
+      status: 'sent',
+    });
+    const { result, sent } = await applyAsk(eventId, () => {}, integrationId);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+    expect(sent).toEqual([]);
+    expect((await onlyActionState()).state).toBe('needs_human');
+    expect(await pending()).toEqual([]);
+  });
+
+  it('positive control, policy on: a delivered ask stays on the yes list', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const { result, sent } = await applyAsk(eventId);
+    expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+    expect(sent).toHaveLength(1);
+    const action = await onlyActionState();
+    expect(action.state).toBe('drafted_for_approval');
+    expect((await pending()).map((row) => row.actionId)).toEqual([action.id]);
+    expect(await notRunRows()).toEqual([]);
+  });
+
+  it('policy off: a quiet-hours hold ends as it does today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame();
+    const { result } = await applyAsk(eventId, quietHours);
+    expect(result).toEqual({ handled: true, outcome: 'gate_refused:quiet_hours' });
+    expect((await onlyActionState()).state).toBe('drafted_for_approval');
+    expect(await pending()).toHaveLength(1);
+    expect(await notRunRows()).toEqual([]);
+  });
+
+  it('policy off: a failed send ends as it does today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame();
+    const { result } = await applyAsk(eventId, (p) => {
+      p.transport = new RefusingTransport();
+    });
+    expect(result).toEqual({ handled: true, outcome: 'send_failed' });
+    expect((await onlyActionState()).state).toBe('drafted_for_approval');
+    expect(await notRunRows()).toEqual([]);
+  });
+});
+
 describe('VIL-719 a change the executor did not run', () => {
   const REMINDER_AT = new Date(START.getTime() - 3600_000);
 
@@ -669,14 +839,6 @@ describe('VIL-719 a change the executor did not run', () => {
       .where(eq(schema.actions.familyId, family.familyId));
   }
 
-  async function auditFor(actionId: string) {
-    const rows = await db.database
-      .select({ verb: schema.auditLog.actionTaken })
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.targetId, actionId));
-    return rows.map((row) => row.verb);
-  }
-
   it('policy on: a refused change leaves the yes list and the email notice takes over', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
     const eventId = await seedGame({ dutyOwnerUserId: family.parentUserId });
@@ -690,8 +852,60 @@ describe('VIL-719 a change the executor did not run', () => {
     const [action] = await actionRows();
     expect(action?.state).toBe('needs_human');
     expect(action?.executedAt).toBeNull();
-    expect(await auditFor(action?.id as string)).toContain('team_schedule_change_not_run');
+    expect(await notRunRows()).toEqual([
+      {
+        audience: family.parentUserId,
+        targetTable: 'users',
+        targetId: family.parentUserId,
+        after: { actionId: action?.id, change: 'time' },
+      },
+    ]);
     expect(await defaultApprovalSpine().listPending(db.database, family.familyId)).toEqual([]);
+  });
+
+  describe('the not-run row belongs to the parent whose inbox it came from', () => {
+    const NOT_RUN = 'Hale did not make a schedule change from an email';
+
+    async function seedCoParent(): Promise<string> {
+      const [co] = await db.database
+        .insert(schema.users)
+        .values({ email: `${family.familyId}-co@example.test`, name: 'Co Parent' })
+        .returning({ id: schema.users.id });
+      await db.database
+        .insert(schema.familyMembers)
+        .values({ familyId: family.familyId, userId: co?.id as string, role: 'co_parent' });
+      return co?.id as string;
+    }
+
+    const history = async (viewerUserId: string) =>
+      (await loadTrailForFamily(db.database, family.familyId, undefined, { viewerUserId })).map(
+        (row) => row.summary,
+      );
+    const exported = async (actorUserId: string) =>
+      (
+        await assembleFamilyExport(db.database, family.familyId, { actorUserId, now: NOW })
+      ).trail.map((row) => row.summary);
+
+    it('audience lit: only the receiving parent sees it, in History and the export', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      vi.stubEnv(AUDIT_LOG_AUDIENCE_ENABLED_ENV, 'true');
+      const coParent = await seedCoParent();
+      await applyUnderGrant(await seedGame(), false);
+      expect(await history(family.parentUserId)).toContain(NOT_RUN);
+      expect(await exported(family.parentUserId)).toContain(NOT_RUN);
+      expect(await history(coParent)).not.toContain(NOT_RUN);
+      expect(await exported(coParent)).not.toContain(NOT_RUN);
+    });
+
+    it('audience unlit: off both Histories, and only in the receiving parent’s own export', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const coParent = await seedCoParent();
+      await applyUnderGrant(await seedGame(), false);
+      expect(await exported(family.parentUserId)).toContain(NOT_RUN);
+      expect(await exported(coParent)).not.toContain(NOT_RUN);
+      expect(await history(family.parentUserId)).not.toContain(NOT_RUN);
+      expect(await history(coParent)).not.toContain(NOT_RUN);
+    });
   });
 
   it('policy on: a failed run pages #ops and the email notice takes over', async () => {
