@@ -324,6 +324,8 @@ export const AUDIT_VERBS = [
   'school_break_retired',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-762 · a second email about an appointment already told. Nothing sent.
+  'email_alert_same_appointment',
   // VIL-569 · a quiet-hours hold Hale still owes, and its end (sent, declined or stale).
   'email_alert_held',
   'email_alert_hold_closed',
@@ -1317,6 +1319,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
+  },
+  email_alert_same_appointment: {
+    sentence: 'Hale kept a second email about an appointment it had already texted you about',
+    family: 'note',
   },
   email_alert_held: {
     sentence: 'Hale held an email alert for quiet hours',
