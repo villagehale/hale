@@ -518,6 +518,9 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
   );
   const readAsSeen = (text: string) =>
     readOf(comparableToMarked(check.readThroughMark === true, text));
+  // The fold to `<` closes codes up but breaks a host's link shape ('evilᐸ.com' reads
+  // 'evil<.com'), and the parent gets the original character, so it may only add cuts.
+  const readings = check.readThroughMark === true ? [readOf, readAsSeen] : [readOf];
   const emailReads = check.emails.map((email) => digitReadOf(readAsSeen(email)).toLowerCase());
   const emailDigits = emailReads.flatMap((email) =>
     [...email.matchAll(DIGIT_RUN)].map((match) => digitsOf(match[0])),
@@ -540,7 +543,7 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
 
   let text = reply;
   for (let pass = 0; pass < CUT_PASSES; pass++) {
-    const once = dropPass(text, { trustedWords, trustedNumbers, trustedHosts, email, readAsSeen });
+    const once = dropPass(text, { trustedWords, trustedNumbers, trustedHosts, email, readings });
     dropped.phone += once.dropped.phone;
     dropped.code += once.dropped.code;
     dropped.host += once.dropped.host;
@@ -561,7 +564,7 @@ function dropPass(
     trustedNumbers: readonly Token[];
     trustedHosts: ReadonlySet<string>;
     email: EmailShapes;
-    readAsSeen: (text: string) => string;
+    readings: readonly ((text: string) => string)[];
   },
 ): EmailOnlyResult {
   const dropped = NOTHING_DROPPED();
@@ -580,12 +583,24 @@ function dropPass(
         return [{ kind: 'host' as const, key: host ?? word, from: span.from, to: span.to }];
       }),
   ];
-  const read = known.readAsSeen(reply);
-  const cuts = cutsIn(read);
-  if (cuts.length === 0) return { text: reply, dropped };
-  for (const cut of cuts) dropped[cut.kind] += 1;
-  const spans = sentencesHolding(reply, read, cuts, cutsIn, known.readAsSeen);
-  if (spans === null) return { text: '', dropped };
+  const found = known.readings.map((readIt) => {
+    const read = readIt(reply);
+    return { readIt, read, cuts: cutsIn(read) };
+  });
+  if (found.every(({ cuts }) => cuts.length === 0)) return { text: reply, dropped };
+  const counted = new Set<string>();
+  for (const { cuts } of found) {
+    const keyOf = (cut: Token) => `${cut.kind}:${cut.key}`;
+    for (const cut of cuts.filter((token) => !counted.has(keyOf(token)))) dropped[cut.kind] += 1;
+    for (const cut of cuts) counted.add(keyOf(cut));
+  }
+  const spans: Span[] = [];
+  for (const { readIt, read, cuts } of found) {
+    if (cuts.length === 0) continue;
+    const holding = sentencesHolding(reply, read, cuts, cutsIn, readIt);
+    if (holding === null) return { text: '', dropped };
+    spans.push(...holding);
+  }
   const left = subtractSpans(reply, spans);
   return { text: left.status === 'cut' ? left.text : '', dropped };
 }
@@ -603,7 +618,7 @@ function sentencesHolding(
   read: string,
   cuts: readonly Token[],
   cutsIn: (read: string) => Token[],
-  readAsSeen: (text: string) => string,
+  readIt: (text: string) => string,
 ): Span[] | null {
   const sentences = segmentSentences(reply, undefined);
   const tiled =
@@ -611,7 +626,7 @@ function sentencesHolding(
     sentences.at(-1)?.end === reply.length &&
     sentences.every((sentence, at) => at === 0 || sentence.start === sentences[at - 1]?.end);
   if (!tiled) return null;
-  const reads = sentences.map((sentence) => readAsSeen(reply.slice(sentence.start, sentence.end)));
+  const reads = sentences.map((sentence) => readIt(reply.slice(sentence.start, sentence.end)));
   const joined = reads.join('');
   let placed = cuts;
   if (joined !== read) {

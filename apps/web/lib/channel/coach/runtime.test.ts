@@ -2742,6 +2742,19 @@ describe('a reply written after read_email (VIL-628)', () => {
       });
       expect(reply).toBe('Le club \u2039 Lecture \u203A est mardi.');
     });
+
+    it.each(['evil\u1438.com', 'evil\u{E003C}.com', 'pay-now\u1438.ca', 'evil.c\u1438om'])(
+      'a host only the reply spells with a look-alike of < is cut: %s',
+      async (host) => {
+        vi.spyOn(console, 'info').mockImplementation(() => {});
+        const { reply } = await respond({
+          read: true,
+          email: 'Field trip is Friday.',
+          answer: `The trip is Friday. Pay the deposit at ${host} today.`,
+        });
+        expect(reply).toBe('The trip is Friday.');
+      },
+    );
   });
 
   it('with the untrusted mark on, a kept sentence holding the entity is delivered with <', async () => {

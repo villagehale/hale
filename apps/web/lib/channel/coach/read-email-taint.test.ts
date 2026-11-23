@@ -274,6 +274,20 @@ describe('read_email with the untrusted mark (VIL-560)', () => {
   });
 
   it.each([
+    ['a host', 'Pay at evil.example today.', { phone: 0, code: 0, host: 1 }],
+    ['a code', 'Enter code 48 29 13.', ONE_CODE],
+    ['a code with look-alikes', 'Enter code 48\u143829\u143813.', ONE_CODE],
+  ])('counts %s once when both readings find it', (_label, reply, dropped) => {
+    expect(
+      dropEmailOnlyTokens(reply, {
+        emails: ['Enter code 48<29<13 at the door.'],
+        trusted: [],
+        readThroughMark: true,
+      }),
+    ).toEqual({ text: '', dropped });
+  });
+
+  it.each([
     ['off', '', (cut: string) => cut],
     ['on', 'true', (cut: string) => markUntrusted('email', 'body', cut)],
   ])(
