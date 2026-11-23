@@ -1,5 +1,12 @@
-import { type GuardResult, type RegisteredTool, defineTool } from '@hale/agent';
+import {
+  type GuardResult,
+  type RegisteredTool,
+  defineTool,
+  presentUntrustedJson,
+  untrustedSourceFor,
+} from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import {
   episodesForContext,
@@ -148,6 +155,8 @@ async function loadSnapshotEvents(
   childRows: ChildRow[];
   stageByChild: Map<string, FamilyStage>;
   recentEvents: MemorySnapshot['recentEvents'];
+  /** Parallel to `recentEvents`. Not shown to the model. */
+  eventSources: string[];
 }> {
   const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -168,6 +177,7 @@ async function loadSnapshotEvents(
       id: schema.events.id,
       childId: schema.events.childId,
       eventType: schema.events.eventType,
+      source: schema.events.source,
       payload: schema.events.payload,
       receivedAt: schema.events.receivedAt,
     })
@@ -187,7 +197,7 @@ async function loadSnapshotEvents(
     stageByChild,
     childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
   );
-  return { childRows, stageByChild, recentEvents };
+  return { childRows, stageByChild, recentEvents, eventSources: rows.map((e) => e.source) };
 }
 
 async function snapshotShowsEvent(
@@ -209,11 +219,12 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
     monetary: false,
     touchesChildContent: false,
     handler: async (_input, ctx) => {
-      const { childRows, stageByChild, recentEvents } = await loadSnapshotEvents(
+      const { childRows, stageByChild, recentEvents, eventSources } = await loadSnapshotEvents(
         database,
         ctx.familyId,
         now,
       );
+      const marked = isEnabled('untrusted-field-marking');
 
       const [recentEpisodes, currentFacts] = await Promise.all([
         episodesForContext(database, ctx.familyId, { now, limit: RECENT_LIMIT }),
@@ -229,7 +240,21 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
           const stage = stageByChild.get(c.id) as FamilyStage;
           return { childId: c.id, name: stage === 'teenager' ? null : c.name, stage };
         }),
-        recentEvents,
+        recentEvents: marked
+          ? recentEvents.map((event, index) =>
+              event.payload === TEEN_MEMORY_PLACEHOLDER
+                ? event
+                : {
+                    ...event,
+                    payload: presentUntrustedJson(
+                      true,
+                      untrustedSourceFor(eventSources[index] ?? ''),
+                      'payload',
+                      event.payload,
+                    ),
+                  },
+            )
+          : recentEvents,
         recentEpisodes: recentEpisodes.map((e) => ({
           childId: e.childId,
           episodeType: e.episodeType,

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
+import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { DEMO_BASE, demoSmsHref } from '~/lib/portal/demo-fixture';
 import { parsePortalSourceCode } from '~/lib/text-hale-target';
 
@@ -19,6 +20,7 @@ export default async function DemoSignInPage({
         callbackUrl={`${DEMO_BASE}/home`}
         smsNumber={demoSmsHref()?.slice('sms:'.length) ?? ''}
         source={source}
+        noStopKeyword={noStopKeywordCopyEnabled()}
       />
     </ConnectStage>
   );

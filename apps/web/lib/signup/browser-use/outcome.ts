@@ -76,6 +76,9 @@ const signupOutput = z.object({
 
 export type BrowserUseSignupOutput = z.infer<typeof signupOutput>;
 
+/** The Zod gate `parseSignupOutput` uses. The injection eval scores this shape. */
+export const browserUseSignupOutputSchema = signupOutput;
+
 export const BROWSER_USE_SIGNUP_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,

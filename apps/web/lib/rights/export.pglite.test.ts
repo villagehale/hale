@@ -360,6 +360,7 @@ describe("the requester's own section in a right-to-access copy", () => {
       connections: [],
       calendarMirrors: [],
       privateAsides: [],
+      billingNotices: [],
     });
     const anaText = JSON.stringify(anas);
     expect(anaText).not.toContain('sam private');

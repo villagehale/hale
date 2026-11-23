@@ -4,6 +4,8 @@ import type { EntryTone } from '../../components/hale/tone';
 import { dayKeyOf, formatDayHeading, formatTime } from '../format/datetime';
 import {
   EXECUTED_ON_ITS_OWN,
+  billingPlanUnsettledSentence,
+  billingRevokeUnresolvedSentence,
   calendarWithdrawnSentence,
   targetLink,
   targetNoun,
@@ -167,7 +169,11 @@ export function toTrailView(
   const fromFacts =
     entry.actionTaken === 'linq_group_plan_calendar_withdrawn'
       ? calendarWithdrawnSentence(entry.after)
-      : null;
+      : entry.actionTaken === 'billing_revoke_unresolved'
+        ? billingRevokeUnresolvedSentence(entry.after)
+        : entry.actionTaken === 'billing_plan_unsettled'
+          ? billingPlanUnsettledSentence(entry.after)
+          : null;
   const sentence = fromFacts ?? verb.sentence;
   const { family } = verb;
   return {

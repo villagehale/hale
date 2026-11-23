@@ -22,6 +22,7 @@
     "stripe:create-founding-prices": "tsx scripts/stripe-create-founding-prices.ts",
     "stripe:promo-lockdown": "tsx scripts/stripe-promo-lockdown.ts",
     "stripe:refund-family": "tsx scripts/stripe-refund-family.ts",
+    "signup:stop-plans": "tsx scripts/stop-signup-plans.ts",
     "meta:test-purchase": "tsx scripts/meta-test-purchase.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },

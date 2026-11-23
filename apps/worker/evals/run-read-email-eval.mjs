@@ -158,15 +158,19 @@ function readEmailFor(fixture, readEmail, calls) {
     accessToken: async () => 'fixture-token',
     fetchBody: async () => fixture.body ?? '',
   });
-  return readEmail.readEmailTool(async (gmailMessageId) => {
-    calls.push('read_email');
-    return reader.read({
-      familyId: 'fixture-family',
-      parentUserId: 'fixture-parent',
-      conversationId: 'fixture-conversation',
-      gmailMessageId,
-    });
-  });
+  // Through the runtime's wrapper, which is what puts the untrusted mark on the body.
+  const [tool] = readEmail.taintTurnOnEmailRead([
+    readEmail.readEmailTool(async (gmailMessageId) => {
+      calls.push('read_email');
+      return reader.read({
+        familyId: 'fixture-family',
+        parentUserId: 'fixture-parent',
+        conversationId: 'fixture-conversation',
+        gmailMessageId,
+      });
+    }),
+  ]).tools;
+  return tool;
 }
 
 function cachedAgentClient(tag, cachedOnly, getClient, cost) {

@@ -107,6 +107,38 @@ describe('primaryTextTarget', () => {
     ).toEqual({ href: '/fr/text?s=earlyon-richmondhill', composer: false });
   });
 
+  it('opens an empty composer with no prefill: no body and no venue token', () => {
+    for (const [platform, expected] of [
+      ['apple', `sms:${NUMBER}`],
+      ['android', `sms:${NUMBER}`],
+      ['desktop-mac', `sms:${NUMBER}`],
+    ] as const) {
+      expect(
+        primaryTextTarget({
+          platform,
+          smsNumber: NUMBER,
+          prefill: null,
+          source: 'earlyon-richmondhill',
+          textPath: '/text',
+        }),
+      ).toEqual({ href: expected, composer: true });
+    }
+  });
+
+  it('keeps Windows, Linux and unknown on /text when there is no prefill', () => {
+    for (const platform of ['desktop-other', 'unknown'] as const) {
+      expect(
+        primaryTextTarget({
+          platform,
+          smsNumber: NUMBER,
+          prefill: null,
+          source: null,
+          textPath: '/text',
+        }),
+      ).toEqual({ href: '/text', composer: false });
+    }
+  });
+
   it('does not emit a broken sms: link when the number is empty', () => {
     const target = primaryTextTarget({
       platform: 'apple',

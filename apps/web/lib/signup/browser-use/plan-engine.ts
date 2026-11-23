@@ -1,4 +1,6 @@
+import { presentUntrusted } from '@hale/agent';
 import type { AuthorizedSignupPlanResume } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { chargesNothing, compareCart } from '../terms/cart';
 import type { CartDifference, CartRead, SignupTermsApproved } from '../terms/types';
 import { BrowserUseApiError } from './client';
@@ -281,13 +283,17 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
     approvedPriceCents: input.maxPriceCents,
   });
   const labels = input.fieldsAllowed.includes('session');
+  const marked = isEnabled('untrusted-field-marking');
   return {
     ...base,
     max_price_cents: input.maxPriceCents,
     waiver_accepted_by_parent: input.waiverAccepted,
     choices: input.choices.map((choice, rank) => ({
       rank: rank + 1,
-      label: labels && choice.label.trim() ? choice.label.trim() : undefined,
+      label:
+        labels && choice.label.trim()
+          ? presentUntrusted(marked, 'web', 'label', choice.label.trim())
+          : undefined,
       starts_at: choice.startsAt,
       // On a bound run, a session whose end is its start has no known end. Unbound: as today.
       ends_at: input.binding && choice.endsAt === choice.startsAt ? null : choice.endsAt,

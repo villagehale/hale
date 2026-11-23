@@ -26,7 +26,7 @@ export function TextDoor({
   placement: string;
   locale: Locale;
   smsNumber: string;
-  prefill: string;
+  prefill: string | null;
   /** Kept so existing call sites stay source-compatible. Both modes share the door. */
   mode: 'chooser' | 'sms';
   /** A `?s=` code the page already validated. */

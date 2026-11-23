@@ -14,6 +14,20 @@ export async function alertUnresolvedBillingRevoke(
   );
 }
 
+/**
+ * A plan Hale could not finish settling. Event id and reason only.
+ * `planChanged` is the case where the tier already moved and the subscription is still live.
+ */
+export async function alertUnsettledBillingPlan(
+  info: { eventId: string; reason: string; planChanged?: boolean },
+  fetchImpl: typeof fetch = fetch,
+): Promise<OpsPageOutcome> {
+  const lead = info.planChanged
+    ? 'billing: plan changed and the subscription is still live, needs a person.'
+    : 'billing: plan left unchanged, needs a person.';
+  return postOpsSlack(`${lead} event=${info.eventId} reason=${info.reason}.`, fetchImpl);
+}
+
 /** Counts only. The caller already left family ids out of the text. */
 export async function alertBillingTierMismatch(
   text: string,

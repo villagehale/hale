@@ -1,3 +1,5 @@
+import { presentUntrusted } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type { ShareableSignupField } from '../consent';
 import { credentialFactAliases, credentialSecretBindings } from '../credentials/bindings';
 import { providerAccountCreateEnabled } from '../credentials/flag';
@@ -239,11 +241,13 @@ export function signupFacts(
     return typeof value === 'string' ? value.trim() : value;
   };
   const { identity, session } = input;
+  const marked = isEnabled('untrusted-field-marking');
+  const label = pick('session', session.label);
   return {
     registration_url: input.registrationUrl,
     approved_price_cents: input.approvedPriceCents,
     session: {
-      label: pick('session', session.label),
+      label: typeof label === 'string' ? presentUntrusted(marked, 'web', 'label', label) : label,
       starts_at: session.startsAt,
       ends_at: session.endsAt,
       party_size: pick('party_size', session.partySize),

@@ -83,6 +83,7 @@ import {
   defaultHandlers,
   loadInboundContext,
 } from './wiring';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 /**
  * A text that lands while the parent's turn is still running (VIL-679 phase 2).
@@ -305,6 +306,7 @@ function routerDeps(
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    ackEta: quietAckEtaPorts(),
     sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: options.floodLine ?? {
       compose: async () => ({ status: 'composed', line: 'A lot at once, give me an hour.' }),

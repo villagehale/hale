@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LoopMessage } from '~/lib/channel/types';
+import { BILLING_NOTICE_TEMPLATE_KEY } from './billing-notice';
 import { loopTemplateRenderer } from './registry';
 
 /**
@@ -39,5 +40,27 @@ describe('loopTemplateRenderer', () => {
     // successful and the parent got a sentence that says nothing.
     const empty = msg({ templateKey: 'reminder_t1h', payload: {} });
     expect(() => loopTemplateRenderer.render(empty, 'sms', 'generic')).toThrow(/no text/i);
+  });
+
+  it('VIL-735 · a billing notice renders as the model’s whole text, so the claim gate reads it', () => {
+    const notice = msg({
+      templateKey: BILLING_NOTICE_TEMPLATE_KEY,
+      category: 'alert',
+      payload: { text: "You're on Plus now." },
+    });
+    expect(loopTemplateRenderer.render(notice, 'sms', 'generic')).toEqual({
+      kind: 'sms',
+      text: "You're on Plus now.",
+      modelWritten: true,
+    });
+    // Positive control: the same payload on an unregistered key is not model-written.
+    expect(
+      loopTemplateRenderer.render({ ...notice, templateKey: 'other' }, 'sms', 'generic'),
+    ).toMatchObject({ modelWritten: false });
+  });
+
+  it('VIL-735 · a billing notice with no text throws rather than sending a shell', () => {
+    const empty = msg({ templateKey: BILLING_NOTICE_TEMPLATE_KEY, payload: { text: '  ' } });
+    expect(() => loopTemplateRenderer.render(empty, 'sms', 'generic')).toThrow(/no written text/);
   });
 });

@@ -101,7 +101,14 @@ export interface OutboundMessage {
    * to `to`, unthreaded. Text only. A transport with no threads (Preview capture) sends
    * to `to`, which for a 1:1 is the same chat, unthreaded.
    */
-  replyIn?: { chatId: string; messageId: string };
+  replyIn?: {
+    chatId: string;
+    messageId: string;
+    /** See `sendLinqChatMessage`: an unclear answer to the threaded try is not resent plain. */
+    plainResendOnlyIfRefused?: boolean;
+  };
+  /** The caller's identity for this one send (Linq's idempotency key, see `linqSendKey`). */
+  sendKey?: string;
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */

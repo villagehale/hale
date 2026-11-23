@@ -9,9 +9,11 @@ import {
   agentRunCostUsd,
   pickModel,
   runAgent,
+  withoutMarkEscape,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { type FamilyCountry, type PlanTier, familyCountryOf } from '@hale/types';
 import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
@@ -72,6 +74,7 @@ import {
   undoGroupListWrites,
 } from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
+import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { readHealthPlace } from '~/lib/channel/off-domain/place';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -557,10 +560,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Postal town is home. A separate file so the standing coach-channel recordings,
       // keyed on sms + nearby-find, stay put until they are re-recorded.
       const homePlace = await loadCronSkill('coach-home-place');
-      const baseSkill = {
-        ...groupedSkill,
-        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
-      };
+      // VIL-744: overrides the way out in "When they doubt you", on every turn. Dark, the
+      // skill text and its recordings are unchanged.
+      const baseSkill = appendNoStopKeywordSkill(
+        {
+          ...groupedSkill,
+          instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
+        },
+        noStopKeywordCopyEnabled() ? await loadCronSkill('coach-no-stop-keyword') : null,
+      );
       // coach-nearby-find itself stays byte-identical, so coach-channel and
       // group-privacy recordings stay keyed on the prompt they already have.
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
@@ -1036,8 +1044,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-628: after read_email, a phone, code or host only the email gave is cut
               // before the judge reads the draft, so the judge sees what is sent.
               const emails = emailTexts();
-              const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
+              // The model read the email through the mark, so it can hand a code back as
+              // `48&lt;29`, and the email may have written it with a look-alike of `<`. The
+              // gate compares in one spelling; the parent gets the model's own characters
+              // with only the entity undone.
+              const marked = emails.length > 0 && isEnabled('untrusted-field-marking');
+              const asWritten = withoutMarkEscape(marked, drafted);
+              const { text: spoken, dropped } = dropEmailOnlyTokens(asWritten, {
                 emails,
+                readThroughMark: marked,
                 trusted:
                   emails.length > 0
                     ? [
@@ -1144,6 +1159,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+function appendNoStopKeywordSkill(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null) return skill;
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 /** Null returns the same skill object. A turn without a .vcf does not grow the prompt. */
