@@ -1575,13 +1575,16 @@ async function sendChosen(
       target.channel === 'group'
         ? (input.language ?? null)
         : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
-    const recentTexts = proactiveNoRepeatEnabled()
-      ? await recentAssistantTexts(database, {
-          familyId,
-          parentUserId: copy.parentUserId,
-          now,
-        })
-      : [];
+    // A group copy is read by every member. The 1:1 thread is that parent's alone
+    // (rule #5), so it is not material for a text the group will see.
+    const recentTexts =
+      proactiveNoRepeatEnabled() && target.channel !== 'group'
+        ? await recentAssistantTexts(database, {
+            familyId,
+            parentUserId: copy.parentUserId,
+            now,
+          })
+        : [];
     const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}${
       recentTexts.length > 0 ? `\n\n${recentTexts.join('\n')}` : ''
     }`;

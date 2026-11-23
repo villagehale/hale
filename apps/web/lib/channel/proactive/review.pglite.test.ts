@@ -604,6 +604,38 @@ describe('runProactiveReview', () => {
     expect(h.transport.bodies()).toEqual([MESSAGE]);
   });
 
+  it('does not give a group writer one parent’s private thread', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    await threadProactiveMessage(db.database, {
+      familyId,
+      parentUserId,
+      body: 'private check-in from the 1:1 thread',
+    });
+    await db.database
+      .update(schema.messages)
+      .set({ createdAt: new Date(THURSDAY_EVENING.getTime() - 24 * 3_600_000) });
+    await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'how the day went',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const seen: Array<readonly string[] | undefined> = [];
+    const h = harness(sendAll, {
+      outboundTarget: async () => ({ channel: 'group', chatId: 'chat-household', familyId }),
+      compose: async (input) => {
+        seen.push(input.recentTexts);
+        return { message: MESSAGE };
+      },
+    });
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((texts) => texts === undefined)).toBe(true);
+  });
+
   it('writes each parent their own text when their items differ and there is no group', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const [coParent] = await db.database

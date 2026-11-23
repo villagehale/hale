@@ -1,4 +1,4 @@
-import { setFlagEvaluatorForTests } from '@hale/flags';
+import { POSTHOG_FLAGS_ENABLED_ENV, setFlagEvaluatorForTests } from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PROACTIVE_ROUTING,
@@ -23,6 +23,16 @@ describe('proactive no-repeat flag', () => {
     vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true\n');
     expect(proactiveNoRepeatEnabled()).toBe(false);
     vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    expect(proactiveNoRepeatEnabled()).toBe(true);
+  });
+
+  it('stays on the env when PostHog would say otherwise', () => {
+    vi.stubEnv(POSTHOG_FLAGS_ENABLED_ENV, 'true');
+    setFlagEvaluatorForTests(() => true);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', undefined);
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    setFlagEvaluatorForTests(() => false);
     expect(proactiveNoRepeatEnabled()).toBe(true);
   });
 });

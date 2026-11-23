@@ -117,11 +117,6 @@ export async function editChildAction(
   childId: string,
   input: ChildInput,
 ): Promise<EditChildResult> {
-  const validated = validateChild(input);
-  if (!validated.ok) {
-    return { status: 'invalid', error: validated.error };
-  }
-
   const ctx = await mutationContext();
   if (ctx.status !== 'ready') {
     return { status: ctx.status };
@@ -153,7 +148,13 @@ export async function editChildAction(
       .limit(1);
     const before = existing[0];
     if (!before) {
-      return false;
+      return { ok: false as const, missing: true as const };
+    }
+    const validated = validateChild(input, new Date(), {
+      allowBlankName: (before.name ?? '').trim().length === 0,
+    });
+    if (!validated.ok) {
+      return { ok: false as const, missing: false as const, error: validated.error };
     }
 
     // PARTIAL update: write only the fields the caller actually SENT. Writing
@@ -162,7 +163,7 @@ export async function editChildAction(
     // interests a parent set elsewhere (e.g. on mobile). Name + DOB are the
     // required contract; the rest key off raw-input presence.
     const after: {
-      name: string;
+      name: string | null;
       dateOfBirth: string;
       dobPrecision: 'exact';
       lastName?: string | null;
@@ -170,7 +171,7 @@ export async function editChildAction(
       biologicalSex?: string | null;
       interests?: string[];
     } = {
-      name: validated.child.name,
+      name: validated.child.name.length > 0 ? validated.child.name : null,
       dateOfBirth: validated.child.dateOfBirth,
       // A date a parent typed into a date field is a BIRTHDAY, not an estimate — so
       // this is also the one correction path for a row provisioned from a spoken age.
@@ -197,11 +198,12 @@ export async function editChildAction(
       before,
       after,
     });
-    return true;
+    return { ok: true as const };
   });
 
-  if (!updated) {
-    return { status: 'not_found' };
+  if (!updated.ok) {
+    if (updated.missing) return { status: 'not_found' };
+    return { status: 'invalid', error: updated.error };
   }
   revalidatePath('/family');
   return { status: 'updated' };

@@ -389,7 +389,7 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
           label="name or nickname"
           name="name"
           type="text"
-          required
+          required={mode === 'add' || (child?.name ?? '').trim().length > 0}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
           placeholder="maya"

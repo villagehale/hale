@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TEEN_NAME_SHARED_MATCHER_ENABLED_ENV } from '~/lib/privacy/teen-name';
-import { withoutTeenTitles } from './kid-event';
+import { splitKidEvent, withoutTeenTitles } from './kid-event';
 
 const block = (title: string) => ({ title, kidRelated: true });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe('splitKidEvent', () => {
+  it('credits the only child, and does not credit the only named sibling', () => {
+    expect(splitKidEvent('swim class', ['Maya'], 1)).toEqual({ kid: 'Maya', event: 'swim class' });
+    expect(splitKidEvent('swim class', ['Maya'], 2)).toBeNull();
+    expect(splitKidEvent('Maya swim', ['Maya'], 2)).toEqual({ kid: 'Maya', event: 'swim' });
+  });
 });
 
 describe('withoutTeenTitles', () => {
@@ -15,6 +23,9 @@ describe('withoutTeenTitles', () => {
     ]);
     expect(withoutTeenTitles([block('hockey practice')], ['Maya'], [])).toEqual([
       block('hockey practice'),
+    ]);
+    expect(withoutTeenTitles([block('hockey practice')], [], [], true)).toEqual([
+      { title: null, kidRelated: false },
     ]);
   });
 
