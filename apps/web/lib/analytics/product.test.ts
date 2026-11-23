@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeBatch, ours } from './posthog-wire.testkit';
+import { resetCanaryFamilyCacheForTests, setCanaryFamilyLookupForTests } from './canary-tag';
 import { resetPosthogClientsForTests } from './posthog-node';
+import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   captureErrorEventAsync,
   captureProductEventAsync,
@@ -14,6 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resetPosthogClientsForTests();
   resetProductCaptureLogsForTests();
+  resetCanaryFamilyCacheForTests();
 });
 
 function armedProduct(): void {
@@ -96,6 +98,46 @@ describe('captureProductEventAsync', () => {
     expect(text).not.toContain('Sam');
     expect(text).not.toContain('Maya');
     expect(text).not.toContain('chat-9');
+  });
+
+  it('stamps canary on the probe family and sets the person property', async () => {
+    armedProduct();
+    setCanaryFamilyLookupForTests((id) => id === 'probe-family');
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response('{}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      captureProductEventAsync({
+        event: 'message_inbound',
+        familyId: 'probe-family',
+        properties: { channel: 'sms', is_group: false, family_count: 1, media_type: 'none' },
+      }),
+    ).resolves.toBe('sent');
+    const { text, events } = decodeBatch(fetchMock.mock.calls[0]?.[1]);
+    expect(ours(events[0]?.properties ?? {})).toMatchObject({ canary: true, channel: 'sms' });
+    expect(events[0]?.properties.$set).toEqual({ canary: true });
+    expect(text).not.toContain('probe-family');
+  });
+
+  it('does not stamp a real family just because a property says CANARY', async () => {
+    armedProduct();
+    setCanaryFamilyLookupForTests(() => false);
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response('{}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      captureProductEventAsync({
+        event: 'message_inbound',
+        familyId: 'real-family',
+        properties: { channel: 'sms', is_group: false, family_count: 1, media_type: 'CANARY' },
+      }),
+    ).resolves.toBe('sent');
+    const { events } = decodeBatch(fetchMock.mock.calls[0]?.[1]);
+    expect(ours(events[0]?.properties ?? {})).not.toHaveProperty('canary');
+    expect(events[0]?.properties.$set).toBeUndefined();
+    expect(ours(events[0]?.properties ?? {}).media_type).toBe('CANARY');
   });
 });
 

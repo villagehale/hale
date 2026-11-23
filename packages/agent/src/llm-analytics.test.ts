@@ -111,6 +111,26 @@ describe('buildGenerationProperties', () => {
     expect(output).not.toContain('514');
   });
 
+  it('stamps canary only when the context says so, and never copies the family id', () => {
+    const plain = buildGenerationProperties({
+      ctx: { familyId: '6af24974-probe', stage: 'coach' },
+      model: 'mystery-model',
+      latencyMs: 10,
+      request: { messages: [{ role: 'user', content: 'CANARY' }] },
+    });
+    expect(plain.canary).toBeUndefined();
+    expect(JSON.stringify(plain)).not.toContain('6af24974');
+    expect(JSON.stringify(plain)).not.toContain('CANARY');
+
+    const tagged = buildGenerationProperties({
+      ctx: { canary: true, familyId: '6af24974-probe', stage: 'coach' },
+      model: 'mystery-model',
+      latencyMs: 10,
+    });
+    expect(tagged.canary).toBe(true);
+    expect(JSON.stringify(tagged)).not.toContain('6af24974');
+  });
+
   it('omits cost when the model is not in the table rather than throwing', () => {
     const props = buildGenerationProperties({
       ctx: {},

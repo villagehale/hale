@@ -176,6 +176,24 @@ describe('captureInboundRouted', () => {
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('stamps canary on a probe hand-off and does not set a person property on the shared door', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await captureInboundRouted('imessage', 'handed_off_canary');
+
+    const { events } = decodeBatch(fetchMock.mock.calls[0]?.[1]);
+    expect(events[0]?.distinct_id).toBe('door:imessage');
+    expect(events[0]?.properties).toMatchObject({
+      door: 'imessage',
+      outcome: 'handed_off_canary',
+      canary: true,
+    });
+    expect(events[0]?.properties.$set).toBeUndefined();
+  });
+
   it('ships `unclassified` for a non-enum outcome — a free string can never ride the counter', async () => {
     const fetchMock = vi.fn(
       async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),

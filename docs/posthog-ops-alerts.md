@@ -21,6 +21,15 @@ The listing script is `scripts/posthog-ops-alerts.sh`. Create the alerts in Post
 
 Keyed on HMAC(family id). Pre-family intake steps use HMAC(session id) until a family exists.
 
+The inbound canary household (the family that holds the configured probe number) is tagged `canary: true` on the event. When the distinct id is that family's hash, the same capture sets the person property `canary` to boolean `true`. The tag is decided from that number's blind index, never from message text. Door-level `inbound_routed` events for the probe (`outcome` `handed_off_canary`) carry the event property only — their distinct id is the shared door, so they do not set a person property.
+
+In PostHog, Settings → Project → Filter out internal and test users. Each entry describes traffic to **keep**, so add both of these with operator **is not** (`is_not`), value boolean `true`:
+
+- Person property `canary`
+- Event property `canary`
+
+Do not use `equals true`. That keeps only the probe and hides everyone else. Turn the filter on for existing insights after adding it. SQL insights do not read this list.
+
 ### `message_inbound` / `message_outbound`
 
 Fired at the `channel_messages` insert (inbound hand-off, intake ledger, conversation reply, loop dispatch, claimed-group send). Not from parsing text.
