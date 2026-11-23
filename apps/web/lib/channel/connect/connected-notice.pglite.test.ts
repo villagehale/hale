@@ -64,6 +64,8 @@ describe('sendConnectorConnectedText', () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
     // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+    // The receipt stand-in does not fill the marks the model-fields flag would require.
+    vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', 'false');
     db = await createTestDb();
     const seeded = await seedFamily(db.database);
     familyId = seeded.familyId;
@@ -143,8 +145,6 @@ describe('sendConnectorConnectedText', () => {
   it('VIL-721 lit: a Gmail receipt is not followed by a calendar card, so no second link goes', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
-    // This stand-in does not fill the marks the model-fields flag would require.
-    vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', 'false');
     await seedChannel();
 
     const outcome = await send('gmail');
