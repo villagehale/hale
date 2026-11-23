@@ -51,8 +51,8 @@ const modelYes = (text: string, maxPriceCents: number | null, choiceIds = ['s-1'
   waiverSaid: null,
   waiverAccepted: false,
   question: null,
-  prerequisiteSaid: null,
-  prerequisiteMet: null,
+  prerequisiteSaid: null as string | null,
+  prerequisiteMet: null as boolean | null,
 });
 
 function run(
@@ -60,6 +60,7 @@ function run(
   text: string,
   maxPriceCents: number | null,
   choiceIds = ['s-1'],
+  modelOver: Partial<ReturnType<typeof modelYes>> = {},
 ): { reading: PlanReading | null; bound: BindResult | null } {
   const offer: PlanReadOffer = {
     status: 'pending',
@@ -72,7 +73,11 @@ function run(
     sessions: SESSION_ROWS,
     terms: planReadTerms(shown, { prerequisiteAsked: false }),
   };
-  const reading = toPlanReading(modelYes(text, maxPriceCents, choiceIds), offer, text);
+  const reading = toPlanReading(
+    { ...modelYes(text, maxPriceCents, choiceIds), ...modelOver },
+    offer,
+    text,
+  );
   if (reading?.verdict !== 'approve') return { reading, bound: null };
   const bound = bindApproval({
     shown,
@@ -96,6 +101,31 @@ const EXACT = (cents: number, plusTax: unknown = null) => ({
   cents: [cents],
   currency: 'cad',
   plusTax,
+});
+
+describe('a prerequisite Hale has not asked about', () => {
+  const needsLevel: SignupTermsShown = {
+    ...shownWith(session('s-1', 12000)),
+    prerequisite: { required: 'yes', quote: 'Must have completed Level 1' },
+  };
+
+  it('a bare yes the model marked as met binds nothing and asks', () => {
+    const { reading, bound } = run(needsLevel, 'yes', 12000, ['s-1'], {
+      prerequisiteSaid: 'yes',
+      prerequisiteMet: true,
+    });
+    expect(reading).toMatchObject({ verdict: 'approve', prerequisiteMet: null });
+    expect(bound?.kind).toBe('clarify');
+  });
+
+  it('their own words on it, apart from the go-ahead, bind', () => {
+    const { bound } = run(needsLevel, 'yes, she finished level 1', 12000, ['s-1'], {
+      said: 'yes',
+      prerequisiteSaid: 'she finished level 1',
+      prerequisiteMet: true,
+    });
+    expect(bound?.kind).toBe('bound');
+  });
 });
 
 describe('what a yes to a stated price binds', () => {

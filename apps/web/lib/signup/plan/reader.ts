@@ -5,6 +5,7 @@ import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shap
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
 import { moneyCentsWritten } from '../terms/money';
+import { MAX_PREREQUISITE_QUOTE_CHARS, untrustedPageWords } from '../terms/page-words';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -94,8 +95,6 @@ const MAX_TEXT_CHARS = 1600;
 const MAX_QUESTION_CHARS = 320;
 /** A program's name, not a paragraph: the longest activity label a reader is shown. */
 export const MAX_ACTIVITY_LABEL_CHARS = 80;
-/** Room for a level and a course name, and little else a page might try to say. */
-const MAX_PREREQUISITE_QUOTE_CHARS = 200;
 export const SIGNUP_PLAN_READ_SKILL = 'signup-plan-read';
 /** VIL-715 · the addendum for an ask with terms. Loaded only when they are present. */
 export const SIGNUP_PLAN_READ_TERMS_SKILL = 'signup-plan-read-terms';
@@ -173,24 +172,9 @@ type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
   prerequisiteMet?: boolean | null;
 };
 
-/**
- * An offer's activity name as a reader may see it. A page or the coach model wrote it, so
- * control and invisible characters go (an invisible one could hide a host from the link
- * strip), every link-shaped word goes, and it is cut to a name's length.
- */
+/** An offer's activity name as a reader may see it: a page or the coach model wrote it. */
 export function untrustedActivityLabel(raw: string | null): string | null {
   return untrustedPageWords(raw, MAX_ACTIVITY_LABEL_CHARS);
-}
-
-function untrustedPageWords(raw: string | null, maxChars: number): string | null {
-  if (raw === null) return null;
-  const visible = raw
-    .normalize('NFKC')
-    .replace(/\p{Cf}/gu, '')
-    .replace(/\p{Cc}/gu, ' ');
-  const text = withoutLinks(visible).replace(/\s+/g, ' ').trim();
-  if (!text) return null;
-  return [...text].slice(0, maxChars).join('').trim();
 }
 
 /** The terms as the reader sees them: the prerequisite's words are a web page's. */
@@ -369,16 +353,22 @@ export function toPlanReading(
       maxPriceCents: max,
       waiverAccepted: waiverGranted(raw, offer, text),
       named,
-      ...(offer.terms ? { prerequisiteMet: prerequisiteAnswer(raw, text) } : {}),
+      ...(offer.terms ? { prerequisiteMet: prerequisiteAnswer(raw, offer.terms, text) } : {}),
     };
   }
   const question = cleanQuestion(raw.question);
   return question ? { verdict: 'unclear', question, named } : null;
 }
 
-/** Their own words on the prerequisite, whole. A model's verdict without them is nothing. */
-function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
-  if (raw.prerequisiteSaid == null || !quotesParentWords(text, raw.prerequisiteSaid)) return null;
+/**
+ * Their own words on the prerequisite, whole. A model's verdict without them is nothing.
+ * Until Hale has asked the question, those words must also be no part of the go-ahead, as
+ * for the waiver: a yes to the ask says nothing about what the class needs.
+ */
+function prerequisiteAnswer(raw: RawPlanRead, terms: PlanReadTerms, text: string): boolean | null {
+  const { prerequisiteSaid, said } = raw;
+  if (prerequisiteSaid == null || !quotesParentWords(text, prerequisiteSaid)) return null;
+  if (!terms.prerequisiteAsked && said !== null && nested(said, prerequisiteSaid)) return null;
   return raw.prerequisiteMet ?? null;
 }
 

@@ -21,7 +21,7 @@ When no session they chose has a stated price, their yes is a yes to Hale going 
 
 Two more fields:
 
-- `prerequisiteSaid`: the parent's own words, copied whole, that say whether the child has what the class needs. Null when they said nothing about it. A bare yes says nothing about it, unless `prerequisiteAsked` is true: then their yes is the answer, and `prerequisiteSaid` is that yes.
+- `prerequisiteSaid`: the parent's own words, copied whole, that say whether the child has what the class needs. Null when they said nothing about it. A bare yes says nothing about it, unless `prerequisiteAsked` is true: then their yes is the answer, and `prerequisiteSaid` is that yes. Otherwise it is separate from the go-ahead: for "yes, she finished level 1", `said` is "yes" and `prerequisiteSaid` is "she finished level 1".
 - `prerequisiteMet`: true only when those words say the child has it, false when they say the child does not, null otherwise.
 
 When `prerequisiteAsked` is true and they say the child has not done it, the verdict is `take_back`: Hale will not register this child for this class.

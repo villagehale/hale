@@ -522,5 +522,46 @@ describe('what an approval may rest on', () => {
         ),
       ).toMatchObject({ prerequisiteMet: null });
     });
+
+    it('a bare yes answers no prerequisite Hale has not asked about', () => {
+      expect(
+        toPlanReading(yes({ prerequisiteSaid: 'yes', prerequisiteMet: true }), OFFER_T, 'yes'),
+      ).toMatchObject({ verdict: 'approve', prerequisiteMet: null });
+    });
+
+    it.each([
+      ['the answer inside the go-ahead', 'yes, she finished level 1', 'she finished level 1'],
+      ['the go-ahead inside the answer', 'yes', 'yes, she finished level 1'],
+      [
+        'the same words, cased differently',
+        'Yes, she finished level 1',
+        'yes, she FINISHED level 1',
+      ],
+    ])('words nested with the go-ahead answer nothing: %s', (_name, said, prerequisiteSaid) => {
+      expect(
+        toPlanReading(
+          yes({ said, prerequisiteSaid, prerequisiteMet: true }),
+          OFFER_T,
+          'Yes, she finished level 1',
+        ),
+      ).toMatchObject({ verdict: 'approve', prerequisiteMet: null });
+    });
+
+    it('their own separate words saying the child has not done it stay a no', () => {
+      expect(
+        toPlanReading(
+          yes({ prerequisiteSaid: 'she has not done level 1', prerequisiteMet: false }),
+          OFFER_T,
+          'yes, but she has not done level 1',
+        ),
+      ).toMatchObject({ prerequisiteMet: false });
+    });
+
+    it('once Hale asked the question, a plain yes is the answer', () => {
+      const asked: PlanReadOffer = { ...OFFER_T, terms: { ...TERMS, prerequisiteAsked: true } };
+      expect(
+        toPlanReading(yes({ prerequisiteSaid: 'yes', prerequisiteMet: true }), asked, 'yes'),
+      ).toMatchObject({ verdict: 'approve', prerequisiteMet: true });
+    });
   });
 });
