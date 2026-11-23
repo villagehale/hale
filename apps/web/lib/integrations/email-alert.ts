@@ -790,7 +790,12 @@ export async function alertParentForEmail(
         kind,
         event: {
           title: extraction.event.title,
-          startsAt: extraction.event.newTime ?? extraction.event.originalTime,
+          // A reschedule still sits on its original start (email never moves it).
+          // The new time would miss the event the list belongs to.
+          startsAt:
+            kind === 'reschedule'
+              ? extraction.event.originalTime
+              : (extraction.event.newTime ?? extraction.event.originalTime),
         },
         eventId: extraction.matchedEventRef.id,
         teen: async () =>

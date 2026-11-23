@@ -2525,6 +2525,9 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-720. One parent's own email or flyer. The other parent does not see that it was read.
+  'bring_items_recorded',
+  'bring_items_attached',
   // VIL-707. The held text is that parent's. Another adult does not see it.
   'opt_out_unread_held',
   // VIL-553. About the one adult who holds the number.

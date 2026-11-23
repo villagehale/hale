@@ -201,8 +201,9 @@ export const FLAGS = [
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-720. What an email or flyer says to bring reaches that parent's own
-  // night-before and hour-before reminders. Exact `true`.
-  exact('bring-items-reminder', 'BRING_ITEMS_REMINDER_ENABLED'),
+  // night-before and hour-before reminders. Exact `true`. Env-only: the read is
+  // process-wide, and a family-scoped PostHog answer must not turn it on or off.
+  exact('bring-items-reminder', 'BRING_ITEMS_REMINDER_ENABLED', { envOnly: true }),
   // VIL-719. The three-tier ask policy: an ask-first kind runs only on the parent's
   // recorded yes, a just-do kind sends no on-its-own text, and a tell-after text the
   // model cannot write pages #ops. Exact `true`. Env-only (VIL-755): a PostHog sync must

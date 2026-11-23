@@ -1,5 +1,7 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
+import { CALENDAR_CLOCK_TOLERANCE_MS } from '~/lib/channel/calendar-ask';
 import type { ExtractionKind } from '~/lib/sentinel/types';
 import { bringItemsReminderEnabled } from './flag';
 import type { BringItemsReader } from './read';
@@ -25,7 +27,7 @@ import { bringItemsAlreadyRead, bringSourceRef, recordBringItems } from './store
 
 export type EmailBringCapture =
   | { status: 'off' }
-  | { status: 'skipped'; reason: 'kind' | 'teen' | 'already_read' | 'not_configured' }
+  | { status: 'skipped'; reason: 'kind' | 'teen' | 'time' | 'already_read' | 'not_configured' }
   | { status: 'none' }
   | { status: 'recorded'; count: number; onEvent: boolean }
   | { status: 'already_recorded' }
@@ -61,6 +63,23 @@ const READABLE_KINDS: ReadonlySet<ExtractionKind> = new Set([
   'booking_confirmation',
 ]);
 
+async function eventStartAgrees(
+  database: Database,
+  eventId: string,
+  emailStartsAt: string | null,
+): Promise<boolean> {
+  if (!emailStartsAt) return false;
+  const email = new Date(emailStartsAt);
+  if (Number.isNaN(email.getTime())) return false;
+  const [event] = await database
+    .select({ startsAt: schema.familyEvents.startsAt })
+    .from(schema.familyEvents)
+    .where(eq(schema.familyEvents.id, eventId))
+    .limit(1);
+  if (!event) return false;
+  return Math.abs(event.startsAt.getTime() - email.getTime()) <= CALENDAR_CLOCK_TOLERANCE_MS;
+}
+
 function className(err: unknown): string {
   return err instanceof Error ? err.constructor.name : 'unknown';
 }
@@ -91,6 +110,14 @@ async function capture(
   ports: EmailBringPorts,
 ): Promise<EmailBringCapture> {
   if (!READABLE_KINDS.has(input.kind)) return { status: 'skipped', reason: 'kind' };
+  // The household correlation window is wide enough to pick the same title on the
+  // next day. A list is kept only when this email and that event name the same start.
+  if (
+    input.eventId !== null &&
+    !(await eventStartAgrees(database, input.eventId, input.event.startsAt))
+  ) {
+    return { status: 'skipped', reason: 'time' };
+  }
   try {
     if (await input.teen()) return { status: 'skipped', reason: 'teen' };
   } catch (err) {

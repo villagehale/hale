@@ -184,6 +184,19 @@ describe('the Gmail alert keeps what an email says to bring (VIL-720)', () => {
     });
   });
 
+  it('a same-titled session on the next day does not receive this list', async () => {
+    const eventId = await seedEvent();
+    const h = harness(
+      classified('reminder_only', { originalTime: '2026-09-20T13:00:00.000Z' }, { id: eventId }),
+      READ,
+    );
+
+    await alert(h.ports);
+
+    expect(h.reads).toHaveLength(0);
+    expect(await bringRows()).toEqual([]);
+  });
+
   it('an email Hale offers to add: the text goes, and the list waits on that offer', async () => {
     const h = harness(classified('new_event', { newTime: '2026-09-19T13:00:00.000Z' }, null), READ);
 

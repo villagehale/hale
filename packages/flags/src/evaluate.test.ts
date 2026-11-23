@@ -333,6 +333,22 @@ describe('an env-only flag, read before any family is known', () => {
     ).toBe(true);
     expect(FLAG_BY_KEY['ask-policy-tiers'].envOnly).toBe(true);
   });
+
+  it('VIL-720: PostHog cannot light or darken bring-items on reminders', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('bring-items-reminder', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('bring-items-reminder', undefined, {
+        ...ON,
+        BRING_ITEMS_REMINDER_ENABLED: 'true\n',
+      }),
+    ).toBe(false);
+    setFlagEvaluatorForTests(() => false);
+    expect(
+      isEnabled('bring-items-reminder', undefined, { ...ON, BRING_ITEMS_REMINDER_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['bring-items-reminder'].envOnly).toBe(true);
+  });
 });
 
 describe('catalog', () => {
