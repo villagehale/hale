@@ -4,6 +4,9 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
+import { moneyCentsWritten } from '../terms/money';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from '../site-choices';
+import { untrustedPageWords } from '../terms/page-words';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -17,7 +20,9 @@ import { MAX_PLAN_CHOICES } from './store';
  * The offer's activity name came from a web page or the coach model, so it is untrusted:
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
  * an approval. An approval holds only on the parent's own words, copied whole (`said`); its
- * maximum only on a price Hale's offer stated or an amount of money they wrote; the waiver
+ * maximum only on a price Hale's offer stated or an amount of money they wrote (on an ask
+ * with terms, a yes takes the stated price, money of theirs beside it is a question, and a
+ * class with no stated price binds no amount at all); the waiver
  * only on a plan whose waiver question Hale sent, and only on their own words, whole, that
  * are no part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
  * that carry a whole word of its program's name or its site. Anything else fails closed.
@@ -46,6 +51,18 @@ export interface PlanReadOffer {
    * model.
    */
   asksWaiver: boolean;
+  /** VIL-715 · the terms the ask stated. Absent on an ask without them. */
+  terms?: PlanReadTerms;
+  /** VIL-715 · this offer has a terms row, so a page wrote its session labels. Code only. */
+  labelsFromPage?: boolean;
+}
+
+/** VIL-715 · what the ask told the parent, for reading their yes against it. */
+export interface PlanReadTerms {
+  /** The prices the text stated for each session, in cents. Empty: it stated none. */
+  sessionPrices: { sessionId: string; cents: number[] }[];
+  /** Sessions that cost nothing: a yes to only these has a $0 maximum. */
+  freeSessionIds: string[];
 }
 
 /**
@@ -76,10 +93,15 @@ const MAX_QUESTION_CHARS = 320;
 /** A program's name, not a paragraph: the longest activity label a reader is shown. */
 export const MAX_ACTIVITY_LABEL_CHARS = 80;
 export const SIGNUP_PLAN_READ_SKILL = 'signup-plan-read';
+/** VIL-715 · the addendum for an ask with terms. Loaded only when they are present. */
+export const SIGNUP_PLAN_READ_TERMS_SKILL = 'signup-plan-read-terms';
 export const SIGNUP_PLAN_READ_TOOL = 'signup_plan_read';
 export const SIGNUP_PLAN_READ_TOOL_DESCRIPTION =
   'Decide whether the parent approved the registration plan, took it back, or neither.';
 export const SIGNUP_PLAN_READ_MAX_TOKENS = 2048;
+/** A fact for the writer, who words it. Asked when a yes carries an amount of money. */
+const TERMS_STATED_PRICE_QUESTION =
+  'They wrote an amount beside their yes. May Hale pay the stated price?';
 
 const VERDICTS = ['approve', 'take_back', 'unclear', 'unrelated'] as const;
 
@@ -124,20 +146,14 @@ export const SIGNUP_PLAN_READ_TOOL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/**
- * An offer's activity name as a reader may see it. A page or the coach model wrote it, so
- * control and invisible characters go (an invisible one could hide a host from the link
- * strip), every link-shaped word goes, and it is cut to a name's length.
- */
+/** An offer's activity name as a reader may see it: a page or the coach model wrote it. */
 export function untrustedActivityLabel(raw: string | null): string | null {
-  if (raw === null) return null;
-  const visible = raw
-    .normalize('NFKC')
-    .replace(/\p{Cf}/gu, '')
-    .replace(/\p{Cc}/gu, ' ');
-  const text = withoutLinks(visible).replace(/\s+/g, ' ').trim();
-  if (!text) return null;
-  return [...text].slice(0, MAX_ACTIVITY_LABEL_CHARS).join('').trim();
+  return untrustedPageWords(raw, MAX_ACTIVITY_LABEL_CHARS);
+}
+
+/** Terms on the ask, or a terms row behind it: a page wrote its session labels. */
+export function planReadUsesTermsSkill(offer: PlanReadOffer): boolean {
+  return offer.terms !== undefined || offer.labelsFromPage === true;
 }
 
 /** The user turn: the plan the parent is answering, then their words. No child data. */
@@ -151,13 +167,16 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
       approvedPriceCents: input.offer.approvedPriceCents,
       sessions: input.offer.sessions.map((session) => ({
         id: session.id,
-        label: withoutLinks(session.label),
+        ...(planReadUsesTermsSkill(input.offer)
+          ? { untrusted_label: untrustedPageWords(session.label, SITE_CHOICE_LABEL_MAX_CHARS) }
+          : { label: withoutLinks(session.label) }),
         startsAt: session.startsAt,
         endsAt: session.endsAt,
         full: session.full,
         priceCents: session.priceCents,
       })),
       plan: input.offer.plan,
+      ...(input.offer.terms ? { terms: input.offer.terms } : {}),
     },
     text: input.text.slice(0, MAX_TEXT_CHARS),
   });
@@ -283,18 +302,21 @@ export function toPlanReading(
   if (offer.status === 'planned') return { verdict: 'unrelated' };
   const ids = raw.choiceIds;
   const chosen = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
-  const max = raw.maxPriceCents;
+  // No chosen session has a price: nothing is bound from any figure, theirs or the model's.
+  const max = offer.terms && !statesAPrice(offer.terms, ids) ? 0 : raw.maxPriceCents;
   const valid =
     ids.length > 0 &&
     ids.length <= MAX_PLAN_CHOICES &&
     new Set(ids).size === ids.length &&
     chosen.length === ids.length &&
     max !== null &&
-    max > 0 &&
-    maxSupported(max, chosen, offer, text) &&
+    (offer.terms !== undefined || (max > 0 && maxSupported(max, chosen, offer, text))) &&
     raw.said !== null &&
     quotesParentWords(text, raw.said);
   if (valid && max !== null) {
+    if (offer.terms && !yesTakesStatedPrice(offer.terms, ids, max, text)) {
+      return { verdict: 'unclear', question: TERMS_STATED_PRICE_QUESTION, named };
+    }
     return {
       verdict: 'approve',
       choiceIds: [...ids],
@@ -305,6 +327,33 @@ export function toPlanReading(
   }
   const question = cleanQuestion(raw.question);
   return question ? { verdict: 'unclear', question, named } : null;
+}
+
+/**
+ * Backs up the model's read of a yes to a stated price, and only ever makes Hale ask. Any
+ * money beside the yes is a question, even the price said back: with two rates or a tax on
+ * top, an echo and a cap are the same digits. A bare number is the model's to read, so
+ * "the 4pm one" is never a question.
+ */
+function yesTakesStatedPrice(
+  terms: PlanReadTerms,
+  ids: readonly string[],
+  max: number,
+  text: string,
+): boolean {
+  if (!statesAPrice(terms, ids)) return true;
+  const stated = terms.sessionPrices
+    .filter((session) => ids.includes(session.sessionId))
+    .flatMap((session) => session.cents);
+  return (
+    stated.includes(max) && moneyWritten(text).length === 0 && moneyCentsWritten(text).length === 0
+  );
+}
+
+function statesAPrice(terms: PlanReadTerms, ids: readonly string[]): boolean {
+  return terms.sessionPrices.some(
+    (session) => ids.includes(session.sessionId) && session.cents.length > 0,
+  );
 }
 
 function className(err: unknown): string {
@@ -331,8 +380,12 @@ export function createPlanReader(
       }
       if (!resolved) return unreadable('client_unavailable');
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_READ_SKILL);
+        system = planReadUsesTermsSkill(input.offer)
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_READ_TERMS_SKILL)).instructions}`
+          : skill.instructions;
       } catch (err) {
         return unreadable('skill_unavailable', className(err));
       }
@@ -340,7 +393,7 @@ export function createPlanReader(
         const { value } = await forceToolJson({
           client: resolved,
           lane: pickLane(skill.meta.task),
-          system: skill.instructions,
+          system,
           userMessage: signupPlanReadUserMessage(input),
           toolName: SIGNUP_PLAN_READ_TOOL,
           toolDescription: SIGNUP_PLAN_READ_TOOL_DESCRIPTION,

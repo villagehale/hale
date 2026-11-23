@@ -204,6 +204,19 @@ export interface FamilyExportDocument {
     createdAt: string;
   }[];
   /**
+   * VIL-715 — what each registration ask showed the parent and what their yes bound:
+   * program facts, ids and cents only. Never a child's name, birth date or age. A teen's row
+   * and another parent's row keep only that the ask existed (`withheld`).
+   */
+  signupTerms: {
+    offerId: string;
+    withheld: 'teen' | 'another_adult' | null;
+    shown: unknown;
+    approved: unknown;
+    approvedAt: string | null;
+    createdAt: string;
+  }[];
+  /**
    * VIL-394 — this household's own meet / join-group yes. The opaque activity
    * key, the kind, and whether they took it back. No other household, no
    * child, and no message body: those are not columns, and the read is
@@ -352,6 +365,33 @@ export interface AssembleFamilyExportDeps {
    * stays single-sourced (and swappable in tests). */
   loadTrail?: (database: Database, familyId: string) => Promise<TrailView[]>;
   now?: Date;
+}
+
+/**
+ * Preview shares the Prod database and does not migrate, so an export there can run before
+ * this table exists. Only that one error reads as no rows; any other failure still throws.
+ */
+async function readSignupTermsRows(database: Database, familyId: string) {
+  const terms = schema.authorizedSignupTerms;
+  try {
+    return await database
+      .select({
+        offerId: terms.offerId,
+        childId: terms.childId,
+        parentUserId: terms.parentUserId,
+        shown: terms.shown,
+        approved: terms.approved,
+        approvedAt: terms.approvedAt,
+        createdAt: terms.createdAt,
+      })
+      .from(terms)
+      .where(eq(terms.familyId, familyId))
+      .orderBy(terms.createdAt);
+  } catch (err) {
+    const fields = err as { code?: string; cause?: { code?: string } } | null;
+    if (fields?.code === '42P01' || fields?.cause?.code === '42P01') return [];
+    throw err;
+  }
 }
 
 export async function assembleFamilyExport(
@@ -781,6 +821,25 @@ export async function assembleFamilyExport(
   );
   const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
   const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
+  const termsRows = await readSignupTermsRows(database, familyId);
+  const signupTerms = termsRows.map((row) => {
+    const withheld = gate.isPrivate([row.childId], [])
+      ? ('teen' as const)
+      : row.parentUserId !== deps.actorUserId
+        ? ('another_adult' as const)
+        : null;
+    const createdAt = row.createdAt.toISOString();
+    return withheld
+      ? { offerId: row.offerId, withheld, shown: null, approved: null, approvedAt: null, createdAt }
+      : {
+          offerId: row.offerId,
+          withheld,
+          shown: row.shown,
+          approved: row.approved,
+          approvedAt: row.approvedAt?.toISOString() ?? null,
+          createdAt,
+        };
+  });
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -808,6 +867,7 @@ export async function assembleFamilyExport(
     watchedSpots,
     activityBookings,
     authorizedSignups,
+    signupTerms,
     signupFieldConsents,
     sameActivityOptIns,
     goingCountOptIns,

@@ -5,6 +5,7 @@ import {
   siteChoiceSchema,
   siteFeesSchema,
 } from '../site-choices';
+import { CART_READ_JSON_SCHEMA, cartReadSchema } from '../terms/types';
 
 /**
  * The structured answer a Browser Use signup run must return. The skill
@@ -165,6 +166,7 @@ const planOutput = z.object({
   site_choices: z.array(siteChoiceSchema).max(20).catch([]).default([]),
   seats_open: z.number().int().nonnegative().nullable().catch(null).default(null),
   fees: siteFeesSchema.nullable().catch(null).default(null),
+  cart_read: cartReadSchema.nullable().catch(null).default(null),
 });
 
 export type BrowserUsePlanOutput = z.infer<typeof planOutput>;
@@ -246,6 +248,7 @@ const reviewOutput = z.object({
   fees_cents: z.number().int().nonnegative().nullable(),
   saved_card_selected: z.boolean(),
   order_placed: z.boolean(),
+  cart_read: cartReadSchema.nullable().catch(null).default(null),
 });
 
 export type BrowserUseReviewOutput = z.infer<typeof reviewOutput>;
@@ -279,6 +282,24 @@ export function parseReviewOutput(raw: unknown): BrowserUseReviewOutput | null {
   const parsed = reviewOutput.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * VIL-715 · the output schemas of a run bound to a parent's approval. They forbid extra
+ * keys, so a bound run sends these and an unbound run sends today's constants, untouched.
+ */
+function withCartRead(schema: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...schema,
+    required: [...(schema.required as string[]), 'cart_read'],
+    properties: {
+      ...(schema.properties as Record<string, unknown>),
+      cart_read: { anyOf: [CART_READ_JSON_SCHEMA, { type: 'null' }] },
+    },
+  };
+}
+
+export const BOUND_PLAN_OUTPUT_SCHEMA = withCartRead(BROWSER_USE_PLAN_OUTPUT_SCHEMA);
+export const BOUND_REVIEW_OUTPUT_SCHEMA = withCartRead(BROWSER_USE_REVIEW_OUTPUT_SCHEMA);
 
 export const BROWSER_USE_PAYMENT_OUTCOMES = ['paid', 'declined', 'needs_human', 'error'] as const;
 
