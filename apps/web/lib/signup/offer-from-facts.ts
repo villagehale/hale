@@ -200,6 +200,15 @@ async function offerWithTerms(
   },
 ): Promise<OfferSignupResult> {
   const activityKey = activityKeyFor(known.href);
+  // The coach's figures can be the parent's own words. A terms ask states only the page's.
+  const pageOnly: OfferSignupInput = {
+    ...input,
+    facts: {
+      ...input.facts,
+      sessions: input.facts.sessions.map((session) => ({ ...session, priceCents: null })),
+      approvedPriceCents: null,
+    },
+  };
   const ask = await prepareTermsAsk(
     database,
     {
@@ -209,7 +218,7 @@ async function offerWithTerms(
       activityKey,
       registrationUrl: known.href,
       host: known.host,
-      sessions: input.facts.sessions,
+      sessions: pageOnly.facts.sessions,
       statedOpensAt: input.planOpensAt ?? null,
       now: input.now,
     },
@@ -219,7 +228,7 @@ async function offerWithTerms(
     await writeAudit(database, input, null, { step: 'offer', reason: 'age_outside_band' });
     return { ok: false, reason: 'age_outside_band', ageBand: ask.ageBand };
   }
-  const text = await writePlanOffer(database, input, deps, {
+  const text = await writePlanOffer(database, pageOnly, deps, {
     mode: known.mode,
     opensAt: ask.opensAt,
     childName: input.facts.childFirstName ?? known.child.name,
@@ -243,8 +252,8 @@ async function offerWithTerms(
     activityKey,
     activityLabel: input.activityLabel ?? null,
     registrationUrl: known.href,
-    sessions: [...input.facts.sessions],
-    approvedPriceCents: input.facts.approvedPriceCents,
+    sessions: [...pageOnly.facts.sessions],
+    approvedPriceCents: null,
     planOpensAt: ask.opensAt,
     planAlreadyOpen: ask.alreadyOpen,
     supersede: input.supersede,

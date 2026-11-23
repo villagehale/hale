@@ -29,6 +29,7 @@ import type { PlanReplyFacts, PlanReplyWriter } from '../plan/writer';
 import { runAuthorizedSignup } from '../run';
 import { sentSignupText } from '../sent-text.fixture';
 import { recordSignupOffer } from '../store';
+import type { SignupSession } from '../types';
 import { compareCart } from './cart';
 import type { DobReader } from './dob-reader';
 import type { PreflightReader, SignupPreflightRead } from './read-page';
@@ -162,6 +163,9 @@ async function ask(
     page?: string;
     read?: SignupPreflightRead;
     writer?: PlanReplyWriter;
+    sessions?: readonly SignupSession[];
+    approvedPriceCents?: number | null;
+    evidence?: string;
   } = {},
 ) {
   const { planWriter } = writer();
@@ -176,10 +180,10 @@ async function ask(
       activityLabel: 'Get Ready Public Speaking',
       facts: {
         source: 'chat',
-        evidence: 'sign Ada up',
+        evidence: options.evidence ?? 'sign Ada up',
         registrationUrl: URL_,
-        sessions: SESSIONS,
-        approvedPriceCents: null,
+        sessions: [...(options.sessions ?? SESSIONS)],
+        approvedPriceCents: options.approvedPriceCents ?? null,
         language: null,
       },
     },
@@ -2003,6 +2007,75 @@ describe('a class whose page states no price', () => {
     );
     expect(later.written.at(-1)?.moment).toBe('clarify');
     expect(later.written.at(-1)?.maxPriceCents).toBeNull();
+  });
+
+  describe('a figure the coach passed for the class', () => {
+    const COACH_SESSIONS = SESSIONS.map((session) => ({ ...session, priceCents: 15000 }));
+    // Both rows' printed figures stop parsing, so the course model yields no rate.
+    const NO_READABLE_PRICE = PAGE.replaceAll(
+      '"DisplayAmount":"$84.88"',
+      '"DisplayAmount":"Varies"',
+    ).replaceAll('"DisplayAmount":"$97.60"', '"DisplayAmount":"Varies"');
+
+    it('on a page with no readable price is never stated, bound or paid', async () => {
+      vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+      stubOps();
+      const f = await household();
+      const asked = writer();
+      const offerId = await askedAndSent(f, {
+        page: NO_READABLE_PRICE,
+        sessions: COACH_SESSIONS,
+        approvedPriceCents: 15000,
+        evidence: 'sign Ada up, I can do up to $150',
+        planOpensAt: new Date(NOW.getTime() - 60_000),
+        writer: asked.planWriter,
+      });
+
+      const shown = (await termsRow(offerId))?.shown;
+      expect(shown?.read).toBe('course_model');
+      expect(shown?.age.fit).toBe('in_band');
+      expect(shown?.sessions).toEqual([
+        { sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' },
+      ]);
+      const stored = await offerRow(offerId);
+      expect(stored.sessions[0]?.priceCents).toBeNull();
+      expect(stored.approvedPriceCents).toBeNull();
+      const offerFacts = asked.written[0];
+      expect(offerFacts?.sessions[0]?.priceCents).toBeNull();
+      expect(offerFacts?.maxPriceCents).toBeNull();
+      expect(offerFacts?.terms?.rates).toEqual([]);
+      expect(offerFacts?.terms?.unread).toContain('price');
+
+      await yes(f, YES, { reader: approvesWith(null) });
+      const approved = (await termsRow(offerId))?.approved;
+      expect(approved).toMatchObject({ hold: 'price_unstated', maxCents: 0 });
+      expect(approved?.sessions[0]?.amount).toEqual({ kind: 'unstated' });
+
+      const engine = realEngine({ ...CHECKOUT, cart_total_cents: 15000 });
+      await sweep(engine.deps, new Date(NOW.getTime() + 60_000));
+      expect(engine.created).toEqual(['# skill browser-use-plan-signup']);
+      expect(engine.notices[0]).toMatchObject({
+        outcome: 'needs_human',
+        detail: 'price_unstated',
+        charged: 'nothing',
+      });
+    });
+
+    it('on a page with a price, the page is what is stated and bound (control)', async () => {
+      const f = await household();
+      const asked = writer();
+      const offerId = await askedAndSent(f, {
+        sessions: COACH_SESSIONS,
+        approvedPriceCents: 15000,
+        writer: asked.planWriter,
+      });
+      const offerFacts = asked.written[0];
+      expect(offerFacts?.terms?.rates.map((row) => row.cents)).toEqual([8488]);
+      expect(offerFacts?.sessions[0]?.priceCents).toBeNull();
+      expect(offerFacts?.maxPriceCents).toBeNull();
+      await yes(f, YES);
+      expect((await termsRow(offerId))?.approved).toMatchObject({ hold: null, maxCents: 8488 });
+    });
   });
 
   it('a priced class on the same path binds its price with no hold (control)', async () => {

@@ -6,7 +6,6 @@ import type { PrepChild } from '~/lib/registration/sequence/prepare';
 import { REGISTRATION_TIME_ZONE } from '~/lib/registration/verify-window';
 import type { PlanReadTerms } from '../plan/reader';
 import type { PlanReplyTerms } from '../plan/writer';
-import type { SignupSession } from '../types';
 import { ratesFor } from './bind';
 import { hasUnstatedPrice } from './cart';
 import { residencyFor } from './evaluate';
@@ -66,7 +65,8 @@ export async function prepareTermsAsk(
     activityKey: string;
     registrationUrl: string;
     host: string;
-    sessions: readonly SignupSession[];
+    /** Ids only: a price on a terms ask comes from the page read, never from the offer. */
+    sessions: readonly { id: string }[];
     /** When the parent or page said registration opens. Null when nobody did. */
     statedOpensAt: Date | null;
     now: Date;
@@ -121,13 +121,7 @@ export async function prepareTermsAsk(
           source: read.read === 'course_model' ? 'course_model' : 'page_quote',
         };
       }
-      const offered = session.priceCents !== null && session.priceCents >= 0;
-      return {
-        sessionId: session.id,
-        rates: offered ? [{ rate: 'flat', cents: session.priceCents as number }] : [],
-        tax: 'unknown',
-        source: 'offer',
-      };
+      return { sessionId: session.id, rates: [], tax: 'unknown', source: 'offer' };
     }),
   };
   const alreadyOpen = future === null && (stated !== null || read.pageOpensAt === null);
