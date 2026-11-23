@@ -629,11 +629,18 @@ describe('stripe billing revoke', () => {
         })
         .where(eq(schema.families.id, familyId));
       let swapped = false;
-      const originalTransaction = isolated.client.transaction.bind(isolated.client);
-      isolated.client.transaction = (async (fn: (tx: typeof isolated.client) => Promise<unknown>) =>
+      const client = isolated.client as unknown as {
+        transaction: (
+          fn: (tx: {
+            query: (query: string, params?: unknown[], config?: unknown) => Promise<unknown>;
+          }) => Promise<unknown>,
+        ) => Promise<unknown>;
+      };
+      const originalTransaction = client.transaction.bind(client);
+      client.transaction = async (fn) =>
         originalTransaction(async (txClient) => {
           const originalQuery = txClient.query.bind(txClient);
-          txClient.query = (async (query: string, params?: unknown[], config?: unknown) => {
+          txClient.query = async (query, params, config) => {
             const result = await originalQuery(query, params, config);
             const text = typeof query === 'string' ? query : '';
             if (
@@ -649,9 +656,9 @@ describe('stripe billing revoke', () => {
               );
             }
             return result;
-          }) as typeof txClient.query;
+          };
           return fn(txClient);
-        })) as typeof isolated.client.transaction;
+        });
 
       const result = await applyStripeBillingEvent(
         deletedSubscription('evt_race', familyId, 'sub_vil761_old', 'cus_vil761_race'),
