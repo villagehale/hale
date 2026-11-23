@@ -1,10 +1,11 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, isNull } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import { CO_PARENT_GRANT_SCOPE, type CaregiverRole, isParentRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -245,6 +246,42 @@ export async function loadOpenInviteByPhone(
   const row = (await openInvites(database)).find((r) => r.phoneE164Hash === hash);
   if (!row) return null;
   return throughExpiry(database, row, now);
+}
+
+/**
+ * VIL-719 · the co-parent invite held on this number, if any. Read-only, unlike
+ * {@link loadOpenInviteByPhone}, because every turn from this number asks it, including
+ * turns inside a conversation that must not close an invite as a side effect.
+ */
+export async function loadHeldCoParentInvite(
+  database: Database,
+  phoneE164: string,
+  now: Date,
+): Promise<CoParentInvite | null> {
+  const hash = phoneBlindIndex(phoneE164);
+  const rows = (await database
+    .select(INVITE_COLUMNS)
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.phoneE164Hash, hash),
+        eq(schema.caregiverInvites.state, 'send_unconfirmed'),
+        eq(schema.caregiverInvites.role, 'co_parent'),
+        isNull(schema.caregiverInvites.closedAt),
+        gt(schema.caregiverInvites.expiresAt, now),
+      ),
+    )) as InviteRow[];
+  const row = rows.find(
+    (r) =>
+      r.phoneE164Hash === hash &&
+      r.state === 'send_unconfirmed' &&
+      r.role === 'co_parent' &&
+      r.closedAt === null &&
+      new Date(r.expiresAt).getTime() > now.getTime(),
+  );
+  if (!row) return null;
+  const invite = toInvite(row);
+  return invite.role === 'co_parent' ? invite : null;
 }
 
 /**
@@ -948,12 +985,15 @@ export async function coParentInviteSendKey(
 export async function settleCoParentInviteAfterFailedSend(
   database: Database,
   invite: CoParentInvite,
-  state: Extract<CaregiverInviteState, 'awaiting_parent_assent' | 'send_unconfirmed'>,
+  sendError: unknown,
   now: Date,
 ): Promise<void> {
   const settled = await database
     .update(schema.caregiverInvites)
-    .set({ state, updatedAt: now })
+    .set({
+      state: linqRefusedForCertain(sendError) ? 'awaiting_parent_assent' : 'send_unconfirmed',
+      updatedAt: now,
+    })
     .where(
       and(
         eq(schema.caregiverInvites.id, invite.id),

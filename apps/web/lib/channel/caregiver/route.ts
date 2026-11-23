@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
@@ -51,13 +51,14 @@ import {
   type CoParentInvite,
   type CoParentRefusal,
   acceptInvite,
-  declineInvite,
   coParentInviteSendKey,
+  declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
   recordInviteRefusal,
   recordLapsedInviteAnswered,
   recordParentAssent,
+  settleCoParentInviteAfterFailedSend,
   startCaregiverInvite,
   startCoParentInvite,
 } from './invites';
@@ -274,6 +275,22 @@ async function record(
   return id;
 }
 
+async function inboundAlreadyRecorded(database: Database, providerId: string): Promise<boolean> {
+  const rows = await database
+    .select({
+      providerMessageId: schema.channelMessages.providerMessageId,
+      direction: schema.channelMessages.direction,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerMessageId, providerId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    );
+  return rows.some((row) => row.providerMessageId === providerId && row.direction === 'in');
+}
+
 /**
  * Send one message to a THIRD PARTY and ledger it against the parent who authorised it.
  *
@@ -295,6 +312,8 @@ async function reply(
     now: Date;
     /** Linq's idempotency key, for a text that may already have landed once. */
     sendKey?: string;
+    /** Runs when the send itself fails, and not when a ledger write after it does. */
+    onSendFailed?: (err: unknown) => Promise<void>;
   },
 ): Promise<void> {
   if (!input.body) {
@@ -304,11 +323,17 @@ async function reply(
     );
     return;
   }
-  const { providerMessageId } = await deps.transport.send({
-    to: input.to,
-    body: input.body,
-    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
-  });
+  let providerMessageId: string;
+  try {
+    ({ providerMessageId } = await deps.transport.send({
+      to: input.to,
+      body: input.body,
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+    }));
+  } catch (err) {
+    await input.onSendFailed?.(err);
+    throw err;
+  }
   await record(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -843,6 +868,14 @@ async function sendCoParentInvite(
   deps: CaregiverDeps,
 ): Promise<CoParentOutcome> {
   const { pending, owner, inbound, now } = args;
+  // VIL-719 · a certain refusal reopens the invite, so Linq's redelivery of this same yes
+  // reaches here again. It is the turn that already ran; only a new yes tries the send again.
+  if (
+    askPolicyTiersEnabled(owner.familyId) &&
+    (await inboundAlreadyRecorded(database, inbound.providerId))
+  ) {
+    return { status: 'co_parent_assent_already_claimed' };
+  }
   // The family's stored language. The authorising sentence is not classified.
   const language = await familySpeechLanguage(database, owner.familyId);
   const channelMessageId = await record(database, {
@@ -907,7 +940,22 @@ async function sendCoParentInvite(
     parentUserId: owner.userId,
     lane: 'co_parent',
     now,
-    ...(sendKey ? { sendKey } : {}),
+    ...(sendKey
+      ? {
+          sendKey,
+          onSendFailed: (err: unknown) =>
+            settleCoParentInviteAfterFailedSend(database, pending, err, now).catch(
+              (settleErr: unknown) =>
+                console.error(
+                  {
+                    familyId: owner.familyId,
+                    err: settleErr instanceof Error ? settleErr.name : 'unknown',
+                  },
+                  'coparent add command: could not repair the invite after a failed send',
+                ),
+            ),
+        }
+      : {}),
   });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,

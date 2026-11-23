@@ -7,7 +7,9 @@ import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analyti
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
+  type CoParentInvite,
   declineOpenInviteOnStop,
+  loadHeldCoParentInvite,
   loadLapsedInviteByPhone,
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
@@ -686,6 +688,21 @@ async function runIntakeTurn(
     return { status: 'ignored', reason: 'group_turn_during_intake' };
   }
 
+  // VIL-719 · a co-parent invite whose text may not have landed. Only a refusal binds to it,
+  // and it is read here, ahead of the session, because asking who is texting opens one.
+  if (inbound.isGroup !== true && turnIntent === 'none') {
+    const heldInvite = await loadHeldCoParentInvite(database, phoneE164, now);
+    if (heldInvite) {
+      const answer = await readConsent(deps.consent, {
+        question: 'coparent_invite',
+        text: inbound.body,
+      });
+      if (answer?.verdict === 'no') {
+        return refuseHeldInvite(database, { invite: heldInvite, inbound, now });
+      }
+    }
+  }
+
   // 5c. VIL-686 · a guest whose Secret Santa draw waits on their first text to Hale. Only a
   // 1:1 turn the opt-out read cleanly called ordinary (not a stop, a start, a crisis or an
   // unread text) from a number that has not stopped intake: their draw is this turn's reply,
@@ -748,18 +765,6 @@ async function runIntakeTurn(
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
       return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
-    }
-    // The text may never have reached this number, so only a refusal binds to it.
-    if (invite?.state === 'send_unconfirmed' && invite.role === 'co_parent') {
-      const read = await readConsent(deps.consent, {
-        question: 'coparent_invite',
-        text: inbound.body,
-      });
-      if (read?.verdict === 'no') {
-        return claimedTurn(database, inbound, now, () =>
-          handleHeldInviteRefusal(database, { invite, inbound, now }),
-        );
-      }
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
@@ -883,6 +888,25 @@ async function claimedTurn(
   // the named crash residue (rule #11), visible to an operator, never a silence.
   await completeIntakeTurn(database, inbound.providerId, now);
   return outcome;
+}
+
+/**
+ * The person's no to a held invite, and the turn's claim, commit together. A close that
+ * fails gives the provider id back, so the redelivery runs it; one that lands keeps the
+ * claim, so the redelivery of a no that closed the invite is not greeted as a new text.
+ */
+async function refuseHeldInvite(
+  database: Database,
+  args: { invite: CoParentInvite; inbound: Inbound; now: Date },
+): Promise<IntakeOutcome> {
+  const { inbound, now } = args;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    if (!(await claimIntakeTurn(tx, inbound.providerId, now))) return { status: 'duplicate' };
+    const outcome = await handleHeldInviteRefusal(tx, args);
+    await completeIntakeTurn(tx, inbound.providerId, now);
+    return outcome;
+  });
 }
 
 /**
