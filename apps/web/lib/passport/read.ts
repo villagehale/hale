@@ -32,7 +32,8 @@ export interface StampCard {
 
 export interface KidCard {
   id: string;
-  name: string;
+  /** Null when the parent has not given a name. */
+  name: string | null;
   meta: string;
   age: string;
   born: string | null;
@@ -221,7 +222,7 @@ export async function readPassportModel(now = new Date()): Promise<PassportModel
 
   const kids: KidCard[] = children
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     .map((child) => {
       const profile = profileByChild.get(child.id);
       const age = ageYears(child.dateOfBirth, now);

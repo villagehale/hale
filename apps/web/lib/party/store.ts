@@ -121,7 +121,7 @@ export async function loadTeenFirstNames(
     .where(eq(schema.children.familyId, familyId));
   return rows
     .filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager')
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
 }
 
 // ── the guest write ──────────────────────────────────────────────────────────

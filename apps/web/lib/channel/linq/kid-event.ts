@@ -86,6 +86,12 @@ export function titleForStorage(
 export function splitKidEvent(
   title: string,
   childNames: readonly string[],
+  /**
+   * How many children the household has, named or not. The single-name fallback
+   * is only for a household of one. A filtered name list of length 1 must not
+   * claim an event that did not say that name when a sibling has no name on file.
+   */
+  rosterSize = childNames.length,
 ): { kid: string; event: string } | null {
   const names = childNames
     .map((name) => name.trim())
@@ -101,7 +107,8 @@ export function splitKidEvent(
     if (!event) return null;
     return { kid: name, event };
   }
-  if (names.length === 1) return { kid: names[0] as string, event: title.trim() };
+  if (names.length === 1 && rosterSize === 1)
+    return { kid: names[0] as string, event: title.trim() };
   return null;
 }
 
@@ -120,9 +127,16 @@ export function withoutTeenTitles<T extends { title: string | null; kidRelated: 
   blocks: readonly T[],
   childNames: readonly string[],
   teenNames: readonly string[],
+  /** The household's only child is 13+, even when that child has no name on file. */
+  onlyChildIsTeen = false,
 ): T[] {
   const teens = teenNames.map((name) => name.trim()).filter((name) => name.length >= 2);
-  if (teens.length === 0) return [...blocks];
+  if (teens.length === 0) {
+    if (!onlyChildIsTeen) return [...blocks];
+    return blocks.map((block) =>
+      block.kidRelated ? { ...block, title: null, kidRelated: false } : block,
+    );
+  }
   return blocks.map((block) => {
     const title = block.title;
     if (!title) return block;

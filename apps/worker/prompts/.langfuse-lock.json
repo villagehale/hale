@@ -319,6 +319,11 @@
     "version": null,
     "sha256": "440abc7dc0f73d5112f2551097763d950a41b46a057b8184e1995fc38125ce59"
   },
+  "judges/proactive-repeat": {
+    "name": "judges/proactive-repeat",
+    "version": null,
+    "sha256": "a01bf60947c1d15b2e9867710fb80fc96ae05c3f3c46b7958505d4dfb924d83f"
+  },
   "judges/proactive-writer": {
     "name": "judges/proactive-writer",
     "version": null,

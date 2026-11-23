@@ -7,8 +7,8 @@
  * own stored `lastName` — the signature carries no parent/family surname, so a child
  * logged first-name-only can never have a second letter borrowed from a parent.
  */
-export function childInitials(name: string, lastName?: string | null): string {
-  const first = firstGrapheme(name);
+export function childInitials(name: string | null, lastName?: string | null): string {
+  const first = firstGrapheme(name ?? '');
   const last = lastName ? firstGrapheme(lastName) : '';
   const initials = `${first}${last}`.toUpperCase();
   return initials.length > 0 ? initials : '?';

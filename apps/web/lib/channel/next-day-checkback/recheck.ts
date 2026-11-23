@@ -189,8 +189,10 @@ export async function loadCheckbackCalendar(
   const teens = teenChildIds(children, input.now);
   const titled = withoutTeenTitles(
     bookings.map((row) => ({ ...row, kidRelated: true })),
-    children.map((child) => child.name),
-    children.filter((child) => teens.has(child.id)).map((child) => child.name),
+    children.flatMap((child) => (child.name ? [child.name] : [])),
+    children
+      .filter((child) => teens.has(child.id))
+      .flatMap((child) => (child.name ? [child.name] : [])),
   );
   const booked: WatchCalendarEntry[] = [];
   for (const row of titled) {

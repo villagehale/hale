@@ -137,7 +137,7 @@ function redactEventsForTeens(
 
 interface ChildRow {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 
@@ -195,7 +195,9 @@ async function loadSnapshotEvents(
       receivedAt: e.receivedAt.toISOString(),
     })),
     stageByChild,
-    childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
+    childRows
+      .filter((c) => stageByChild.get(c.id) === 'teenager')
+      .flatMap((c) => (c.name ? [c.name] : [])),
   );
   return { childRows, stageByChild, recentEvents, eventSources: rows.map((e) => e.source) };
 }
@@ -457,7 +459,7 @@ async function loadDistillTurns(
   );
   const teenNames = childRows
     .filter((c) => stageByChild.get(c.id) === 'teenager')
-    .map((c) => c.name);
+    .flatMap((c) => (c.name ? [c.name] : []));
 
   const familyConversations = await database
     .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })

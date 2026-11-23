@@ -164,7 +164,7 @@ export interface KidVerdictsAnswer {
 
 /** What the skill reads. `activityTitles` and `notMineHints` are optional. */
 export interface KidSkillInput {
-  children: readonly { name: string; ageMonths: number | null }[];
+  children: readonly { name: string | null; ageMonths: number | null }[];
   activityTitles?: readonly string[];
   notMineHints?: readonly string[];
   items: readonly {
@@ -204,7 +204,7 @@ export interface KidRelevanceItem {
 
 export interface KidRelevanceChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 

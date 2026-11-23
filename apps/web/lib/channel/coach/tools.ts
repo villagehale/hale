@@ -1262,7 +1262,7 @@ async function readConnectedWeek(
 
   const teenNames = children
     .filter((child) => isTeenChild({ dateOfBirth: child.dateOfBirth }, now))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
 
   const blocks: CalendarBlockView[] = [];
   for (const row of blockRows) {

@@ -31,7 +31,7 @@ import {
 
 export interface SequenceChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
   /** 'exact' only where a parent typed the real date. Carried so the send-time course
    * read can refuse to decide a page's age band on a DOB derived from a spoken age

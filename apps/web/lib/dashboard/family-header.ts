@@ -20,7 +20,7 @@ const STAGE_LABEL: Record<FamilyStage, string> = {
 
 export interface ChildHeaderView {
   id: string;
-  name: string;
+  name: string | null;
   stage: FamilyStage;
   stageLabel: string;
 }

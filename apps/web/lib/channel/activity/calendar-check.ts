@@ -199,8 +199,10 @@ export async function loadWatchCalendar(
     .orderBy(asc(schema.familyEvents.startsAt));
 
   const teens = teenChildIds(children, input.now);
-  const childNames = children.map((child) => child.name);
-  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const childNames = children.flatMap((child) => (child.name ? [child.name] : []));
+  const teenNames = children
+    .filter((child) => teens.has(child.id))
+    .flatMap((child) => (child.name ? [child.name] : []));
   const eligible = rows.filter(
     (row) =>
       !(row.childId !== null && teens.has(row.childId)) &&

@@ -10,7 +10,7 @@
 
 export interface ReminderChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
   gender: string | null;
 }

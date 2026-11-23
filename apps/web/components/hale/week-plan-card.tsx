@@ -94,7 +94,8 @@ export function groupItemsByDay(items: readonly WeekPlanItem[]): WeekPlanDayGrou
 /** The child facts the arrangement needs — exactly what /plan already loads. */
 export interface WeekPlanKid {
   id: string;
-  name: string;
+  /** Given name, or null when the parent has not given one. */
+  name: string | null;
   /** Family-local `YYYY-MM-DD`; the oldest-first ordering reads this. */
   dateOfBirth: string;
   /** The live-derived stage. `teenager` IS the rule #1 age gate. */
@@ -124,9 +125,12 @@ const BOTH_WHO = 'Both';
 const EVERYONE_WHO = 'Everyone';
 const TWO_KIDS = 2;
 
-/** The name a kid may be shown by: their own, unless the age gate says otherwise. */
-function kidWho(kid: WeekPlanKid): string {
-  return kid.stage === 'teenager' ? TEEN_WHO : kid.name;
+/** The name a kid may be shown by: their own, unless the age gate says otherwise.
+ * A child the parent did not name is not given one here. */
+function kidWho(kid: WeekPlanKid): string | null {
+  if (kid.stage === 'teenager') return TEEN_WHO;
+  const name = kid.name?.trim() ?? '';
+  return name.length > 0 ? name : null;
 }
 
 /**
@@ -138,7 +142,9 @@ function groupWho(kids: WeekPlanKid[], familySize: number): string | null {
   if (kids.length === 0) return null;
   if (kids.length === 1) return kidWho(kids[0] as WeekPlanKid);
   if (kids.length === familySize) return familySize === TWO_KIDS ? BOTH_WHO : EVERYONE_WHO;
-  return kids.map(kidWho).join(' & ');
+  const names = kids.map(kidWho).filter((name): name is string => name !== null && name.length > 0);
+  if (names.length === 0) return null;
+  return names.join(' & ');
 }
 
 /** Oldest first — an earlier date of birth sorts ahead. */
@@ -252,6 +258,7 @@ function ItemRow({ item, withDay }: { item: WeekPlanItem; withDay?: boolean }) {
  * two-of-three outing takes the neutral gray, so a tint never claims a kid the row
  * is not solely about. */
 function KidHeading({ group }: { group: WeekPlanKidGroup }) {
+  if (group.who === null && group.childIds.length > 0) return null;
   const soleChild = group.childIds.length === 1 ? (group.childIds[0] as string) : null;
   return (
     <ChildTag
