@@ -16,11 +16,15 @@ import { SHARE_CARD_SIZE, type ShareCardSpec } from '~/lib/site/share-cards';
 const PAGE = '#fdfcfa';
 const NAVY = '#17294a';
 const AMBER = '#b26b1f';
-const SLATE = '#5c6b87';
+/** Navy type at 80% so the subline stays readable on the shore at thumbnail size. */
+const SUBLINE = 'rgba(23, 41, 74, 0.8)';
 const META = '#647290';
 const IM_OUT = '#0088ff';
 const IM_IN = '#e9e9eb';
 const IM_META = '#6e6e73';
+/** Home and pricing only. 40% of the 1200px card, bubble type at 1.6× the 18px mock. */
+const CHAT_WIDTH = Math.round(SHARE_CARD_SIZE.width * 0.4);
+const BUBBLE_FONT = Math.round(18 * 1.6);
 
 // Satori cannot read the site's variable woff2 masters. These are static
 // instances of the same OFL files (Figtree 400/500/600, Source Serif 4 400).
@@ -69,12 +73,12 @@ function Bubble({ text, tone }: { text: string; tone: 'in' | 'out' }) {
       <div
         style={{
           display: 'flex',
-          maxWidth: 300,
+          maxWidth: CHAT_WIDTH - 48,
           backgroundColor: incoming ? IM_IN : IM_OUT,
           color: incoming ? '#000000' : '#ffffff',
-          borderRadius: 18,
-          padding: '10px 14px',
-          fontSize: 18,
+          borderRadius: 22,
+          padding: '14px 18px',
+          fontSize: BUBBLE_FONT,
           lineHeight: 1.29,
           fontFamily: 'Figtree',
           fontWeight: 400,
@@ -94,12 +98,13 @@ function ChatMock() {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: 360,
-        gap: 10,
+        width: CHAT_WIDTH,
+        flexShrink: 0,
+        gap: 12,
         justifyContent: 'center',
         backgroundColor: '#ffffff',
-        borderRadius: 18,
-        padding: '22px 18px',
+        borderRadius: 22,
+        padding: '26px 22px',
         border: '1px solid rgba(23, 41, 74, 0.10)',
         fontFamily: 'Figtree',
       }}
@@ -108,8 +113,8 @@ function ChatMock() {
       <div
         style={{
           display: 'flex',
-          marginTop: 6,
-          fontSize: 13,
+          marginTop: 8,
+          fontSize: 20,
           lineHeight: 1.25,
           color: IM_META,
           fontFamily: 'Figtree',
@@ -172,11 +177,39 @@ export function shareCardImage(spec: ShareCardSpec): ImageResponse {
           position: 'relative',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, gap: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            flexGrow: 1,
+            flexShrink: 1,
+            width: chat ? SHARE_CARD_SIZE.width - 128 - 36 - CHAT_WIDTH : '100%',
+            gap: 16,
+          }}
+        >
+          {/* Cream wash so the subline stays clear of the palms at thumbnail size. */}
+          <div
+            style={{
+              position: 'absolute',
+              left: -36,
+              right: chat ? -8 : 40,
+              top: -28,
+              bottom: -28,
+              borderRadius: 28,
+              ...(chat
+                ? { backgroundColor: 'rgba(253, 252, 250, 0.74)' }
+                : {
+                    backgroundImage:
+                      'linear-gradient(90deg, rgba(253,252,250,0.84) 0%, rgba(253,252,250,0.62) 68%, rgba(253,252,250,0) 100%)',
+                  }),
+            }}
+          />
           {spec.eyebrow ? (
             <div
               style={{
                 display: 'flex',
+                position: 'relative',
                 fontSize: 18,
                 fontWeight: 600,
                 letterSpacing: 4,
@@ -189,6 +222,7 @@ export function shareCardImage(spec: ShareCardSpec): ImageResponse {
           ) : null}
           <div
             style={{
+              position: 'relative',
               width: 72,
               height: 6,
               borderRadius: 4,
@@ -198,6 +232,7 @@ export function shareCardImage(spec: ShareCardSpec): ImageResponse {
           <div
             style={{
               display: 'flex',
+              position: 'relative',
               fontSize: headlineSize(spec.headline, chat),
               color: NAVY,
               fontWeight: 500,
@@ -212,9 +247,10 @@ export function shareCardImage(spec: ShareCardSpec): ImageResponse {
             <div
               style={{
                 display: 'flex',
+                position: 'relative',
                 fontSize: 28,
                 lineHeight: 1.35,
-                color: SLATE,
+                color: SUBLINE,
                 fontFamily: 'Source Serif 4',
                 fontWeight: 400,
               }}
