@@ -11,6 +11,7 @@ export interface FakeStripeCall {
   path: string;
   query: URLSearchParams;
   headers: Headers;
+  body: string | null;
 }
 
 export interface FakeSubscriptionInput {
@@ -436,6 +437,7 @@ export function createFakeStripe() {
       path: url.pathname,
       query: url.searchParams,
       headers: new Headers(init?.headers),
+      body: typeof init?.body === 'string' ? init.body : null,
     };
     calls.push(call);
     const hookIndex = readHooks.findIndex((hook) => hook.match(call));

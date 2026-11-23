@@ -462,9 +462,15 @@ async function cancelSubscription(
   const path = `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`;
   let status: number | null = null;
   try {
+    // Both default to false on 2026-11-18.endive. Sent anyway: a proration credit
+    // on top of the refund already issued would move money a second time.
     const res = await fetchImpl(`https://api.stripe.com${path}`, {
       method: 'DELETE',
-      headers: pinnedHeaders(secret),
+      headers: {
+        ...pinnedHeaders(secret),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ prorate: 'false', invoice_now: 'false' }).toString(),
       signal: AbortSignal.timeout(STRIPE_LOOKUP_TIMEOUT_MS),
     });
     if (res.ok) return;
