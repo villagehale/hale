@@ -288,6 +288,9 @@ export const AUDIT_VERBS = [
   'channel_sent',
   // VIL-683 · the send seam refused a garbled text, so nothing went out.
   'channel_text_garbled',
+  // VIL-749 / VIL-753. The shared receipt stopped a parent text: Linq refused it,
+  // or a one-shot sender will not try an unconfirmed send again.
+  'parent_send_unsent',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
   // The claim sweep naming an executor send claim nothing ever confirmed.
@@ -1221,6 +1224,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  parent_send_unsent: {
+    sentence: 'Hale could not send a text',
+    family: 'problem',
+  },
   channel_text_garbled: {
     sentence: 'Hale held back a message that came out garbled',
     family: 'problem',

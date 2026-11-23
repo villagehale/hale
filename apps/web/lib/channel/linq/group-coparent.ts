@@ -15,6 +15,7 @@ import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language'
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { deliverParentText, parentSendReceiptEnabled } from '~/lib/channel/parent-send';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -25,6 +26,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   linqFromE164,
@@ -1075,6 +1077,48 @@ async function setStep(database: Database, userId: string, step: string, now: Da
     .where(eq(schema.linqGroupOnboarding.userId, userId));
 }
 
+async function deliverGroupLine(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    chatId: string;
+    text: string | null;
+    templateKey: string;
+    dedupeKey: string;
+    now: Date;
+    fetch?: typeof fetch;
+  },
+): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  const text = input.text;
+  if (!text) return 'not_sent';
+  const result = await deliverParentText(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    logicalKey: input.dedupeKey,
+    channel: 'imessage',
+    category: 'reply',
+    templateKey: input.templateKey,
+    providerChatId: input.chatId,
+    now: input.now,
+    recordBody: null,
+    surface: 'group_line',
+    final: true,
+    pager: failurePageOpsPager(() => database),
+    send: async (sendKey) => {
+      const sent = await sendLinqChatMessage({
+        chatId: input.chatId,
+        text,
+        sendKey,
+        fetch: input.fetch,
+      });
+      return { providerMessageId: sent.providerMessageId, chatId: input.chatId };
+    },
+  });
+  if (result.outcome === 'sent' || result.outcome === 'already_sent') return result.outcome;
+  return 'not_sent';
+}
+
 async function sendLine(
   database: Database,
   input: {
@@ -1095,6 +1139,7 @@ async function sendLine(
     );
     return 'not_sent';
   }
+  if (parentSendReceiptEnabled()) return deliverGroupLine(database, input);
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

@@ -224,6 +224,18 @@ export function linqRefusedForCertainEnabled(): boolean {
 }
 
 /**
+ * VIL-749 / VIL-753. Exactly `true` sends a parent text through the shared receipt:
+ * one family-scoped Linq key for every retry, and a ledger row that says sent only
+ * after Linq accepts. Unset, empty, `on`, and `false` leave each sender as it is.
+ * Env-only, like {@link linqRefusedForCertainEnabled}.
+ */
+export function parentSendReceiptEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('parent-send-receipt', undefined, env);
+}
+
+/**
  * VIL-480 — Linq experience cards (`link`/`open`, rendered by Linq's own iMessage app)
  * instead of a bare link preview. Exactly `true` enables it. Unset, empty, `on`, and
  * `false` stay dark: dark never sends an experience and reads an inbound app card

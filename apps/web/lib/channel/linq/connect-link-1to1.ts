@@ -5,10 +5,20 @@ import { familySendKey } from '~/lib/channel/family-send-key';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { acceptedStatus, familySendSpent } from '~/lib/channel/ledger';
 import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
+import {
+  type OwnedParentSend,
+  beginParentSend,
+  completeParentSend,
+  deliverParentText,
+  parentSendClosed,
+  parentSendReceiptEnabled,
+  releaseParentSend,
+} from '~/lib/channel/parent-send';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { audienceScope, readRosterAudience } from './group-audience';
 import type { GroupOnboardingRequest } from './group-onboarding-line-input';
@@ -23,7 +33,7 @@ import {
 import { PRIVATE_ASIDE_TEMPLATE } from './private-aside-ledger';
 import { isUndefinedTable } from './roster';
 import { familyLanguage, firstName, primaryParentId } from './roster-ask';
-import { LinqSendError } from './transport';
+import { GARBLED_TEXT, LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — the flow's 1:1 lines.
@@ -44,7 +54,7 @@ import { LinqSendError } from './transport';
  */
 
 export interface OneToOneSend {
-  text: (input: { to: string; body: string }) => Promise<{
+  text: (input: { to: string; body: string; sendKey?: string }) => Promise<{
     providerMessageId: string;
     chatId: string | null;
   }>;
@@ -55,7 +65,11 @@ export function defaultOneToOneSend(): OneToOneSend {
   const transport = createOutboundTransport();
   return {
     text: async (input) => {
-      const sent = await transport.send({ to: input.to, body: input.body });
+      const sent = await transport.send({
+        to: input.to,
+        body: input.body,
+        ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+      });
       return { providerMessageId: sent.providerMessageId, chatId: sent.chatId ?? null };
     },
     link: (input) =>
@@ -75,6 +89,106 @@ export type OneToOneSent =
    * Hale cannot reach. Nothing went; the claim is released so a fresh line can try. */
   | { outcome: 'garbled_text' };
 
+async function deliverOneToOne(
+  database: Database,
+  input: {
+    familyId: string;
+    ledgerUserId: string;
+    to: string;
+    body: string;
+    recordBody: boolean;
+    templateKey: string;
+    dedupeKey: string;
+    now: Date;
+    send: OneToOneSend;
+  },
+): Promise<OneToOneSent> {
+  const result = await deliverParentText(database, {
+    familyId: input.familyId,
+    parentUserId: input.ledgerUserId,
+    logicalKey: input.dedupeKey,
+    channel: 'imessage',
+    category: 'reply',
+    templateKey: input.templateKey,
+    providerChatId: null,
+    now: input.now,
+    recordBody: input.recordBody ? input.body : null,
+    surface: 'one_to_one',
+    final: false,
+    pager: failurePageOpsPager(() => database),
+    send: async (sendKey) => {
+      const sent = await input.send.text({ to: input.to, body: input.body, sendKey });
+      return { providerMessageId: sent.providerMessageId, chatId: sent.chatId };
+    },
+  });
+  return oneToOneFromReceipt(database, input.familyId, result);
+}
+
+async function oneToOneFromReceipt(
+  database: Database,
+  familyId: string,
+  result: Awaited<ReturnType<typeof deliverParentText>>,
+): Promise<OneToOneSent> {
+  if (result.outcome === 'sent') {
+    return {
+      outcome: 'sent',
+      chatId: result.chatId,
+      rowId: result.rowId,
+      providerMessageId: result.providerMessageId,
+    };
+  }
+  if (result.outcome === 'already_sent') return { outcome: 'already_sent' };
+  if (result.outcome === 'released' && result.code === GARBLED_TEXT) {
+    await recordGarbledRefusal(database, { familyId, surface: 'one_to_one' });
+    return { outcome: 'garbled_text' };
+  }
+  if (result.outcome === 'released') {
+    return { outcome: 'not_sent', code: result.code, permanent: result.code === 'not_configured' };
+  }
+  if (result.outcome === 'in_flight') {
+    return { outcome: 'not_sent', code: 'send_in_flight', permanent: false };
+  }
+  return {
+    outcome: 'not_sent',
+    code: result.code,
+    permanent: result.outcome === 'refused',
+  };
+}
+
+async function finishOwnedOneToOne(
+  database: Database,
+  owned: OwnedParentSend,
+  input: {
+    familyId: string;
+    ledgerUserId: string;
+    to: string;
+    body: string;
+    templateKey: string;
+    now: Date;
+    send: OneToOneSend;
+  },
+): Promise<OneToOneSent> {
+  const result = await completeParentSend(database, owned, {
+    familyId: input.familyId,
+    parentUserId: input.ledgerUserId,
+    logicalKey: owned.sendKey,
+    channel: 'imessage',
+    category: 'reply',
+    templateKey: input.templateKey,
+    providerChatId: null,
+    now: input.now,
+    recordBody: null,
+    surface: 'one_to_one',
+    final: false,
+    pager: failurePageOpsPager(() => database),
+    send: async (sendKey) => {
+      const sent = await input.send.text({ to: input.to, body: input.body, sendKey });
+      return { providerMessageId: sent.providerMessageId, chatId: sent.chatId };
+    },
+  });
+  return oneToOneFromReceipt(database, input.familyId, result);
+}
+
 export async function sendOneToOne(
   database: Database,
   input: {
@@ -90,6 +204,7 @@ export async function sendOneToOne(
     send: OneToOneSend;
   },
 ): Promise<OneToOneSent> {
+  if (parentSendReceiptEnabled()) return deliverOneToOne(database, input);
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -340,14 +455,40 @@ export async function deliverConnectLinkOneToOne(
   },
 ): Promise<ConnectLinkOutcome> {
   const dedupeKey = `${LINK_TEMPLATE}:${input.userId}`;
-  const [prior] = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
-  if (prior) return { outcome: 'already_sent' };
+  // The claim is taken before any link is minted. A second turn that arrives while
+  // the first still holds it stops here, so it cannot spend the first turn's tokens.
+  let owned: OwnedParentSend | null = null;
+  if (parentSendReceiptEnabled()) {
+    const begun = await beginParentSend(database, {
+      familyId: input.familyId,
+      parentUserId: input.userId,
+      logicalKey: dedupeKey,
+      channel: 'imessage',
+      category: 'reply',
+      templateKey: LINK_TEMPLATE,
+      providerChatId: null,
+      now: input.now,
+      recordBody: null,
+      surface: 'one_to_one',
+    });
+    if (begun.state !== 'owned') return { outcome: 'already_sent' };
+    owned = begun.owned;
+  } else {
+    const [prior] = await database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
+    if (prior) return { outcome: 'already_sent' };
+  }
+  const releaseOwned = async () => {
+    if (owned) await releaseParentSend(database, owned);
+  };
 
   const primary = await primaryParentId(database, input.familyId);
-  if (!primary) return { outcome: 'no_primary_parent' };
+  if (!primary) {
+    await releaseOwned();
+    return { outcome: 'no_primary_parent' };
+  }
   const language = await familyLanguage(database, input.familyId);
   const name = await firstName(database, input.userId);
   const request: GroupOnboardingRequest = {
@@ -363,7 +504,10 @@ export async function deliverConnectLinkOneToOne(
     templateKey: LINK_TEMPLATE,
     voice: input.voice,
   });
-  if ('outcome' in composed) return composed;
+  if ('outcome' in composed) {
+    await releaseOwned();
+    return composed;
+  }
 
   const minted = await offerConnectorLinks(database, {
     familyId: input.familyId,
@@ -371,22 +515,38 @@ export async function deliverConnectLinkOneToOne(
     providers: PROVIDERS,
     now: input.now,
   });
-  if (minted.status !== 'minted') return { outcome: minted.status };
+  if (minted.status !== 'minted') {
+    await releaseOwned();
+    return { outcome: minted.status };
+  }
   const phone = await resolveSendablePhone(database, input.userId);
-  if (!phone) return { outcome: 'not_enrolled' };
+  if (!phone) {
+    await releaseOwned();
+    return { outcome: 'not_enrolled' };
+  }
 
   const send = input.oneToOne ?? defaultOneToOneSend();
-  const said = await sendOneToOne(database, {
-    familyId: input.familyId,
-    ledgerUserId: input.userId,
-    to: phone,
-    body: composed.body,
-    recordBody: false,
-    templateKey: LINK_TEMPLATE,
-    dedupeKey,
-    now: input.now,
-    send,
-  });
+  const said = owned
+    ? await finishOwnedOneToOne(database, owned, {
+        familyId: input.familyId,
+        ledgerUserId: input.userId,
+        to: phone,
+        body: composed.body,
+        templateKey: LINK_TEMPLATE,
+        now: input.now,
+        send,
+      })
+    : await sendOneToOne(database, {
+        familyId: input.familyId,
+        ledgerUserId: input.userId,
+        to: phone,
+        body: composed.body,
+        recordBody: false,
+        templateKey: LINK_TEMPLATE,
+        dedupeKey,
+        now: input.now,
+        send,
+      });
   if (said.outcome === 'already_sent' || said.outcome === 'garbled_text') return said;
   if (said.outcome === 'not_sent' && (!said.permanent || said.code === 'not_configured')) {
     return { outcome: '1to1_not_sent', code: said.code };
@@ -548,6 +708,31 @@ export type GroupQuietOutcome =
 
 const NOT_FAMILY: readonly schema.LinqRosterMemberStatus[] = ['not_family', 'refused'];
 
+/** A quiet notice counts as told only once Linq accepted it. A refusal is tried again. */
+async function quietNoticeClosed(
+  database: Database,
+  familyId: string,
+  sendKey: ReturnType<typeof familySendKey>,
+): Promise<boolean> {
+  const keys =
+    sendKey.legacyDedupeKey === null
+      ? [sendKey.dedupeKey]
+      : [sendKey.dedupeKey, sendKey.legacyDedupeKey];
+  const rows = await database
+    .select({
+      familyId: schema.channelMessages.familyId,
+      status: schema.channelMessages.status,
+      errorCode: schema.channelMessages.errorCode,
+      providerMessageId: schema.channelMessages.providerMessageId,
+    })
+    .from(schema.channelMessages)
+    .where(inArray(schema.channelMessages.dedupeKey, keys));
+  return rows.some(
+    (row) =>
+      (sendKey.legacyDedupeKey === null || row.familyId === familyId) && parentSendClosed(row),
+  );
+}
+
 /**
  * Everyone has answered, and someone still in the chat is not family (or stopped), so the
  * group takes nothing. The primary parent is told once, 1:1, why and how to fix it.
@@ -574,8 +759,9 @@ export async function noticeIfGroupQuiet(
   const primary = await primaryParentId(database, familyId);
   if (!primary) return { outcome: 'no_primary_parent' };
   const sendKey = familySendKey(`${QUIET_TEMPLATE}:${input.chatId}`, familyId);
-  const spent =
-    sendKey.legacyDedupeKey === null
+  const spent = parentSendReceiptEnabled()
+    ? await quietNoticeClosed(database, familyId, sendKey)
+    : sendKey.legacyDedupeKey === null
       ? (
           await database
             .select({ id: schema.channelMessages.id })
