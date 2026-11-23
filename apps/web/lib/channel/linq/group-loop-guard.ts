@@ -262,7 +262,7 @@ export async function noteGroupLoopGuardTrip(
     paged = 'page_threw';
     console.error(
       { outcome: 'group_loop_guard_page_threw', err: err instanceof Error ? err.name : 'unknown' },
-      'group loop guard: the chat is quiet but #ops was not paged',
+      'group loop guard: the chat is quiet and the ops page did not land',
     );
   }
   return { audited, auditFailed, page: paged };
