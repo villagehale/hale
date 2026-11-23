@@ -607,6 +607,10 @@
     "file": "onboarding-friend-short.md",
     "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
+  "onboarding-friend-thread-v2.md": {
+    "file": "onboarding-friend-thread-v2.md",
+    "sha256": "174c9f746b1b06514f0c0574f3ccc002512564d82358d627688178f2bc8d8ea9"
+  },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
     "sha256": "71061a434f3640c9f1963f4ea2766468fd3dc25304314b0d797cd6e727f6e5dd"

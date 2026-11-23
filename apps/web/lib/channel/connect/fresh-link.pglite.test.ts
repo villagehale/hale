@@ -221,6 +221,66 @@ describe('textFreshConnectorLink', () => {
     expect(transport.sent).toEqual([]);
   });
 
+  // VIL-721. Every onboarding text is the model's: one it cannot write is not sent, and
+  // a human hears about it.
+  it('sends nothing and pages #ops when the model cannot write the one-link text', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    const posted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        posted.push(String(init?.body ?? ''));
+        return new Response('ok', { status: 200 });
+      }),
+    );
+
+    const outcome = await textFreshConnectorLink(
+      db.database,
+      { familyId, parentUserId, provider: 'google', now: NOW },
+      {
+        transport,
+        threadMessage: async () => 'conversation-id',
+        saidLine: { write: async () => null },
+      },
+    );
+
+    expect(outcome).toBe('mint_failed');
+    expect(transport.sent).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('site connector_link_unwritten.');
+    expect(posted[0]).toContain('reason write_failed.');
+    expect(posted[0]).not.toContain(familyId);
+    vi.unstubAllGlobals();
+  });
+
+  it('sends a one-link text the model did write, once, and pages nobody', async () => {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+    const posted: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        posted.push(String(init?.body ?? ''));
+        return new Response('ok', { status: 200 });
+      }),
+    );
+
+    const outcome = await textFreshConnectorLink(
+      db.database,
+      { familyId, parentUserId, provider: 'google', now: NOW },
+      {
+        transport,
+        threadMessage: async () => 'conversation-id',
+        saidLine: scriptedSaidLine(),
+      },
+    );
+
+    expect(outcome).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]?.body).toContain('to=google');
+    expect(posted).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
   it('names link_omitted when a new chat would only take the words, never sent', async () => {
     const refusing = {
       sent: [] as string[],

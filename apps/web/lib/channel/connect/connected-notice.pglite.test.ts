@@ -62,6 +62,10 @@ describe('sendConnectorConnectedText', () => {
 
   beforeEach(async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
+    // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+    // The receipt stand-in does not fill the marks the model-fields flag would require.
+    vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', 'false');
     db = await createTestDb();
     const seeded = await seedFamily(db.database);
     familyId = seeded.familyId;
@@ -136,6 +140,18 @@ describe('sendConnectorConnectedText', () => {
     expect(transport.sent[1]?.body).not.toMatch(/https?:\/\//);
     expect(transport.sent[2]?.body).toMatch(/^https:\/\/\S+to=gcal\S*$/);
     expect(transport.sent).toHaveLength(3);
+  });
+
+  it('VIL-721 lit: a Gmail receipt is not followed by a calendar card, so no second link goes', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    await seedChannel();
+
+    const outcome = await send('gmail');
+
+    expect(connectedNoticeLabel(outcome)).toBe('sent');
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent.map((row) => row.body).join('\n')).not.toMatch(/https?:\/\//);
   });
 
   it('writes the ledger row the dedupe key hangs on, and threads what it said', async () => {

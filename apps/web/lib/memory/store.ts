@@ -38,11 +38,11 @@ import {
   renderMemoryForgotten,
   toFamilyMemoryExportFact,
 } from './kinds';
-import { isReceiptKey } from './lexicon';
+import { ONBOARDING_ACTIVITY_WRITER, isReceiptKey } from './lexicon';
 import { type RecordField, recordFieldOf, withRecordField } from './record-field';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
-const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
+const BELIEF_WRITERS = new Set<string>([...SYNTHESIS_WRITERS, ONBOARDING_ACTIVITY_WRITER]);
 const RECOMMENDATION_LIMIT = 40;
 type MemoryFactType = schema.NewFamilyMemoryFact['factType'];
 

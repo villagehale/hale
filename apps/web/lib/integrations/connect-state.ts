@@ -12,7 +12,12 @@ import type { ConnectorProvider } from './google-oauth';
 export interface ConnectState {
   familyId: string;
   userId: string;
-  provider: ConnectorProvider;
+  /**
+   * The connector this consent is for, or `google`: VIL-721's one link, which asks
+   * Google for Gmail and the calendar in one consent. Inside the signature, so the
+   * callback never learns which grant it is completing from anything a browser wrote.
+   */
+  provider: ConnectorProvider | 'google';
   /**
    * Where the parent was standing when the consent started, when it was not Settings.
    *
