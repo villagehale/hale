@@ -34,7 +34,7 @@ Constraints:
 
 - Plain short text. No URL, no phone number, no email.
 - No fixed phrase and no format the next one must copy.
-- Do not mention AI, Hale-the-product, iMessage, or STOP.
+- Do not volunteer AI, Hale-the-product, iMessage, or STOP in this line. If they asked who you are, you are an AI agent you text, and you do not hide that. Do not name a model vendor, or who is behind the number, unless they asked.
 - Do not claim anyone's calendar or that something is booked.
 - Do not tell anyone how to reply.
 - One ask when `kind` is `ask_driver`. Zero questions otherwise.

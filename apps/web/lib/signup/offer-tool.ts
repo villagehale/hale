@@ -7,7 +7,6 @@ import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { carriesLink } from '~/lib/format/link-shape';
 import { signupProviderHost } from './consent';
-import { authorizedSignupEnabled } from './flag';
 import {
   type OfferSignupResult,
   offerSignupFromFacts,
@@ -15,7 +14,6 @@ import {
 } from './offer-from-facts';
 import { SIGNUP_OFFER_SOURCES, type SignupOfferWriter } from './offer-writer';
 import { foldWords, quotesParent, quotesParentWords } from './parent-quote';
-import { registrationPlanRunEnabled } from './plan/flag';
 import { untrustedActivityLabel } from './plan/reader';
 import type { PlanReplyWriter } from './plan/writer';
 import {
@@ -329,9 +327,9 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
 }
 
 /**
- * Lists the verb while the signup flag is on. `atOpen` is the coach-signup-offer addendum,
- * handed in only while the plan lane is lit ({@link signupAtOpenEnabled}): it is what tells
- * the coach the capability table's no to enrolling is not the whole truth for this family.
+ * Lists the verb while signup is live ({@link signupWithOkLiveNow}): authorized signup
+ * exactly `on`, and the registration-plan-run lane exactly `true`. `atOpen` is the
+ * coach-signup-offer addendum, handed in on that same check.
  */
 export function augmentCoachSkillForSignupOffer(
   skill: Skill,
@@ -346,17 +344,4 @@ export function augmentCoachSkillForSignupOffer(
     meta: listed ? skill.meta : { ...skill.meta, tools: [...skill.meta.tools, OFFER_SIGNUP_TOOL] },
     instructions: atOpen ? `${skill.instructions}\n\n${atOpen.instructions}` : skill.instructions,
   };
-}
-
-export function signupOfferToolEnabled(
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  return authorizedSignupEnabled(env);
-}
-
-/** The plan lane: Hale can register at the open. Read from the readers the plan run reads. */
-export function signupAtOpenEnabled(
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  return authorizedSignupEnabled(env) && registrationPlanRunEnabled(env);
 }

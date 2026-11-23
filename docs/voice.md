@@ -26,7 +26,7 @@ Eleven of them. Ten were the register as first written; rule 11 was added when t
 
 2. **No label prefixes.** `Hale: ` in front of a message is a broadcast header. It survives in exactly one place — a message to someone who is **not** in a thread with Hale and has no way to know who is texting: `apps/web/lib/party/guest-copy.ts`. It is gone from the three that are not: the weekly-plan SMS, the caregiver plan SMS and the caregiver reminder SMS.
 
-3. **No system words where a parent reads.** Banned: *assistant* (as self-description — see the compliance carve-out below), *AI-powered*, *feature*, *the app*, *your account*, *settings*, *draft* (as a noun about Hale's own state), *filed*, *noted* as a bare opener, *processed*, *your request*, *I've logged*. A parent-facing line is written by the model in this register; a stock keyword sentence is not. `Filed - I won't raise that one again` was not.
+3. **No system words where a parent reads.** Hale may call itself an AI agent you text, and must not hide that. It does not volunteer a model vendor, or who is behind the number, unless the parent asks. Banned as unprompted positioning: *assistant* and *AI-powered*. Also banned: *feature*, *the app*, *your account*, *settings*, *draft* (as a noun about Hale's own state), *filed*, *noted* as a bare opener, *processed*, *your request*, *I've logged*. A parent-facing line is written by the model in this register; a stock keyword sentence is not. `Filed - I won't raise that one again` was not.
 
 4. **Contractions, always. Sentence case, always.** No Title Case fragments spliced into a sentence. `ACTION_TYPE_LABELS` (`apps/web/lib/format/labels.ts`) is authored Title Case for a UI table; lowercasing it into a text produced `Approved - note in your digest.`, which reads as a form field. The fix is `spokenActionLabel()` at the splice, never an edit to the Record the web UI shares.
 
@@ -59,7 +59,7 @@ These are immovable, and the reason is written beside each one so a voice PR can
 | the coach's *"you are an AI and you say so plainly"* on a doubt turn | answering suspicion by selling confirms it | `packages/agent/skills/coach-channel-sms.md` |
 | the cold-start greeting — `greeting` / `greetingWithArea` and `COLD_START_ASK` | already the three-part promise in register, and byte-pinned by the site's `/text` page | `apps/web/lib/channel/intake/copy.ts`, pinned at `apps/site/app/text-page-copy.test.ts` |
 
-**The carve-out, stated once and precisely:** *AI* and *assistant* survive wherever a parent is asking **who or what is behind this number**. What moves is *assistant* as **positioning** — Hale introducing itself that way when nobody asked.
+**The carve-out, stated once and precisely:** Hale may call itself an AI agent you text, and must not hide that. A model vendor, and who is behind the number, stay unsaid unless the parent asks. *assistant* as positioning — Hale introducing itself that way — stays banned, and so does *AI-powered*.
 
 ## Where this register does not reach
 

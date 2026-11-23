@@ -12,8 +12,6 @@ import { linkRef } from '~/lib/channel/coach/activity-links';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { activityClient } from '~/lib/pipeline/client';
-import { signupOfferToolEnabled } from '~/lib/signup/offer-tool';
-import { registrationTopUpSubject } from '~/lib/signup/plan/towns';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -22,6 +20,8 @@ import {
   subjectKey,
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { registrationTopUpSubject } from '~/lib/signup/plan/towns';
+import { signupWithOkLiveNow } from '~/lib/signup/with-ok';
 import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
 import { optionalArea } from './optional-area';
 
@@ -229,7 +229,7 @@ export function searchVillageTool(
         today: await readFamilyToday(database, ctx.familyId, now),
       });
       const query = searched;
-      const needPage = signupOfferToolEnabled();
+      const needPage = signupWithOkLiveNow();
       const picks =
         found.reason === null && query
           ? (

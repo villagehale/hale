@@ -2,16 +2,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { authorizedSignupEnabled } from './flag';
 import {
   OFFER_SIGNUP_TOOL,
   augmentCoachSkillForSignupOffer,
   planOpensAtFromModel,
   quotesParent,
-  signupAtOpenEnabled,
-  signupOfferToolEnabled,
   urlSeenThisTurn,
 } from './offer-tool';
+import { signupWithOkLiveNow } from './with-ok';
 
 describe('offer_signup tool guards', () => {
   it('takes an open time only with its zone', () => {
@@ -55,35 +53,50 @@ describe('offer_signup tool guards', () => {
     expect(quotesParent('the flyer says Tuesday swim at the rec', 'sign us up')).toBe(false);
   });
 
-  it('stays off the coach allowlist until the signup flag is exactly on', () => {
-    expect(signupOfferToolEnabled({ AUTHORIZED_SIGNUP_ENABLED: 'on' })).toBe(true);
-    expect(signupOfferToolEnabled({ AUTHORIZED_SIGNUP_ENABLED: 'true' })).toBe(false);
-    expect(authorizedSignupEnabled({})).toBe(false);
+  it('lists offer_signup only when both live flags are exact, not when only one is set', () => {
+    expect(
+      signupWithOkLiveNow({
+        AUTHORIZED_SIGNUP_ENABLED: 'on',
+        REGISTRATION_PLAN_RUN_ENABLED: 'true',
+      }),
+    ).toBe(true);
+    expect(signupWithOkLiveNow({ AUTHORIZED_SIGNUP_ENABLED: 'on' })).toBe(false);
+    expect(signupWithOkLiveNow({ REGISTRATION_PLAN_RUN_ENABLED: 'true' })).toBe(false);
+    expect(signupWithOkLiveNow({ AUTHORIZED_SIGNUP_ENABLED: 'true' })).toBe(false);
+    expect(
+      signupWithOkLiveNow({
+        AUTHORIZED_SIGNUP_ENABLED: 'on',
+        REGISTRATION_PLAN_RUN_ENABLED: 'on',
+      }),
+    ).toBe(false);
     const skill = {
       instructions: '',
       meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse' as const, tools: [] },
     };
     expect(augmentCoachSkillForSignupOffer(skill, false, null)).toBe(skill);
-    expect(augmentCoachSkillForSignupOffer(skill, true, null)).toEqual({
+    expect(
+      augmentCoachSkillForSignupOffer(
+        skill,
+        signupWithOkLiveNow({ AUTHORIZED_SIGNUP_ENABLED: 'on' }),
+        null,
+      ),
+    ).toBe(skill);
+    expect(
+      augmentCoachSkillForSignupOffer(
+        skill,
+        signupWithOkLiveNow({
+          AUTHORIZED_SIGNUP_ENABLED: 'on',
+          REGISTRATION_PLAN_RUN_ENABLED: 'true',
+        }),
+        null,
+      ),
+    ).toEqual({
       ...skill,
       meta: { ...skill.meta, tools: [OFFER_SIGNUP_TOOL] },
     });
   });
 
-  it('says Hale can register at the open only while the plan lane is lit', () => {
-    expect(
-      signupAtOpenEnabled({
-        AUTHORIZED_SIGNUP_ENABLED: 'on',
-        REGISTRATION_PLAN_RUN_ENABLED: 'true',
-      }),
-    ).toBe(true);
-    expect(signupAtOpenEnabled({ AUTHORIZED_SIGNUP_ENABLED: 'on' })).toBe(false);
-    expect(signupAtOpenEnabled({ REGISTRATION_PLAN_RUN_ENABLED: 'true' })).toBe(false);
-    // The lane's own readers decide, so a value either one refuses is refused here too.
-    expect(
-      signupAtOpenEnabled({ AUTHORIZED_SIGNUP_ENABLED: 'on', REGISTRATION_PLAN_RUN_ENABLED: 'on' }),
-    ).toBe(false);
-
+  it('appends the signup addendum on that same live check', () => {
     const skill = {
       instructions: 'coach',
       meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse' as const, tools: [] },
@@ -120,8 +133,9 @@ describe('offer_signup tool guards', () => {
       fileURLToPath(new URL('../channel/coach/runtime.ts', import.meta.url)),
       'utf8',
     );
-    expect(runtime).toContain('signupOfferToolEnabled');
-    expect(runtime).toContain('signupAtOpenEnabled');
+    expect(runtime).toContain('signupWithOkLiveNow');
+    expect(runtime).not.toContain('signupOfferToolEnabled');
+    expect(runtime).not.toContain('signupAtOpenEnabled');
     expect(runtime).toContain("loadCronSkill('coach-signup-offer')");
     expect(runtime).toContain('signupOffer:');
   });

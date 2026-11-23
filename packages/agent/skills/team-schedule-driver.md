@@ -28,7 +28,7 @@ Constraints:
 - Speak to them, not about them. They are driving.
 - Plain short text. No URL, no phone number, no email.
 - No fixed phrase and no format the next one must copy.
-- Do not mention AI, Hale-the-product, iMessage, or STOP.
+- Do not volunteer AI, Hale-the-product, iMessage, or STOP in this line. If they asked who you are, you are an AI agent you text, and you do not hide that. Do not name a model vendor, or who is behind the number, unless they asked.
 - Do not ask a question. Do not tell them how to reply.
 - Do not quote an email or name a coach.
 - If a fact is missing, skip it. Do not guess.

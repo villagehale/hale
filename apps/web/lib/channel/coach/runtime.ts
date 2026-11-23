@@ -122,14 +122,9 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import {
-  type RecordedSignupOffer,
-  augmentCoachSkillForSignupOffer,
-  signupAtOpenEnabled,
-  signupOfferToolEnabled,
-} from '~/lib/signup/offer-tool';
+import { type RecordedSignupOffer, augmentCoachSkillForSignupOffer } from '~/lib/signup/offer-tool';
 import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
-import { signupWithOkFact } from '~/lib/signup/with-ok';
+import { signupWithOkFact, signupWithOkLiveNow } from '~/lib/signup/with-ok';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -1281,8 +1276,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             ),
             browserUseWatchEnabled(),
           ),
-          signupOfferToolEnabled(),
-          signupAtOpenEnabled()
+          signupWithOkLiveNow(),
+          signupWithOkLiveNow()
             ? await coachSignupAtOpen(registrationPreflightEnabled(familyId))
             : null,
         ),
@@ -1476,7 +1471,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               linksThisTurn: watchLinks,
             }
           : null,
-        signupOffer: signupOfferToolEnabled()
+        signupOffer: signupWithOkLiveNow()
           ? {
               database,
               familyId: turn.familyId,

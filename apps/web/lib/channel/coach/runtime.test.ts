@@ -2407,6 +2407,7 @@ describe('deferred capabilities', () => {
 
   function lightEverything() {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
     vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
     vi.stubEnv('F14_ENABLED', 'true');
   }
@@ -2455,8 +2456,33 @@ describe('deferred capabilities', () => {
     expect(result.capabilityNotes).toEqual({ declined: ['spot_watch'], corrected: [] });
   });
 
+  it('keeps sign_up dark when only one of the two live flags is set', async () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    const onlyAuthorized = ports({
+      runAgent: async (args) => {
+        const verb = args.tools.find((tool) => tool.name === 'note_capability_declined');
+        expect(verb?.inputSchema.safeParse({ capability: 'sign_up' }).success).toBe(true);
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(onlyAuthorized).respond(turn(), []);
+
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    const onlyPlan = ports({
+      runAgent: async (args) => {
+        const verb = args.tools.find((tool) => tool.name === 'note_capability_declined');
+        expect(verb?.inputSchema.safeParse({ capability: 'sign_up' }).success).toBe(true);
+        expect(args.tools.some((tool) => tool.name === 'offer_signup')).toBe(false);
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(onlyPlan).respond(turn(), []);
+  });
+
   it('cannot note a no about a capability that is already lit', async () => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
     const registered: RegisteredTool[] = [];
     const p = ports({
       runAgent: async (args) => {

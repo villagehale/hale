@@ -17,8 +17,7 @@ export const NOTE_CORRECTION_TOOL = 'note_capability_correction';
 
 /** What each key means, for the model choosing one. Not parent copy. */
 const MEANING: Record<DeferredCapability, string> = {
-  sign_up:
-    'completing a registration right now. The capability table still allows the signupWithOk promise: when that fact says the start is still ahead and liveNow is false, you may say you will sign them up starting on that date, with their ok. You may not say you can do it now, and you may not say anyone is already signed up',
+  sign_up: 'signing a child up for a program, with their ok',
   spot_watch: 'watching a full class page and texting them when a spot opens',
 };
 

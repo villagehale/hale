@@ -195,7 +195,7 @@ export interface ChannelCoachToolArgs {
    * GROUP_SHARED_LISTS_ENABLED is on; absent leaves the tool set unchanged. */
   groupLists?: GroupListToolPorts | null;
   /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
-   * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
+   * signup is live ({@link signupWithOkLiveNow}); absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
   /** The family row's plan. Absent treats the household as Plus (today's budgets). */
