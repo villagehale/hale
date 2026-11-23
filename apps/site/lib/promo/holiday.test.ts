@@ -4,10 +4,10 @@ import { promoOverrides, promoPhase, resolveHolidayPromo } from './holiday';
 const ON = { HOLIDAY_PROMO_ENABLED: 'true' };
 
 describe('holiday promo phase', () => {
-  it('is the Black Friday Sale through Nov 27 and the Holiday Sale from Nov 28 00:00 Toronto', () => {
+  it('is the Black Friday Sale through Nov 30 and the Holiday Sale from Dec 1 00:00 Toronto', () => {
     expect(promoPhase(new Date('2026-11-16T00:00:00-05:00'))).toBe('black_friday');
-    expect(promoPhase(new Date('2026-11-27T23:59:59-05:00'))).toBe('black_friday');
-    expect(promoPhase(new Date('2026-11-28T00:00:00-05:00'))).toBe('holiday');
+    expect(promoPhase(new Date('2026-11-30T23:59:59-05:00'))).toBe('black_friday');
+    expect(promoPhase(new Date('2026-12-01T00:00:00-05:00'))).toBe('holiday');
     expect(promoPhase(new Date('2026-12-31T23:00:00-05:00'))).toBe('holiday');
   });
 });

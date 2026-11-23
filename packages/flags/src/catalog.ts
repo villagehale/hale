@@ -217,6 +217,8 @@ export const FLAGS = [
   exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
+  // VIL-759. A co-parent or caregiver invite goes to that person's number, not the turn's chat.
+  exact('third-party-invite-route', 'THIRD_PARTY_INVITE_ROUTE_ENABLED', { envOnly: true }),
   // VIL-749 / VIL-753. One send path: a stable family-scoped Linq key, and a row
   // that says sent only after Linq accepts. Env-only: a failure has no family for
   // PostHog, and a synced 100% flag would light this with no env value.
@@ -235,6 +237,10 @@ export const FLAGS = [
   exact('group-reminder-unsent-page', 'GROUP_REMINDER_UNSENT_PAGE_ENABLED'),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED'),
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
+  // VIL-721. Onboarding in the thread: the kids' activities asked after their ages,
+  // and ONE Google link that connects Gmail and Calendar together. Exact `true`.
+  // Env-only: read with no family id, so a PostHog 100% rollout would light it (VIL-755).
+  exact('thread-onboarding-v2', 'THREAD_ONBOARDING_V2_ENABLED', { envOnly: true }),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,
   }),

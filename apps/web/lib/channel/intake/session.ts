@@ -6,6 +6,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { SealedBlobRejected, decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { haleContactCardDay } from '../linq/contact-card';
 import type { IntakeCollected } from './extract';
+import type { KidActivity } from './onboarding-turn';
 
 /**
  * VIL-237 · M2 — reading and writing the intake session, the row that carries the
@@ -213,6 +214,14 @@ export interface FirstTouchGiven {
   coparentGroup?: boolean | null;
   /** Which group their yes meant: theirs or a new one. Absent on older sessions. */
   coparentGroupMode?: 'existing' | 'new' | null;
+  /** VIL-721. What the kids already do, as the model read it. Absent while dark. */
+  activities?: KidActivity[];
+  /** VIL-721. They said the kids do nothing yet, or would rather not say. */
+  activitiesNone?: boolean;
+  /** VIL-721. Their answer to the one Google link (Gmail and Calendar together). */
+  connectGoogle?: boolean | null;
+  /** VIL-721. Not now for the Google link. */
+  googleLater?: boolean;
 }
 
 export interface ColdStartProgress {
@@ -233,6 +242,8 @@ export interface ColdStartProgress {
   calendarOffered?: boolean;
   /** The email link has already gone out. */
   emailOffered?: boolean;
+  /** VIL-721. The one Google link (Gmail and Calendar together) has already gone out. */
+  googleOffered?: boolean;
   /**
    * The activity map reached the parent. Absent on older sessions, which did
    * send it. False means both openers failed and nothing was sent, so the next
@@ -449,6 +460,10 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     scheduled?: unknown;
     coparentGroup?: unknown;
     coparentGroupMode?: unknown;
+    activities?: unknown;
+    activitiesNone?: unknown;
+    connectGoogle?: unknown;
+    googleLater?: unknown;
   };
   const parentName =
     typeof row.parentName === 'string' && row.parentName.trim() ? row.parentName : null;
@@ -477,6 +492,11 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     row.coparentGroupMode === 'existing' || row.coparentGroupMode === 'new'
       ? row.coparentGroupMode
       : null;
+  const activities = decodeActivities(row.activities);
+  const activitiesNone = row.activitiesNone === true;
+  const connectGoogle =
+    row.connectGoogle === true || row.connectGoogle === false ? row.connectGoogle : null;
+  const googleLater = row.googleLater === true;
   if (
     !parentName &&
     activityPick == null &&
@@ -492,7 +512,11 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !scheduleDone &&
     scheduled.length === 0 &&
     coparentGroup == null &&
-    coparentGroupMode == null
+    coparentGroupMode == null &&
+    activities.length === 0 &&
+    !activitiesNone &&
+    connectGoogle == null &&
+    !googleLater
   ) {
     return null;
   }
@@ -512,7 +536,29 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(scheduled.length > 0 ? { scheduled } : {}),
     ...(coparentGroup != null ? { coparentGroup } : {}),
     ...(coparentGroupMode != null ? { coparentGroupMode } : {}),
+    ...(activities.length > 0 ? { activities } : {}),
+    ...(activitiesNone ? { activitiesNone } : {}),
+    ...(connectGoogle != null ? { connectGoogle } : {}),
+    ...(googleLater ? { googleLater } : {}),
   };
+}
+
+/** VIL-721. Stored activities, shape-checked the way the capture was. */
+function decodeActivities(value: unknown): KidActivity[] {
+  if (!Array.isArray(value)) return [];
+  const out: KidActivity[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    if (typeof row.activity !== 'string' || row.activity.trim().length === 0) continue;
+    out.push({
+      child: typeof row.child === 'string' && row.child.trim() ? row.child : null,
+      activity: row.activity,
+      when: typeof row.when === 'string' && row.when.trim() ? row.when : null,
+      ...(row.health === true ? { health: true as const } : {}),
+    });
+  }
+  return out;
 }
 
 function decodeParentRole(value: unknown): FirstTouchGiven['parentRole'] {
@@ -570,6 +616,7 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     schoolMentioned?: unknown;
     calendarOffered?: unknown;
     emailOffered?: unknown;
+    googleOffered?: unknown;
     findDelivered?: unknown;
   };
   if (
@@ -595,6 +642,7 @@ function decodeColdStart(value: unknown): ColdStartProgress | null {
     schoolMentioned: row.schoolMentioned === true,
     ...(row.calendarOffered === true ? { calendarOffered: true } : {}),
     ...(row.emailOffered === true ? { emailOffered: true } : {}),
+    ...(row.googleOffered === true ? { googleOffered: true } : {}),
     ...(row.findDelivered === false ? { findDelivered: false } : {}),
   };
 }

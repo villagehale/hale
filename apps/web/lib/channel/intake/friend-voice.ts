@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
+import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   QUESTION_MARKS,
@@ -30,11 +31,13 @@ import { friendVoiceModelFieldsEnabled } from './friend-voice-model-fields';
 import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
+  type KidActivity,
   ONBOARDING_ORDER,
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
   type ScheduleLimits,
+  THREAD_V2_ORDER,
   acceptOnboardingCapture,
   checklistAfter,
   countRejectedScheduleAdds,
@@ -42,8 +45,11 @@ import {
   foldMessage,
   mergeCaptures,
   onboardingMissing,
+  onboardingOrder,
 } from './onboarding-turn';
 import { intakeStatedPlaceEnabled } from './stated-place';
+import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import { WALK_HAND_OFFS } from './walk-hand-off';
 
 /**
  * VIL-413 / VIL-417. The onboarding reply, written from a per-step direction.
@@ -109,6 +115,29 @@ const ACCESS_FACTS = {
     'they can disconnect any time',
   ],
 } as const;
+/**
+ * VIL-721. The true access lines for the one Google link, which asks Google for the
+ * inbox and the calendar in one consent. The same facts as the two asks, together.
+ */
+const GOOGLE_ACCESS_FACTS = [
+  'Google shares the whole inbox and the whole calendar with Hale',
+  'Hale keeps and uses only what is about the kids',
+  'Hale never sends email',
+  'Hale never changes or deletes their events',
+  'they can disconnect any time',
+] as const;
+
+/**
+ * VIL-721. What the one link is, as facts the model words itself: it connects both,
+ * and Google's unverified-app screen sits in front of it until Google verifies Hale
+ * (VIL-556). Nothing here is a sentence to paste.
+ */
+const GOOGLE_LINK_FACTS = {
+  connects: ['Gmail', 'Google Calendar'],
+  oneLink: true,
+  screen: GOOGLE_UNVERIFIED_APP_FACT,
+} as const;
+
 /** How far ahead the model may name a day on the schedule step. */
 export const SCHEDULE_DAYS_AHEAD = 21;
 
@@ -137,6 +166,9 @@ export const FRIEND_STEPS = [
   'calendar',
   'schedule',
   'coparent',
+  // VIL-721, reached only while THREAD_ONBOARDING_V2_ENABLED is on.
+  'activities',
+  'google',
   'signup',
   'age_correction',
   'legacy_hello',
@@ -221,8 +253,11 @@ export interface FriendVoiceInput {
   nameTakenBack?: boolean;
   /** The soft read of this parent's role, when one is stored. */
   parentRole?: ParentRoleGuess | null;
-  /** Which connector just landed. Set only on the connected step. */
-  connector?: 'gcal' | 'gmail' | null;
+  /**
+   * Which connector just landed. Set only on the connected step. `google` is VIL-721's
+   * one link: Gmail and the calendar at once.
+   */
+  connector?: 'gcal' | 'gmail' | 'google' | null;
   /** Whether they agreed to be watched. Set only on the ack step. */
   granted?: boolean | null;
   /**
@@ -298,6 +333,11 @@ export interface FriendVoiceInput {
    * after a real wait. Absent when that text just arrived. Facts only.
    */
   lastInbound?: LastInboundFact | null;
+  /**
+   * VIL-721. What the kids already do, as earlier turns kept it. Set only while
+   * THREAD_ONBOARDING_V2_ENABLED is on, so a dark turn keeps its prompt bytes.
+   */
+  kidActivities?: readonly KidActivity[];
 }
 
 /**
@@ -487,6 +527,11 @@ type JudgeOptions = Omit<SpeakOptions, 'linkFollows'> & {
   speaksAsParent?: boolean;
   questionBeforeList?: boolean;
   connectorsOffered?: readonly OfferedConnector[];
+  /**
+   * VIL-721. The connectors the model says this reply is about, on every path (the
+   * field is required on the dark schema too). The one-link ask is held to it.
+   */
+  offered?: readonly OfferedConnector[];
 };
 
 const childSchema = z.object({
@@ -614,6 +659,13 @@ const replyFields = z.object({
   questionBeforeList: z.boolean().optional(),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
+  // VIL-721. Optional with no default, so a dark tool value parses to what it did
+  // before. acceptOnboardingCapture shape-checks each activity, and only while lit.
+  activities: z.array(z.unknown()).optional().catch(undefined),
+  activitiesNone: z.boolean().optional().catch(undefined),
+  connectGoogle: z.boolean().nullable().optional().catch(undefined),
+  googleLater: z.boolean().optional().catch(undefined),
+  handOff: z.string().nullable().optional().catch(undefined),
 });
 
 const replySchema = replyFields.transform((value) => ({
@@ -631,6 +683,7 @@ function readParentQuestion(value: {
   connectGmail: boolean | null;
   connectCalendar: boolean | null;
   coparentGroup: boolean | null;
+  connectGoogle?: boolean | null;
   messageIsYes?: boolean;
 }): boolean {
   if (value.parentQuestion === undefined) {
@@ -638,6 +691,8 @@ function readParentQuestion(value: {
       value.connectGmail === true ||
       value.connectCalendar === true ||
       value.coparentGroup === true ||
+      // VIL-721. Only a lit schema offers this field, so a dark parse is unchanged.
+      value.connectGoogle === true ||
       // A yes the model did not classify is a question. Checked only on the lit
       // path, so a dark turn's parse is unchanged.
       (friendVoiceModelFieldsEnabled() && value.messageIsYes === true)
@@ -741,13 +796,48 @@ export function onboardingReplyToolSchema(
         region: { type: ['string', 'null'] },
       }
     : {};
-  const withStated = { ...schema, properties: { ...schema.properties, ...stated } };
+  const withStated = withThreadV2Schema({
+    ...schema,
+    properties: { ...schema.properties, ...stated },
+  });
   if (!input || !placeInPlay(input)) return withModelFieldSchema(withStated);
   return withModelFieldSchema({
     ...withStated,
     properties: { ...withStated.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
     required: [...withStated.required, 'placeAsk'],
   });
+}
+
+/** VIL-721. The fields the lit walk reads. Optional: the model fills what this message gives. */
+const THREAD_V2_FIELDS_JSON = {
+  activities: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        child: { type: ['string', 'null'] },
+        activity: { type: 'string' },
+        when: { type: ['string', 'null'] },
+        health: { type: 'boolean' },
+      },
+      required: ['activity'],
+    },
+  },
+  activitiesNone: { type: 'boolean' },
+  connectGoogle: { type: ['boolean', 'null'] },
+  googleLater: { type: 'boolean' },
+  handOff: { type: ['string', 'null'], enum: [...WALK_HAND_OFFS, null] },
+} as const;
+
+/**
+ * Dark returns the schema unchanged, so a recorded tool request keeps its bytes.
+ * Lit adds the activities and the one-link Google answer.
+ */
+function withThreadV2Schema<
+  T extends { properties: Record<string, unknown>; required: readonly string[] },
+>(schema: T): T {
+  if (!threadOnboardingV2Enabled()) return schema;
+  return { ...schema, properties: { ...schema.properties, ...THREAD_V2_FIELDS_JSON } };
 }
 
 /** Fields the lit path requires. None of them start with `par` (that prefix leaked markup). */
@@ -867,8 +957,8 @@ const ASKS_NOTHING = new Set<FriendStep>(['connected', 'find_show', 'ack', 'stop
  */
 const FLEX_QUESTION_STEPS = new Set<FriendStep>(['name_reply']);
 
-/** Steps where the model may say "this link": the real URL follows. */
-const LINK_STEPS = new Set<FriendStep>(['calendar', 'email']);
+/** Steps where the model may say "this link": the real URL follows. `google` is VIL-721's one link. */
+const LINK_STEPS = new Set<FriendStep>(['calendar', 'email', 'google']);
 
 export function turnsFromTranscript(
   transcript: readonly { direction: 'in' | 'out'; body: string; asked?: boolean }[],
@@ -936,15 +1026,28 @@ export function lastInboundFact(
   };
 }
 
-/** An item code could not read is unknown to the model, never false. */
+/**
+ * An item code could not read is unknown to the model, never false. Lit (VIL-721),
+ * `known` names exactly the items of the lit walk, so Gmail and the calendar are not
+ * shown as two open items beside the one Google link. Dark, it is the checklist as
+ * code built it, byte for byte.
+ */
 function knownForModel(
   checklist: OnboardingChecklist | null,
   unread: readonly OnboardingItem[] | undefined,
-): Record<OnboardingItem, boolean | null> | null {
-  if (!checklist || !unread || unread.length === 0) return checklist;
+): Partial<Record<OnboardingItem, boolean | null>> | null {
+  if (!checklist) return checklist;
+  const lit = threadOnboardingV2Enabled();
+  if (!unread || unread.length === 0) {
+    if (!lit) return checklist;
+    return Object.fromEntries(THREAD_V2_ORDER.map((item) => [item, checklist[item] === true]));
+  }
   return Object.fromEntries(
-    ONBOARDING_ORDER.map((item) => [item, unread.includes(item) ? null : checklist[item]]),
-  ) as Record<OnboardingItem, boolean | null>;
+    onboardingOrder().map((item) => [
+      item,
+      unread.includes(item) ? null : lit ? checklist[item] === true : checklist[item],
+    ]),
+  );
 }
 
 /** What the model is handed. No link, no family id, no phone. */
@@ -991,7 +1094,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     // Hours later, or the next morning: the wait, as facts. A just-arrived text omits it.
     ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
     recentTurns: input.recentTurns,
-    order: [...ONBOARDING_ORDER],
+    order: [...onboardingOrder()],
     known: knownForModel(checklist, input.unread),
     missing,
     answering: ASKS_NOTHING.has(input.step) ? null : (missing?.[0] ?? null),
@@ -1045,7 +1148,14 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       access:
         input.step === 'email' || input.step === 'calendar'
           ? { true: ACCESS_FACTS[input.step], untrue: ACCESS_UNTRUE }
-          : null,
+          : input.step === 'google'
+            ? { true: GOOGLE_ACCESS_FACTS, untrue: ACCESS_UNTRUE }
+            : null,
+      // VIL-721. Lit only, so a dark turn keeps its prompt bytes: what the kids
+      // already do (kept from earlier turns), and on the one-link ask, what the
+      // link is and the Google screen in front of it.
+      ...(input.kidActivities ? { kidActivities: input.kidActivities } : {}),
+      ...(input.step === 'google' ? { googleLink: GOOGLE_LINK_FACTS } : {}),
     },
     ...(input.retry ? { retry: input.retry } : {}),
   };
@@ -1072,11 +1182,14 @@ export function nameAskVoiceInput(
   language: ReplyLanguage | null,
   stored: OnboardingChecklist | null,
 ): FriendVoiceInput {
-  const unread = stored ? [] : ONBOARDING_ORDER.filter((item) => item !== 'name');
+  const unread = stored ? [] : onboardingOrder().filter((item) => item !== 'name');
+  // Every item but the name counts as answered, the VIL-721 ones included, so the lit
+  // walk does not read an unknown activities or Google item as the open ask. Dark,
+  // `known` is projected onto today's order (unread is set), so its bytes hold.
   const checklist = stored
     ? { ...stored, name: false }
     : (Object.fromEntries(
-        ONBOARDING_ORDER.map((item) => [item, item !== 'name']),
+        [...ONBOARDING_ORDER, ...THREAD_V2_ORDER].map((item) => [item, item !== 'name']),
       ) as OnboardingChecklist);
   return {
     step: 'names',
@@ -1168,6 +1281,10 @@ function noYesInAQuestion(capture: OnboardingCapture, parentQuestion: boolean): 
     connectGmail: capture.connectGmail === true ? null : capture.connectGmail,
     connectCalendar: capture.connectCalendar === true ? null : capture.connectCalendar,
     coparentGroup: capture.coparentGroup === true ? null : capture.coparentGroup,
+    // VIL-721. Present only on a lit capture, so a dark one keeps its shape.
+    ...(capture.connectGoogle !== undefined
+      ? { connectGoogle: capture.connectGoogle === true ? null : capture.connectGoogle }
+      : {}),
   };
 }
 
@@ -1203,13 +1320,18 @@ function withModelReading(
     if (capture.parentName || kids.includes(name.toLowerCase())) return capture;
     return { ...capture, parentName: name };
   }
+  // VIL-721. The one Google item is answered by a yes too, read from the model's
+  // fields only (it is not in YES_ITEMS, so the dark word-list reader never sees it).
   const yesItem =
-    YES_ITEMS.has(item) || (item === 'schedule' && (input.scheduled ?? []).length > 0);
+    YES_ITEMS.has(item) ||
+    item === 'google' ||
+    (item === 'schedule' && (input.scheduled ?? []).length > 0);
   // Consent needs an explicit "not a question". A missing parentQuestion is not that.
   if (!yesItem || composed.messageIsYes !== true || composed.parentQuestion !== false)
     return capture;
   if (item === 'gmail') return { ...capture, connectGmail: true, gmailLater: false };
   if (item === 'calendar') return { ...capture, connectCalendar: true, calendarLater: false };
+  if (item === 'google') return { ...capture, connectGoogle: true, googleLater: false };
   if (item === 'schedule') return { ...capture, scheduleDone: true };
   return { ...capture, coparentGroup: true };
 }
@@ -1305,6 +1427,18 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   if (input.parentName) slots.push(input.parentName);
   if (input.connector === 'gcal') slots.push('calendar', 'calendrier');
   if (input.connector === 'gmail') slots.push('gmail', 'Gmail');
+  // VIL-721. The one link connects both, and the screen in front of it is a fact the
+  // ask may name and quote; the activities the parent already gave are theirs.
+  if (input.connector === 'google' || input.step === 'google') {
+    slots.push('calendar', 'calendrier', 'gmail', 'Gmail', ...GOOGLE_LINK_FACTS.connects);
+    slots.push(GOOGLE_LINK_FACTS.screen.screen, GOOGLE_LINK_FACTS.screen.shownBy);
+    slots.push(...GOOGLE_LINK_FACTS.screen.wayPast);
+  }
+  for (const item of input.kidActivities ?? []) {
+    slots.push(item.activity);
+    if (item.when) slots.push(item.when);
+    if (item.child) slots.push(item.child);
+  }
   if (link) slots.push(link);
   if (input.coparentJoin) slots.push(input.coparentJoin.line, input.coparentJoin.phrase);
   for (const item of input.scheduled ?? []) slots.push(item.title, item.when);
@@ -1927,7 +2061,14 @@ export function judgeFriendReply(
   }
   // The connector ask carries that connector's card: the prose has to be about it.
   if (LINK_STEPS.has(input.step) && options.yesToLink !== true) {
-    if (friendVoiceModelFieldsEnabled()) {
+    if (input.step === 'google') {
+      // VIL-721. One link connects both, so the ask is about both, by the model's
+      // own field (no word match on the reply or on the parent's words).
+      const offered = options.connectorsOffered ?? options.offered ?? [];
+      if (!offered.includes('gmail') || !offered.includes('calendar')) {
+        return { ok: false, reason: 'topic' };
+      }
+    } else if (friendVoiceModelFieldsEnabled()) {
       const wanted = input.step === 'email' ? 'gmail' : 'calendar';
       if (!options.connectorsOffered?.includes(wanted)) {
         return { ok: false, reason: 'topic' };
@@ -2147,6 +2288,10 @@ export function stepAfterCapture(current: FriendStep, gap: OnboardingItem | unde
       return 'email';
     case 'calendar':
       return 'calendar';
+    case 'activities':
+      return 'activities';
+    case 'google':
+      return 'google';
     case 'schedule':
       return 'schedule';
     case 'coparent':
@@ -2166,6 +2311,7 @@ export function stepAfterCapture(current: FriendStep, gap: OnboardingItem | unde
  * is the receipt for that yes; the next ask waits for the connect receipt.
  */
 export function yesToLink(input: FriendVoiceInput, capture: OnboardingCapture): boolean {
+  if (input.step === 'google') return capture.connectGoogle === true && !input.checklist?.google;
   if (input.step === 'email') return capture.connectGmail === true && !input.checklist?.gmail;
   if (input.step === 'calendar') {
     return capture.connectCalendar === true && !input.checklist?.calendar;
@@ -2503,6 +2649,7 @@ export async function speakFriend(
         ahaMention: composed.ahaMention ?? null,
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
+        offered: marks.offered,
         ...(friendVoiceModelFieldsEnabled()
           ? {
               asksCount: composed.asksCount,
@@ -2755,6 +2902,9 @@ export function retryProblem(
     case 'premature':
       return 'It says the connector is already on. It is not until they tap the link: on a yes, point them to the link above; on the ask, just ask.';
     case 'topic':
+      if (input?.step === 'google') {
+        return 'This message asks to connect Gmail and Google Calendar together, with the one link code puts under it: a trust line from facts.access, a word about the screen in facts.googleLink, then that question. List both gmail and calendar in connectorsOffered.';
+      }
       return input?.step === 'calendar'
         ? 'This message asks to connect their Google Calendar: a trust line from facts.access, then that question.'
         : 'This message asks to connect their Gmail: a trust line from facts.access, then that question.';
@@ -2780,6 +2930,10 @@ export function askInWords(
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
     case 'calendar':
       return 'ask whether they want to connect their Google Calendar (one trust line from facts.access first)';
+    case 'activities':
+      return 'ask what the kids already do (classes, sports, lessons), as one question';
+    case 'google':
+      return "ask whether they want to connect Gmail and Google Calendar with the one link (one trust line from facts.access and a word about Google's screen from facts.googleLink first)";
     case 'schedule':
       return 'ask which of the map activities they want reminders for (suggest one per kid first)';
     case 'coparent':
@@ -2820,6 +2974,7 @@ function settledFacts(capture: OnboardingCapture): OnboardingCapture {
     nameConfirmed: capture.nameConfirmed,
     connectGmail: capture.connectGmail,
     connectCalendar: capture.connectCalendar,
+    ...(capture.connectGoogle !== undefined ? { connectGoogle: capture.connectGoogle } : {}),
     // The parent's second no settles the place whatever the draft said next.
     placeDeclined: capture.placeDeclined,
   };
@@ -2858,6 +3013,8 @@ function factsOnly(capture: OnboardingCapture): OnboardingCapture {
     children: capture.children,
     parentName: capture.parentName,
     parentRole: capture.parentRole,
+    // VIL-721. What the kids do is a fact the parent stated, kept like their names.
+    ...(capture.activities !== undefined ? { activities: capture.activities } : {}),
   };
 }
 
@@ -2891,9 +3048,12 @@ export function tidyProse(
   }
   // A wow line, or the reply to a yes whose link is out, is about that one
   // connector: a sentence about the other one goes (its ask comes later).
+  // VIL-721: the one-link receipt is about both, so nothing about either is cut.
   const about =
     input.step === 'connected'
-      ? input.connector
+      ? input.connector === 'google'
+        ? null
+        : input.connector
       : asksNothing && judgedStep === 'email'
         ? 'gmail'
         : asksNothing && judgedStep === 'calendar'
@@ -3013,8 +3173,13 @@ export async function friendVoiceSystem(
   const modelFields = friendVoiceModelFieldsEnabled()
     ? await loadCronSkill('onboarding-friend-model-fields')
     : null;
-  const extras = [choice, group, place, ageFit, statedPlace, photo, modelFields].flatMap((part) =>
-    part ? [part.instructions] : [],
+  // VIL-721: the in-thread walk (activities, one Google link) rides only when its flag
+  // is on, so a dark turn (and its eval cache key) keeps today's skill bytes.
+  const threadV2 = threadOnboardingV2Enabled()
+    ? await loadCronSkill('onboarding-friend-thread-v2')
+    : null;
+  const extras = [choice, group, place, ageFit, statedPlace, photo, modelFields, threadV2].flatMap(
+    (part) => (part ? [part.instructions] : []),
   );
   const system = [skill.instructions, ...extras].join('\n\n');
   return { skill, system, extras };
@@ -3049,6 +3214,13 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
       gmailLater: value.gmailLater,
       stopAsking: value.stopAsking,
       language: acceptReplyLanguage(value.language),
+      // VIL-721. Passed through as the model gave them; acceptOnboardingCapture keeps
+      // them only while the flag is on.
+      ...(value.activities !== undefined ? { activities: value.activities } : {}),
+      ...(value.activitiesNone !== undefined ? { activitiesNone: value.activitiesNone } : {}),
+      ...(value.connectGoogle !== undefined ? { connectGoogle: value.connectGoogle } : {}),
+      ...(value.googleLater !== undefined ? { googleLater: value.googleLater } : {}),
+      ...(value.handOff !== undefined ? { handOff: value.handOff } : {}),
     },
     ahaMention: value.ahaMention,
     asks: value.asks,

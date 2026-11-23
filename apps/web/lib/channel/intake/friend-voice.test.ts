@@ -57,6 +57,11 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
   };
 }
 
+// Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+beforeEach(() => {
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+});
+
 describe('friend voice brief', () => {
   it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {
     const facts = (input: FriendVoiceInput) =>

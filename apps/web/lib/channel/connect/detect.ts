@@ -95,9 +95,11 @@ export function matchFreshConnectorFollowUp(body: string): boolean {
 }
 
 /** Which connector a Hale message already offered, read off the link it carried. */
-export type ConnectOfferTarget = 'gcal' | 'gmail' | 'both';
+export type ConnectOfferTarget = 'gcal' | 'gmail' | 'both' | 'google';
 
 export function connectOfferTarget(body: string): ConnectOfferTarget | null {
+  // VIL-721. The one link, by its own target: the model's words around it name both.
+  if (/[?&]to=google\b/i.test(body)) return 'google';
   const gmail =
     /[?&]to=gmail\b/i.test(body) ||
     /\bConnect Gmail\b/i.test(body) ||

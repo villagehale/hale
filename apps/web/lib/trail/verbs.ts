@@ -174,6 +174,18 @@ export const AUDIT_VERBS = [
   // An activity from the first find put on the family calendar as a reminder
   // (one-off or weekly). It is not a registration.
   'onboarding_schedule_added',
+  // VIL-721. What the kids already do, told in the onboarding thread and kept as
+  // family memory. `after` is counts only: no activity, no name.
+  'onboarding_activities_kept',
+  // VIL-721. The kids' names and ages as the model read them, kept with their provenance.
+  // `after` is counts only: no name, no age.
+  'onboarding_kids_kept',
+  // VIL-721. A text about connecting Google did not reach this parent. `after` is the
+  // surface and refused/unconfirmed only: no words, no link.
+  'google_connect_text_unsent',
+  // VIL-721. The onboarding model read this text as a disconnect or a new-link ask, so it
+  // left the walk for the handler that acts on it. `after` is the read only: no words.
+  'onboarding_walk_handed_off',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -415,6 +427,7 @@ export const AUDIT_VERBS = [
   'co_parent_invite_started',
   'co_parent_identity_noted',
   'co_parent_access_granted',
+  'third_party_invite_send_failed',
   'co_parent_invite_accepted',
   'co_parent_invite_expired',
   'co_parent_invite_expired_answered',
@@ -862,6 +875,22 @@ const VERBS: Record<AuditVerb, Verb> = {
   onboarding_schedule_added: {
     sentence: 'you put an activity from the find on your calendar as a reminder',
     family: 'done',
+  },
+  onboarding_activities_kept: {
+    sentence: 'you told Hale what the kids already do, and it kept that',
+    family: 'done',
+  },
+  onboarding_kids_kept: {
+    sentence: "you told Hale your kids' names and ages, and it kept that",
+    family: 'done',
+  },
+  google_connect_text_unsent: {
+    sentence: 'Hale could not text you about connecting Google',
+    family: 'problem',
+  },
+  onboarding_walk_handed_off: {
+    sentence: 'you asked Hale about your Google connection during setup',
+    family: 'note',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
@@ -1678,6 +1707,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   co_parent_access_granted: {
     sentence: 'you confirmed your co-parent may see everything you see',
     family: 'done',
+  },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // one adult's own invite. #ops is paged; the parent has not been told in words.
+  third_party_invite_send_failed: {
+    sentence: 'a text to the person you invited may not have gone through',
+    family: 'note',
   },
   co_parent_invite_accepted: {
     sentence: 'your co-parent accepted and joined your family',
@@ -2562,6 +2597,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'billing_notice_dropped',
   // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
   'billing_plan_unsettled',
+  // VIL-759. One adult's invite that Linq did not accept.
+  'third_party_invite_send_failed',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

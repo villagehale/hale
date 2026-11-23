@@ -178,6 +178,13 @@ export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
+  /** VIL-721 · the one Google link's text: the model could not write it, so it did not go. */
+  connector_link_unwritten: { reason: ['write_failed', 'writer_absent'] },
+  /** VIL-721 · a text the one Google link adds did not reach the parent. */
+  google_connect_text_unsent: {
+    surface: ['card', 'fresh_link', 'receipt', 'ask'],
+    failure: ['refused', 'unconfirmed', 'no_link'],
+  },
   shared_group_unwritten: {
     kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],
     fallback: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'declined'],
@@ -199,6 +206,11 @@ export const OPS_PAGE_VOCABULARY = {
   party_guest_unwritten: {
     why: ['asked_for_reminder', 'host_cancelled'],
     stage: ['skill_load', 'after_retry'],
+  },
+  /** VIL-759 · an invite Linq did not accept. `unclear` may still have reached the phone. */
+  third_party_invite_unsent: {
+    lane: ['co_parent', 'caregiver'],
+    why: ['refused', 'unclear'],
   },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
@@ -395,6 +407,8 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unsent',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  // VIL-759: one family's invite each.
+  'third_party_invite_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 
