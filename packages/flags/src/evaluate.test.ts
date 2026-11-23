@@ -347,6 +347,19 @@ describe('an env-only flag, read before any family is known', () => {
     ).toBe(true);
     expect(FLAG_BY_KEY['ask-policy-tiers'].envOnly).toBe(true);
   });
+
+  it('VIL-728: PostHog cannot light or darken the group loop guard', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('group-loop-guard', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('group-loop-guard', undefined, { ...ON, GROUP_LOOP_GUARD_ENABLED: 'true\n' }),
+    ).toBe(false);
+    setFlagEvaluatorForTests(() => false);
+    expect(
+      isEnabled('group-loop-guard', undefined, { ...ON, GROUP_LOOP_GUARD_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['group-loop-guard'].envOnly).toBe(true);
+  });
 });
 
 describe('catalog', () => {

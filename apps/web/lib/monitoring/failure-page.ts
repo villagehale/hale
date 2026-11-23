@@ -302,6 +302,9 @@ export const OPS_PAGE_VOCABULARY = {
       'claim_stuck',
     ],
   },
+  // VIL-728. A group chat went quiet: Hale reached the loop guard's cap with no verified
+  // person speaking. `count` is how many Hale messages did it. No chat id, no family id.
+  group_loop_guard_tripped: {},
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
   // VIL-719 · a tell-after text (the text after Hale did a tell-after action) the model
   // could not write. Nothing was sent; the action stands. Paged only while
