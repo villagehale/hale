@@ -1,4 +1,4 @@
-import { canaryCaptureExtras } from '@hale/agent';
+import { canaryCaptureExtras } from '@hale/agent/canary-analytics';
 import { errorTrackingEnabled } from './flags';
 import { projectClient } from './posthog-node';
 

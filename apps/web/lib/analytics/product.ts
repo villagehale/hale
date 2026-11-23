@@ -1,4 +1,4 @@
-import { canaryCaptureExtras } from '@hale/agent';
+import { canaryCaptureExtras } from '@hale/agent/canary-analytics';
 import type { PostHog } from 'posthog-node';
 import { familyIsCanary } from './canary-tag';
 import { type AnalyticsEvent, buildEvent } from './events';

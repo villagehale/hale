@@ -4,10 +4,10 @@ import {
   type LlmTraceContext,
   anthropicCreditAlertEnabled,
   buildGenerationProperties,
-  canaryCaptureExtras,
   hashLlmFamilyId,
   llmContentCaptureEnabled,
 } from '@hale/agent';
+import { canaryCaptureExtras } from '@hale/agent/canary-analytics';
 import type { PostHog } from 'posthog-node';
 import { observeAnthropicCall } from '../monitoring/anthropic-credit';
 import { familyIsCanary } from './canary-tag';

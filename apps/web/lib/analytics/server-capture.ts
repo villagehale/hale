@@ -1,4 +1,4 @@
-import { canaryCaptureExtras } from '@hale/agent';
+import { canaryCaptureExtras } from '@hale/agent/canary-analytics';
 import { hashFamilyIdForEvents } from '@hale/flags';
 import { after } from 'next/server';
 import { familyIsCanary } from './canary-tag';

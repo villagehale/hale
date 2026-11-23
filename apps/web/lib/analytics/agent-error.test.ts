@@ -273,7 +273,9 @@ describe('reporting never makes a failure worse', () => {
   it('looks up the canary when a product capture will send', async () => {
     const lookup = vi.fn(async () => true);
     setCanaryFamilyLookupForTests(lookup);
-    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     await captureAgentError({ lane: 'coach', reason: 'model_unreachable', familyId: FAMILY });
