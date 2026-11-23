@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROMO_PREVIEW_COOKIE, signPromoPreviewCookie } from '~/lib/billing/promo-preview';
 import { PORTAL_TITLE, resolveDocumentTitle } from '~/lib/portal/document-title';
 
-const { cookieJar } = vi.hoisted(() => ({
+const { cookieJar, sessionBox } = vi.hoisted(() => ({
   cookieJar: { value: undefined as string | undefined },
+  sessionBox: { userId: null as string | null },
 }));
 
 vi.mock('next/headers', () => ({
@@ -21,13 +22,19 @@ vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NEXT_NOT_FOUND');
   },
+  redirect: (url: string) => {
+    throw new Error(`NEXT_REDIRECT:${url}`);
+  },
+}));
+vi.mock('~/auth', () => ({
+  auth: async () => (sessionBox.userId ? { user: { id: sessionBox.userId } } : null),
 }));
 vi.mock('~/lib/channel/connect/hale-texts-href', () => ({
   haleTextsNumber: () => '+15555550100',
 }));
 
 async function renderFounding(
-  search: { checkout?: string; preview?: string } = {},
+  search: Record<string, string | string[] | undefined> = {},
 ): Promise<string> {
   const { default: FoundingJoinPage } = await import('./page');
   return renderToStaticMarkup(await FoundingJoinPage({ searchParams: Promise.resolve(search) }));
@@ -36,6 +43,7 @@ async function renderFounding(
 describe('/founding offer surface', () => {
   afterEach(() => {
     cookieJar.value = undefined;
+    sessionBox.userId = null;
     vi.resetModules();
     vi.unstubAllEnvs();
   });
@@ -86,6 +94,56 @@ describe('/founding offer surface', () => {
     const html = await renderFounding({ checkout: 'cancelled' });
     expect(html).toContain('$59/yr');
     expect(html).toContain('cancelled');
+  });
+
+  it('keeps a signed-out visitor on the join form when auth is configured', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    const html = await renderFounding({ plan: 'max' });
+    expect(html).toContain('Join Hale');
+    expect(html).toContain('$59/yr');
+    expect(html).toContain('$99/yr');
+  });
+
+  it('sends a signed-in family to the signed-in checkout, keeping attribution', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    sessionBox.userId = 'user-1';
+    await expect(
+      renderFounding({
+        checkout: 'cancelled',
+        utm_source: 'meta',
+        fbclid: 'abc',
+        preview: 'not-the-token',
+      }),
+    ).rejects.toThrow(
+      'NEXT_REDIRECT:/settings/founding?checkout=cancelled&utm_source=meta&fbclid=abc',
+    );
+  });
+
+  it('keeps a signed-in parent on the join form when the preview cookie is still valid', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    sessionBox.userId = 'user-1';
+    cookieJar.value =
+      signPromoPreviewCookie({
+        AUTH_SECRET: 'test-secret',
+        PROMO_PREVIEW_TOKEN: 'secret',
+      }) ?? undefined;
+    const html = await renderFounding({ checkout: 'cancelled' });
+    expect(html).toContain('cancelled');
+    expect(html).toContain('$99/yr');
+  });
+
+  it('leaves a signed-in preview unlock on the new-visitor join', async () => {
+    vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    sessionBox.userId = 'user-1';
+    const html = await renderFounding({ preview: 'secret' });
+    expect(html).toContain('$59/yr');
+    expect(html).toContain('$99/yr');
   });
 
   it('after the cutoff is not found — monthly does not come back on this page', async () => {
