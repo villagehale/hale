@@ -73,6 +73,8 @@ describe('friend voice brief', () => {
   });
 
   it('hands signupWithOk with the offer lane off and on (VIL-766)', () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', '');
     const now = new Date('2026-11-23T18:00:00.000Z');
     const facts = (input: FriendVoiceInput) =>
       (friendVoiceContext(input) as { facts: { signupWithOk: unknown } }).facts;
