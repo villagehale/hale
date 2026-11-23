@@ -914,7 +914,14 @@ export async function alertParentForEmail(
   // The model decides both. Teen mail stays on the per-thread key: handing its
   // time and place to another read would be the disclosure the facts already drop.
   let clashes: EmailAlertNoticeFacts['clashes'] = undefined;
-  if (emailAlertOnceEnabled() && !extraction.teenContent && !teenAttributed) {
+  // A cancellation frees the slot. Judging it against what it used to overlap
+  // would warn that the child cannot attend both, after one of them is off.
+  if (
+    emailAlertOnceEnabled() &&
+    !extraction.teenContent &&
+    !teenAttributed &&
+    extraction.kind !== 'cancellation'
+  ) {
     const judged = await judgeKnownAppointment(
       database,
       {

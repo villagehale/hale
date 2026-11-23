@@ -5,8 +5,9 @@ import { isEnabled } from '@hale/flags';
  * is named in that alert.
  *
  * Off unless exactly `true` (no trim): a trailing newline from `vercel env add`
- * stays off. Unset keeps today's per-thread occasion key and a notice that is
- * not told about other commitments.
+ * stays off. Env-only, so PostHog cannot turn it on or answer it off for a
+ * missing family. Unset keeps today's per-thread occasion key and a notice that
+ * is not told about other commitments.
  */
 export const EMAIL_ALERT_ONCE_ENABLED_ENV = 'EMAIL_ALERT_ONCE_ENABLED';
 

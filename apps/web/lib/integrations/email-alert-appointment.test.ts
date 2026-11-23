@@ -1,3 +1,4 @@
+import { getFlag, isEnabled } from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emailAlertOccasion, emailAlertOccasionKey } from './email-alert';
 import { readAppointmentJudgment } from './email-alert-appointment';
@@ -74,6 +75,24 @@ describe('emailAlertOnceEnabled', () => {
     }
     vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
     expect(emailAlertOnceEnabled()).toBe(true);
+  });
+
+  it('is env-only, so PostHog cannot override the exact env value', () => {
+    expect(getFlag('email-alert-once').envOnly).toBe(true);
+    const posthog = { POSTHOG_FLAGS_ENABLED: 'true' };
+    expect(
+      isEnabled('email-alert-once', undefined, {
+        ...posthog,
+        EMAIL_ALERT_ONCE_ENABLED: 'true',
+      }),
+    ).toBe(true);
+    expect(
+      isEnabled('email-alert-once', undefined, {
+        ...posthog,
+        EMAIL_ALERT_ONCE_ENABLED: 'true\n',
+      }),
+    ).toBe(false);
+    expect(isEnabled('email-alert-once', undefined, posthog)).toBe(false);
   });
 });
 

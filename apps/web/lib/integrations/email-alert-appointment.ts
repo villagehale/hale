@@ -1,7 +1,7 @@
 import { type AgentClient, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
 import { type Database, familyEventForParent, schema } from '@hale/db';
 import { TEENAGER_START_MONTHS } from '@hale/types';
-import { and, eq, gte, isNull, lt } from 'drizzle-orm';
+import { and, eq, gte, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -226,6 +226,7 @@ export async function loadKnownCommitments(
         endsAt: schema.familyEvents.endsAt,
         location: schema.familyEvents.location,
         childId: schema.familyEvents.childId,
+        calendarStanding: schema.familyEvents.calendarStanding,
       })
       .from(schema.familyEvents)
       .where(
@@ -244,12 +245,15 @@ export async function loadKnownCommitments(
         location: schema.activityBookings.location,
         address: schema.activityBookings.address,
         messageId: schema.activityBookings.messageId,
+        integrationId: schema.activityBookings.integrationId,
+        cancelledAt: schema.activityBookings.cancelledAt,
       })
       .from(schema.activityBookings)
       .where(
         and(
           eq(schema.activityBookings.familyId, input.familyId),
-          isNull(schema.activityBookings.cancelledAt),
+          // This parent's mailbox only. The other parent's booking is their mail.
+          eq(schema.activityBookings.parentUserId, input.parentUserId),
           gte(schema.activityBookings.firstSessionAt, span.start),
           lt(schema.activityBookings.firstSessionAt, span.end),
         ),
@@ -261,7 +265,7 @@ export async function loadKnownCommitments(
         startsAt: schema.emailAlertOffers.startsAt,
         location: schema.emailAlertOffers.location,
         messageId: schema.emailAlertOffers.messageId,
-        resolution: schema.emailAlertOffers.resolution,
+        integrationId: schema.emailAlertOffers.integrationId,
         eventId: schema.emailAlertOffers.eventId,
       })
       .from(schema.emailAlertOffers)
@@ -275,11 +279,26 @@ export async function loadKnownCommitments(
       ),
   ]);
 
-  const bookedMessages = new Set(
-    bookings.filter((row) => row.messageId !== input.messageId).map((row) => row.messageId),
+  const pair = (integrationId: string, messageId: string) => `${integrationId}\u0000${messageId}`;
+  const livePairs = new Set(
+    bookings
+      .filter((row) => row.cancelledAt === null && row.messageId !== input.messageId)
+      .map((row) => pair(row.integrationId, row.messageId)),
+  );
+  // A provider cancellation withdraws the offer by expiry only. The booking row
+  // is the fact that the visit is off, so its offer is not still a commitment.
+  const cancelledPairs = new Set(
+    bookings
+      .filter((row) => row.cancelledAt !== null)
+      .map((row) => pair(row.integrationId, row.messageId)),
   );
   const held: Held[] = [];
   for (const row of events) {
+    // An unanswered invite is not a commitment. A household row has no standing.
+    if (row.calendarStanding === 'invited') continue;
+    const child = input.children.find((one) => one.id === row.childId);
+    // A 13+ child's title, time and place stay out of a parent text.
+    if (child !== undefined && child.ageInMonths >= TEENAGER_START_MONTHS) continue;
     held.push({
       id: row.id,
       title: row.title,
@@ -290,7 +309,7 @@ export async function loadKnownCommitments(
     });
   }
   for (const row of bookings) {
-    if (row.messageId === input.messageId) continue;
+    if (row.cancelledAt !== null || row.messageId === input.messageId) continue;
     held.push({
       id: row.id,
       title: row.title,
@@ -301,9 +320,10 @@ export async function loadKnownCommitments(
     });
   }
   for (const row of offers) {
-    if (row.messageId === input.messageId) continue;
-    if (row.resolution === 'declined' || row.eventId !== null) continue;
-    if (bookedMessages.has(row.messageId)) continue;
+    if (row.messageId === input.messageId || row.eventId !== null) continue;
+    const key = pair(row.integrationId, row.messageId);
+    if (livePairs.has(key) || cancelledPairs.has(key)) continue;
+    // A declined offer is a no to the calendar add, not to the appointment.
     held.push({
       id: row.id,
       title: row.title,
