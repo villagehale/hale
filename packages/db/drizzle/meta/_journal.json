@@ -1695,6 +1695,13 @@
       "when": 1795390458792,
       "tag": "0261_ack_promises",
       "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1795407285029,
+      "tag": "0264_authorized_signup_terms",
+      "breakpoints": true
     }
   ]
 }

@@ -77,6 +77,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
   vi.stubEnv(AUTHORIZED_SIGNUP_ENABLED_ENV, 'on');
 });
 afterEach(() => {

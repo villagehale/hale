@@ -1,6 +1,8 @@
 import { presentUntrusted } from '@hale/agent';
 import type { AuthorizedSignupPlanResume } from '@hale/db';
 import { isEnabled } from '@hale/flags';
+import { chargesNothing, compareCart, hasUnstatedPrice } from '../terms/cart';
+import type { CartDifference, CartRead, SignupTermsApproved } from '../terms/types';
 import { BrowserUseApiError } from './client';
 import {
   ACTION_MODEL,
@@ -27,6 +29,8 @@ import {
   waitForRunUntil,
 } from './engine';
 import {
+  BOUND_PLAN_OUTPUT_SCHEMA,
+  BOUND_REVIEW_OUTPUT_SCHEMA,
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
   BROWSER_USE_PLAN_OUTPUT_SCHEMA,
   BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
@@ -52,6 +56,14 @@ import {
 export const PLAN_SIGNUP_SKILL = 'browser-use-plan-signup';
 export const CHECKOUT_REVIEW_SKILL = 'browser-use-checkout-review';
 export const SAVED_CARD_PAYMENT_SKILL = 'browser-use-saved-card-payment';
+/** VIL-715 · the addendum a bound run carries: copy the cart's line off the page. */
+export const CART_READ_SKILL = 'browser-use-cart-read';
+/** VIL-715 · a $0 order: reach its last page and read it, without placing it. */
+export const FREE_REVIEW_SKILL = 'browser-use-free-review';
+/** VIL-715 · a $0 order: place it, only when the page asks for no payment. */
+export const FREE_CHECKOUT_SKILL = 'browser-use-free-checkout';
+/** VIL-715 · a class with no stated price: no limit to compare, and the run stops for the parent. */
+export const PRICE_UNSTATED_SKILL = 'browser-use-price-unstated';
 /** The review chooses and reads; it never places the order. */
 export const CHECKOUT_REVIEW_RUN_MAX_COST_USD = 1;
 /**
@@ -99,12 +111,17 @@ export type PlanEngineDetail =
    * charged, for an amount Hale never read. Never `payment_boundary`, which means nothing
    * was paid.
    */
-  | 'review_placed_order';
+  | 'review_placed_order'
+  /** VIL-715 · the cart differs from what the parent approved. Nothing was charged. */
+  | 'cart_mismatch'
+  /** VIL-715 · the cart matched and the approval says stop here: the parent finishes. */
+  | NonNullable<SignupTermsApproved['hold']>;
 
 export type PlanEngineStep =
   | { step: 'checkout'; choiceIndex: number; cartTotalCents: number | null }
   | { step: 'ready'; choiceIndex: number; feeCents: number | null }
   | { step: 'spending_cap'; amountCents: number; ok: boolean }
+  | { step: 'cart_check'; stage: 'cart' | 'final'; differences: CartDifference[]; ok: boolean }
   | {
       step: 'final_total';
       checkoutTotalCents: number;
@@ -123,6 +140,27 @@ export type PlanEngineStep =
       amountChargedCents: number | null;
       confirmed: boolean;
     };
+
+/**
+ * VIL-715 · the parent's approval, for a run that must stop on any difference from it.
+ * Null: a plan from before binding, which runs on its maximum alone.
+ */
+export interface PlanBinding {
+  approved: SignupTermsApproved;
+  /** The child the cart must name. Never sent to Browser Use from here. */
+  childFirstName: string;
+  /** The family's other children: a cart name that could be theirs is not this child's. */
+  siblingFirstNames: readonly string[];
+  /** The portal's zone, else the parent's, for reading the cart's date and time. */
+  timeZone: string;
+  /** The env-only switch for a $0 order, on for this family. Never arms a paid checkout. */
+  freeCheckoutEnabled: boolean;
+  /**
+   * Whether an earlier run on this class for this child may have charged, read at the moment
+   * of asking: one can end with an unknown charge after the yes, and the card must not pay twice.
+   */
+  priorChargeNow: () => Promise<boolean>;
+}
 
 export interface BrowserUsePlanInput
   extends Pick<
@@ -154,6 +192,8 @@ export interface BrowserUsePlanInput
    * at checkout, before the review and the saved card: the parent pays on the live browser.
    */
   paymentEnabled: boolean;
+  /** VIL-715. Undefined or null: no approval is bound to this run. */
+  binding?: PlanBinding | null;
   /** Rule #7, on the cart total and again on the final total, before the saved card is used. */
   checkSpendingCap: (amountCents: number) => Promise<{ ok: boolean; reason: string }>;
   /**
@@ -174,11 +214,30 @@ export interface BrowserUsePlanInput
    * nothing is paid.
    */
   onCheckpoint: (resume: PlanResumeToken) => Promise<boolean>;
+  /**
+   * VIL-715 · called once on a confirmed registration, before the browser stops, to capture
+   * the masked receipt, with no browser id when the run never reported one. Absent: no
+   * receipt. A failure here never changes the outcome.
+   */
+  onConfirmed?: (facts: PlanConfirmedFacts) => Promise<void>;
 }
 
 /** What reading a payment already under way needs: no identity, consent or saved session. */
-export interface PlanPaymentInput extends Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil'> {
+export interface PlanPaymentInput
+  extends Pick<BrowserUsePlanInput, 'onStep' | 'waitUntil' | 'onConfirmed'> {
   resume: PlanPayingToken;
+}
+
+/** VIL-715 · what the provider confirmed, while its confirmation page is still open. */
+export interface PlanConfirmedFacts {
+  browserId: string | null;
+  confirmationNumber: string;
+  amountChargedCents: number | null;
+  choiceIndex: number | null;
+  /** This sweep's end: the capture must be over by then. */
+  waitUntil: Date;
+  /** The browser's CDP address. A credential: never logged, never stored. */
+  getCdpUrl: (browserId: string) => Promise<string | null>;
 }
 
 /**
@@ -196,6 +255,8 @@ export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outc
   choiceIndex: number | null;
   /** Set to `nothing` on every result, and only {@link reportPayment} may say otherwise. */
   charged: PlanCharged;
+  /** VIL-715 · what differed from the approval, on a `cart_mismatch`. */
+  cartDifferences?: CartDifference[];
 }
 
 interface PlanTracker extends BrowserTracker {
@@ -232,7 +293,7 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
   const marked = isEnabled('untrusted-field-marking');
   return {
     ...base,
-    max_price_cents: input.maxPriceCents,
+    max_price_cents: priceUnstated(input) ? null : input.maxPriceCents,
     waiver_accepted_by_parent: input.waiverAccepted,
     choices: input.choices.map((choice, rank) => ({
       rank: rank + 1,
@@ -241,9 +302,55 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
           ? presentUntrusted(marked, 'web', 'label', choice.label.trim())
           : undefined,
       starts_at: choice.startsAt,
-      ends_at: choice.endsAt,
+      // On a bound run, a session whose end is its start has no known end. Unbound: as today.
+      ends_at: input.binding && choice.endsAt === choice.startsAt ? null : choice.endsAt,
     })),
   };
+}
+
+/** The approval holds a session with no stated price, so this run has no limit to compare. */
+export function priceUnstated(input: Pick<BrowserUsePlanInput, 'binding'>): boolean {
+  return input.binding ? hasUnstatedPrice(input.binding.approved.sessions) : false;
+}
+
+/** A task with the no-price addendum when the approval needs it. Otherwise today's task. */
+export async function withPriceUnstated(
+  input: Pick<BrowserUsePlanInput, 'binding'>,
+  deps: Pick<BrowserUseEngineDeps, 'loadTask'>,
+  task: string,
+): Promise<string> {
+  return priceUnstated(input) ? `${task}\n\n${await deps.loadTask(PRICE_UNSTATED_SKILL)}` : task;
+}
+
+/** A bound run's task carries the cart-read addendum. An unbound one is today's task. */
+async function boundSkill(
+  input: BrowserUsePlanInput,
+  deps: BrowserUseEngineDeps,
+  skill: string,
+): Promise<string> {
+  const task = await deps.loadTask(skill);
+  if (!input.binding) return task;
+  return withPriceUnstated(input, deps, `${task}\n\n${await deps.loadTask(CART_READ_SKILL)}`);
+}
+
+const NOTHING_READ: CartRead = {
+  provider_course_id: null,
+  session_label: null,
+  session_date: null,
+  session_time: null,
+  participant_first_name: null,
+  line_count: null,
+  quantity: null,
+};
+
+function cartForCompare(
+  read: CartRead | null,
+  totalCents: number | null,
+  taxCents: number | null,
+  feesCents: number | null,
+  currency: string | null,
+) {
+  return { ...(read ?? NOTHING_READ), totalCents, taxCents, feesCents, currency };
 }
 
 function planResult(
@@ -259,7 +366,7 @@ export function runBrowserUsePlanSignup(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  return tracked(input.resume, deps, (tracker) => drivePlan(input, deps, tracker));
+  return tracked(input, deps, (tracker) => drivePlan(input, deps, tracker));
 }
 
 /**
@@ -271,16 +378,17 @@ export function settleBrowserUsePlanPayment(
   input: PlanPaymentInput,
   deps: BrowserUseEngineDeps,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
-  return tracked(input.resume, deps, (tracker) =>
-    resumePayment(input, deps, tracker, input.resume),
-  );
+  return tracked(input, deps, (tracker) => resumePayment(input, deps, tracker, input.resume));
 }
 
 async function tracked(
-  resume: PlanResumeToken | null,
+  input: Pick<BrowserUsePlanInput, 'onConfirmed' | 'waitUntil'> & {
+    resume: PlanResumeToken | null;
+  },
   deps: BrowserUseEngineDeps,
   drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  const { resume } = input;
   const tracker: PlanTracker = {
     browserId: resume?.browserId ?? null,
     runId: resume?.runId ?? null,
@@ -306,6 +414,23 @@ async function tracked(
   }
   // The browser holds the family's place in line until a later sweep picks it up.
   if (result.outcome === 'checkpointed') return result;
+  if (input.onConfirmed && result.outcome === 'completed' && result.confirmationNumber) {
+    await input
+      .onConfirmed({
+        browserId: tracker.browserId,
+        confirmationNumber: result.confirmationNumber,
+        amountChargedCents: result.amountChargedCents,
+        choiceIndex: result.choiceIndex,
+        waitUntil: input.waitUntil,
+        getCdpUrl: async (id) => (await deps.api.getBrowser(id)).cdpUrl,
+      })
+      .catch((err: unknown) => {
+        console.warn(
+          { error: err instanceof Error ? err.name : 'unknown' },
+          'signup plans: receipt capture threw',
+        );
+      });
+  }
   return settleBrowser(deps, result, tracker);
 }
 
@@ -332,8 +457,8 @@ async function drivePlan(
         return planResult(failure('error', profile.detail), 'error', profile.detail, null);
 
       const run = await deps.api.createRun({
-        task: taskWithFacts(await deps.loadTask(PLAN_SIGNUP_SKILL), planFacts(input)),
-        outputSchema: BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+        task: taskWithFacts(await boundSkill(input, deps, PLAN_SIGNUP_SKILL), planFacts(input)),
+        outputSchema: input.binding ? BOUND_PLAN_OUTPUT_SCHEMA : BROWSER_USE_PLAN_OUTPUT_SCHEMA,
         ...ACTION_MODEL,
         browserSettings: {
           profileId: profile.profileId,
@@ -418,18 +543,48 @@ async function drivePlan(
       holdExpiresAt: new Date(deps.now().getTime() + holdMinutes * 60_000),
       cartTotalCents: total,
     };
-    if (total === null || total <= 0 || total > input.maxPriceCents) {
+    const bound = input.binding ? (input.binding.approved.sessions[choiceIndex] ?? null) : null;
+    if (input.binding) {
+      const differences = bound
+        ? compareCart(
+            bound,
+            cartForCompare(output.cart_read, total, null, null, output.cart_currency),
+            input.binding,
+            'cart',
+          )
+        : (['unread'] as CartDifference[]);
+      await input.onStep({
+        step: 'cart_check',
+        stage: 'cart',
+        differences,
+        ok: differences.length === 0,
+      });
+      if (differences.length > 0) {
+        return { ...checkout, detail: 'cart_mismatch', cartDifferences: differences };
+      }
+      // Read first: every hold hands the parent a browser to pay in, and they must hear this.
+      const hold = (await input.binding.priorChargeNow())
+        ? ('prior_charge_unknown' as const)
+        : (input.binding.approved.hold ??
+          (priceUnstated(input) ? ('price_unstated' as const) : null));
+      if (hold) return { ...checkout, detail: hold };
+    }
+    if (total === null || (!input.binding && (total <= 0 || total > input.maxPriceCents))) {
       return { ...checkout, detail: 'price_change' };
     }
-    if (!output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
-    if (output.security_code_required) return { ...checkout, detail: 'security_code' };
+    const free = bound !== null && chargesNothing(bound.amount, total);
+    if (!free && !output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
+    if (!free && output.security_code_required) return { ...checkout, detail: 'security_code' };
     const cap = await input.checkSpendingCap(total);
     await input.onStep({ step: 'spending_cap', amountCents: total, ok: cap.ok });
     if (!cap.ok) return { ...checkout, detail: 'spending_cap' };
     if (!(await input.stillAuthorized())) {
       return stop('cancelled', 'authorization_lapsed', choiceIndex);
     }
-    if (!input.paymentEnabled) return { ...checkout, detail: 'payment_off' };
+    // A free order is armed by its own family-scoped switch, and never by the payment one.
+    if (!(free ? input.binding?.freeCheckoutEnabled === true : input.paymentEnabled)) {
+      return { ...checkout, detail: 'payment_off' };
+    }
     if (!ids.sessionId) return checkout;
 
     await input.onCheckpoint({
@@ -440,7 +595,7 @@ async function drivePlan(
       reviewStarted: true,
     });
     tracker.reviewStarted = true;
-    const review = await reviewCheckout(input, deps, tracker, ids.sessionId);
+    const review = await reviewCheckout(input, deps, tracker, ids.sessionId, free);
     const reviewed: BrowserUsePlanResult = {
       ...checkout,
       liveViewUrl: review.liveViewUrl ?? live,
@@ -450,6 +605,7 @@ async function drivePlan(
       checkoutTotalCents: total,
       currency: output.cart_currency,
       maxPriceCents: input.maxPriceCents,
+      free,
     });
     const read = review.kind === 'read' ? review.output : null;
     await input.onStep({
@@ -475,6 +631,36 @@ async function drivePlan(
         cartTotalCents: final.detail === 'price_change' && read ? read.total_cents : total,
       };
     }
+    if (input.binding && read) {
+      const differences = bound
+        ? compareCart(
+            bound,
+            cartForCompare(
+              read.cart_read,
+              read.total_cents,
+              read.tax_cents,
+              read.fees_cents,
+              read.currency,
+            ),
+            input.binding,
+            'final',
+          )
+        : (['unread'] as CartDifference[]);
+      await input.onStep({
+        step: 'cart_check',
+        stage: 'final',
+        differences,
+        ok: differences.length === 0,
+      });
+      if (differences.length > 0) {
+        return {
+          ...reviewed,
+          detail: 'cart_mismatch',
+          cartDifferences: differences,
+          cartTotalCents: read.total_cents,
+        };
+      }
+    }
     const finalCap = await input.checkSpendingCap(final.totalCents);
     await input.onStep({ step: 'spending_cap', amountCents: final.totalCents, ok: finalCap.ok });
     if (!finalCap.ok) {
@@ -486,9 +672,13 @@ async function drivePlan(
         costUsd: reviewed.costUsd,
       };
     }
+    if (input.binding && (await input.binding.priorChargeNow())) {
+      return { ...reviewed, detail: 'prior_charge_unknown', cartTotalCents: final.totalCents };
+    }
     const ready: BrowserUsePlanResult = { ...reviewed, cartTotalCents: final.totalCents };
     return await payWithSavedCard(input, deps, tracker, ready, {
       currency: output.cart_currency,
+      free,
       paying: {
         phase: 'paying',
         runId: null,
@@ -543,15 +733,19 @@ async function reviewCheckout(
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
   sessionId: string,
+  free: boolean,
 ): Promise<CheckoutReview> {
   let runId: string | null = null;
   try {
     const run = await deps.api.createRun({
-      task: taskWithFacts(await deps.loadTask(CHECKOUT_REVIEW_SKILL), {
-        registration_url: input.registrationUrl,
-        waiver_accepted_by_parent: input.waiverAccepted,
-      }),
-      outputSchema: BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
+      task: taskWithFacts(
+        await boundSkill(input, deps, free ? FREE_REVIEW_SKILL : CHECKOUT_REVIEW_SKILL),
+        {
+          registration_url: input.registrationUrl,
+          waiver_accepted_by_parent: input.waiverAccepted,
+        },
+      ),
+      outputSchema: input.binding ? BOUND_REVIEW_OUTPUT_SCHEMA : BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
       ...ACTION_MODEL,
       sessionId,
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
@@ -589,7 +783,13 @@ async function reviewCheckout(
  */
 function finalTotal(
   review: CheckoutReview,
-  at: { checkoutTotalCents: number; currency: string | null; maxPriceCents: number },
+  at: {
+    checkoutTotalCents: number;
+    currency: string | null;
+    maxPriceCents: number;
+    /** A $0 order: no saved card and no currency, and the total must read exactly 0. */
+    free: boolean;
+  },
 ): FinalTotal {
   if (review.kind === 'unread') return { ok: false, detail: review.detail };
   const read = review.output;
@@ -597,9 +797,12 @@ function finalTotal(
   if (read.outcome !== 'ready_to_place') {
     return { ok: false, detail: read.detail === 'none' ? 'total_unread' : read.detail };
   }
-  if (!read.saved_card_selected) return { ok: false, detail: 'no_saved_card' };
+  if (!at.free && !read.saved_card_selected) return { ok: false, detail: 'no_saved_card' };
   const total = read.total_cents;
   if (total === null || total < at.checkoutTotalCents) return { ok: false, detail: 'total_unread' };
+  if (at.free) {
+    return total === 0 ? { ok: true, totalCents: 0 } : { ok: false, detail: 'price_change' };
+  }
   // Two pages that both name no currency are not a match.
   if (read.currency === null || read.currency !== at.currency) {
     return { ok: false, detail: 'currency_unknown' };
@@ -619,7 +822,7 @@ async function payWithSavedCard(
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
   checkout: BrowserUsePlanResult,
-  pay: { currency: string | null; paying: PlanPayingToken },
+  pay: { currency: string | null; free: boolean; paying: PlanPayingToken },
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   if (!(await input.onCheckpoint(pay.paying))) {
     return {
@@ -634,12 +837,17 @@ async function payWithSavedCard(
   let run: { id: string };
   try {
     run = await deps.api.createRun({
-      task: taskWithFacts(await deps.loadTask(SAVED_CARD_PAYMENT_SKILL), {
-        amount_cents: pay.paying.cartTotalCents,
-        currency: pay.currency,
-        registration_url: input.registrationUrl,
-        waiver_accepted_by_parent: input.waiverAccepted,
-      }),
+      task: pay.free
+        ? taskWithFacts(await deps.loadTask(FREE_CHECKOUT_SKILL), {
+            registration_url: input.registrationUrl,
+            waiver_accepted_by_parent: input.waiverAccepted,
+          })
+        : taskWithFacts(await deps.loadTask(SAVED_CARD_PAYMENT_SKILL), {
+            amount_cents: pay.paying.cartTotalCents,
+            currency: pay.currency,
+            registration_url: input.registrationUrl,
+            waiver_accepted_by_parent: input.waiverAccepted,
+          }),
       outputSchema: BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
       ...ACTION_MODEL,
       sessionId: pay.paying.sessionId,
@@ -737,6 +945,32 @@ async function awaitPayment(
     if (waited.status !== 'completed') return handsOn('run_failed', { liveViewUrl, costUsd });
     const output = parsePaymentOutput(summary.output);
     if (!output) return handsOn('unreadable_output', { liveViewUrl, costUsd });
+    if (output.outcome === 'paid' && paying.cartTotalCents === 0) {
+      // A free order: nothing was due, so a null amount is $0. Only the provider's own
+      // confirmation number makes it `completed`.
+      const charged = output.amount_charged_cents;
+      if (charged !== null && charged > 0) {
+        return handsOn('charge_mismatch', {
+          liveViewUrl,
+          costUsd,
+          amountChargedCents: charged,
+          confirmationNumber: output.confirmation_number,
+        });
+      }
+      if (!output.confirmation_number) return handsOn('unconfirmed', { liveViewUrl, costUsd });
+      return reportPayment(input, {
+        ...checkout,
+        outcome: 'completed',
+        detail: 'none',
+        liveViewUrl: null,
+        checkoutUrl: null,
+        holdExpiresAt: null,
+        confirmationNumber: output.confirmation_number,
+        amountChargedCents: 0,
+        runId,
+        costUsd,
+      });
+    }
     if (output.outcome === 'paid') {
       const charged = output.amount_charged_cents;
       if (charged !== paying.cartTotalCents) {

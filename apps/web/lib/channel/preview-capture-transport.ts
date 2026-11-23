@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
 import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
 import { isSyntheticProbeNumber } from '~/lib/channels/phone';
@@ -74,6 +75,20 @@ export function createPreviewCaptureTransport(
       captured.push(send);
       await sink(send);
       console.info({ to: input.to, captured: true }, 'outbound: preview capture, not sent');
+      return { providerMessageId: send.providerMessageId };
+    },
+    // VIL-715: a proof run records that an image went, its size and its hash, never the bytes.
+    async sendImage({ to, png }) {
+      if (!isSyntheticProbeNumber(to)) throw new PreviewCaptureRefused('recipient_not_synthetic');
+      counter += 1;
+      const send: CapturedSend = {
+        to,
+        body: `[image ${png.byteLength} bytes, sha256 ${createHash('sha256').update(png).digest('hex')}]`,
+        capturedAt: new Date().toISOString(),
+        providerMessageId: `preview-capture-${Date.now()}-${counter}`,
+      };
+      captured.push(send);
+      await sink(send);
       return { providerMessageId: send.providerMessageId };
     },
   };

@@ -238,6 +238,26 @@ export const OPS_PAGE_VOCABULARY = {
   /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
   claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
+  /** VIL-715 · a registration text the model could not write: nothing was sent. */
+  registration_text_unwritten: { moment: ['offer', 'reply', 'run_notice'] },
+  /** VIL-715 · a plan with no readable approval: it was handed back, nothing was charged. */
+  registration_terms_unreadable: {},
+  /** VIL-715 · a registration went through and its masked receipt did not reach the parent. */
+  registration_receipt_unsent: {
+    reason: [
+      'card_shaped',
+      'not_a_confirmation',
+      'no_browser',
+      'no_cdp',
+      'attach_failed',
+      'no_page',
+      'verify_failed',
+      'capture_failed',
+      'too_large',
+      'transport_unsupported',
+      'send_failed',
+    ],
+  },
   registration_review_placed_order: {},
   registration_review_unread: {},
   /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
@@ -351,6 +371,10 @@ const OPS_PAGE_PER_REF = [
   'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  // VIL-715: one family's registration each, so a second family's in the same hour pages too.
+  'registration_text_unwritten',
+  'registration_terms_unreadable',
+  'registration_receipt_unsent',
   'registration_stop_unverified',
   'billing_notice_unsent',
 ] as const;
