@@ -11,22 +11,39 @@ const SOCIAL_CARD_LOGO_URL = new URL('/icon.png', SITE_URL).toString();
 
 interface SocialCardBrandProps {
   label?: string;
+  /** Data URI when the card is rendered without fetching the live site. */
+  logoSrc?: string;
+  /** Wordmark ink. The light homepage paints the name in navy. */
+  ink?: string;
 }
 
-export function SocialCardBrand({ label = 'Hale' }: SocialCardBrandProps) {
+export function SocialCardBrand({
+  label = 'Hale',
+  logoSrc = SOCIAL_CARD_LOGO_URL,
+  ink = SOCIAL_CARD_PALETTE.navy,
+}: SocialCardBrandProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
       {/* next/image is not supported inside ImageResponse/Satori. This is the
-          real Hale mark from the canonical site icon, rendered by the
-          social-card pipeline from the absolute URL ImageResponse requires. */}
+          real Hale mark from the canonical site icon, at the header's 30% radius. */}
       <img
-        src={SOCIAL_CARD_LOGO_URL}
+        src={logoSrc}
         alt=""
         width={56}
         height={56}
         style={{ width: 56, height: 56, borderRadius: 17 }}
       />
-      <div style={{ fontSize: 38, color: SOCIAL_CARD_PALETTE.cream, fontWeight: 600 }}>{label}</div>
+      <div
+        style={{
+          fontSize: 36,
+          color: ink,
+          fontWeight: 600,
+          fontFamily: 'Figtree',
+          letterSpacing: -0.4,
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { SiteHeader } from '~/components/site-header.js';
 import { localeHref } from '~/i18n/navigation.js';
 import { routing } from '~/i18n/routing.js';
 import { SITE_URL } from '~/lib/app-url.js';
+import { foundingToPricingRedirects } from '~/lib/site/founding-redirect.js';
 import {
   RETIRED_REGISTRATION_GUIDES,
   RETIRED_REGISTRATION_LOCALE_PREFIXES,
@@ -73,7 +74,7 @@ describe('dated city registration guides redirect to the activities hub', () => 
 
   it('308s every guide, in every locale, with and without a trailing slash', async () => {
     const rules = await redirects();
-    expect(rules).toEqual(retiredRegistrationRedirects());
+    expect(rules).toEqual([...foundingToPricingRedirects(), ...retiredRegistrationRedirects()]);
     for (const slug of RETIRED_REGISTRATION_GUIDES) {
       for (const { source, locale } of sourcesFor(slug)) {
         const rule = rules.find((entry) => entry.source === source);
