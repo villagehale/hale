@@ -74,6 +74,13 @@ export type {
 } from './schema/authorized-signup-offers.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {
+  AckPromise,
+  AckPromiseOutcome,
+  AckPromiseTask,
+  NewAckPromise,
+} from './schema/ack-promises.js';
+export { ACK_PROMISE_OUTCOMES, ACK_PROMISE_TASKS } from './schema/ack-promises.js';
+export type {
   FamilyWorkstream,
   NewFamilyWorkstream,
   WorkstreamStatus,

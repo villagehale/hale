@@ -11,6 +11,7 @@ import {
   type ProactiveSendKind,
   assertProactiveSendAllowed,
   holdStatus,
+  proactiveFloorClosedUntil,
   proactiveFloorOpensAt,
   proactiveQuietNow,
   quietAcrossZones,
@@ -348,6 +349,55 @@ describe('proactiveFloorOpensAt — when the floor next opens', () => {
     expect(
       proactiveFloorOpensAt(new Date('2026-11-01T04:30:00Z'), 'America/Chicago').toISOString(),
     ).toBe('2026-11-01T14:00:00.000Z');
+  });
+});
+
+describe('proactiveFloorClosedUntil — how long a lane that waits out the night waits', () => {
+  it('is the next 08:00 on the stored clock at night, and nothing by day', async () => {
+    const { ports: gate } = ports({ timeZone: 'America/Toronto' });
+    // 23:31 EST, so 08:00 EST the next morning.
+    await expect(
+      proactiveFloorClosedUntil(gate, PARENT, new Date('2026-01-16T04:31:00.000Z')),
+    ).resolves.toEqual(new Date('2026-01-16T13:00:00.000Z'));
+    // Noon EST.
+    await expect(
+      proactiveFloorClosedUntil(gate, PARENT, new Date('2026-01-15T17:00:00.000Z')),
+    ).resolves.toBeNull();
+  });
+
+  it('reads a resolved clock over the stored one, as the gate does', async () => {
+    const { ports: gate } = ports({ timeZone: 'UTC' });
+    const vancouver: ParentClock = {
+      kind: 'zone',
+      timeZone: 'America/Vancouver',
+      source: 'place',
+    };
+    const resolved = { ...gate, parentClock: async () => vancouver };
+    // 23:31 in Toronto is 20:31 in Vancouver: still evening there.
+    await expect(
+      proactiveFloorClosedUntil(resolved, PARENT, new Date('2026-01-16T04:31:00.000Z')),
+    ).resolves.toBeNull();
+    // 22:00 PST, so 08:00 PST the next morning.
+    await expect(
+      proactiveFloorClosedUntil(resolved, PARENT, new Date('2026-01-16T06:00:00.000Z')),
+    ).resolves.toEqual(new Date('2026-01-16T16:00:00.000Z'));
+  });
+
+  it('with no single zone, stays closed while it is night in any of them', async () => {
+    const { ports: gate } = ports({ timeZone: 'UTC' });
+    const unresolved: ParentClock = {
+      kind: 'unresolved',
+      zones: ['America/Toronto', 'America/Vancouver'],
+    };
+    const clocked = { ...gate, parentClock: async () => unresolved };
+    // 07:00 in Toronto and 04:00 in Vancouver: closed, and read again later.
+    const now = new Date('2026-01-15T12:00:00.000Z');
+    const until = await proactiveFloorClosedUntil(clocked, PARENT, now);
+    expect(until?.getTime()).toBeGreaterThan(now.getTime());
+    // 13:00 in Toronto and 10:00 in Vancouver: open.
+    await expect(
+      proactiveFloorClosedUntil(clocked, PARENT, new Date('2026-01-15T18:00:00.000Z')),
+    ).resolves.toBeNull();
   });
 });
 
@@ -719,6 +769,46 @@ describe('the next-day check-back class', () => {
 
   it('is ledgered as a follow-up', () => {
     expect(PROACTIVE_CATEGORY.next_day_checkback).toBe('followup');
+  });
+});
+
+describe('the late note on a missed ack time', () => {
+  /** 02:00 Toronto, inside the 21:00-08:00 proactive quiet window. */
+  const TWO_AM = new Date('2026-07-15T06:00:00.000Z');
+
+  it('never claims urgency: it waits for 08:00 even when the parent texted at night', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'ack_late_note',
+          now: TWO_AM,
+          urgent: true,
+        },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('needs watch consent like every other unprompted text', async () => {
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'ack_late_note', now: MIDDAY },
+        ports({ consented: false }).ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'no_watch_consent' });
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'ack_late_note', now: MIDDAY },
+        ports().ports,
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'short' });
+  });
+
+  it('is ledgered as a follow-up and sends on its own clock', () => {
+    expect(PROACTIVE_CATEGORY.ack_late_note).toBe('followup');
+    expect(PROACTIVE_ROUTING.ack_late_note).toBe('immediate');
   });
 });
 

@@ -564,6 +564,13 @@ export async function sendLinqChatMessage(input: {
   mention?: string;
   /** The caller's identity for this one send (see `linqSendKey`). */
   sendKey?: string;
+  /**
+   * Resend without the thread target only when Linq certainly refused the first try
+   * ({@link linqRefusedForCertain}). The resend carries its own key, so after a 409, 408 or
+   * 425 that may follow a text Linq took it would be a second bubble. The caller retries
+   * the same key instead.
+   */
+  plainResendOnlyIfRefused?: boolean;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   const send = (
@@ -620,7 +627,8 @@ export async function sendLinqChatMessage(input: {
       !input.replyTo ||
       !(err instanceof LinqSendError) ||
       !err.permanent ||
-      err.httpStatus < 400
+      err.httpStatus < 400 ||
+      (input.plainResendOnlyIfRefused && !linqRefusedForCertain(err))
     ) {
       throw err;
     }
@@ -1586,6 +1594,7 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
             decorations,
             replyTo: { messageId: replyIn.messageId },
             sendKey,
+            ...(replyIn.plainResendOnlyIfRefused ? { plainResendOnlyIfRefused: true } : {}),
             fetch: deps.fetch,
           });
           return {

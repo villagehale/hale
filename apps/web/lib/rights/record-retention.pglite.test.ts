@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
+  ACK_PROMISE_RETENTION_DAYS,
   PROACTIVE_CANDIDATE_RETENTION_DAYS,
   REMOVED_EPISODE_RETENTION_DAYS,
   sweepRecordRetention,
@@ -171,5 +172,88 @@ describe('sweepRecordRetention: proactive candidates', () => {
       'young:shadowed',
     ]);
     expect((await sweepRecordRetention(db.database, NOW)).proactiveCandidatesDeleted).toBe(0);
+  });
+});
+
+describe('sweepRecordRetention: ack promises', () => {
+  async function seedPromise(
+    familyId: string,
+    parentUserId: string,
+    times: { dueAt: Date; claimedAt: Date | null },
+  ) {
+    const [message] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'reply',
+        status: 'sent',
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!message) throw new Error('seed: channel_messages insert returned no row');
+    const [row] = await db.database
+      .insert(schema.ackPromises)
+      .values({
+        familyId,
+        parentUserId,
+        inboundChannelMessageId: message.id,
+        ackChannelMessageId: message.id,
+        task: 'find',
+        channel: 'sms',
+        askedAt: times.dueAt,
+        promisedMinutes: 5,
+        dueAt: times.dueAt,
+        claimedAt: times.claimedAt,
+        ...(times.claimedAt ? { settledAt: times.claimedAt, outcome: 'sent' } : {}),
+      })
+      .returning({ id: schema.ackPromises.id });
+    if (!row) throw new Error('seed: ack_promises insert returned no row');
+    return row.id;
+  }
+
+  async function promiseIds() {
+    return (await db.database.select({ id: schema.ackPromises.id }).from(schema.ackPromises))
+      .map((row) => row.id)
+      .sort();
+  }
+
+  it('deletes settled rows past the window and rows a dark flag never claimed', async () => {
+    const family = await seedFamily();
+    const past = ACK_PROMISE_RETENTION_DAYS + 1;
+    await seedPromise(family.familyId, family.parentUserId, {
+      dueAt: ago(past),
+      claimedAt: ago(past),
+    });
+    await seedPromise(family.familyId, family.parentUserId, { dueAt: ago(past), claimedAt: null });
+    const recentSettled = await seedPromise(family.familyId, family.parentUserId, {
+      dueAt: ago(past),
+      claimedAt: ago(1),
+    });
+    const recentOpen = await seedPromise(family.familyId, family.parentUserId, {
+      dueAt: ago(1),
+      claimedAt: null,
+    });
+
+    const summary = await sweepRecordRetention(db.database, NOW);
+
+    expect(summary.ackPromisesDeleted).toBe(2);
+    expect(await promiseIds()).toEqual([recentSettled, recentOpen].sort());
+    expect((await sweepRecordRetention(db.database, NOW)).ackPromisesDeleted).toBe(0);
+  });
+
+  it('names a missing table instead of failing the step, and still runs the others', async () => {
+    const family = await seedFamily();
+    await candidate(family, { status: 'dropped', createdAt: ago(400), key: 'old:dropped' });
+    await db.exec('alter table ack_promises rename to ack_promises_parked');
+    try {
+      const summary = await sweepRecordRetention(db.database, NOW);
+
+      expect(summary.ackPromisesDeleted).toBe('not_migrated');
+      expect(summary.proactiveCandidatesDeleted).toBe(1);
+    } finally {
+      await db.exec('alter table ack_promises_parked rename to ack_promises');
+    }
   });
 });
