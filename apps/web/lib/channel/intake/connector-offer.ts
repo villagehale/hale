@@ -371,16 +371,8 @@ export async function sendGoogleConnectorCard(
   let linked = false;
   let unconfirmed = false;
   try {
-    // The link is its own send: a stop that landed while Linq took the words stops it.
-    if ((await googleSendGate(database, args)) !== 'open') {
-      await freeGoogleSendKey(database, claim.id);
-      await ports.threadMessage(database, {
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        body: prose,
-      });
-      return 'gated';
-    }
+    // The link is its own send, and the preview and its text are separate tries. A stop,
+    // erasure, or hold that lands after the words are accepted stops whichever try is next.
     const link = await sendLinkOnce({
       transport: ports.transport,
       to: args.phoneE164,
@@ -392,7 +384,17 @@ export async function sendGoogleConnectorCard(
       parentUserId: args.parentUserId,
       now: args.now,
       sendKey: `${claim.id}:link`,
+      maySend: async () => (await googleSendGate(database, args)) === 'open',
     });
+    if (link.status === 'not_sent' && link.code === 'gated') {
+      await freeGoogleSendKey(database, claim.id);
+      await ports.threadMessage(database, {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        body: prose,
+      });
+      return 'gated';
+    }
     linked = link.status !== 'not_sent';
     if (link.status === 'not_sent') {
       unconfirmed = link.unconfirmed === true;

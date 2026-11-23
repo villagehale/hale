@@ -82,7 +82,15 @@ export async function sendLinkOnce(input: {
    * Linq may remember the refused one.
    */
   sendKey?: string;
+  /**
+   * Read again before the preview and before the text that follows a preview that did not
+   * land. False sends nothing and returns `code: 'gated'`. Callers that omit it send as before.
+   */
+  maySend?: () => Promise<boolean>;
 }): Promise<LinkOnceOutcome> {
+  if (input.maySend && !(await input.maySend())) {
+    return { status: 'not_sent', why: 'refused', code: 'gated' };
+  }
   const preview = await sendLinqLinkPreview({
     channel: input.channel,
     chatId: input.chatId,
@@ -96,6 +104,10 @@ export async function sendLinkOnce(input: {
   });
   if (preview.status === 'sent') {
     return { status: 'preview', providerMessageId: preview.providerMessageId };
+  }
+  // The preview did not land. A stop that arrived while it was in flight stops the text too.
+  if (input.maySend && !(await input.maySend())) {
+    return { status: 'not_sent', why: 'refused', code: 'gated' };
   }
   const why = preview.reason;
   const previewRefused = preview.reason === 'refused' && preview.certain === true;

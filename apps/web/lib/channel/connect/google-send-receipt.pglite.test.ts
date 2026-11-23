@@ -52,7 +52,11 @@ const voice: FriendVoiceComposer = {
   },
 };
 
-type Send = (input: OutboundMessage) => Promise<{ providerMessageId: string }>;
+type Send = (input: OutboundMessage) => Promise<{
+  providerMessageId: string;
+  transport?: 'sms' | 'imessage';
+  chatId?: string | null;
+}>;
 
 function transportOf(send: Send): ChannelTransport & { calls: OutboundMessage[] } {
   const calls: OutboundMessage[] = [];
@@ -471,6 +475,36 @@ describe('the texts the one Google link adds', () => {
       const [row] = await rowsOf(CARD_TEMPLATE);
       expect(row).toMatchObject({
         status: 'queued',
+        providerMessageId: 'linq-prose',
+        dedupeKey: null,
+      });
+    });
+
+    it('does not send the link text when the parent stops while the preview is refused', async () => {
+      const transport = transportOf(async () => ({
+        providerMessageId: 'linq-prose',
+        transport: 'imessage',
+        chatId: 'chat-1',
+      }));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          await db.database
+            .update(schema.parentChannels)
+            .set({ revokedAt: NOW })
+            .where(eq(schema.parentChannels.userId, parentUserId));
+          return Response.json({ error: { code: 2001 } }, { status: 400 });
+        }),
+      );
+
+      const label = await card(transport);
+
+      expect(label).toBe('gated');
+      expect(transport.calls.map((call) => call.body)).toEqual([PROSE]);
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      // iMessage records an accepted text as sent. The offer key is free: the link did not go.
+      expect(row).toMatchObject({
+        status: 'sent',
         providerMessageId: 'linq-prose',
         dedupeKey: null,
       });
