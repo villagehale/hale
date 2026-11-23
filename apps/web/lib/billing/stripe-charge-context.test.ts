@@ -32,4 +32,82 @@ describe('stripeChargeLookupFromEnv', () => {
       familyId: 'fam_1',
     });
   });
+
+  it('resolves a charge whose invoice is null through the payment intent', async () => {
+    const urls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      urls.push(url);
+      expect(new Headers(init?.headers).get('stripe-version')).toBe('2026-11-18.endive');
+      if (url.includes('/v1/charges/ch_live')) {
+        return Response.json({
+          id: 'ch_live',
+          customer: 'cus_1',
+          invoice: null,
+          payment_intent: 'pi_1',
+          metadata: { familyId: 'fam_1' },
+        });
+      }
+      if (url.includes('/v1/invoice_payments?')) {
+        return Response.json({ data: [{ invoice: 'in_live' }], has_more: false });
+      }
+      if (url.endsWith('/v1/invoices/in_live')) {
+        return Response.json({
+          id: 'in_live',
+          customer: 'cus_1',
+          parent: {
+            type: 'subscription_details',
+            subscription_details: {
+              subscription: 'sub_live',
+              metadata: { familyId: 'fam_1' },
+            },
+          },
+        });
+      }
+      if (url.endsWith('/v1/subscriptions/sub_live')) {
+        return Response.json({ id: 'sub_live', status: 'active', metadata: { familyId: 'fam_1' } });
+      }
+      return new Response('no', { status: 404 });
+    };
+    const lookup = stripeChargeLookupFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchImpl);
+    await expect(lookup?.lookupCharge('ch_live')).resolves.toEqual({
+      customerId: 'cus_1',
+      subscriptionId: 'sub_live',
+      subscriptionStatus: 'active',
+      familyId: 'fam_1',
+    });
+    expect(urls.some((url) => url.includes('payment%5Bpayment_intent%5D=pi_1'))).toBe(true);
+  });
+
+  it('leaves the subscription unknown when the payment intent matches two invoices', async () => {
+    const urls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes('/v1/charges/ch_two')) {
+        return Response.json({
+          id: 'ch_two',
+          customer: 'cus_1',
+          invoice: null,
+          payment_intent: 'pi_two',
+          metadata: {},
+        });
+      }
+      if (url.includes('/v1/invoice_payments?')) {
+        return Response.json({
+          data: [{ invoice: 'in_a' }, { invoice: 'in_b' }],
+          has_more: false,
+        });
+      }
+      return new Response('no', { status: 404 });
+    };
+    const lookup = stripeChargeLookupFromEnv({ STRIPE_SECRET_KEY: 'sk_test' }, fetchImpl);
+    await expect(lookup?.lookupCharge('ch_two')).resolves.toEqual({
+      customerId: 'cus_1',
+      subscriptionId: null,
+      subscriptionStatus: null,
+      familyId: null,
+    });
+    expect(urls.some((url) => url.includes('/v1/subscriptions/'))).toBe(false);
+  });
 });

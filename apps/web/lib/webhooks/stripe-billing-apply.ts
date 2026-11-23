@@ -3,6 +3,7 @@ import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import {
   stripeBillingRevokeEnabled,
+  stripeClearDeletedSubscriptionEnabled,
   stripeRefundEndsSubscriptionEnabled,
 } from '~/lib/billing/flags';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
@@ -10,6 +11,7 @@ import {
   type RefundedCharge,
   type StripeChargeLookup,
   stripeChargeLookupFromEnv,
+  stripeDisputeChargeLookupFromEnv,
 } from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
@@ -168,6 +170,10 @@ export async function applyStripeBillingEvent(
   }
 
   const refs = stripeRefsFromStripeEvent(event);
+  const clearDeletedSubscription =
+    tier === 'free' &&
+    stripeEventType(event) === 'customer.subscription.deleted' &&
+    stripeClearDeletedSubscriptionEnabled(env);
   if (
     refs.subscriptionId &&
     (await isSubscriptionBlocked(database, familyId, refs.subscriptionId, deps))
@@ -195,19 +201,66 @@ export async function applyStripeBillingEvent(
     }
 
     const existing = await tx
-      .select({ planTier: schema.families.planTier })
+      .select({
+        planTier: schema.families.planTier,
+        stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
+    const storedSubscriptionId = existing[0]?.stripeSubscriptionId ?? null;
+    const clearingDeleted =
+      clearDeletedSubscription &&
+      refs.subscriptionId !== null &&
+      storedSubscriptionId === refs.subscriptionId;
+    // The match is part of the write. A replacement checkout that commits
+    // between this read and the update no longer equals the deleted id, so
+    // the clear does not erase it. A deletion that is not that id also leaves
+    // the stored customer alone: copying the canceled subscription's customer
+    // onto a different stored subscription splits the two references.
+    if (clearingDeleted && refs.subscriptionId) {
+      const cleared = await tx
+        .update(schema.families)
+        .set({ planTier: tier, stripeSubscriptionId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.families.id, familyId),
+            eq(schema.families.stripeSubscriptionId, refs.subscriptionId),
+          ),
+        )
+        .returning({ id: schema.families.id });
+      if (cleared.length > 0) {
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'family_plan_updated',
+          targetTable: 'families',
+          targetId: familyId,
+          before: {
+            planTier: existing[0]?.planTier ?? null,
+            stripeSubscriptionId: storedSubscriptionId,
+          },
+          after: {
+            planTier: tier,
+            source: 'stripe',
+            stripeEventId: eventId,
+            stripeSubscriptionId: null,
+          },
+        });
+        return { status: 'applied', tier };
+      }
+    }
     const patch: {
       planTier: PlanTier;
       updatedAt: Date;
       stripeCustomerId?: string;
-      stripeSubscriptionId?: string;
+      stripeSubscriptionId?: string | null;
     } = { planTier: tier, updatedAt: new Date() };
-    if (refs.customerId) patch.stripeCustomerId = refs.customerId;
-    if (refs.subscriptionId) patch.stripeSubscriptionId = refs.subscriptionId;
+    if (refs.customerId && !clearDeletedSubscription) patch.stripeCustomerId = refs.customerId;
+    if (!clearDeletedSubscription && refs.subscriptionId) {
+      patch.stripeSubscriptionId = refs.subscriptionId;
+    }
 
     const updated = await tx
       .update(schema.families)
@@ -236,6 +289,12 @@ export async function applyStripeBillingEvent(
 
     return { status: 'applied', tier };
   });
+}
+
+function stripeEventType(event: unknown): string | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const type = (event as { type?: unknown }).type;
+  return typeof type === 'string' && type.length > 0 ? type : null;
 }
 
 function isFullRefund(decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>): boolean {
@@ -415,7 +474,7 @@ async function applyChargeRevoke(
   database: Database,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
-  const linked = await linkCharge(event, deps);
+  const linked = await linkCharge(event, deps, decision.kind);
   const familyId = await familyIdForLinkedCharge(linked, database);
   const claimUnresolved = isFullRefund(decision);
   if (!familyId) {
@@ -463,6 +522,24 @@ async function applyChargeRevoke(
         const reason = partial ? 'partial_refund' : 'active_subscription';
         const claimed = await claimEvent(tx, eventId);
         if (!claimed) return { status: 'duplicate' };
+        if (decision.kind === 'dispute') {
+          // A dispute is not a refund. History reads billing_refunded as
+          // "Hale refunded a payment". The plan decision is unchanged.
+          await tx.insert(schema.auditLog).values({
+            familyId,
+            actor: 'system',
+            actionTaken: 'billing_revoke_unresolved',
+            targetTable: 'families',
+            targetId: familyId,
+            after: {
+              source: 'stripe',
+              stripeEventId: eventId,
+              reason: 'dispute_needs_review',
+              tierChanged: false,
+            },
+          });
+          return { status: 'kept', reason };
+        }
         await tx.insert(schema.auditLog).values({
           familyId,
           actor: 'system',
@@ -521,7 +598,11 @@ async function applyChargeRevoke(
     });
 }
 
-async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise<LinkedCharge> {
+async function linkCharge(
+  event: unknown,
+  deps: ApplyStripeBillingDeps,
+  kind: 'refund' | 'dispute',
+): Promise<LinkedCharge> {
   const link = chargeLinkFromStripeEvent(event);
   const base: LinkedCharge = {
     familyId: familyIdFromStripeEvent(event),
@@ -529,19 +610,29 @@ async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise
     subscriptionId: link.subscriptionId,
     subscriptionStatus: link.subscriptionStatus,
   };
-  const needsLookup = !base.subscriptionId || (!base.familyId && !base.customerId);
+  // Refunds may be tied through the payment intent. Disputes keep the invoice-only
+  // lookup, so a live chargeback is not newly resolved into a refund record.
+  const needsLookup =
+    kind === 'refund'
+      ? !base.subscriptionId || !base.subscriptionStatus || (!base.familyId && !base.customerId)
+      : !base.subscriptionId || (!base.familyId && !base.customerId);
   if (!needsLookup || !link.chargeId) return base;
   const lookup =
-    deps.chargeLookup === undefined
-      ? stripeChargeLookupFromEnv(deps.env ?? process.env)
-      : deps.chargeLookup;
+    deps.chargeLookup !== undefined
+      ? deps.chargeLookup
+      : kind === 'refund'
+        ? stripeChargeLookupFromEnv(deps.env ?? process.env)
+        : stripeDisputeChargeLookupFromEnv(deps.env ?? process.env);
   if (!lookup) return base;
   const found = await lookup.lookupCharge(link.chargeId);
+  const sameSubscription =
+    base.subscriptionId === null || base.subscriptionId === found.subscriptionId;
   return {
     familyId: base.familyId ?? found.familyId,
     customerId: base.customerId ?? found.customerId,
     subscriptionId: base.subscriptionId ?? found.subscriptionId,
-    subscriptionStatus: base.subscriptionStatus ?? found.subscriptionStatus,
+    subscriptionStatus:
+      base.subscriptionStatus ?? (sameSubscription ? found.subscriptionStatus : null),
   };
 }
 

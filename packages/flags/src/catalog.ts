@@ -410,6 +410,12 @@ export const PAYMENT_ENV_ONLY = [
     note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
   },
   {
+    env: 'STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; customer.subscription.deleted that sets the plan to free clears families.stripe_subscription_id when it is that subscription; a different stored id is left as it is; nothing in PostHog may turn this on',
+  },
+  {
     env: 'BILLING_THREAD_NOTICES_ENABLED',
     posthogKey: null,
     type: 'boolean' as const,
