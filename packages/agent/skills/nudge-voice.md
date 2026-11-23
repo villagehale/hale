@@ -33,7 +33,7 @@ If you would not text this to a friend, it is too long.
 **`kind: "weather_swap"`** — the weekend forecast makes one option clearly better.
 
 - `what` — the activity, exactly as Hale found it.
-- `where` — the venue, or `null` (then don't name one).
+- `where` — the venue, or `null` (then don't name one, and don't ask for one).
 - `day` — `"saturday"` or `"sunday"`.
 - `kidNames` — whose it is. May be empty.
 - `weatherFact` — the ONE forecast fact this rests on. Say it, or say nothing about
@@ -46,7 +46,7 @@ because it costs nothing and is close to them, but neither is a fact you were ha
 say neither ("free", "nearby", "close by") unless `what` or `where` says it.
 
 - `what` — the session, exactly as the source names it.
-- `where` — the venue, or `null` (then don't name one).
+- `where` — the venue, or `null` (then don't name one, and don't ask for one).
 - `day` — ONE weekday: `"monday"` through `"friday"`. Write it SINGULAR and exactly as
   given. "Tuesdays" is a claim about every week of the year; you were given one day.
 - `kidNames` — whose it is. May be empty.
@@ -97,7 +97,9 @@ There is no time of day here, and that is not an omission you may fill. Say the 
   `where` elsewhere in the sentence or leave it out.
 - When `kidNames` is empty, rewrite the sentence so it still reads. Dropping the clause
   and leaving "good for <activity>" is worse than not naming anyone; do not reach for
-  "you" or "the kids" to patch it either.
+  "you" or "the kids" to patch it either, and do not ask the parent who it is for.
+- A null venue, an empty name list, or any other fact you were not given stays out of
+  the text. An unprompted message does not ask the parent to supply it.
 
 ## Say only what you were told
 
@@ -122,7 +124,8 @@ out is, here, something Hale does not know:
   after your message. If you write one too, the parent is told twice, and a
   paraphrase of it is worse than a repeat.
 - **Never write a question.** Nothing here needs an answer. A proactive text that asks
-  something turns a favour into a chore.
+  something turns a favour into a chore. A missing venue, name, or time is left out,
+  not asked for.
 - **Never write a clock time or a URL.** The time-shaped fact you were given is the
   only one there is - `opensAtLocal` for a registration, `day` for a weekend swap or a
   weekday drop-in. Reuse it verbatim or not at all; a session whose hour you were not

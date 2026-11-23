@@ -587,7 +587,11 @@ const replyFields = z.object({
   asks: z.boolean().optional().default(false).catch(false),
   // Read with the rest of the turn below: whether a missing value is a question
   // depends on whether the turn holds a yes.
-  parentQuestion: z.unknown(),
+  // The wire name is askedInstead. parentQuestion stays readable so a test that
+  // still hands the old key parses. A name starting with `par` is what the model
+  // wrote call tags into.
+  askedInstead: z.unknown().optional(),
+  parentQuestion: z.unknown().optional(),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -617,10 +621,13 @@ const replyFields = z.object({
   language: z.string().nullable().optional().default(null).catch(null),
 });
 
-const replySchema = replyFields.transform((value) => ({
-  ...value,
-  parentQuestion: readParentQuestion(value),
-}));
+const replySchema = replyFields.transform((value) => {
+  const marked = {
+    ...value,
+    parentQuestion: value.askedInstead !== undefined ? value.askedInstead : value.parentQuestion,
+  };
+  return { ...marked, parentQuestion: readParentQuestion(marked) };
+});
 
 /**
  * Fails closed: a value that is there but not a boolean may hide a question, and a
@@ -707,7 +714,8 @@ const replyJsonSchema = {
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
     asks: { type: 'boolean' },
-    parentQuestion: { type: 'boolean' },
+    // Not `parentQuestion`: a field whose name starts with `par` came back as call tags.
+    askedInstead: { type: 'boolean' },
     connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
     joinPointer: {
       type: ['string', 'null'],
@@ -718,7 +726,7 @@ const replyJsonSchema = {
     claimsSaved: { type: 'boolean' },
   },
   // Code reads these instead of the reply's words, so the model always says.
-  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
+  required: ['reply', 'asks', 'askedInstead', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
 /**
@@ -2668,7 +2676,22 @@ export async function speakFriend(
         },
         'compose',
       );
-      return { fail: 'model_failed', capture: empty };
+      const markup = err instanceof StructuredOutputError && err.outcome === 'tool_markup';
+      return {
+        fail: 'model_failed',
+        capture: empty,
+        // A markup refusal has no parsed draft. The retry still writes the reply,
+        // told that tags are what was wrong, so the parent is not left with nothing.
+        ...(markup
+          ? {
+              retry: {
+                draft: '',
+                problem:
+                  'The call wrote tool-call tags inside a field, so nothing was sent. Fill each field with its value and write the reply again.',
+              },
+            }
+          : {}),
+      };
     }
   };
 

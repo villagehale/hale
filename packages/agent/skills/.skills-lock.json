@@ -157,7 +157,7 @@
   },
   "coach-bubbles.md": {
     "file": "coach-bubbles.md",
-    "sha256": "6f0e85dff178b5beda96fc3727e4265f52b8be008f91740a79ba56028d8f26e2"
+    "sha256": "9af6a425e61822caf884063a6aee39c15357326b223c816b65867019ba835ec9"
   },
   "coach-capability-correction.md": {
     "file": "coach-capability-correction.md",
@@ -173,7 +173,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "0ea99d53f284983699e85e8a193dc3d0ee60fd9dbdd0443f6831fdc32424c361"
+    "sha256": "51ee57e2811abc7dd05fe57abc615a5f625c5fde3f56ee9c865e899a078cbb31"
   },
   "coach-fact-source.md": {
     "file": "coach-fact-source.md",
@@ -425,7 +425,7 @@
   },
   "group-plan-rsvp-calendar-voice.md": {
     "file": "group-plan-rsvp-calendar-voice.md",
-    "sha256": "9a2b3900421c7553d70aace32ecd9eff5f652da696a90a0d0d2cd5ed90123cfd"
+    "sha256": "a21550065026d524192bc2a4ffdee6d43f3323b7d65fe35dd4ab09369d0435c0"
   },
   "group-plan-rsvp-read-secret-santa.md": {
     "file": "group-plan-rsvp-read-secret-santa.md",
@@ -589,7 +589,7 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "ff2d07e32fbf2323e658ff343a631dba28e0051446f4df7ea8081e41d202fff4"
+    "sha256": "a25433ead9dd0131f5e213beaff43856df846287d9fc8e18051e6bd3b34d414f"
   },
   "offer-receipt.md": {
     "file": "offer-receipt.md",
@@ -597,7 +597,7 @@
   },
   "onboarding-friend-model-fields.md": {
     "file": "onboarding-friend-model-fields.md",
-    "sha256": "8cbaaa9ea797321c5102abe753c6296be7defad741c17928d00e6d1aa4a954ca"
+    "sha256": "6201f88e1b57b4bcc37113bc028cc8f71557f6478bf986529c7bd9102a3ac263"
   },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
@@ -605,11 +605,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "e688a0c63a788efd5f8636eb506623a0c8d462481f240f7cadff34a5b5888464"
+    "sha256": "07908acee57484873846318f8522f79e0090c8055eabeb4cde70ac446d7d408b"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "dcf23398e6930c7e03342918582cf390e5790118a82fa2261e5d86617840ed7d"
+    "sha256": "20a395af514ee2735d420a687e5da3a2727d21b8cc5a575ffb6cfdd6a00110be"
   },
   "onboarding-stated-place.md": {
     "file": "onboarding-stated-place.md",

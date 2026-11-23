@@ -113,7 +113,7 @@ export const INTAKE_ANSWER_FIXTURES = [
     pendingAsk: COLD_START_ASK,
     children: [],
     watchFor:
-      'Nothing is set up yet and nothing has been agreed to, so a yes here is a promise Hale cannot keep this turn. An honest answer about what happens once they are set up is fine; "I will book it" is not.',
+      'Nothing is agreed yet, so "I will book it" or a claim that anyone is already signed up is not. Signup with their ok starts December 1: "once you say yes I\'ll sign them up starting December 1" is the promise the skill allows, and it must not lower the score. An honest answer about what happens once they say yes is the same promise.',
   },
 
   // ── must reach the health writer ──────────────────────────────────────────

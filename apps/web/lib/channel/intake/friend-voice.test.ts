@@ -501,6 +501,11 @@ describe('onboarding friend fixtures', () => {
     expect(ruleWords.length).toBeLessThan(20);
     expect(skill.instructions).toContain('## Facts');
     expect(skill.instructions).toContain('## Output');
+    expect(skill.instructions).toContain('`askedInstead`');
+    const tool = onboardingReplyToolSchema();
+    expect(tool.properties).toHaveProperty('askedInstead');
+    expect(tool.properties).not.toHaveProperty('parentQuestion');
+    expect(tool.required).toContain('askedInstead');
     expect(skill.instructions).toContain('Not a reminder, and not a registration');
     expect(skill.instructions).not.toContain('remind the evening before');
     expect(skill.instructions).not.toContain('would like reminders for');
@@ -2360,15 +2365,23 @@ describe('a garbled parentQuestion', () => {
   it('writes the reply on the retry when the first draw is garbled, and keeps no Gmail yes', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seen: Array<FriendVoiceInput['retry']> = [];
+    const inner = composerReplying(
+      { ...fields, connectGmail: true, parentQuestion: GARBLED },
+      { ...fields, parentQuestion: true },
+    );
     try {
       const retried = await speakFriend(
-        composerReplying(
-          { ...fields, connectGmail: true, parentQuestion: GARBLED },
-          { ...fields, parentQuestion: true },
-        ),
+        {
+          compose(input, options) {
+            seen.push(input.retry);
+            return inner.compose(input, options);
+          },
+        },
         gmailAsk,
         { page: async () => undefined, linkFollows: true },
       );
+      expect(seen[1]?.problem).toMatch(/tool-call tags/);
       expect(retried.source).toBe('retry');
       expect(retried.body).toBe(fields.reply);
       expect(retried.capture.connectGmail).not.toBe(true);

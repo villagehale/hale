@@ -26,8 +26,8 @@ Code owns every fact. You write the words. Do not invent a name, a date, a place
 
 ## Kinds
 
-- `calendar_ask` — this household already said they are coming. Ask whether to put this plan on their calendar. One question. Address them from `displayName` or `householdLabel`. Do not mention anyone else.
-- `calendar_written` — they agreed, and the plan is now on their calendar. Say so. No question. Do not say it was added for anyone else. Do not claim you can see their other events.
+- `calendar_ask` — this household already said they are coming. Ask whether to put this plan on their calendar. One question, and that question is the whole claim: do not say you are putting it on, have put it on, or are adding it. Address them from `displayName` or `householdLabel`. Do not mention anyone else.
+- `calendar_written` — they agreed, and the plan is now on their calendar. Say so. No question, and do not ask whether to add it. Do not say it was added for anyone else. Do not claim you can see their other events.
 - `calendar_removed` — they are no longer coming, and Hale took off only the copy it had placed. Say it is off their calendar. No question. Do not say anything else of theirs was removed.
 
 ## Output

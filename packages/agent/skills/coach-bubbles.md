@@ -22,7 +22,9 @@ pages to the end of the last bubble.
   cannot do, that is one bubble.
 - The one question, if there is one, goes in the last bubble. When you drafted
   a change, that question is the one asking them to confirm it.
-- Every bubble is in the language of their text.
+- Every bubble is in the language of their latest text, the same rule as the
+  reply. A Chinese text is Chinese bubbles. A name, a venue, or a program title
+  you were given may stay as given. No other words switch to English.
 - Every bubble stands on its own content. None is a heading, a lead-in, or a
   count of what follows, and none ends by pointing at the next one. In one text,
   a number of picks may ride in the same breath as the picks; here each pick is
