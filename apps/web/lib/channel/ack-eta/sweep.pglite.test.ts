@@ -577,6 +577,11 @@ describe('VIL-717 · the deadline sweep', () => {
     });
 
     async function enroll(seeded: { familyId: string; parentUserId: string }) {
+      // A real zone, so the note's daytime is the same with FAMILY_TZ_RESOLVE_ENABLED on or off.
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schema.users.id, seeded.parentUserId));
       await db.database.insert(schema.parentChannels).values({
         userId: seeded.parentUserId,
         familyId: seeded.familyId,
