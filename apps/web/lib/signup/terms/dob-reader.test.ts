@@ -22,6 +22,29 @@ describe('acceptDobReading', () => {
     ).toBe('2022-03-21');
   });
 
+  const read = (said: string, date: string) =>
+    acceptDobReading({ said, date, otherPerson: false }, `born ${said}`, now);
+
+  it.each([
+    ['March 21, 2022', '2022-03-21'],
+    ['21 mars 2022', '2022-03-21'],
+    ['2022年3月21日', '2022-03-21'],
+    ['2022-03-04', '2022-03-04'],
+    ['04/04/2021', '2021-04-04'],
+    ['Mar 5 2021', '2021-03-05'],
+  ])('accepts %s, each part from its own word', (said, date) => {
+    expect(read(said, date)).toBe(date);
+  });
+
+  it.each([
+    ['the month is not in their words', 'March 21, 2022', '2022-04-21'],
+    ['one number stands for the day and the year', 'the 21st of May', '2021-05-21'],
+    ['one number stands for the month and the day', 'May 5', '2021-05-05'],
+    ['day and month could be swapped', '03/04/2021', '2021-03-04'],
+  ])('refuses when %s', (_case, said, date) => {
+    expect(read(said, date)).toBeNull();
+  });
+
   it('refuses a quote that is not theirs', () => {
     const text = 'she is about four';
     expect(

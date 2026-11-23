@@ -425,6 +425,58 @@ describe('the ask', () => {
     expect(posted.join(' ')).toContain('moment run_notice');
   });
 
+  it('a one-shot hand-back the writer cannot write sends nothing and pages #ops', async () => {
+    const posted = stubOps();
+    const f = await household();
+    const offer = await recordSignupOffer(db.database, {
+      familyId: f.familyId,
+      childId: f.childId,
+      parentUserId: f.parentUserId,
+      activityKey: 'public-speaking',
+      registrationUrl: URL_,
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      now: NOW,
+    });
+    if (!offer.ok) throw new Error(offer.reason);
+    await (
+      await (
+        await import('../store')
+      ).askStamp(db.database, {
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        offerIds: [offer.id],
+      })()
+    )(await sentSignupText(db.database, f));
+    const result = await runAuthorizedSignup(
+      db.database,
+      {
+        familyId: f.familyId,
+        parentUserId: f.parentUserId,
+        body: 'yes',
+        inboundChannelMessageId: await inbound(f, false),
+        existingThread: true,
+        now: NOW,
+      },
+      {
+        consentReader: {
+          read: vi.fn(async () => ({
+            verdict: 'consent' as const,
+            sessionId: 's-1',
+            approvedPriceCents: null,
+            activityKey: 'public-speaking',
+            said: 'yes',
+          })),
+        } as never,
+        outcomeWriter: { write: async () => null },
+        browserUseSignup: { run: vi.fn() } as never,
+      },
+    );
+    expect(result).toMatchObject({ reply: null, unsent: 'reply_unwritten' });
+    expect((await offerRow(offer.id)).status).toBe('handed_back');
+    expect(posted.join(' ')).toContain('registration_text_unwritten');
+  });
+
   it('a group offer_signup records nothing, and the same call 1:1 records a row', async () => {
     const f = await household();
     const { planWriter } = writer();
@@ -740,6 +792,87 @@ describe('the yes', () => {
     expect((await termsRow(third))?.shown.priorChargeUnknown).toBe(true);
   });
 
+  it('a run that died after moving out of submitting still counts as a possible charge', async () => {
+    const f = await household();
+    const first = await askedAndSent(f);
+    await yes(f, YES);
+    // The offer moved to handed_back with a paying token, and the sweep died before its
+    // plan_finished row: nothing in audit_log says a charge may exist.
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'handed_back',
+        planResume: {
+          phase: 'paying',
+          runId: 'run-1',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 0,
+          cartTotalCents: 8488,
+          holdExpiresAt: null,
+          costUsd: null,
+        },
+      })
+      .where(eq(schema.authorizedSignupOffers.id, first));
+    const second = await askedAndSent(f);
+    expect((await termsRow(second))?.shown.priorChargeUnknown).toBe(true);
+    await yes(f, YES);
+    expect((await termsRow(second))?.approved?.hold).toBe('prior_charge_unknown');
+  });
+
+  it('a review that may have placed the order and never finished counts too', async () => {
+    const f = await household();
+    const first = await askedAndSent(f);
+    await yes(f, YES);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'handed_back',
+        planResume: {
+          phase: 'signup',
+          runId: 'run-1',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          reviewStarted: true,
+        },
+      })
+      .where(eq(schema.authorizedSignupOffers.id, first));
+    const second = await askedAndSent(f);
+    expect((await termsRow(second))?.shown.priorChargeUnknown).toBe(true);
+  });
+
+  it('a finished run whose token says paying is not a possible charge (control)', async () => {
+    const f = await household();
+    const first = await askedAndSent(f);
+    await yes(f, YES);
+    await db.database.insert(schema.auditLog).values({
+      familyId: f.familyId,
+      actor: f.parentUserId,
+      actionTaken: 'authorized_signup_step',
+      targetTable: 'authorized_signup_offers',
+      targetId: first,
+      after: { step: 'plan_finished', charged: 'nothing' },
+    });
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'handed_back',
+        planResume: {
+          phase: 'paying',
+          runId: 'run-1',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 0,
+          cartTotalCents: 8488,
+          holdExpiresAt: null,
+          costUsd: null,
+        },
+      })
+      .where(eq(schema.authorizedSignupOffers.id, first));
+    const second = await askedAndSent(f);
+    expect((await termsRow(second))?.shown.priorChargeUnknown).toBe(false);
+  });
+
   it('a no-stated-open ask counts against the season, even with a future page open', async () => {
     vi.stubEnv('MAX_ENTITLEMENTS_ENABLED', 'true');
     const f = await household();
@@ -916,6 +1049,112 @@ describe('the yes, against what happened since the ask', () => {
     expect((await offerRow(offerId)).status).toBe('pending');
   });
 
+  describe('a birth date, from a seat that may not answer or a date Hale cannot read', () => {
+    const asked = async () => {
+      const f = await household();
+      await db.database
+        .update(schema.children)
+        .set({ dobPrecision: 'derived' })
+        .where(eq(schema.children.id, f.childId));
+      const offerId = await askedAndSent(f);
+      await recordPlanNotice(db.database, {
+        familyId: f.familyId,
+        offerId,
+        providerHost: HOST,
+        kind: 'ask_dob',
+        now: NOW,
+      });
+      return { f, offerId };
+    };
+
+    it('a declined seat reads and stores no date', async () => {
+      const { f } = await asked();
+      const read = vi.fn(async () => ({
+        said: 'March 21, 2021',
+        date: '2021-03-21',
+        otherPerson: false,
+      }));
+      const declineSeat = vi.fn(async () => true);
+      const planReader: PlanReader = {
+        read: vi.fn(async (): Promise<PlanReading> => ({ verdict: 'unrelated' })),
+      };
+      const { planWriter } = writer();
+      await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: f.familyId,
+          parentUserId: f.parentUserId,
+          body: 'born March 21, 2021',
+          inboundChannelMessageId: await inbound(f, false, 'born March 21, 2021'),
+          existingThread: true,
+          now: NOW,
+        },
+        { planReader, planWriter, dobReader: { read }, declineSeat },
+      );
+      expect(declineSeat).toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      const [child] = await db.database
+        .select({ precision: schema.children.dobPrecision })
+        .from(schema.children)
+        .where(eq(schema.children.id, f.childId));
+      expect(child?.precision).toBe('derived');
+    });
+
+    it('a seat that may answer still stores it (control)', async () => {
+      const { f } = await asked();
+      const read = vi.fn(async () => ({
+        said: 'March 21, 2021',
+        date: '2021-03-21',
+        otherPerson: false,
+      }));
+      const { planWriter } = writer();
+      await runAuthorizedSignup(
+        db.database,
+        {
+          familyId: f.familyId,
+          parentUserId: f.parentUserId,
+          body: 'born March 21, 2021',
+          inboundChannelMessageId: await inbound(f, false, 'born March 21, 2021'),
+          existingThread: true,
+          now: NOW,
+        },
+        {
+          planReader: { read: vi.fn(async (): Promise<PlanReading> => ({ verdict: 'unrelated' })) },
+          planWriter,
+          dobReader: { read },
+          declineSeat: async () => false,
+        },
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+      const [child] = await db.database
+        .select({ precision: schema.children.dobPrecision })
+        .from(schema.children)
+        .where(eq(schema.children.id, f.childId));
+      expect(child?.precision).toBe('exact');
+    });
+
+    it('a date whose parts could be swapped is not stored, and Hale asks again', async () => {
+      const { f } = await asked();
+      const read = vi.fn(async () => ({
+        said: '03/04/2021',
+        date: '2021-03-04',
+        otherPerson: false,
+      }));
+      const turn = await yes(
+        f,
+        { verdict: 'unrelated' },
+        { body: 'her birthday is 03/04/2021', dobReader: { read } },
+      );
+      expect(turn.result.outcome).toBe('plan_clarify');
+      expect(turn.written.at(-1)?.question).toContain('date of birth');
+      const [child] = await db.database
+        .select({ precision: schema.children.dobPrecision })
+        .from(schema.children)
+        .where(eq(schema.children.id, f.childId));
+      expect(child?.precision).toBe('derived');
+    });
+  });
+
   it('on a page with no course model, the class is bound by the offer name', async () => {
     const f = await household();
     const offerId = await askedAndSent(f, { page: '<html><body>Swim class</body></html>' });
@@ -937,7 +1176,7 @@ describe('the yes, against what happened since the ask', () => {
       feesCents: 0,
       currency: 'cad',
     };
-    const who = { childFirstName: 'Ada', timeZone: 'America/Toronto' };
+    const who = { childFirstName: 'Ada', siblingFirstNames: [], timeZone: 'America/Toronto' };
     expect(compareCart(session, cart, who, 'cart')).toEqual([]);
     expect(compareCart(session, { ...cart, session_label: 'Chess' }, who, 'cart')).toEqual([
       'session',
@@ -1134,6 +1373,52 @@ describe('the run', () => {
     expect(inputs[0]?.maxPriceCents).toBe(8488);
     // The receipt is armed only for a bound run while the flag is on.
     expect(typeof inputs[0]?.onConfirmed).toBe('function');
+  });
+
+  it('a confirmed run with no browser id is named: an audit row and an #ops page', async () => {
+    const posted = stubOps();
+    const f = await household();
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() - 60_000) });
+    await yes(f, YES);
+    const confirmed: BrowserUsePlanResult = {
+      ...RUN_RESULT,
+      outcome: 'completed',
+      detail: 'none',
+      cartDifferences: undefined,
+      confirmationNumber: 'R-55120',
+      amountChargedCents: 8488,
+      charged: { cents: 8488 },
+      browserId: null,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    };
+    const { deps, notices } = sweepDeps(confirmed);
+    (deps.runner as NonNullable<PlanRunDeps['runner']>).run = vi.fn(
+      async (input: BrowserUsePlanInput) => {
+        await input.onConfirmed?.({
+          browserId: null,
+          confirmationNumber: 'R-55120',
+          amountChargedCents: 8488,
+          choiceIndex: 0,
+          waitUntil: input.waitUntil,
+          getCdpUrl: async () => null,
+        });
+        return confirmed;
+      },
+    );
+    await sweep(deps, NOW);
+    expect(notices[0]?.receipt).toEqual({ ok: false, reason: 'no_browser' });
+    const rows = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, offerId));
+    expect(rows.map((row) => row.after)).toContainEqual(
+      expect.objectContaining({ step: 'plan_receipt', ok: false, reason: 'no_browser' }),
+    );
+    const text = posted.join(' ');
+    expect(text).toContain('registration_receipt_unsent');
+    expect(text).toContain('no_browser');
+    expect((await offerRow(offerId)).status).toBe('completed');
   });
 
   it('keeps enforcing an approved plan after the flag goes off', async () => {
@@ -1346,6 +1631,31 @@ describe('a pick after the options did not match', () => {
     await yes(f, { ...YES, choiceIds: [sessionId] });
     expect((await termsRow(next.id))?.approved?.hold).toBe('site_option');
     expect((await offerRow(next.id)).status).toBe('planned');
+  });
+
+  it('a plan parked on options, whose question cannot be written, pages #ops', async () => {
+    const posted = stubOps();
+    const f = await household();
+    const offerId = await askedAndSent(f, { planOpensAt: new Date(NOW.getTime() - 60_000) });
+    await yes(f, YES);
+    const mismatch: BrowserUsePlanResult = {
+      ...RUN_RESULT,
+      outcome: 'options_mismatch' as never,
+      detail: 'none',
+      cartDifferences: undefined,
+      siteChoices: CHOICES,
+    } as BrowserUsePlanResult;
+    const { deps } = sweepDeps(mismatch);
+    const delivered = vi.fn(async () => 'sent' as const);
+    deps.prep = {
+      writer: { write: vi.fn(async () => null) },
+      deliver: delivered,
+    } as unknown as PlanRunDeps['prep'];
+    await sweep(deps, NOW);
+    const row = await offerRow(offerId);
+    expect(row.status).toBe('planned');
+    expect(delivered).not.toHaveBeenCalled();
+    expect(posted.join(' ')).toContain('registration_text_unwritten');
   });
 
   it('an option with no start gets the refusal and the link', async () => {

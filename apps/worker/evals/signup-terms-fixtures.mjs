@@ -317,6 +317,24 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     expect: { verdict: 'approve', maxPriceCents: 9050, limitWrittenCents: 9050 },
   },
   {
+    id: 'read-past-price-is-no-limit',
+    text: 'yes please, last year it was $40 so this is fine',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+  },
+  {
+    id: 'read-credit-is-no-limit',
+    text: 'yes go ahead, we got a $20 credit from them',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+  },
+  {
+    id: 'read-limit-beside-a-level',
+    text: 'yes for level 3, 100 dollars max',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 10000, limitWrittenCents: 10000 },
+  },
+  {
     id: 'read-free',
     text: 'yes sign her up',
     offer: { ...READ_OFFER, terms: { ...READ_TERMS, boundCents: [], freeSessionIds: ['s-1'] } },

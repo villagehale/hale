@@ -32,6 +32,7 @@ import { registrationPreflightEnabled } from '../terms/flag';
 import {
   type SignupTermsRead,
   type SignupTermsRow,
+  askIsOnTerms,
   loadSignupTerms,
   prerequisiteAskStamp,
   priorChargeUnknown,
@@ -144,7 +145,8 @@ export async function runPlanAsk(
       ? await loadSignupTerms(database, { offerId: plan.offerId, familyId: input.familyId })
       : null;
   const terms = termsRead?.status === 'read' ? termsRead.row : null;
-  if (terms && place.newest) {
+  // A seat that may not authorize a sign-up answers no question about the child either.
+  if (terms && place.newest && !(deps.declineSeat && (await deps.declineSeat()))) {
     const answered = await runDobTurn(database, input, deps, plan, terms);
     if (answered) return answered;
   }
@@ -294,6 +296,8 @@ const TERMS_LIMIT_QUESTION =
 const TERMS_AMOUNT_QUESTION = 'What is the most Hale may pay for this?';
 const TERMS_DOB_OTHER_QUESTION =
   "The date they gave is someone else's. What is this child's date of birth?";
+const TERMS_DOB_UNCLEAR_QUESTION =
+  "The date they gave could not be read for certain. What is this child's date of birth, with the month written out?";
 const termsPrerequisiteQuestion = (quote: string | null) =>
   quote
     ? `The class says: "${quote}". Has the child done that?`
@@ -344,6 +348,12 @@ async function runDobTurn(
     });
   }
   const date = raw ? acceptDobReading(raw, input.body, input.now) : null;
+  if (date === null && raw?.date) {
+    return reply(database, input, deps, plan, 'clarify', {
+      question: TERMS_DOB_UNCLEAR_QUESTION,
+      boundBy: 'newest',
+    });
+  }
   if (date === null) return null;
   await database
     .update(schema.children)
@@ -778,15 +788,6 @@ async function runMismatchTurn(
 }
 
 /** An ask made under pre-flight stays on its terms after the flag goes off. */
-async function askIsOnTerms(
-  database: Database,
-  familyId: string,
-  offerId: string,
-): Promise<boolean> {
-  if (registrationPreflightEnabled(familyId)) return true;
-  return (await loadSignupTerms(database, { offerId, familyId })).status !== 'none';
-}
-
 function stopped(outcome: 'plan_unread' | 'plan_unnamed', plan: ConversablePlan): SignupRunResult {
   return stoppedTurn(outcome, { offerId: plan.offerId, status: plan.status });
 }

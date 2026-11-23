@@ -545,12 +545,88 @@ describe('booking and signup-plan columns in a right-to-access copy', () => {
     expect(doc.signupTerms).toEqual([
       {
         offerId: offerRow?.id,
+        withheld: null,
         shown: termsShown,
         approved: null,
         approvedAt: null,
         createdAt: expect.any(String),
       },
     ]);
+  });
+
+  it('withholds a teen child and another parent from the registration terms', async () => {
+    const seeded = await seedFamily(db.database);
+    const { familyId, parentUserId } = seeded;
+    const coParent = await seedParent(familyId, 'co', 'co_parent');
+    const [young] = await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Pip', dateOfBirth: '2021-03-01' })
+      .returning({ id: schema.children.id });
+    const [teen] = await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Ida', dateOfBirth: '2010-03-01' })
+      .returning({ id: schema.children.id });
+    const shown = {
+      v: 1 as const,
+      read: 'course_model' as const,
+      program: { courseIds: ['283993'], name: 'Confidential Program' },
+      residency: 'resident' as const,
+      age: { fit: 'in_band' as const, band: null, rule: null },
+      prerequisite: { required: 'no' as const, quote: null },
+      refund: null,
+      currency: 'cad' as const,
+      countsAgainstSeason: false,
+      priorChargeUnknown: false,
+      sessions: [],
+    };
+    const addTerms = async (childId: string, askedBy: string, key: string) => {
+      const [offer] = await db.database
+        .insert(schema.authorizedSignupOffers)
+        .values({
+          familyId,
+          childId,
+          parentUserId: askedBy,
+          activityKey: key,
+          registrationUrl: `https://${key}.example.org/register`,
+          providerHost: `${key}.example.org`,
+          sessions: [],
+          status: 'pending',
+        })
+        .returning({ id: schema.authorizedSignupOffers.id });
+      await db.database.insert(schema.authorizedSignupTerms).values({
+        offerId: offer?.id as string,
+        familyId,
+        childId,
+        parentUserId: askedBy,
+        shown,
+      });
+      return offer?.id as string;
+    };
+    const own = await addTerms(young?.id as string, parentUserId, 'own');
+    const teens = await addTerms(teen?.id as string, parentUserId, 'teen');
+    const others = await addTerms(young?.id as string, coParent, 'other');
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+    });
+    const byOffer = new Map(doc.signupTerms.map((row) => [row.offerId, row]));
+    expect(byOffer.get(own)).toMatchObject({ withheld: null, shown });
+    for (const [offerId, withheld] of [
+      [teens, 'teen'],
+      [others, 'another_adult'],
+    ] as const) {
+      expect(byOffer.get(offerId)).toEqual({
+        offerId,
+        withheld,
+        shown: null,
+        approved: null,
+        approvedAt: null,
+        createdAt: expect.any(String),
+      });
+    }
+    const dumped = JSON.stringify(doc.signupTerms);
+    expect(dumped.match(/Confidential Program/g)).toHaveLength(1);
   });
 });
 

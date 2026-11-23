@@ -56,14 +56,12 @@ export function ratesFor(
 }
 
 function amountFor(
-  session: SignupTermsShown['sessions'][number] | undefined,
+  session: SignupTermsShown['sessions'][number],
   input: BindInput,
 ): SignupTermsAmount | { clarify: 'limit_below_rate' | 'no_amount' } {
   const currency = input.shown.currency;
   const limit = input.limitWrittenCents;
-  const cents = session
-    ? ratesFor(input.shown.residency, session.rates).map((row) => row.cents)
-    : [];
+  const cents = ratesFor(input.shown.residency, session.rates).map((row) => row.cents);
   if (cents.length === 0) {
     return limit === null ? { clarify: 'no_amount' } : { kind: 'ceiling', cents: limit, currency };
   }
@@ -73,7 +71,7 @@ function amountFor(
     kind: 'exact',
     cents,
     currency,
-    plusTax: session?.tax === 'plus_tax' ? input.taxBound : null,
+    plusTax: session.tax === 'plus_tax' ? input.taxBound : null,
     limitCents: limit,
   };
 }
@@ -103,7 +101,9 @@ export function bindApproval(input: BindInput): BindResult {
     const session = input.sessions.find((item) => item.id === choiceId);
     if (!session) return { kind: 'clarify', reason: 'no_amount' };
     const shownSession = input.shown.sessions.find((item) => item.sessionId === choiceId);
-    if (shownSession) picked.push(shownSession);
+    // A session the text never stated has no terms to say yes to, and no limit stands in.
+    if (!shownSession) return { kind: 'terms_unsent' };
+    picked.push(shownSession);
     const amount = amountFor(shownSession, input);
     if ('clarify' in amount) return { kind: 'clarify', reason: amount.clarify };
     const date = wall.get(session.id) ?? null;

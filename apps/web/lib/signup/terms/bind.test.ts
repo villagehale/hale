@@ -59,6 +59,20 @@ describe('bindApproval', () => {
     expect(got.approved.quantity).toBe(1);
   });
 
+  it('a session that was never shown binds nothing, whatever limit they wrote', () => {
+    const got = bindApproval(
+      input({
+        sessions: [
+          { id: 's-1', label: 'Sat 9:30', startsAt: '2026-03-28T09:30:00' },
+          { id: 's-2', label: 'Sun 9:30', startsAt: '2026-03-29T09:30:00' },
+        ],
+        choiceIds: ['s-2'],
+        limitWrittenCents: 5000,
+      }),
+    );
+    expect(got).toEqual({ kind: 'terms_unsent' });
+  });
+
   it('a known non-resident binds the non-resident rate only', () => {
     const got = bindApproval(input({ shown: shown({ residency: 'non_resident' }) }));
     expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toMatchObject({

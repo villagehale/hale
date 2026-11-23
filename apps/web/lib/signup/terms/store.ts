@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, notExists, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { type AskedAbout, type SendStamp, askStamp } from '../store';
+import { registrationPreflightEnabled } from './flag';
 import type { SignupTermsApproved, SignupTermsShown } from './types';
 
 /**
@@ -166,6 +167,16 @@ export async function loadSignupTerms(
   };
 }
 
+/** This ask goes by the terms lane: a text it owes that cannot be written is paged. */
+export async function askIsOnTerms(
+  database: Database,
+  familyId: string,
+  offerId: string,
+): Promise<boolean> {
+  if (registrationPreflightEnabled(familyId)) return true;
+  return (await loadSignupTerms(database, { offerId, familyId })).status !== 'none';
+}
+
 /**
  * The stamp for the send that carries an offer's own text. After the ordinary keep, it
  * records that row on the terms: only then does a yes bind them. A question back about the
@@ -244,7 +255,9 @@ export function prerequisiteAskStamp(database: Database, asks: AskedAbout): Send
 
 /**
  * True when any earlier run on this class for this child may have charged. Any such row
- * counts, not the latest: a held attempt ends `nothing` and must not clear the doubt.
+ * counts, not the latest: a held attempt ends `nothing` and must not clear the doubt. An
+ * offer moved out of `submitting` with a payment or review under way and no `plan_finished`
+ * row counts too: the sweep died between the two writes, and what it charged was never read.
  */
 export async function priorChargeUnknown(
   database: Database,
@@ -268,5 +281,32 @@ export async function priorChargeUnknown(
       ),
     )
     .limit(1);
-  return row !== undefined;
+  if (row) return true;
+  const [unfinished] = await database
+    .select({ id: offers.id })
+    .from(offers)
+    .where(
+      and(
+        eq(offers.familyId, input.familyId),
+        eq(offers.childId, input.childId),
+        eq(offers.activityKey, input.activityKey),
+        eq(offers.status, 'handed_back'),
+        sql`(${offers.planResume}->>'phase' = 'paying' or ${offers.planResume}->>'reviewStarted' = 'true')`,
+        notExists(
+          database
+            .select({ id: audit.id })
+            .from(audit)
+            .where(
+              and(
+                eq(audit.familyId, input.familyId),
+                eq(audit.actionTaken, 'authorized_signup_step'),
+                sql`${audit.targetId} = ${offers.id}::text`,
+                sql`${audit.after}->>'step' = 'plan_finished'`,
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+  return unfinished !== undefined;
 }

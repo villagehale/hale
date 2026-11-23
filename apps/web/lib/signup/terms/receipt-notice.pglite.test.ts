@@ -145,7 +145,62 @@ async function receiptRow(familyId: string) {
   return row ?? null;
 }
 
+async function deliveryAudit(familyId: string) {
+  const rows = await db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.familyId, familyId));
+  return rows
+    .map((row) => row.after as Record<string, unknown> | null)
+    .filter((after) => after?.step === 'plan_receipt_delivery');
+}
+
 describe('the masked receipt, after the confirmation text', () => {
+  it('audits an image the transport accepted, with no image content', async () => {
+    const f = await plan();
+    const { carrier } = transport(async () => ({
+      providerMessageId: 'msg-image',
+      transport: 'imessage',
+      chatId: 'chat-1',
+    }));
+    await notifier(carrier)(notice(f, CAPTURED));
+    const rows = await deliveryAudit(f.familyId);
+    expect(rows).toEqual([
+      { step: 'plan_receipt_delivery', outcome: 'accepted', bytes: PNG.byteLength },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain(PNG.toString('base64'));
+  });
+
+  it('audits an image the transport refused', async () => {
+    const f = await plan();
+    const { carrier } = transport(async () => {
+      throw new LinqSendError('upload_http_500', 500, false);
+    });
+    await notifier(carrier)(notice(f, CAPTURED));
+    expect(await deliveryAudit(f.familyId)).toEqual([
+      {
+        step: 'plan_receipt_delivery',
+        outcome: 'refused',
+        reason: 'send_failed',
+        bytes: PNG.byteLength,
+      },
+    ]);
+  });
+
+  it('audits an image never handed to the transport, by reason', async () => {
+    const f = await plan();
+    const { carrier } = transport();
+    await notifier(carrier)(notice(f, CAPTURED));
+    expect(await deliveryAudit(f.familyId)).toEqual([
+      {
+        step: 'plan_receipt_delivery',
+        outcome: 'not_sent',
+        reason: 'transport_unsupported',
+        bytes: PNG.byteLength,
+      },
+    ]);
+  });
+
   it('goes after the text, to the parent, and is ledgered sent once accepted', async () => {
     const f = await plan();
     const { carrier, order } = transport(async () => ({
@@ -187,13 +242,16 @@ describe('the masked receipt, after the confirmation text', () => {
     expect(posted.join(' ')).toContain('send_failed');
   });
 
-  it('a capture that failed sends no image and names why on #ops', async () => {
+  it('a capture that failed sends no image; the run already named it on #ops', async () => {
     const f = await plan();
     const { carrier, order } = transport(async () => ({ providerMessageId: 'msg-image' }));
-    await notifier(carrier)(notice(f, { ok: false, reason: 'verify_failed' }));
+    await expect(
+      notifier(carrier)(notice(f, { ok: false, reason: 'verify_failed' })),
+    ).resolves.toBe('sent');
     expect(order).toEqual(['text']);
     expect(await receiptRow(f.familyId)).toBeNull();
-    expect(posted.join(' ')).toContain('verify_failed');
+    expect(posted).toEqual([]);
+    expect(await deliveryAudit(f.familyId)).toEqual([]);
   });
 
   it('a transport that cannot carry an image is a named absence', async () => {

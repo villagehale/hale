@@ -43,6 +43,38 @@ describe('readCourseTerms', () => {
     expect(got.terms.prerequisite).toEqual({ required: 'no', quote: null });
   });
 
+  describe('a printed price of nothing', () => {
+    const priced = (amount: string, display: string) =>
+      read(
+        '2021-01-01',
+        'exact',
+        markham
+          .replace('"Amount":84.88', `"Amount":${amount}`)
+          .replace('"DisplayAmount":"$84.88"', `"DisplayAmount":"${display}"`)
+          .replace('"DisplayAmountOrAsFree":"$84.88"', `"DisplayAmountOrAsFree":"${display}"`),
+      );
+
+    it.each([
+      ['an amount under a cent', '0.004', '$0.00'],
+      ['an amount of zero printed as a price', '0', '$5.00'],
+      ['an amount of zero printed as nothing readable', '0', 'TBD'],
+    ])('%s binds no rate', (_case, amount, display) => {
+      const got = priced(amount, display);
+      expect(got.ok && got.terms.rates).toEqual([]);
+    });
+
+    it.each([
+      ['$0.00', '0', '$0.00'],
+      ['Free', '0', 'Free'],
+    ])('a zero the page prints as %s is free', (_case, amount, display) => {
+      const got = priced(amount, display);
+      expect(got.ok && got.terms.rates).toEqual([
+        { rate: 'resident', cents: 0 },
+        { rate: 'non_resident', cents: 9760 },
+      ]);
+    });
+  });
+
   it('a 5-year-old is in band', () => {
     const got = read('2021-01-01');
     expect(got.ok && got.terms.age.fit).toBe('in_band');

@@ -50,8 +50,27 @@ export function boundWallClock(
   };
 }
 
-function firstName(name: string): string {
-  return foldWords(name).split(' ')[0] ?? '';
+/** One name's words start with the other's: "Anne" and "Anne Marie", never "Anne Marie" and "Anne Sophie". */
+function sharesLead(a: readonly string[], b: readonly string[]): boolean {
+  const shorter = a.length <= b.length ? a : b;
+  const longer = shorter === a ? b : a;
+  return shorter.length > 0 && shorter.every((word, index) => word === longer[index]);
+}
+
+/**
+ * The cart's name is this child's: the whole stored name, or a shorter or longer form of it
+ * (a surname added, a middle name dropped) that no other child in the family could also be.
+ */
+function namesChild(
+  cartName: string,
+  who: { childFirstName: string; siblingFirstNames: readonly string[] },
+): boolean {
+  const words = (name: string) => foldWords(name).split(' ').filter(Boolean);
+  const cart = words(cartName);
+  const child = words(who.childFirstName);
+  if (cart.length > 0 && cart.join(' ') === child.join(' ')) return true;
+  if (!sharesLead(cart, child)) return false;
+  return !who.siblingFirstNames.some((name) => sharesLead(cart, words(name)));
 }
 
 function comparesProgram(
@@ -151,7 +170,7 @@ function comparesAmount(
 export function compareCart(
   bound: SignupTermsApprovedSession,
   cart: CartForCompare,
-  who: { childFirstName: string; timeZone: string },
+  who: { childFirstName: string; siblingFirstNames: readonly string[]; timeZone: string },
   stage: 'cart' | 'final',
 ): CartDifference[] {
   const differences: (CartDifference | null)[] = [
@@ -159,7 +178,7 @@ export function compareCart(
     comparesWhen(bound, cart, who.timeZone),
     cart.participant_first_name === null
       ? 'unread'
-      : firstName(cart.participant_first_name) === firstName(who.childFirstName)
+      : namesChild(cart.participant_first_name, who)
         ? null
         : 'kid',
     cart.line_count === null || cart.quantity === null

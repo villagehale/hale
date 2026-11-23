@@ -44,6 +44,7 @@ const priceRowSchema = z.object({
   Name: z.string().nullish().catch(null),
   Amount: z.number().nullish().catch(null),
   DisplayAmount: z.string().nullish().catch(null),
+  DisplayAmountOrAsFree: z.string().nullish().catch(null),
   TaxableStateDesc: z.string().nullish().catch(null),
 });
 
@@ -53,9 +54,17 @@ type PriceRow = z.infer<typeof priceRowSchema>;
 function rowCents(row: PriceRow): number | null {
   if (typeof row.Amount !== 'number' || row.Amount < 0) return null;
   const cents = Math.round(row.Amount * 100);
-  if (cents === 0) return 0;
   const printed = moneyCentsWritten(row.DisplayAmount ?? '');
+  if (cents === 0) return row.Amount === 0 && printsFree(row, printed) ? 0 : null;
   return printed.length === 1 && printed[0] === cents ? cents : null;
+}
+
+/** A zero the page itself prints as nothing owed, in either of its display fields. */
+function printsFree(row: PriceRow, printed: readonly number[]): boolean {
+  if (printed.length === 1 && printed[0] === 0) return true;
+  return [row.DisplayAmount, row.DisplayAmountOrAsFree].some(
+    (shown) => typeof shown === 'string' && shown.trim().toLowerCase() === 'free',
+  );
 }
 
 function rowTax(row: PriceRow): TermsTax {

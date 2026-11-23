@@ -1,6 +1,12 @@
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type ReceiptKeep, cardShapedNumber, renderReceipt } from './receipt';
+import {
+  type ReceiptKeep,
+  captureMaskedReceipt,
+  cardShapedNumber,
+  confirmationNumberAllowed,
+  renderReceipt,
+} from './receipt';
 
 /**
  * The proof is differential: the same page rendered with two different secrets of the same
@@ -270,6 +276,137 @@ describe('the masked receipt', () => {
   });
 });
 
+describe('the capture deadline', () => {
+  const PROVIDER = 'https://register.example-rec.test/Clients/Confirmed';
+
+  it('a page whose main thread never yields ends capture_failed at the deadline', async () => {
+    const hungBrowser = await chromium.launch();
+    try {
+      const context = await hungBrowser.newContext();
+      const page = await context.newPage();
+      await page.route(`${PROVIDER}**`, (route) =>
+        route.fulfill({
+          contentType: 'text/html',
+          body: `<!doctype html><html><body><p>R-55120</p>
+            <script>setTimeout(() => { while (true) {} }, 0);</script></body></html>`,
+        }),
+      );
+      await page.goto(PROVIDER, { waitUntil: 'commit' });
+      const started = Date.now();
+      const closed = { calls: 0 };
+      const result = await captureMaskedReceipt(
+        {
+          getCdpUrl: async () => 'ws://fixture',
+          connect: async () => ({
+            contexts: () => hungBrowser.contexts(),
+            close: async () => {
+              closed.calls += 1;
+            },
+          }),
+        },
+        {
+          browserId: 'browser-1',
+          registrationUrl: PROVIDER,
+          keep: KEEP,
+          waitUntil: new Date(Date.now() + 1_500),
+        },
+      );
+      expect(result).toEqual({ ok: false, reason: 'capture_failed' });
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(closed.calls).toBe(1);
+    } finally {
+      await hungBrowser.close();
+    }
+  }, 30_000);
+
+  it('a connect that never answers ends capture_failed at the deadline', async () => {
+    const result = await captureMaskedReceipt(
+      {
+        getCdpUrl: async () => 'ws://fixture',
+        connect: () => new Promise(() => undefined),
+      },
+      {
+        browserId: 'browser-1',
+        registrationUrl: PROVIDER,
+        keep: KEEP,
+        waitUntil: new Date(Date.now() + 200),
+      },
+    );
+    expect(result).toEqual({ ok: false, reason: 'capture_failed' });
+  });
+
+  it('a sweep already out of time does not try', async () => {
+    const getCdpUrl = async () => {
+      throw new Error('must not be asked');
+    };
+    await expect(
+      captureMaskedReceipt(
+        { getCdpUrl },
+        {
+          browserId: 'browser-1',
+          registrationUrl: PROVIDER,
+          keep: KEEP,
+          waitUntil: new Date(Date.now() - 1),
+        },
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'capture_failed' });
+  });
+
+  it('a run with no browser id is a named failure', async () => {
+    await expect(
+      captureMaskedReceipt(
+        { getCdpUrl: async () => null },
+        {
+          browserId: null,
+          registrationUrl: PROVIDER,
+          keep: KEEP,
+          waitUntil: new Date(Date.now() + 1_000),
+        },
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'no_browser' });
+  });
+});
+
+describe('what may be drawn as a confirmation number', () => {
+  it.each(['R-55120', 'HR-20417', 'ABC123', 'R-777', 'CONF-123456789012'])('allows %s', (value) => {
+    expect(confirmationNumberAllowed(value)).toBe(true);
+  });
+
+  it.each([
+    ['a card with dots', '4111.1111.1111.1111'],
+    ['a card with slashes', '4111/1111/1111/1111'],
+    ['a card with underscores', '4111_1111_1111_1111'],
+    ['a card with en dashes', '4111\u20131111\u20131111\u20131111'],
+    ['a card with non-breaking hyphens', '4111\u20111111\u20111111\u20111111'],
+    ['a card with single hyphens', '4111-1111-1111-1111'],
+    ['thirteen digits in two tokens', 'R1234567-890123'],
+    ['spaces', 'R 55120'],
+    ['three tokens', 'AB-12-34'],
+    ['a sentence', 'your order is R-55120'],
+    ['nothing', ''],
+  ])('refuses %s', (_case, value) => {
+    expect(confirmationNumberAllowed(value)).toBe(false);
+  });
+
+  it.each([
+    ['4111.1111.1111.1111', 'card_shaped'],
+    ['AB-12-34', 'not_a_confirmation'],
+  ])('%s leaves no image, by name', async (value, reason) => {
+    const result = await capture(shell('', `<p>${value}</p>`), {
+      ...KEEP,
+      confirmationNumber: value,
+    });
+    expect(result).toEqual({ ok: false, reason });
+  });
+
+  it('the number must stand alone on the page, not inside a longer one', async () => {
+    const html = '<!doctype html><html><body><p>Order XR-551209</p></body></html>';
+    expect(await capture(html)).toEqual({ ok: false, reason: 'verify_failed' });
+    const alone = '<!doctype html><html><body><p>Order: R-55120.</p></body></html>';
+    expect((await capture(alone)).ok).toBe(true);
+  });
+});
+
 describe('cardShapedNumber', () => {
   it.each([
     '4111111111111111',
@@ -277,6 +414,11 @@ describe('cardShapedNumber', () => {
     '4111-1111-1111-1111',
     'R-4111111111111',
     '٤١١١١١١١١١١١١١١١',
+    '4111.1111.1111.1111',
+    '4111/1111/1111/1111',
+    '4111_1111_1111_1111',
+    '4111\u20131111\u20131111\u20131111',
+    '4111\u20111111\u20111111\u20111111',
   ])('refuses %s', (value) => {
     expect(cardShapedNumber(value)).toBe(true);
   });

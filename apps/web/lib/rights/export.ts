@@ -205,10 +205,12 @@ export interface FamilyExportDocument {
   }[];
   /**
    * VIL-715 — what each registration ask showed the parent and what their yes bound:
-   * program facts, ids and cents only. Never a child's name, birth date or age.
+   * program facts, ids and cents only. Never a child's name, birth date or age. A teen's row
+   * and another parent's row keep only that the ask existed (`withheld`).
    */
   signupTerms: {
     offerId: string;
+    withheld: 'teen' | 'another_adult' | null;
     shown: unknown;
     approved: unknown;
     approvedAt: string | null;
@@ -375,6 +377,8 @@ async function readSignupTermsRows(database: Database, familyId: string) {
     return await database
       .select({
         offerId: terms.offerId,
+        childId: terms.childId,
+        parentUserId: terms.parentUserId,
         shown: terms.shown,
         approved: terms.approved,
         approvedAt: terms.approvedAt,
@@ -818,13 +822,24 @@ export async function assembleFamilyExport(
   const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
   const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
   const termsRows = await readSignupTermsRows(database, familyId);
-  const signupTerms = termsRows.map((row) => ({
-    offerId: row.offerId,
-    shown: row.shown,
-    approved: row.approved,
-    approvedAt: row.approvedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-  }));
+  const signupTerms = termsRows.map((row) => {
+    const withheld = gate.isPrivate([row.childId], [])
+      ? ('teen' as const)
+      : row.parentUserId !== deps.actorUserId
+        ? ('another_adult' as const)
+        : null;
+    const createdAt = row.createdAt.toISOString();
+    return withheld
+      ? { offerId: row.offerId, withheld, shown: null, approved: null, approvedAt: null, createdAt }
+      : {
+          offerId: row.offerId,
+          withheld,
+          shown: row.shown,
+          approved: row.approved,
+          approvedAt: row.approvedAt?.toISOString() ?? null,
+          createdAt,
+        };
+  });
 
   await database.insert(schema.auditLog).values({
     familyId,

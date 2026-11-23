@@ -1,4 +1,5 @@
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { and, eq, ne } from 'drizzle-orm';
 import { noteRegistrationRunFailed, noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { pageOps } from '~/lib/monitoring/failure-page';
@@ -336,6 +337,18 @@ function holdsRun(resume: PlanResumeToken | null): resume is PlanResumeToken {
   return resume !== null && (resume.phase === 'paying' || resume.runId !== null);
 }
 
+/** The other children's names, read for the cart's kid check. Never sent to Browser Use. */
+async function siblingFirstNames(
+  database: Database,
+  plan: { familyId: string; childId: string },
+): Promise<string[]> {
+  const rows = await database
+    .select({ name: schema.children.name })
+    .from(schema.children)
+    .where(and(eq(schema.children.familyId, plan.familyId), ne(schema.children.id, plan.childId)));
+  return rows.map((row) => row.name);
+}
+
 async function runOnePlan(
   database: Database,
   plan: ClaimedPlan,
@@ -471,7 +484,11 @@ async function runOnePlan(
           }
         : ending;
     if (opsStopped && !silenced) {
-      await pageOps(database, { site: 'registration_stop_unverified', facts: {}, ref: plan.offerId });
+      await pageOps(database, {
+        site: 'registration_stop_unverified',
+        facts: {},
+        ref: plan.offerId,
+      });
     }
     // An allowance whose run never started is released; a started one keeps its
     // hold until the session's real cost replaces it.
@@ -510,6 +527,18 @@ async function runOnePlan(
       console.error(
         { offerId: plan.offerId, outcome: result.outcome, notice },
         'signup plans: parent notice failed',
+      );
+    }
+    // After the parent's text, so paging never holds it. Named whatever the text did.
+    if (receipt && !receipt.ok) {
+      const page = await pageOps(database, {
+        site: 'registration_receipt_unsent',
+        facts: { reason: receipt.reason },
+        ref: plan.offerId,
+      });
+      console.warn(
+        { offerId: plan.offerId, reason: receipt.reason, page },
+        'signup plans: no receipt image',
       );
     }
     await audit({
@@ -654,6 +683,7 @@ async function runOnePlan(
             {
               browserId: facts.browserId,
               registrationUrl: plan.registrationUrl,
+              waitUntil: facts.waitUntil,
               keep: {
                 confirmationNumber: facts.confirmationNumber,
                 className: session?.program.name ?? null,
@@ -802,6 +832,7 @@ async function runOnePlan(
     ? {
         approved,
         childFirstName: identity.childFirstName ?? '',
+        siblingFirstNames: await siblingFirstNames(database, plan),
         timeZone: termsTimeZone(host, await parentTimeZone(database, plan.parentUserId)),
         freeCheckoutEnabled: registrationFreeCheckoutEnabled(plan.familyId),
         priorChargeNow: () =>

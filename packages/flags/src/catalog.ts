@@ -173,6 +173,7 @@ export const FLAGS = [
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),
   // VIL-715. Pre-flight and approval binding on top of the plan lane. Exact `true`.
   exact('registration-preflight', 'REGISTRATION_PREFLIGHT_ENABLED', {
+    envOnly: true,
     allowlistEnv: 'REGISTRATION_PREFLIGHT_FAMILIES',
     allowlistMode: 'narrow',
   }),

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type CartForCompare, compareCart } from './cart';
 import type { SignupTermsApprovedSession } from './types';
 
-const who = { childFirstName: 'Ada', timeZone: 'America/Toronto' };
+const who = { childFirstName: 'Ada', siblingFirstNames: [], timeZone: 'America/Toronto' };
 
 const bound = (over: Partial<SignupTermsApprovedSession> = {}): SignupTermsApprovedSession => ({
   sessionId: 's-1',
@@ -43,6 +43,37 @@ describe('compareCart', () => {
   it('passes the exact cart at both stages (positive control)', () => {
     expect(compareCart(bound(), cart(), who, 'cart')).toEqual([]);
     expect(compareCart(bound(), cart(), who, 'final')).toEqual([]);
+  });
+
+  describe('the kid', () => {
+    const named = (childFirstName: string, siblingFirstNames: string[], cartName: string) =>
+      compareCart(
+        bound(),
+        cart({ participant_first_name: cartName }),
+        { childFirstName, siblingFirstNames, timeZone: who.timeZone },
+        'cart',
+      ).includes('kid');
+
+    it.each([
+      ['the full stored name', 'Anne Marie', [], 'Anne Marie'],
+      ['case and spacing aside', 'Anne Marie', [], '  anne   MARIE '],
+      ['the stored name plus a surname', 'Anne Marie', [], 'Anne Marie Lovelace'],
+      ['a shorter name no sibling shares', 'Anne Marie', ['Sophie'], 'Anne'],
+      ['a stored short name plus a surname', 'Anne', ['Anne Marie'], 'Anne Lovelace'],
+      ['the exact name beside a longer sibling', 'Anne', ['Anne Marie'], 'Anne'],
+    ])('passes %s', (_case, child, siblings, cartName) => {
+      expect(named(child, siblings, cartName)).toBe(false);
+    });
+
+    it.each([
+      ['a sibling sharing the first word', 'Anne Marie', [], 'Anne Sophie'],
+      ['a shorter name a sibling also starts with', 'Anne Marie', ['Anne Sophie'], 'Anne'],
+      ['the exact name of a sibling', 'Anne', ['Anne Marie'], 'Anne Marie'],
+      ['a name both children start', 'Anne', ['Anne Marie'], 'Anne Marie Lovelace'],
+      ['another name', 'Ada', [], 'Sophie'],
+    ])('stops on %s', (_case, child, siblings, cartName) => {
+      expect(named(child, siblings, cartName)).toBe(true);
+    });
   });
 
   it('one cent over stops', () => {

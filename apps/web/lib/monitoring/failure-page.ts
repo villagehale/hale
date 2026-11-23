@@ -246,6 +246,8 @@ export const OPS_PAGE_VOCABULARY = {
   registration_receipt_unsent: {
     reason: [
       'card_shaped',
+      'not_a_confirmation',
+      'no_browser',
       'no_cdp',
       'attach_failed',
       'no_page',

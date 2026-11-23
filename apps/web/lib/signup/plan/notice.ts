@@ -25,7 +25,7 @@ import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import { createProviderNoticeWriter } from './notice-writer';
 import type { PlanNoticeKind, PlanPrepDeliver, PlanPrepDeps } from './prep';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
-import { planLapse } from './store';
+import { planLapse, writePlanAudit } from './store';
 import { planReplyMode } from './towns';
 import {
   type PlanReplyTerms,
@@ -49,11 +49,7 @@ const TERMS_UNREADABLE_FACTS: PlanReplyTerms = {
   unread: ['page'],
 };
 
-type ReceiptUnsent =
-  | Exclude<ReceiptResult, { ok: true }>['reason']
-  | 'transport_unsupported'
-  | 'too_large'
-  | 'send_failed';
+type ReceiptUnsent = 'transport_unsupported' | 'too_large' | 'send_failed';
 
 export const PLAN_RECEIPT_TEMPLATE = 'signup_plan_receipt';
 export const PLAN_NOTICE_TEMPLATE = 'signup_plan_notice';
@@ -185,8 +181,10 @@ export const MAX_RECEIPT_IMAGE_BYTES = 1_000_000;
 
 /**
  * VIL-715 · the masked receipt, to the approving parent's own 1:1, never a group. Its ledger
- * row is written `queued` and marked sent only once the transport accepted it. A receipt
- * that does not go is named on #ops; the registration and the text stand either way.
+ * row is written `queued` and marked sent only once the transport accepted it. A capture that
+ * failed was already named by the run. An image that does not go is named on #ops, and what
+ * became of it is audited, with no image content; the registration and the text stand either
+ * way, so a failed audit write is logged and never turns a sent text into a failure.
  */
 async function deliverReceipt(
   database: Database,
@@ -195,7 +193,25 @@ async function deliverReceipt(
   receipt: ReceiptResult,
   input: { to: string; now: Date },
 ): Promise<void> {
-  const unsent = async (reason: ReceiptUnsent) => {
+  if (!receipt.ok) return;
+  const { bytes } = receipt.receipt;
+  const auditDelivery = async (after: Record<string, unknown>) => {
+    try {
+      await writePlanAudit(database, {
+        familyId: notice.familyId,
+        actor: notice.parentUserId,
+        offerId: notice.offerId,
+        after: { step: 'plan_receipt_delivery', ...after, bytes },
+      });
+    } catch (err) {
+      console.error(
+        { offerId: notice.offerId, error: err instanceof Error ? err.name : 'unknown' },
+        'signup plans: receipt delivery audit failed',
+      );
+    }
+  };
+  const unsent = async (reason: ReceiptUnsent, outcome: 'refused' | 'not_sent') => {
+    await auditDelivery({ outcome, reason });
     const page = await pageOps(database, {
       site: 'registration_receipt_unsent',
       facts: { reason },
@@ -203,9 +219,8 @@ async function deliverReceipt(
     });
     console.warn({ offerId: notice.offerId, reason, page }, 'signup plans: receipt not sent');
   };
-  if (!receipt.ok) return unsent(receipt.reason);
-  if (!deps.transport.sendImage) return unsent('transport_unsupported');
-  if (receipt.receipt.bytes > MAX_RECEIPT_IMAGE_BYTES) return unsent('too_large');
+  if (!deps.transport.sendImage) return unsent('transport_unsupported', 'not_sent');
+  if (bytes > MAX_RECEIPT_IMAGE_BYTES) return unsent('too_large', 'not_sent');
   const messages = schema.channelMessages;
   const [row] = await database
     .insert(messages)
@@ -248,8 +263,9 @@ async function deliverReceipt(
         errorCode: (err instanceof Error ? err.constructor.name : 'send_threw').slice(0, 80),
       })
       .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    return unsent('send_failed');
+    return unsent('send_failed', 'refused');
   }
+  await auditDelivery({ outcome: 'accepted' });
 }
 
 async function deliverDirect(

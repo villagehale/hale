@@ -10,6 +10,7 @@ import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import type { Asked } from '~/lib/channel/router/open-questions';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   type AskPlace,
   SIGNUP_ASK_BACK_QUESTION,
@@ -401,7 +402,7 @@ async function runOneShotAsk(
     (await someOfferHasTerms(database, { familyId: input.familyId, offerIds: [offer.id] }))
   ) {
     await markFromPending(database, input, offer.id, null);
-    return replyFor(database, input, reportDeps, door, {
+    const handedBack = await replyFor(database, input, reportDeps, door, {
       offerId: offer.id,
       outcome: 'error',
       reason: null,
@@ -409,6 +410,14 @@ async function runOneShotAsk(
       prefilled: [],
       host,
     });
+    if (handedBack.unsent === 'reply_unwritten') {
+      await pageOps(database, {
+        site: 'registration_text_unwritten',
+        facts: { moment: 'reply' },
+        ref: offer.id,
+      });
+    }
+    return handedBack;
   }
 
   const decision = authorizeSignup({

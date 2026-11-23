@@ -1,10 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { signupProviderHost } from '../consent';
 import { planCityLoginOwnerEnabled, providerCredentialsEnabled } from '../credentials/flag';
 import { type LoginCardText, hasOpenLoginLink, loginLinkForNotice } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
+import { askIsOnTerms } from '../terms/store';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
 import { parentTimeZone } from './conversation';
@@ -279,6 +281,7 @@ export async function runDueSignupPlanPrep(
     const written = draft ? asBubbles(draft.bubbles) : null;
     if (!draft || !written) {
       console.warn({ offerId: offer.id, kind, code: 'unwritten' }, 'signup plan prep: not sent');
+      await pageUnwrittenOnTerms(database, offer.familyId, offer.id);
       notices.push({ offerId: offer.id, kind, outcome: 'unwritten' });
       continue;
     }
@@ -324,6 +327,20 @@ export async function runDueSignupPlanPrep(
   return { notices };
 }
 
+/** VIL-715 · on the terms lane a text the model could not write is named on #ops. */
+async function pageUnwrittenOnTerms(
+  database: Database,
+  familyId: string,
+  offerId: string,
+): Promise<void> {
+  if (!(await askIsOnTerms(database, familyId, offerId))) return;
+  await pageOps(database, {
+    site: 'registration_text_unwritten',
+    facts: { moment: 'run_notice' },
+    ref: offerId,
+  });
+}
+
 /**
  * One event-driven notice (rejected password, mismatched options). Each part is its own send.
  * With `mintLink`, the facts carry `loginCard`; the card is minted after the draft, so its
@@ -346,7 +363,10 @@ export async function sendSignupPlanNotice(
 ): Promise<boolean> {
   const draft = await deps.writer.write(input.facts);
   const written = draft ? asBubbles(draft.bubbles) : null;
-  if (!draft || !written) return false;
+  if (!draft || !written) {
+    await pageUnwrittenOnTerms(database, input.familyId, input.offerId);
+    return false;
+  }
   const link = input.mintLink ? await input.mintLink(draft.card) : null;
   const delivered = await deps.deliver({
     familyId: input.familyId,

@@ -19,6 +19,8 @@ export interface ReceiptKeep {
 
 export type ReceiptFailure =
   | 'card_shaped'
+  | 'not_a_confirmation'
+  | 'no_browser'
   | 'no_cdp'
   | 'attach_failed'
   | 'no_page'
@@ -36,9 +38,21 @@ export type ReceiptResult =
   | { ok: true; receipt: MaskedReceipt }
   | { ok: false; reason: ReceiptFailure };
 
-/** A long digit run is what a card looks like. A real number that long costs the image. */
+/** The shortest card number. Digits are counted whatever separates them. */
+const CARD_MIN_DIGITS = 13;
+/** One or two short letter-and-digit tokens joined by one hyphen: `R-55120`, `ABC123`. */
+const CONFIRMATION_SHAPE = /^[\p{L}\p{Nd}]{1,16}(?:-[\p{L}\p{Nd}]{1,16})?$/u;
+/** The longest a capture may run: it holds the parent's text and the browser's release. */
+export const RECEIPT_CAPTURE_DEADLINE_MS = 10_000;
+
+/** Enough digits to be a card, whatever separates them. A real number that long costs the image. */
 export function cardShapedNumber(value: string): boolean {
-  return /\p{Nd}{13,}/u.test(value.normalize('NFKC').replace(/[\s-]/g, ''));
+  return (value.normalize('NFKC').match(/\p{Nd}/gu) ?? []).length >= CARD_MIN_DIGITS;
+}
+
+/** The only shape a confirmation number is drawn in. Anything else gets no image. */
+export function confirmationNumberAllowed(value: string): boolean {
+  return CONFIRMATION_SHAPE.test(value.normalize('NFKC')) && !cardShapedNumber(value);
 }
 
 /**
@@ -47,7 +61,16 @@ export function cardShapedNumber(value: string): boolean {
  */
 function stringsShown(strings: string[]): boolean[] {
   const shown = (document.body?.innerText ?? '').replace(/\s+/g, ' ');
-  return strings.map((value) => shown.includes(value.replace(/\s+/g, ' ')));
+  const wordChar = /[\p{L}\p{N}]/u;
+  const standsAlone = (wanted: string) => {
+    for (let at = shown.indexOf(wanted); at >= 0; at = shown.indexOf(wanted, at + 1)) {
+      const before = shown[at - 1];
+      const after = shown[at + wanted.length];
+      if (!(before && wordChar.test(before)) && !(after && wordChar.test(after))) return true;
+    }
+    return false;
+  };
+  return strings.map((value) => standsAlone(value.replace(/\s+/g, ' ')));
 }
 
 const RECEIPT_SHEET =
@@ -79,12 +102,18 @@ async function renderSheet(page: Page, strings: string[]): Promise<Buffer> {
   }
 }
 
+function confirmationRefusal(value: string): ReceiptFailure | null {
+  if (cardShapedNumber(value)) return 'card_shaped';
+  return confirmationNumberAllowed(value) ? null : 'not_a_confirmation';
+}
+
 /**
  * Checks which of the kept strings the provider's page shows, and renders those. A page that
  * does not show the confirmation number leaves no image.
  */
 export async function renderReceipt(page: Page, keep: ReceiptKeep): Promise<ReceiptResult> {
-  if (cardShapedNumber(keep.confirmationNumber)) return { ok: false, reason: 'card_shaped' };
+  const refused = confirmationRefusal(keep.confirmationNumber);
+  if (refused) return { ok: false, reason: refused };
   const strings = [
     ...new Set(
       [keep.confirmationNumber, keep.className, keep.amount].filter(
@@ -124,16 +153,49 @@ export interface ReceiptPorts {
 }
 
 /**
- * Attaches to the run's browser and renders the receipt from the provider's own page.
- * Disconnecting does not stop the browser: the caller's `settleBrowser` does.
+ * Attaches to the run's browser and renders the receipt from the provider's own page, within
+ * {@link RECEIPT_CAPTURE_DEADLINE_MS} and never past the sweep's end. A page or a connection
+ * that hangs ends `capture_failed`. Disconnecting does not stop the browser: the caller's
+ * `settleBrowser` does.
  */
 export async function captureMaskedReceipt(
   ports: ReceiptPorts,
-  input: { browserId: string; registrationUrl: string; keep: ReceiptKeep },
+  input: {
+    browserId: string | null;
+    registrationUrl: string;
+    keep: ReceiptKeep;
+    waitUntil: Date;
+  },
 ): Promise<ReceiptResult> {
-  if (cardShapedNumber(input.keep.confirmationNumber)) {
-    return { ok: false, reason: 'card_shaped' };
+  const refused = confirmationRefusal(input.keep.confirmationNumber);
+  if (refused) return { ok: false, reason: refused };
+  if (input.browserId === null) return { ok: false, reason: 'no_browser' };
+  const budget = Math.min(RECEIPT_CAPTURE_DEADLINE_MS, input.waitUntil.getTime() - Date.now());
+  if (budget <= 0) return { ok: false, reason: 'capture_failed' };
+  const attached: { browser?: Pick<Browser, 'contexts' | 'close'>; expired?: boolean } = {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<ReceiptResult>((resolve) => {
+    timer = setTimeout(() => {
+      attached.expired = true;
+      attached.browser?.close().catch(() => undefined);
+      resolve({ ok: false, reason: 'capture_failed' });
+    }, budget);
+  });
+  const captured = attachAndRender(ports, { ...input, browserId: input.browserId }, attached).catch(
+    (): ReceiptResult => ({ ok: false, reason: 'capture_failed' }),
+  );
+  try {
+    return await Promise.race([captured, expired]);
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function attachAndRender(
+  ports: ReceiptPorts,
+  input: { browserId: string; registrationUrl: string; keep: ReceiptKeep },
+  attached: { browser?: Pick<Browser, 'contexts' | 'close'>; expired?: boolean },
+): Promise<ReceiptResult> {
   let cdpUrl: string | null;
   try {
     cdpUrl = await ports.getCdpUrl(input.browserId);
@@ -149,6 +211,12 @@ export async function captureMaskedReceipt(
   } catch {
     return { ok: false, reason: 'attach_failed' };
   }
+  // The deadline passed while this was connecting: nothing will disconnect it later.
+  if (attached.expired) {
+    await browser.close().catch(() => undefined);
+    return { ok: false, reason: 'capture_failed' };
+  }
+  attached.browser = browser;
   try {
     const pages = browser
       .contexts()
@@ -158,6 +226,6 @@ export async function captureMaskedReceipt(
     if (!page) return { ok: false, reason: 'no_page' };
     return await renderReceipt(page, input.keep);
   } finally {
-    await browser.close().catch(() => undefined);
+    if (!attached.expired) await browser.close().catch(() => undefined);
   }
 }

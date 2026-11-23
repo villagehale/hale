@@ -4,7 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
-import { moneyCentsWritten } from '../terms/money';
+import { parentAmountsIn } from '../terms/money';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -18,7 +18,8 @@ import { MAX_PLAN_CHOICES } from './store';
  * The offer's activity name came from a web page or the coach model, so it is untrusted:
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
  * an approval. An approval holds only on the parent's own words, copied whole (`said`); its
- * maximum only on a price Hale's offer stated or an amount of money they wrote; the waiver
+ * maximum only on a price Hale's offer stated or an amount of money they wrote (on an ask
+ * with terms, the limit the model quoted from their words, its amount found there); the waiver
  * only on a plan whose waiver question Hale sent, and only on their own words, whole, that
  * are no part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
  * that carry a whole word of its program's name or its site. Anything else fails closed.
@@ -145,11 +146,13 @@ export const SIGNUP_PLAN_READ_TOOL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** The read of an ask with terms: the two prerequisite fields are added, nothing changes. */
+/** The read of an ask with terms: the prerequisite and limit fields are added. */
 export const signupPlanReadTermsSchema = signupPlanReadSchema
   .extend({
     prerequisiteSaid: z.string().nullable(),
     prerequisiteMet: z.boolean().nullable(),
+    limitCents: z.number().int().nullable(),
+    limitSaid: z.string().nullable(),
   })
   .strict();
 
@@ -159,13 +162,23 @@ export const SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA = {
     ...SIGNUP_PLAN_READ_TOOL_SCHEMA.properties,
     prerequisiteSaid: { type: ['string', 'null'] },
     prerequisiteMet: { type: ['boolean', 'null'] },
+    limitCents: { type: ['integer', 'null'] },
+    limitSaid: { type: ['string', 'null'] },
   },
-  required: [...SIGNUP_PLAN_READ_TOOL_SCHEMA.required, 'prerequisiteSaid', 'prerequisiteMet'],
+  required: [
+    ...SIGNUP_PLAN_READ_TOOL_SCHEMA.required,
+    'prerequisiteSaid',
+    'prerequisiteMet',
+    'limitCents',
+    'limitSaid',
+  ],
 } as const;
 
 type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
   prerequisiteSaid?: string | null;
   prerequisiteMet?: boolean | null;
+  limitCents?: number | null;
+  limitSaid?: string | null;
 };
 
 /**
@@ -239,24 +252,18 @@ export function moneyWritten(text: string): number[] {
 }
 
 /**
- * The amounts of money in the parent's words. On an ask with terms, one parser reads the
- * limit and the maximum, a decimal comma included. Without terms, the read of today.
- */
-function parentMoney(text: string, offer: Pick<PlanReadOffer, 'terms'>): number[] {
-  return offer.terms ? moneyCentsWritten(text) : moneyWritten(text);
-}
-
-/**
  * A maximum holds on Hale's own stored facts — the highest price stated for the sessions
  * the parent chose, or a price they already accepted — on an amount of money they wrote,
  * or on a bare number they wrote that is a price Hale's offer stated. Never on the activity
- * label, and never on any other number (an address, a year).
+ * label, and never on any other number (an address, a year). `written` is their money: on an
+ * ask with terms, only the limit their quote backs.
  */
 function maxSupported(
   maxPriceCents: number,
   chosen: readonly SignupSession[],
   offer: PlanReadOffer,
   text: string,
+  written: readonly number[],
 ): boolean {
   const stated = chosen.flatMap((session) =>
     session.priceCents === null ? [] : [session.priceCents],
@@ -264,7 +271,7 @@ function maxSupported(
   if (stated.length > 0 && maxPriceCents === Math.max(...stated)) return true;
   if (offer.terms?.boundCents.includes(maxPriceCents)) return true;
   if (offer.approvedPriceCents !== null && maxPriceCents === offer.approvedPriceCents) return true;
-  if (parentMoney(text, offer).includes(maxPriceCents)) return true;
+  if (written.includes(maxPriceCents)) return true;
   const offered = [
     offer.approvedPriceCents,
     ...offer.sessions.map((session) => session.priceCents),
@@ -342,13 +349,15 @@ export function toPlanReading(
     offer.terms !== undefined &&
     ids.length > 0 &&
     ids.every((id) => offer.terms?.freeSessionIds.includes(id));
+  const limit = offer.terms ? limitWritten(raw, text, offer.terms) : null;
+  const written = offer.terms ? (limit === null ? [] : [limit]) : moneyWritten(text);
   const valid =
     ids.length > 0 &&
     ids.length <= MAX_PLAN_CHOICES &&
     new Set(ids).size === ids.length &&
     chosen.length === ids.length &&
     max !== null &&
-    (max === 0 ? allFree : max > 0 && maxSupported(max, chosen, offer, text)) &&
+    (max === 0 ? allFree : max > 0 && maxSupported(max, chosen, offer, text, written)) &&
     raw.said !== null &&
     quotesParentWords(text, raw.said);
   if (valid && max !== null) {
@@ -361,7 +370,7 @@ export function toPlanReading(
       ...(offer.terms
         ? {
             prerequisiteMet: prerequisiteAnswer(raw, text),
-            limitWrittenCents: limitWritten(max, parentMoney(text, offer)),
+            limitWrittenCents: limit,
           }
         : {}),
     };
@@ -377,13 +386,19 @@ function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
 }
 
 /**
- * The limit the parent's own words set. A model that left out a number they wrote cannot
- * widen what they said: with no match, the smallest amount they wrote is the limit, and a
- * limit under the price makes Hale ask.
+ * The limit the model read, once code finds its amount in the parent's own quoted words. The
+ * model decides whether the words set a limit. A number with no currency only narrows a price
+ * the ask stated: alone it could be a level or a year, and would authorize a ceiling.
  */
-function limitWritten(max: number, written: readonly number[]): number | null {
-  if (written.length === 0) return null;
-  return written.includes(max) ? max : Math.min(...written);
+function limitWritten(raw: RawPlanRead, text: string, terms: PlanReadTerms): number | null {
+  const { limitCents, limitSaid } = raw;
+  if (limitCents == null || limitCents <= 0 || limitSaid == null) return null;
+  if (!quotesParentWords(text, limitSaid)) return null;
+  const amounts = parentAmountsIn(limitSaid);
+  if (amounts.marked.includes(limitCents)) return limitCents;
+  return limitCents <= Math.max(0, ...terms.boundCents) && amounts.bare.includes(limitCents)
+    ? limitCents
+    : null;
 }
 
 function className(err: unknown): string {

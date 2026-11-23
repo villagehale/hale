@@ -6,6 +6,7 @@ import type { BrowserUseEngineDeps } from './engine';
 import {
   type BrowserUsePlanInput,
   type PlanBinding,
+  type PlanConfirmedFacts,
   type PlanEngineStep,
   runBrowserUsePlanSignup,
 } from './plan-engine';
@@ -127,7 +128,7 @@ type Outputs = {
   payment?: Record<string, unknown>;
 };
 
-function harness(outputs: Outputs) {
+function harness(outputs: Outputs, opts: { browserId?: string | null } = {}) {
   const log: { method: string; path: string; body: Record<string, unknown> }[] = [];
   const skillOf = new Map<string, string>();
   let runs = 0;
@@ -150,7 +151,10 @@ function harness(outputs: Outputs) {
           {
             id: 1,
             type: 'browser.ready',
-            data: { live_view_url: LIVE, browser_session_id: 'browser-1' },
+            data: {
+              live_view_url: LIVE,
+              browser_session_id: opts.browserId === undefined ? 'browser-1' : opts.browserId,
+            },
           },
         ],
         nextAfter: null,
@@ -197,6 +201,7 @@ function harness(outputs: Outputs) {
 const binding = (over: Partial<PlanBinding> = {}): PlanBinding => ({
   approved: approved(),
   childFirstName: 'Ada',
+  siblingFirstNames: [],
   timeZone: 'America/Toronto',
   freeCheckoutEnabled: false,
   priorChargeNow: async () => false,
@@ -256,6 +261,20 @@ describe('a bound plan run', () => {
       { step: 'cart_check', stage: 'cart', differences: [], ok: true },
       { step: 'cart_check', stage: 'final', differences: [], ok: true },
     ]);
+  });
+
+  it('a confirmed run with no browser id still reaches the receipt hook', async () => {
+    const h = harness({ plan: CHECKOUT, payment: PAID }, { browserId: null });
+    const onConfirmed = vi.fn(async (_facts: PlanConfirmedFacts) => undefined);
+    const { value } = input({ onConfirmed });
+    const result = await runBrowserUsePlanSignup(value, h.deps);
+    expect(result.outcome).toBe('completed');
+    expect(onConfirmed).toHaveBeenCalledTimes(1);
+    expect(onConfirmed.mock.calls[0]?.[0]).toMatchObject({
+      browserId: null,
+      confirmationNumber: 'R-55120',
+      waitUntil: value.waitUntil,
+    });
   });
 
   it('sends the extended schema and the cart-read addendum only on a bound run', async () => {

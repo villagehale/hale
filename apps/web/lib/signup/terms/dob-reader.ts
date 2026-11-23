@@ -8,9 +8,9 @@ import { quotesParentWords } from '../parent-quote';
 /**
  * VIL-715 · the child's date of birth, from the parent's answer to Hale asking for it.
  * The model reads it, for this child by name; code holds it to the parent's own words: their
- * quote is copied whole, carries the date's day and year, and the date is a real day in the
- * past. A date the model reads as someone else's is never stored. Anything else reads as no
- * date, and the turn carries on as usual.
+ * quote is copied whole, carries the date's year, month and day each in its own word, and
+ * the date is a real day in the past. A date the model reads as someone else's is never
+ * stored. Anything else reads as no date.
  */
 export const SIGNUP_DOB_READ_SKILL = 'signup-dob-read';
 export const SIGNUP_DOB_READ_TOOL = 'signup_dob_read';
@@ -59,13 +59,57 @@ export function acceptDobReading(
   const date = acceptCalendarDate(raw.date);
   if (date === null || !quotesParentWords(text, raw.said)) return null;
   if (new Date(`${date}T12:00:00Z`).getTime() >= now.getTime()) return null;
-  const said = raw.said.normalize('NFKC');
-  const year = date.slice(0, 4);
-  const day = String(Number(date.slice(8, 10)));
-  const digits: string[] = said.match(/\d+/g) ?? [];
-  const hasYear = digits.includes(year) || digits.includes(year.slice(2));
-  const hasDay = digits.some((run) => run === day || run === day.padStart(2, '0'));
-  return hasYear && hasDay ? date : null;
+  return quoteCarriesDate(raw.said, date) ? date : null;
+}
+
+/** The month's names in the two languages Hale writes to parents in, from the platform. */
+function monthNames(monthIndex: number): string[] {
+  const at = new Date(Date.UTC(2024, monthIndex, 15));
+  return ['en', 'fr'].flatMap((locale) =>
+    (['long', 'short'] as const).map((month) =>
+      new Intl.DateTimeFormat(locale, { month, timeZone: 'UTC' })
+        .format(at)
+        .toLowerCase()
+        .replace(/\.$/, ''),
+    ),
+  );
+}
+
+const sameNumber = (word: string, value: string) =>
+  /^\d+$/.test(word) && Number(word) === Number(value);
+
+/**
+ * Year, month and day each come from a different word of the quote. Two all-number parts
+ * that could trade places (03/04/2021) do not say which is the month, unless the year leads.
+ */
+function quoteCarriesDate(said: string, date: string): boolean {
+  const words: string[] =
+    said
+      .normalize('NFKC')
+      .toLowerCase()
+      .match(/\d+|\p{L}+/gu) ?? [];
+  const [year, month, day] = [date.slice(0, 4), date.slice(5, 7), date.slice(8, 10)] as [
+    string,
+    string,
+    string,
+  ];
+  const names = monthNames(Number(month) - 1);
+  const fullYearAt = words.indexOf(year);
+  const yearAt = fullYearAt >= 0 ? fullYearAt : words.lastIndexOf(year.slice(2));
+  if (yearAt < 0) return false;
+  const rest = words.map((word, index) => (index === yearAt ? null : word));
+  const namedMonth = rest.findIndex((word) => word !== null && names.includes(word));
+  const monthAt =
+    namedMonth >= 0
+      ? namedMonth
+      : rest.findIndex((word) => word !== null && sameNumber(word, month));
+  if (monthAt < 0) return false;
+  const dayAt = rest.findIndex(
+    (word, index) => index !== monthAt && word !== null && sameNumber(word, day),
+  );
+  if (dayAt < 0) return false;
+  const swappable = namedMonth < 0 && month !== day && Number(day) <= 12;
+  return !swappable || fullYearAt === 0;
 }
 
 export function createDobReader(

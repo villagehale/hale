@@ -147,6 +147,8 @@ export interface PlanBinding {
   approved: SignupTermsApproved;
   /** The child the cart must name. Never sent to Browser Use from here. */
   childFirstName: string;
+  /** The family's other children: a cart name that could be theirs is not this child's. */
+  siblingFirstNames: readonly string[];
   /** The portal's zone, else the parent's, for reading the cart's date and time. */
   timeZone: string;
   /** The env-only switch for a $0 order, on for this family. Never arms a paid checkout. */
@@ -212,7 +214,8 @@ export interface BrowserUsePlanInput
   onCheckpoint: (resume: PlanResumeToken) => Promise<boolean>;
   /**
    * VIL-715 · called once on a confirmed registration, before the browser stops, to capture
-   * the masked receipt. Absent: no receipt. A failure here never changes the outcome.
+   * the masked receipt, with no browser id when the run never reported one. Absent: no
+   * receipt. A failure here never changes the outcome.
    */
   onConfirmed?: (facts: PlanConfirmedFacts) => Promise<void>;
 }
@@ -225,10 +228,12 @@ export interface PlanPaymentInput
 
 /** VIL-715 · what the provider confirmed, while its confirmation page is still open. */
 export interface PlanConfirmedFacts {
-  browserId: string;
+  browserId: string | null;
   confirmationNumber: string;
   amountChargedCents: number | null;
   choiceIndex: number | null;
+  /** This sweep's end: the capture must be over by then. */
+  waitUntil: Date;
   /** The browser's CDP address. A credential: never logged, never stored. */
   getCdpUrl: (browserId: string) => Promise<string | null>;
 }
@@ -360,7 +365,9 @@ export function settleBrowserUsePlanPayment(
 }
 
 async function tracked(
-  input: Pick<BrowserUsePlanInput, 'onConfirmed'> & { resume: PlanResumeToken | null },
+  input: Pick<BrowserUsePlanInput, 'onConfirmed' | 'waitUntil'> & {
+    resume: PlanResumeToken | null;
+  },
   deps: BrowserUseEngineDeps,
   drive: (tracker: PlanTracker) => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
@@ -390,18 +397,14 @@ async function tracked(
   }
   // The browser holds the family's place in line until a later sweep picks it up.
   if (result.outcome === 'checkpointed') return result;
-  if (
-    input.onConfirmed &&
-    result.outcome === 'completed' &&
-    result.confirmationNumber &&
-    tracker.browserId
-  ) {
+  if (input.onConfirmed && result.outcome === 'completed' && result.confirmationNumber) {
     await input
       .onConfirmed({
         browserId: tracker.browserId,
         confirmationNumber: result.confirmationNumber,
         amountChargedCents: result.amountChargedCents,
         choiceIndex: result.choiceIndex,
+        waitUntil: input.waitUntil,
         getCdpUrl: async (id) => (await deps.api.getBrowser(id)).cdpUrl,
       })
       .catch((err: unknown) => {
