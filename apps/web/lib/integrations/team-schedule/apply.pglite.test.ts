@@ -346,6 +346,7 @@ describe('applyTeamScheduleChange', () => {
 
   it('sends nothing when the parent text cannot be written', async () => {
     process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
     const eventId = await seedGame();
     const result = await applyTeamScheduleChange(
       db.database,
@@ -427,28 +428,56 @@ describe('applyTeamScheduleChange', () => {
     expect(pages).toEqual([]);
   });
 
-  it('VIL-719 policy on: an ask with no text applied nothing and pages no one', async () => {
-    process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
-    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
-    const eventId = await seedGame();
-    await applyTeamScheduleChange(
-      db.database,
-      {
-        familyId: family.familyId,
-        parentUserId: family.parentUserId,
-        integrationId: randomUUID(),
-        messageId: 'gmail-1',
-        timeZone: TZ,
-        now: NOW,
-        classification: classified(),
-        children: children(),
-      },
-      ports({
-        match: { eventId, change: 'cancel', newStartsAt: null, newLocation: null },
-        parentText: null,
-      }),
-    );
-    expect(pages).toEqual([]);
+  describe('VIL-719 an ask the model could not write', () => {
+    const applyUnwritten = async (eventId: string) =>
+      applyTeamScheduleChange(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId: randomUUID(),
+          messageId: 'gmail-1',
+          timeZone: TZ,
+          now: NOW,
+          classification: classified(),
+          children: children(),
+        },
+        ports({
+          match: { eventId, change: 'cancel', newStartsAt: null, newLocation: null },
+          parentText: null,
+        }),
+      );
+    const draftRows = () =>
+      db.database
+        .select({ id: schema.actions.id })
+        .from(schema.actions)
+        .where(eq(schema.actions.familyId, family.familyId));
+
+    it('policy on: pages #ops, leaves no draft, and hands the email to the notice', async () => {
+      process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const eventId = await seedGame();
+
+      const result = await applyUnwritten(eventId);
+
+      expect(result).toEqual({ handled: false });
+      expect(pages).toEqual([
+        { site: 'team_schedule_unwritten', facts: { change: 'cancel' }, ref: eventId },
+      ]);
+      await expect(draftRows()).resolves.toEqual([]);
+    });
+
+    it('policy off: main’s ending, no page and no notice', async () => {
+      process.env[TEAM_SCHEDULE_CHANGES_ENABLED_ENV] = 'true';
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+      const eventId = await seedGame();
+
+      const result = await applyUnwritten(eventId);
+
+      expect(result).toEqual({ handled: true, outcome: 'schedule_change_unwritten' });
+      expect(pages).toEqual([]);
+      await expect(draftRows()).resolves.toEqual([]);
+    });
   });
 
   it('does not follow a planted phone or link in the extraction', async () => {
@@ -1317,6 +1346,34 @@ describe('VIL-719 a driver outside the family’s own parents', () => {
       .values({ familyId: family.familyId, userId, role: 'grandparent' });
     return userId;
   }
+
+  it('policy on: with a grant and another family’s driver, an unwritten ask pages and runs nothing', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'false');
+    const other = await seedFamily(db.database, 'Other family');
+    const eventId = await seedGame({ dutyOwnerUserId: other.parentUserId });
+    const { p, modes, execute, composedFor } = grantPorts(eventId);
+    p.composeParent = async (input) => {
+      modes.push(input.mode);
+      return null;
+    };
+
+    const result = await apply(p);
+
+    expect(result).toEqual({ handled: false });
+    expect(modes).toEqual(['ask']);
+    expect(execute).not.toHaveBeenCalled();
+    expect(composedFor).toEqual([]);
+    expect(pages).toEqual([
+      { site: 'team_schedule_unwritten', facts: { change: 'time' }, ref: eventId },
+    ]);
+    await expect(
+      db.database
+        .select({ id: schema.actions.id })
+        .from(schema.actions)
+        .where(eq(schema.actions.familyId, family.familyId)),
+    ).resolves.toEqual([]);
+  });
 
   it('policy on: another family’s driver holds the change for the parent’s yes', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');

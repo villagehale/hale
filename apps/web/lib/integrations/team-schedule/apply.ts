@@ -480,11 +480,25 @@ export async function applyTeamScheduleChange(
   });
   // Ask path: no parent text means no draft left waiting for a yes nobody heard.
   if (text === null && !standing.autonomous) {
+    const policyOn = askPolicyTiersEnabled(input.familyId);
+    const page = policyOn
+      ? await ports.pager.page({
+          site: 'team_schedule_unwritten',
+          facts: { change: spoken },
+          ref: live.id,
+        })
+      : null;
     console.info(
-      { familyId: input.familyId, outcome: 'schedule_change_unwritten' },
+      {
+        familyId: input.familyId,
+        outcome: 'schedule_change_unwritten',
+        ...(page ? { page } : {}),
+      },
       'team schedule: parent text unwritten',
     );
-    return { handled: true, outcome: 'schedule_change_unwritten' };
+    return policyOn
+      ? { handled: false }
+      : { handled: true, outcome: 'schedule_change_unwritten' };
   }
 
   // VIL-719 · the draft cannot be approved until Linq has taken the ask.
