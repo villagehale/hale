@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi! Quick heads-up for tomorrow: swim class is at 10:00 AM at Stouffville Leisure Centre, 2 Park Drive, and soccer is at 2:00 PM at Memorial Park. Thanks for helping out!"
+  },
+  "latencyMs": 1170,
+  "usage": {
+    "input_tokens": 763,
+    "output_tokens": 91,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

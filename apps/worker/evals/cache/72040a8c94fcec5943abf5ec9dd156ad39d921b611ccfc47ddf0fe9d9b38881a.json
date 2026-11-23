@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi, I only send you reminders for the things you're helping with, so I can't help with that one. Sam is the best person to ask."
+  },
+  "latencyMs": 1795,
+  "usage": {
+    "input_tokens": 1235,
+    "output_tokens": 47,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

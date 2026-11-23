@@ -48,7 +48,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 
-const RECORDING_PENDING = true;
+const RECORDING_PENDING = false;
 
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');

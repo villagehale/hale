@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Just checking, is it okay if I text you the family's weekly schedule and pickup reminders? You can also tell me anytime, in your own words, that you would rather not hear from me."
+  },
+  "latencyMs": 1712,
+  "usage": {
+    "input_tokens": 191,
+    "output_tokens": 63,
+    "cache_read_input_tokens": 1303,
+    "cache_creation_input_tokens": 0
+  }
+}

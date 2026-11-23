@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Bienvenue ! Ana vous a ajouté(e) à sa famille ici. Vous voyez maintenant tout ce qu'elle voit, et vous pouvez m'écrire quand vous voulez."
+  },
+  "latencyMs": 2470,
+  "usage": {
+    "input_tokens": 1231,
+    "output_tokens": 78,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

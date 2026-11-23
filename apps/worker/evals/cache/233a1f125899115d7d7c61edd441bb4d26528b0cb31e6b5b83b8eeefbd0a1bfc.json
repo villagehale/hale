@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi! Just a heads up that PA day camp is tomorrow, Saturday, July 25. It's an all-day thing, so no set start time."
+  },
+  "latencyMs": 1762,
+  "usage": {
+    "input_tokens": 642,
+    "output_tokens": 54,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

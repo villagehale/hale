@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Done, I just texted grandma for you. She's in as soon as she says yes."
+  },
+  "latencyMs": 1174,
+  "usage": {
+    "input_tokens": 1232,
+    "output_tokens": 32,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

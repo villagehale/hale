@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi! Ana added you, so you're all set. You'll see everything she sees here, and you can text me anytime."
+  },
+  "latencyMs": 1102,
+  "usage": {
+    "input_tokens": 1230,
+    "output_tokens": 43,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}
