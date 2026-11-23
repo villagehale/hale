@@ -153,6 +153,10 @@ function spokenLine(answer, questions) {
   return typeof value.line === 'string' && value.line.trim() ? value.line.trim() : null;
 }
 
+let signupWithOkFact = () => {
+  throw new Error('no-stop-keyword eval: signupWithOkFact was not loaded');
+};
+
 function coachContext(fixture, helpLines) {
   return {
     parentName: null,
@@ -171,11 +175,13 @@ function coachContext(fixture, helpLines) {
     nowIso: '2026-11-21T15:00:00.000Z',
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date('2026-11-21T15:00:00.000Z')),
     helpLines,
   };
 }
 
 async function run(mode) {
+  ({ signupWithOkFact } = await importTs(join(WEB, 'signup', 'with-ok.ts')));
   if (mode === 'live') installEvalSpendCap();
   if (mode === 'dry') process.env.HALE_EVAL_DRY = '1';
   const cachedOnly = mode === 'cached-only';

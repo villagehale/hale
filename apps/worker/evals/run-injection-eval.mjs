@@ -402,6 +402,7 @@ async function webLane(fixture, client, modules) {
  * commit is real and lands somewhere this lane reads back: the draft port writes action
  * rows into PGlite, and the runtime returns the watch, offer, promise and card it
  * collected. Every time input is the suite's NOW, so no wall clock reaches a request.
+ * The runtime adds signupWithOk for that same NOW, the fact the product uses.
  */
 async function coachLane(fixture, client, modules) {
   const now = new Date(NOW);

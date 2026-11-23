@@ -67,6 +67,10 @@ const BROKEN_REPLY =
 
 const LOCATION = { city: 'Toronto', province: 'ON', country: 'CA' };
 
+let signupWithOkFact = () => {
+  throw new Error('group-privacy eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, helpLines) {
   return {
     parentName: fixture.senderName,
@@ -107,6 +111,7 @@ function contextFor(fixture, helpLines) {
     standingQuestions: [],
     audience: 'group',
     registrationWindows: fixture.registrationWindows ?? [],
+    signupWithOk: signupWithOkFact(NOW),
     helpLines,
     providerWatch: [{ provider: 'google_calendar', note: fixture.private.inbox }],
   };
@@ -223,6 +228,7 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('group-privacy');
   const cost = makeCost();

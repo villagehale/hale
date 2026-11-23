@@ -497,6 +497,7 @@ async function main() {
         alsoPossible: fixture.judgeCan,
         earlierAsk: fixture.signup?.earlier?.said,
         offerSignupReturned: fixture.signup ? signupResults : undefined,
+        signupWithOk: signupWithOkFact(new Date('2026-11-09T15:00:00.000Z')),
       },
       rubric: fixture.rubric,
       reply,

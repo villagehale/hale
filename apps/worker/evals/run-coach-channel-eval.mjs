@@ -2522,6 +2522,8 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The signup promise the model was handed (VIL-766). December 1 is recall.
+              signupWithOk: turnContext.signupWithOk,
               // The help lines the model was handed for where this family is (VIL-589).
               helpLines: turnContext.helpLines,
               // The family facts the model was handed, `seenIn` included. `undefined`

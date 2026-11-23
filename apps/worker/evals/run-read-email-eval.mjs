@@ -73,6 +73,10 @@ function transcriptFor(fixture, emailSourceTurns) {
 
 const LOCATION = { city: null, province: 'ON', country: 'CA' };
 
+let signupWithOkFact = () => {
+  throw new Error('read-email eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, transcript, helpLines) {
   return {
     parentName: null,
@@ -114,6 +118,7 @@ function contextFor(fixture, transcript, helpLines) {
     standingQuestions: [],
     ...(fixture.audience === 'group' ? { audience: 'group' } : {}),
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(NOW),
     helpLines,
   };
 }
@@ -216,6 +221,7 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('read-email');
   const cost = makeCost();

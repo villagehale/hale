@@ -69,6 +69,10 @@ const JUDGE_SYSTEM = judgePrompt('coach-reaction');
 
 const LOCATION = { city: 'Toronto', province: 'ON', country: 'CA' };
 
+let signupWithOkFact = () => {
+  throw new Error('coach-reaction eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, helpLines) {
   return {
     parentName: null,
@@ -87,6 +91,7 @@ function contextFor(fixture, helpLines) {
     nowIso: COACH_REACTION_NOW,
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date(COACH_REACTION_NOW)),
     helpLines,
   };
 }
@@ -229,6 +234,7 @@ async function main() {
     console.error('coach-reaction: --broken replays the cache; pass it with --cached-only.');
     process.exit(2);
   }
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('coach-reaction');
   const cost = makeCost();
