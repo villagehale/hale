@@ -1,5 +1,12 @@
 import type { AgentClient, AgentUsage, LaneConfig, ModelId } from '@hale/agent';
-import { SONNET_MODEL, SPARSE_CACHE_TTL, pickLane } from '@hale/agent';
+import {
+  SONNET_MODEL,
+  SPARSE_CACHE_TTL,
+  pickLane,
+  presentUntrusted,
+  untrustedSourceFor,
+} from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type { ClassifierSuggestion, EventType } from '@hale/types';
 import { redactEventPayload } from '@hale/worker/redaction';
 import { z } from 'zod';
@@ -139,7 +146,13 @@ export async function classifyEvent(
   deps: ClassifyDeps = {},
 ): Promise<ClassifyResult> {
   const skill = await loadClassifyEventSkill();
-  const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  let redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  redacted = presentUntrusted(
+    isEnabled('untrusted-field-marking'),
+    untrustedSourceFor(input.source),
+    'payload',
+    redacted,
+  );
   const userMessage = JSON.stringify({
     signal: { source: input.source, raw_content: redacted },
     family_context_slice: input.familyContextSlice ?? null,

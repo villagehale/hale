@@ -1,3 +1,5 @@
+import { comparableToMarked } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { fragment, readCourseModel } from '~/lib/channel/spots/availability';
 import type { RegistrationPageFetch } from './page';
 import type { RegistrationPdfRead, RegistrationPdfRefusal } from './pdf';
@@ -11,7 +13,7 @@ import {
   type SeasonRegistrationWindow,
   type UnfoundReason,
   corroborationFailure,
-  normalizeQuote,
+  quoteKey,
   pinYearByWeekday,
 } from './verify-window';
 
@@ -175,8 +177,8 @@ function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | 
   const { timeZone, timeZoneEvidence } = extracted;
   if (timeZone === null || timeZoneEvidence === null) return null;
   if (!CANONICAL_TIME_ZONES.has(timeZone)) return null;
-  const quote = normalizeQuote(timeZoneEvidence);
-  if (!LETTER_RUN.test(quote) || !normalizeQuote(pageText).includes(quote)) return null;
+  const quote = quoteKey(timeZoneEvidence);
+  if (!LETTER_RUN.test(quote) || !quoteKey(pageText).includes(quote)) return null;
   return timeZone;
 }
 
@@ -196,8 +198,11 @@ function wordRun(text: string): string {
 function programOnPage(extracted: ExtractedWindow, pageText: string): { programOnPage?: string } {
   const label = extracted.cycleOnPage?.trim();
   if (!label) return {};
-  const said = wordRun(label);
-  return said !== '' && wordRun(pageText).includes(said) ? { programOnPage: label } : {};
+  const marked = isEnabled('untrusted-field-marking');
+  const said = wordRun(comparableToMarked(marked, label));
+  return said !== '' && wordRun(comparableToMarked(marked, pageText)).includes(said)
+    ? { programOnPage: label }
+    : {};
 }
 
 /**

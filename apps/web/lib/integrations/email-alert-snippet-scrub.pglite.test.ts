@@ -27,6 +27,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await db.exec('truncate table families, users cascade');
 });
@@ -125,6 +126,7 @@ describe('scrubEmailAlertSnippets', () => {
       .update(schema.integrations)
       .set({ scopes: [...CONNECTOR_SCOPES.gmail] })
       .where(eq(schema.integrations.id, integrationId));
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
     const reader = coachEmailReader({
       ...productionCoachEmailReaderDeps(db.database),
       accessToken: async () => 'token-1',

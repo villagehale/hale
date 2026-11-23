@@ -286,6 +286,7 @@ beforeEach(async () => {
   INTEGRATION = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});

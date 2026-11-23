@@ -1,5 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { SPARSE_CACHE_TTL, forceToolJson, pickLane } from '@hale/agent';
+import {
+  SPARSE_CACHE_TTL,
+  forceToolJson,
+  pickLane,
+  presentUntrusted,
+  untrustedSourceFor,
+} from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { z } from 'zod';
 import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
@@ -173,7 +180,13 @@ export async function runClassifier(
   // still probes to the same row whether or not the family's names changed
   // between the two arrivals.
   const dedupHash = dedupHashFor(input.familyId, input.source, JSON.stringify(input.payload));
-  const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  let redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  redacted = presentUntrusted(
+    isEnabled('untrusted-field-marking'),
+    untrustedSourceFor(input.source),
+    'payload',
+    redacted,
+  );
 
   const userMessage = JSON.stringify({
     signal: { source: input.source, raw_content: redacted },

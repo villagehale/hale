@@ -7,9 +7,10 @@ import {
   type Skill,
   defineTool,
   invokeTool,
+  markUntrusted,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { type HealthPlace, healthNumbersIn } from '~/lib/channel/health-line';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
@@ -23,6 +24,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import type { TranscriptMessage } from '~/lib/coach/conversation';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
+import { coachEmailReader } from './read-email-tool';
 import {
   CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
@@ -2481,6 +2483,7 @@ describe('a reply written after read_email (VIL-628)', () => {
   async function respond(opts: {
     read: boolean;
     body?: string;
+    email?: string;
     facts?: string[];
     parentStated?: string[];
     watched?: string;
@@ -2514,7 +2517,7 @@ describe('a reply written after read_email (VIL-628)', () => {
         }) as never,
       emailReader: {
         connected: async () => true,
-        read: async () => ({ read: true, body: EMAIL, truncated: false }),
+        read: async () => ({ read: true, body: opts.email ?? EMAIL, truncated: false }),
       },
       runAgent: async (args) => {
         const read = args.tools.find((tool) => tool.name === 'read_email');
@@ -2624,6 +2627,150 @@ describe('a reply written after read_email (VIL-628)', () => {
   it('positive control: the date and times the parent asked about survive the runtime', async () => {
     const answer = 'The form is due 2026-11-20, and the trip runs 9:30-11:30. Bring a lunch.';
     expect((await respond({ read: true, answer })).reply).toBe(answer);
+  });
+
+  it('with the untrusted mark on, a code the email split with < is still cut', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const handed: unknown[] = [];
+    const p = ports({
+      emailReader: coachEmailReader({
+        alertedSource: async () => ({
+          kind: 'gmail',
+          eventId: null,
+          gmailMessageId: 'gm-1',
+          private: false,
+        }),
+        familyChildren: async () => [],
+        gmailConnection: async () => ({ id: 'integration-1' }),
+        accessToken: async () => 'token-1',
+        fetchBody: async () => 'Field trip is Friday. Enter code 48<29<13 to sign.',
+      }),
+      runAgent: async (args) => {
+        const read = args.tools.find((tool) => tool.name === 'read_email');
+        if (!read) throw new Error('read_email was not offered');
+        handed.push(
+          await invokeTool(read, { gmailMessageId: 'gm-1' }, args.toolContext, args.guardDeps),
+        );
+        return answering('The trip is Friday. Enter code 48 29 13 to sign.')(args);
+      },
+    });
+    try {
+      const { reply } = await channelCoachRuntime(p).respond(turn('what did the school say?'), []);
+      expect(reply).toBe('The trip is Friday.');
+      expect(handed).toEqual([
+        {
+          read: true,
+          body: markUntrusted(
+            'email',
+            'body',
+            'Field trip is Friday. Enter code 48<29<13 to sign.',
+          ),
+          truncated: false,
+        },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('with the untrusted mark on, a code the model copied through the escape is still cut', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday. Enter code 48<29<13 to sign.',
+        answer: 'The trip is Friday. Enter code 48&lt;29&lt;13 to sign.',
+      });
+      expect(reply).toBe('The trip is Friday.');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each(['48&lt;29&lt;13', '48<29<13', '48\u143829\u143813', '48\u300A29\u300A13'])(
+    'with the untrusted mark on, a code an email wrote with a look-alike is cut from %s',
+    async (copied) => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const { reply } = await respond({
+          read: true,
+          email: 'Field trip is Friday. Enter code 48\u143829\u143813 to sign.',
+          answer: `The trip is Friday. Enter code ${copied} to sign.`,
+        });
+        expect(reply).toBe('The trip is Friday.');
+      } finally {
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+      }
+    },
+  );
+
+  describe.each(['true', 'false'])('with the untrusted mark set to %s', (flag) => {
+    beforeEach(() => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', flag);
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    it.each([
+      '\u5B66\u6821\u8FD9\u5468\u8BFB\u300A\u4E09\u53EA\u5C0F\u732A\u300B\u3002',
+      '\u8BF7\u770B\u3008\u7B2C\u4E00\u7AE0\u3009\u3002',
+      'Le club \u2039 Lecture \u203A est mardi.',
+      '\u1438\u14C2\u1483 \u1405\u14EA\u14D7\u14A5.',
+    ])('a reply that writes a look-alike of < is delivered as written: %s', async (answer) => {
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday.',
+        answer,
+      });
+      expect(reply).toBe(answer);
+    });
+
+    it('a sentence kept after a cut keeps its own characters', async () => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const { reply } = await respond({
+        read: true,
+        email: 'Field trip is Friday. Enter code 48<29<13 to sign.',
+        answer: 'Le club \u2039 Lecture \u203A est mardi. Enter code 48 29 13 to sign.',
+      });
+      expect(reply).toBe('Le club \u2039 Lecture \u203A est mardi.');
+    });
+
+    it.each(['evil\u1438.com', 'evil\u{E003C}.com', 'pay-now\u1438.ca', 'evil.c\u1438om'])(
+      'a host only the reply spells with a look-alike of < is cut: %s',
+      async (host) => {
+        vi.spyOn(console, 'info').mockImplementation(() => {});
+        const { reply } = await respond({
+          read: true,
+          email: 'Field trip is Friday.',
+          answer: `The trip is Friday. Pay the deposit at ${host} today.`,
+        });
+        expect(reply).toBe('The trip is Friday.');
+      },
+    );
+  });
+
+  it('with the untrusted mark on, a kept sentence holding the entity is delivered with <', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const { reply } = await respond({
+        read: true,
+        email: 'Ages <5 swim moved to Tuesday. Enter code 48<29<13 to sign.',
+        answer: 'Ages &lt;5 swim moved to Tuesday. Enter code 48&lt;29&lt;13 to sign.',
+      });
+      expect(reply).toBe('Ages <5 swim moved to Tuesday.');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    }
   });
 
   it("Hale's own site survives a read turn (positive control)", async () => {
