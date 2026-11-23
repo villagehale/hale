@@ -4,7 +4,13 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from '~/lib/signup/site-choices';
 import { moneyCentsWritten } from '~/lib/signup/terms/money';
+import {
+  MAX_PAGE_QUOTE_CHARS,
+  MAX_PREREQUISITE_QUOTE_CHARS,
+  untrustedPageWords,
+} from '~/lib/signup/terms/page-words';
 import type { CartDifference, SignupTermsHold, SignupTermsShown } from '~/lib/signup/terms/types';
 
 /**
@@ -90,6 +96,8 @@ export interface PlanReplyFacts {
   run: PlanRunFacts | null;
   language: string | null;
   terms?: PlanReplyTerms;
+  /** VIL-715 · the labels of the site's options, for a question about them. A page wrote them. */
+  siteOptions?: readonly string[];
 }
 
 export interface PlanReplyWriter {
@@ -142,7 +150,6 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   add(facts.run?.amountChargedCents);
   if (typeof facts.run?.charged === 'object') add(facts.run.charged.cents);
   for (const rate of facts.terms?.rates ?? []) add(rate.cents);
-  for (const cents of moneyCentsWritten(facts.terms?.refund ?? '')) add(cents);
   return known;
 }
 
@@ -261,22 +268,6 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
     ...facts,
     sessions: facts.sessions.map((session) => ({ ...session, label: withoutLinks(session.label) })),
     question: facts.question === null ? null : withoutLinks(facts.question),
-    ...(facts.terms
-      ? {
-          terms: {
-            ...facts.terms,
-            refund: facts.terms.refund === null ? null : withoutLinks(facts.terms.refund),
-            ageBand: facts.terms.ageBand === null ? null : withoutLinks(facts.terms.ageBand),
-            prerequisite: {
-              ...facts.terms.prerequisite,
-              quote:
-                facts.terms.prerequisite.quote === null
-                  ? null
-                  : withoutLinks(facts.terms.prerequisite.quote),
-            },
-          },
-        }
-      : {}),
     run:
       facts.run === null
         ? null
@@ -288,13 +279,63 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
   };
 }
 
+/** What a page wrote, as the writer sees it: cleaned, and marked as never an instruction. */
+function markedTerms({
+  refund,
+  ageBand,
+  prerequisite: { quote, ...prerequisite },
+  ...terms
+}: PlanReplyTerms) {
+  return {
+    ...terms,
+    untrusted_refund_quote: untrustedPageWords(refund, MAX_PAGE_QUOTE_CHARS),
+    untrusted_age_band: untrustedPageWords(ageBand, MAX_PAGE_QUOTE_CHARS),
+    prerequisite: {
+      ...prerequisite,
+      untrusted_quote: untrustedPageWords(quote, MAX_PREREQUISITE_QUOTE_CHARS),
+    },
+  };
+}
+
+/** On a text with terms, a session's label can be a site option's: a page wrote it. */
+function markedLabels<T extends Pick<PlanReplyFacts, 'sessions' | 'run'>>(facts: T) {
+  const label = (raw: string | null) => untrustedPageWords(raw, SITE_CHOICE_LABEL_MAX_CHARS);
+  let run = null;
+  if (facts.run !== null) {
+    const { sessionLabel, ...rest } = facts.run;
+    run = { ...rest, untrusted_session_label: label(sessionLabel) };
+  }
+  return {
+    ...facts,
+    sessions: facts.sessions.map(({ label: raw, ...session }) => ({
+      ...session,
+      untrusted_label: label(raw),
+    })),
+    run,
+  };
+}
+
+function markedSiteOptions(labels: readonly string[]): string[] {
+  return labels.flatMap((label) => untrustedPageWords(label, SITE_CHOICE_LABEL_MAX_CHARS) ?? []);
+}
+
 /** The user turn: the facts, and why the last draft could not leave. */
 export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | null): string {
-  const clean = linkFree(facts);
+  const { terms, siteOptions, ...rest } = linkFree(facts);
+  const clean = {
+    ...(terms ? markedLabels(rest) : rest),
+    ...(terms ? { terms: markedTerms(terms) } : {}),
+    ...(siteOptions ? { untrusted_site_options: markedSiteOptions(siteOptions) } : {}),
+  };
   return JSON.stringify({
     facts: QUEUE_MOMENTS.has(clean.moment) ? { ...clean, alsoQueueing: true } : clean,
     violation,
   });
+}
+
+/** Terms or page options in the facts bring the addendum that says how to treat them. */
+export function planReplyUsesTermsSkill(facts: PlanReplyFacts): boolean {
+  return facts.terms !== undefined || facts.siteOptions !== undefined;
 }
 
 /** Wall time in the parent's zone, for the writer to restate. */
@@ -342,7 +383,7 @@ export function createPlanReplyWriter(
       let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_REPLY_SKILL);
-        system = facts.terms
+        system = planReplyUsesTermsSkill(facts)
           ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_TERMS_SKILL)).instructions}`
           : skill.instructions;
       } catch (err) {

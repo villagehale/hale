@@ -19,6 +19,7 @@ import {
   readCourseTerms,
 } from './evaluate';
 import { moneyCentsWritten } from './money';
+import { MAX_PAGE_QUOTE_CHARS } from './page-words';
 import type { SignupTermsShown } from './types';
 
 /**
@@ -36,7 +37,7 @@ export const SIGNUP_PREFLIGHT_READ_MAX_TOKENS = 1500;
 /** With less of the turn than this left, the page's text is not read: those fields stay unread. */
 export const PREFLIGHT_READ_MIN_TURN_MS = 20_000;
 
-const QUOTE_MAX = 400;
+const QUOTE_MAX = MAX_PAGE_QUOTE_CHARS;
 const quote = { type: ['string', 'null'], maxLength: QUOTE_MAX } as const;
 
 /** Property order is the order the model writes in: quotes before verdicts. */

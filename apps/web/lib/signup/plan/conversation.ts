@@ -302,10 +302,9 @@ const TERMS_DOB_OTHER_QUESTION =
   "The date they gave is someone else's. What is this child's date of birth?";
 const TERMS_DOB_UNCLEAR_QUESTION =
   "The date they gave could not be read for certain. What is this child's date of birth, with the month written out?";
-const termsPrerequisiteQuestion = (quote: string | null) =>
-  quote
-    ? `The class says: "${quote}". Has the child done that?`
-    : 'The class needs something first. Has the child done it?';
+const TERMS_PREREQUISITE_QUESTION = 'The class needs something first. Has the child done it?';
+const SITE_OPTIONS_QUESTION =
+  'Hale cannot email the provider. Which of the options the site currently offers do they want, or should Hale join the waitlist?';
 
 async function childAgeRow(database: Database, familyId: string, childId: string) {
   const [child] = await database
@@ -548,7 +547,8 @@ async function approveOnTerms(
       return reply(database, input, deps, plan, 'declined', { boundBy });
     }
     return reply(database, input, deps, plan, 'clarify', {
-      question: termsPrerequisiteQuestion(shown.prerequisite.quote),
+      question: TERMS_PREREQUISITE_QUESTION,
+      terms: writerTerms(shown),
       asksPrerequisite: true,
       boundBy,
     });
@@ -766,9 +766,8 @@ async function runMismatchTurn(
     }
     // Hale sends no email: the parent gets the site's options in a model-written reply.
     return reply(database, input, deps, plan, 'clarify', {
-      question: `Hale cannot email the provider. The site currently offers: ${parsed
-        .map((item) => item.label)
-        .join('; ')}. Which of these do they want, or should Hale join the waitlist?`,
+      question: SITE_OPTIONS_QUESTION,
+      siteOptions: parsed.map((item) => item.label),
       boundBy,
     });
   }
@@ -885,6 +884,8 @@ async function reply(
     boundBy?: PlanBinding;
     /** VIL-715 · the terms this text states. Absent, the writer's request is what it was. */
     terms?: PlanReplyTerms;
+    /** The labels of the site's options, when `question` is about them. */
+    siteOptions?: readonly string[];
     /** A refusal that sends the parent nowhere: the class does not fit this child. */
     noLink?: boolean;
     /** This text asks whether the child has what the class needs. */
@@ -919,6 +920,7 @@ async function reply(
       parentUserId: input.parentUserId,
     }),
     ...(extra.terms ? { terms: extra.terms } : {}),
+    ...(extra.siteOptions ? { siteOptions: extra.siteOptions } : {}),
   };
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write(facts);

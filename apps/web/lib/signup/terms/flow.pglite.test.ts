@@ -25,7 +25,7 @@ import { recordPlanNotice } from '../plan/prep';
 import { type PlanReader, type PlanReading, toPlanReading } from '../plan/reader';
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from '../plan/run';
 import { cancelSignupPlan, parkSignupPlan } from '../plan/store';
-import type { PlanReplyFacts, PlanReplyWriter } from '../plan/writer';
+import { type PlanReplyFacts, type PlanReplyWriter, planReplyUserMessage } from '../plan/writer';
 import { runAuthorizedSignup } from '../run';
 import { sentSignupText } from '../sent-text.fixture';
 import { recordSignupOffer } from '../store';
@@ -1116,6 +1116,22 @@ describe('the yes, against what happened since the ask', () => {
       expect((await termsRow(offerId))?.approved?.prerequisiteConfirmed).toBe(true);
     });
 
+    it('the question carries no page words: the writer gets them as a marked fact', async () => {
+      const f = await household();
+      const quote = 'Must have completed Pottery 1.';
+      await askedAndSent(f, {
+        page: NEEDS.replace('</body>', `<p>${quote}</p></body>`),
+        read: { ...BLANK, prerequisite: 'required', prerequisite_quote: quote },
+      });
+      const turn = await yes(f, YES);
+      expect(turn.result.outcome).toBe('plan_clarify');
+      const facts = turn.written.at(-1);
+      if (!facts) throw new Error('nothing was written');
+      expect(facts.question).not.toContain('Pottery');
+      const seen = JSON.parse(planReplyUserMessage(facts, null)).facts;
+      expect(seen.terms.prerequisite.untrusted_quote).toBe(quote);
+    });
+
     it('a question that never reached them is not the one a yes answers', async () => {
       const f = await household();
       await askedAndSent(f, { page: NEEDS });
@@ -1762,6 +1778,11 @@ describe('a pick after the options did not match', () => {
       read: vi.fn(async () => ({ verdict: 'option' as const, choiceId: 'opt-1' })),
     };
     const pick = await yes(f, YES, { body: 'Sunday works', mismatchReader });
+    const askFacts = pick.written.at(-1);
+    if (!askFacts) throw new Error('nothing was written');
+    const askSeen = JSON.parse(planReplyUserMessage(askFacts, null)).facts;
+    expect(askSeen.sessions[0]).not.toHaveProperty('label');
+    expect(askSeen.sessions[0].untrusted_label).toBe('Public Speaking Sunday');
     expect((await offerRow(oldOffer)).status).toBe('handed_back');
     expect(pick.written.at(-1)?.moment).toBe('offer');
     const offers = await db.database
@@ -1859,6 +1880,11 @@ describe('a pick after the options did not match', () => {
     expect(send).not.toHaveBeenCalled();
     expect(turn.result.claimed).toBe(true);
     expect((await offerRow(offerId)).status).toBe('planned');
+    const facts = turn.written.at(-1);
+    if (!facts) throw new Error('nothing was written');
+    expect(facts.question).not.toContain('Public Speaking Sunday');
+    const seen = JSON.parse(planReplyUserMessage(facts, null)).facts;
+    expect(seen.untrusted_site_options).toContain('Public Speaking Sunday');
   });
 });
 
