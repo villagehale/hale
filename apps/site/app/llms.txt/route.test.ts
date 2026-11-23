@@ -53,5 +53,9 @@ describe('llms.txt', () => {
     expect(text).toContain('Full refund anytime if it’s not for you.');
     expect(text).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
     expect(text).not.toMatch(/until paid plans/i);
+    expect(text).not.toMatch(/\bfounders?\b/i);
+    expect(text).not.toMatch(/founding\s+famil/i);
+    expect(text.toLowerCase()).not.toContain(['first', 'families'].join(' '));
+    expect(text.toLowerCase()).not.toContain(['one of our', 'first'].join(' '));
   });
 });

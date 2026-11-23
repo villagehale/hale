@@ -5,8 +5,8 @@
  * texts a family is Hale's writing; this one message is a person's. A model asked to
  * write "a warm note from the founder" would produce a warm note from the product
  * wearing his name, which is the one thing this feature must not be. So the words are
- * his, they are here, and the only thing that varies is which poster the family came in
- * from.
+ * his, and they are here. The note does not name the poster town, and it does not call
+ * the family first or founding.
  *
  * GSM-7, like every other authored body on this channel (sms-copy-encoding.test.ts
  * enforces it against this file). The founder's draft ended with an em dash; an em dash
@@ -28,9 +28,9 @@ export const FOUNDER_NOTE_TEMPLATE_KEY = 'founder_welcome:note';
  * piece of paper on a wall. There is no fixed sentence.
  */
 
-/** What the family gets, in his words. */
-export function founderNote(location: string): string {
-  return `A note from Barton, the dad who built Hale: thank you for giving Hale a try in ${location}. If anything ever feels off, just say so right here - I read what matters. - B`;
+/** What the family gets, in his words. The town is not in it. */
+export function founderNote(): string {
+  return 'A note from Barton, the dad who built Hale. If anything ever feels off, just say so right here - I read what matters. - B';
 }
 
 /** What the founder gets back once the note has gone. */

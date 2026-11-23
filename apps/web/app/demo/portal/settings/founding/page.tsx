@@ -3,7 +3,7 @@ import { currencyFromIpCountry, promoPhaseAt } from '@hale/types';
 import { FoundingCheckout } from '~/components/billing/founding-checkout';
 import styles from '~/components/portal/portal.module.css';
 
-export const metadata: Metadata = { title: 'Founding checkout' };
+export const metadata: Metadata = { title: 'Checkout' };
 
 /**
  * Design-only. /demo's layout is 404 in production. reviewOnly means the button
