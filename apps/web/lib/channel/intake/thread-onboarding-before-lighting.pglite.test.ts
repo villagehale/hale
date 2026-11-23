@@ -1,10 +1,10 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withoutConnectTokens } from '~/lib/channel/connect/connect-link';
 import { connectOfferTarget } from '~/lib/channel/connect/detect';
 import type { DisconnectReader } from '~/lib/channel/connect/disconnect-read';
 import { textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
-import { withoutConnectTokens } from '~/lib/channel/connect/text-connect';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { recordLinqEditWebhook } from '~/lib/channel/linq/edit';
@@ -542,14 +542,24 @@ describe('the in-thread walk, before its flag goes on', () => {
     };
 
     it.each([
-      ['/connect?t=abc_DEF-123&to=google', '/connect?to=google'],
-      ['/connect?to=gmail&t=abc_DEF-123', '/connect?to=gmail'],
       [
-        'a /connect?t=one&to=gcal b /connect?t=two&to=gmail',
-        'a /connect?to=gcal b /connect?to=gmail',
+        'https://app.example.com/connect?t=abc_DEF-123&to=google',
+        'https://app.example.com/connect?to=google',
+      ],
+      [
+        'https://app.example.com/connect?to=gmail&t=abc_DEF-123',
+        'https://app.example.com/connect?to=gmail',
+      ],
+      [
+        'a https://app.example.com/connect?t=one&to=gcal b https://app.example.com/connect?t=two&to=gmail',
+        'a https://app.example.com/connect?to=gcal b https://app.example.com/connect?to=gmail',
+      ],
+      [
+        'https://classes.example/connect?t=registration-123&view=details',
+        'https://classes.example/connect?t=registration-123&view=details',
       ],
       ['https://example.com/page?t=keep&to=me', 'https://example.com/page?t=keep&to=me'],
-      ['/connect?to=google', '/connect?to=google'],
+      ['https://app.example.com/connect?to=google', 'https://app.example.com/connect?to=google'],
     ])('reads %s as %s', (raw, kept) => {
       expect(withoutConnectTokens(raw)).toBe(kept);
     });
@@ -684,6 +694,68 @@ describe('the in-thread walk, before its flag goes on', () => {
         .from(schema.messages)
         .where(eq(schema.messages.providerMessageId, messageId));
       expect(row?.content).toBe('here it is https://app.example.com/connect?to=google');
+    });
+  });
+
+  describe('4c. an edit whose only change was its token', () => {
+    const REDACTED = 'use this https://app.example.com/connect?to=google';
+    const FRESH = 'use this https://app.example.com/connect?t=abcdefghijklmnopqrstuv&to=google';
+    const OLDER = 'ignore this link';
+
+    it.each([
+      ['the parent', 'user', 'in', 'inbound'],
+      ['Hale', 'assistant', 'out', 'outbound'],
+    ] as const)('lit, still outranks an older edit by %s', async (_who, role, direction, wire) => {
+      const { familyId, parentUserId } = await seedFamily(db.database);
+      const [conversation] = await db.database
+        .insert(schema.conversations)
+        .values({ familyId })
+        .returning({ id: schema.conversations.id });
+      if (!conversation) throw new Error('no conversation');
+      const messageId = '11111111-2222-4333-8444-555555555505';
+      await db.database.insert(schema.messages).values({
+        conversationId: conversation.id,
+        role,
+        content: REDACTED,
+        providerMessageId: messageId,
+      });
+      await db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction,
+        category: 'reply',
+        status: 'delivered',
+        body: direction === 'in' ? REDACTED : null,
+        providerMessageId: messageId,
+        providerChatId: CHAT,
+        relatedConversationId: conversation.id,
+        sentAt: T0,
+      });
+      const edit = (text: string, editedAt: Date) => ({
+        messageId,
+        chatId: CHAT,
+        partIndex: 0,
+        text,
+        editedAt,
+        direction: wire,
+        isFromMe: wire === 'outbound',
+      });
+      const newer = edit(FRESH, new Date(T0.getTime() + 2_000));
+
+      await recordLinqEditWebhook(db.database, newer);
+      expect(await recordLinqEditWebhook(db.database, newer)).toBe('unchanged');
+      const late = await recordLinqEditWebhook(
+        db.database,
+        edit(OLDER, new Date(T0.getTime() + 1_000)),
+      );
+
+      expect(late).toBe('unchanged');
+      const [row] = await db.database
+        .select({ content: schema.messages.content })
+        .from(schema.messages)
+        .where(eq(schema.messages.providerMessageId, messageId));
+      expect(row?.content).toBe(REDACTED);
     });
   });
 
