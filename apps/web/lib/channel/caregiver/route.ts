@@ -31,6 +31,7 @@ import { type OpenQuestion, soleOpenKind } from '~/lib/channel/router/open-quest
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import type { OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import {
   ADD_EXAMPLE,
   ALREADY_INVITED,
@@ -129,7 +130,7 @@ export type CaregiverOutcome =
   | { status: 'caregiver_invite_started' }
   | { status: 'caregiver_invite_sent' }
   /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
-  | { status: 'caregiver_invite_unsent' }
+  | { status: 'caregiver_invite_unsent'; opsPage: OpsPagerOutcome }
   /** Another turn already took this yes. Nothing was sent here. */
   | { status: 'caregiver_assent_already_claimed' }
   | { status: 'caregiver_invite_dropped' }
@@ -165,7 +166,7 @@ export type CoParentOutcome =
   | { status: 'co_parent_invite_started' }
   | { status: 'co_parent_invite_sent' }
   /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
-  | { status: 'co_parent_invite_unsent' }
+  | { status: 'co_parent_invite_unsent'; opsPage: OpsPagerOutcome }
   | { status: 'co_parent_invite_dropped' }
   /** `dark` is the flag, and it is a refusal like any other: the parent asked and Hale
    * answered with the forwardable link instead. It is NOT silence. */
@@ -326,6 +327,7 @@ async function reply(
 /**
  * The invite itself, to the person's own number under the row's one key. A failed send
  * stays inside the turn: a throw here would have the job redelivered and re-drive a yes.
+ * Null means Linq accepted it; otherwise the answer names whether #ops heard.
  */
 async function sendInviteToPerson(
   database: Database,
@@ -337,7 +339,7 @@ async function sendInviteToPerson(
     lane: Lane;
     now: Date;
   },
-): Promise<boolean> {
+): Promise<{ opsPage: OpsPagerOutcome } | null> {
   const { invite, now } = input;
   let providerMessageId: string;
   try {
@@ -347,8 +349,7 @@ async function sendInviteToPerson(
       sendKey: inviteSendKey(invite),
     }));
   } catch (err) {
-    await settleFailedInviteSend(database, invite, err, now);
-    return false;
+    return { opsPage: await settleFailedInviteSend(database, invite, err, now) };
   }
   await record(database, {
     familyId: invite.familyId,
@@ -359,7 +360,7 @@ async function sendInviteToPerson(
     body: input.body,
     now,
   });
-  return true;
+  return null;
 }
 
 /**
@@ -926,14 +927,14 @@ async function sendCoParentInvite(
   if (sent.status === 'already_claimed') return { status: 'co_parent_assent_already_claimed' };
 
   if (thirdPartyInviteRouteEnabled()) {
-    const delivered = await sendInviteToPerson(database, deps, {
+    const unsent = await sendInviteToPerson(database, deps, {
       invite: pending,
       body: sent.body,
       parentUserId: owner.userId,
       lane: 'co_parent',
       now,
     });
-    if (!delivered) return { status: 'co_parent_invite_unsent' };
+    if (unsent) return { status: 'co_parent_invite_unsent', opsPage: unsent.opsPage };
   } else {
     await reply(database, deps, {
       to: pending.phoneE164,
@@ -1081,14 +1082,14 @@ async function sendInvite(
   if (sent.status !== 'ready') return { status: 'caregiver_ask_unwritten' };
 
   if (thirdPartyInviteRouteEnabled()) {
-    const delivered = await sendInviteToPerson(database, deps, {
+    const unsent = await sendInviteToPerson(database, deps, {
       invite: pending,
       body: sent.body,
       parentUserId: owner.userId,
       lane: 'caregiver',
       now,
     });
-    if (!delivered) return { status: 'caregiver_invite_unsent' };
+    if (unsent) return { status: 'caregiver_invite_unsent', opsPage: unsent.opsPage };
   } else {
     await reply(database, deps, {
       to: pending.phoneE164,

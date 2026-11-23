@@ -102,6 +102,27 @@ export function inviteSendKey(invite: { id: string; role: AddRole }): string {
   return `${invite.role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite:${invite.id}`;
 }
 
+/**
+ * How a row closes when the parent's newer ask replaces it. `superseded` promises nobody was
+ * texted, and a send Linq never confirmed cannot promise that: a stop has to bind it.
+ */
+async function replacedState(
+  database: Database,
+  inviteId: string,
+): Promise<'superseded' | 'expired'> {
+  if (!thirdPartyInviteRouteEnabled()) return 'superseded';
+  const attempts = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.targetId, inviteId),
+        eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
+      ),
+    );
+  return attempts.length > 0 ? 'expired' : 'superseded';
+}
+
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
 
@@ -404,13 +425,8 @@ export async function startCaregiverInvite(
   );
   if (superseded) {
     const previous = toInvite(superseded);
-    await closeInvite(
-      database,
-      previous,
-      'superseded',
-      now,
-      inviteVerb(previous.role, 'superseded'),
-    );
+    const closedAs = await replacedState(database, previous.id);
+    await closeInvite(database, previous, closedAs, now, inviteVerb(previous.role, closedAs));
   }
 
   const invite = await openInviteRow(database, { ...input, hash });
@@ -682,13 +698,8 @@ export async function startCoParentInvite(
   );
   if (superseded) {
     const previous = toInvite(superseded);
-    await closeInvite(
-      database,
-      previous,
-      'superseded',
-      now,
-      inviteVerb(previous.role, 'superseded'),
-    );
+    const closedAs = await replacedState(database, previous.id);
+    await closeInvite(database, previous, closedAs, now, inviteVerb(previous.role, closedAs));
   }
 
   const invite = await openInviteRow(database, { ...input, hash });

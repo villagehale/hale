@@ -26,6 +26,7 @@ import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import type { OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { openChosenHouseholdGroup } from './open-chosen-group';
 /**
@@ -112,7 +113,7 @@ export type CoParentNumberOutcome =
   /** The invite text could not be written. Nobody was texted. */
   | { status: 'ask_unwritten'; reply: null }
   /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
-  | { status: 'invite_unsent'; reply: null }
+  | { status: 'invite_unsent'; reply: null; opsPage: OpsPagerOutcome }
   /** Another turn already took this invite. Nothing was sent here. */
   | { status: 'assent_already_claimed'; reply: null };
 
@@ -279,8 +280,8 @@ export async function deliverCoParentNumberInvite(
         sendKey: inviteSendKey(started.invite),
       }));
     } catch (err) {
-      await settleFailedInviteSend(database, started.invite, err, input.now);
-      return { status: 'invite_unsent', reply: null };
+      const opsPage = await settleFailedInviteSend(database, started.invite, err, input.now);
+      return { status: 'invite_unsent', reply: null, opsPage };
     }
     await ledgerSmsInvite(database, {
       familyId: input.familyId,

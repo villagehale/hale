@@ -50,6 +50,7 @@ let posts: LinqPost[];
 let pages: string[];
 /** Paths whose next POST times out, in order. */
 let timeouts: string[];
+let opsStatus: number;
 let inboundCount = 0;
 
 function readPost(url: string, body: Record<string, unknown>): LinqPost {
@@ -71,7 +72,7 @@ function stubFetch(): void {
       const href = String(url);
       if (href === OPS_WEBHOOK) {
         pages.push((JSON.parse(String(init?.body)) as { text: string }).text);
-        return new Response('ok', { status: 200 });
+        return new Response('ok', { status: opsStatus });
       }
       const post = readPost(href, JSON.parse(String(init?.body)) as Record<string, unknown>);
       posts.push(post);
@@ -105,6 +106,7 @@ beforeEach(() => {
   posts = [];
   pages = [];
   timeouts = [];
+  opsStatus = 200;
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -323,6 +325,84 @@ describe('flag on: an invite reaches the person it is for', () => {
 
     expect(postsToPerson()).toHaveLength(1);
     expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
+  });
+
+  it('names a page that did not leave, on the outcome and the audit row', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    timeouts = ['/chats'];
+    opsStatus = 500;
+
+    const failed = await parentSays('yes');
+
+    expect(failed).toEqual({ status: 'co_parent_invite_unsent', opsPage: 'page_failed' });
+    const [row] = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.targetId, (await inviteRow(familyId)).id),
+          eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
+        ),
+      );
+    expect(row?.after).toEqual({
+      role: 'co_parent',
+      returnedToParent: true,
+      opsPage: 'page_failed',
+    });
+  });
+
+  it('names a page that left as paged', async () => {
+    await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    timeouts = ['/chats'];
+
+    expect(await parentSays('yes')).toEqual({
+      status: 'co_parent_invite_unsent',
+      opsPage: 'paged',
+    });
+  });
+
+  it('a stop still binds after a new ask replaces a row whose send Linq never confirmed', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+
+    await parentSays('add grandma 647-555-0188 as grandparent');
+
+    const [replaced] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, first.id));
+    expect(replaced?.state).toBe('expired');
+
+    await personSays('STOP');
+
+    const [stopped] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, first.id));
+    expect(stopped?.state).toBe('declined');
+    expect(await parentSays(ADD_CO_PARENT)).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'previously_declined',
+    });
+  });
+
+  it('a row nobody tried to send still closes as superseded', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+
+    await parentSays('add grandma 647-555-0188 as grandparent');
+
+    const [replaced] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, first.id));
+    expect(replaced?.state).toBe('superseded');
   });
 
   it('a caregiver invite whose send times out goes back the same way', async () => {

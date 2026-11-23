@@ -7,7 +7,7 @@ import {
   createOutboundTransport,
   readSendRefusal,
 } from '~/lib/channel/outbound-transport';
-import { pageOps } from '~/lib/monitoring/failure-page';
+import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import type { CaregiverInvite } from './invites';
 
 /** The transport for a send to anyone but the person whose chat this turn is bound to. */
@@ -19,14 +19,23 @@ export function transportToPerson(transport: ChannelTransport): ChannelTransport
  * Linq did not accept an invite this turn had moved to `awaiting_caregiver_reply`. The row
  * goes back to the parent, so only their next yes retries it. It stays put when somebody
  * answered meanwhile, or the parent opened a newer ask: a second pending row would let a
- * bare yes bind to the wrong person.
+ * bare yes bind to the wrong person. Paged first, so the row can say whether anyone heard.
  */
 export async function settleFailedInviteSend(
   database: Database,
   invite: CaregiverInvite,
   err: unknown,
   now: Date,
-): Promise<void> {
+): Promise<OpsPagerOutcome> {
+  const code = readSendRefusal(err)?.code;
+  const opsPage = await pageOps(database, {
+    site: 'third_party_invite_unsent',
+    facts: {
+      lane: invite.role === 'co_parent' ? 'co_parent' : 'caregiver',
+      why: code !== undefined && !AMBIGUOUS_SEND_CODES.has(code) ? 'refused' : 'unclear',
+    },
+    ref: invite.id,
+  });
   const newer = alias(schema.caregiverInvites, 'newer_invite');
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
@@ -60,16 +69,8 @@ export async function settleFailedInviteSend(
       actionTaken: 'third_party_invite_send_failed',
       targetTable: 'caregiver_invites',
       targetId: invite.id,
-      after: { role: invite.role, returnedToParent: returned.length === 1 },
+      after: { role: invite.role, returnedToParent: returned.length === 1, opsPage },
     });
   });
-  const code = readSendRefusal(err)?.code;
-  await pageOps(database, {
-    site: 'third_party_invite_unsent',
-    facts: {
-      lane: invite.role === 'co_parent' ? 'co_parent' : 'caregiver',
-      why: code !== undefined && !AMBIGUOUS_SEND_CODES.has(code) ? 'refused' : 'unclear',
-    },
-    ref: invite.id,
-  });
+  return opsPage;
 }
