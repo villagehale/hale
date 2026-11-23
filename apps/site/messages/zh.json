@@ -8,8 +8,8 @@
   "HomeMeta": {
     "title": "孩子这一年，交给 Hale",
     "description": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
-    "ogDescription": "孩子这一年，交给 Hale。Hale 帮你看看附近有什么、盯着名额，再回来问问怎么样。不用装应用，不用注册账号。",
-    "twitterDescription": "孩子这一年，交给 Hale。值得和孩子一起做的事。"
+    "ogDescription": "Hale 是一个你发短信用的 AI 代理，了解你家。它找到合适的，经你同意帮他们报名，并管家长群。",
+    "twitterDescription": "Hale 是一个你发短信用的 AI 代理，了解你家。它找到合适的，经你同意帮他们报名，并管家长群。"
   },
   "Header": {
     "navPricing": "价格",
@@ -54,20 +54,20 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 是一个通过 iMessage 和短信工作的助手，帮美国和加拿大的家长安排孩子的活动和全家的一年。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
+    "metaDescription": "Hale 是一个你发短信用的 AI 代理，了解你家，把孩子这一年从你肩上接过去，给美国和加拿大的家长。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
   },
   "Pricing": {
     "noCharge": "你没有被扣款。",
     "metaTitle": "价格 · Hale",
-    "metaDescription": "免费，聊天不限量。Plus 是一整年更多事由它来做。Max 是 Hale 能做的最多。"
+    "metaDescription": "一个你发短信用的 AI 代理，了解你家，把孩子这一年从你肩上接过去。今年最大的优惠，12 月 31 日前加入。"
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
     "metaDescription": "联系 Hale 背后的团队。任何事都可以发邮件到 aloha@villagehale.com；隐私和数据相关请求发到 privacy@villagehale.com。"
   },
   "Faq": {
-    "metaTitle": "Hale 是否免费、私密，又是否适合你家？ · Hale",
-    "metaDescription": "给家长的 Hale 常见问题：有免费版、Plus 和 Max，适合 0–18 岁的孩子，没有你的同意绝不擅自行动。"
+    "metaTitle": "关于 Hale 的问题 · Hale",
+    "metaDescription": "Hale 做什么、读什么、如何保护你家的数据，以及为什么没有你的同意它不会报名或付款。"
   },
   "Activities": {
     "metaTitle": "陪孩子做的事，就在附近 · Hale",

@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { posthogProxyRewrites } from './lib/analytics/posthog-proxy';
+import { foundingToPricingRedirects } from './lib/site/founding-redirect';
 import { retiredRegistrationRedirects } from './lib/site/retired-registration-redirects';
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
@@ -15,6 +16,13 @@ const config: NextConfig = {
   // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
   // every build today — this is false and nothing changes.
   productionBrowserSourceMaps: Boolean(process.env.POSTHOG_PERSONAL_API_KEY),
+  // Share cards read fonts, the shore crop, and the turtle from disk. Webpack
+  // must not rewrite those reads (see share-card.tsx), and the files have to
+  // be in the serverless function or /og 500s after a green build.
+  outputFileTracingIncludes: {
+    '/og/[card]': ['./assets/og-fonts/**', './assets/hale-shore-og.png', './app/icon.png'],
+    '/og/answers/[slug]': ['./assets/og-fonts/**', './assets/hale-shore-og.png', './app/icon.png'],
+  },
   // The four dated city registration guides are retired. Each old URL — bare,
   // trailing-slash, and under /fr and /zh — 308s to that locale's /activities.
   // Declared here, not as a page, so the route components can be deleted and
@@ -23,7 +31,7 @@ const config: NextConfig = {
     return posthogProxyRewrites();
   },
   async redirects() {
-    return retiredRegistrationRedirects();
+    return [...foundingToPricingRedirects(), ...retiredRegistrationRedirects()];
   },
 };
 

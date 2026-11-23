@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import { RedesignActivities } from '~/components/redesign/activities';
-import { buildAlternates, ogLocale } from '~/i18n/metadata';
-import { localeHref } from '~/i18n/navigation';
+import { absolutePageUrl, buildAlternates, ogLocale } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { shareCardImage } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -18,6 +18,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const t = getTranslator(locale, 'Activities');
   const title = t('metaTitle');
   const description = t('metaDescription');
+  const image = shareCardImage('activities');
   return {
     title,
     description,
@@ -26,11 +27,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: 'website',
       title,
       description,
-      url: localeHref(locale, '/activities'),
+      url: absolutePageUrl(locale, '/activities'),
       siteName: 'Hale',
       locale: ogLocale(locale),
+      images: [image],
     },
-    twitter: { card: 'summary_large_image', title, description },
+    twitter: { card: 'summary_large_image', title, description, images: [image] },
   };
 }
 

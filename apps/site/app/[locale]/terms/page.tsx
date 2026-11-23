@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/legal-layout';
-import { buildAlternates } from '~/i18n/metadata';
+import { absolutePageUrl, buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { pageSource } from '~/lib/page-source';
+import { shareCardImage } from '~/lib/site/share-cards';
 
 /**
  * villagehale.com/terms — the canonical home for the Terms of Service
@@ -68,11 +69,14 @@ export async function generateMetadata({
     openGraph: {
       title: TITLE,
       description: DESCRIPTION,
-      url: localeHref(locale, '/terms'),
+      url: absolutePageUrl(locale, '/terms'),
+      images: [shareCardImage('terms')],
     },
     twitter: {
+      card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
+      images: [shareCardImage('terms')],
     },
     robots: { index: false, follow: false },
   };
@@ -179,9 +183,8 @@ export default async function TermsPage({
           added — a co-parent, a caregiver, or the members of a group chat that parent asked Hale to
           start or join. Your consent is recorded in the words you used to give it. Anyone can reply
           STOP. If you add Hale to a group chat, Hale can write in that chat, and everyone in it can
-          read those messages. How often Hale texts
-          depends on what your family has asked it to watch — typically a brief at the start of the
-          week and a message when something needs you.
+          read those messages. How often Hale texts depends on what your family has asked it to
+          watch — typically a brief at the start of the week and a message when something needs you.
         </p>
         <p>
           <strong>Reply STOP to any message and the messages stop</strong>, immediately, until you

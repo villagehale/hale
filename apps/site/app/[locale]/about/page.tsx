@@ -5,8 +5,8 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
-import { readSmsNumber } from '~/lib/text-entry';
 import { aboutJsonLd } from '~/lib/site/structured-data';
+import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title,
     description,
     alternates: buildAlternates(locale, '/about'),
-    ...socialMetadata(locale, '/about', title, description),
+    ...socialMetadata(locale, '/about', title, description, 'about'),
   };
 }
 
@@ -36,10 +36,10 @@ export default async function AboutPage({ params, searchParams }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd(locale)) }}
       />
       <RedesignAbout
-      locale={locale}
-      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-      prefill={intakePrefill(locale)}
-      source={await pageSource(searchParams)}
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+        source={await pageSource(searchParams)}
       />
     </>
   );
