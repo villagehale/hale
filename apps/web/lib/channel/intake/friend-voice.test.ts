@@ -33,6 +33,11 @@ import { FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV } from './friend-voice-model-fiel
 
 const EASTERN = 'America/Toronto';
 
+// Dark is the default. A process that exports the flag must not flip these cases.
+beforeEach(() => {
+  vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', undefined);
+});
+
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
     language: 'en',
