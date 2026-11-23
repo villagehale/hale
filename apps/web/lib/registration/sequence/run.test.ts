@@ -5,7 +5,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
+import { OPT_OUT_LINE as NUDGE_OPT_OUT } from '~/lib/channel/opt-out';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';

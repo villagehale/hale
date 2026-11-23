@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
+import { OPT_OUT_LINE_CHARS } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
@@ -45,7 +45,7 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * (lib/channel/opt-out.ts), because a body that only fits when the line is absent is a
  * body that silently costs a third segment once a month.
  */
-export const MAX_INTRO_ASK_CHARS = 306 - (OPT_OUT_LINE.length + 2);
+export const MAX_INTRO_ASK_CHARS = 306 - (OPT_OUT_LINE_CHARS + 2);
 
 /** The same two-segment envelope every other proactive class holds itself to. */
 export const MAX_INTRO_SEGMENTS = 2;

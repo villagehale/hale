@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CANNOT_TEXT_THAT_NUMBER, CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
   type FakeDb,
@@ -14,8 +13,8 @@ import {
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import { JOIN_ACCEPTED_ACK, joinWelcome } from '~/lib/channel/join/copy';
 import type { OpenQuestion } from '~/lib/channel/router/open-questions';
+import { speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
@@ -179,11 +178,13 @@ beforeEach(() => {
   // F14_ENABLED=true exported turned the one assertion that nobody is texted green
   // for the wrong reason.
   process.env[F14_ENABLED_ENV] = '';
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env[F14_ALLOWLIST_ENV] = '';
   process.env[F14_ENABLED_ENV] = '';
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
 });
 
 describe('co-parent invite · the dark gate', () => {
@@ -199,8 +200,10 @@ describe('co-parent invite · the dark gate', () => {
       'add Sam 647-555-0199 as my partner',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
-    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_REDIRECT);
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark', lineHeld: null });
+    expect(transport.sent.at(-1)?.body).toBe(
+      await speak({ purpose: 'caregiver_co_parent_redirect', language: null }),
+    );
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -219,9 +222,11 @@ describe('co-parent invite · the dark gate', () => {
 
     const outcome = await text(fake, transport, deps, PARENT_PHONE, 'yes');
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark', lineHeld: null });
     expect(toPartner(transport)).toHaveLength(0);
-    expect(transport.sent.at(-1)?.body).toBe(CO_PARENT_REDIRECT);
+    expect(transport.sent.at(-1)?.body).toBe(
+      await speak({ purpose: 'caregiver_co_parent_redirect', language: null }),
+    );
     // Nothing was authorised either: a grant row for a disclosure that did not happen is
     // a false record of what the parent agreed to.
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
@@ -344,7 +349,11 @@ describe('co-parent invite · the refusals', () => {
       'add Sam 647-555-0199 as my partner',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'referrer_unnamed' });
+    expect(outcome).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'referrer_unnamed',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('referrer_unnamed', 'en'));
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
@@ -369,7 +378,11 @@ describe('co-parent invite · the refusals', () => {
       'add Sam 647-555-0199 as my partner',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'co_parent_seat_taken' });
+    expect(outcome).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'co_parent_seat_taken',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('co_parent_seat_taken', 'en'));
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
@@ -403,7 +416,11 @@ describe('co-parent invite · the refusals', () => {
       PARENT_PHONE,
       'add Sam 647-555-0199 as my partner',
     );
-    expect(refused).toEqual({ status: 'co_parent_add_refused', reason: 'previously_declined' });
+    expect(refused).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'previously_declined',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('previously_declined', 'en'));
     expect(auditActions(fake)).toContain('co_parent_invite_blocked_prior_refusal');
 
@@ -440,10 +457,13 @@ describe('co-parent invite · the refusals', () => {
     expect(reAsked).toEqual({
       status: 'caregiver_add_refused',
       reason: 'previously_declined',
+      lineHeld: null,
     });
     // Nothing further reached them, and the sentence says only that Hale will not do it.
     expect(transport.sent.slice(beforeReAsk).every((s) => s.to === PARENT_PHONE)).toBe(true);
-    expect(transport.sent.at(-1)?.body).toBe(CANNOT_TEXT_THAT_NUMBER);
+    expect(transport.sent.at(-1)?.body).toBe(
+      await speak({ purpose: 'caregiver_cannot_text', language: null }),
+    );
   });
 
   it('refuses a number that already carries an active Hale channel', async () => {
@@ -471,7 +491,11 @@ describe('co-parent invite · the refusals', () => {
       'add Alex 647-555-0188 as my partner',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'number_in_use' });
+    expect(outcome).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'number_in_use',
+      lineHeld: null,
+    });
     // Says the number is spoken for; never whose household it belongs to (rule #1).
     expect(transport.sent.at(-1)?.body).toContain('already set up with Hale');
     expect(transport.sent.at(-1)?.body).not.toContain('Jo');
@@ -497,7 +521,11 @@ describe('co-parent invite · the refusals', () => {
       'add Sam 416-555-1234 as my partner',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'own_number' });
+    expect(outcome).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'own_number',
+      lineHeld: null,
+    });
     expect(transport.sent.at(-1)?.body).toBe(await coParentRefusal('own_number', 'en'));
     expect(transport.sent.at(-1)?.body).not.toContain('STOP');
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
@@ -561,8 +589,15 @@ describe('co-parent invite · the invitee half', () => {
     expect(since.map((s) => s.to)).toEqual([PARTNER_PHONE, PARENT_PHONE]);
     // The join link's own words, verbatim: the same person arrives through both doors
     // and must not be told two different things about what they just joined.
-    expect(since[0]?.body).toBe(joinWelcome('Ana'));
-    expect(since[1]?.body).toBe(JOIN_ACCEPTED_ACK);
+    expect(since[0]?.body).toBe(
+      await speak({
+        purpose: 'coparent_welcome',
+        language: null,
+        facts: { inviterName: 'Ana' },
+      }),
+    );
+    expect(since[1]?.body).toBe(await speak({ purpose: 'join_accepted_ack', language: null }));
+    expect(since[0]?.body).not.toMatch(/\bSTOP\b|\bHELP\b/);
 
     expect(auditActions(fake)).toEqual(
       expect.arrayContaining([
@@ -700,7 +735,7 @@ describe('co-parent invite · whose conversation is whose', () => {
     expect(threaded.every((t) => t.parentUserId !== undefined)).toBe(true);
     expect(threaded[0]?.body).toContain('Texting Sam as a co-parent');
     expect(threaded[1]?.body).toContain("I've texted Sam");
-    expect(threaded[2]?.body).toBe(JOIN_ACCEPTED_ACK);
+    expect(threaded[2]?.body).toBe(await speak({ purpose: 'join_accepted_ack', language: null }));
     // And nothing Hale said to the person being invited — the cold text itself, or the
     // welcome that answered their yes.
     const toThem = toPartner(transport).map((s) => s.body);
@@ -708,7 +743,13 @@ describe('co-parent invite · whose conversation is whose', () => {
     for (const body of toThem) {
       expect(threaded.map((t) => t.body)).not.toContain(body);
     }
-    expect(threaded.map((t) => t.body)).not.toContain(joinWelcome('Ana'));
+    expect(threaded.map((t) => t.body)).not.toContain(
+      await speak({
+        purpose: 'coparent_welcome',
+        language: null,
+        facts: { inviterName: 'Ana' },
+      }),
+    );
   });
 
   it('threads nothing at all when the invitee refuses, or writes something unreadable', async () => {
@@ -762,7 +803,7 @@ describe('co-parent invite · the meter on strangers', () => {
       `add Sam ${NUMBERS[5]} as my partner`,
     );
 
-    expect(sixth).toEqual({ status: 'co_parent_add_refused', reason: 'too_many' });
+    expect(sixth).toEqual({ status: 'co_parent_add_refused', reason: 'too_many', lineHeld: null });
     expect(transport.sent.at(-1)?.to).toBe(PARENT_PHONE);
     expect(transport.sent.at(-1)?.body).toContain("That's a lot of people in one day");
     // The count, not the last outcome: the assertion has to be able to see a sixth

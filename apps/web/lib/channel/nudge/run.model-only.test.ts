@@ -7,6 +7,7 @@ import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
 import type { ParentCallNameState } from '~/lib/channel/identity/parent-call-name';
 import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { OPT_OUT_LINE as NUDGE_OPT_OUT } from '~/lib/channel/opt-out';
 import { type OpsPage, pageOps } from '~/lib/monitoring/failure-page';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
@@ -16,7 +17,7 @@ import {
   nudgeModelOnlyEnabled,
   writeNudgeModelOnly,
 } from './model-only';
-import { NUDGE_OPT_OUT, nudgeFactSlots } from './nudge-voice';
+import { nudgeFactSlots } from './nudge-voice';
 import {
   MAX_UNDATED_ASK_FAILURES,
   type NudgeChildRow,

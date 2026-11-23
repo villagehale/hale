@@ -835,6 +835,21 @@ const LINK_ABOVE =
 const FALSE_PRIVACY =
   /\bnever (?:see|sees|read|reads|look at|looks at|open|opens)\b|\bnever touch(?:es)? (?:your |any )?(?:work|personal|private|other)\b|\b(?:won['’]?t|will not|don['’]?t|do not|can['’]?t|cannot) (?:see|read|look at|open|touch|access) (?:your |any )?(?:work|personal|private|other)\b|\bonly (?:read|reads|see|sees|look at|looks at|look for|looks for|scan|scans|watch|watches|check|checks|open|opens)\b|\b(?:see|sees|read|reads|look at|looks at)(?: [\w'’]+)? only\b|\bnever (?:see )?anything (?:personal|private)\b|\bnever see anything else\b|\bnever (?:your )?(?:work|personal|private)\b|\b(?:pick|choose|control|decide|limit)\b[^.?!]{0,30}\b(?:what|which)\b[^.?!]{0,30}\b(?:see|sees|read|reads|access)\b|\bdown to the (?:label|folder)\b|\bstays? between you\b|\b(?:work|personal|private)[\w\s'’-]{0,25}\b(?:never|not)\b[^.?!]{0,20}\b(?:touched|seen|read|opened|looked at)\b|\b(?:invisible|hidden|unseen|off[- ]limits) to (?:me|hale|us)\b|\b(?:stays?|remains?) (?:invisible|hidden|unseen|off[- ]limits)\b|(?:^|[.!?—–-]\s*)(?:no[,—–-]*\s*)?(?:only|just) (?:what['’]?s|the stuff|stuff|things|the things) (?:about|for|related)\b|\b(?:the rest|everything else|anything else|all else)\b[^.?!]{0,20}\b(?:don['’]?t|do not|never|won['’]?t|will not) (?:touch|see|read|look at|open)\b|\b(?:delete|deletes|erase|erases|discard|discards|throw away|toss)\b[^.?!]{0,15}\b(?:the rest|everything else|anything else|the others?|other)\b/i;
 
+/**
+ * The judge's checks that read the text alone, in its order: false privacy, a banned
+ * phrase, compliance, a registration claim. VIL-706's door and caregiver evals score with
+ * them, because a door line has no onboarding step for the rest of the judge to read.
+ */
+export function friendVoiceContextFreeRefusal(
+  text: string,
+): 'privacy' | 'banned' | 'compliance' | 'registration_claim' | null {
+  if (FALSE_PRIVACY.test(text)) return 'privacy';
+  if (BANNED_PHRASE.test(text)) return 'banned';
+  if (COMPLIANCE.test(text)) return 'compliance';
+  if (REGISTRATION_CLAIM.test(text)) return 'registration_claim';
+  return null;
+}
+
 /** Asking what to call the parent. Only the name steps may. */
 const NAME_ASK =
   /what (?:should|can|do|shall) i call you|what['’]?s your name|your name\?|comment (?:je )?(?:dois|peux)[- ]?(?:je )?t['’]appeler|ton (?:pr[ée]nom|nom)\s*\?/i;
@@ -1857,10 +1872,8 @@ export function judgeFriendReply(
   if (replyAddressesByOtherName(trimmed, input)) {
     return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
-  if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
-  if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
-  if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
-  if (REGISTRATION_CLAIM.test(trimmed)) return { ok: false, reason: 'registration_claim' };
+  const contextFree = friendVoiceContextFreeRefusal(trimmed);
+  if (contextFree) return { ok: false, reason: contextFree };
   // Who is behind this number is a disclosure: when they asked, the company is named.
   if (input.identityAsked && !NAMES_HALE_COMPANY.test(trimmed)) {
     return { ok: false, reason: 'identity' };
