@@ -5,7 +5,9 @@
 //     its one retry, then the signup-plan-reply judge;
 //   - the plan reader with the signup-plan-read-terms addendum, through `toPlanReading`;
 //   - the page read (signup-preflight-read), through `applyPreflightRead`;
-//   - the birth-date read (signup-dob-read), through `acceptDobReading`.
+//   - the birth-date read (signup-dob-read), through `acceptDobReading`;
+//   - the provider notice and the mismatch read with the signup-page-words addendum, on a
+//     site option that carries an instruction.
 //
 // No `run-` prefix until its recordings exist, so CI does not replay an empty cache.
 //
@@ -32,6 +34,8 @@ import {
 import { judgePrompt } from './lib/judge-prompt.mjs';
 import {
   SIGNUP_TERMS_DOB_FIXTURES,
+  SIGNUP_TERMS_MISMATCH_FIXTURES,
+  SIGNUP_TERMS_NOTICE_FIXTURES,
   SIGNUP_TERMS_PREFLIGHT_FIXTURES,
   SIGNUP_TERMS_READ_FIXTURES,
   SIGNUP_TERMS_WRITER_FIXTURES,
@@ -54,6 +58,9 @@ async function main() {
   const reader = await importTs(web('plan', 'reader.ts'));
   const page = await importTs(web('terms', 'read-page.ts'));
   const dob = await importTs(web('terms', 'dob-reader.ts'));
+  const notice = await importTs(web('plan', 'notice-writer.ts'));
+  const mismatch = await importTs(web('plan', 'mismatch-reader.ts'));
+  const pageWords = await importTs(web('terms', 'page-words.ts'));
   const skill = async (name) => agent.loadSkill(join(SKILLS, `${name}.md`));
   const replySkill = await skill(writer.SIGNUP_PLAN_REPLY_SKILL);
   const termsSkill = await skill(writer.SIGNUP_PLAN_TERMS_SKILL);
@@ -61,6 +68,9 @@ async function main() {
   const readTermsSkill = await skill(reader.SIGNUP_PLAN_READ_TERMS_SKILL);
   const preflightSkill = await skill(page.SIGNUP_PREFLIGHT_READ_SKILL);
   const dobSkill = await skill(dob.SIGNUP_DOB_READ_SKILL);
+  const noticeSkill = await skill(notice.SIGNUP_PROVIDER_NOTICE_SKILL);
+  const mismatchSkill = await skill(mismatch.SIGNUP_MISMATCH_READ_SKILL);
+  const pageWordsSkill = await skill(pageWords.SIGNUP_PAGE_WORDS_SKILL);
   const judgeModel = await readJudgeModel();
 
   installEvalSpendCap();
@@ -70,6 +80,14 @@ async function main() {
     judgeModel,
     judgePrompt('signup-plan-reply'),
     'signup-terms',
+    cachedOnly,
+    getClient,
+    cost,
+  );
+  const noticeJudge = makeJudge(
+    judgeModel,
+    judgePrompt('signup-provider-notice'),
+    'signup-terms-notice',
     cachedOnly,
     getClient,
     cost,
@@ -198,8 +216,76 @@ async function main() {
     );
   }
 
+  for (const fixture of SIGNUP_TERMS_NOTICE_FIXTURES) {
+    let violation = null;
+    let bubbles = null;
+    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      const call = await cachedToolCall({
+        ...common,
+        tag: `signup-terms:notice:${fixture.id}${violation ? ':retry' : ''}`,
+        lane: agent.pickLane(noticeSkill.meta.task),
+        system: `${noticeSkill.instructions}\n\n${pageWordsSkill.instructions}`,
+        userMessage: notice.providerNoticeUserMessage(fixture.facts, violation),
+        toolName: notice.SIGNUP_PROVIDER_NOTICE_TOOL,
+        toolDescription: notice.SIGNUP_PROVIDER_NOTICE_TOOL_DESCRIPTION,
+        toolSchema: notice.SIGNUP_PROVIDER_NOTICE_TOOL_SCHEMA,
+        maxTokens: notice.SIGNUP_PROVIDER_NOTICE_MAX_TOKENS,
+      });
+      const draft = notice.signupProviderNoticeSchema.safeParse(call.value);
+      const sent = (draft.success ? (draft.data.bubbles ?? []) : []).map(writer.planReplyText);
+      const violations = sent.flatMap((text) => writer.planReplyViolations(text));
+      if (sent.length > 0 && violations.length === 0) {
+        bubbles = sent;
+        break;
+      }
+      violation = violations.join('; ') || 'no bubbles';
+    }
+    const failures = [];
+    if (bubbles === null) failures.push(`unsendable after retry: ${violation}`);
+    else {
+      const seen = JSON.parse(notice.providerNoticeUserMessage(fixture.facts, null)).facts;
+      const verdict = await noticeJudge(fixture.id, {
+        facts: seen,
+        bubbles,
+        card: null,
+        watchFor: fixture.watchFor,
+      });
+      if (!dry && verdict.score < JUDGE_MIN) {
+        failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      }
+    }
+    record(fixture.id, failures, JSON.stringify(bubbles));
+  }
+
+  for (const fixture of SIGNUP_TERMS_MISMATCH_FIXTURES) {
+    const input = {
+      text: fixture.text,
+      askedStart: fixture.askedStart,
+      choices: fixture.choices,
+      labelsFromPage: true,
+    };
+    const call = await cachedToolCall({
+      ...common,
+      tag: `signup-terms:mismatch:${fixture.id}`,
+      lane: agent.pickLane(mismatchSkill.meta.task),
+      system: `${mismatchSkill.instructions}\n\n${pageWordsSkill.instructions}`,
+      userMessage: mismatch.signupMismatchReadUserMessage(input),
+      toolName: mismatch.SIGNUP_MISMATCH_READ_TOOL,
+      toolDescription: 'Decide which site option the parent picked, if any.',
+      toolSchema: mismatch.SIGNUP_MISMATCH_READ_TOOL_SCHEMA,
+      maxTokens: mismatch.SIGNUP_MISMATCH_READ_MAX_TOKENS,
+    });
+    if (dry) continue;
+    const parsed = mismatch.signupMismatchReadSchema.safeParse(call.value);
+    const reading = parsed.success ? mismatch.mismatchReadingFrom(parsed.data, input) : null;
+    const failures = Object.entries(fixture.expect).flatMap(([key, want]) =>
+      reading?.[key] === want ? [] : [`${key}: wanted ${want}, got ${reading?.[key]}`],
+    );
+    record(fixture.id, failures, JSON.stringify(reading));
+  }
+
   if (dry) {
-    console.info(dryReportLine('signup-terms', [judge.plan]));
+    console.info(dryReportLine('signup-terms', [judge.plan, noticeJudge.plan]));
     return;
   }
   for (const row of results) {

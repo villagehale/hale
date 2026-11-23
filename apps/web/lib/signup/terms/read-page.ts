@@ -201,8 +201,10 @@ export function applyPreflightRead(
       ...base,
       refund: refund === null ? null : { quote: refund },
       currency,
+      // The model's field can say none while the description states one.
       prerequisite:
-        base.prerequisite.required === 'yes'
+        base.prerequisite.required === 'yes' ||
+        (read.prerequisite === 'required' && prerequisiteQuote !== null)
           ? { required: 'yes', quote: prerequisiteQuote }
           : base.prerequisite,
     };

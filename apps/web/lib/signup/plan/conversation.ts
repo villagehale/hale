@@ -701,7 +701,12 @@ async function runMismatchTurn(
   const askedStart =
     typeof plan.availability?.askedStart === 'string' ? plan.availability.askedStart : null;
   const reader = deps.mismatchReader ?? createMismatchReader(() => resolveReplyClient(undefined));
-  const reading = await reader.read({ text: input.body, askedStart, choices: parsed });
+  const reading = await reader.read({
+    text: input.body,
+    askedStart,
+    choices: parsed,
+    ...((await offerHasTerms(database, input, plan)) ? { labelsFromPage: true } : {}),
+  });
   if (!reading) return stopped('plan_unread', plan);
   if (reading.verdict === 'unrelated') return 'unrelated';
   const named = namesFacts(input.body, {

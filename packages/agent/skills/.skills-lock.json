@@ -759,6 +759,10 @@
     "file": "signup-outcome-reply.md",
     "sha256": "135d79dfbf9d957c67dfc98155296b19d1cb4ab2df538a6428ba22b0a716306e"
   },
+  "signup-page-words.md": {
+    "file": "signup-page-words.md",
+    "sha256": "f84620b4f2150c9e71c19da0c43c9a8c4a4505ee02a7eee09b0be3f97996b064"
+  },
   "signup-plan-read-terms.md": {
     "file": "signup-plan-read-terms.md",
     "sha256": "0b08905caf37f60aee5bcb91aa76918f661268eb14e08b0ec2072218741a39ff"

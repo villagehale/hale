@@ -6,7 +6,7 @@ import { signupProviderHost } from '../consent';
 import { planCityLoginOwnerEnabled, providerCredentialsEnabled } from '../credentials/flag';
 import { type LoginCardText, hasOpenLoginLink, loginLinkForNotice } from '../login-link/store';
 import type { SiteChoice, SiteFees } from '../site-choices';
-import { askIsOnTerms } from '../terms/store';
+import { askIsOnTerms, someOfferHasTerms } from '../terms/store';
 import type { SignupSession } from '../types';
 import { type PlanNoticePart, asBubbles, withLinkBubbles } from './bubbles';
 import { parentTimeZone } from './conversation';
@@ -56,6 +56,8 @@ export interface PlanPrepFacts {
   joined?: boolean;
   /** Set when a login card goes with this notice; the writer then writes its preview too. */
   loginCard?: LoginCardFacts | null;
+  /** The offer has a terms row: its labels and the site's words reach the writer marked. */
+  labelsFromPage?: boolean;
 }
 
 /** The bubbles, and the card preview's words when one was asked for and passed its gate. */
@@ -276,6 +278,9 @@ export async function runDueSignupPlanPrep(
       }),
       sessionLabel,
       loginCard: carriesCard ? { sessionLabel, opensAt } : null,
+      ...((await someOfferHasTerms(database, { familyId: offer.familyId, offerIds: [offer.id] }))
+        ? { labelsFromPage: true }
+        : {}),
     };
     const draft = await deps.writer.write(facts);
     const written = draft ? asBubbles(draft.bubbles) : null;

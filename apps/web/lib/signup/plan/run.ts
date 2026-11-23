@@ -45,7 +45,12 @@ import {
 import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
 import { termsTimeZone } from '../terms/ask';
 import { registrationFreeCheckoutEnabled, registrationPreflightEnabled } from '../terms/flag';
-import { type SignupTermsRow, loadSignupTerms, priorChargeUnknown } from '../terms/store';
+import {
+  type SignupTermsRow,
+  loadSignupTerms,
+  priorChargeUnknown,
+  someOfferHasTerms,
+} from '../terms/store';
 import type { CartDifference } from '../terms/types';
 import { registrationUrlAllowed } from '../url';
 import { childFirstName, parentTimeZone } from './conversation';
@@ -981,6 +986,9 @@ async function parkAndTell(
     siteChoices: result.siteChoices ?? [],
     askedStart: plan.sessions[0]?.label ?? null,
     loginCard,
+    ...((await someOfferHasTerms(database, { familyId: plan.familyId, offerIds: [plan.offerId] }))
+      ? { labelsFromPage: true }
+      : {}),
   };
   const sent = await sendSignupPlanNotice(
     database,
