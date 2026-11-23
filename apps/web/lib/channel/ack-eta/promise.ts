@@ -12,6 +12,7 @@ import {
   type TurnFailureReason,
 } from '~/lib/channel/router/turn-ledger';
 import { turnWasDeadLettered } from '~/lib/monitoring/failure-page';
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import type { AckTask } from './read';
 
 /**
@@ -55,7 +56,7 @@ function pgErrorCode(err: unknown): string {
 export type AckPromiseRecordOutcome =
   | { status: 'recorded'; promiseId: string }
   | { status: 'already_promised' }
-  | { status: 'not_recorded'; reason: 'not_migrated' | 'write_failed' };
+  | { status: 'not_recorded'; reason: 'not_migrated' | 'write_failed' | 'preview' };
 
 export interface AckPromiseInput {
   familyId: string;
@@ -81,6 +82,9 @@ export async function recordAckPromise(
   database: Database,
   input: AckPromiseInput,
 ): Promise<AckPromiseRecordOutcome> {
+  // Preview shares Production's database and captures its texts. A row written here would
+  // have the Production sweep text a parent about an ack they never got.
+  if (isPreviewDeploy()) return { status: 'not_recorded', reason: 'preview' };
   try {
     const promiseId = await database.transaction(async (tx) => {
       const [row] = await tx
