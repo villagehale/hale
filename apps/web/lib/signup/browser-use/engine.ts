@@ -23,7 +23,6 @@ import {
   type BrowserUseSignupDetail,
   type BrowserUseSignupOutcome,
   cardAllowedDomains,
-  detailForLane,
   parseConfirmationOutput,
   parsePaymentOutput,
   parseSignupOutput,
@@ -507,10 +506,8 @@ async function driveSignup(
     if (waited.status === 'failed') return failure('error', 'run_failed', ids);
     if (waited.status === 'cancelled') return failure('error', 'run_cancelled', ids);
 
-    const parsed = parseSignupOutput(summary.output);
-    if (!parsed) return failure('error', 'unreadable_output', ids);
-    // VIL-718 · this lane has no takeover link: a passkey is the sign-in wall it always was.
-    const output = { ...parsed, detail: detailForLane(parsed.detail, false) };
+    const output = parseSignupOutput(summary.output);
+    if (!output) return failure('error', 'unreadable_output', ids);
     // Code limit: stop before any payment > $0, even if a payment flag were on.
     if (output.payment_details_entered) return failure('error', 'payment_boundary', ids);
 

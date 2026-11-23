@@ -477,10 +477,13 @@ async function runOnePlan(
     // that ran is always reported.
     const opsStopped =
       ending.charged === 'nothing' && !paymentMayExist && (await planOpsStopped(database, plan));
-    // A run let go here was cancelled before anyone read what it did, and a takeover's browser
-    // may have been in the parent's hands since.
-    const letGoUnread = held !== null && !engineRan;
-    const silenced = opsStopped && !letGoUnread && leftNothingAtProvider(ending);
+    // A run let go here was cancelled before anyone read what it did. A browser the parent has
+    // had can hold what they did in it, whatever the last answer says, unless that answer is a
+    // real result the parent should hear as it is.
+    const unprovable =
+      (held !== null && !engineRan) ||
+      (lastTakeover !== null && ending.outcome !== 'completed' && ending.outcome !== 'waitlist');
+    const silenced = opsStopped && !unprovable && leftNothingAtProvider(ending);
     const result = silenced
       ? {
           ...ending,
@@ -496,9 +499,18 @@ async function runOnePlan(
         ? // It cannot prove nothing was left, so it never reads as "nothing charged" later.
           {
             ...ending,
-            outcome: letGoUnread ? ('needs_human' as const) : ending.outcome,
-            detail: letGoUnread ? ('unconfirmed' as const) : ending.detail,
+            outcome: unprovable ? ('needs_human' as const) : ending.outcome,
+            detail: unprovable ? ('unconfirmed' as const) : ending.detail,
             charged: 'unknown' as const,
+            ...(unprovable
+              ? {
+                  liveViewUrl: null,
+                  holdExpiresAt: null,
+                  sessionCostUsd: ending.openBrowser
+                    ? await runner.release(ending.openBrowser)
+                    : ending.sessionCostUsd,
+                }
+              : {}),
           }
         : ending;
     if (opsStopped && !silenced) {
@@ -523,7 +535,9 @@ async function runOnePlan(
       familyId: plan.familyId,
       parentUserId: plan.parentUserId,
     };
-    const notice: PlanNotice = told
+    // A close withheld because the stop landed first leaves the parent unheard: they are told.
+    const toldStands = told && !(opsStopped && !silenced && told.notice === 'withheld');
+    const notice: PlanNotice = toldStands
       ? told.notice
       : result.detail === 'authorization_lapsed'
         ? 'withheld'

@@ -15,7 +15,7 @@ import {
   taskWithFacts,
   waitForRun,
 } from './engine';
-import { BROWSER_USE_SIGNUP_DETAILS, detailForLane, sameProviderHttpsUrl } from './outcome';
+import { BROWSER_USE_PLAN_DETAILS, detailForLane, sameProviderHttpsUrl } from './outcome';
 import {
   type BrowserUsePlanCheckpoint,
   type BrowserUsePlanInput,
@@ -55,7 +55,7 @@ export const BROWSER_USE_ASSISTED_OUTCOMES = [
 
 const assistedOutput = z.object({
   outcome: z.enum(BROWSER_USE_ASSISTED_OUTCOMES),
-  detail: z.enum(BROWSER_USE_SIGNUP_DETAILS),
+  detail: z.enum(BROWSER_USE_PLAN_DETAILS),
   choice_index: z.number().int().nonnegative().nullable(),
   page_url: z.string().nullable(),
   fee_cents: z.number().int().nonnegative().nullable(),
@@ -77,7 +77,7 @@ export const BROWSER_USE_ASSISTED_OUTPUT_SCHEMA: Record<string, unknown> = {
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_ASSISTED_OUTCOMES] },
-    detail: { type: 'string', enum: [...BROWSER_USE_SIGNUP_DETAILS] },
+    detail: { type: 'string', enum: [...BROWSER_USE_PLAN_DETAILS] },
     choice_index: { type: ['integer', 'null'], minimum: 0 },
     page_url: { type: ['string', 'null'] },
     fee_cents: { type: ['integer', 'null'], minimum: 0 },
@@ -218,7 +218,12 @@ async function driveAssisted(
     if (waited.status === 'cancelled') return end('error', 'run_cancelled', ids);
 
     // A turn queued after a takeover has no outputSchema and may answer in JSON text.
-    const parsed = assistedOutput.safeParse(structuredOutput(summary.output));
+    const afterTakeover =
+      input.takeoverResume != null ||
+      (input.resume?.phase === 'signup' && input.resume.takeover !== undefined);
+    const parsed = assistedOutput.safeParse(
+      afterTakeover ? structuredOutput(summary.output) : summary.output,
+    );
     if (!parsed.success) return end('error', 'unreadable_output', ids);
     const output = {
       ...parsed.data,

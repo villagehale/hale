@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BROWSER_USE_ASSISTED_OUTPUT_SCHEMA } from '../browser-use/assisted-engine';
 import { parentTakesOverLiveView } from '../browser-use/keep-alive';
-import { detailForLane } from '../browser-use/outcome';
+import {
+  BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+  BROWSER_USE_SIGNUP_OUTPUT_SCHEMA,
+  detailForLane,
+} from '../browser-use/outcome';
 import { LOGIN_CODE_TTL_MS } from '../login-link/code';
 import { TAKEOVER_LINK_ENABLED_ENV, takeoverLinkEnabled } from './flag';
 import {
@@ -130,5 +135,33 @@ describe('the live view stays for the parent', () => {
     expect(detailForLane('passkey', false)).toBe('login_wall');
     expect(detailForLane('passkey', true)).toBe('passkey');
     expect(detailForLane('captcha', false)).toBe('captcha');
+  });
+});
+
+describe('the passkey detail belongs to the plan and assisted lanes', () => {
+  const detailEnum = (schema: Record<string, unknown>) =>
+    (schema.properties as { detail: { enum: string[] } }).detail.enum;
+
+  it('leaves the one-shot lane’s schema as it was', () => {
+    expect(detailEnum(BROWSER_USE_SIGNUP_OUTPUT_SCHEMA)).toEqual([
+      'none',
+      'captcha',
+      'verification_code',
+      'login_wall',
+      'password_rejected',
+      'waiting_room',
+      'timed_open',
+      'waiver',
+      'medical',
+      'unexpected_field',
+      'session_not_found',
+      'price_change',
+      'page_error',
+    ]);
+  });
+
+  it('offers it to the two lanes a takeover can pick up', () => {
+    expect(detailEnum(BROWSER_USE_PLAN_OUTPUT_SCHEMA)).toContain('passkey');
+    expect(detailEnum(BROWSER_USE_ASSISTED_OUTPUT_SCHEMA)).toContain('passkey');
   });
 });

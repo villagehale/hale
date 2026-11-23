@@ -32,6 +32,7 @@ import {
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
   BROWSER_USE_PLAN_OUTPUT_SCHEMA,
   BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
+  type BrowserUsePlanDetail,
   type BrowserUseReviewOutput,
   detailForLane,
   parsePaymentOutput,
@@ -103,6 +104,7 @@ export interface BrowserUsePlanCheckpoint {
 
 export type PlanEngineDetail =
   | BrowserUseEngineDetail
+  | BrowserUsePlanDetail
   | 'choice_unreadable'
   | 'no_saved_card'
   | 'security_code'
@@ -506,7 +508,9 @@ async function drivePlan(
     if (waited.status === 'cancelled') return stop('error', 'run_cancelled');
 
     // A turn queued after a takeover has no outputSchema and may answer in JSON text.
-    const parsed = parsePlanOutput(structuredOutput(summary.output));
+    const parsed = parsePlanOutput(
+      lastTakeover ? structuredOutput(summary.output) : summary.output,
+    );
     if (!parsed) return stop('error', 'unreadable_output');
     const takeover = input.takeover === true;
     const output = { ...parsed, detail: detailForLane(parsed.detail, takeover) };

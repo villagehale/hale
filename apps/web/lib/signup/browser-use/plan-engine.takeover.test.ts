@@ -58,7 +58,7 @@ type Logged = { method: string; path: string; body: Record<string, unknown> };
  * takeover answers (a string, as a queued turn may answer). `queue`: how the queue behaves.
  */
 function setup(options: {
-  first?: Record<string, unknown>;
+  first?: unknown;
   queued?: unknown;
   queue?: 'dispatches' | 'dropped';
   assisted?: boolean;
@@ -223,6 +223,30 @@ describe('VIL-718 · a stop only the parent can take over', () => {
     });
     if (onResult.outcome === 'checkpointed') throw new Error('not a checkpoint');
     expect(onResult.holdExpiresAt).not.toBeNull();
+  });
+
+  it('a run created with an outputSchema is not read from JSON text, on either lane', async () => {
+    const auto = setup({ first: JSON.stringify(stopAt('needs_login', 'login_wall')) });
+    expect(await runBrowserUsePlanSignup(plan().input, auto.deps)).toMatchObject({
+      outcome: 'error',
+      detail: 'unreadable_output',
+    });
+
+    const assisted = setup({
+      first: JSON.stringify({
+        outcome: 'ready_for_parent',
+        detail: 'none',
+        choice_index: 0,
+        page_url: 'https://register.example-rec.test/Enroll',
+        fee_cents: 9800,
+        submitted: false,
+        payment_details_entered: false,
+      }),
+      assisted: true,
+    });
+    expect(
+      await runBrowserUseAssistedSignup(plan({ mode: 'assisted' }).input, assisted.deps),
+    ).toMatchObject({ outcome: 'error', detail: 'unreadable_output' });
   });
 
   it('keeps a checkout hand-off exactly as before: the takeover link does not touch it', async () => {

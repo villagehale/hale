@@ -104,7 +104,7 @@ export type FinishTakeover =
  * is stamped `doneAt` with its lease cleared, so the next minute's sweep queues the next turn
  * of the same session, and the audit row is written (rule #6): the host and the step. All or
  * nothing: a card whose plan already lapsed, was let go or was taken back is not spent here
- * and answers `not_waiting`.
+ * and answers `not_waiting`, and neither is a card whose parent's yes no longer stands.
  */
 export async function finishTakeover(
   database: Database,
@@ -114,6 +114,7 @@ export async function finishTakeover(
   if (!link.ok) return link;
   const purpose = link.purpose.takeover;
   if (!isTakeoverPurpose(purpose)) return { ok: false, reason: 'unknown' };
+  if ((await planLapse(database, link)) !== null) return { ok: false, reason: 'not_waiting' };
   const links = schema.providerLoginLinks;
   const offers = schema.authorizedSignupOffers;
   try {

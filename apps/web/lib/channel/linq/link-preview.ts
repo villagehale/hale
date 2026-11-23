@@ -3,10 +3,11 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   plainTextWithoutLinks,
+  linqStatusRefusedForCertain,
   readSendRefusal,
   sendLinqParts,
 } from '~/lib/channel/outbound-transport';
-import { LinqSendError, linqStatusRefusedForCertain } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * VIL-335 — a rich link preview beside a locked text, never instead of it.

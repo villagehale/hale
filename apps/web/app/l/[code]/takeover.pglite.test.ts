@@ -3,6 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { PROVIDER_CREDENTIALS_ENABLED_ENV } from '~/lib/signup/credentials/flag';
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '~/lib/signup/credentials/kms';
 import {
@@ -35,6 +37,7 @@ const NOW = new Date();
 const HOST = 'register.example-rec.test';
 const LIVE = 'https://live.browser-use.com/s/fixture-live-view-token';
 const CARD = { title: `Prouve que tu es humain sur ${HOST}`, description: 'Natation sam. 9:00' };
+let phoneSeq = 0;
 
 beforeAll(async () => {
   harness.db = await createTestDb();
@@ -56,6 +59,16 @@ afterEach(() => {
 async function takeoverCard(card: LoginLinkPurpose['card'] = CARD) {
   const database = harness.db.database;
   const seeded = await seedFamily(database);
+  phoneSeq += 1;
+  const phone = `+1202555${String(800 + phoneSeq).padStart(4, '0')}`;
+  await database.insert(schema.parentChannels).values({
+    userId: seeded.parentUserId,
+    familyId: seeded.familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: new Date(NOW.getTime() - 30 * 24 * 60 * 60_000),
+  });
   const childId = await seedChild(database, seeded.familyId, 'Ada', 40, undefined, NOW);
   const offer = await recordSignupOffer(database, {
     familyId: seeded.familyId,
