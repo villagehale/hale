@@ -118,8 +118,8 @@ export function isFoundingPromoWindowOpen(
 /** First moment the founding offer shows: 2026-11-16 00:00 America/Toronto. */
 export const FOUNDING_PROMO_STARTS_AT = '2026-11-16T00:00:00-05:00';
 
-/** "Black Friday Sale" becomes "Holiday Sale" at 2026-11-28 00:00 America/Toronto. */
-export const HOLIDAY_SALE_STARTS_AT = '2026-11-28T00:00:00-05:00';
+/** "Black Friday Sale" becomes "Holiday Sale" at 2026-12-01 00:00 America/Toronto. */
+export const HOLIDAY_SALE_STARTS_AT = '2026-12-01T00:00:00-05:00';
 
 export type PromoPhase = 'black_friday' | 'holiday';
 
