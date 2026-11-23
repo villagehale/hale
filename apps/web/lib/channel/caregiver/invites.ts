@@ -53,10 +53,11 @@ export type CaregiverInviteState =
   | 'awaiting_caregiver_reply'
   /**
    * VIL-719 · the parent said yes and the text to this number failed without proving it
-   * stayed home, so it may have landed. No plain yes can claim it and it holds the number
-   * against a re-invite. Open, it can still be answered or stopped by the person; lapsed,
-   * it keeps this state with `closed_at` set, because 'expired' would have Hale tell a
-   * number it may never have reached that an invitation expired.
+   * stayed home, so it may have landed. It holds the number against a re-invite and the
+   * person's stop closes it. No yes binds to it, the parent's or the person's, because the
+   * question may never have reached them. Lapsed, it keeps this state with `closed_at`
+   * set, because 'expired' would have Hale tell a number it may never have reached that an
+   * invitation expired.
    */
   | 'send_unconfirmed'
   /** The caregiver said yes. Terminal. */
@@ -905,11 +906,6 @@ export async function closeCoParentInviteWithoutYes(
     targetId: invite.id,
     after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
   });
-}
-
-/** A text was sent, or may have been, so this number's reply is an answer to it. */
-export function inviteAwaitsTheirAnswer(state: CaregiverInviteState): boolean {
-  return state === 'awaiting_caregiver_reply' || state === 'send_unconfirmed';
 }
 
 /**

@@ -9,7 +9,6 @@ import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
-  inviteAwaitsTheirAnswer,
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
 import {
@@ -746,7 +745,7 @@ async function runIntakeTurn(
     // Checked before the greeting, or a caregiver's "yes" would be read as a stranger
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
-    if (invite && inviteAwaitsTheirAnswer(invite.state)) {
+    if (invite?.state === 'awaiting_caregiver_reply') {
       return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
     }
 

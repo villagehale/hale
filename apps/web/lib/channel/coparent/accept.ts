@@ -95,7 +95,11 @@ export async function acceptCoParentInvite(
       .update(schema.caregiverInvites)
       .set({ state: 'accepted', closedAt: now, updatedAt: now })
       .where(
-        and(eq(schema.caregiverInvites.id, invite.id), isNull(schema.caregiverInvites.closedAt)),
+        and(
+          eq(schema.caregiverInvites.id, invite.id),
+          eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
+          isNull(schema.caregiverInvites.closedAt),
+        ),
       )
       .returning({ id: schema.caregiverInvites.id });
     if (claimed.length === 0) return { outcome: 'lost_race' };

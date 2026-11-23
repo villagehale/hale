@@ -11,6 +11,10 @@ import {
   startCoParentInvite,
 } from '~/lib/channel/caregiver/invites';
 import { handleKnownNumberInbound } from '~/lib/channel/caregiver/route';
+import {
+  CO_PARENT_INVITE_CONSENT_SCOPE,
+  acceptCoParentInvite,
+} from '~/lib/channel/coparent/accept';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { handleInboundSms } from '~/lib/channel/intake/machine';
@@ -48,6 +52,7 @@ const FROM = '+16462352164';
 const NOW = new Date('2026-09-24T03:55:00.000Z');
 const CHAT = 'chat-parent-1';
 const OTHER_PARENT_PHONE = '+14165550122';
+const NEVER_INVITED_PHONE = '+14165550133';
 
 let db: TestDb;
 
@@ -649,18 +654,11 @@ describe('a number on the SMS door', () => {
       expect(sendSms.mock.calls[0]?.[0].sendKey).toBe(`co_parent_invite:${row?.id}`);
     });
 
-    it('policy on: the person answering yes to a held invite is seated, not greeted', async () => {
-      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
-      const { seeded, turn } = await seedTurn();
-      const sendSms = vi.fn(async () => {
-        throw new LinqSendError('timeout', 0, false);
-      });
-      await expect(deliverCoParentNumberInvite(db.database, { ...turn, sendSms })).rejects.toThrow();
-
+    async function answerFrom(phone: string, body: string, providerId: string) {
       const transport = new FakeTransport();
       const outcome = await handleInboundSms(
         db.database,
-        transport.inbound(COPARENT_PHONE, 'yes', { providerId: 'in-held-yes', receivedAt: NOW }),
+        transport.inbound(phone, body, { providerId, receivedAt: NOW }),
         {
           transport,
           threadMessage: async () => 'conv-1',
@@ -677,13 +675,84 @@ describe('a number on the SMS door', () => {
           now: NOW,
         },
       );
-      expect(outcome.status).toBe('co_parent_accepted');
-      expect(await inviteStates()).toEqual(['accepted']);
-      const members = await db.database
+      return { outcome, bodies: transport.bodies() };
+    }
+
+    async function memberRoles(familyId: string): Promise<string[]> {
+      const rows = await db.database
         .select({ role: schema.familyMembers.role })
         .from(schema.familyMembers)
-        .where(eq(schema.familyMembers.familyId, seeded.familyId));
-      expect(members.map((row) => row.role).sort()).toEqual(['co_parent', 'primary_parent']);
+        .where(eq(schema.familyMembers.familyId, familyId));
+      return rows.map((row) => row.role).sort();
+    }
+
+    async function inviteReplyConsents(): Promise<number> {
+      const rows = await db.database
+        .select({ id: schema.consentRecords.id })
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, CO_PARENT_INVITE_CONSENT_SCOPE));
+      return rows.length;
+    }
+
+    it.each(['yes', 'no'])(
+      'policy on: "%s" to a held invite binds nothing and is answered as a stranger is',
+      async (answer) => {
+        vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+        const { seeded, turn } = await seedTurn();
+        const sendSms = vi.fn(async () => {
+          throw new LinqSendError('timeout', 0, false);
+        });
+        await expect(
+          deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+        ).rejects.toThrow();
+
+        const stranger = await answerFrom(NEVER_INVITED_PHONE, answer, `in-stranger-${answer}`);
+        const held = await answerFrom(COPARENT_PHONE, answer, `in-held-${answer}`);
+
+        expect(held.outcome.status).toBe(stranger.outcome.status);
+        expect(held.bodies).toEqual(stranger.bodies);
+        expect(await inviteStates()).toEqual(['send_unconfirmed']);
+        expect(await memberRoles(seeded.familyId)).toEqual(['primary_parent']);
+        expect(await inviteReplyConsents()).toBe(0);
+      },
+    );
+
+    it('positive control, policy on: a yes to an invite Linq accepted seats them', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_landed' }));
+      await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+
+      const { outcome } = await answerFrom(COPARENT_PHONE, 'yes', 'in-confirmed-yes');
+
+      expect(outcome.status).toBe('co_parent_accepted');
+      expect(await inviteStates()).toEqual(['accepted']);
+      expect(await memberRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
+      expect(await inviteReplyConsents()).toBe(1);
+    });
+
+    it('policy on: an invite that turns unconfirmed before the yes is claimed seats nobody', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => ({ providerMessageId: 'SM_landed' }));
+      await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+      const invite = await loadOpenInviteByPhone(db.database, COPARENT_PHONE, NOW);
+      if (invite?.role !== 'co_parent') throw new Error('expected an open co-parent invite');
+      await db.database
+        .update(schema.caregiverInvites)
+        .set({ state: 'send_unconfirmed' })
+        .where(eq(schema.caregiverInvites.id, invite.id));
+
+      const seated = await acceptCoParentInvite(db.database, {
+        invite,
+        verbatimReply: 'yes',
+        now: NOW,
+      });
+
+      expect(seated.outcome).toBe('lost_race');
+      expect(await inviteStates()).toEqual(['send_unconfirmed']);
+      expect(await memberRoles(seeded.familyId)).toEqual(['primary_parent']);
+      expect(await inviteReplyConsents()).toBe(0);
     });
 
     it('policy on: a ledger write that fails after the text left does not text it again', async () => {
