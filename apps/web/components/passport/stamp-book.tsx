@@ -23,7 +23,7 @@ export function StampBook({
   onOpenId,
 }: {
   kid: KidCard;
-  kids: { id: string; name: string }[];
+  kids: { id: string; name: string | null; label: string }[];
   initialStampId?: string | null;
   openId?: string | null;
   onOpenId?: (id: string | null) => void;
@@ -124,7 +124,7 @@ function StampSheet({
 }: {
   stamp: StampCard;
   kid: KidCard;
-  kids: { id: string; name: string }[];
+  kids: { id: string; name: string | null; label: string }[];
   onClose: () => void;
 }) {
   const [childId, setChildId] = useState(stamp.childId ?? kid.id);
@@ -328,9 +328,10 @@ function StampSheet({
                       key={item.id}
                       type="button"
                       className={childId === item.id ? 'on' : ''}
+                      aria-label={item.label}
                       onClick={() => setChildId(item.id)}
                     >
-                      {item.name}
+                      {item.label}
                     </button>
                   ))}
                   <button
@@ -395,7 +396,7 @@ function StampSheet({
               <input type="hidden" name="stampId" value={stamp.id} />
               <input type="hidden" name="childId" value={kid.id} />
               <button className="pp-del" type="submit">
-                Not {kid.name}’s
+                Not {kid.name?.trim() || kid.age}’s
               </button>
             </form>
           </div>

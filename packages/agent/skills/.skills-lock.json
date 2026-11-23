@@ -287,6 +287,14 @@
     "file": "duty-night.md",
     "sha256": "85c230a970e5de8e50c154eb671fce7c058a1ec0e66bd0b55f4602d72db5607a"
   },
+  "email-alert-appointment.md": {
+    "file": "email-alert-appointment.md",
+    "sha256": "9ce7cc6cb80a7ee14fd170478e4d1d1b5cc2c53da4f54df825cd765d3199a44b"
+  },
+  "email-alert-clash-notice.md": {
+    "file": "email-alert-clash-notice.md",
+    "sha256": "fcd9303374700f271eaddf77ef2c9e966180be83d29dfe0dc2daa6ce4f275847"
+  },
   "email-alert-notice-body.md": {
     "file": "email-alert-notice-body.md",
     "sha256": "27e3cdc3b09da2b3bd6437db54cac9137b805c372500787a2817555bac0abb0f"
@@ -626,6 +634,10 @@
   "proactive-decider.md": {
     "file": "proactive-decider.md",
     "sha256": "a1c011c3f0e5c4e906f731b36930516a18b60670f06026f465cad28ad98fbeab"
+  },
+  "proactive-writer-no-repeat.md": {
+    "file": "proactive-writer-no-repeat.md",
+    "sha256": "67553c9a85ced03975f0d49d4d78b7272b8cba28041c241d170cfb188635ea98"
   },
   "proactive-writer.md": {
     "file": "proactive-writer.md",

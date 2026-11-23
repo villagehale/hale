@@ -108,7 +108,7 @@ export async function classifyChildEventEmail(
   envelope: InboxEnvelope,
   deps: ClassifyChildEventEmailDeps,
 ): Promise<SentinelClassification> {
-  const childNames = deps.children.map((c) => c.name);
+  const childNames = deps.children.flatMap((child) => (child.name ? [child.name] : []));
   const triage = await triageEmail(
     { subject: envelope.subject, from: envelope.from, snippet: envelope.snippet },
     childNames,

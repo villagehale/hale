@@ -29,6 +29,8 @@ export { senderLabel } from '@hale/worker/sender-label';
 
 export const EMAIL_ALERT_NOTICE_SKILL = 'email-alert-notice';
 export const EMAIL_ALERT_NOTICE_BODY_SKILL = 'email-alert-notice-body';
+/** VIL-762 · appended only when a judged clash is on the facts. */
+export const EMAIL_ALERT_CLASH_NOTICE_SKILL = 'email-alert-clash-notice';
 export const EMAIL_ALERT_NOTICE_TOOL = 'email_alert_notice';
 export const EMAIL_ALERT_NOTICE_TOOL_DESCRIPTION =
   'Decide whether this email is about the children and clear, and write the one text if so.';
@@ -56,6 +58,15 @@ export interface NoticeMoment {
   time: string;
 }
 
+/** A commitment the appointment read said this email overlaps. Facts only. */
+export interface EmailAlertClash {
+  title: string;
+  child: string | null;
+  when: NoticeMoment | null;
+  ends: NoticeMoment | null;
+  location: string | null;
+}
+
 export interface EmailAlertNoticeFacts {
   now: NoticeMoment;
   children: Array<{ name: string; ageYears: number }>;
@@ -81,6 +92,11 @@ export interface EmailAlertNoticeFacts {
   language: string;
   /** Notices already sent to this parent in this same 1:1, newest first. Context only. */
   recentNotices: string[];
+  /**
+   * VIL-762 · set only when the appointment read found a clash. Absent otherwise,
+   * so a flag-off notice is the same facts object as before.
+   */
+  clashes?: EmailAlertClash[];
 }
 
 /** The two kinds that are news about an occasion the family already holds. */
@@ -149,6 +165,8 @@ export function emailAlertNoticeFacts(input: {
   durationMinutes: number | null;
   /** `readRecentNotices`: what this parent was already sent here, newest first. */
   recentNotices: readonly string[];
+  /** VIL-762 · the clashes the appointment read named. Omitted from the facts when empty. */
+  clashes?: readonly EmailAlertClash[];
   /** Gmail's own arrival time for the message (`internalDate`). */
   receivedAt: Date;
   timeZone: string;
@@ -165,9 +183,9 @@ export function emailAlertNoticeFacts(input: {
     children: hidden
       ? []
       : input.children
-          .filter((child) => child.name.trim() !== '')
+          .filter((child) => (child.name ?? '').trim() !== '')
           .map((child) => ({
-            name: child.name.trim(),
+            name: (child.name ?? '').trim(),
             ageYears: Math.floor(child.ageInMonths / 12),
           })),
     email: {
@@ -176,7 +194,7 @@ export function emailAlertNoticeFacts(input: {
       subject: hidden ? null : input.subject.trim() || null,
       kind: input.kind,
       title: extraction.event.title.trim(),
-      namedChild: hidden ? null : (named?.name.trim() ?? null),
+      namedChild: hidden ? null : (named?.name?.trim() ?? null),
       was: hidden ? null : moment(extraction.event.originalTime, timeZone),
       when: hidden ? null : moment(extraction.event.newTime, timeZone),
       durationMinutes: hidden ? null : input.durationMinutes,
@@ -189,7 +207,15 @@ export function emailAlertNoticeFacts(input: {
     private: hidden,
     language: input.language,
     recentNotices: [...input.recentNotices],
+    ...(input.clashes !== undefined && input.clashes.length > 0
+      ? { clashes: input.clashes.map((clash) => ({ ...clash })) }
+      : {}),
   };
+}
+
+/** The family's wall-clock moment for an instant. Shared with the appointment read. */
+export function noticeMomentAt(at: Date, timeZone: string): NoticeMoment {
+  return momentOf(at, timeZone);
 }
 
 /** The user turn. Shared with the eval, which replays this request shape. No body
@@ -318,11 +344,23 @@ export async function composeEmailAlertNotice(
     );
     return unwritten;
   }
-  let systemExtras: readonly string[] | undefined;
+  const extras: string[] = [];
+  if (facts.clashes !== undefined && facts.clashes.length > 0) {
+    try {
+      const clash = await loadCronSkill(EMAIL_ALERT_CLASH_NOTICE_SKILL);
+      extras.push(clash.instructions);
+    } catch (err) {
+      console.error(
+        { familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'email alert: clash addendum unread, nothing sent',
+      );
+      return unwritten;
+    }
+  }
   if (handed !== null) {
     try {
       const addendum = await loadCronSkill(EMAIL_ALERT_NOTICE_BODY_SKILL);
-      systemExtras = [addendum.instructions];
+      extras.push(addendum.instructions);
     } catch (err) {
       console.warn(
         { familyId, err: err instanceof Error ? err.name : 'unknown' },
@@ -330,6 +368,7 @@ export async function composeEmailAlertNotice(
       );
     }
   }
+  const systemExtras = extras.length > 0 ? extras : undefined;
   for (let attempt = 1; attempt <= EMAIL_ALERT_NOTICE_MAX_ATTEMPTS; attempt += 1) {
     try {
       const { value } = await withLlmContext(

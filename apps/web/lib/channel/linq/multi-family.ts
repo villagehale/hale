@@ -984,7 +984,9 @@ async function readFamilyPrivateSlice(
 
   return {
     familyId: familyId,
-    children: kids.filter((row) => row.familyId === familyId).map((row) => row.name),
+    children: kids
+      .filter((row) => row.familyId === familyId)
+      .flatMap((row) => (row.name ? [row.name] : [])),
     memory: facts.filter((row) => row.familyId === familyId).map((row) => row.factKey),
     // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
     // one parent's own Google mirror is excluded by the household-row predicate.

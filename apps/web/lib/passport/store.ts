@@ -551,7 +551,9 @@ export const EMPTY_INTENT: ParentIntent = {
 
 function childByName(children: readonly ChildRef[], name: string | null): ChildRef | null {
   if (!name) return null;
-  const hit = children.filter((child) => child.name.toLowerCase() === name.trim().toLowerCase());
+  const hit = children.filter(
+    (child) => (child.name ?? '').toLowerCase() === name.trim().toLowerCase(),
+  );
   return hit.length === 1 ? (hit[0] ?? null) : null;
 }
 

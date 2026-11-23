@@ -88,7 +88,7 @@ export interface FamilyMemoryExport {
 
 export interface ExportChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 
@@ -105,7 +105,7 @@ export interface ExportTeenGate {
 export function exportTeenGate(children: readonly ExportChild[], now: Date): ExportTeenGate {
   const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
   const teenIds = new Set(teens.map((child) => child.id));
-  const teenNames = teens.map((child) => child.name);
+  const teenNames = teens.flatMap((child) => (child.name ? [child.name] : []));
   const nameById = new Map(children.map((child) => [child.id, child.name]));
   return {
     isPrivate: (childIds, texts) =>

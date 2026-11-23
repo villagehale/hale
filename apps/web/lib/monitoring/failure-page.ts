@@ -326,6 +326,12 @@ export const OPS_PAGE_VOCABULARY = {
   /** Linq took a team-schedule ask and its draft could not join the yes list. */
   team_schedule_ask_unbound: { change: ['time', 'location', 'both', 'cancel'] },
   offer_receipt_unwritten: {},
+  /** VIL-762 · an email alert the appointment read could not judge, or whose clash
+   * could not be written. Nothing was sent. */
+  email_alert_once_unsent: {
+    stage: ['judgment', 'clash_notice'],
+    reason: ['skill_unavailable', 'model_failed', 'unusable'],
+  },
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {
     kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],

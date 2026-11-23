@@ -83,14 +83,14 @@ export async function queueActivityDecisionFromReply(
   const named = kids.find(
     (row) =>
       row.familyId === input.familyId &&
-      row.name.trim().toLowerCase() === decision.kid.toLowerCase(),
+      (row.name ?? '').trim().toLowerCase() === decision.kid.toLowerCase(),
   );
   if (!named) return 'skipped';
   return queueGroupActivityDecision(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     originChatId: input.originChatId,
-    decision: { ...decision, kid: named.name.trim() },
+    decision: { ...decision, kid: (named.name ?? '').trim() },
     now: input.now,
   });
 }

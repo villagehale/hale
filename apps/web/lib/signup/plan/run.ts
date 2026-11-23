@@ -351,7 +351,7 @@ async function siblingFirstNames(
     .select({ name: schema.children.name })
     .from(schema.children)
     .where(and(eq(schema.children.familyId, plan.familyId), ne(schema.children.id, plan.childId)));
-  return rows.map((row) => row.name);
+  return rows.flatMap((row) => (row.name ? [row.name] : []));
 }
 
 async function runOnePlan(

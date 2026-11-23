@@ -424,8 +424,8 @@ async function household(
   return {
     parents,
     childNames: children
-      .filter((row) => row.familyId === familyId && row.name)
-      .map((row) => row.name),
+      .filter((row) => row.familyId === familyId)
+      .flatMap((row) => (row.name ? [row.name] : [])),
     parentCount: parentIds.length,
     timeZone: people[0]?.timezone ?? 'America/Toronto',
     language: await dutySettleLanguage(database, familyId, actorUserId),

@@ -118,6 +118,11 @@ export const FLAGS = [
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
+  // VIL-762. One alert per real appointment, and a clash with a known commitment
+  // is named in that alert. The model decides both. Exact `true`. Env-only: the
+  // read has to stay exact `true` with no family on the call, and a PostHog
+  // answer must not turn it on from `true\n` or from unset.
+  exact('email-alert-once', 'EMAIL_ALERT_ONCE_ENABLED', { envOnly: true }),
   exact('f14', 'F14_ENABLED', {
     allowlistEnv: 'F14_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
@@ -279,6 +284,9 @@ export const FLAGS = [
   }),
   trimmed('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED'),
   trimmed('school-break', 'SCHOOL_BREAK_ENABLED'),
+  // VIL-763. Intake stores a child name only when the parent gave one. Exact `true`
+  // only; anything else keeps the previous stand-in write.
+  exact('stated-child-name', 'STATED_CHILD_NAME_ENABLED', { envOnly: true }),
   exact('linq-group-coparent', 'LINQ_GROUP_COPARENT', {
     parser: 'trimmed-not-off',
     default: true,
@@ -301,6 +309,9 @@ export const FLAGS = [
     offVariant: 'off',
   },
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
+  // VIL-763. When a proactive text would mean the same thing as one Hale already
+  // sent this parent, the writer sends nothing. Exact `true` only.
+  exact('proactive-no-repeat', 'PROACTIVE_NO_REPEAT_ENABLED', { envOnly: true }),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),
@@ -408,6 +419,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; customer.subscription.deleted that sets the plan to free clears families.stripe_subscription_id when it is that subscription; a different stored id is left as it is; nothing in PostHog may turn this on',
   },
   {
     env: 'BILLING_THREAD_NOTICES_ENABLED',

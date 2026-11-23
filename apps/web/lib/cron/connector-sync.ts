@@ -38,6 +38,7 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { composeAppointmentJudgment } from '~/lib/integrations/email-alert-appointment';
 import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
 import {
   type EventNotesReader,
@@ -320,7 +321,10 @@ function travelDetectPorts(
         .select({ name: schema.children.name })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId));
-      return rows.map((row) => row.name.trim()).filter((name) => name !== '');
+      return rows.flatMap((row) => {
+        const name = row.name?.trim() ?? '';
+        return name.length > 0 ? [name] : [];
+      });
     },
     // WIDER than the list above, and deliberately: the parse-boundary refusal asks whether
     // the model wrote a member of this household into the city column, and there is no
@@ -565,6 +569,8 @@ export function emailAlertPorts(
     readAlertBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
     writeNotice: (facts, family, body) =>
       composeEmailAlertNotice(pipelineClient(), facts, family, body),
+    judgeAppointment: (facts, family) =>
+      composeAppointmentJudgment(pipelineClient(), facts, family, facts.email.kind),
     rereadEnvelope: (messageId) => readGmailAlertEnvelope(googleGetFetch, accessToken, messageId),
   };
 }
@@ -596,5 +602,5 @@ async function loadFamilyChildNames(database: Database, familyId: string): Promi
     .select({ name: schema.children.name })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.map((r) => r.name);
+  return rows.flatMap((row) => (row.name ? [row.name] : []));
 }
