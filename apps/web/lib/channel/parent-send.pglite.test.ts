@@ -157,6 +157,63 @@ describe('deliverParentText through Linq, fetch stubbed', () => {
     expect(landed?.providerMessageId).toBe('msg-landed');
   });
 
+  // Postgres stores microseconds and a JS Date keeps milliseconds, and pglite's clock hides
+  // the gap, so these two give the row the time real Postgres would.
+  const storeWithMicroseconds = (id: string, at: Date) =>
+    db.exec(
+      `update channel_messages set created_at = '${at.toISOString()}'::timestamptz + interval '123 microseconds' where id = '${id}'`,
+    );
+
+  const receiptInput = (now: Date, logicalKey: string) => ({
+    familyId,
+    parentUserId,
+    logicalKey,
+    channel: 'imessage' as const,
+    category: 'reply' as const,
+    templateKey: 'linq:coparent_welcome',
+    providerChatId: CHAT,
+    now,
+    recordBody: null,
+    surface: 'group_line' as const,
+    final: false,
+    pager: pager().pager,
+    send: async () => ({ providerMessageId: 'msg-landed', chatId: CHAT }),
+  });
+
+  it('records the text as sent when the stored claim time has microseconds', async () => {
+    const now = new Date();
+    const input = receiptInput(now, `${LOGICAL}:microseconds-sent`);
+    const begun = await beginParentSend(db.database, input);
+    if (begun.state !== 'owned') throw new Error(`expected a claim, got ${begun.state}`);
+    await storeWithMicroseconds(begun.owned.claimId, begun.owned.claimAt);
+
+    const result = await completeParentSend(db.database, begun.owned, input);
+
+    expect(result).toMatchObject({ outcome: 'sent', providerMessageId: 'msg-landed' });
+    const [row] = await db.database
+      .select({
+        status: schema.channelMessages.status,
+        errorCode: schema.channelMessages.errorCode,
+        providerMessageId: schema.channelMessages.providerMessageId,
+      })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, begun.owned.claimId));
+    expect(SENT_STATUSES as readonly string[]).toContain(row?.status);
+    expect(row).toMatchObject({ errorCode: null, providerMessageId: 'msg-landed' });
+  });
+
+  it('takes over a crashed claim whose stored time has microseconds', async () => {
+    const claimedAt = new Date(Date.now() - 60 * 60 * 1000);
+    const key = `${LOGICAL}:microseconds-crashed`;
+    const first = await beginParentSend(db.database, receiptInput(claimedAt, key));
+    if (first.state !== 'owned') throw new Error(`expected a claim, got ${first.state}`);
+    await storeWithMicroseconds(first.owned.claimId, claimedAt);
+
+    const second = await beginParentSend(db.database, receiptInput(new Date(), key));
+
+    expect(second.state).toBe('owned');
+  });
+
   it('a Linq refusal leaves the row unsent and pages', async () => {
     const key = 'linq:coparent_welcome:refused';
     const fetchImpl: typeof fetch = async () =>
