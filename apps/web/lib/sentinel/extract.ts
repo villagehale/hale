@@ -1,5 +1,11 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import {
+  type AgentClient,
+  comparableToMarked,
+  pickLane,
+  presentUntrusted,
+  withoutMarkEscape,
+} from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { loadExtractChildEventSkill } from './skill';
@@ -92,8 +98,13 @@ export async function extractChildEvent(
   client: AgentClient,
 ): Promise<ExtractResult> {
   const skill = await loadExtractChildEventSkill();
+  const marked = isEnabled('untrusted-field-marking');
   const userMessage = JSON.stringify({
-    email: { subject: input.subject, from: input.from, body: input.body },
+    email: {
+      subject: presentUntrusted(marked, 'email', 'subject', input.subject),
+      from: presentUntrusted(marked, 'email', 'from', input.from),
+      body: presentUntrusted(marked, 'email', 'body', input.body),
+    },
     received_at: input.receivedAt,
     family_timezone: input.familyTimezone,
     children: input.children.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),
@@ -139,12 +150,13 @@ export async function extractChildEvent(
  * address the model completed, corrected or recalled never reaches a parent.
  */
 export function sourcedAddress(address: string | null, source: string): string | null {
-  const trimmed = address?.trim() ?? '';
-  const wanted = words(trimmed);
+  const marked = isEnabled('untrusted-field-marking');
+  const trimmed = withoutMarkEscape(marked, address?.trim() ?? '');
+  const wanted = words(comparableToMarked(marked, trimmed));
   if (!wanted.some((w) => /\p{N}/u.test(w)) || !wanted.some((w) => /\p{L}/u.test(w))) {
     return null;
   }
-  const haystack = words(source);
+  const haystack = words(comparableToMarked(marked, source));
   for (let start = 0; start + wanted.length <= haystack.length; start += 1) {
     if (wanted.every((w, i) => haystack[start + i] === w)) return trimmed;
   }

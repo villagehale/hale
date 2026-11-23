@@ -1,4 +1,4 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { type Mock, afterEach, describe, expect, it, vi } from 'vitest';
 import { ingestEvent } from './ingest';
@@ -463,6 +463,39 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
         costUsd: '0.000000',
       }),
     ]);
+  });
+
+  it('with the marking flag on, the drafter labels a gcal event as calendar', async () => {
+    vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', 'true');
+    const db = fakeDb(freshCapture(), {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+
+    await ingestEvent(
+      {
+        ...endedGcal,
+        extra: {
+          start: { dateTime: '2026-07-01T12:00:00Z' },
+          end: { dateTime: '2026-07-01T13:00:00Z' },
+        },
+      },
+      db,
+      client,
+      NOW,
+    );
+
+    const draftRequest = (client.messages.create as unknown as Mock).mock.calls[1]?.[0] as {
+      messages: { content: string }[];
+    };
+    const marked = JSON.parse(draftRequest.messages[0]?.content as string).event.payload as string;
+    const inner = marked.slice(marked.indexOf('>') + 2, marked.lastIndexOf(' </'));
+    expect(marked).toBe(markUntrusted('calendar', 'payload', inner));
+    expect(JSON.parse(inner)).toEqual({
+      from: 'clinic@example.com',
+      ask: 'please confirm thursday 10am',
+    });
   });
 
   it('still classifies a future gcal item', async () => {
