@@ -5,6 +5,7 @@ import { recordExecution } from '@hale/worker/memory-writer';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mintChannelCalendarDraft } from '~/lib/channel/coach/draft';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { defaultApprovalSpine } from '~/lib/channel/router/wiring';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
@@ -112,7 +113,7 @@ function children(): FamilyChildRef[] {
   return [{ id: childId, name: 'Leo', ageInMonths: 96 }];
 }
 
-async function draftAction(): Promise<{ actionId: string }> {
+async function draftAction(heldUntilAsked = false): Promise<{ actionId: string }> {
   const [event] = await db.database
     .insert(schema.events)
     .values({
@@ -130,7 +131,7 @@ async function draftAction(): Promise<{ actionId: string }> {
       eventId: event.id,
       actionType: 'calendar_move',
       payload: {},
-      userVisibleState: 'drafted_for_approval',
+      userVisibleState: heldUntilAsked ? 'needs_human' : 'drafted_for_approval',
       reviewerVerdict: 'approved',
     })
     .returning({ id: schema.actions.id });
@@ -169,7 +170,7 @@ function ports(over: {
     composeParent: async () => (over.parentText === undefined ? 'Leo’s hockey moved. Want me to update it?' : over.parentText),
     draft: async (input) => {
       payloads.push(input.payload);
-      return draftAction();
+      return draftAction(input.heldUntilAsked);
     },
     autonomous: async () => ({
       autonomous: over.autonomous === true,
@@ -733,16 +734,144 @@ describe('VIL-719 an ask that never reached the parent', () => {
     expect(await pending()).toEqual([]);
   });
 
-  it('positive control, policy on: a delivered ask stays on the yes list', async () => {
+  it('positive control, policy on: a delivered ask joins the yes list only once Linq took it', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
     const eventId = await seedGame();
-    const { result, sent } = await applyAsk(eventId);
+    const atSend: string[] = [];
+    const transport = new (class extends FakeTransport {
+      override async send(input: Parameters<FakeTransport['send']>[0]) {
+        atSend.push((await onlyActionState()).state);
+        expect(await pending()).toEqual([]);
+        return super.send(input);
+      }
+    })();
+    const { result, sent } = await applyAsk(eventId, (p) => {
+      p.transport = transport;
+    });
     expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
     expect(sent).toHaveLength(1);
+    expect(atSend).toEqual(['needs_human']);
     const action = await onlyActionState();
     expect(action.state).toBe('drafted_for_approval');
     expect((await pending()).map((row) => row.actionId)).toEqual([action.id]);
     expect(await notRunRows()).toEqual([]);
+  });
+
+  it('policy on: a send that throws before Linq took it leaves the draft off the yes list', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    const eventId = await seedGame();
+    const atSend: string[] = [];
+    await expect(
+      applyAsk(eventId, (p) => {
+        p.gate = async () => {
+          atSend.push((await onlyActionState()).state);
+          throw new Error('gate store unavailable');
+        };
+      }),
+    ).rejects.toThrow('gate store unavailable');
+    expect(atSend).toEqual(['needs_human']);
+    const action = await onlyActionState();
+    expect(action.state).toBe('needs_human');
+    expect(await pending()).toEqual([]);
+    expect(await notRunRows()).toEqual([
+      {
+        audience: family.parentUserId,
+        targetTable: 'users',
+        targetId: family.parentUserId,
+        after: { actionId: action.id, change: 'time' },
+      },
+    ]);
+  });
+
+  describe('a database error after Linq took the text', () => {
+    const failLedger = () =>
+      db.exec(`
+        create or replace function fail_ledger_for_test() returns trigger as $$
+        begin
+          raise exception 'ledger write failed for test';
+        end;
+        $$ language plpgsql;
+        create trigger fail_ledger_for_test before update on channel_messages
+          for each row when (new.provider_message_id is not null)
+          execute function fail_ledger_for_test();
+      `);
+    afterEach(async () => {
+      await db.exec('drop trigger if exists fail_ledger_for_test on channel_messages;');
+    });
+    const ledgerRows = () =>
+      db.database
+        .select({
+          status: schema.channelMessages.status,
+          errorCode: schema.channelMessages.errorCode,
+        })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, family.familyId));
+
+    it('policy on: it is not recorded as a failed send, and the asked draft can be approved', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const eventId = await seedGame();
+      await failLedger();
+      await expect(applyAsk(eventId)).rejects.toThrow('ledger write failed');
+      const rows = await ledgerRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.errorCode).toBeNull();
+      expect(rows[0]?.status).not.toBe('failed');
+      const action = await onlyActionState();
+      expect(action.state).toBe('drafted_for_approval');
+      expect((await pending()).map((row) => row.actionId)).toEqual([action.id]);
+      expect(await notRunRows()).toEqual([]);
+    });
+
+    it('policy off: it ends as a failed send, as today', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+      const eventId = await seedGame();
+      await failLedger();
+      const { result } = await applyAsk(eventId);
+      expect(result).toEqual({ handled: true, outcome: 'send_failed' });
+      expect((await ledgerRows())[0]?.status).toBe('failed');
+      expect((await onlyActionState()).state).toBe('drafted_for_approval');
+    });
+  });
+
+  it('the real mint writes a held draft off the yes list from its first row', async () => {
+    const failingReviewer = {} as Parameters<typeof mintChannelCalendarDraft>[2];
+    const mint = (heldUntilAsked: boolean) =>
+      mintChannelCalendarDraft(
+        {
+          familyId: family.familyId,
+          actor: 'system',
+          origin: { surface: 'private' },
+          actionType: 'calendar_move',
+          payload: { title: 'Game', startsAt: NEW_START.toISOString(), endsAt: null },
+          rationale: 'test',
+          teenContent: false,
+          heldUntilAsked,
+        },
+        db.database,
+        failingReviewer,
+        NOW,
+      ).catch(() => null);
+    await mint(true);
+    expect((await onlyActionState()).state).toBe('needs_human');
+    await db.database.delete(schema.actions).where(eq(schema.actions.familyId, family.familyId));
+    await mint(false);
+    expect((await onlyActionState()).state).toBe('drafted_for_approval');
+  });
+
+  it('policy off: the draft is on the yes list while the text is sent, as today', async () => {
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    const eventId = await seedGame();
+    const atSend: string[] = [];
+    const transport = new (class extends FakeTransport {
+      override async send(input: Parameters<FakeTransport['send']>[0]) {
+        atSend.push((await onlyActionState()).state);
+        return super.send(input);
+      }
+    })();
+    await applyAsk(eventId, (p) => {
+      p.transport = transport;
+    });
+    expect(atSend).toEqual(['drafted_for_approval']);
   });
 
   it('policy off: a quiet-hours hold ends as it does today', async () => {

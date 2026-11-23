@@ -123,6 +123,7 @@ export interface TeamScheduleApplyPorts {
     payload: CalendarPlacementPayload;
     rationale: string;
     teenContent: boolean;
+    heldUntilAsked: boolean;
   }): Promise<{ actionId: string }>;
   autonomous(actionType: ActionType): Promise<{ autonomous: boolean; parentUserId: string | null }>;
   execute(actionId: string, approvedBy: string): Promise<void>;
@@ -189,14 +190,31 @@ async function changeTextsOutsider(
   return (await parentDrivers(database, input.familyId, drivers)).length < drivers.length;
 }
 
+type NotRunChange = {
+  familyId: string;
+  parentUserId: string;
+  actionId: string;
+  change: SpokenChange;
+};
+
+/** The row names one parent's email, so it stays with that parent. */
+async function auditChangeNotRun(database: Database, input: NotRunChange): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'team_schedule_change_not_run',
+    audience: input.parentUserId,
+    targetTable: 'users',
+    targetId: input.parentUserId,
+    after: { actionId: input.actionId, change: input.change },
+  });
+}
+
 /**
- * VIL-719 · a draft the parent was never asked about leaves the yes list, so a later plain
- * yes cannot approve it. The row names one parent's email, so it stays with that parent.
+ * VIL-719 · a change made under a grant that did not land leaves the yes list, because the
+ * parent was never asked about it, so a later plain yes cannot approve it.
  */
-async function takeOffYesList(
-  database: Database,
-  input: { familyId: string; parentUserId: string; actionId: string; change: SpokenChange },
-): Promise<void> {
+async function takeOffYesList(database: Database, input: NotRunChange): Promise<void> {
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const held = await tx
@@ -210,16 +228,32 @@ async function takeOffYesList(
       )
       .returning({ id: schema.actions.id });
     if (held.length === 0) return;
-    await tx.insert(schema.auditLog).values({
-      familyId: input.familyId,
-      actor: 'system',
-      actionTaken: 'team_schedule_change_not_run',
-      audience: input.parentUserId,
-      targetTable: 'users',
-      targetId: input.parentUserId,
-      after: { actionId: input.actionId, change: input.change },
-    });
+    await auditChangeNotRun(tx, input);
   });
+}
+
+/** VIL-719 · Linq took the ask, so the parent's yes can now bind to this draft. */
+async function promoteAskedDraft(database: Database, actionId: string): Promise<void> {
+  await database
+    .update(schema.actions)
+    .set({ userVisibleState: 'drafted_for_approval' })
+    .where(
+      and(
+        eq(schema.actions.id, actionId),
+        eq(schema.actions.userVisibleState, 'needs_human'),
+        isNull(schema.actions.executedAt),
+      ),
+    );
+}
+
+/** VIL-719 · an ask that did not go out. A draft already promoted was asked, so it has no row. */
+async function auditAskNotSent(database: Database, input: NotRunChange): Promise<void> {
+  const [row] = await database
+    .select({ userVisibleState: schema.actions.userVisibleState })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, input.actionId))
+    .limit(1);
+  if (row?.userVisibleState === 'needs_human') await auditChangeNotRun(database, input);
 }
 
 /**
@@ -416,6 +450,8 @@ export async function applyTeamScheduleChange(
     return { handled: true, outcome: 'schedule_change_unwritten' };
   }
 
+  // VIL-719 · the draft cannot be approved until Linq has taken the ask.
+  const asking = !standing.autonomous && askPolicyTiersEnabled(input.familyId);
   let drafted: { actionId: string };
   try {
     drafted = await ports.draft({
@@ -423,6 +459,7 @@ export async function applyTeamScheduleChange(
       payload,
       rationale: 'team schedule change from a connected Gmail',
       teenContent: false,
+      heldUntilAsked: asking,
     });
   } catch (err) {
     console.warn(
@@ -507,15 +544,35 @@ export async function applyTeamScheduleChange(
     return { handled: true, outcome: 'schedule_change_unwritten' };
   }
 
-  const sent = await sendParentNotice(database, input, ports, text);
+  const notRun: NotRunChange = {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    actionId: drafted.actionId,
+    change: spoken,
+  };
+  let sent: { outcome: 'sent' | TeamScheduleOutcome };
+  try {
+    sent = await sendParentNotice(
+      database,
+      input,
+      ports,
+      text,
+      asking ? () => promoteAskedDraft(database, drafted.actionId) : null,
+    );
+  } catch (err) {
+    if (asking) {
+      await auditAskNotSent(database, notRun).catch((auditErr: unknown) =>
+        console.error(
+          { familyId: input.familyId, err: auditErr instanceof Error ? auditErr.name : 'unknown' },
+          'team schedule: could not audit an ask that did not go out',
+        ),
+      );
+    }
+    throw err;
+  }
   if (sent.outcome !== 'sent') {
-    if (!standing.autonomous && askPolicyTiersEnabled(input.familyId)) {
-      await takeOffYesList(database, {
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        actionId: drafted.actionId,
-        change: spoken,
-      });
+    if (asking) {
+      await auditAskNotSent(database, notRun);
       // A gate hold spent no send key, so the email notice can run and keep the quiet-hours
       // debt that asks again later. Every other ending spent it, and the notice would stop.
       if (sent.outcome.startsWith('gate_refused:')) return { handled: false };
@@ -533,6 +590,7 @@ async function sendParentNotice(
   input: TeamScheduleApplyInput,
   ports: TeamScheduleApplyPorts,
   text: string,
+  onAccepted: (() => Promise<void>) | null,
 ): Promise<{ outcome: 'sent' | TeamScheduleOutcome }> {
   const dedupeKey = `email_alert:${input.integrationId}:${input.messageId}`;
   if (await dedupeActive(dedupeKey, database)) {
@@ -593,6 +651,10 @@ async function sendParentNotice(
       .where(eq(schema.channelMessages.id, claimed.id));
     return { outcome: 'no_chat' };
   }
+  // VIL-719 · with the policy on, a database error after Linq took the text is not a failed
+  // send, so this write sits outside the provider's try.
+  const ledgerOutsideSend = askPolicyTiersEnabled(input.familyId);
+  let ledgerAccepted: () => Promise<void>;
   try {
     let providerMessageId: string;
     let carried: 'sms' | 'imessage' = 'sms';
@@ -612,19 +674,22 @@ async function sendParentNotice(
         chatId = sent.chatId ?? null;
       }
     }
-    await database
-      .update(schema.channelMessages)
-      .set(
-        carried === 'imessage'
-          ? {
-              providerMessageId,
-              channel: 'imessage',
-              providerChatId: chatId,
-              status: acceptedStatus('imessage'),
-            }
-          : { providerMessageId },
-      )
-      .where(eq(schema.channelMessages.id, claimed.id));
+    ledgerAccepted = async () => {
+      await database
+        .update(schema.channelMessages)
+        .set(
+          carried === 'imessage'
+            ? {
+                providerMessageId,
+                channel: 'imessage',
+                providerChatId: chatId,
+                status: acceptedStatus('imessage'),
+              }
+            : { providerMessageId },
+        )
+        .where(eq(schema.channelMessages.id, claimed.id));
+    };
+    if (!ledgerOutsideSend) await ledgerAccepted();
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
     await database
@@ -632,6 +697,10 @@ async function sendParentNotice(
       .set(failedSendPatch(code))
       .where(eq(schema.channelMessages.id, claimed.id));
     return { outcome: 'send_failed' };
+  }
+  if (ledgerOutsideSend) {
+    await onAccepted?.();
+    await ledgerAccepted();
   }
 
   const extraction = input.classification.extraction;
