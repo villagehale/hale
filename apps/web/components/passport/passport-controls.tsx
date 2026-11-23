@@ -188,6 +188,21 @@ function InviteSomeone() {
   );
 }
 
+/** A picker label that is not stored as a name. A given name when there is one,
+ * otherwise the age already on the card, and the birth date when two unnamed
+ * children share that age. */
+export function stampKidLabel(child: KidCard, siblings: readonly KidCard[]): string {
+  const name = child.name?.trim() ?? '';
+  if (name.length > 0) return name;
+  const age = child.age.trim();
+  const sameAge = siblings.filter(
+    (other) => (other.name?.trim() ?? '').length === 0 && other.age === child.age,
+  );
+  if (sameAge.length > 1 && child.born)
+    return age.length > 0 ? `${age}, born ${child.born}` : `born ${child.born}`;
+  return age;
+}
+
 export function KidPassport({
   model,
   kid,
@@ -203,7 +218,11 @@ export function KidPassport({
   const counts = new Map<string, number>();
   for (const stamp of kid.stamps) counts.set(stamp.activity, (counts.get(stamp.activity) ?? 0) + 1);
   const most = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-  const kids = model.children.map((child) => ({ id: child.id, name: child.name }));
+  const kids = model.children.map((child) => ({
+    id: child.id,
+    name: child.name,
+    label: stampKidLabel(child, model.children),
+  }));
   return (
     <div className="pp-kid-layout">
       <div className="pp-col">

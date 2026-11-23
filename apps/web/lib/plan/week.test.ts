@@ -69,9 +69,10 @@ describe('planChildItems', () => {
     expect(milestone?.when).toBe('around now');
   });
 
-  it('falls back to a neutral name when a child has none', () => {
+  it('leaves a child with no name unnamed', () => {
     const items = planChildItems([child('c1', '2026-03-15', null)]);
-    expect(items.every((i) => i.childName === 'your child')).toBe(true);
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.childName === null)).toBe(true);
   });
 
   it('returns no items for an empty family', () => {

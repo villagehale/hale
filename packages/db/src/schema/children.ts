@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, date, integer, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { date, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { childGenderEnum } from './enums.js';
 import { families } from './families.js';
 
@@ -9,8 +9,9 @@ export const children = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
-    /** Given / first name. Required since onboarding's first step. */
-    name: text('name').notNull(),
+    /** Given / first name. Null when the parent has not given one (VIL-763).
+     * A missing name is not a stand-in string. */
+    name: text('name'),
     /** Family / last name, collected post-auth in setup. Nullable: optional,
      * and many single-name records predate it. */
     lastName: text('last_name'),

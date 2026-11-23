@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import { makeFakeDb } from './fakes';
-import { provisionFromIntake } from './provision';
+import { childNameForStorage, provisionFromIntake } from './provision';
 
 /**
  * The transcript REPLAY, which is the only place a pre-provisioning message becomes a
@@ -290,6 +290,23 @@ describe('provisionFromIntake — the contact card share written once the family
   });
 });
 
+describe('childNameForStorage (VIL-763)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('keeps the stand-in unless the flag is exactly true', () => {
+    vi.stubEnv('STATED_CHILD_NAME_ENABLED', undefined);
+    expect(childNameForStorage(null)).toBe('your child');
+    expect(childNameForStorage('  ')).toBe('your child');
+    expect(childNameForStorage('Maya')).toBe('Maya');
+    vi.stubEnv('STATED_CHILD_NAME_ENABLED', 'true\n');
+    expect(childNameForStorage(null)).toBe('your child');
+    vi.stubEnv('STATED_CHILD_NAME_ENABLED', 'true');
+    expect(childNameForStorage(null)).toBeNull();
+    expect(childNameForStorage('  ')).toBeNull();
+    expect(childNameForStorage('  Lin  ')).toBe('Lin');
+  });
+});
+
 describe('provisionFromIntake — named birth date and a retried SMS channel (VIL-531, VIL-532)', () => {
   beforeEach(() => {
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
@@ -317,6 +334,17 @@ describe('provisionFromIntake — named birth date and a retried SMS channel (VI
     expect(child?.name).toBe('Lin');
     expect(child?.dateOfBirth).toBe('2016-05-01');
     expect(child?.dobPrecision).toBe('exact');
+  });
+
+  it('stores no name when the parent gave none and the flag is exactly true', async () => {
+    vi.stubEnv('STATED_CHILD_NAME_ENABLED', 'true');
+    const fake = makeFakeDb();
+    await provisionFromIntake(fake.db, {
+      ...input(),
+      children: [{ name: null, ageMonths: 48, agePrecision: 'years' }],
+    });
+    const [child] = fake.rows(schema.children);
+    expect(child?.name).toBeNull();
   });
 
   it('reuses a pending family the ads join already created, and still enrols the channel', async () => {

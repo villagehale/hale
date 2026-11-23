@@ -148,7 +148,7 @@ interface ClassifierRunInput {
     timezone: string;
     knownClinics?: string[];
     knownDaycares?: string[];
-    children?: Array<{ id: string; name: string; ageInMonths: number }>;
+    children?: Array<{ id: string; name: string | null; ageInMonths: number }>;
   };
 }
 

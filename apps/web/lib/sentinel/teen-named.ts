@@ -24,12 +24,12 @@ export function namesTeenChild(
     return texts.some((text) =>
       namesAny(
         text,
-        teens.map((child) => child.name),
+        teens.flatMap((child) => (child.name ? [child.name] : [])),
       ),
     );
   }
   const names = teens
-    .map((child) => fold(child.name).trim().split(/\s+/)[0] ?? '')
+    .map((child) => fold(child.name ?? '').trim().split(/\s+/)[0] ?? '')
     .filter((name) => name.length > 0);
   const text = fold(texts.join('\n'));
   return names.some((name) =>

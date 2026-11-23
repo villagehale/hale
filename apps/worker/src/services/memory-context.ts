@@ -66,12 +66,7 @@ export const RECEIPT_KEY_PREFIXES = ['health_checkpoint:', 'registration_outcome
 type FactType = schema.FamilyMemoryFact['factType'];
 
 /** `family_memory_facts.memory_source`, as its CHECK constraint allows it. */
-export type MemoryFactSource =
-  | 'parent_message'
-  | 'calendar'
-  | 'receipt'
-  | 'inferred'
-  | 'legacy';
+export type MemoryFactSource = 'parent_message' | 'calendar' | 'receipt' | 'inferred' | 'legacy';
 /** Alias kept for the find slice, which stamps this on each preference. */
 export type FactSource = MemoryFactSource;
 
@@ -438,7 +433,7 @@ export interface EpisodesForContextOptions {
 
 interface RosterChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 
@@ -462,7 +457,13 @@ export async function teenRoster(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const teens = rows.filter((row) => deriveStage(row.dateOfBirth, now) === 'teenager');
-  return { ids: teens.map((row) => row.id), names: teens.map((row) => row.name) };
+  return {
+    ids: teens.map((row) => row.id),
+    names: teens.flatMap((row) => {
+      const name = row.name?.trim() ?? '';
+      return name.length > 0 ? [name] : [];
+    }),
+  };
 }
 
 export { namesAny };

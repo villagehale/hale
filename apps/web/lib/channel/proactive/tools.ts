@@ -140,11 +140,33 @@ export const WRITER_TOOL_SCHEMA = {
   required: ['message'],
 } satisfies Anthropic.Tool.InputSchema;
 
+/** VIL-763 · null means the text would repeat one already sent, so nothing is sent. */
+export const WRITER_TOOL_SCHEMA_OR_NOTHING = {
+  type: 'object' as const,
+  additionalProperties: false,
+  properties: {
+    message: {
+      type: ['string', 'null'],
+      description:
+        'The one text Hale sends, or null when it would mean the same thing as a recent text.',
+    },
+  },
+  required: ['message'],
+} satisfies Anthropic.Tool.InputSchema;
+
 const textSchema = z
   .object({ message: z.string().refine((value) => value.trim().length > 0) })
   .strict();
 
-export type WriterSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented' | 'over_length';
+const nothingSchema = z.object({ message: z.string().nullable() }).strict();
+
+export type WriterSkip =
+  | 'no_client'
+  | 'model_failed'
+  | 'unparsed'
+  | 'invented'
+  | 'over_length'
+  | 'repeat';
 export type WriterResult = { message: string } | { skipped: WriterSkip };
 
 function slotsOf(items: readonly ToolCandidate[]): string[] {
@@ -177,14 +199,37 @@ export function withActivityLinks(message: string, items: readonly ToolCandidate
  * invented, the link appended for an activity it named without one, and no longer than
  * one text (`TEXT_CHARS`).
  */
-export function readWriterText(value: unknown, items: readonly ToolCandidate[]): WriterResult {
-  const parsed = textSchema.safeParse(value);
-  if (!parsed.success) return { skipped: 'unparsed' };
-  const message = parsed.data.message.trim();
-  if (findInventedFacts(message, slotsOf(items)).length > 0) return { skipped: 'invented' };
-  const finished = withActivityLinks(message, items);
+function finishWriterText(message: string, items: readonly ToolCandidate[]): WriterResult {
+  const trimmed = message.trim();
+  if (trimmed.length === 0) return { skipped: 'unparsed' };
+  if (findInventedFacts(trimmed, slotsOf(items)).length > 0) return { skipped: 'invented' };
+  const finished = withActivityLinks(trimmed, items);
   if (finished.length > TEXT_CHARS) return { skipped: 'over_length' };
   return { message: finished };
+}
+
+/**
+ * The writer's tool input, checked and finished: one non-empty message, nothing
+ * invented, the link appended for an activity it named without one, and no longer than
+ * one text (`TEXT_CHARS`).
+ *
+ * When `allowNothing` is set, a null message is the writer refusing to repeat a text
+ * Hale already sent. That is a named skip, not a failed parse.
+ */
+export function readWriterText(
+  value: unknown,
+  items: readonly ToolCandidate[],
+  allowNothing = false,
+): WriterResult {
+  if (allowNothing) {
+    const parsed = nothingSchema.safeParse(value);
+    if (!parsed.success) return { skipped: 'unparsed' };
+    if (parsed.data.message === null) return { skipped: 'repeat' };
+    return finishWriterText(parsed.data.message, items);
+  }
+  const parsed = textSchema.safeParse(value);
+  if (!parsed.success) return { skipped: 'unparsed' };
+  return finishWriterText(parsed.data.message, items);
 }
 
 /**
@@ -196,9 +241,16 @@ export function writerContext(
   items: readonly ToolCandidate[],
   cadenceNote: string | null,
   language: string | null = null,
+  recentTexts: readonly string[] = [],
 ): string {
   const note = cadenceNote ? boundedLine(cadenceNote) : '';
   const tag = typeof language === 'string' ? language.trim().toLowerCase() : '';
   const lang = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(tag) ? tag : '';
-  return JSON.stringify({ items, ...(note ? { note } : {}), ...(lang ? { language: lang } : {}) });
+  const recent = recentTexts.map((text) => boundedLine(text)).filter((text) => text.length > 0);
+  return JSON.stringify({
+    items,
+    ...(note ? { note } : {}),
+    ...(lang ? { language: lang } : {}),
+    ...(recent.length > 0 ? { recentTexts: recent } : {}),
+  });
 }

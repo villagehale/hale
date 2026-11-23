@@ -119,7 +119,7 @@ function childName(children: readonly FamilyChildRef[], childId: string | null):
   if (childId === null) return null;
   const child = children.find((one) => one.id === childId);
   if (child === undefined || child.ageInMonths >= TEENAGER_START_MONTHS) return null;
-  const name = child.name.trim();
+  const name = child.name?.trim() ?? '';
   return name === '' ? null : name;
 }
 

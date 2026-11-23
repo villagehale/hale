@@ -288,7 +288,7 @@ async function loadFamilyChildNames(database: Database, familyId: string): Promi
     .select({ id: schema.children.id, name: schema.children.name })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.map((r) => r.name);
+  return rows.flatMap((row) => (row.name ? [row.name] : []));
 }
 
 /** Returns the child (id + DOB, for the rule-#1 teen derivation) iff it names a

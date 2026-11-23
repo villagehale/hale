@@ -156,8 +156,10 @@ async function familyFacts(database: Database, familyId: string, now: Date): Pro
   const teenIds = teenChildIds(children, now);
   return {
     teenIds,
-    childNames: children.map((child) => child.name),
-    teenNames: children.filter((child) => teenIds.has(child.id)).map((child) => child.name),
+    childNames: children.flatMap((child) => (child.name ? [child.name] : [])),
+    teenNames: children
+      .filter((child) => teenIds.has(child.id))
+      .flatMap((child) => (child.name ? [child.name] : [])),
   };
 }
 
