@@ -160,9 +160,9 @@ export function scriptedTurn(input: FriendVoiceInput): {
       groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
     };
   }
-  // Reminders just recorded: confirm them, ask nothing.
+  // A find they kept: confirm it, ask nothing.
   if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the first one.', capture };
+    return { reply: "Done, I'll keep the first one for the year.", capture };
   }
   if (input.step === 'help') {
     const missing =
@@ -210,7 +210,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   } else if (!calendarKnown) {
     ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
   } else if (!scheduleKnown && input.findLines.length > 0) {
-    ask = 'Want the first one on your calendar as a weekly reminder?';
+    ask = 'Want the first one kept for the year?';
   } else if (!coparentKnown) {
     ask = 'Want me to set up a group chat with the other parent?';
   } else {

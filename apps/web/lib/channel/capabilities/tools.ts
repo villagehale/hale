@@ -17,7 +17,8 @@ export const NOTE_CORRECTION_TOOL = 'note_capability_correction';
 
 /** What each key means, for the model choosing one. Not parent copy. */
 const MEANING: Record<DeferredCapability, string> = {
-  sign_up: 'completing a registration or sign-up for them (booking, enrolling, holding a spot)',
+  sign_up:
+    'completing a registration right now. The capability table still allows the signupWithOk promise: when that fact says the start is still ahead and liveNow is false, you may say you will sign them up starting on that date, with their ok. You may not say you can do it now, and you may not say anyone is already signed up',
   spot_watch: 'watching a full class page and texting them when a spot opens',
 };
 
@@ -46,7 +47,7 @@ export function noteCapabilityDeclinedTool(args: {
 }): RegisteredTool {
   return defineTool({
     name: NOTE_DECLINED_TOOL,
-    description: `These are not something Hale can do for this family yet, whatever else you were told: ${keys(args.dark)}. Never offer one, and never say you are doing one. Call this, once per capability, only when your reply tells the parent that one of them is not something you can do. Say the no as the capability table says every no. Never tell them you will let them know when it changes or come back to them about it: Hale never texts first. ${CALL_FIRST}`,
+    description: `These are not something you can do for this family right now: ${keys(args.dark)}. Never say you are doing one. For sign_up, the signupWithOk promise in the capability table is allowed and is not a claim you can do it now; do not let this line erase that promise. For any other key here, do not offer it. Call this, once per capability, only when your reply tells the parent that one of them is not something you can do now. Say that no as the capability table says every no. Never tell them you will let them know when it changes or come back to them about it: Hale never texts first. ${CALL_FIRST}`,
     inputSchema: capabilitySchema(args.dark),
     monetary: false,
     touchesChildContent: false,

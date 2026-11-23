@@ -351,8 +351,40 @@ describe('channelCoachRuntime', () => {
         channel: 'sms',
         nowIso: NOW.toISOString(),
         question: 'move swim to tuesday',
+        signupWithOk: {
+          startsOn: '2026-12-01',
+          liveNow: false,
+          startsInFuture: true,
+        },
       }),
     );
+  });
+
+  it('marks signup live in the coach context only when the offer lane is on', async () => {
+    const seen: unknown[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.context);
+        return answering('ok.')(args);
+      },
+    });
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
+    vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+    await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[0]).toEqual(
+      expect.objectContaining({
+        signupWithOk: { startsOn: '2026-12-01', liveNow: false, startsInFuture: true },
+      }),
+    );
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[1]).toEqual(
+      expect.objectContaining({
+        signupWithOk: { startsOn: '2026-12-01', liveNow: true, startsInFuture: true },
+      }),
+    );
+    vi.unstubAllEnvs();
   });
 
   it('hands the loop the family-local day and forecast as facts, with their skill (VIL-435)', async () => {

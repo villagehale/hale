@@ -73,11 +73,7 @@ const COACH_PATHS: ReadonlyArray<{ row: string; paths: readonly CoachPath[] }> =
       { tool: 'promise_activity_followup' },
     ],
   },
-  {
-    row: 'raising kids:',
-    paths: [{ tool: 'get_framework_guidance' }, { tool: 'offer_full_plan' }],
-  },
-  { row: 'routine health admin', paths: [{ tool: 'lookup_week' }] },
+  { row: 'signing a child up', paths: [{ clause: '`signupWithOk`' }] },
   { row: 'telling a friend', paths: [{ tool: 'share_referral_link' }] },
   // The one capability with neither a verb nor a clause. `save_memory` is deliberately
   // absent from this surface (see tools.ts), so what the parent said before reaches the
@@ -88,6 +84,7 @@ const COACH_PATHS: ReadonlyArray<{ row: string; paths: readonly CoachPath[] }> =
   // assertion — see the CANNOT test, which fails the moment one of these acquires a verb.
   { row: 'the forecast', paths: [] },
   { row: 'holding a spot', paths: [] },
+  { row: 'checkup-due', paths: [] },
   { row: 'a dose', paths: [] },
   { row: 'diagnosis', paths: [] },
   { row: 'specific practitioner', paths: [] },
@@ -231,8 +228,13 @@ describe('capability table ↔ the coach that has to honour it', () => {
         entry.paths.flatMap((path) => ('tool' in path ? [path.tool] : [])),
       ),
     );
+    // VIL-766: raising-kids tools stay so an asked question can be answered.
+    // They are not a marketed can, so they have no CAN row and no CANNOT row.
+    const notAMarketedCan = new Set(['get_framework_guidance', 'offer_full_plan']);
 
-    expect(registered().filter((name) => !declared.has(name))).toEqual([]);
+    expect(
+      registered().filter((name) => !declared.has(name) && !notAMarketedCan.has(name)),
+    ).toEqual([]);
   });
 
   /**
