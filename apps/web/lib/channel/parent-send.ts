@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { parentSendReceiptEnabled } from '~/lib/channel/linq/config';
@@ -247,11 +247,16 @@ export async function releaseParentSend(database: Database, owned: OwnedParentSe
     .where(owns(owned));
 }
 
+/** Postgres keeps microseconds and a Date read back from it keeps milliseconds. */
+function claimedAt(at: Date) {
+  return sql`date_trunc('milliseconds', ${schema.channelMessages.createdAt}) = ${at.toISOString()}::timestamptz`;
+}
+
 function owns(owned: OwnedParentSend) {
   return and(
     eq(schema.channelMessages.id, owned.claimId),
     eq(schema.channelMessages.errorCode, owned.inFlightCode),
-    eq(schema.channelMessages.createdAt, owned.claimAt),
+    claimedAt(owned.claimAt),
   );
 }
 
@@ -297,7 +302,7 @@ async function takeOver(
       and(
         eq(schema.channelMessages.id, row.id),
         eq(schema.channelMessages.errorCode, row.errorCode ?? ''),
-        eq(schema.channelMessages.createdAt, row.createdAt),
+        claimedAt(row.createdAt),
       ),
     )
     .returning({
