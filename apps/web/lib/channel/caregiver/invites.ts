@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { and, eq, gte, isNull } from 'drizzle-orm';
-import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
+import { and, desc, eq, gte, isNull } from 'drizzle-orm';
+import type { ConsentAsk, ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
 import { householdTimezone } from '~/lib/channel/household-timezone';
@@ -102,9 +102,13 @@ export function inviteSendKey(invite: { id: string; role: AddRole }): string {
   return `${invite.role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite:${invite.id}`;
 }
 
+export const INVITE_SEND_FAILED_VERB = 'third_party_invite_send_failed';
+
 /**
- * How a row closes when the parent's newer ask replaces it. `superseded` promises nobody was
- * texted, and a send Linq never confirmed cannot promise that: a stop has to bind it.
+ * How a row closes when the parent's newer ask replaces it. `superseded` promises nobody
+ * was texted, and `expired` tells a late answer their invitation lapsed. Only a send Linq
+ * refused for certain keeps the first promise; any unclear attempt may have landed, and a
+ * stop has to bind it.
  */
 async function replacedState(
   database: Database,
@@ -112,15 +116,100 @@ async function replacedState(
 ): Promise<'superseded' | 'expired'> {
   if (!thirdPartyInviteRouteEnabled()) return 'superseded';
   const attempts = await database
-    .select({ id: schema.auditLog.id })
+    .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.targetId, inviteId),
-        eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
+        eq(schema.auditLog.actionTaken, INVITE_SEND_FAILED_VERB),
       ),
     );
-  return attempts.length > 0 ? 'expired' : 'superseded';
+  return attempts.some((attempt) => (attempt.after as { why?: string }).why !== 'refused')
+    ? 'expired'
+    : 'superseded';
+}
+
+/**
+ * A failed send put this row back and told the parent nothing, so no question stands behind
+ * it until they are asked again, and a bare yes may be meant for something else.
+ */
+export async function inviteHasNoStandingAsk(
+  database: Database,
+  invite: { id: string; role: AddRole },
+): Promise<boolean> {
+  if (!thirdPartyInviteRouteEnabled()) return false;
+  const asked = inviteVerb(invite.role, 'started');
+  const newestFirst = await database
+    .select({ actionTaken: schema.auditLog.actionTaken })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.targetId, invite.id))
+    .orderBy(desc(schema.auditLog.occurredAt));
+  const latest = newestFirst.find(
+    (row) => row.actionTaken === INVITE_SEND_FAILED_VERB || row.actionTaken === asked,
+  );
+  return latest?.actionTaken === INVITE_SEND_FAILED_VERB;
+}
+
+/** The row on this number when it is this parent's own and still waits on their yes. */
+function ownRowAwaitingYes(
+  row: InviteRow | undefined,
+  input: { familyId: string; invitedByUserId: string },
+): InviteRow | null {
+  if (!thirdPartyInviteRouteEnabled() || !row) return null;
+  return row.familyId === input.familyId &&
+    row.invitedByUserId === input.invitedByUserId &&
+    row.state === 'awaiting_parent_assent'
+    ? row
+    : null;
+}
+
+/**
+ * The parent named someone their own row already holds. Nobody has been told the person was
+ * texted, so the row asks its question again: same row, same send key. The clock restarts
+ * so the yes this asks for still has a row to land on.
+ */
+async function askOwnRowAgain(
+  database: Database,
+  row: InviteRow,
+  ask: ConsentAsk,
+  writer: ConsentAskWriter | undefined,
+  now: Date,
+): Promise<
+  { status: 'reasked'; reply: string } | { status: 'ask_unwritten' } | { status: 'moved' }
+> {
+  const reply = await writeConsentAsk(writer, ask);
+  if (!reply) return { status: 'ask_unwritten' };
+  const invite = toInvite(row);
+  const held = await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const updated = await tx
+      .update(schema.caregiverInvites)
+      .set({ expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS), updatedAt: now })
+      .where(
+        and(
+          eq(schema.caregiverInvites.id, row.id),
+          eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+          isNull(schema.caregiverInvites.closedAt),
+        ),
+      )
+      .returning({ id: schema.caregiverInvites.id });
+    if (updated.length === 0) return false;
+    await tx.insert(schema.auditLog).values({
+      familyId: invite.familyId,
+      actor: invite.invitedByUserId,
+      actionTaken: inviteVerb(invite.role, 'started'),
+      targetTable: 'caregiver_invites',
+      targetId: invite.id,
+      after: {
+        role: invite.role,
+        displayName: invite.displayName,
+        maskedPhone: maskPhoneE164(invite.phoneE164),
+        reasked: true,
+      },
+    });
+    return true;
+  });
+  return held ? { status: 'reasked', reply } : { status: 'moved' };
 }
 
 /** Either side silent for this long and the invite lapses. */
@@ -347,6 +436,8 @@ async function invitesDeliveredSince(
 
 export type StartInviteResult =
   | { status: 'started'; invite: CaregiverLaneInvite; reply: string }
+  /** This parent's own row on this number asked its question again. */
+  | { status: 'reasked'; reply: string }
   | { status: 'own_number' }
   | { status: 'number_in_use' }
   | { status: 'already_invited' }
@@ -403,7 +494,19 @@ export async function startCaregiverInvite(
   const open = await openInvites(database);
   // One open invite per number (the partial unique index says so). Asking twice would
   // also be the second unsolicited text this person never agreed to receive.
-  if (open.some((r) => r.phoneE164Hash === hash)) return { status: 'already_invited' };
+  const onThisNumber = open.find((r) => r.phoneE164Hash === hash);
+  const ownAwaitingYes = ownRowAwaitingYes(onThisNumber, input);
+  if (ownAwaitingYes?.role === parsed.role) {
+    const asked = await askOwnRowAgain(
+      database,
+      ownAwaitingYes,
+      { kind: 'caregiver_scope', name: ownAwaitingYes.displayName, role: ownAwaitingYes.role },
+      input.ask,
+      now,
+    );
+    return asked.status === 'moved' ? { status: 'already_invited' } : asked;
+  }
+  if (onThisNumber && !ownAwaitingYes) return { status: 'already_invited' };
 
   const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
   if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
@@ -474,6 +577,8 @@ export type CoParentRefusal =
 
 export type StartCoParentResult =
   | { status: 'started'; invite: CoParentInvite; reply: string }
+  /** This parent's own row on this number asked its question again. */
+  | { status: 'reasked'; reply: string }
   | { status: 'refused'; reason: CoParentRefusal }
   /** The scope question could not be written. Nobody was asked, and no row was opened. */
   | { status: 'ask_unwritten' };
@@ -677,7 +782,18 @@ export async function startCoParentInvite(
   const hash = phoneBlindIndex(parsed.phoneE164);
   const open = await openInvites(database);
   const openOnThisNumber = open.find((r) => r.phoneE164Hash === hash);
-  if (openOnThisNumber) {
+  const ownAwaitingYes = input.notedOnly ? null : ownRowAwaitingYes(openOnThisNumber, input);
+  if (ownAwaitingYes?.role === 'co_parent') {
+    const asked = await askOwnRowAgain(
+      database,
+      ownAwaitingYes,
+      { kind: 'coparent_scope', name: ownAwaitingYes.displayName, language: input.language },
+      input.ask,
+      now,
+    );
+    return asked.status === 'moved' ? refuse('already_invited') : asked;
+  }
+  if (openOnThisNumber && !ownAwaitingYes) {
     return refuse(openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable');
   }
 

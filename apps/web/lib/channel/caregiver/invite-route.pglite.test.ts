@@ -19,10 +19,11 @@ import {
   createOutboundTransport,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { askWriter, yesNoReader } from '~/lib/testing/consent-double';
+import { askWriter, writtenAsk, yesNoReader } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import type { CoParentInvite } from './invites';
 
@@ -37,6 +38,16 @@ const OPS_WEBHOOK = 'https://ops.example.test/hook';
 const NOW = new Date('2026-11-23T15:00:00.000Z');
 const ADD_CO_PARENT = 'add Sam 647-555-0199 as my partner';
 const ADD_CAREGIVER = 'add grandma 647-555-0199 as grandparent';
+const ADD_SOMEONE_ELSE = 'add grandma 647-555-0188 as grandparent';
+const ANOTHER_QUESTION: OpenQuestion = {
+  id: 'another-question',
+  kind: 'plan_offer',
+  description: 'Whether to send a plan',
+  subject: 'the plan',
+  answerable: { yes: true, no: true },
+  askedAt: NOW,
+  solicited: false,
+};
 
 type LinqPost = {
   path: string;
@@ -50,6 +61,8 @@ let posts: LinqPost[];
 let pages: string[];
 /** Paths whose next POST times out, in order. */
 let timeouts: string[];
+/** HTTP statuses Linq answers the next invite POSTs with, in order. */
+let linqStatuses: number[];
 let opsStatus: number;
 let inboundCount = 0;
 
@@ -80,6 +93,9 @@ function stubFetch(): void {
         timeouts.shift();
         throw new DOMException('aborted', 'AbortError');
       }
+      if (post.path === '/chats' && linqStatuses.length > 0) {
+        return new Response('{}', { status: linqStatuses.shift() as number });
+      }
       const id = `out-${posts.length}`;
       const payload =
         post.path === '/chats'
@@ -106,6 +122,7 @@ beforeEach(() => {
   posts = [];
   pages = [];
   timeouts = [];
+  linqStatuses = [];
   opsStatus = 200;
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('F14_ENABLED', 'true');
@@ -173,7 +190,7 @@ function iMessageDeps(chatId: string): IntakeDeps {
   };
 }
 
-async function parentSays(body: string) {
+async function parentSays(body: string, openQuestions: readonly OpenQuestion[] = []) {
   inboundCount += 1;
   return handleInboundSms(
     db.database,
@@ -185,7 +202,7 @@ async function parentSays(body: string) {
       transport: 'imessage',
       chatId: PARENT_CHAT,
     },
-    iMessageDeps(PARENT_CHAT),
+    { ...iMessageDeps(PARENT_CHAT), openQuestions: async () => [...openQuestions] },
   );
 }
 
@@ -349,6 +366,7 @@ describe('flag on: an invite reaches the person it is for', () => {
       role: 'co_parent',
       returnedToParent: true,
       opsPage: 'page_failed',
+      why: 'unclear',
     });
   });
 
@@ -543,6 +561,226 @@ describe('flag on: an invite reaches the person it is for', () => {
     );
     expect(toInviter).toHaveLength(1);
     expect(posts.filter((post) => post.path === `/chats/${PERSON_CHAT}/messages`)).toHaveLength(1);
+  });
+});
+
+describe('flag on: the parent repeats the add while the row waits on them', () => {
+  async function displayName(inviteId: string): Promise<string> {
+    const [row] = await db.database
+      .select({ displayName: schema.caregiverInvites.displayName })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    return row?.displayName as string;
+  }
+
+  it('co-parent: asks the scope question again on the same row, and the next yes keeps the key', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+    const firstKey = postsToPerson()[0]?.key;
+    posts.length = 0;
+
+    const again = await parentSays(ADD_CO_PARENT);
+
+    expect(again).toEqual({ status: 'co_parent_invite_reasked' });
+    expect(postsIntoParentChat().map((post) => post.text)).toEqual([
+      writtenAsk({ kind: 'coparent_scope', name: 'Sam', language: null }),
+    ]);
+    expect(postsToPerson()).toHaveLength(0);
+    const held = await inviteRow(familyId);
+    expect(held.id).toBe(first.id);
+    expect(held.state).toBe('awaiting_parent_assent');
+    posts.length = 0;
+
+    expect((await parentSays('yes')).status).toBe('co_parent_invite_sent');
+    expect(postsToPerson().map((post) => post.key)).toEqual([firstKey]);
+  });
+
+  it('caregiver: asks the scope question again on the same row, and the next yes keeps the key', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CAREGIVER);
+    const first = await inviteRow(familyId);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+    const firstKey = postsToPerson()[0]?.key;
+    posts.length = 0;
+
+    const again = await parentSays(ADD_CAREGIVER);
+
+    expect(again).toEqual({ status: 'caregiver_invite_reasked' });
+    expect(postsIntoParentChat().map((post) => post.text)).toEqual([
+      writtenAsk({
+        kind: 'caregiver_scope',
+        name: await displayName(first.id),
+        role: 'grandparent',
+      }),
+    ]);
+    expect(postsToPerson()).toHaveLength(0);
+    expect((await inviteRow(familyId)).id).toBe(first.id);
+    posts.length = 0;
+
+    expect((await parentSays('yes')).status).toBe('caregiver_invite_sent');
+    expect(postsToPerson().map((post) => post.key)).toEqual([firstKey]);
+  });
+
+  it('asks again on a row no send has touched yet', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+
+    expect(await parentSays(ADD_CO_PARENT)).toEqual({ status: 'co_parent_invite_reasked' });
+
+    expect((await inviteRow(familyId)).id).toBe(first.id);
+  });
+
+  it('still says already invited once Linq took the text', async () => {
+    await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    await parentSays('yes');
+
+    expect(await parentSays(ADD_CO_PARENT)).toEqual({
+      status: 'co_parent_add_refused',
+      reason: 'already_invited',
+    });
+  });
+
+  it('a different role on that number replaces the row, so a yes grants only what was last asked', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+
+    expect(await parentSays(ADD_CAREGIVER)).toEqual({ status: 'caregiver_invite_started' });
+
+    const rows = await db.database
+      .select({
+        id: schema.caregiverInvites.id,
+        state: schema.caregiverInvites.state,
+        role: schema.caregiverInvites.role,
+      })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.familyId, familyId));
+    expect(rows.find((row) => row.id === first.id)?.state).toBe('expired');
+    expect(rows.find((row) => row.id !== first.id)).toMatchObject({
+      state: 'awaiting_parent_assent',
+      role: 'grandparent',
+    });
+  });
+});
+
+describe('flag on: how a replaced row closes depends on what Linq said', () => {
+  async function stateOf(inviteId: string) {
+    const [row] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    return row?.state;
+  }
+
+  it('a send Linq refused for certain closes as superseded, and that number hears nothing about an invitation', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    linqStatuses = [400];
+    await parentSays('yes');
+
+    await parentSays(ADD_SOMEONE_ELSE);
+
+    expect(await stateOf(first.id)).toBe('superseded');
+    const late = await personSays('yes');
+    expect(late.status).not.toBe('invite_expired_answered');
+    expect(posts.some((post) => post.text?.includes('invitation has expired'))).toBe(false);
+  });
+
+  it('a timed-out send closes as expired, and a late yes hears that it expired', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+
+    await parentSays(ADD_SOMEONE_ELSE);
+
+    expect(await stateOf(first.id)).toBe('expired');
+    const late = await personSays('yes');
+    expect(late.status).toBe('invite_expired_answered');
+  });
+
+  it('a 500 cannot prove the text did not land, so it closes as expired', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    linqStatuses = [500];
+    await parentSays('yes');
+
+    await parentSays(ADD_SOMEONE_ELSE);
+
+    expect(await stateOf(first.id)).toBe('expired');
+  });
+
+  it('one unclear attempt among refused ones closes as expired', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CO_PARENT);
+    const first = await inviteRow(familyId);
+    linqStatuses = [400];
+    await parentSays('yes');
+    timeouts = ['/chats'];
+    await parentSays('yes');
+
+    await parentSays(ADD_SOMEONE_ELSE);
+
+    expect(await stateOf(first.id)).toBe('expired');
+  });
+});
+
+describe('flag on: a caregiver row back from a failed send claims a bare yes only when nothing else is open', () => {
+  it('leaves a yes alone while another question is open', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(ADD_CAREGIVER);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+    posts.length = 0;
+
+    const outcome = await parentSays('yes', [ANOTHER_QUESTION]);
+
+    expect(outcome.status).not.toBe('caregiver_invite_sent');
+    expect(postsToPerson()).toHaveLength(0);
+    expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
+  });
+
+  it('takes the yes when no other question is open', async () => {
+    await seedHousehold();
+    await parentSays(ADD_CAREGIVER);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+    posts.length = 0;
+
+    expect((await parentSays('yes')).status).toBe('caregiver_invite_sent');
+    expect(postsToPerson()).toHaveLength(1);
+  });
+
+  it('takes the yes once the parent has been asked again, even with another question open', async () => {
+    await seedHousehold();
+    await parentSays(ADD_CAREGIVER);
+    timeouts = ['/chats'];
+    await parentSays('yes');
+    await parentSays(ADD_CAREGIVER);
+    posts.length = 0;
+
+    expect((await parentSays('yes', [ANOTHER_QUESTION])).status).toBe('caregiver_invite_sent');
+    expect(postsToPerson()).toHaveLength(1);
+  });
+
+  it('a row that was never sent keeps the first-ask behaviour beside another question', async () => {
+    await seedHousehold();
+    await parentSays(ADD_CAREGIVER);
+    posts.length = 0;
+
+    expect((await parentSays('yes', [ANOTHER_QUESTION])).status).toBe('caregiver_invite_sent');
+    expect(postsToPerson()).toHaveLength(1);
   });
 });
 

@@ -259,6 +259,7 @@ export async function deliverCoParentNumberInvite(
     if (!line) return { status: 'ask_unwritten', reply: null };
     return held(line);
   }
+  if (started.status === 'reasked') return held(started.reply);
 
   if (thirdPartyInviteRouteEnabled()) {
     const claimed = await recordCoParentAssent(database, {

@@ -2,13 +2,9 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, ne, notExists } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import {
-  AMBIGUOUS_SEND_CODES,
-  createOutboundTransport,
-  readSendRefusal,
-} from '~/lib/channel/outbound-transport';
+import { createOutboundTransport, linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
-import type { CaregiverInvite } from './invites';
+import { type CaregiverInvite, INVITE_SEND_FAILED_VERB } from './invites';
 
 /** The transport for a send to anyone but the person whose chat this turn is bound to. */
 export function transportToPerson(transport: ChannelTransport): ChannelTransport {
@@ -27,13 +23,10 @@ export async function settleFailedInviteSend(
   err: unknown,
   now: Date,
 ): Promise<OpsPagerOutcome> {
-  const code = readSendRefusal(err)?.code;
+  const why = linqRefusedForCertain(err) ? 'refused' : 'unclear';
   const opsPage = await pageOps(database, {
     site: 'third_party_invite_unsent',
-    facts: {
-      lane: invite.role === 'co_parent' ? 'co_parent' : 'caregiver',
-      why: code !== undefined && !AMBIGUOUS_SEND_CODES.has(code) ? 'refused' : 'unclear',
-    },
+    facts: { lane: invite.role === 'co_parent' ? 'co_parent' : 'caregiver', why },
     ref: invite.id,
   });
   const newer = alias(schema.caregiverInvites, 'newer_invite');
@@ -66,10 +59,10 @@ export async function settleFailedInviteSend(
     await tx.insert(schema.auditLog).values({
       familyId: invite.familyId,
       actor: invite.invitedByUserId,
-      actionTaken: 'third_party_invite_send_failed',
+      actionTaken: INVITE_SEND_FAILED_VERB,
       targetTable: 'caregiver_invites',
       targetId: invite.id,
-      after: { role: invite.role, returnedToParent: returned.length === 1, opsPage },
+      after: { role: invite.role, returnedToParent: returned.length === 1, opsPage, why },
     });
   });
   return opsPage;
