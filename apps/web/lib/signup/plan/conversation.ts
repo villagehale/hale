@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { parentSeasonClock } from '~/lib/channel/family-tz';
 import { readParentLanguage } from '~/lib/channel/parent-language';
@@ -359,16 +359,44 @@ async function runDobTurn(
     });
   }
   if (date === null) return null;
-  await database
-    .update(schema.children)
-    .set({ dateOfBirth: date, dobPrecision: 'exact', updatedAt: input.now })
-    .where(and(eq(schema.children.id, child.id), eq(schema.children.familyId, input.familyId)));
-  await writePlanAudit(database, {
-    familyId: input.familyId,
-    actor: input.parentUserId,
-    offerId: plan.offerId,
-    after: { step: 'plan_dob_recorded', host: plan.providerHost },
+  const stored = await database.transaction(async (tx) => {
+    const childIsThisFamilys = and(
+      eq(schema.children.id, child.id),
+      eq(schema.children.familyId, input.familyId),
+    );
+    const [before] = await tx
+      .select({
+        dateOfBirth: schema.children.dateOfBirth,
+        dobPrecision: schema.children.dobPrecision,
+      })
+      .from(schema.children)
+      .where(and(childIsThisFamilys, ne(schema.children.dobPrecision, 'exact')))
+      .for('update')
+      .limit(1);
+    if (!before) return false;
+    const after = { dateOfBirth: date, dobPrecision: 'exact' as const };
+    await tx
+      .update(schema.children)
+      .set({ ...after, updatedAt: input.now })
+      .where(childIsThisFamilys);
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken: 'child_updated',
+      targetTable: 'children',
+      targetId: child.id,
+      before,
+      after,
+    });
+    await writePlanAudit(tx, {
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      offerId: plan.offerId,
+      after: { step: 'plan_dob_recorded', host: plan.providerHost },
+    });
+    return true;
   });
+  if (!stored) return null;
   const rule = terms.shown.age.rule;
   const fit = rule
     ? ageFitFromRule(

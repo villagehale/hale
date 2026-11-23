@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -773,6 +773,78 @@ describe('the yes', () => {
     expect(child).toEqual({ dob: '2021-03-21', precision: 'exact' });
     // A date is not a yes.
     expect((await offerRow(offerId)).status).toBe('pending');
+  });
+
+  it('a birth date lands with its audit row or not at all, and records what it replaced', async () => {
+    const f = await household();
+    await db.database
+      .update(schema.children)
+      .set({ dobPrecision: 'derived' })
+      .where(eq(schema.children.id, f.childId));
+    const childRow = async () => {
+      const [row] = await db.database
+        .select({
+          dateOfBirth: schema.children.dateOfBirth,
+          dobPrecision: schema.children.dobPrecision,
+        })
+        .from(schema.children)
+        .where(eq(schema.children.id, f.childId));
+      return row;
+    };
+    const prior = await childRow();
+    const offerId = await askedAndSent(f);
+    await recordPlanNotice(db.database, {
+      familyId: f.familyId,
+      offerId,
+      providerHost: HOST,
+      kind: 'ask_dob',
+      now: NOW,
+    });
+    const dobReader: DobReader = {
+      read: vi.fn(async () => ({
+        said: 'March 21, 2021',
+        date: '2021-03-21',
+        otherPerson: false,
+      })),
+    };
+    const answer = { body: 'She was born March 21, 2021', dobReader };
+    await db.database.execute(
+      sql.raw(`CREATE FUNCTION refuse_dob_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.after->>'step' = 'plan_dob_recorded' THEN RAISE EXCEPTION 'audit refused'; END IF;
+          RETURN NEW;
+        END $$`),
+    );
+    await db.database.execute(
+      sql.raw(
+        'CREATE TRIGGER refuse_dob_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION refuse_dob_audit()',
+      ),
+    );
+    try {
+      await expect(yes(f, { verdict: 'unrelated' }, answer)).rejects.toThrow();
+    } finally {
+      await db.database.execute(sql.raw('DROP TRIGGER refuse_dob_audit ON audit_log'));
+      await db.database.execute(sql.raw('DROP FUNCTION refuse_dob_audit()'));
+    }
+    expect(await childRow()).toEqual(prior);
+
+    await yes(f, { verdict: 'unrelated' }, answer);
+    expect(await childRow()).toEqual({ dateOfBirth: '2021-03-21', dobPrecision: 'exact' });
+    const edits = await db.database
+      .select({ before: schema.auditLog.before, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.actionTaken, 'child_updated'),
+          eq(schema.auditLog.targetId, f.childId),
+        ),
+      );
+    expect(edits).toEqual([
+      {
+        before: { dateOfBirth: prior?.dateOfBirth, dobPrecision: 'derived' },
+        after: { dateOfBirth: '2021-03-21', dobPrecision: 'exact' },
+      },
+    ]);
   });
 
   it('a birth date outside the band closes the offer and says why', async () => {

@@ -863,7 +863,7 @@ export async function loadPlanConsent(
 
 /** One immutable audit row (rule #6). Ids, codes, counts and a host; never a person. */
 export async function writePlanAudit(
-  database: Database,
+  database: Pick<Database, 'insert'>,
   input: { familyId: string; actor: string; offerId: string; after: Record<string, unknown> },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
