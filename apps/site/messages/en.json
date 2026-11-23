@@ -8,8 +8,8 @@
   "HomeMeta": {
     "title": "Hale · Your kids’ year, handled.",
     "description": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
-    "ogDescription": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
-    "twitterDescription": "Your kids’ year, handled. Add Hale to the group chats you already have."
+    "ogDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat.",
+    "twitterDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -54,20 +54,20 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is an iMessage and text helper that plans kids’ activities and the family year for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
+    "metaDescription": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate, for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Free, with unlimited chat. Plus is more done for you, all year. Max is the most Hale can do."
+    "metaDescription": "An AI agent you text that knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
     "metaDescription": "Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests."
   },
   "Faq": {
-    "metaTitle": "Is Hale free, private, and right for your family? · Hale",
-    "metaDescription": "Straight answers about Hale for parents: Free, Plus, and Max, works for kids 0–18, and never acts without you."
+    "metaTitle": "Questions about Hale · Hale",
+    "metaDescription": "What Hale does, what it reads, how it keeps your family’s data private, and why it never signs up or pays without your ok."
   },
   "Activities": {
     "metaTitle": "Things to do with kids, near you · Hale",

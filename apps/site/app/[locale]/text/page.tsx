@@ -31,7 +31,7 @@ export async function generateMetadata({
     title,
     description,
     alternates: buildAlternates(locale, '/text'),
-    ...socialMetadata(locale, '/text', title, description),
+    ...socialMetadata(locale, '/text', title, description, 'text'),
     robots: { index: false, follow: false },
   };
 }

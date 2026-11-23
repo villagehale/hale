@@ -1,14 +1,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { RedesignGuide } from '~/components/redesign/guide';
-import { buildAlternates, ogLocale } from '~/i18n/metadata';
-import { localeHref } from '~/i18n/navigation';
+import { absolutePageUrl, buildAlternates, ogLocale } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
+import { answerShareImage } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -29,6 +29,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const canonical = `/answers/${page.slug}`;
   const title = `${page.title} · Hale`;
+  const image = answerShareImage(page.slug, page.title);
   return {
     title,
     description: page.description,
@@ -40,14 +41,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: 'article',
       title,
       description: page.description,
-      url: localeHref(locale, canonical),
+      url: absolutePageUrl(locale, canonical),
       siteName: 'Hale',
       locale: ogLocale(locale),
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description: page.description,
+      images: [image],
     },
   };
 }

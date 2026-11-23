@@ -165,7 +165,6 @@ describe('every sms: CTA on the site is wired to the funnel', () => {
     expect([...redirected].sort()).toEqual([
       '/activities/[city]',
       '/for-centres',
-      '/founding',
       '/milestones',
       '/milestones/[age]',
     ]);

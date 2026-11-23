@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { SITE_URL } from '~/lib/app-url.js';
 import { homeMetadata } from '~/lib/site/home-meta.js';
 import { notFoundHeading, notFoundMetadata, notFoundTitle } from '~/lib/site/not-found-copy.js';
 import { generateMetadata as catchAllMetadata } from './[locale]/[...rest]/page.js';
@@ -78,7 +79,9 @@ describe('pages that used to inherit the homepage preview', () => {
       expect(meta.title, path).toBe(title);
       expect(meta.openGraph?.title, path).toBe(title);
       expect((meta.twitter as { title?: string } | undefined)?.title, path).toBe(title);
-      expect(meta.openGraph && 'url' in meta.openGraph ? meta.openGraph.url : undefined).toBe(path);
+      expect(meta.openGraph && 'url' in meta.openGraph ? meta.openGraph.url : undefined).toBe(
+        `${SITE_URL}${path}`,
+      );
       expect(String(meta.title)).not.toBe(HOME_TITLES.en);
     }
   });
