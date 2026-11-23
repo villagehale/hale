@@ -119,7 +119,7 @@ describe('GET /api/integrations/google/connect (VIL-721)', () => {
   });
 
   it('opens one Google consent for both read scopes and signs the bundle into the state', async () => {
-    const res = await callBundle();
+    const res = await callBundle(`?from=text&link=${LINK}`);
     const consent = new URL(res.headers.get('location') ?? '');
     expect(consent.origin).toBe('https://accounts.google.com');
     expect(consent.searchParams.get('scope')?.split(' ')).toEqual([GMAIL, GCAL, PROFILE]);
@@ -129,6 +129,7 @@ describe('GET /api/integrations/google/connect (VIL-721)', () => {
       userId: USER,
       provider: 'google',
       surface: 'text',
+      channelSigninTokenId: LINK,
     });
   });
 
@@ -137,11 +138,15 @@ describe('GET /api/integrations/google/connect (VIL-721)', () => {
     expect(await boundState(res)).toMatchObject({ provider: 'google', channelSigninTokenId: LINK });
   });
 
-  it('leaves a link that is not this parent’s out of the state, and still starts the consent', async () => {
+  it('starts nothing without a live texted link of this parent’s, since nothing could spend the state', async () => {
     tokenOwnedMock.mockResolvedValue(false);
-    const res = await callBundle(`?from=text&link=${LINK}`);
-    const state = await boundState(res);
-    expect(state.provider).toBe('google');
-    expect(state).not.toHaveProperty('channelSigninTokenId');
+    const notTheirs = await callBundle(`?from=text&link=${LINK}`);
+    const none = await callBundle('?from=text');
+
+    for (const res of [notTheirs, none]) {
+      expect(res.status).toBe(307);
+      expect(res.headers.get('location')).toMatch(/\/connected\?provider=google&status=invalid$/);
+      expect(res.headers.get('location')).not.toContain('accounts.google.com');
+    }
   });
 });

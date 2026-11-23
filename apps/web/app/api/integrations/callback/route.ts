@@ -27,7 +27,7 @@ import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
 import { db } from '~/lib/db';
-import { resolveUserIdForUser } from '~/lib/family';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
 import { settleSupersededGoogleRevoke } from '~/lib/integrations/google-disconnect';
@@ -590,7 +590,7 @@ async function completeGoogleBundle(
     return back('invalid', bound.surface, 'google');
   }
   const who = { familyId: bound.familyId, parentUserId: bound.userId };
-  const freshAfter = async (status: 'denied' | 'partial' | 'invalid' | 'error') => {
+  const freshAfter = async (status: 'denied' | 'partial' | 'error') => {
     // Turned off while this consent was at Google: a fresh one link would land on a
     // redeem page that no longer opens it, so none is minted. Named, not silent.
     if (!threadOnboardingV2Enabled()) {
@@ -621,15 +621,39 @@ async function completeGoogleBundle(
     return back(status, 'text', 'google', fresh ? { fresh } : undefined);
   };
 
-  if (leg.declined || !leg.code) return freshAfter('denied');
-
+  // Who completes this, before anything is spent or sent: a state in someone else's hands
+  // earns no exchange and no text to the parent it names.
   const database = db();
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const sessionUserId = externalAuthId
-    ? await resolveUserIdForUser(externalAuthId, database)
-    : null;
-  if (!sessionUserId || sessionUserId !== bound.userId) return freshAfter('invalid');
+  const [sessionUserId, sessionFamilyId] = externalAuthId
+    ? await Promise.all([
+        resolveUserIdForUser(externalAuthId, database),
+        resolveFamilyForUser(externalAuthId, database),
+      ])
+    : [null, null];
+  if (sessionUserId !== bound.userId || sessionFamilyId !== bound.familyId) {
+    console.info(
+      { familyId: bound.familyId, outcome: 'bundle_wrong_completer' },
+      'google bundle: not the parent and family this consent was for - nothing exchanged',
+    );
+    return back('invalid', 'text', 'google');
+  }
+  // The texted link is spent first, once: a replayed state stops here, whatever it carries.
+  const spent = bound.channelSigninTokenId
+    ? await consumeChannelSigninTokenById(database, {
+        tokenId: bound.channelSigninTokenId,
+        userId: bound.userId,
+        ignoreExpiry: true,
+      })
+    : ({ ok: false, reason: 'not_usable' } as const);
+  console.info(
+    { familyId: bound.familyId, provider: 'google', burned: spent.ok ? 'burned' : spent.reason },
+    'channel sign-in: token burned before the exchange',
+  );
+  if (!spent.ok) return back('invalid', 'text', 'google');
+
+  if (leg.declined || !leg.code) return freshAfter('denied');
 
   const connectIds: string[] = [];
   let granted: ConsentConnector[] = [];
@@ -760,28 +784,6 @@ async function completeGoogleBundle(
       { familyId: bound.familyId, stored: connectIds.length },
       'google bundle: connect threw after a row was stored - receipt still goes',
     );
-  }
-
-  if (bound.channelSigninTokenId) {
-    try {
-      const burned = await consumeChannelSigninTokenById(database, {
-        tokenId: bound.channelSigninTokenId,
-        userId: bound.userId,
-      });
-      console.info(
-        {
-          familyId: bound.familyId,
-          provider: 'google',
-          burned: burned.ok ? 'burned' : burned.reason,
-        },
-        'channel sign-in: token burned after consent',
-      );
-    } catch (err) {
-      console.info(
-        { familyId: bound.familyId, code: err instanceof Error ? err.name : 'unknown' },
-        'channel sign-in: token burn failed after consent',
-      );
-    }
   }
 
   // What landed: both (the one-link receipt), or the one box they left ticked.

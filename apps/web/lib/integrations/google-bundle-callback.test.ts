@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // infra behind them.
 const authMock = vi.fn();
 const resolveUserIdMock = vi.fn();
+const resolveFamilyMock = vi.fn();
 const exchangeMock = vi.fn();
 const saveConnectionMock = vi.fn();
 const noticeMock = vi.fn();
@@ -29,6 +30,7 @@ vi.mock('~/lib/channel/household-timezone', () => ({
 }));
 vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a),
+  resolveFamilyForUser: (...a: unknown[]) => resolveFamilyMock(...a),
 }));
 vi.mock('~/lib/auth/channel-signin', async () => {
   // Spread: other modules read this one's constants at import time (said-line.ts).
@@ -104,6 +106,7 @@ async function bundleState(extra: { surface?: 'text'; channelSigninTokenId?: str
     userId: MINTER,
     provider: 'google',
     surface: 'text',
+    channelSigninTokenId: LINK,
     ...extra,
   });
 }
@@ -117,6 +120,7 @@ beforeEach(() => {
   for (const m of [
     authMock,
     resolveUserIdMock,
+    resolveFamilyMock,
     exchangeMock,
     saveConnectionMock,
     noticeMock,
@@ -146,6 +150,7 @@ beforeEach(() => {
   noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
   authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
   resolveUserIdMock.mockResolvedValue(MINTER);
+  resolveFamilyMock.mockResolvedValue(FAMILY);
   saveConnectionMock.mockImplementation(async (_db: unknown, input: { provider: string }) => ({
     connectId: input.provider === 'gmail' ? GMAIL_ROW : GCAL_ROW,
     superseded: null,
@@ -189,7 +194,11 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
 
     // The texted link is burned once, after the consent landed.
     expect(burnMock).toHaveBeenCalledTimes(1);
-    expect(burnMock.mock.calls[0]?.[1]).toEqual({ tokenId: LINK, userId: MINTER });
+    expect(burnMock.mock.calls[0]?.[1]).toEqual({
+      tokenId: LINK,
+      userId: MINTER,
+      ignoreExpiry: true,
+    });
     // Gmail landed, so its backfill is kicked, on its own row.
     expect(kickMock).toHaveBeenCalledTimes(1);
     expect(kickMock.mock.calls[0]?.[1]).toMatchObject({ id: GMAIL_ROW, familyId: FAMILY });
@@ -209,7 +218,7 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
       connectId: GMAIL_ROW,
       fromBundle: true,
     });
-    expect(burnMock).not.toHaveBeenCalled();
+    expect(burnMock).toHaveBeenCalledTimes(1);
   });
 
   it('stores only the calendar when the Gmail box was left unticked, and kicks no Gmail backfill', async () => {
@@ -280,6 +289,79 @@ describe('GET /api/integrations/callback — the one Google link (VIL-721)', () 
   it('refuses a completer who is not the minter: no exchange, no row (consent fixation)', async () => {
     resolveUserIdMock.mockResolvedValue(OTHER);
     const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=invalid');
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('texts nobody for a completer who is not the minter: holding a state sends no text', async () => {
+    resolveUserIdMock.mockResolvedValue(OTHER);
+    await callCallback(await bundleState());
+    await callCallbackDenied(await bundleState());
+
+    expect(freshMock).not.toHaveBeenCalled();
+    expect(burnMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a state whose parent is now in another family: no burn, no exchange, no row', async () => {
+    resolveFamilyMock.mockResolvedValue(OTHER);
+    granted(GMAIL, GCAL);
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=invalid');
+    expect(burnMock).not.toHaveBeenCalled();
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(freshMock).not.toHaveBeenCalled();
+  });
+
+  it('spends the texted link before the code is exchanged, so a state completes once', async () => {
+    granted(GMAIL, GCAL);
+    const order: string[] = [];
+    burnMock.mockImplementation(async () => {
+      order.push('burn');
+      return { ok: true };
+    });
+    exchangeMock.mockImplementation(async () => {
+      order.push('exchange');
+      return { accessToken: 'ya29.bundle', scope: `${GMAIL} ${GCAL}` };
+    });
+    const res = await callCallback(await bundleState());
+
+    expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=ok');
+    expect(order).toEqual(['burn', 'exchange']);
+    expect(burnMock).toHaveBeenCalledTimes(1);
+    expect(burnMock.mock.calls[0]?.[1]).toMatchObject({ tokenId: LINK, userId: MINTER });
+  });
+
+  it('refuses a replayed state: nothing exchanged, nothing stored, and no text sent', async () => {
+    burnMock.mockResolvedValue({ ok: false, reason: 'spent' });
+    granted(GMAIL, GCAL);
+    const replayed = await callCallback(await bundleState());
+    const replayedDenial = await callCallbackDenied(await bundleState());
+
+    for (const res of [replayed, replayedDenial]) {
+      expect(location(res)).toBe(
+        'https://app.example.com/connected?provider=google&status=invalid',
+      );
+    }
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(freshMock).not.toHaveBeenCalled();
+    expect(noticeMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a state carrying no texted link, since nothing could spend it', async () => {
+    const { signConnectState } = await import('./connect-state');
+    granted(GMAIL, GCAL);
+    const unbound = signConnectState({
+      familyId: FAMILY,
+      userId: MINTER,
+      provider: 'google',
+      surface: 'text',
+    });
+    const res = await callCallback(unbound);
 
     expect(location(res)).toBe('https://app.example.com/connected?provider=google&status=invalid');
     expect(exchangeMock).not.toHaveBeenCalled();

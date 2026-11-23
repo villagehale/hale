@@ -27,6 +27,7 @@ export const runtime = 'nodejs';
  *    link while dark; one tapped from an older text lands here and starts nothing.
  *  - `text_only` (400) without `from=text`: the bundle exists for a texted link, so the
  *    return leg always owes a done page and a text back, never Settings.
+ *  - no live texted link of this parent's: the expired-link page, and no consent.
  * The callback reads the bundle from the signed state, never from a query string.
  */
 export async function GET(req: NextRequest) {
@@ -65,12 +66,21 @@ export async function GET(req: NextRequest) {
     provider: 'google',
     link: url.searchParams.get('link'),
   });
+  // The callback spends this link before it exchanges a code: that is what makes the state
+  // single-use, so a consent with no live link of this parent's does not start.
+  if (!channelSigninTokenId) {
+    console.info(
+      { familyId, provider: 'google', outcome: 'no_live_link' },
+      'google bundle consent: no live texted link to bind - nothing started',
+    );
+    return NextResponse.redirect(`${appBaseUrl()}/connected?provider=google&status=invalid`);
+  }
   const state = signConnectState({
     familyId,
     userId,
     provider: 'google',
     surface: 'text',
-    ...(channelSigninTokenId ? { channelSigninTokenId } : {}),
+    channelSigninTokenId,
   });
   const authUrl = buildGoogleBundleAuthUrl({
     state,
