@@ -406,6 +406,7 @@ export const AUDIT_VERBS = [
   'co_parent_invite_started',
   'co_parent_identity_noted',
   'co_parent_access_granted',
+  'third_party_invite_send_failed',
   'co_parent_invite_accepted',
   'co_parent_invite_expired',
   'co_parent_invite_expired_answered',
@@ -1651,6 +1652,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you confirmed your co-parent may see everything you see',
     family: 'done',
   },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // one adult's own invite. #ops is paged; the parent has not been told in words.
+  third_party_invite_send_failed: {
+    sentence: 'a text to the person you invited did not go through',
+    family: 'note',
+  },
   co_parent_invite_accepted: {
     sentence: 'your co-parent accepted and joined your family',
     family: 'done',
@@ -2528,6 +2535,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'billing_notice_dropped',
   // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
   'billing_plan_unsettled',
+  // VIL-759. One adult's invite that Linq did not accept.
+  'third_party_invite_send_failed',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

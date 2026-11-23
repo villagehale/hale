@@ -1753,6 +1753,7 @@ export function createLinqTextTransport(deps: {
   fetch?: typeof fetch;
 }): ChannelTransport {
   return {
+    boundToChat: true,
     async send(input) {
       if (input.mediaUrls) {
         throw new LinqSendError('media_unsupported', 400, true);

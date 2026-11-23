@@ -1,11 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { settleFailedInviteSend } from '~/lib/channel/caregiver/invite-send';
 import {
   familyHasCoParent,
+  inviteSendKey,
   loadPendingAssent,
   recordCoParentAssent,
   startCoParentInvite,
+  thirdPartyInviteRouteEnabled,
 } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
@@ -78,7 +81,11 @@ function inviteeLabel(name: string | null, language: ReplyLanguage | null): stri
 
 export interface CoParentNumberDeps {
   /** The SMS door. Unused when this turn arrived on iMessage. */
-  sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
+  sendSms(input: {
+    to: string;
+    body: string;
+    sendKey?: string;
+  }): Promise<{ providerMessageId: string }>;
   /** Writes the invite. Absence is named and nobody is texted. */
   ask?: ConsentAskWriter;
 }
@@ -103,7 +110,11 @@ export type CoParentNumberOutcome =
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
     }
   /** The invite text could not be written. Nobody was texted. */
-  | { status: 'ask_unwritten'; reply: null };
+  | { status: 'ask_unwritten'; reply: null }
+  /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
+  | { status: 'invite_unsent'; reply: null }
+  /** Another turn already took this invite. Nothing was sent here. */
+  | { status: 'assent_already_claimed'; reply: null };
 
 /**
  * iMessage, flag on, and the stored choice is a new group. A confirmed phone
@@ -246,6 +257,42 @@ export async function deliverCoParentNumberInvite(
     const line = await coParentRefusal(started.reason, language);
     if (!line) return { status: 'ask_unwritten', reply: null };
     return held(line);
+  }
+
+  if (thirdPartyInviteRouteEnabled()) {
+    const claimed = await recordCoParentAssent(database, {
+      invite: started.invite,
+      inviterName: name,
+      language,
+      verbatimReply: input.body,
+      channelMessageId: input.inboundChannelMessageId,
+      now: input.now,
+      ask: input.ask,
+      prepared: inviteText,
+    });
+    if (claimed.status !== 'ready') return { status: 'assent_already_claimed', reply: null };
+    let providerMessageId: string;
+    try {
+      ({ providerMessageId } = await input.sendSms({
+        to: parsed.phoneE164,
+        body: inviteText,
+        sendKey: inviteSendKey(started.invite),
+      }));
+    } catch (err) {
+      await settleFailedInviteSend(database, started.invite, err, input.now);
+      return { status: 'invite_unsent', reply: null };
+    }
+    await ledgerSmsInvite(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+      providerMessageId,
+    });
+    return {
+      status: 'sent',
+      reply: await coParentInviteSentAck(label, language),
+      templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
+    };
   }
 
   const sms = await input.sendSms({

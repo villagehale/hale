@@ -200,6 +200,8 @@ export const FLAGS = [
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
+  // VIL-759. A co-parent or caregiver invite goes to that person's number, not the turn's chat.
+  exact('third-party-invite-route', 'THIRD_PARTY_INVITE_ROUTE_ENABLED', { envOnly: true }),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.
   exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
   // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply

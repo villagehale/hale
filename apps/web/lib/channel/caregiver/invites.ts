@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, gte, isNull } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
@@ -90,6 +91,16 @@ export type CaregiverInviteState =
    * is the one thing this whole command is built not to do
    * ({@link loadLapsedInviteByPhone}, CO_PARENT_UNAVAILABLE_BY_LANGUAGE). */
   | 'expired_unsent';
+
+/** Exact `true` only. Off, every invite path is what it was before this flag. */
+export function thirdPartyInviteRouteEnabled(): boolean {
+  return isEnabled('third-party-invite-route');
+}
+
+/** One Linq key per invite row, so a retried text that did land cannot arrive twice. */
+export function inviteSendKey(invite: { id: string; role: AddRole }): string {
+  return `${invite.role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite:${invite.id}`;
+}
 
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
@@ -890,8 +901,27 @@ export async function recordParentAssent(
     role: invite.role,
   });
   if (!body) return { status: 'unwritten' };
-  await database.transaction(async (rawTx) => {
+  const routed = thirdPartyInviteRouteEnabled();
+  const claimed = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    if (routed) {
+      const advanced = await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'awaiting_caregiver_reply',
+          expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, invite.id),
+            eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+            isNull(schema.caregiverInvites.closedAt),
+          ),
+        )
+        .returning({ id: schema.caregiverInvites.id });
+      if (advanced.length === 0) return false;
+    }
     await tx.insert(schema.consentRecords).values({
       userId: invite.invitedByUserId,
       familyId: invite.familyId,
@@ -908,14 +938,16 @@ export async function recordParentAssent(
       },
     });
 
-    await tx
-      .update(schema.caregiverInvites)
-      .set({
-        state: 'awaiting_caregiver_reply',
-        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-        updatedAt: now,
-      })
-      .where(eq(schema.caregiverInvites.id, invite.id));
+    if (!routed) {
+      await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'awaiting_caregiver_reply',
+          expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+          updatedAt: now,
+        })
+        .where(eq(schema.caregiverInvites.id, invite.id));
+    }
 
     await tx.insert(schema.auditLog).values({
       familyId: invite.familyId,
@@ -925,9 +957,10 @@ export async function recordParentAssent(
       targetId: invite.id,
       after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
     });
+    return true;
   });
 
-  return { status: 'ready', body };
+  return claimed ? { status: 'ready', body } : { status: 'already_claimed' };
 }
 
 export type SeatGrant = { inviteId: string; grantedByUserId: string; open: boolean };
@@ -1180,6 +1213,9 @@ async function ensureCaregiverUser(
   return row.id;
 }
 
+/** The row stopped waiting on this person before their yes reached the seat. */
+export class InviteNotAwaitingReply extends Error {}
+
 export interface AcceptResult {
   caregiverUserId: string;
 }
@@ -1199,6 +1235,20 @@ export async function acceptInvite(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    if (thirdPartyInviteRouteEnabled()) {
+      const live = await tx
+        .update(schema.caregiverInvites)
+        .set({ updatedAt: now })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, invite.id),
+            eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
+            isNull(schema.caregiverInvites.closedAt),
+          ),
+        )
+        .returning({ id: schema.caregiverInvites.id });
+      if (live.length === 0) throw new InviteNotAwaitingReply();
+    }
     const caregiverUserId = await ensureCaregiverUser(
       tx,
       `sms:${hash}`,
