@@ -189,8 +189,9 @@ export const FLAGS = [
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-718. One takeover link for a registration run's sign-in wall, code, passkey or
-  // captcha, and the run resumes when the parent is done. Exact `true`.
-  exact('takeover-link', 'TAKEOVER_LINK_ENABLED'),
+  // captcha, and the run resumes when the parent is done. Exact `true`. Env-only: a PostHog
+  // sync must never light it.
+  exact('takeover-link', 'TAKEOVER_LINK_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.
