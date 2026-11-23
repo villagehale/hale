@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "Léa's Toddler Storytime starts in 45 minutes, 1:30 to 2:00 this afternoon, at Maple Branch Library, 9 Elm Street."
+    ]
+  },
+  "latencyMs": 1948,
+  "usage": {
+    "input_tokens": 183,
+    "output_tokens": 67,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

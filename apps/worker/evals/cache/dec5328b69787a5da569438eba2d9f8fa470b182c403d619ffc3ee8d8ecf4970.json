@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Says the answer is coming 'right away', which promises a time; no app or site referenced.",
+    "promises_a_time": "yes",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1534,
+  "usage": {
+    "input_tokens": 30,
+    "output_tokens": 59,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both items, the day and time, and that Barton has both; it asks Sam by name to take Maya's swim pickup, which matches suggested.takes. It states Sam looks free, which is grounded in the suggested input. Poll matches input.poll: question about who takes, options Barton and Sam plus a neutral last option in English. Minor issue: the message says 'at 3:00' with the day, fine; the only shortfall is the message does not say the poll follows, but it does not need to. One ask, no links, no numbers requested, casual tone.",
+    "score": 5
+  }
+}

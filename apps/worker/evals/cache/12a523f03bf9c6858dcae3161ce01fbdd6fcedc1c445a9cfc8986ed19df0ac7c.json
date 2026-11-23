@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "says answer is coming but gives no timing or app reference",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1062,
+  "usage": {
+    "input_tokens": 26,
+    "output_tokens": 47,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

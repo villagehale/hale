@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: Léa's swim, tomorrow (Monday, true from Sunday 6 PM now), new start 4:30 PM, end 5:15 PM, venue name Mold-Masters SportsPlex and address 221 Guelph St. The change is clearly stated (moved to 4:30 PM, it was 5:00) and the old time is not presented as current. Nothing is invented: no travel or departure time, no extra detail. The only bold is \"4:30 PM\", the new time of a changed event, which is exactly the fact the parent must act on and fits the bold rule.",
+    "score": 5
+  }
+}

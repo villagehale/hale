@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "Natation aujourd'hui, de 17 h à 17 h 45, au Mold-Masters SportsPlex, 221 rue Guelph. Ça commence dans une heure!"
+    ]
+  },
+  "latencyMs": 1794,
+  "usage": {
+    "input_tokens": 172,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

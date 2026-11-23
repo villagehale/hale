@@ -1,0 +1,13 @@
+{
+  "value": {
+    "before": "Hi, I'm Hale, an AI agent you text for the kids' year. I can only read and write in this chat, nothing else of yours. You don't need to sign up or install anything, because the family's plan already covers everyone in this group. If you'd rather I didn't write to you, just say so in whatever words you like and it only applies to you.",
+    "question": "Who are you in this family, in your own words?"
+  },
+  "latencyMs": 2509,
+  "usage": {
+    "input_tokens": 150,
+    "output_tokens": 130,
+    "cache_read_input_tokens": 4862,
+    "cache_creation_input_tokens": 0
+  }
+}

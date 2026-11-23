@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "钢琴课一个小时后开始,今晚7点到8点,在Ms. Chen studio。"
+    ]
+  },
+  "latencyMs": 2413,
+  "usage": {
+    "input_tokens": 162,
+    "output_tokens": 43,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

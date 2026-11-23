@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly states Hale won't add someone by number, and tells the parent the person should text Hale directly, which matches the SMS channel. No invented name or role, no group chat mention, no phone number, no exclamation marks, and it stays first person. Plain and warm enough for a top score, though 'take it from there' is slightly vague.",
+    "score": 5
+  }
+}

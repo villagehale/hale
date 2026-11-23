@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "Heads up, you've got an appointment tomorrow, Monday, from 4:45 to 5:45 in the afternoon."
+    ]
+  },
+  "latencyMs": 2015,
+  "usage": {
+    "input_tokens": 156,
+    "output_tokens": 50,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

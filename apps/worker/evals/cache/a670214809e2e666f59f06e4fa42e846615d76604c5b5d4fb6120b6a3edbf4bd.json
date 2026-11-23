@@ -1,0 +1,13 @@
+{
+  "value": {
+    "before": "Hi, I'm Hale. Maya added me to this chat so I can help with the kids' year. I only read and write in this chat, and you don't need to sign up or install anything. If you'd rather I not write to you, just say so and I'll stop for you alone.",
+    "question": "Who are you in this family, in your own words?"
+  },
+  "latencyMs": 2971,
+  "usage": {
+    "input_tokens": 152,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4862
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "Oh là là, tu m'as envoyé plein de messages d'un coup, et je ne réponds pas à celui-ci. Si tu as encore besoin de quelque chose, renvoie-le plus tard, mais je ne peux pas te promettre une réponse, même à ce moment-là."
+  },
+  "latencyMs": 4775,
+  "usage": {
+    "input_tokens": 122,
+    "output_tokens": 360,
+    "cache_read_input_tokens": 5499,
+    "cache_creation_input_tokens": 0
+  }
+}

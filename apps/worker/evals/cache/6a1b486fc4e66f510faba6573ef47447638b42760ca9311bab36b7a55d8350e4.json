@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "A toddler lives close to you who's around Maya's age, and I think the two families would get along. I can make an intro if you'd like one, and I won't pass along a thing about you until you both say yes."
+  },
+  "latencyMs": 2009,
+  "usage": {
+    "input_tokens": 136,
+    "output_tokens": 68,
+    "cache_read_input_tokens": 4587,
+    "cache_creation_input_tokens": 0
+  }
+}

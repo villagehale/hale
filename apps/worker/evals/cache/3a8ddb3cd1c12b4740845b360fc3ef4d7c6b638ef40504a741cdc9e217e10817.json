@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Bonne nouvelle : le portail de Lakeside indique 3 places libres pour le cours de patinage du samedi à 10 h 15. Vous pouvez réserver maintenant avant qu'elles ne partent."
+  },
+  "latencyMs": 1181,
+  "usage": {
+    "input_tokens": 74,
+    "output_tokens": 81,
+    "cache_read_input_tokens": 2601,
+    "cache_creation_input_tokens": 0
+  }
+}

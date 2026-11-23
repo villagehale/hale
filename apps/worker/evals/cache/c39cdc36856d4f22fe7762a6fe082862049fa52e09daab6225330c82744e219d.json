@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "says answer is coming in this thread but gives no timing",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1102,
+  "usage": {
+    "input_tokens": 36,
+    "output_tokens": 47,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

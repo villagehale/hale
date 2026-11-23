@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "Forest School Drop-In is on Thursday nearby, and there's a Hale family with a preschooler around your daughter's age. You could both go. Want me to make the intro?"
+  },
+  "latencyMs": 1977,
+  "usage": {
+    "input_tokens": 76,
+    "output_tokens": 64,
+    "cache_read_input_tokens": 4587,
+    "cache_creation_input_tokens": 0
+  }
+}

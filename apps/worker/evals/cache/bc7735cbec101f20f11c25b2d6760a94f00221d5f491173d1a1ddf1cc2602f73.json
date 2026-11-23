@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLSXUXqhf39fVJrJG8CL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8AcKEAgUGAI4AUIIdGhpbmtpbmcSDJXq2qiLGMlFnnpQ/xoMEos9bmSKy1sMrHqQIjC0HiN6eW4BGYzVg0OqnnPd24lzoCPQHS2dMbJuOfiOd85GkrecrhPgLly8Tc23hIsqjQfcoD6zN/2V0XOZVdfeXXzqOyM3GWCMkERl0F5+YSLIdBq2HAEsddLl12TOABGAr+vYzMwo0RqXQqJaG4k18bMiCHkRQs0XpU9U4JGYl5DLSLP54AOsTjEM4rjT8YeXMUclUCMDkwgJdOlwz4MH9DHchkO3KSv/t/WHZnJFuw593e/ugNQTkb1KB7zog3fTCM6ia8H5XK43Zim4bO5AOiS/JRHhUXxFrgozeckutr8WpNV2U4jfwjJGjRKBlusJkI+eCmkBFDV7tbW28J7itt+x/c8QvBWs6ubzdaYBOgCES4wCKDtFaw7MHmUQSM1TERKwHBmYC0TIrF1vy1cnsA6Aq62g5s/gujPAuBmB5NConM9Uwhno3BaBpE3r0FOoiuo+RreSisRqVjNFTdY1yhXyr7XOQARUtzc++gCfM71RpXWrQrFHTnAMKVAsoJU3BW13QK6h+b+LnJvWEgsMR10xOANzT1eKF8+nZJHhr05zTnbuj9ksg9rsba8DcZW50Dndtozl+FFwWSVtATI3CjEmVD31qqqRNmFhtGp+PLE+GLtH5pU4k9aXURgSjeAeKszCKAO7s+v/i2sxTmQ9zvcBPUwtnAE2sQtlMMRjpPklAgQZGwaTP4xQseO1mH19l5fXzqMZiA1/eqTzfC1B0xDxnyh6CSJnX5cIYCd//ubqBK1SEkYRRitMI/1wofuXBYFymWUbwinxFACanH8xykfc9S85f6fKBP5oTdbNEHuG15W+GsE3cBPOHYsp064IE20WMO+3Fppsu9HatmrfifOQCPu2KHe8lNqw9RYBtftURQRfqTMw+uLXWunmcCZNJtU/uYdg9WwrD1u1W9kbD8LBAdSNrYm9YOQRw6NF79G0nTsF6S9V8bDRwO1Z2kcSAbJpHySqL+bWhSYhh0NZ4kuH+Ba+cT5CkdMGAykyS+VyBGPA1YH5OLVJgsERf6tGtAZWCAOz0I2eaXiW20wHGIHFiH2xPEEktkdWdhd8uPlpS2YRjH/Xyu5edl3Mk7YiKkOO/H4mOPaIQcVUREZLWKVZGVa8GBJb9ZorG2m+RmYHbUgslimeGJU6Gyrr7S4MgO1BPFltZ9BWLgSGuh8jnX6raV+PG8bW0wGoj59gdyEHClM/1S0Ny3m8uP+mKCZydOsFG17/iZZQU2g7vNpq1t6sKtPve9PJpD1jSTEdiXK3Jg+CA/r0j89rc9aZZgwYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I came up empty for Saturday afternoon. Neither search turned up anything I can hand you. The only thing on your day is the swim lesson at the community pool at 10am, so the afternoon is wide open."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 168,
+      "cache_read_input_tokens": 20682,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 168,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 162,
+      "output_tokens_details": {
+        "thinking_tokens": 95
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

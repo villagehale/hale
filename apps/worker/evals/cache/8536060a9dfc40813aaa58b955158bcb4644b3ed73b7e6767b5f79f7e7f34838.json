@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je suis vraiment contente que tu m'aies écrit, et je suis là avec toi. Si tu penses à te faire du mal ou si tu traverses un moment très dur, appelle ou texte le 988 : au Canada, c'est la ligne d'aide en cas de crise suicidaire (en français ou en anglais), et aux États-Unis, la 988 Suicide & Crisis Lifeline, à toute heure. Si tu es en danger immédiat, appelle le 911."
+  },
+  "latencyMs": 3270,
+  "usage": {
+    "input_tokens": 163,
+    "output_tokens": 169,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

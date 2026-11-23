@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011ChLTVRDj39p14sFg6yEvE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSggYKEAgUGAI4AUIIdGhpbmtpbmcSDIW1lmu9oxtVxlOp8hoMrPzFbODBQh1nFRSaIjCMWj7YpHjpKn98dIZ/5IKaFYRbdFeALxweAvit1rNP/nD0ht2nA3bi7FbPNp7WmdQqnwWeTWUtu7S63qEg2wMVd4K2tZUvfibkm23sf9mtx9ZjVKkJljx4ClqWr2J9aA73vVftBpDWzg08C+VnjYwP4ME0rIxZ9BYWiEKTMCREogCnazZuyL58zxtM1QdeUmDcMthMwTuMVUzOoRs/Hrha1yK8LBNXmRzmbtw9YqMoRl8aapGF5D89ubbqaHJzUJdgyv4xTg/5KeF1jL5IlA3LVKThz28uZcmyH6UoS3xqI5pmOfI3gxUz+bB+pWoBlVvXqvSd+kVRzw49DgcLNoaLTsaNmaL6pN74RietztkslsWOK0z6Gts0WjtNjeKYCDev/hBn+y/cDa0s9ppYtHVrjeP2Z2IKorg5AEfn6xctThsTMgfB99IPLH8RAeyjndNdO+NL3uSlcmFwiHxI1+a0as/7wTtH2g/+WNXcf9MyL1hYhbgt5usAmMzx/bOFlyalxc2Inowoh6VPntYVMckeqvU4jND0/TEf4ovOY+Imr+QkYrS3MJI4tDNN7kK78kCjMfDWzd/qNqO3A2bpiDSw0uuZ7q5uDmgavHciK4u9KCmtYHFDsSv36Sd4xES0c3r/iklZ7jW1+XXPwJTq/RrrYL7dFUraBQ5ii0Ad7OzVuAIjq3n9x3dZwuoEQrI8uiC35rkwACwzUYWFeoW9Bwvn7FfIRpLrQNc7Q/AOUxc58QljZLN14Qm/M/NfeFgpXqUGui62vEAVdM6os2/+d/F3B2Z4lzOFy3JEd3dNk59/nQ0yW+EKU40GcyMgMItMfIvXsDHr2GX19qDWaEeIoZYFB1fQphXokjzWms1AZ+hK+KtU7WUpYlDzeBruspP3mgwD3k1+NTxiton/21kHAPF6CKtLcJhaCSYCeNYgox4dRx694HLcmEiNkCOzkBw0wkxOCxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QhMipqPrgtZXJk64NuTFyh",
+        "name": "list_group_lists",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 435,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20557,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 79,
+      "output_tokens_details": {
+        "thinking_tokens": 49
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

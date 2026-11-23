@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "现在就打 911,打通后别挂断。接线员会一步一步告诉你该怎么做,需要的话也会指导你做心肺复苏。"
+  },
+  "latencyMs": 3265,
+  "usage": {
+    "input_tokens": 154,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "PD Day is tomorrow, Monday, 9:30 in the morning to noon, at Northside community centre."
+    ]
+  },
+  "latencyMs": 4611,
+  "usage": {
+    "input_tokens": 160,
+    "output_tokens": 45,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

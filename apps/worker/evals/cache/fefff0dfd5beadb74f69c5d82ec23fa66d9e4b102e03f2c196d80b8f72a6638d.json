@@ -1,0 +1,15 @@
+{
+  "value": {
+    "texts": [
+      "Demain lundi, natation de 17 h à 17 h 45 — attention, ça a changé de lieu : c'est maintenant à la Piscine Centennial, au 5 Lake Rd, et non plus au Mold-Masters SportsPlex, 221 Guelph St."
+    ],
+    "bold": "Piscine Centennial, au 5 Lake Rd"
+  },
+  "latencyMs": 2411,
+  "usage": {
+    "input_tokens": 207,
+    "output_tokens": 150,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Plain, first-person, names the channel correctly for iMessage: parent adds Nana to the family group chat with Hale, or Nana texts Hale directly. States Hale won't text her first. Does not name Nana in the message though watchFor says it should, and does not explain what a grandparent can see, which is correct. Minor deduction for omitting the name.",
+    "score": 4
+  }
+}

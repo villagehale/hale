@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "I need your name and email to make the introduction you said yes to. Can you send both?"
+  },
+  "latencyMs": 3386,
+  "usage": {
+    "input_tokens": 26,
+    "output_tokens": 33,
+    "cache_read_input_tokens": 4540,
+    "cache_creation_input_tokens": 0
+  }
+}

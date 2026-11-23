@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts are Piano lesson, today, 7:00-8:00 PM, at Ms. Chen studio, with minutesUntilStart 60, and no address given. The text says the lesson starts in one hour (matches 60 minutes), tonight 7 to 8 (evening, correct, with both start and end), and names the venue as given. Nothing is invented: no travel or departure time, no inferences, no link. The title is presented as the event's name (钢琴课 = Piano lesson). It is entirely in Chinese apart from the place name, which is allowed. No overlaps, no change, and bold is none, which is fine.",
+    "score": 5
+  }
+}

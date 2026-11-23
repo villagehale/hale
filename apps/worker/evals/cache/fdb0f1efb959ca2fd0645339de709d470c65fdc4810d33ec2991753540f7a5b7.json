@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "Coucou, demain lundi, \"Jour de congé\" de 15 h à 16 h (3 h à 4 h de l'après-midi), à la bibliothèque de Georgetown, 9 Church St."
+    ]
+  },
+  "latencyMs": 4682,
+  "usage": {
+    "input_tokens": 171,
+    "output_tokens": 79,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3893
+  }
+}

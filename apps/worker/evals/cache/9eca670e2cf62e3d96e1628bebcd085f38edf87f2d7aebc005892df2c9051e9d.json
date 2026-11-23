@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Riverton's portal shows 2 open spots in Monday preschool chess, Monday at 5:00 p.m. Grab one before they're gone."
+  },
+  "latencyMs": 1976,
+  "usage": {
+    "input_tokens": 73,
+    "output_tokens": 55,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 2601
+  }
+}

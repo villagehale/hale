@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "Little Sprouts - has it started to feel normal yet? No need to write back, even a word is fine."
+  },
+  "latencyMs": 1265,
+  "usage": {
+    "input_tokens": 29,
+    "output_tokens": 41,
+    "cache_read_input_tokens": 4403,
+    "cache_creation_input_tokens": 0
+  }
+}

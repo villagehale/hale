@@ -1,0 +1,16 @@
+{
+  "value": {
+    "texts": [
+      "Heads up, Léa's got two things tomorrow morning that run into each other: swim lesson at Cedar Park Pool, 40 Lake Rd, 9:30 to 10:30 a.m., and the dentist at Northgate Dental, 15 Pine St, starting 10:00 a.m.",
+      "Since they're both Léa's, which one is she going to?"
+    ],
+    "bold": "run into each other"
+  },
+  "latencyMs": 3685,
+  "usage": {
+    "input_tokens": 306,
+    "output_tokens": 137,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

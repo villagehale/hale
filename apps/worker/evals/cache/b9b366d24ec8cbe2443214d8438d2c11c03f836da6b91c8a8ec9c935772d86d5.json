@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "I can't add them myself since I don't text anyone first. You can add them to the family group chat with me in it, or they can text me directly and I'll take it from there."
+  },
+  "latencyMs": 1025,
+  "usage": {
+    "input_tokens": 58,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

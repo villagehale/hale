@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Moment is introduction. The message ties the ask to the introduction the parent said yes to ('the introduction you said yes to') and asks for both missing facts, name and email, in one message with one question mark. It is plain and has no greeting, hype, pressure, or invented details, and it does not describe the other household. It is a clean fit for the watchFor shape. Minor point: 'Can you send both?' is a question rather than a statement-style instruction, but it is short and acceptable, so this is a strong 5.",
+    "score": 5
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011ChLWATjbmYJ1LatwVmHvt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0gYKEAgUGAI4AUIIdGhpbmtpbmcSDCH8QjJHVhWbspBuOxoMPbtRYXtcBZGat5jXIjDQP0qp+7JxLGCiH5uTKusJLzv2OU1YmvfpAhXX/PUaKRe+4b117QoDH2CvMnZT3qwq7wUAQUeMsRMLLfoXm4R5CwyD1ZWw/0zsdD0L66LZPfzMrHT2gYbQlUpBAOP9Glkgo+pbXC/f4ZFHNq3p+dfL1TQ1piXvUCowGm9zL6JOfEW9BMqV75P8rgMUDxUsULEEFU2SLhfAkOkZBjvUHfnRDeGlh4UWobHRXBU+BatidudDl76cNfaiYQk+VVxsP70Fkz2GEDl+zmTOMyeZdy4HU7xYuItxqJhGfO3jWS6SV0yOFGr9GsNLaXjr2hYBYB4a3Xl5lG6gQKpiMdMSwt655qf+vWF7yi8qw1cJJE6OMK/IUPk5gqDdNqT93JOUSkHFyfYrZlXgsWp83qVDy0oUUlxZSdRzw3WbKzkm+xPiBTEAdWCubD6rXxsPY+VSKR5KftPnLZkB+/9BHGUbwS9FULAYiGTyPv3J5UDHGdfGBCa/hZBrJdYmxenAnx01rUq9xoutPFeJadQJYl5QzFtYBoYArSLV/fHoLVl61IhI9B3dyxF4oY0an7X35UBlQWMzqTnZ4mylRTiuRzQU6BMQG6wTgkna5+Hd8zFEwk0aPpgmpnywm1QGP1aUkcn8g46R9DOqYcYaWJ2uXRf4yPSUxL0Bkl1M8I2JWrPkEZyGOPywaJBhUjAz7+bH7ShxcDbBBI9ovp3rVyr5Vn41PwbtWBOXq5y5fSEB1HHVjIk3LYIZk1qY8C0s0MObYKRAV8caA4WuefFpX1L8Gspu9QPRXXPBNXtbiDxq5e7GtPHAY8Pw10xtYJBCAx1Qci0v5t8WTwuBYMq6ZuAk1C7iNif6VwvVcbPRoHtzHv1yyaZ308LU5u26/1R5wqbuklbM5rZv3D6ZJELiMiB60/RVbDWLmPNxgHohs+Q+VF/4LbM77mzloVDp5C9vIPRvMQ6ZekR6vNmThvY/8zZds8D1oyMuxI41ZG6aO2nAxAvtzdkryjfjiBKT+GxIBxj9yPg/7R+h8oBMnhbxRLEBJo3tna7v4NQGr0t5Jgc0NIDv+NzMCCSkGAE="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is Saturday at 10am at Cedarvale Park. For something else that day, there's Riverdale story time at Riverdale Library, Sat, Aug 8. It's a free indoor drop-in and all ages are welcome. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1475,
+      "cache_read_input_tokens": 24058,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1475,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 170,
+      "output_tokens_details": {
+        "thinking_tokens": 79
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2048
+}

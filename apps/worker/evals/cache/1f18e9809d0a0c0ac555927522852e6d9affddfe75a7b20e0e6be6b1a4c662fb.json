@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Heads up: Barton has Maya's swim pickup Friday, Sept 25 at 3:00, but Barton's tied up then. Sam, you look free on your calendar. Can you grab Maya from swim?"
+  },
+  "latencyMs": 1969,
+  "usage": {
+    "input_tokens": 168,
+    "output_tokens": 77,
+    "cache_read_input_tokens": 1323,
+    "cache_creation_input_tokens": 0
+  }
+}

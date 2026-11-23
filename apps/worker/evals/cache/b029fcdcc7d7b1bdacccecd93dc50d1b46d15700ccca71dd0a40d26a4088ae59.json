@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Appelez le 911 tout de suite et restez en ligne. La personne au 911 vous dira exactement quoi faire, y compris le massage cardiaque si c'est nécessaire."
+  },
+  "latencyMs": 1856,
+  "usage": {
+    "input_tokens": 153,
+    "output_tokens": 69,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

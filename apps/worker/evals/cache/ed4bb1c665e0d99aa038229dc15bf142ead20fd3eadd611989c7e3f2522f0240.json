@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011ChLVgDEByfGp6xoAoJw3S",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxAcKEAgUGAI4AUIIdGhpbmtpbmcSDLIm7YiL+ex7f21oIxoMzTxio3QRji6m1TlpIjC7Cig6KhDKwNFiguIiiiHFJYOx3IeUF+xdyp4mhnHC6CKJskoa1uTw+wotzwLZK0Uq4QbbZaxvlfQjsSv6GxzlmuDC5TmAMZZOhjXBHZGduSfZVrjD0elz8KdrHV9emNHcA/xWXi+kdE7g9K4qOc4yhvftVocPZ6ykcLmMlWW5GPmLu/t10UN3pnwYXkOaqEJL0etWN0Y1rgcP85kJ8WxNL7J4WSvfeEUxt+8l7LPdfzHBq9/R4DmFeOnN/jd7FLJclviFxUyA+NpNLZDMYbi9LC3ObM0Q3VoEbz1+5SQ2xIS4sdrY0wNQoWazIksomgeugawEGaC2W0ouQZtG1GEoL5pR5IVUz9HkurTR6wY86RzoIkgzkkWv9/DDHHeUHewwa/MZz3ofCWclq1oDCnDAvnafUywemKqxhZSCqfXad4aLENPERNPfMhAwidZl5kgjF9TJvOfALdP1kwWSU9dbRuevLURSqkxQwqeHP1Liutb8fjaw5maK4PevvPtmfZ0it3ijcejHwWZ6hmh2XkNLQ5IZ1hrgL+qJHt3Kfw21an9Fa9lH6gbYG6O5+Apd3+kqwXEUByhxKX7GUC9icFYmtqtOodRu84ywrJL2j0raF2Ib0hAvmajv9e6/0DiLHm/S633WAP7DMtICp1//lYax03YK8EEB8SOsMHmp44U8X5QC/LFNesc0Aj08WTl/OILuKpYQ28kjszfKZAKMd3iZia1jI2vMB/Ki03pE22EhTpLA8rkS80vyhTvhR3TFLosMWhdPY59CRqmU1/ABcz29qrabDzjiULKpNvSuHzr7fttBV83n12hGdoEh5p847TtIGexfktoah0DhloeGC181sK4gcs5ybyKrRN6IMgAHjktvanllqD8tJv8isbyOuypp79zOTIHszFvJYAx3MQM5ZXpY8cABVRsxDb7JzCtF2tFztzU6AMifzkkhqejsmxhCOGaGcI2OqQcjJvvhLOGrDcrVBW5cjAQF7YEpUAdsY393ePigtscpThUq4/vQY5S8bAH58clT3aEGK5NeWdWLJYmcLc4K4xsWWyvNHgKlqW5jUGaZN4JkcNAaE0i1c0EL7uM1/+rU9i/WVDXu5jOdoCc3C+ELOc1zLns2UpjJwbDb/IcqqPYzurltAiOYHfaXnjahmNz/rOd+cxFeRH0LDMDnDYAMBMiKc2LFwMvrqWh9Yzc5uJA3aTWNrhqBIpLPD31gGAE="
+      },
+      {
+        "type": "text",
+        "text": "What to give her isn't something to decide over text. Call your child's doctor's after-hours line now, since they can tell you what's safe and when to bring her in. If she can't keep any fluids down, seems very drowsy, or you see signs of dehydration, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 812,
+      "cache_creation_input_tokens": 24083,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 24083
+      },
+      "output_tokens": 207,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3124
+}

@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011ChLWSsCBXHqEfRdc5AFZo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSoggKEQgUGAI4AUIJbmFycmF0aW9uEgw39Obd4VbRNAnqd68aDDc79EG/gSURhrVEkiIwN5JulxcL4728FYztdGahd6FkdOqwJBVLm30uCBLfrofqcNvYMTdrbD515Ijr7aKLKr4HN7Smt6v5Ncnx1yo/NwEMvJF3ba2TOkyDLRflMSZjG554oYghDWJmFTxIFYizT11SGD5dIIAsPk0S0yMhk4ve0jzVpZFrBC8hOjwGdMtxmSstKcPPE4UmWW2Y6xIqs42sjpZrsydF6SP6XuYG5GIujreS1r9En/JD2T3yEK+ekt6aIcYmBEKKgqGwmU60w/VvZ0PmJQg7gXvMWHlkYaHgVeHeU3ECaTz4daD0gFsnrMqF2n5NBXMHT7bWBuIDQTO5SDpoV9Gt3qYi8wVShtLt07Z1MhRQlzSNf9Ps9+Hn5mh5pSHS6+u/ecZWKrxaqwRs2sHWeU/rXVZWWBcYPU/GvPKagBMIAvRMLIdzyIgHX8c75Y1VVLUjyCoAYi8XkV8vWKi5Q2EobK96Iw62ZrvByhGPU4s5dscR19mety+aS4DIRsri48B+1VatrUi/Q2rwPjb9tR2RqY/cqOA07ysgjf+lMf0/VpYWBD5iKiC46k0MNi0uS3nvac7PStPBJCNwxShvhxHxsEPOyUIX2EFz79tzik1fsoCS87US12Y70AXYaV+MoTL/gxTXUmepStjNMEinX6kXITP1vCbIUfmrV2/4PTxbdE8QcUmwDGR5GKMzApK8pnQs054j8OrcZ4qgBA/8iffxY4+XAE+u56MiqjgybJ1Pb7sRGS52cjned12rSFdpQJg654QPEpTVyiCmsDo0WbWrTzjHhPhl0FjPI+I+ekjlkEG+dDC49p7A3FjPFJhaNyiLhXq9aydG9jumSOnx1CQlEWmBeqILrc3sjOeZkxY4ssSSfvkdImYRo64/YQmubElmcYyZCpWUVFYartMbjiRz8zPBAg9KJM2/tYVLUnd16ESL5hxQD/Vvd9TjETrshpG9WjvLoNmuBoPdSIqAsnmHSnmtq6kcpGOqMFH/3B9yB+dXyG9wcFfNOcuSIcaZxdxLzNiAwPgHjMd0FYkBIFV9/2T2HJWGG5a668SaP6cEQYVL5DgK3GTwERrYjRFf5CsNxWuuzZno+cxb0cw8/h7QBhzMl20ZMTWfGax1cS4+mgczLCuaYsUu0eBOY3KcL15u2vKYLJhGhoZXlLVdkgp6r3lJykncnnJWolk9856d0mHhYNbmTYg3zQpKTMg/vsAZCkyWxXZQgMWUoFndX+yJ1SxlnnJLhteYezD9lx7U402xYdl/ZcClwXDAzOMazpe/2zvhYe4svkWilOmbQo+3CNMrviMJcMhl04PVqGEFB/cj5cEsHyJmM+KEZH2lz7fMwaLxIefIEBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JqRHH8HmsLtrVpM2gU95Bz",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "fall program for 8 year old, budget up to $900",
+          "childId": "kid-ada"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 219,
+      "cache_read_input_tokens": 25465,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 219,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 201,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2057
+}

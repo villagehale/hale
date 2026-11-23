@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Event 'PD Day' is kept as the event's name. Day (tomorrow, Monday), start 9:30 in the morning (correct AM), end noon, and venue name 'Northside community centre' are all present. No address was given in the facts, so none is missing. Nothing invented, no travel/departure claims, no link, and it is presented as something to be at. Bold is none, which is fine.",
+    "score": 5
+  }
+}

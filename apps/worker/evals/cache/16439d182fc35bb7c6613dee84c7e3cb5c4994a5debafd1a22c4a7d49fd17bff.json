@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly hands over the webFind with its exact title, its own day, free status and TPL attribution, and the URL comes from the webFind, so it is recall. It correctly says the craft fits Ada (8) and not Milo (5), and it does not promise a follow-up, which is right because promises is empty. The shape is padded well past the thought: it restates soccer, adds a caveat that the page gives no exact time, adds a weather aside, and uses the slightly machinery-flavoured line 'nothing checked for Milo'.",
+    "score": 3
+  }
+}

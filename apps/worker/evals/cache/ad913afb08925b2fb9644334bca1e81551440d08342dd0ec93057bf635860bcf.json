@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "There are other Hale households near you, and I can introduce you to one when the match is actually a good one. I keep your details to myself until both families say yes, and you can switch this off whenever. Want me to keep an eye out for an intro?"
+  },
+  "latencyMs": 2747,
+  "usage": {
+    "input_tokens": 16,
+    "output_tokens": 79,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4587
+  }
+}

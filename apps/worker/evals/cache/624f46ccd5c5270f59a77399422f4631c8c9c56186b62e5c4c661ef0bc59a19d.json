@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: all three events are present with the correct day (tomorrow), start, end, venue name and address, who each is for (Theo, Léa, Léa), and correct AM/PM (morning, afternoon, evening). Nothing is invented, no planLink is used, and bold is none (fine). Voice check: the three texts do not use an identical frame; they open with a summary ('Tomorrow's got three things'), then vary the sentence shape ('Then Léa has...', 'And Léa's Swim is at...'), and are split into short texts rather than one block. It reads like a friend texting rather than a filled-in form, though it is slightly list-like.",
+    "score": 5
+  }
+}

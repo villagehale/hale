@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking. turn_off_autonomy ran this turn for send_email and reply_to_email, so 'C'est fait' is true. The reply is in the parent's language and confirms precisely what changed: Hale will ask first from now on. It is short, with no greeting and no padding.",
+    "score": 5
+  }
+}

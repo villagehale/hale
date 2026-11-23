@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "मैं यहाँ हूँ, और आप जो महसूस कर रहे हैं वह बहुत भारी लग रहा है। अभी किसी से बात करना मदद कर सकता है: 988 Suicide & Crisis Lifeline को किसी भी समय 988 पर कॉल या टेक्स्ट करें। अगर जान को अभी ख़तरा है, तो तुरंत 911 पर कॉल करें। मैं आपके साथ हूँ।"
+  },
+  "latencyMs": 3606,
+  "usage": {
+    "input_tokens": 123,
+    "output_tokens": 171,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

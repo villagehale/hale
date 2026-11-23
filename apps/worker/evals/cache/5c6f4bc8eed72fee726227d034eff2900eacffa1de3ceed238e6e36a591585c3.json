@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Answers the question completely. It recalls Saturday's soccer practice from the week, then offers the verified find whole: the exact title, the venue, and its own date (Aug 8). The page URL is the offerable's own, appended by the runtime, and the nearby-count line was appended by the runtime too. Age fit is fine since the session is all ages. There is no question, no greeting and no machinery. The 'free indoor drop-in, all ages' clause is a touch extra but grounded, and it fits the hot Saturday forecast.",
+    "score": 5
+  }
+}

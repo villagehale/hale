@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Says the answer is being worked on and will come here, with no timing given.",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1192,
+  "usage": {
+    "input_tokens": 31,
+    "output_tokens": 52,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

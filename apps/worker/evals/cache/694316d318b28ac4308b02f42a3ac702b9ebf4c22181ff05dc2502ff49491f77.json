@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Je ne peux pas écrire à quelqu'un en premier, donc je ne l'ajoute pas moi-même. Tu peux l'ajouter au groupe de famille où je suis, ou lui demander de m'écrire directement."
+  },
+  "latencyMs": 1331,
+  "usage": {
+    "input_tokens": 60,
+    "output_tokens": 86,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

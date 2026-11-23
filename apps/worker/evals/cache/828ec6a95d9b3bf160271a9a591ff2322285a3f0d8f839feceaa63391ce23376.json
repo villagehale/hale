@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Two swim lessons are on the week (Mon 4:30 West pool, Thu 5:15 East pool), so asking which one was meant, and drafting nothing yet, is the correct handling. The reply asks a single question with details traceable to the week, and avoids greetings, app referrals and keyword consent. Blemish: the opening admission (\"That one's on me, I sent that email\") asserts something not visible in state and pads the message slightly.",
+    "score": 4
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "Hey, you sent a bunch of texts at once and I'm not able to reply to this one. I won't come back to it on my own, so if you still need it, send it again. I can't promise a reply to that either, so I'm sorry if it goes quiet."
+  },
+  "latencyMs": 1260,
+  "usage": {
+    "input_tokens": 56,
+    "output_tokens": 86,
+    "cache_read_input_tokens": 2750,
+    "cache_creation_input_tokens": 0
+  }
+}

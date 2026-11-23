@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "autonomySwitchOff shows send_email and reply_to_email were turned off this turn, so 'Done' is true. The reply confirms the change in plain words and states the new behaviour: Hale shows each email first and waits for the OK. It is short and exact, with no machinery talk and no sign-off.",
+    "score": 5
+  }
+}

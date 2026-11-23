@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply_only choice is correct: the parent asked a question-like request needing a clarifying answer, and a tapback alone would falsely imply the reminder was cancelled. Reply is honest and asks a useful clarifying question.",
+    "score": 5
+  }
+}

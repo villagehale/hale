@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy was turned off this turn for send_email and reply_to_email, so the reply's claim is true. It answers in the parent's language, in one plain sentence, and stops. It covers sending; the reply-to-email part is implied by 'every email'.",
+    "score": 5
+  }
+}

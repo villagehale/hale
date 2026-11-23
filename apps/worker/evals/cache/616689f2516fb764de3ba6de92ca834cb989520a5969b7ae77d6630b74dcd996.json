@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Says the answer is coming but gives no time or wait; no app or screen referenced.",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1195,
+  "usage": {
+    "input_tokens": 26,
+    "output_tokens": 57,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

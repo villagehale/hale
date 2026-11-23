@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ties the ask directly to the introduction the parent agreed to (\"I still need your first name to make the introduction you agreed to\") and asks one plain question for the name. It contains the word name, invents nothing about the other family, and has no greeting, pressure, emoji, or sign-off. It does not explain that the introduction email greets them by name, which the watchFor calls fine to say but not required, and it stays within the two-sentence limit.",
+    "score": 5
+  }
+}

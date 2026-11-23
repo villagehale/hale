@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so saying it is done is true. The reply answers in the parent's French, states the change plainly and stops. There is no greeting, sign-off or added machinery.",
+    "score": 5
+  }
+}

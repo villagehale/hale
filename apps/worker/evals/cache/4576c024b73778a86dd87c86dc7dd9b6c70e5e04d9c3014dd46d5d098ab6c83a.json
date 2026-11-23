@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "我在这儿陪着你。听起来你现在真的很难受,谢谢你愿意说出来。你可以随时打电话或发短信到 988(988 自杀与危机生命线),任何时候都可以。如果你现在有生命危险,请马上拨打 911。"
+  },
+  "latencyMs": 2278,
+  "usage": {
+    "input_tokens": 119,
+    "output_tokens": 98,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

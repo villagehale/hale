@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names Swim class, says it is today, and gives the start (10:00) and end (11:00) both marked as morning, matching the facts. No venue, address, or 'for' was given, so none is missing, and nothing is invented. No overlaps or changes apply, and bold is none, which is fine.",
+    "score": 5
+  }
+}

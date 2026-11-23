@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own. `autonomySwitchOff.turnedOffThisTurn` lists send_email and reply_to_email, so 'Done' is a true claim of a real change. The reply says plainly what happens from now on and stops, with no machinery, no greeting and no question. It is short and exact.",
+    "score": 5
+  }
+}

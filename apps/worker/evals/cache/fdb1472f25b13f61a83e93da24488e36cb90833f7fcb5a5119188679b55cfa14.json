@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply groups every offerable find by day, as asked. Titles, dates and venues match `knows.offerable`, the URLs are recall from those finds, and it ends on one natural question. One small blemish: the weather comparison is extra padding the parent did not ask for.",
+    "score": 4
+  }
+}

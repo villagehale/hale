@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011ChLST57q3NNYc7pM3nHup",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSoQYKEAgUGAI4AUIIdGhpbmtpbmcSDF2O1tIYx1PTINw8AxoMtcG94IPpvz8oaRzZIjBfIMUArqNNAlYWTiB8sGDTn++nDSj6Znlx2bwUzUJ8chcTeKRLHoTrWL9Rp+bKCMsqvgW4bcSqQpJMek5Gupo2f0nVZwrzIlE+Q9HqtpwlLgHQhrGS1L30Flay4P9V7U3osGq7rD09q9NzEa7r6I7rynO+GEu9XuiHqfRMcyX+B9GoCpbMhaf1CFkk97KiOGUVG0wIDxufeV2qUQ2xXtZrZj24s70+wzUd4GbBYjY//utQPBx1Wpa+uKygb9XZl9kayQm58M6Q/2DIct+gKKO/4i0N+ZK12gQOK+mrBBial5Zmct1PMyS+fpwPmJFgeorAeXZK4BOpcvseMpcwhehlCUf3X5YIIdhzcktVruK1aGpIBtJkrzsEgFEzQJhTIiiCglNONFumEerNL8ZmZ/wV3DiLL11TqBPAy7Nf7GhdqJ2L3yBWoszrVlLcUgnO4MEvdiw6YfDijV4YvhnrUfj573GCIXjch+aNmt8XKEeFy+Fatr+D/O0sNcZNQvsSvYEYE6kTBIcUezpGL7eSry6MS9klxDzJupREd9bxmp2tc9aV216ddXBgK6dlEllEZAEPHZ7YcyZGO2F2MRuUaE0OQUaiD+8+iUEvdgnCDcd6KuTs5J25hNvYXdNSTzk0rYN7dVNgn7YRGc8h52ybdQKr3Esv5B7/s2PYxhm9Itn+jhcLJd50IKZaMjHx80RuhcRhOPYdQ//FpXfAvD6FNWXYXZMoJ323h9XGueKHUboKm4AGtSJQxPgdOvRaFM31y24VFS+UjB3EuJP301vezPRLq+0/p25N63+hSRDtXvh1T1ZaFqdfbbzgMrmz+zpSnv95cww43SEk1ELhNBIk+lPHrqyPL28BGlJEREfMoUBeTeGxbgwqbtQGR/ZIXXt2gZ8q2ITabwCtPPGQF8PQWVtmFInz8hDDLWh7qc/wadybGmkQF6HnscIinu8mfVxaFfgfXmtPANqC+VsLEiBlpyLmlvs1Ebr0810Jg9o94FklDMUYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015s2oYxwbwzm9PYsKsK3oaU",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1671,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18481,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 81,
+      "output_tokens_details": {
+        "thinking_tokens": 52
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

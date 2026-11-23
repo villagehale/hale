@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "I can't add someone by their number. Ask them to text me directly and I'll take it from there."
+  },
+  "latencyMs": 1243,
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 36,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

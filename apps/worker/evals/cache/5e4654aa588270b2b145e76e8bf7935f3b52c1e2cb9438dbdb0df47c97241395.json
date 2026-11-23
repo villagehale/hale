@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "I watch your dates and you can text me a question. Your name?"
+  },
+  "latencyMs": 2136,
+  "usage": {
+    "input_tokens": 25,
+    "output_tokens": 27,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4540
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Lakeside's portal shows 1 spot open in Swimmer 3 Saturday right now. Booking is up to you on the portal, and spots like this tend to go quickly."
+  },
+  "latencyMs": 1755,
+  "usage": {
+    "input_tokens": 69,
+    "output_tokens": 64,
+    "cache_read_input_tokens": 2601,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off for both send_email and reply_to_email this turn, so 'ya no envío correos por ti sin preguntarte primero' is true. It is in Spanish to match the parent, short and complete. 'Listo, Sam.' is acceptable. There is no sign-off, no extra question and no machinery talk.",
+    "score": 5
+  }
+}

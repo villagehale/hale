@@ -1,0 +1,17 @@
+{
+  "value": {
+    "texts": [
+      "Heads up for tomorrow: Léa's swim lesson is 9:30 to 10:30 in the morning at Cedar Park Pool, 40 Lake Rd.",
+      "Theo's music class is also tomorrow morning, 10:00 to 10:45 at Brightside Music, 7 Oak Ave, so it runs right into her swim lesson.",
+      "Different kids, same stretch of morning. Who's taking which?"
+    ],
+    "bold": "runs right into her swim lesson"
+  },
+  "latencyMs": 2336,
+  "usage": {
+    "input_tokens": 313,
+    "output_tokens": 163,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

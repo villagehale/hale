@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je suis là avec toi. Ce que tu traverses a l'air très lourd, et tu n'as pas à le porter seul·e. Tu peux appeler ou texter le 988 (Ligne d'aide en cas de crise suicidaire), à toute heure, en français ou en anglais. Si tu es en danger immédiat, appelle le 911."
+  },
+  "latencyMs": 2094,
+  "usage": {
+    "input_tokens": 126,
+    "output_tokens": 124,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

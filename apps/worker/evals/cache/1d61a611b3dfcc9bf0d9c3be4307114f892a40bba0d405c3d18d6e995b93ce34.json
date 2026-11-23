@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "I still need your first name to make the introduction you agreed to. What name should I use?"
+  },
+  "latencyMs": 1821,
+  "usage": {
+    "input_tokens": 24,
+    "output_tokens": 33,
+    "cache_read_input_tokens": 4540,
+    "cache_creation_input_tokens": 0
+  }
+}

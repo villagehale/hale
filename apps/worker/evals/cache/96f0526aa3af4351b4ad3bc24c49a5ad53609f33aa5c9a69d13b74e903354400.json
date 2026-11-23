@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011ChLVf62q9ZrwyKmF9kAxp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6gcKEAgUGAI4AUIIdGhpbmtpbmcSDEGqI6fGnuuKG4vS9BoM7hHSUGGN6bzmUf8gIjD2EEPRQCZEtTUxPQornIqYwuBxbFJ2Q2nLR0tZnbevONyU2Zd6H/l/KAuZy1wrvf0qhweQ4iYpBeHlD7IKDqUP+FQrHJ3+nPshPZHAybkF2Y6xGeHMXpge0GwQkkZRxdAlGF1D2B+sHX0rFGMD0zbr/8Q1SLWp1jJX128L8rBj3uIp/a0KcMjyhvyepbQz5lCD2nyRCRSkkhXTtMaPL8NC5sfWSlLOS3Qygt5VnzF3SoRzK0ofb1PB2upJx02HrVGq2oPvW1nCzJICbPUbJMiU/2AjoXiUUnv6XnsaoEksgFD4RKq8cmWh582QzcQbqRaE+GHtvijzwjIABDoZaB7gwTCFsl7uVwhhwmNISl8lTW4F7nr4Wp4ont6tFpI3v7t2xTomqCePuHjFnt9MvXPYkZIldBrrI7Q2IhNaUVitv0x97RZmjHSt4JOOsa0aBzIcX10LnAmTx+8HVmsteJCK/ch4BYPditsJZaLNWagat+df+Hu9hLLAo1qyfP6AeNn3IEp0nzivcRP0ICXhfILFwiRPhhEGKQRBGeS1DzIy3fs+4FwLig9WG+SGPnAj08fbcATE9fUw2w9yZpr+WSQFVUEwPc+54jtNRllafiyYIetYK6Ba+otFzJf83T5QpR9NZzRYUHXYeJ6IdGaMEtoVcdTexgIub0R3oea2wbN5BZRWUD8rATWdKcyFcViOHmoFcLk6TeQ05bKgOOD5mcOsmJIupT6rK5bgq1PRqUDdYnKVdRQSLao6FADIag2Ka3BMxGTtaHv1/xzeX6c9biqRwO8on/baLd1I5+FAvhTpoPpoXMeCbn5fupTaCdXFsVV4tLkne0jOx/IA5phKk1LdOOMZrL16wIMtIa4DhURPkdtAHXv5cV0UKbFTvY7skZyykXxtTzmnFgwBaXyZRmAEh6sHgHDjBsLgkLOKWmfpcsedYz70JIlUvGN9aBpw98V5r54L8++XzLOzmKrT54BgCiLsQ2TvERFJOQfUC4YAdc8+1vt4I4UbUMnDfXMcGmaW7yJcPb8TPGdy/okETaip/3ghDpfnd5cQ6T/CfWXZkEcpqfF4AiJ2ebQtimFgUaE89TQ2Kk2Vzk1sZ8130PAYggdO2kh3BFosmvXxm927jjYRoiXlsTosnMo6vppB5LwlVx1rOlySBZQP0o1wEMs3HUBnbLrgi943fwOLF9pWn/eoUU7ae4L9Dj7XVetzB7amMVd5E4hlsmXh/7TrujtYxVr2uhaUGMlD+ac7aP7A+FvqlKhvDDTuoq0YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "What to give her isn't something I can decide over text. Call Health811 at 811, any time, and a nurse can talk it through with you tonight. If she can't keep any fluids down, seems very drowsy or hard to wake, or you're worried, call 911."
+      }
+    ],
+    "usage": {
+      "input_tokens": 817,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 24058,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 223,
+      "output_tokens_details": {
+        "thinking_tokens": 141
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2973
+}

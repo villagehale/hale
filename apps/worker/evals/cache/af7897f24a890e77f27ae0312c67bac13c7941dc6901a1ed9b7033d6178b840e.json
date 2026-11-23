@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every fact given: the event name (Swim class), the day (today, correct from now), the start 10:00 and end 11:00, with the morning stated so AM/PM is correct. No location or address was given, so none is missing; nothing invented, no unsupported travel or departure claims, no changed or overlap facts to handle. Bold is none, which is fine.",
+    "score": 5
+  }
+}

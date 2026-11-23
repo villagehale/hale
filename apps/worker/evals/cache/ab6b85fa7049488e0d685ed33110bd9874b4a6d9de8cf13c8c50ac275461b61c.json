@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "`turn_off_autonomy` ran this turn for send_email and reply_to_email, so 'Done' is true. The reply states the new behaviour plainly, asks nothing extra, has no greeting or sign-off, and stops.",
+    "score": 5
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "I'm on it, and the answer is coming. It'll land right here in this thread."
+  },
+  "latencyMs": 1027,
+  "usage": {
+    "input_tokens": 26,
+    "output_tokens": 33,
+    "cache_read_input_tokens": 2924,
+    "cache_creation_input_tokens": 0
+  }
+}

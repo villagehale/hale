@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly carries the family's referral link and tells Sam to forward it, which matches the referral capability. But the reply is padded well past what the question needed. It explains Hale's own limit (\"since I won't text them first\") and adds an onboarding claim (\"nothing to sign up for on their end\") that nothing in knows backs. It also closes on a product pitch before the link.",
+    "score": 3
+  }
+}

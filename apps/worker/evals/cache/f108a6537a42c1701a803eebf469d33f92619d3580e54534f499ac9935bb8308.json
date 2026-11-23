@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says in the first person and in English that Hale is on it and the answer is coming, matching watchFor. It does not hint at substance, describe actions, apologise, or add greetings or hype. The phrase 'It'll land right here in this thread' is a mild timing-adjacent statement of where the answer appears, but it does not state when, so it is a small deviation at most.",
+    "score": 4
+  }
+}
