@@ -37,6 +37,7 @@ import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
 import { deliverableNow, loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { SourceChange } from '~/lib/loop/reminders/change';
 import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
@@ -60,6 +61,11 @@ import {
   recordActivityBooking,
   senderHost,
 } from './booking';
+import {
+  type AppointmentFacts,
+  type AppointmentRead,
+  judgeKnownAppointment,
+} from './email-alert-appointment';
 import { emailAlertBodyEnabled } from './email-alert-body-flag';
 import {
   EMAIL_ALERT_NOTICE_BODY_MAX_CHARS,
@@ -73,6 +79,7 @@ import {
   recordEmailAlertOffer,
   withdrawEmailAlertOffer,
 } from './email-alert-offer';
+import { emailAlertOnceEnabled } from './email-alert-once-flag';
 import { parentsOwnMail } from './gmail-labels';
 import {
   type GoingCount,
@@ -207,6 +214,12 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** An earlier text for this occasion in this thread failed. Its claim stays held (the
    * ledger is at-most-once per key), so nothing is sent. */
   'occasion_send_failed',
+  /** VIL-762 · this email is an appointment already told. Nothing sent. */
+  'same_appointment',
+  /** VIL-762 · the appointment read could not be made. Nothing sent. */
+  'appointment_unjudged',
+  /** VIL-762 · a clash was found and the notice could not be written. Nothing sent. */
+  'clash_unwritten',
   /** VIL-662 · a matched team schedule change was held for the parent's yes. */
   'schedule_change_asked',
   /** VIL-662 · autonomy applied the matched move or cancel. */
@@ -642,6 +655,12 @@ export interface EmailAlertPorts {
     familyId: string,
     body?: string | null,
   ): Promise<EmailAlertNotice>;
+  /**
+   * VIL-762 · whether this email is an appointment already told, and whether it
+   * clashes. Called only when EMAIL_ALERT_ONCE_ENABLED is exactly `true` and
+   * there is a commitment to judge. Unset is a named miss.
+   */
+  judgeAppointment?(facts: AppointmentFacts, familyId: string): Promise<AppointmentRead>;
   gate(request: ProactiveSendRequest): Promise<ProactiveSendVerdict>;
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
@@ -891,6 +910,64 @@ export async function alertParentForEmail(
     now,
   });
 
+  // VIL-762 · one visit is told once, across threads, and a real overlap is named.
+  // The model decides both. Teen mail stays on the per-thread key: handing its
+  // time and place to another read would be the disclosure the facts already drop.
+  let clashes: EmailAlertNoticeFacts['clashes'] = undefined;
+  if (emailAlertOnceEnabled() && !extraction.teenContent && !teenAttributed) {
+    const judged = await judgeKnownAppointment(
+      database,
+      {
+        familyId,
+        parentUserId,
+        messageId,
+        timeZone: input.timeZone,
+        now,
+        extraction,
+        children,
+      },
+      ports.judgeAppointment,
+    );
+    if (judged.outcome === 'unjudged') {
+      await pageOps(database, {
+        site: 'email_alert_once_unsent',
+        facts: { stage: 'judgment', reason: judged.reason },
+      });
+      return { alert: 'appointment_unjudged', booking: null, going: null };
+    }
+    if (judged.outcome === 'same') {
+      await database.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'email_alert_same_appointment',
+        audience: parentUserId,
+        targetTable: 'families',
+        targetId: familyId,
+        after: { kind },
+      });
+      await closeIfCancelled();
+      return {
+        alert: 'same_appointment',
+        booking:
+          extraction.kind === 'booking_confirmation'
+            ? await recordQuietBooking(database, {
+                familyId,
+                parentUserId,
+                integrationId,
+                threadId,
+                messageId,
+                envelope: input.envelope,
+                extraction,
+                booked,
+                now,
+              })
+            : null,
+        going: null,
+      };
+    }
+    if (judged.outcome === 'clash') clashes = judged.clashes;
+  }
+
   const facts = emailAlertNoticeFacts({
     from: input.envelope.from,
     subject: input.envelope.subject,
@@ -909,6 +986,7 @@ export async function alertParentForEmail(
     otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
     language: await ports.parentLanguage(parentUserId, now),
     recentNotices: await readRecentNotices(database, { familyId, parentUserId }),
+    ...(clashes === undefined ? {} : { clashes }),
     durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
     receivedAt,
     timeZone: input.timeZone,
@@ -940,6 +1018,14 @@ export async function alertParentForEmail(
   }
   const notice = await ports.writeNotice(facts, familyId, body);
   if (!notice.send) {
+    if (clashes !== undefined && clashes.length > 0 && notice.why === 'unwritten') {
+      await pageOps(database, {
+        site: 'email_alert_once_unsent',
+        facts: { stage: 'clash_notice', reason: 'model_failed' },
+      });
+      console.info({ familyId }, 'email alert: clash unwritten, nothing sent');
+      return { alert: 'clash_unwritten', booking: null, going: null };
+    }
     console.info({ familyId, outcome: notice.why }, 'email alert: nothing sent');
     return { alert: NOT_SENT[notice.why], booking: null, going: null };
   }

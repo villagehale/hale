@@ -118,6 +118,9 @@ export const FLAGS = [
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
+  // VIL-762. One alert per real appointment, and a clash with a known commitment
+  // is named in that alert. The model decides both. Exact `true`.
+  exact('email-alert-once', 'EMAIL_ALERT_ONCE_ENABLED'),
   exact('f14', 'F14_ENABLED', {
     allowlistEnv: 'F14_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
