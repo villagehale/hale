@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import type { AgentClient } from '@hale/agent';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CoParentRefusal } from '~/lib/channel/caregiver/invites';
+import { createSpokenLineWriter, setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   coParentDeclineAck,
   coParentDepartedNotice,
+  coParentInviteDroppedAck,
   coParentInviteExpired,
+  coParentInviteSentAck,
   coParentReferrerUnnamed,
   coParentRefusal,
+  coParentSeatTakenLate,
+  coParentUnavailable,
   coParentWelcome,
   inviterNameIsAffordable,
 } from './copy';
@@ -74,5 +81,66 @@ describe('co-parent copy', () => {
       expect(departed?.toLowerCase()).toContain('co-parent');
     }
     expect(await coParentDepartedNotice('fr')).not.toBe(await coParentDepartedNotice('en'));
+  });
+});
+
+describe('VIL-706 · the co-parent door lines refuse an opt-out keyword with the door flag lit', () => {
+  afterEach(() => {
+    setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  /** The client port handing back one fixed draft, so the real writer's acceptance runs. */
+  function writerDrafting(text: string) {
+    const client = (): AgentClient =>
+      ({
+        messages: {
+          create: async () => ({
+            // Both shapes, so the stub does not depend on which the lane's request uses.
+            content: [
+              { type: 'text', text: JSON.stringify({ text }) },
+              { type: 'tool_use', id: 'draft', name: 'spoken_line', input: { text } },
+            ],
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }) as unknown as AgentClient;
+    return createSpokenLineWriter(client, { page: async () => 'paged' });
+  }
+
+  const LINES: Array<[string, () => Promise<string | null>]> = [
+    ['welcome', () => coParentWelcome('Ana', 'en')],
+    ['decline ack', () => coParentDeclineAck('en')],
+    ['invite sent', () => coParentInviteSentAck('Ana', 'en')],
+    ['invite dropped', () => coParentInviteDroppedAck('Ana', 'en')],
+    ['refusal', () => coParentRefusal('own_number', 'en')],
+    ['referrer unnamed', () => coParentReferrerUnnamed('en')],
+    ['unavailable', () => coParentUnavailable('en')],
+    ['seat taken late', () => coParentSeatTakenLate('en')],
+    ['departed notice', () => coParentDepartedNotice('en')],
+    ['invite expired', () => coParentInviteExpired('en')],
+  ];
+
+  it.each(LINES)('lit: %s drafted with a keyword is not sent', async (_name, line) => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    setSharedSpokenLineWriter(writerDrafting('Thanks, all set. Reply STOP anytime.'));
+    await expect(line()).resolves.toBeNull();
+  });
+
+  it.each(LINES)('lit: %s in plain words goes out (positive control)', async (_name, line) => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+    const plain = 'Thanks, all set. Tell me if you would rather I stop.';
+    setSharedSpokenLineWriter(writerDrafting(plain));
+    await expect(line()).resolves.toBe(plain);
+  });
+
+  it.each(LINES)('dark: %s keeps the acceptance it has today', async (_name, line) => {
+    vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', '');
+    const draft = 'Thanks, all set. Reply STOP anytime.';
+    setSharedSpokenLineWriter(writerDrafting(draft));
+    await expect(line()).resolves.toBe(draft);
   });
 });

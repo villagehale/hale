@@ -92,6 +92,7 @@ export const FLAGS = [
   exact('browser-use-signup', 'BROWSER_USE_SIGNUP_ENABLED'),
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
+  exact('caregiver-reminder-model-copy', 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
   exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
@@ -153,6 +154,7 @@ export const FLAGS = [
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
   exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
+  exact('join-door-model-copy', 'JOIN_DOOR_MODEL_COPY_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',

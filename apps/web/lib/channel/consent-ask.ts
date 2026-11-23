@@ -1,14 +1,21 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { joinDoorModelCopyEnabled } from '~/lib/channel/door-line';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { namesOptOutKeyword } from '~/lib/channel/opt-out';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
  * THE TEXT A PARENT, FOUNDER, CAREGIVER, OR CO-PARENT SEES.
  *
- * A model writes it. There is no fixed sentence and no token to recite. STOP
- * and ARRET stay available as the carrier opt-out on a first text to a stranger.
+ * A model writes it. There is no fixed sentence and no token to recite.
+ *
+ * VIL-706: dark, the skill still lets a first text to a stranger (and a nudge to one)
+ * name STOP or ARRET as the carrier opt-out. With JOIN_DOOR_MODEL_COPY_ENABLED lit, those
+ * four kinds carry the `consent-ask-no-keyword` addendum and a draft that names an
+ * opt-out keyword is unwritten: the stranger is told, in plain words, that they can say
+ * they would rather not hear from Hale. Every other kind keeps its bytes either way.
  *
  * A missing client, a missing skill, a model failure, or a draft that tells
  * them which token to type is unwritten, and the log names which. The caller
@@ -64,6 +71,23 @@ export function consentAskUserMessage(ask: ConsentAsk): string {
   return JSON.stringify(ask);
 }
 
+/** The first text to a stranger and a nudge to that stranger: the kinds the skill lets
+ * name STOP or ARRET while dark. */
+const STRANGER_KINDS: ReadonlySet<ConsentAsk['kind']> = new Set([
+  'caregiver_invite',
+  'caregiver_nudge',
+  'coparent_invite',
+  'coparent_nudge',
+]);
+
+/**
+ * VIL-706 · whether this ask is written without any opt-out keyword: one of the four
+ * stranger kinds, with JOIN_DOOR_MODEL_COPY_ENABLED lit. Shared with the eval.
+ */
+export function consentAskKeywordless(ask: ConsentAsk): boolean {
+  return STRANGER_KINDS.has(ask.kind) && joinDoorModelCopyEnabled();
+}
+
 export function toConsentAskText(raw: { text?: unknown }): string | null {
   if (typeof raw.text !== 'string') return null;
   const text = raw.text.trim();
@@ -80,9 +104,19 @@ function unwritten(reason: string, detail?: string): null {
   return null;
 }
 
-/** A draft that can go on the wire: no keyword instruction. Length is not a hold. */
-export function acceptConsentAsk(text: string): string | null {
+/**
+ * A draft that can go on the wire: no keyword instruction. Length is not a hold. With
+ * `refuseOptOutKeyword` (a keywordless ask, VIL-706), a draft that names STOP, ARRET,
+ * HELP or AIDE as a keyword is not one either.
+ */
+export function acceptConsentAsk(
+  text: string,
+  options: { refuseOptOutKeyword?: boolean } = {},
+): string | null {
   if (instructsConsentKeyword(text)) return unwritten('instructs_keyword');
+  if (options.refuseOptOutKeyword && namesOptOutKeyword(text) !== null) {
+    return unwritten('names_opt_out_keyword');
+  }
   return text;
 }
 
@@ -100,9 +134,13 @@ export function createConsentAskWriter(client: () => AgentClient): ConsentAskWri
         return unwritten('client_unavailable', message(err));
       }
 
+      const keywordless = consentAskKeywordless(ask);
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let extras: string[];
       try {
         skill = await loadCronSkill('consent-ask');
+        // A system extra, after the cache breakpoint: dark, the request keeps its bytes.
+        extras = keywordless ? [(await loadCronSkill('consent-ask-no-keyword')).instructions] : [];
       } catch (err) {
         return unwritten('skill_unavailable', message(err));
       }
@@ -112,6 +150,7 @@ export function createConsentAskWriter(client: () => AgentClient): ConsentAskWri
           client: resolved,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
+          ...(extras.length > 0 ? { systemExtras: extras } : {}),
           userMessage: consentAskUserMessage(ask),
           toolName: CONSENT_ASK_TOOL,
           toolDescription: 'Write the one text this person will see.',
@@ -121,7 +160,7 @@ export function createConsentAskWriter(client: () => AgentClient): ConsentAskWri
         });
         const text = toConsentAskText(value);
         if (!text) return unwritten('empty');
-        return acceptConsentAsk(text);
+        return acceptConsentAsk(text, { refuseOptOutKeyword: keywordless });
       } catch (err) {
         return unwritten('model_failed', message(err));
       }

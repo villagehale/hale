@@ -25,7 +25,6 @@ import { ACK_ETA_TEMPLATE_KEY, type AckPromiseInput } from '~/lib/channel/ack-et
 import type { AckTask } from '~/lib/channel/ack-eta/read';
 import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
 import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { createConsentAskWriter } from '~/lib/channel/consent-ask';
@@ -65,6 +64,7 @@ import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
 import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { setSharedSpokenLineWriter, speak } from '~/lib/channel/spoken-line';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -85,6 +85,7 @@ import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   INTRO_REPLY_FACTS,
   type IntroReplySituation,
@@ -955,6 +956,44 @@ describe('routing order', () => {
     expect(result.conversationId).toBe(conversationRows(h.fake)[0]?.id);
   });
 
+  /** VIL-706: a handler that held a door line says so, and the router names it. */
+  it('names a door line a claiming handler held', async () => {
+    const holding: DeterministicHandler = {
+      name: 'co_parent_number',
+      async detects() {
+        return true;
+      },
+      async handle() {
+        return {
+          claimed: true as const,
+          outcome: 'refused',
+          reply: null,
+          lineHeld: 'flag_off' as const,
+        };
+      },
+    };
+    const h = harness({ context: { body: '9055550182' }, handlers: [holding] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result).toMatchObject({
+      status: 'handled',
+      handler: 'co_parent_number',
+      lineHeld: 'flag_off',
+    });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('names no hold for a claiming handler that replied (positive control)', async () => {
+    const h = harness({ context: { body: 'done' }, handlers: [claimingHandler('health', 'Ok.')] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(result).not.toHaveProperty('lineHeld');
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
   /** A claimed message with no copy is a handler that already replied for itself; the
    * router must not invent a second message. */
   it('sends nothing when a handler claims without copy', async () => {
@@ -1719,6 +1758,7 @@ describe('the off-domain lane', () => {
 describe('a caregiver never reaches the agent', () => {
   for (const role of ['grandparent', 'nanny', 'babysitter'] as const) {
     it(`answers a ${role} with M6's scoped line and stops`, async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
       const handlers = [passingHandler('approval')];
       const coach = fakeCoach();
       const h = harness({ context: { role, body: 'what time is pickup?' }, handlers, coach });
@@ -1728,7 +1768,14 @@ describe('a caregiver never reaches the agent', () => {
       expect(result.status).toBe('not_a_parent');
       expect(coach.calls).toBe(0);
       expect(handlers[0]?.calls).toBe(0);
-      expect(h.transport.bodies()).toEqual([scopedReply('Sam')]);
+      expect(h.transport.bodies()).toEqual([
+        await speak({
+          purpose: 'caregiver_scoped_reply',
+          language: null,
+          facts: { parentName: 'Sam' },
+        }),
+      ]);
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
     });
   }
 
@@ -1745,6 +1792,7 @@ describe('a caregiver never reaches the agent', () => {
   /** Rule #6 is about the ACT of texting someone, not about which thread it landed in.
    * The one reply that belongs to no conversation still gets its ledger + audit rows. */
   it('still ledgers and audits the line it sent', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
     const h = harness({ context: { role: 'nanny' } });
     await routeChannelMessage(h.deps, job());
 
@@ -1752,6 +1800,56 @@ describe('a caregiver never reaches the agent', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.relatedConversationId).toBeNull();
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  });
+
+  describe('with the scoped line held (VIL-706)', () => {
+    afterEach(() => {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+    });
+
+    it('dark: sends nothing, names flag_off, and a redelivery is already answered', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+      const turns = fakeTurnLedger();
+      const first = harness({ context: { role: 'nanny' }, turns });
+
+      const result = await routeChannelMessage(first.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: 'flag_off' });
+      expect(first.transport.sent).toEqual([]);
+      expect(ledgerRows(first.fake).filter((r) => r.direction === 'out')).toEqual([]);
+
+      const again = harness({ context: { role: 'nanny' }, turns });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(again.transport.sent).toEqual([]);
+    });
+
+    it('lit, the model wrote nothing: sends nothing, names unwritten, and a redelivery is already answered', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+      setSharedSpokenLineWriter({ write: async () => null });
+      const turns = fakeTurnLedger();
+      const first = harness({ context: { role: 'babysitter' }, turns });
+
+      const result = await routeChannelMessage(first.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: 'unwritten' });
+      expect(first.transport.sent).toEqual([]);
+
+      const again = harness({ context: { role: 'babysitter' }, turns });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(again.transport.sent).toEqual([]);
+    });
+
+    it('lit and written: the line goes out and no hold is named (positive control)', async () => {
+      process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+      const h = harness({ context: { role: 'grandparent' } });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'not_a_parent', lineHeld: null });
+      expect(h.transport.sent).toHaveLength(1);
+    });
   });
 
   /** The legacy buckets role-scope.ts gives an empty scope. Anyone we cannot vouch for
@@ -2893,6 +2991,7 @@ describe('a re-driven turn never answers twice', () => {
   });
 
   it('claims the caregiver line too — it is an answer like any other', async () => {
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });
     expect((await routeChannelMessage(first.deps, job())).status).toBe('not_a_parent');
@@ -2901,6 +3000,7 @@ describe('a re-driven turn never answers twice', () => {
     const second = harness({ context: { role: 'nanny' }, turns });
     expect((await routeChannelMessage(second.deps, job())).status).toBe('already_answered');
     expect(second.transport.sent).toEqual([]);
+    process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
   });
 
   /**
@@ -8246,9 +8346,10 @@ describe('the reply row, written to a real database', () => {
         [
           'the line someone who is not a parent gets',
           { context: { role: 'nanny' } },
-          [scopedReply('Sam')],
+          ["That's one for Sam - I only share the schedule here."],
         ],
       ] as const)('%s', async (_label, options, said) => {
+        process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
         lit();
         const parent = await seedFamily(db.database);
         await text(parent, 'hows the weather tomorrow', OWN_CHAT);
@@ -8262,6 +8363,7 @@ describe('the reply row, written to a real database', () => {
 
         expect(next.said).toEqual(said);
         expect(await keptAsks(parent.familyId)).toEqual([]);
+        process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
       });
 
       it('a tapback that stood in for the words', async () => {

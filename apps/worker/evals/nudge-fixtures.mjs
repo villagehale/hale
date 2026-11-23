@@ -20,7 +20,7 @@
 // checked later would fail here as well as in the vitest suite.
 
 /** The opt-out sentence a composer must never write. Outbound texts no longer append it
- * (founder decision 2026-10-01). Mirrors NUDGE_OPT_OUT in nudge-voice.ts. */
+ * (founder decision 2026-10-01). Mirrors OPT_OUT_LINE in lib/channel/opt-out.ts. */
 export const NUDGE_OPT_OUT = 'Reply STOP to opt out.';
 
 function registration(over = {}) {

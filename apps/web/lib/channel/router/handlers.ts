@@ -1087,6 +1087,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
         outcome: outcome.status,
         reply: outcome.reply,
         ...('templateKey' in outcome ? { templateKey: outcome.templateKey } : {}),
+        ...('lineHeld' in outcome && outcome.lineHeld ? { lineHeld: outcome.lineHeld } : {}),
       };
     },
   };

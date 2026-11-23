@@ -1596,7 +1596,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   caregiver_invite_superseded_by_join: {
-    // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
+    // Says only what the parent's own number-in-use refusal already says to them —
     // never which household the number joined, which may not be theirs (rule #1).
     sentence: 'a caregiver invite closed because that number is already set up with Hale',
     family: 'note',
