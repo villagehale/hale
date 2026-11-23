@@ -5,6 +5,7 @@ import {
   closeCoParentInviteSeatTaken,
   familyHasCoParent,
   supersedeOpenInviteOnEnrollment,
+  thirdPartyInviteRouteEnabled,
 } from '~/lib/channel/caregiver/invites';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { maskPhoneE164 } from '~/lib/channels/phone';
@@ -95,7 +96,13 @@ export async function acceptCoParentInvite(
       .update(schema.caregiverInvites)
       .set({ state: 'accepted', closedAt: now, updatedAt: now })
       .where(
-        and(eq(schema.caregiverInvites.id, invite.id), isNull(schema.caregiverInvites.closedAt)),
+        and(
+          eq(schema.caregiverInvites.id, invite.id),
+          isNull(schema.caregiverInvites.closedAt),
+          thirdPartyInviteRouteEnabled()
+            ? eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply')
+            : undefined,
+        ),
       )
       .returning({ id: schema.caregiverInvites.id });
     if (claimed.length === 0) return { outcome: 'lost_race' };

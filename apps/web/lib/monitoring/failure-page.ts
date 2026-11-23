@@ -207,6 +207,11 @@ export const OPS_PAGE_VOCABULARY = {
     why: ['asked_for_reminder', 'host_cancelled'],
     stage: ['skill_load', 'after_retry'],
   },
+  /** VIL-759 · an invite Linq did not accept. `unclear` may still have reached the phone. */
+  third_party_invite_unsent: {
+    lane: ['co_parent', 'caregiver'],
+    why: ['refused', 'unclear'],
+  },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
@@ -405,6 +410,8 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  // VIL-759: one family's invite each.
+  'third_party_invite_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 
