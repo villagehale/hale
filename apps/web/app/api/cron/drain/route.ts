@@ -1,5 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import type { BillingNoticeTickResult } from '~/lib/billing/notices/run';
+import type { AckDeadlineSweepSummary } from '~/lib/channel/ack-eta/sweep';
 import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-recovery';
 import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery';
 import { cronRoute } from '~/lib/cron/auth';
@@ -97,6 +98,11 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // again here, since its next hourly slot is after the event starts. Before the queues,
   // for the same reason as the group reminders.
   const heldReminders = preview ? { skipped: 'preview' as const } : await runHeldReminderLeg();
+  // VIL-717: a slow ask whose stated time passed with no answer gets one honest note, and it
+  // is owed to the minute, so the sweep runs here too, before the queues. Flag off, the leg
+  // reads nothing and adds nothing to this response; a failed leg is named and the drain
+  // still runs.
+  const ackDeadlines = await runAckDeadlineLeg(preview);
   // VIL-734: a driver's schedule-change text Linq refused goes again on its backoff.
   const teamScheduleDrivers = preview
     ? { skipped: 'preview' as const }
@@ -141,6 +147,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
         firstReply,
         groupReminders,
         heldReminders,
+        ...(ackDeadlines ? { ackDeadlines } : {}),
         teamScheduleDrivers,
         optOutRecovery,
         anthropicCredit,
@@ -242,6 +249,28 @@ async function runAnthropicCreditLeg(): Promise<
     console.error(
       { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
       'cron/drain anthropic credit leg failed',
+    );
+    return { skipped: 'tick_failed' };
+  }
+}
+
+async function runAckDeadlineLeg(
+  preview: boolean,
+): Promise<AckDeadlineSweepSummary | { skipped: 'preview' | 'tick_failed' } | null> {
+  try {
+    const { ackEtaEnabled } = await import('~/lib/channel/ack-eta/flag');
+    if (!ackEtaEnabled()) return null;
+    if (preview) return { skipped: 'preview' };
+    const { runAckDeadlineSweep } = await import('~/lib/channel/ack-eta/sweep');
+    const { ackDeadlinePorts } = await import('~/lib/channel/ack-eta/production');
+    const { db } = await import('~/lib/db');
+    const database = db();
+    return await runAckDeadlineSweep(database, ackDeadlinePorts(database), new Date());
+  } catch (err) {
+    // The name only: a message from inside the leg may carry what it was reading.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain ack deadline leg failed',
     );
     return { skipped: 'tick_failed' };
   }

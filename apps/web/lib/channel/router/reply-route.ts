@@ -70,7 +70,13 @@ export interface ReplySent {
 export interface ReplyTransport {
   /** `sendKey` names this send to the provider (Linq's idempotency key), so a resend under
    * the same key is dropped. Absent: the provider mints one. */
-  send(input: { route: ReplyRoute; body: string; sendKey?: string }): Promise<ReplySent>;
+  send(input: {
+    route: ReplyRoute;
+    body: string;
+    sendKey?: string;
+    /** See `sendLinqChatMessage`: an unclear answer to the threaded try is not resent plain. */
+    plainResendOnlyIfRefused?: boolean;
+  }): Promise<ReplySent>;
 }
 
 /** Records every send with the route it went out on — the assertion surface for "was

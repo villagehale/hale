@@ -92,6 +92,8 @@ function unreviewedAfterFreeze(entries: Record<string, string>): string[] {
  * decision.
  */
 const NOT_IN_EXPORT: Record<string, string> = {
+  ack_promises:
+    "VIL-717 promised reply time per slow ask: a task category, ids and times, no words; each promise and how it ended is an audit row in the asking adult's own export",
   family_sweep_marks: 'scheduling metadata, no family content',
   family_signup_help_seasons:
     'seasonal Browser Use attempt counts (season key and a number); no child, URL, or registration content',

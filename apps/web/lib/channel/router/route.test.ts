@@ -19,6 +19,11 @@ vi.mock('~/lib/channel/linq/effect', async (importOriginal) => ({
   sharedLinqEffectDecider: () => ({ decide: effectDecide }),
 }));
 import { SCHOOL_BREAK_ENABLED_ENV } from '~/lib/care/school-break/flag';
+import type { AckEtaRouterPorts } from '~/lib/channel/ack-eta/arm';
+import { ACK_ETA_ENABLED_ENV } from '~/lib/channel/ack-eta/flag';
+import { ACK_ETA_TEMPLATE_KEY, type AckPromiseInput } from '~/lib/channel/ack-eta/promise';
+import type { AckTask } from '~/lib/channel/ack-eta/read';
+import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
@@ -76,6 +81,7 @@ import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordSignupOffer } from '~/lib/signup/store';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
@@ -364,6 +370,7 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
  */
 function fakeTurnLedger(): InboundTurnLedger & {
   answered: string[];
+  nothingSent: string[];
   deferred: string[];
   deferredReasons: {
     channelMessageId: string;
@@ -377,6 +384,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
 } {
   const ledger = {
     answered: [] as string[],
+    nothingSent: [] as string[],
     deferred: [] as string[],
     folded: [] as string[],
     deferredReasons: [] as {
@@ -394,8 +402,9 @@ function fakeTurnLedger(): InboundTurnLedger & {
       if (ledger.deferred.includes(channelMessageId)) return 'deferred';
       return 'fresh';
     },
-    async recordAnswered(input: { channelMessageId: string }) {
+    async recordAnswered(input: { channelMessageId: string; nothingSent?: boolean }) {
       ledger.answered.push(input.channelMessageId);
+      if (input.nothingSent) ledger.nothingSent.push(input.channelMessageId);
       return 'claimed' as const;
     },
     // A side turn's (side-turn.ts): dark in every test here.
@@ -627,6 +636,7 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingTapback?: HoldingTapbackComposer;
+    ackEta?: AckEtaRouterPorts;
     sendParentReaction?: ChannelRouterDeps['sendParentReaction'];
     holdingLineAfterMs?: number;
     bubbleGapMs?: number;
@@ -723,6 +733,7 @@ function harness(
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       holdingTapback: options.holdingTapback ?? fakeHoldingTapback(),
+      ackEta: options.ackEta ?? quietAckEtaPorts(),
       sendParentReaction:
         options.sendParentReaction ??
         (async ({ reaction }) => {
@@ -6939,6 +6950,9 @@ describe('a slow answer gets one holding line first', () => {
 
   beforeEach(() => {
     vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+    // The holding line on its own: the all-flags-on job lights VIL-717's ack, whose block
+    // below covers that turn shape.
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, '');
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -7403,6 +7417,433 @@ describe('a slow answer gets one holding line first', () => {
       expect.objectContaining({ coachMs: expect.any(Number) }),
       'channel router: routed',
     ]);
+  });
+});
+
+/**
+ * VIL-717 · a slow 1:1 ask gets an ack with a time, written from facts.
+ *
+ * The read, the writer and the promise ledger are ports here: what the model reads and
+ * writes is the cached eval's job (rule #8), and the gate's own mechanics are driven in
+ * channel/ack-eta/*.test.ts. These pin what the ROUTER does with their answers: when the
+ * ack is armed, where it goes, that it never lands after the answer, and that a turn the
+ * ack does not cover is exactly the holding line's.
+ */
+describe('VIL-717 · a slow ask gets an ack with a time (ACK_ETA_ENABLED)', () => {
+  const IMESSAGE_REACT: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-1',
+    replyToMessageId: 'parent-msg-1',
+    service: 'iMessage',
+  };
+
+  function slowCoach(ms: number, reply: string): ChannelCoachRuntime {
+    const inner = fakeCoach(reply);
+    return {
+      async respond(turn, rejected) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return inner.respond(turn, rejected);
+      },
+    };
+  }
+
+  /** Ack ports answering as scripted. `task` is what the read reports; `write` what the
+   * writer returns. Request mechanics only. */
+  function ackPorts(
+    options: {
+      task?: AckTask | 'none' | 'unread';
+      write?:
+        | { status: 'composed'; line: string }
+        | { status: 'unavailable'; reason: 'gate_exhausted' };
+    } = {},
+  ) {
+    const reads: string[] = [];
+    const writes: unknown[] = [];
+    const records: AckPromiseInput[] = [];
+    const pages: unknown[] = [];
+    const ports: AckEtaRouterPorts = {
+      reader: {
+        async read(parentText) {
+          reads.push(parentText);
+          const task = options.task ?? 'find';
+          return task === 'unread'
+            ? { status: 'unread', reason: 'model_failed' }
+            : { status: 'read', task };
+        },
+      },
+      writer: {
+        async ack(input) {
+          writes.push(input);
+          return options.write ?? { status: 'composed', line: 'the ack, from facts' };
+        },
+        lateNote: async () => ({ status: 'unavailable', reason: 'client_unavailable' }),
+      },
+      async record(_database, input) {
+        records.push(input);
+        return { status: 'recorded', promiseId: 'promise-1' };
+      },
+      promiseFor: async () => false,
+      async page(_database, page) {
+        pages.push(page);
+        return 'paged';
+      },
+    };
+    return { ports, reads, writes, records, pages };
+  }
+
+  beforeEach(() => {
+    vi.stubEnv(HOLDING_LINE_ENABLED_ENV, 'true');
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('an SMS slow ask: the ack goes first, from facts, and its promise is written', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE, body: 'find us a swim class on saturdays' },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    // The read is the only step that sees the parent's words; the writer gets facts.
+    expect(ack.reads).toEqual(['find us a swim class on saturdays']);
+    expect(ack.writes).toEqual([
+      { task: 'find', withinMinutes: ackWindowMinutes(), language: null },
+    ]);
+    expect(ack.records).toEqual([
+      expect.objectContaining({
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        inboundChannelMessageId: job().channel_message_id,
+        task: 'find',
+        channel: 'sms',
+        providerChatId: null,
+        replyToMessageId: null,
+        promisedMinutes: ackWindowMinutes(),
+        askedAt: NOW,
+      }),
+    ]);
+    const ackRow = ledgerRows(h.fake).find((row) => row.templateKey === ACK_ETA_TEMPLATE_KEY);
+    expect(ackRow).toBeDefined();
+    expect(ack.records[0]?.ackChannelMessageId).toBe(ackRow?.id);
+    // The ack is not the answer: only the real answer claims the turn.
+    expect(h.turns.answered).toEqual([job().channel_message_id]);
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ outcome: 'ack_sent', task: 'find', promise: 'recorded' }),
+      expect.any(String),
+    ]);
+  });
+
+  it('an iMessage slow ask: the ack text stands in for the tapback, never both', async () => {
+    const ack = ackPorts({ task: 'registration' });
+    const tapback = fakeHoldingTapback();
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    expect(h.reactions).toEqual([]);
+    expect(tapback.calls).toBe(0);
+    expect(ack.records).toEqual([
+      expect.objectContaining({
+        task: 'registration',
+        channel: 'imessage',
+        providerChatId: 'chat-1',
+        replyToMessageId: 'parent-msg-1',
+      }),
+    ]);
+  });
+
+  it('not a slow ask on iMessage: the holding tapback goes exactly as with the flag off', async () => {
+    const ack = ackPorts({ task: 'none' });
+    const tapback = fakeHoldingTapback();
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(h.reactions).toEqual([{ type: 'like' }]);
+    expect(tapback.calls).toBe(1);
+    expect(ack.writes).toEqual([]);
+    expect(ack.records).toEqual([]);
+  });
+
+  it('not a slow ask on SMS: nothing goes before the answer, as today', async () => {
+    const ack = ackPorts({ task: 'none' });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.reads).toHaveLength(1);
+    expect(ack.writes).toEqual([]);
+    expect(h.logs).toContainEqual([{ outcome: 'not_a_slow_ask' }, expect.any(String)]);
+  });
+
+  it('a quick answer gets no ack: nothing is read, written or sent', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const h = harness({
+      ackEta: ack.ports,
+      holdingLineAfterMs: 200,
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(ack.reads).toEqual([]);
+    expect(ack.writes).toEqual([]);
+    expect(ack.records).toEqual([]);
+  });
+
+  it('an ack the model cannot write: nothing is sent, #ops is paged, the answer still comes', async () => {
+    const ack = ackPorts({
+      task: 'research',
+      write: { status: 'unavailable', reason: 'gate_exhausted' },
+    });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.pages).toEqual([{ stage: 'ack', reason: 'gate_exhausted' }]);
+    expect(ack.records).toEqual([]);
+    expect(ledgerRows(h.fake).some((row) => row.templateKey === ACK_ETA_TEMPLATE_KEY)).toBe(false);
+  });
+
+  it('a read that cannot answer: no ack, #ops is paged, and the tapback still goes on iMessage', async () => {
+    const ack = ackPorts({ task: 'unread' });
+    const tapback = fakeHoldingTapback();
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingTapback: tapback,
+      holdingLineAfterMs: 10,
+      context: { reply: IMESSAGE_REACT },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.pages).toEqual([{ stage: 'read', reason: 'model_failed' }]);
+    expect(ack.writes).toEqual([]);
+    expect(h.reactions).toEqual([{ type: 'like' }]);
+  });
+
+  it('never in front of a crisis or medical answer: nothing is read or sent', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const medicalLane: OffDomainLane = {
+      async consider(input) {
+        const verdict: OffDomainVerdict = {
+          status: 'deflected',
+          lane: 'safety_critical',
+          category: 'medical-symptom',
+          reply: 'the medical answer',
+          replySource: 'web_grounded',
+          medicalSource: 'web_grounded',
+          signal: 'not_applicable',
+          pendingAsk: null,
+        };
+        input.onScreened?.(screenedAs(verdict));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return verdict;
+      },
+    };
+    const h = harness({
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      offDomain: medicalLane,
+      context: { reply: SMS_ROUTE },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('deflected');
+    expect(h.transport.bodies()).toEqual(['the medical answer']);
+    expect(ack.reads).toEqual([]);
+    expect(h.logs).toContainEqual([{ outcome: 'safety_lane' }, expect.any(String)]);
+  });
+
+  it('a burst that used up the wait still gets the ack, once the screen has read the text', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const slowScreen: OffDomainLane = {
+      async consider(input) {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        input.onScreened?.(screenedAs(IN_DOMAIN));
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      offDomain: slowScreen,
+      burst: fakeBurst({ kind: 'lone', waitedMs: 8_000, why: 'alone' }),
+      context: { reply: SMS_ROUTE, body: 'find us a swim class on saturdays' },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    expect(ack.reads).toEqual(['find us a swim class on saturdays']);
+    expect(ack.records).toHaveLength(1);
+  });
+
+  it('a screen that ends without a reading is still no ack: the wait never stands in for it', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const blindScreen: OffDomainLane = {
+      async consider() {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return IN_DOMAIN;
+      },
+    };
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      offDomain: blindScreen,
+      burst: fakeBurst({ kind: 'lone', waitedMs: 8_000, why: 'alone' }),
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.reads).toEqual([]);
+    expect(h.logs).toContainEqual([{ outcome: 'unscreened' }, expect.any(String)]);
+  });
+
+  it('an ack Linq took whose ledger row failed is named as sent, never as not sent', async () => {
+    const ack = ackPorts({ task: 'find' });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE },
+    });
+    const database = h.deps.database;
+    h.deps.database = new Proxy(database, {
+      get(target, key, receiver) {
+        if (key !== 'insert') return Reflect.get(target, key, receiver);
+        return (table: never) => {
+          const builder = target.insert(table);
+          if (table !== schema.channelMessages) return builder;
+          return {
+            values: (row: { templateKey?: string | null }) =>
+              row.templateKey === ACK_ETA_TEMPLATE_KEY
+                ? { returning: () => Promise.reject(new Error('ledger down')) }
+                : builder.values(row as never),
+          };
+        };
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    // Linq took it, and the answer still follows it.
+    expect(h.transport.bodies()).toEqual(['the ack, from facts', 'the real answer']);
+    // No ledger row to write the promise against, so no late note can follow this ack.
+    expect(ack.records).toEqual([]);
+    expect(h.logs).toContainEqual([
+      expect.objectContaining({ outcome: 'ack_sent_unrecorded', task: 'find' }),
+      expect.any(String),
+    ]);
+    expect(JSON.stringify(h.logs)).not.toContain('ack_send_failed');
+  });
+
+  it('never in a group thread, and never on a re-drive', async () => {
+    const group = ackPorts({ task: 'find' });
+    const inGroup = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: group.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: { ...IMESSAGE_REACT, chatId: 'chat-family-group' }, inGroup: true },
+    });
+    await routeChannelMessage(inGroup.deps, job({ in_group: true }));
+    expect(group.reads).toEqual([]);
+    expect(inGroup.logs).toContainEqual([{ outcome: 'group_thread' }, expect.any(String)]);
+
+    const redrive = ackPorts({ task: 'find' });
+    const turns = fakeTurnLedger();
+    turns.deferred.push(job().channel_message_id);
+    const again = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: redrive.ports,
+      holdingLineAfterMs: 10,
+      turns,
+      context: { reply: SMS_ROUTE },
+    });
+    await routeChannelMessage(again.deps, job());
+    expect(again.transport.bodies()).toEqual(['the real answer']);
+    expect(redrive.reads).toEqual([]);
+    expect(again.logs).toContainEqual([{ outcome: 're_driven' }, expect.any(String)]);
+  });
+
+  it.each([
+    ['lit', 'true', [job().channel_message_id]],
+    ['off', 'false', []],
+  ])(
+    '%s: a turn that closes with nothing sent is marked only for the sweep',
+    async (_label, value, marked) => {
+      vi.stubEnv(ACK_ETA_ENABLED_ENV, value);
+      const h = harness({ coach: fakeCoach(''), context: { reply: SMS_ROUTE } });
+
+      const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      expect(result.status).toBe('agent_silent');
+      expect(h.turns.answered).toEqual([job().channel_message_id]);
+      expect(h.turns.nothingSent).toEqual(marked);
+    },
+  );
+
+  it.each([
+    ['unset', undefined],
+    ['true with a trailing newline', 'true\n'],
+    ['TRUE', 'TRUE'],
+  ])('dark when ACK_ETA_ENABLED is %s: an SMS slow ask is today’s turn', async (_label, value) => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, value);
+    const ack = ackPorts({ task: 'find' });
+    const h = harness({
+      coach: slowCoach(150, 'the real answer'),
+      ackEta: ack.ports,
+      holdingLineAfterMs: 10,
+      context: { reply: SMS_ROUTE },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(h.transport.bodies()).toEqual(['the real answer']);
+    expect(ack.reads).toEqual([]);
+    expect(h.logs).toContainEqual([{ outcome: 'sms' }, expect.any(String)]);
   });
 });
 
@@ -9735,6 +10176,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
    * words nothing goes, and the turn ends on a named outcome rather than a crash.
    */
   it('an empty reply with a card sends nothing and names the card it withheld', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     const cards: unknown[] = [];
     const { h } = bubbleTurn({
       reply: '',
@@ -9751,6 +10193,7 @@ describe('one answer as several bubbles on a 1:1 iMessage chat', () => {
     expect(h.transport.sent).toEqual([]);
     expect(cards).toEqual([]);
     expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.nothingSent).toEqual([ID]);
     expect(JSON.stringify(h.logs)).toContain('{"outcome":"empty_reply_card_withheld"}');
   });
 
@@ -9957,6 +10400,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
   ])(
     'lit, alone: when %s fails after the tapback landed, nothing more is sent',
     async (_label, fail, outcome) => {
+      vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
       const reactions = linq();
       const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
       fail(h);
@@ -9967,6 +10411,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
       // The tapback answered: not the words beside it, and not an apology.
       expect(h.transport.sent).toEqual([]);
       expect(result.status).toBe('agent_reacted');
+      expect(h.turns.nothingSent).toEqual([]);
       expect(JSON.stringify(h.logs)).toContain(outcome);
     },
   );
@@ -9988,6 +10433,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
   });
 
   it('lit, alone, refused: nothing is sent at all, and the turn is claimed under its own name', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     const reactions = linq(409);
     const { h } = reactionTurn({ reply: 'Anytime!', reaction: LOVE_ALONE });
 
@@ -9998,6 +10444,7 @@ describe('a tapback the model chose, on a 1:1 iMessage chat', () => {
     expect(h.transport.sent).toEqual([]);
     expect(result.status).toBe('agent_reaction_unsent');
     expect(h.turns.answered).toEqual([ID]);
+    expect(h.turns.nothingSent).toEqual([ID]);
     expect(auditRows(h.fake).filter((row) => row.actionTaken === 'linq_tapback')).toEqual([]);
     expect(JSON.stringify(h.logs)).toContain('reaction_unsent');
   });
@@ -10658,6 +11105,7 @@ describe('a garbled coach reply sends nothing', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('no apology, no deferral, the failure recorded by name, and a redelivery never reruns the coach', async () => {
+    vi.stubEnv(ACK_ETA_ENABLED_ENV, 'true');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const turns = fakeTurnLedger();
@@ -10673,6 +11121,7 @@ describe('a garbled coach reply sends nothing', () => {
     expect(door.fetchSpy).not.toHaveBeenCalled();
     expect(apology.calls).toBe(0);
     expect(turns.failed.map((f) => f.reason)).toEqual(['garbled_text']);
+    expect(turns.nothingSent).toEqual([job().channel_message_id]);
     expect(turns.deferred).toEqual([]);
 
     const rerun = fakeCoach('should never run');
