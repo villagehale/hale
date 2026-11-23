@@ -694,7 +694,38 @@ describe('a number on the SMS door', () => {
       return rows.length;
     }
 
-    it.each(['yes', 'no'])(
+    it('policy on: a no to a held invite is honoured, with nothing texted back', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const { seeded, turn } = await seedTurn();
+      const sendSms = vi.fn(async () => {
+        throw new LinqSendError('timeout', 0, false);
+      });
+      await expect(deliverCoParentNumberInvite(db.database, { ...turn, sendSms })).rejects.toThrow();
+
+      const { outcome, bodies } = await answerFrom(COPARENT_PHONE, 'no', 'in-held-no');
+      const redelivered = await answerFrom(COPARENT_PHONE, 'no', 'in-held-no');
+
+      expect(outcome.status).toBe('co_parent_declined');
+      expect(bodies).toEqual([]);
+      expect(redelivered.outcome.status).toBe('duplicate');
+      expect(redelivered.bodies).toEqual([]);
+      expect(await inviteStates()).toEqual(['declined']);
+      expect(await memberRoles(seeded.familyId)).toEqual(['primary_parent']);
+      expect(await inviteReplyConsents()).toBe(0);
+      const again = await startCoParentInvite(db.database, {
+        familyId: seeded.familyId,
+        invitedByUserId: seeded.parentUserId,
+        inviterPhoneE164: PARENT_PHONE,
+        inviterName: 'Jimmy',
+        parsed: { ok: true, role: 'co_parent', name: 'Sam', phoneE164: COPARENT_PHONE },
+        language: 'en',
+        now: NOW,
+        ask: askWriter(),
+      });
+      expect(again).toMatchObject({ status: 'refused', reason: 'previously_declined' });
+    });
+
+    it.each(['yes', 'maybe later'])(
       'policy on: "%s" to a held invite binds nothing and is answered as a stranger is',
       async (answer) => {
         vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');

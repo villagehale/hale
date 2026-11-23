@@ -489,6 +489,29 @@ export async function handleLapsedInviteReply(
   return { status: 'invite_expired_answered', role: invite.role };
 }
 
+/**
+ * The person's no to an invite whose text may not have reached them. It closes the invite
+ * and is remembered like any refusal, so they are not asked again. Nothing is texted back:
+ * to a number that never got the invite, a reply would say that somebody named it.
+ */
+export async function handleHeldInviteRefusal(
+  database: Database,
+  args: { invite: CoParentInvite; inbound: InboundMessage; now: Date },
+): Promise<CoParentOutcome> {
+  const { invite, inbound, now } = args;
+  await record(database, {
+    familyId: invite.familyId,
+    parentUserId: invite.invitedByUserId,
+    lane: 'co_parent',
+    direction: 'in',
+    providerId: inbound.providerId,
+    body: null,
+    now,
+  });
+  await declineInvite(database, { invite, by: 'caregiver', now });
+  return { status: 'co_parent_declined' };
+}
+
 async function handleCaregiverInviteReply(
   database: Database,
   args: { invite: CaregiverLaneInvite; phoneE164: string; inbound: InboundMessage; now: Date },

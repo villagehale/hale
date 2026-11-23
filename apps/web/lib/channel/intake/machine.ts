@@ -17,6 +17,7 @@ import {
   type CoParentOutcome,
   type LapsedInviteOutcome,
   type OpenQuestionsForParent,
+  handleHeldInviteRefusal,
   handleInviteReply,
   handleKnownNumberInbound,
   handleLapsedInviteReply,
@@ -747,6 +748,18 @@ async function runIntakeTurn(
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
       return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
+    }
+    // The text may never have reached this number, so only a refusal binds to it.
+    if (invite?.state === 'send_unconfirmed' && invite.role === 'co_parent') {
+      const read = await readConsent(deps.consent, {
+        question: 'coparent_invite',
+        text: inbound.body,
+      });
+      if (read?.verdict === 'no') {
+        return claimedTurn(database, inbound, now, () =>
+          handleHeldInviteRefusal(database, { invite, inbound, now }),
+        );
+      }
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
