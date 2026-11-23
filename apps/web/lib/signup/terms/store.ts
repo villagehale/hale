@@ -65,7 +65,6 @@ const amountSchema = z.discriminatedUnion('kind', [
     plusTax: z
       .object({ kind: z.enum(['rate', 'ceiling']), basisPoints: z.number().int().positive() })
       .nullable(),
-    limitCents: z.number().int().positive().nullable(),
   }),
   z.object({
     kind: z.literal('ceiling'),

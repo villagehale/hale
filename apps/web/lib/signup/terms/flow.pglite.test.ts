@@ -20,7 +20,7 @@ import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from '../plan/flag';
 import type { MismatchReader } from '../plan/mismatch-reader';
 import { createPlanNotifier } from '../plan/notice';
 import { recordPlanNotice } from '../plan/prep';
-import type { PlanReader, PlanReading } from '../plan/reader';
+import { type PlanReader, type PlanReading, toPlanReading } from '../plan/reader';
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from '../plan/run';
 import { cancelSignupPlan, parkSignupPlan } from '../plan/store';
 import type { PlanReplyFacts, PlanReplyWriter } from '../plan/writer';
@@ -71,7 +71,7 @@ const YES: PlanReading = {
   waiverAccepted: false,
   named: null,
   prerequisiteMet: null,
-  limitWrittenCents: null,
+  ceilingCents: null,
 };
 
 let db: TestDb;
@@ -232,12 +232,14 @@ async function yes(
     body?: string;
     inGroup?: boolean;
     writer?: PlanReplyWriter;
+    reader?: PlanReader;
+    declineSeat?: () => Promise<boolean>;
     dobReader?: DobReader;
     mismatchReader?: MismatchReader;
     sendProviderEmail?: (input: { to: string; subject: string; body: string }) => Promise<void>;
   } = {},
 ) {
-  const planReader: PlanReader = { read: vi.fn(async () => reading) };
+  const planReader: PlanReader = options.reader ?? { read: vi.fn(async () => reading) };
   const { planWriter, written } = writer();
   const browserUseSignup = { run: vi.fn() };
   const result = await runAuthorizedSignup(
@@ -253,6 +255,7 @@ async function yes(
     {
       planReader,
       planWriter: options.writer ?? planWriter,
+      declineSeat: options.declineSeat,
       dobReader: options.dobReader,
       mismatchReader: options.mismatchReader,
       sendProviderEmail: options.sendProviderEmail,
@@ -531,7 +534,6 @@ describe('the yes', () => {
       cents: [8488],
       currency: 'cad',
       plusTax: null,
-      limitCents: null,
     });
     expect(terms?.approved?.hold).toBeNull();
     expect(turn.written.at(-1)?.terms?.runsNow).toBe(false);
@@ -547,6 +549,67 @@ describe('the yes', () => {
     const direct = await yes(f, YES);
     expect(direct.result.outcome).toBe('plan_approved');
     expect((await offerRow(offerId)).status).toBe('planned');
+  });
+
+  describe('a yes with money of their own beside it', () => {
+    const body = 'yes up to $100';
+    // The stipulated model output takes the worst read: a plain approval of the stated price.
+    const approvesPrice: PlanReader = {
+      read: vi.fn(async ({ text, offer }) =>
+        toPlanReading(
+          {
+            reason: 'r',
+            said: text,
+            named: null,
+            verdict: 'approve',
+            choiceIds: ['s-1'],
+            maxPriceCents: 8488,
+            waiverSaid: null,
+            waiverAccepted: false,
+            question: null,
+            prerequisiteSaid: null,
+            prerequisiteMet: null,
+          },
+          offer,
+          text,
+        ),
+      ),
+    };
+
+    it('asks about the stated price with the price in hand, then a plain yes binds it', async () => {
+      const f = await household();
+      const offerId = await askedAndSent(f);
+      const turn = await yes(f, YES, { body, reader: approvesPrice });
+      expect(turn.result.outcome).toBe('plan_clarify');
+      const asked = turn.written.at(-1);
+      expect(asked?.question).toMatch(/stated price/);
+      expect(asked?.terms?.rates.map((row) => row.cents)).toEqual([8488]);
+      expect((await offerRow(offerId)).status).toBe('pending');
+      expect((await termsRow(offerId))?.approved).toBeNull();
+
+      const next = await yes(f, YES);
+      expect(next.result.outcome).toBe('plan_approved');
+      expect((await termsRow(offerId))?.approved?.sessions[0]?.amount).toEqual({
+        kind: 'exact',
+        cents: [8488],
+        currency: 'cad',
+        plusTax: null,
+      });
+    });
+
+    it('a seat that may not authorize this sign-up is not told the price', async () => {
+      const f = await household();
+      const offerId = await askedAndSent(f);
+      const turn = await yes(f, YES, {
+        body,
+        reader: approvesPrice,
+        declineSeat: async () => true,
+      });
+      expect(turn.result.outcome).toBe('plan_clarify');
+      expect(turn.written.at(-1)?.moment).toBe('clarify');
+      expect(turn.written.at(-1)?.terms).toBeUndefined();
+      expect((await termsRow(offerId))?.approved).toBeNull();
+    });
   });
 
   it('terms that never reached them bind nothing: they go out as a new ask, then bind', async () => {
@@ -1158,7 +1221,7 @@ describe('the yes, against what happened since the ask', () => {
   it('on a page with no course model, the class is bound by the offer name', async () => {
     const f = await household();
     const offerId = await askedAndSent(f, { page: '<html><body>Swim class</body></html>' });
-    const turn = await yes(f, { ...YES, limitWrittenCents: 8488 });
+    const turn = await yes(f, { ...YES, ceilingCents: 8488 });
     expect(turn.result.outcome).toBe('plan_approved');
     const session = (await termsRow(offerId))?.approved?.sessions[0];
     if (!session) throw new Error('no bound session');

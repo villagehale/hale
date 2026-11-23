@@ -136,6 +136,16 @@ export const SIGNUP_TERMS_WRITER_FIXTURES = [
     'Says an earlier try may have gone through, to check their card and email first, and that Hale will stop at checkout this time.',
   ),
   {
+    id: 'clarify-stated-price',
+    facts: {
+      ...BASE,
+      moment: 'clarify',
+      question: 'They put an amount of their own beside their yes. May Hale pay the stated price?',
+    },
+    watchFor:
+      'Asks whether Hale may pay $84.88. States no other amount, does not say the child is registered, and does not restate the refund or age terms.',
+  },
+  {
     id: 'ack-runs-now',
     facts: { ...BASE, moment: 'approved', maxPriceCents: 8488, terms: { ...TERMS, runsNow: true } },
     watchFor:
@@ -230,7 +240,7 @@ const READ_OFFER = {
   ],
 };
 const READ_TERMS = {
-  boundCents: [8488],
+  sessionPrices: [{ sessionId: 's-1', cents: [8488] }],
   freeSessionIds: [],
   prerequisiteRequired: false,
   prerequisiteQuote: null,
@@ -242,19 +252,19 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-bare-yes',
     text: 'yes please',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
   },
   {
     id: 'read-yes-with-limit',
     text: 'yes, up to $100',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 10000, limitWrittenCents: 10000 },
+    expect: { verdict: 'unclear' },
   },
   {
     id: 'read-yes-french',
     text: 'oui, vas-y',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
   },
   {
     id: 'read-prerequisite-met',
@@ -314,30 +324,64 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-limit-french-comma',
     text: 'oui, pas plus de 90,50 $',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 9050, limitWrittenCents: 9050 },
+    expect: { verdict: 'unclear' },
   },
   {
-    id: 'read-past-price-is-no-limit',
+    id: 'read-limit-bare-number',
+    text: 'yes but no more than 60',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'unclear' },
+  },
+  {
+    id: 'read-past-price-asks',
     text: 'yes please, last year it was $40 so this is fine',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+    expect: { verdict: 'unclear' },
   },
   {
-    id: 'read-credit-is-no-limit',
+    id: 'read-credit-asks',
     text: 'yes go ahead, we got a $20 credit from them',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: null },
+    expect: { verdict: 'unclear' },
   },
   {
     id: 'read-limit-beside-a-level',
     text: 'yes for level 3, 100 dollars max',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 10000, limitWrittenCents: 10000 },
+    expect: { verdict: 'unclear' },
+  },
+  {
+    id: 'read-price-echoed',
+    text: 'yes, $84.88 is fine',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+  },
+  {
+    id: 'read-level-is-no-condition',
+    text: 'yes, she just finished level 3',
+    offer: { ...READ_OFFER, terms: READ_TERMS },
+    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+  },
+  {
+    id: 'read-unpriced-ceiling',
+    text: 'yes, up to $150',
+    offer: {
+      ...READ_OFFER,
+      terms: { ...READ_TERMS, sessionPrices: [{ sessionId: 's-1', cents: [] }] },
+    },
+    expect: { verdict: 'approve', maxPriceCents: 15000, ceilingCents: 15000 },
   },
   {
     id: 'read-free',
     text: 'yes sign her up',
-    offer: { ...READ_OFFER, terms: { ...READ_TERMS, boundCents: [], freeSessionIds: ['s-1'] } },
+    offer: {
+      ...READ_OFFER,
+      terms: {
+        ...READ_TERMS,
+        sessionPrices: [{ sessionId: 's-1', cents: [0] }],
+        freeSessionIds: ['s-1'],
+      },
+    },
     expect: { verdict: 'approve', maxPriceCents: 0 },
   },
 ];

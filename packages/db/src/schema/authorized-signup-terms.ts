@@ -78,8 +78,6 @@ export type SignupTermsAmount =
       cents: number[];
       currency: 'cad' | 'usd' | null;
       plusTax: SignupTermsTaxBound | null;
-      /** A lower limit the parent wrote. It never widens `cents`. */
-      limitCents: number | null;
     }
   /** Only when no rate was read: the most the parent said they would pay. */
   | { kind: 'ceiling'; cents: number; currency: 'cad' | 'usd' | null }

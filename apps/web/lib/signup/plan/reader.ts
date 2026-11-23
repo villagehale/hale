@@ -4,7 +4,6 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { foldWords, namesFacts, quotesParentWords } from '../parent-quote';
-import { parentAmountsIn } from '../terms/money';
 import type { SignupSession } from '../types';
 import { MAX_PLAN_CHOICES } from './store';
 
@@ -19,7 +18,7 @@ import { MAX_PLAN_CHOICES } from './store';
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
  * an approval. An approval holds only on the parent's own words, copied whole (`said`); its
  * maximum only on a price Hale's offer stated or an amount of money they wrote (on an ask
- * with terms, the limit the model quoted from their words, its amount found there); the waiver
+ * with terms, a yes takes the stated price, and money of theirs beside it is a question); the waiver
  * only on a plan whose waiver question Hale sent, and only on their own words, whole, that
  * are no part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
  * that carry a whole word of its program's name or its site. Anything else fails closed.
@@ -54,8 +53,8 @@ export interface PlanReadOffer {
 
 /** VIL-715 · what the ask told the parent, for reading their yes against it. */
 export interface PlanReadTerms {
-  /** Every price the text stated, in cents. A plain yes accepts these. */
-  boundCents: number[];
+  /** The prices the text stated for each session, in cents. Empty: it stated none. */
+  sessionPrices: { sessionId: string; cents: number[] }[];
   /** Sessions that cost nothing: a yes to only these has a $0 maximum. */
   freeSessionIds: string[];
   prerequisiteRequired: boolean;
@@ -80,8 +79,8 @@ export type PlanReading =
       named: PlanNaming | null;
       /** VIL-715 · on an ask with terms: their own words on the prerequisite. */
       prerequisiteMet?: boolean | null;
-      /** VIL-715 · on an ask with terms: the limit their own words set, if any. */
-      limitWrittenCents?: number | null;
+      /** VIL-715 · on an ask with terms: money they wrote, for a session with no stated price. */
+      ceilingCents?: number | null;
     }
   | { verdict: 'take_back'; named: PlanNaming | null }
   | { verdict: 'unclear'; question: string; named: PlanNaming | null }
@@ -102,6 +101,9 @@ export const SIGNUP_PLAN_READ_TOOL = 'signup_plan_read';
 export const SIGNUP_PLAN_READ_TOOL_DESCRIPTION =
   'Decide whether the parent approved the registration plan, took it back, or neither.';
 export const SIGNUP_PLAN_READ_MAX_TOKENS = 2048;
+/** A fact for the writer, who words it. Asked when a yes carries money that is not the price. */
+const TERMS_STATED_PRICE_QUESTION =
+  'They put an amount of their own beside their yes. May Hale pay the stated price?';
 
 const VERDICTS = ['approve', 'take_back', 'unclear', 'unrelated'] as const;
 
@@ -146,13 +148,11 @@ export const SIGNUP_PLAN_READ_TOOL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-/** The read of an ask with terms: the prerequisite and limit fields are added. */
+/** The read of an ask with terms: the prerequisite fields are added. */
 export const signupPlanReadTermsSchema = signupPlanReadSchema
   .extend({
     prerequisiteSaid: z.string().nullable(),
     prerequisiteMet: z.boolean().nullable(),
-    limitCents: z.number().int().nullable(),
-    limitSaid: z.string().nullable(),
   })
   .strict();
 
@@ -162,23 +162,13 @@ export const SIGNUP_PLAN_READ_TERMS_TOOL_SCHEMA = {
     ...SIGNUP_PLAN_READ_TOOL_SCHEMA.properties,
     prerequisiteSaid: { type: ['string', 'null'] },
     prerequisiteMet: { type: ['boolean', 'null'] },
-    limitCents: { type: ['integer', 'null'] },
-    limitSaid: { type: ['string', 'null'] },
   },
-  required: [
-    ...SIGNUP_PLAN_READ_TOOL_SCHEMA.required,
-    'prerequisiteSaid',
-    'prerequisiteMet',
-    'limitCents',
-    'limitSaid',
-  ],
+  required: [...SIGNUP_PLAN_READ_TOOL_SCHEMA.required, 'prerequisiteSaid', 'prerequisiteMet'],
 } as const;
 
 type RawPlanRead = z.infer<typeof signupPlanReadSchema> & {
   prerequisiteSaid?: string | null;
   prerequisiteMet?: boolean | null;
-  limitCents?: number | null;
-  limitSaid?: string | null;
 };
 
 /**
@@ -255,23 +245,20 @@ export function moneyWritten(text: string): number[] {
  * A maximum holds on Hale's own stored facts — the highest price stated for the sessions
  * the parent chose, or a price they already accepted — on an amount of money they wrote,
  * or on a bare number they wrote that is a price Hale's offer stated. Never on the activity
- * label, and never on any other number (an address, a year). `written` is their money: on an
- * ask with terms, only the limit their quote backs.
+ * label, and never on any other number (an address, a year).
  */
 function maxSupported(
   maxPriceCents: number,
   chosen: readonly SignupSession[],
   offer: PlanReadOffer,
   text: string,
-  written: readonly number[],
 ): boolean {
   const stated = chosen.flatMap((session) =>
     session.priceCents === null ? [] : [session.priceCents],
   );
   if (stated.length > 0 && maxPriceCents === Math.max(...stated)) return true;
-  if (offer.terms?.boundCents.includes(maxPriceCents)) return true;
   if (offer.approvedPriceCents !== null && maxPriceCents === offer.approvedPriceCents) return true;
-  if (written.includes(maxPriceCents)) return true;
+  if (moneyWritten(text).includes(maxPriceCents)) return true;
   const offered = [
     offer.approvedPriceCents,
     ...offer.sessions.map((session) => session.priceCents),
@@ -345,22 +332,19 @@ export function toPlanReading(
   const ids = raw.choiceIds;
   const chosen = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
   const max = raw.maxPriceCents;
-  const allFree =
-    offer.terms !== undefined &&
-    ids.length > 0 &&
-    ids.every((id) => offer.terms?.freeSessionIds.includes(id));
-  const limit = offer.terms ? limitWritten(raw, text, offer.terms) : null;
-  const written = offer.terms ? (limit === null ? [] : [limit]) : moneyWritten(text);
   const valid =
     ids.length > 0 &&
     ids.length <= MAX_PLAN_CHOICES &&
     new Set(ids).size === ids.length &&
     chosen.length === ids.length &&
     max !== null &&
-    (max === 0 ? allFree : max > 0 && maxSupported(max, chosen, offer, text, written)) &&
+    (offer.terms !== undefined || (max > 0 && maxSupported(max, chosen, offer, text))) &&
     raw.said !== null &&
     quotesParentWords(text, raw.said);
   if (valid && max !== null) {
+    if (offer.terms && !yesTakesStatedPrice(offer.terms, ids, max, text)) {
+      return { verdict: 'unclear', question: TERMS_STATED_PRICE_QUESTION, named };
+    }
     return {
       verdict: 'approve',
       choiceIds: [...ids],
@@ -370,7 +354,7 @@ export function toPlanReading(
       ...(offer.terms
         ? {
             prerequisiteMet: prerequisiteAnswer(raw, text),
-            limitWrittenCents: limit,
+            ceilingCents: max > 0 && moneyWritten(text).includes(max) ? max : null,
           }
         : {}),
     };
@@ -386,19 +370,22 @@ function prerequisiteAnswer(raw: RawPlanRead, text: string): boolean | null {
 }
 
 /**
- * The limit the model read, once code finds its amount in the parent's own quoted words. The
- * model decides whether the words set a limit. A number with no currency only narrows a price
- * the ask stated: alone it could be a level or a year, and would authorize a ceiling.
+ * Backs up the model's read of a yes to a stated price, and only ever makes Hale ask: its
+ * maximum is one of those prices, and any money in their words repeats one. A bare number
+ * is the model's to read, so "the 4pm one" is never a question. A choice with no stated
+ * price has nothing to repeat: its ceiling is read from their money.
  */
-function limitWritten(raw: RawPlanRead, text: string, terms: PlanReadTerms): number | null {
-  const { limitCents, limitSaid } = raw;
-  if (limitCents == null || limitCents <= 0 || limitSaid == null) return null;
-  if (!quotesParentWords(text, limitSaid)) return null;
-  const amounts = parentAmountsIn(limitSaid);
-  if (amounts.marked.includes(limitCents)) return limitCents;
-  return limitCents <= Math.max(0, ...terms.boundCents) && amounts.bare.includes(limitCents)
-    ? limitCents
-    : null;
+function yesTakesStatedPrice(
+  terms: PlanReadTerms,
+  ids: readonly string[],
+  max: number,
+  text: string,
+): boolean {
+  const stated = terms.sessionPrices
+    .filter((session) => ids.includes(session.sessionId))
+    .flatMap((session) => session.cents);
+  if (stated.length === 0) return true;
+  return stated.includes(max) && moneyWritten(text).every((cents) => stated.includes(cents));
 }
 
 function className(err: unknown): string {

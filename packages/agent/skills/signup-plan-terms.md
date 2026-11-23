@@ -20,7 +20,7 @@ tools: []
 - `unread`: what Hale could not confirm on the page, by name.
 - `runsNow`: true when registration is already open, so Hale would do this right away. Then do not name an opening time: say it is open now.
 
-## At `offer`, and at `clarify` when the terms have to be sent again
+## At `offer`
 
 This text is what the parent says yes to, so it carries the terms. Say:
 
@@ -33,6 +33,10 @@ This text is what the parent says yes to, so it carries the terms. Say:
 - Anything in `unread`, in a few words.
 
 Keep it to a short text or two. Do not say the child is registered, and do not call the terms a deal or a guarantee.
+
+## At `clarify`
+
+Ask `question`. When it is about the price or what Hale may pay, say the price from `rates` and whether tax is added. State no other amount, and do not restate the other terms.
 
 ## At `approved`
 

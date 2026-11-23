@@ -258,7 +258,7 @@ describe('with the flag off', () => {
         offer: {
           ...offer,
           terms: {
-            boundCents: [8488],
+            sessionPrices: [{ sessionId: 's-1', cents: [8488] }],
             freeSessionIds: [],
             prerequisiteRequired: false,
             prerequisiteQuote: null,

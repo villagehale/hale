@@ -123,14 +123,13 @@ export function mostAllowedCents(amount: SignupTermsAmount): number {
   if (amount.kind === 'free') return 0;
   if (amount.kind === 'ceiling') return amount.cents;
   const top = Math.max(...amount.cents);
-  const withTax =
-    amount.plusTax === null
-      ? top
-      : top +
-        (amount.plusTax.kind === 'rate'
-          ? Math.round((top * amount.plusTax.basisPoints) / 10_000) + 1
-          : Math.floor((top * amount.plusTax.basisPoints) / 10_000));
-  return amount.limitCents === null ? withTax : Math.min(withTax, amount.limitCents);
+  if (amount.plusTax === null) return top;
+  return (
+    top +
+    (amount.plusTax.kind === 'rate'
+      ? Math.round((top * amount.plusTax.basisPoints) / 10_000) + 1
+      : Math.floor((top * amount.plusTax.basisPoints) / 10_000))
+  );
 }
 
 function comparesFinalExact(
@@ -140,7 +139,6 @@ function comparesFinalExact(
 ): CartDifference | null {
   if (cart.feesCents === null) return 'unread';
   const gap = cart.feesCents > 0 ? 'fees' : 'price';
-  if (amount.limitCents !== null && total > amount.limitCents) return 'price';
   if (amount.plusTax === null) {
     if (cart.feesCents > 0) return 'fees';
     return amount.cents.includes(total) ? null : 'price';

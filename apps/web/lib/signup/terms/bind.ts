@@ -10,10 +10,9 @@ import type {
 } from './types';
 
 /**
- * VIL-715 · what a parent's yes binds. Pure: written from the terms that were shown and
- * the parent's own words, never from a model's figure. Nothing binds until those terms
- * are known to have reached them. A number they wrote never widens a known rate: it is
- * kept only as a further limit.
+ * VIL-715 · what a parent's yes binds. Pure: written from the terms that were shown, never
+ * from a model's figure. Nothing binds until those terms are known to have reached them. A
+ * session with a stated price binds that price and nothing else.
  */
 export interface BindInput {
   shown: SignupTermsShown;
@@ -23,8 +22,8 @@ export interface BindInput {
   /** The offer's own name for the class: the program name when the page gave none. */
   activityLabel: string | null;
   choiceIds: readonly string[];
-  /** An amount of money the parent wrote in this yes, else null. */
-  limitWrittenCents: number | null;
+  /** Money the parent wrote in this yes. Only a session with no stated rate reads it. */
+  ceilingCents: number | null;
   /** The parent's own words confirmed the prerequisite. Null when they said nothing about it. */
   prerequisiteMet: boolean | null;
   /** The age check run again at this yes. */
@@ -41,7 +40,7 @@ export type BindResult =
   /** A date of birth given since the ask puts the child outside the band. */
   | { kind: 'outside_band' }
   /** One question, and the offer stays open. */
-  | { kind: 'clarify'; reason: 'prerequisite' | 'limit_below_rate' | 'no_amount' };
+  | { kind: 'clarify'; reason: 'prerequisite' | 'no_amount' };
 
 /** The rates this family can be charged: their own when residency is known, else all. */
 export function ratesFor(
@@ -58,21 +57,21 @@ export function ratesFor(
 function amountFor(
   session: SignupTermsShown['sessions'][number],
   input: BindInput,
-): SignupTermsAmount | { clarify: 'limit_below_rate' | 'no_amount' } {
+): SignupTermsAmount | { clarify: 'no_amount' } {
   const currency = input.shown.currency;
-  const limit = input.limitWrittenCents;
+  const ceiling = input.ceilingCents;
   const cents = ratesFor(input.shown.residency, session.rates).map((row) => row.cents);
   if (cents.length === 0) {
-    return limit === null ? { clarify: 'no_amount' } : { kind: 'ceiling', cents: limit, currency };
+    return ceiling === null
+      ? { clarify: 'no_amount' }
+      : { kind: 'ceiling', cents: ceiling, currency };
   }
   if (cents.every((value) => value === 0)) return { kind: 'free' };
-  if (limit !== null && limit < Math.min(...cents)) return { clarify: 'limit_below_rate' };
   return {
     kind: 'exact',
     cents,
     currency,
     plusTax: session.tax === 'plus_tax' ? input.taxBound : null,
-    limitCents: limit,
   };
 }
 
@@ -101,7 +100,7 @@ export function bindApproval(input: BindInput): BindResult {
     const session = input.sessions.find((item) => item.id === choiceId);
     if (!session) return { kind: 'clarify', reason: 'no_amount' };
     const shownSession = input.shown.sessions.find((item) => item.sessionId === choiceId);
-    // A session the text never stated has no terms to say yes to, and no limit stands in.
+    // A session the text never stated has no terms to say yes to, and no ceiling stands in.
     if (!shownSession) return { kind: 'terms_unsent' };
     picked.push(shownSession);
     const amount = amountFor(shownSession, input);

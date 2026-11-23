@@ -182,7 +182,14 @@ export async function runPlanAsk(
     // next bare yes to the newest ask: it passes on instead.
     const boundBy = binding(place.newest, reading.named);
     if (!boundBy) return 'unrelated';
-    return reply(database, input, deps, plan, 'clarify', { question: reading.question, boundBy });
+    // The question may be whether Hale can pay the stated price, so the writer needs it. A
+    // seat that may not authorize this sign-up is not told a price.
+    const statesPrice = terms && !(deps.declineSeat && (await deps.declineSeat()));
+    return reply(database, input, deps, plan, 'clarify', {
+      question: reading.question,
+      boundBy,
+      ...(statesPrice ? { terms: writerTerms(terms.shown) } : {}),
+    });
   }
 
   const boundBy = binding(place.newest, reading.named);
@@ -291,8 +298,6 @@ export async function runPlanAsk(
 
 /** Asked once a date of birth is in: a date is not a yes. */
 const TERMS_CONFIRM_QUESTION = 'Now that Hale has the date of birth, should it go ahead?';
-const TERMS_LIMIT_QUESTION =
-  'The class costs more than the limit they gave. Should Hale go up to the class price?';
 const TERMS_AMOUNT_QUESTION = 'What is the most Hale may pay for this?';
 const TERMS_DOB_OTHER_QUESTION =
   "The date they gave is someone else's. What is this child's date of birth?";
@@ -472,7 +477,7 @@ async function approveOnTerms(
     sessions: plan.sessions,
     activityLabel: plan.activityLabel,
     choiceIds: reading.choiceIds,
-    limitWrittenCents: reading.limitWrittenCents ?? null,
+    ceilingCents: reading.ceilingCents ?? null,
     prerequisiteMet: reading.prerequisiteMet ?? null,
     ageFit: shown.age.rule
       ? ageFitFromRule(shown.age.rule, childFor(child), { now: input.now, timeZone })
@@ -523,9 +528,10 @@ async function approveOnTerms(
         boundBy,
       });
     }
-    const question =
-      bound.reason === 'limit_below_rate' ? TERMS_LIMIT_QUESTION : TERMS_AMOUNT_QUESTION;
-    return reply(database, input, deps, plan, 'clarify', { question, boundBy });
+    return reply(database, input, deps, plan, 'clarify', {
+      question: TERMS_AMOUNT_QUESTION,
+      boundBy,
+    });
   }
   let seasonKey: string | null = null;
   if (bound.approved.countsAgainstSeason) {

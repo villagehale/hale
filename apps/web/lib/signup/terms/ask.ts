@@ -182,15 +182,11 @@ export function planReadTerms(
   shown: SignupTermsShown,
   context: { prerequisiteAsked: boolean },
 ): PlanReadTerms {
-  const boundCents = [
-    ...new Set(
-      shown.sessions.flatMap((session) =>
-        ratesFor(shown.residency, session.rates).map((row) => row.cents),
-      ),
-    ),
-  ].filter((cents) => cents > 0);
   return {
-    boundCents,
+    sessionPrices: shown.sessions.map((session) => ({
+      sessionId: session.sessionId,
+      cents: ratesFor(shown.residency, session.rates).map((row) => row.cents),
+    })),
     freeSessionIds: shown.sessions
       .filter(
         (session) =>

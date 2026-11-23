@@ -9,7 +9,7 @@ const bound = (over: Partial<SignupTermsApprovedSession> = {}): SignupTermsAppro
   program: { courseIds: ['283993', 'ev-1'], name: 'Get Ready Public Speaking' },
   startsAt: '2026-03-28T09:30:00',
   sharesDate: false,
-  amount: { kind: 'exact', cents: [8488], currency: 'cad', plusTax: null, limitCents: null },
+  amount: { kind: 'exact', cents: [8488], currency: 'cad', plusTax: null },
   ...over,
 });
 
@@ -35,7 +35,6 @@ const plusTax = (basisPoints: number, kind: 'rate' | 'ceiling' = 'rate') =>
       cents: [33627],
       currency: 'cad',
       plusTax: { kind, basisPoints },
-      limitCents: null,
     },
   });
 
@@ -217,13 +216,6 @@ describe('compareCart', () => {
     expect(compareCart(bound(), cart({ totalCents: 0 }), who, 'cart')).toEqual(['price']);
   });
 
-  it('a parent limit under the bound rate never lets the rate pass', () => {
-    const limited = bound({
-      amount: { kind: 'exact', cents: [8488], currency: 'cad', plusTax: null, limitCents: 8000 },
-    });
-    expect(compareCart(limited, cart(), who, 'final')).toEqual(['price']);
-  });
-
   it('a ceiling passes at or under the number and stops over it', () => {
     const ceiling = bound({ amount: { kind: 'ceiling', cents: 10000, currency: 'cad' } });
     expect(compareCart(ceiling, cart({ totalCents: 10000 }), who, 'final')).toEqual([]);
@@ -248,7 +240,7 @@ describe('compareCart', () => {
 
   describe('a class free at one rate and paid at the other', () => {
     const pair = bound({
-      amount: { kind: 'exact', cents: [0, 4000], currency: 'cad', plusTax: null, limitCents: null },
+      amount: { kind: 'exact', cents: [0, 4000], currency: 'cad', plusTax: null },
     });
 
     it('passes a $0 cart, with no currency to read, at both stages', () => {
@@ -262,22 +254,6 @@ describe('compareCart', () => {
       expect(compareCart(pair, cart({ totalCents: 4000 }), who, 'final')).toEqual([]);
       expect(compareCart(pair, cart({ totalCents: 2000 }), who, 'final')).toEqual(['price']);
       expect(compareCart(pair, cart({ totalCents: 4001 }), who, 'cart')).toEqual(['price']);
-    });
-
-    it('a limit the parent wrote still stops the paid rate, and not the free one', () => {
-      const limited = bound({
-        amount: {
-          kind: 'exact',
-          cents: [0, 4000],
-          currency: 'cad',
-          plusTax: null,
-          limitCents: 1000,
-        },
-      });
-      expect(compareCart(limited, cart({ totalCents: 4000 }), who, 'final')).toEqual(['price']);
-      expect(compareCart(limited, cart({ totalCents: 0, currency: null }), who, 'final')).toEqual(
-        [],
-      );
     });
   });
 

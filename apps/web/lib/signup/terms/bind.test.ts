@@ -34,7 +34,7 @@ const input = (over: Partial<BindInput> = {}): BindInput => ({
   sessions: [{ id: 's-1', label: 'Sat 9:30', startsAt: '2026-03-28T09:30:00' }],
   activityLabel: null,
   choiceIds: ['s-1'],
-  limitWrittenCents: null,
+  ceilingCents: null,
   prerequisiteMet: null,
   ageFit: 'in_band',
   taxBound: { kind: 'rate', basisPoints: 1300 },
@@ -52,14 +52,13 @@ describe('bindApproval', () => {
       cents: [8488],
       currency: 'cad',
       plusTax: null,
-      limitCents: null,
     });
     expect(got.approved.maxCents).toBe(8488);
     expect(got.approved.hold).toBeNull();
     expect(got.approved.quantity).toBe(1);
   });
 
-  it('a session that was never shown binds nothing, whatever limit they wrote', () => {
+  it('a session that was never shown binds nothing, whatever money they wrote', () => {
     const got = bindApproval(
       input({
         sessions: [
@@ -67,7 +66,7 @@ describe('bindApproval', () => {
           { id: 's-2', label: 'Sun 9:30', startsAt: '2026-03-29T09:30:00' },
         ],
         choiceIds: ['s-2'],
-        limitWrittenCents: 5000,
+        ceilingCents: 5000,
       }),
     );
     expect(got).toEqual({ kind: 'terms_unsent' });
@@ -88,30 +87,22 @@ describe('bindApproval', () => {
     expect(got.kind === 'bound' && got.approved.maxCents).toBe(9760);
   });
 
-  it('"yes, up to $100" on a known $84.88 stays exact, with the limit', () => {
-    const got = bindApproval(input({ limitWrittenCents: 10000 }));
+  it('money written beside a stated price changes nothing the yes binds', () => {
+    const got = bindApproval(input({ ceilingCents: 6000 }));
     expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({
       kind: 'exact',
       cents: [8488],
       currency: 'cad',
       plusTax: null,
-      limitCents: 10000,
     });
     expect(got.kind === 'bound' && got.approved.maxCents).toBe(8488);
-  });
-
-  it('a limit below the rate asks instead of binding', () => {
-    expect(bindApproval(input({ limitWrittenCents: 8000 }))).toEqual({
-      kind: 'clarify',
-      reason: 'limit_below_rate',
-    });
   });
 
   it('a ceiling binds only when no rate was read', () => {
     const noRate = shown({
       sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
     });
-    const got = bindApproval(input({ shown: noRate, limitWrittenCents: 12000 }));
+    const got = bindApproval(input({ shown: noRate, ceilingCents: 12000 }));
     expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({
       kind: 'ceiling',
       cents: 12000,
@@ -305,7 +296,6 @@ describe('bindApproval', () => {
         cents: [0, 4000],
         currency: 'cad',
         plusTax: null,
-        limitCents: null,
       });
       expect(got.kind === 'bound' && got.approved.maxCents).toBe(4000);
       expect(

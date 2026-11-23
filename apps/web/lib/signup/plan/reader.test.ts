@@ -429,7 +429,10 @@ describe('what an approval may rest on', () => {
 
   describe('on an ask with terms', () => {
     const TERMS = {
-      boundCents: [8488],
+      sessionPrices: [
+        { sessionId: 'sat-0900', cents: [8488] },
+        { sessionId: 'sun-1000', cents: [0] },
+      ],
       freeSessionIds: ['sun-1000'],
       prerequisiteRequired: true,
       prerequisiteQuote: 'Must have completed Level 1',
@@ -447,92 +450,15 @@ describe('what an approval may rest on', () => {
       expect(toPlanReading(yes(), OFFER_T, 'yes')).toMatchObject({
         verdict: 'approve',
         maxPriceCents: 8488,
-        limitWrittenCents: null,
+        ceilingCents: null,
         prerequisiteMet: null,
       });
     });
 
-    it('a figure neither stated nor written is still refused', () => {
-      expect(toPlanReading(yes({ maxPriceCents: 9000 }), OFFER_T, 'yes')).toBeNull();
-    });
-
-    const limited = (limitCents: number, limitSaid: string, maxPriceCents = limitCents) =>
-      yes({ maxPriceCents, limitCents, limitSaid });
-
-    it('a limit the model quotes from their words binds', () => {
-      expect(toPlanReading(limited(10000, 'up to $100'), OFFER_T, 'yes, up to $100')).toMatchObject(
-        { verdict: 'approve', maxPriceCents: 10000, limitWrittenCents: 10000 },
-      );
-    });
-
-    it.each([
-      ['yes please, last year it was $40 so this is fine'],
-      ['yes go ahead, we got a $20 credit from them'],
-    ])('money that is no limit sets none, when the model reads none: %s', (text) => {
-      expect(toPlanReading(yes({ said: 'yes' }), OFFER_T, text)).toMatchObject({
-        verdict: 'approve',
-        maxPriceCents: 8488,
-        limitWrittenCents: null,
+    it('a figure that is not the stated price asks instead of approving', () => {
+      expect(toPlanReading(yes({ maxPriceCents: 9000 }), OFFER_T, 'yes')).toMatchObject({
+        verdict: 'unclear',
       });
-    });
-
-    it('a limit whose quote is not their words binds nothing', () => {
-      expect(toPlanReading(limited(6000, 'no more than $60', 8488), OFFER_T, 'yes')).toMatchObject({
-        verdict: 'approve',
-        limitWrittenCents: null,
-      });
-    });
-
-    it('a limit whose amount is not in its quote binds nothing', () => {
-      const text = 'yes, no more than $60';
-      expect(toPlanReading(limited(5000, 'no more than $60', 8488), OFFER_T, text)).toMatchObject({
-        verdict: 'approve',
-        limitWrittenCents: null,
-      });
-    });
-
-    it('a plain space never makes a thousands group: level 3, 100 dollars', () => {
-      const text = 'yes, level 3 100 dollars max';
-      expect(toPlanReading(limited(10000, 'level 3 100 dollars max'), OFFER_T, text)).toMatchObject(
-        { verdict: 'approve', limitWrittenCents: 10000 },
-      );
-      expect(
-        toPlanReading(limited(310000, 'level 3 100 dollars max', 8488), OFFER_T, text),
-      ).toMatchObject({ verdict: 'approve', limitWrittenCents: null });
-    });
-
-    it('a maximum that is only their number, with no verified limit, is refused', () => {
-      expect(toPlanReading(yes({ maxPriceCents: 6000 }), OFFER_T, 'yes, max $60')).toBeNull();
-    });
-
-    it('a limit written with a decimal comma binds', () => {
-      const text = 'Oui, pas plus de 80,50 $';
-      expect(
-        toPlanReading(
-          { ...limited(8050, 'pas plus de 80,50 $', 8488), said: 'Oui' },
-          OFFER_T,
-          text,
-        ),
-      ).toMatchObject({ verdict: 'approve', maxPriceCents: 8488, limitWrittenCents: 8050 });
-    });
-
-    it.each([
-      ['yes, no more than 60 bucks', 'no more than 60 bucks'],
-      ['yes, max €60', 'max €60'],
-    ])('a limit in any money form binds: %s', (text, said) => {
-      expect(toPlanReading(limited(6000, said, 8488), OFFER_T, text)).toMatchObject({
-        limitWrittenCents: 6000,
-      });
-    });
-
-    it('a bare number binds only as a limit under a stated price', () => {
-      const text = 'yes, up to 60';
-      expect(toPlanReading(limited(6000, 'up to 60', 8488), OFFER_T, text)).toMatchObject({
-        limitWrittenCents: 6000,
-      });
-      expect(
-        toPlanReading(limited(10000, 'up to 100', 8488), OFFER_T, 'yes, up to 100'),
-      ).toMatchObject({ limitWrittenCents: null });
     });
 
     it('an ask with no terms reads money as it always has', () => {
@@ -547,7 +473,7 @@ describe('what an approval may rest on', () => {
       ).toMatchObject({ verdict: 'approve', maxPriceCents: 0 });
       expect(
         toPlanReading(yes({ choiceIds: ['sat-0900'], maxPriceCents: 0 }), OFFER_T, 'yes'),
-      ).toBeNull();
+      ).toMatchObject({ verdict: 'unclear' });
       expect(toPlanReading(raw({ maxPriceCents: 0 }), OFFER, YES)).toBeNull();
     });
 
