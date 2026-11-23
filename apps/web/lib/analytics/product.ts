@@ -1,4 +1,6 @@
+import { canaryCaptureExtras } from '@hale/agent';
 import type { PostHog } from 'posthog-node';
+import { familyIsCanary } from './canary-tag';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
 import { errorTrackingEnabled, productEventsEnabled } from './flags';
@@ -86,7 +88,9 @@ function groupsFor(familyHash: string | null, chatHash: string | null): Record<s
   return groups;
 }
 
-function distinctFor(input: ProductEventInput): { distinctId: string; familyHash: string | null } | null {
+function distinctFor(
+  input: ProductEventInput,
+): { distinctId: string; familyHash: string | null } | null {
   if (input.familyId) {
     const familyHash = hashTelemetryId(input.familyId);
     if (!familyHash) return null;
@@ -106,13 +110,18 @@ async function send(
   distinctId: string,
   properties: Record<string, unknown>,
   groups: Record<string, string>,
+  isCanary: boolean,
 ): Promise<CaptureOutcome> {
-  const { event: name, properties: safe } = buildEvent(event, properties);
+  const extras = canaryCaptureExtras(isCanary, distinctId);
+  const { event: name, properties: safe } = buildEvent(event, { ...properties, ...extras.event });
+  const stamped: Record<string, unknown> = { ...safe };
+  if (extras.set) stamped.$set = extras.set;
+  if (Object.keys(groups).length > 0) stamped.$groups = groups;
   try {
     client.capture({
       distinctId,
       event: name,
-      properties: Object.keys(groups).length > 0 ? { ...safe, $groups: groups } : safe,
+      properties: stamped,
       ...(Object.keys(groups).length > 0 ? { groups } : {}),
     });
     await client.flush();
@@ -169,12 +178,14 @@ export async function captureProductEventAsync(input: ProductEventInput): Promis
     return 'not_configured';
   }
   const chatHash = input.chatId ? hashTelemetryId(input.chatId) : null;
+  const isCanary = input.familyId ? await familyIsCanary(input.familyId) : false;
   return send(
     client,
     input.event,
     ids.distinctId,
     input.properties ?? {},
     groupsFor(ids.familyHash, chatHash),
+    isCanary,
   );
 }
 
@@ -201,20 +212,27 @@ export async function captureErrorEventAsync(input: ProductEventInput): Promise<
     return 'not_configured';
   }
   const chatHash = input.chatId ? hashTelemetryId(input.chatId) : null;
+  const isCanary = input.familyId ? await familyIsCanary(input.familyId) : false;
   const outcome = await send(
     client,
     input.event,
     ids.distinctId,
     input.properties ?? {},
     groupsFor(ids.familyHash, chatHash),
+    isCanary,
   );
   const synthetic = new Error('redacted');
   synthetic.name = `Hale_${input.event}`;
-  void captureSafeException(synthetic, ids.distinctId, {
-    hale_surface: 'agent',
-    stage: input.event,
-    code: String(input.properties?.stage ?? input.properties?.reason ?? input.event),
-  });
+  void captureSafeException(
+    synthetic,
+    ids.distinctId,
+    {
+      hale_surface: 'agent',
+      stage: input.event,
+      code: String(input.properties?.stage ?? input.properties?.reason ?? input.event),
+    },
+    { canary: isCanary },
+  );
   return outcome;
 }
 

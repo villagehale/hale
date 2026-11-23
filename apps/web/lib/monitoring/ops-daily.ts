@@ -14,6 +14,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { maxEntitlementsEnabled } from '~/lib/billing/max-entitlements';
+import { canaryFamilyIds } from '~/lib/channel/canary/config';
 import { aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import {
   aggregateMedicalAnswers,
@@ -58,7 +59,11 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  *
  * Real families are the families active in the window minus `resolveOpsExclusions`:
  * the METRICS_EXCLUDED_FAMILY_IDS list, the founder's household and every household
- * with a channel in the probe range (the canary and the live probes).
+ * with a channel in the probe range (the canary and the live probes). The canary
+ * household is also removed by its configured number, including from the trailing
+ * founder counts below, which otherwise use only the metrics exclusion set. An
+ * empty METRICS_EXCLUDED_FAMILY_IDS still counts other QA households. It does not
+ * count the canary. The decision is the probe number, never message text.
  *
  * The founder counts below the 24h block are the five the Monday email graded, so
  * deleting that email (VIL-437) drops no number. W4 and open promises are point-in-time
@@ -624,6 +629,8 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
   const window = opsDailyWindow(now);
   const active = await activeFamilyIds(database, window);
   const excluded = await resolveOpsExclusions(database, active);
+  const canaryIds = await canaryFamilyIds(database);
+  for (const id of canaryIds) excluded.add(id);
   const realIds = active.filter((id) => !excluded.has(id));
 
   const inbound = await loadInboundTurns(database, realIds, window);
@@ -633,7 +640,9 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
 
   // The metrics set, not the 24h active set: a QA family quiet today is still a QA
   // family in the trailing week. W4 resolves the same set itself.
-  const metricsExcluded = [...(await resolveMetricsExclusions(database))];
+  const metricsExcludedSet = await resolveMetricsExclusions(database);
+  for (const id of canaryIds) metricsExcludedSet.add(id);
+  const metricsExcluded = [...metricsExcludedSet];
   const weekStart = new Date(window.end.getTime() - TRAILING_WEEK_MS);
   const [w4Cohorts, funnel, debt, medical, radar, linqChatIds, week, queue] = await Promise.all([
     aggregateW4Retention(database, window.end),

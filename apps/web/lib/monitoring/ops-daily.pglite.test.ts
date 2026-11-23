@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { SYNTHETIC_PROBE_PREFIX } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -727,6 +728,51 @@ describe('aggregateOpsDaily — the founder counts', () => {
     expect(counted.medical).toEqual({ answered: 3, fallbacks: 2 });
 
     vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, listed.familyId);
+  });
+
+  it('leaves the canary household out of the counts and still counts a parent whose text is the word CANARY', async () => {
+    const asOf = new Date('2026-04-20T13:14:00Z');
+    const provisioned = new Date('2026-03-02T13:00:00Z');
+    const inWeek4 = new Date('2026-04-01T12:00:00Z');
+    const in24h = new Date('2026-04-19T18:00:00Z');
+    const inTrailing = new Date('2026-04-16T15:00:00Z');
+    vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, '');
+    const before = await aggregateOpsDaily(db.database, asOf);
+
+    const canary = await seedFamilyWithPhone('Service Check Household', CANARY_PHONE_E164);
+    const parent = await seedFamilyWithPhone('Says The Word Household', '+15555550193');
+    await backdate(canary, provisioned);
+    await backdate(parent, provisioned);
+    // The probe's row does not say the word. The parent's does. Identity is the number.
+    await inbound(canary, inWeek4, 'probe-chat');
+    const parentWeek = await inbound(parent, inWeek4, 'parent-chat');
+    await inbound(canary, in24h);
+    const parentDay = await inbound(parent, in24h);
+    await db.database
+      .update(schema.channelMessages)
+      .set({ body: 'CANARY' })
+      .where(eq(schema.channelMessages.id, parentWeek));
+    await db.database
+      .update(schema.channelMessages)
+      .set({ body: 'CANARY' })
+      .where(eq(schema.channelMessages.id, parentDay));
+    await medical(canary, 'fixed', inTrailing);
+    await medical(parent, 'web_grounded', inTrailing);
+    await promise(canary, 'first_find', new Date('2026-04-01T00:00:00Z'));
+    await promise(parent, 'first_find', new Date('2026-04-19T00:00:00Z'));
+
+    const after = await aggregateOpsDaily(db.database, asOf);
+    vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, listed.familyId);
+
+    expect(after.families.real - before.families.real).toBe(1);
+    expect(after.families.excluded - before.families.excluded).toBe(1);
+    expect(after.replies.inbound - before.replies.inbound).toBe(1);
+    expect(after.w4.retained - before.w4.retained).toBe(1);
+    expect(after.w4.families - before.w4.families).toBe(1);
+    expect(after.medical.answered - before.medical.answered).toBe(1);
+    expect(after.medical.fallbacks - before.medical.fallbacks).toBe(0);
+    expect(after.promises.open - before.promises.open).toBe(1);
+    expect(after.week.papercuts.medical_fallback - before.week.papercuts.medical_fallback).toBe(0);
   });
 
   it('reports a claimed sweep that left no tally as ran, not as a clean week', async () => {

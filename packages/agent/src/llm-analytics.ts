@@ -60,6 +60,13 @@ export interface LlmTraceContext {
    * on. Set when the request holds an email body for one compose (VIL-619).
    */
   omitContent?: boolean;
+  /**
+   * Server-only family id. The capture path uses it to decide `canary` from the
+   * probe household. Never copied onto the PostHog payload.
+   */
+  familyId?: string;
+  /** Set only after the probe-household lookup. Never inferred from prompt text. */
+  canary?: boolean;
 }
 
 export interface Usage {
@@ -196,6 +203,7 @@ export function buildGenerationProperties(input: {
   if (ctx.suite) props.hale_eval_suite = ctx.suite;
   if (ctx.caseName) props.hale_eval_case = ctx.caseName;
   if (ctx.cached !== undefined) props.cached = ctx.cached;
+  if (ctx.canary === true) props.canary = true;
   if (input.contentEnabled && input.request) {
     props.$ai_input = serializeAiInput(input.request);
   }

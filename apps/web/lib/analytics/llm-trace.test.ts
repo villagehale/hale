@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import type { PostHog } from 'posthog-node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetCanaryFamilyCacheForTests, setCanaryFamilyLookupForTests } from './canary-tag';
 import {
   buildGenerationProperties,
   llmFamilyContext,
@@ -59,6 +60,7 @@ const params = {
 afterEach(() => {
   vi.unstubAllEnvs();
   resetPosthogClientsForTests();
+  resetCanaryFamilyCacheForTests();
   observeAnthropicCall.mockClear();
 });
 
@@ -212,6 +214,41 @@ describe('with a key: one $ai_generation per call, privacy mode by default', () 
     expect(JSON.stringify(sent)).not.toContain(PROMPT_MARKER);
   });
 
+  it('stamps canary from the probe family and not from the prompt', async () => {
+    vi.stubEnv('POSTHOG_ID_SALT', 's');
+    setCanaryFamilyLookupForTests((id) => id === 'probe-family');
+    const ph = fakePosthog();
+    const traced = traceAnthropic(fakeAnthropic(), {}, ph.client);
+    await withLlmContext({ ...llmFamilyContext('probe-family'), stage: 'coach' }, () =>
+      traced.messages.create({
+        model: 'claude-x',
+        messages: [{ role: 'user', content: 'CANARY' }],
+      } as never),
+    );
+    await vi.waitFor(() => expect(ph.capture).toHaveBeenCalledTimes(1));
+    const sent = ph.capture.mock.calls[0]?.[0] as {
+      distinctId: string;
+      properties: Record<string, unknown>;
+    };
+    expect(sent.properties.canary).toBe(true);
+    expect(sent.properties.$set).toEqual({ canary: true });
+    expect(JSON.stringify(sent)).not.toContain('probe-family');
+    expect(JSON.stringify(sent)).not.toContain('CANARY');
+
+    ph.capture.mockClear();
+    setCanaryFamilyLookupForTests(() => false);
+    await withLlmContext({ ...llmFamilyContext('real-family'), stage: 'coach' }, () =>
+      traced.messages.create({
+        model: 'claude-x',
+        messages: [{ role: 'user', content: 'CANARY' }],
+      } as never),
+    );
+    await vi.waitFor(() => expect(ph.capture).toHaveBeenCalledTimes(1));
+    const real = ph.capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
+    expect(real.properties.canary).toBeUndefined();
+    expect(real.properties.$set).toBeUndefined();
+  });
+
   it('leaves every other client member alone', () => {
     const ph = fakePosthog();
     const traced = traceAnthropic(fakeAnthropic(), {}, ph.client);
@@ -285,17 +322,18 @@ describe('content capture behind POSTHOG_LLM_CONTENT_ENABLED', () => {
 });
 
 describe('llmFamilyContext', () => {
-  it('HMACs the family id and never returns the raw id', () => {
+  it('HMACs the distinct id and keeps the raw family id only for the probe check', () => {
     vi.stubEnv('POSTHOG_ID_SALT', 's');
     const familyId = 'fam-raw-id';
     const ctx = llmFamilyContext(familyId);
     expect(ctx.distinctId).toBe(createHmac('sha256', 's').update(familyId).digest('hex'));
-    expect(JSON.stringify(ctx)).not.toContain(familyId);
+    expect(ctx.distinctId).not.toContain(familyId);
+    expect(ctx.familyId).toBe(familyId);
   });
 
-  it('omits distinctId when the salt is unset', () => {
+  it('omits distinctId when the salt is unset and still keeps the family id', () => {
     vi.stubEnv('POSTHOG_ID_SALT', '');
-    expect(llmFamilyContext('fam-raw-id')).toEqual({});
+    expect(llmFamilyContext('fam-raw-id')).toEqual({ familyId: 'fam-raw-id' });
   });
 });
 

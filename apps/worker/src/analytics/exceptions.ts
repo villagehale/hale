@@ -1,3 +1,4 @@
+import { canaryCaptureExtras } from '@hale/agent';
 import { errorTrackingEnabled } from './flags.js';
 import { projectClient } from './posthog.js';
 
@@ -131,15 +132,22 @@ export async function captureSafeException(
   err: unknown,
   distinctId: string,
   ctx: ExceptionContext,
+  options?: { canary?: boolean },
 ): Promise<ExceptionOutcome> {
   if (!errorTrackingEnabled()) return 'not_configured';
   const client = projectClient();
   if (!client) return 'not_configured';
+  const extras = canaryCaptureExtras(options?.canary === true, distinctId);
   try {
     client.capture({
       distinctId,
       event: '$exception',
-      properties: { ...exceptionEvent(err), ...exceptionProperties(err, ctx) },
+      properties: {
+        ...exceptionEvent(err),
+        ...exceptionProperties(err, ctx),
+        ...extras.event,
+        ...(extras.set ? { $set: extras.set } : {}),
+      },
     });
     await client.flush();
     return 'sent';
