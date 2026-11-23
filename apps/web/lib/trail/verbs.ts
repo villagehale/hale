@@ -183,6 +183,9 @@ export const AUDIT_VERBS = [
   // VIL-721. A text about connecting Google did not reach this parent. `after` is the
   // surface and refused/unconfirmed only: no words, no link.
   'google_connect_text_unsent',
+  // VIL-721. The onboarding model read this text as a disconnect or a new-link ask, so it
+  // left the walk for the handler that acts on it. `after` is the read only: no words.
+  'onboarding_walk_handed_off',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -872,6 +875,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   google_connect_text_unsent: {
     sentence: 'Hale could not text you about connecting Google',
     family: 'problem',
+  },
+  onboarding_walk_handed_off: {
+    sentence: 'you asked Hale about your Google connection during setup',
+    family: 'note',
   },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },

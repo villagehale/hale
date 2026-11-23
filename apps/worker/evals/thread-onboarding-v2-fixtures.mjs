@@ -13,6 +13,9 @@
  *   `facts.googleLink`, and passes the production judge with the link following it.
  *   A yes is `connectGoogle` true with `parentQuestion` false; a question is not a yes.
  * - `connected` with connector `google`: the wow line names one real synced item.
+ * - `handOff` turns: a text that leaves the walk (a disconnect or a new-link ask in words
+ *   no pattern knows) carries the model's read, and an answer that only sounds like one
+ *   carries none.
  *
  * `expect` names exact field values; `activityWords` are substrings an extracted
  * activity must carry (the parent's own words); `sendable` means the reply must pass
@@ -54,6 +57,20 @@ const GOOGLE_ASK = {
   role: 'hale',
   body: 'Google shows its own "unverified app" screen first: tap Advanced, then continue. Want me to connect Gmail and your calendar with this link?',
   asked: true,
+};
+
+/** After the one link went out: the walk is on the schedule, and the ask is in the thread. */
+const AFTER_THE_LINK = {
+  step: 'schedule',
+  parentName: 'Dana',
+  children: MAYA,
+  ageMonths: [72],
+  agesLabel: 'Maya, 6',
+  placeLabel: 'Toronto',
+  findLines: MAP_LINES,
+  checklist: DONE_THROUGH_GOOGLE,
+  kidActivities: [],
+  recentTurns: [GOOGLE_ASK],
 };
 
 export const THREAD_V2_FIXTURES = [
@@ -246,6 +263,21 @@ export const THREAD_V2_FIXTURES = [
     expect: { asks: false },
     sendable: true,
   },
+  {
+    id: 'hand-off-disconnect-other-words',
+    over: { ...AFTER_THE_LINK, parentWords: 'take Hale off my Google account' },
+    handOff: 'disconnect_google',
+  },
+  {
+    id: 'hand-off-fresh-link',
+    over: { ...AFTER_THE_LINK, parentWords: 'that link is dead, can you send me another one' },
+    handOff: 'fresh_link',
+  },
+  {
+    id: 'hand-off-none-expired-pass',
+    over: { ...AFTER_THE_LINK, parentWords: 'the swim one, her old pass, it expired' },
+    handOff: null,
+  },
 ];
 
 const FIELD_TYPE = {
@@ -262,6 +294,9 @@ export function threadV2Misses(fixture, value, { judged = null } = {}) {
   for (const [field, want] of Object.entries(fixture.expect ?? {})) {
     if (!(field in value) || !FIELD_TYPE[field]?.(value[field])) misses.push(`${field}:omitted`);
     else if (value[field] !== want) misses.push(`${field}:${JSON.stringify(value[field])}`);
+  }
+  if ('handOff' in fixture && (value.handOff ?? null) !== fixture.handOff) {
+    misses.push(`handOff:${JSON.stringify(value.handOff ?? null)}`);
   }
   const offered = Array.isArray(value.connectorsOffered) ? value.connectorsOffered : [];
   if (fixture.offersBoth && !(offered.includes('gmail') && offered.includes('calendar'))) {

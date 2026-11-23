@@ -29,6 +29,7 @@ import { asGoogleBundleLink, asTextConnectProvider } from '~/lib/channel/connect
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
+import { walkDisconnectProviders, walkHandOffOf } from '~/lib/channel/intake/walk-hand-off';
 import {
   type FounderReplyDeps,
   handleFounderWelcomeReply,
@@ -347,16 +348,22 @@ export function connectorLinkHandler(
 ): DeterministicHandler {
   return {
     name: 'connector_link',
-    async detects(_database, ctx) {
+    async detects(database, ctx) {
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk) return walk === 'fresh_link';
       return matchConnectorRequest(ctx.body) !== null || matchFreshConnectorFollowUp(ctx.body);
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = matchConnectorRequest(ctx.body);
-      const fresh = named
-        ? null
-        : matchFreshConnectorFollowUp(ctx.body)
-          ? await latestConnectOfferTarget(database, ctx.conversationId)
-          : null;
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk && walk !== 'fresh_link') return { claimed: false };
+      const named = walk ? null : matchConnectorRequest(ctx.body);
+      const fresh = walk
+        ? ('google' as const)
+        : named
+          ? null
+          : matchFreshConnectorFollowUp(ctx.body)
+            ? await latestConnectOfferTarget(database, ctx.conversationId)
+            : null;
       if (!named && !fresh) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -518,11 +525,16 @@ export function connectorDisconnectHandler(
 ): DeterministicHandler {
   return {
     name: 'connector_disconnect',
-    async detects(_database, ctx) {
+    async detects(database, ctx) {
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk) return walk !== 'fresh_link';
       return matchConnectorDisconnectRequest(ctx.body) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const provider = matchConnectorDisconnectRequest(ctx.body);
+      const walk = await walkHandOffOf(database, ctx);
+      const matched = walk ? null : matchConnectorDisconnectRequest(ctx.body);
+      const providers = walk ? walkDisconnectProviders(walk) : matched ? [matched] : [];
+      const provider = providers[0];
       if (!provider) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -546,11 +558,19 @@ export function connectorDisconnectHandler(
       }
       if (reading !== 'disconnect') return { claimed: false };
 
-      const outcome = await revokeConnectorByText(
+      let outcome = await revokeConnectorByText(
         database,
         { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider },
         google,
       );
+      for (const next of providers.slice(1)) {
+        if (outcome.status !== 'not_connected') break;
+        outcome = await revokeConnectorByText(
+          database,
+          { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider: next },
+          google,
+        );
+      }
       if (outcome.status === 'revoke_failed') {
         // Ids and the named outcome only, never the body and never a token (rule #1).
         log.error(

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import { LinqSendError } from '~/lib/channel/linq/transport';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -200,29 +201,127 @@ describe('VIL-721 what the walk keeps, on Postgres', () => {
     expect(all.join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
   });
 
-  it.each(['give me a fresh one', 'disconnect my gmail'])(
-    'lit, hands %j from an open walk to the handlers that can act on it',
-    async (ask) => {
+  const readAs = (ask: string, handOff: string) => (input: FriendVoiceInput) => {
+    const turn = v2Turn(input);
+    if (input.parentWords !== ask) return turn;
+    return { ...turn, capture: { ...turn.capture, handOff } as ScriptedTurn['capture'] };
+  };
+
+  const handedOff = () =>
+    db.database
+      .select({ after: schema.auditLog.after, audience: schema.auditLog.audience })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'onboarding_walk_handed_off'));
+
+  it.each([
+    ['give me a fresh one', 'fresh_link'],
+    ['take Hale off my Google account', 'disconnect_google'],
+    ['remove my gmail access', 'disconnect_gmail'],
+    ['please stop reading my email', 'disconnect_gmail'],
+  ])('lit, the model reads %j as %s and the turn leaves the walk', async (ask, read) => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    const talk = conversation(db.database, readAs(ask, read));
+    for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays', 'Dana']) {
+      await talk.say(words);
+    }
+    await talk.say('yes');
+
+    const turn = await talk.say(ask);
+
+    expect(turn.bodies).toEqual([]);
+    expect(talk.seen.map((input) => input.parentWords)).toContain(ask);
+    const inbound = await db.database
+      .select({ body: schema.channelMessages.body, category: schema.channelMessages.category })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'in'));
+    expect(inbound.filter((row) => row.body === ask)).toEqual([{ body: ask, category: 'reply' }]);
+    const [parent] = await db.database.select().from(schema.users);
+    expect(await handedOff()).toEqual([{ after: { read }, audience: parent?.id }]);
+    const [session] = await db.database.select().from(schema.smsIntakeSessions);
+    expect(session?.closedAt).toBeNull();
+  });
+
+  it('lit, an answer that only sounds like a link ask stays in the walk', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    const answer = 'the swim one, her old pass, it expired';
+    const talk = conversation(db.database);
+    for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays', 'Dana']) {
+      await talk.say(words);
+    }
+    await talk.say('yes');
+
+    const turn = await talk.say(answer);
+
+    expect(talk.seen.map((input) => input.parentWords)).toContain(answer);
+    expect(turn.bodies.length).toBeGreaterThan(0);
+    expect(await handedOff()).toEqual([]);
+  });
+
+  it('lit, a new-link read before any link went out stays in the walk', async () => {
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+    const ask = 'can you send that again';
+    const talk = conversation(db.database, readAs(ask, 'fresh_link'));
+    for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4"]) await talk.say(words);
+
+    const turn = await talk.say(ask);
+
+    expect(turn.bodies.length).toBeGreaterThan(0);
+    expect(await handedOff()).toEqual([]);
+  });
+
+  it('dark, a stray hand-off field moves nothing', async () => {
+    const ask = 'take Hale off my Google account';
+    const talk = conversation(db.database, readAs(ask, 'disconnect_google'));
+    for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'Dana']) await talk.say(words);
+
+    await talk.say(ask);
+
+    expect(talk.seen.map((input) => input.parentWords)).toContain(ask);
+    expect(await handedOff()).toEqual([]);
+    const inbound = await db.database
+      .select({ body: schema.channelMessages.body, category: schema.channelMessages.category })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.direction, 'in'));
+    expect(inbound.filter((row) => row.body === ask)).toEqual([{ body: ask, category: 'intake' }]);
+  });
+
+  describe.each([
+    ['refused', () => new LinqSendError('2001', 400, true)],
+    ['unclear', () => new LinqSendError('timeout', 0, false)],
+  ])('lit, the Google ask fails (%s)', (kind, failure) => {
+    it('sends no keyless copy of the ask, and the next turn retries through the card', async () => {
       vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
       const talk = conversation(db.database);
+      const real = talk.transport.send.bind(talk.transport);
+      const attempts: { body: string; key: string | undefined }[] = [];
+      let failNext = true;
+      vi.spyOn(talk.transport, 'send').mockImplementation(async (input) => {
+        if (input.body.includes('unverified')) {
+          attempts.push({ body: input.body, key: input.sendKey });
+          if (failNext) {
+            failNext = false;
+            throw failure();
+          }
+        }
+        return real(input);
+      });
       for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays', 'Dana']) {
         await talk.say(words);
       }
-      await talk.say('yes');
 
-      const turn = await talk.say(ask);
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]?.key).toBeTruthy();
+      expect(linksIn(talk.transport.bodies())).toEqual([]);
 
-      expect(turn.bodies).toEqual([]);
-      expect(talk.seen.map((input) => input.parentWords)).not.toContain(ask);
-      const inbound = await db.database
-        .select({ body: schema.channelMessages.body })
-        .from(schema.channelMessages)
-        .where(eq(schema.channelMessages.direction, 'in'));
-      expect(inbound.map((row) => row.body)).toContain(ask);
-      const [session] = await db.database.select().from(schema.smsIntakeSessions);
-      expect(session?.closedAt).toBeNull();
-    },
-  );
+      await talk.say('hello?');
+
+      expect(attempts).toHaveLength(2);
+      expect(attempts.every((attempt) => Boolean(attempt.key))).toBe(true);
+      if (kind === 'unclear') expect(attempts[1]?.key).toBe(attempts[0]?.key);
+      else expect(attempts[1]?.key).not.toBe(attempts[0]?.key);
+      expect(linksIn(talk.transport.bodies())).toHaveLength(1);
+    });
+  });
 
   it('dark, the same words stay in the walk, as they do on main', async () => {
     const talk = conversation(db.database);

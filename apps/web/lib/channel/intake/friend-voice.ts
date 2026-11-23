@@ -49,6 +49,7 @@ import {
 } from './onboarding-turn';
 import { intakeStatedPlaceEnabled } from './stated-place';
 import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import { WALK_HAND_OFFS } from './walk-hand-off';
 
 /**
  * VIL-413 / VIL-417. The onboarding reply, written from a per-step direction.
@@ -664,6 +665,7 @@ const replyFields = z.object({
   activitiesNone: z.boolean().optional().catch(undefined),
   connectGoogle: z.boolean().nullable().optional().catch(undefined),
   googleLater: z.boolean().optional().catch(undefined),
+  handOff: z.string().nullable().optional().catch(undefined),
 });
 
 const replySchema = replyFields.transform((value) => ({
@@ -823,6 +825,7 @@ const THREAD_V2_FIELDS_JSON = {
   activitiesNone: { type: 'boolean' },
   connectGoogle: { type: ['boolean', 'null'] },
   googleLater: { type: 'boolean' },
+  handOff: { type: ['string', 'null'], enum: [...WALK_HAND_OFFS, null] },
 } as const;
 
 /**
@@ -3203,6 +3206,7 @@ function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
       ...(value.activitiesNone !== undefined ? { activitiesNone: value.activitiesNone } : {}),
       ...(value.connectGoogle !== undefined ? { connectGoogle: value.connectGoogle } : {}),
       ...(value.googleLater !== undefined ? { googleLater: value.googleLater } : {}),
+      ...(value.handOff !== undefined ? { handOff: value.handOff } : {}),
     },
     ahaMention: value.ahaMention,
     asks: value.asks,

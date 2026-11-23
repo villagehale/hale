@@ -10,6 +10,7 @@ import { type FirstTouchPlace, placeFromGivenFields } from './first-touch-place'
 import { type IntakeSession, placeSettled } from './session';
 import { acceptStatedCountry } from './stated-place';
 import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import { type WalkHandOff, acceptWalkHandOff } from './walk-hand-off';
 
 /**
  * VIL-721. One thing a kid already does, as the model read it from the parent's own
@@ -117,6 +118,8 @@ export interface OnboardingCapture {
   connectGoogle?: boolean | null;
   /** VIL-721, lit only. Not now for the Google link. Not asked again in this onboarding. */
   googleLater?: boolean;
+  /** VIL-721, lit only. This text is not an answer to the walk: see walk-hand-off.ts. */
+  handOff?: WalkHandOff | null;
 }
 
 export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
@@ -654,6 +657,7 @@ function threadV2CaptureFields(row: Record<string, unknown>): Partial<Onboarding
     activitiesNone: row.activitiesNone === true && activities.length === 0,
     connectGoogle: acceptBool(row.connectGoogle),
     googleLater: row.googleLater === true,
+    handOff: acceptWalkHandOff(row.handOff),
   };
 }
 
@@ -789,6 +793,7 @@ function mergeThreadV2(
     activitiesNone:
       activities.length === 0 && (next.activitiesNone || prior.activitiesNone) === true,
     connectGoogle: next.connectGoogle ?? prior.connectGoogle ?? null,
+    handOff: next.handOff ?? null,
     googleLater: next.googleLater === true || prior.googleLater === true,
   };
 }

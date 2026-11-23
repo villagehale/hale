@@ -8,6 +8,7 @@ import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channe
 import { optOutUnreadHoldTurnEnabled } from '~/lib/channel/intake/opt-out-turn-flags';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
+import type { WalkHandOff } from '~/lib/channel/intake/walk-hand-off';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { armDelayedImessageTyping } from '~/lib/channel/linq/presence';
 import { isParentRole } from '~/lib/channel/role-scope';
@@ -231,7 +232,12 @@ export async function routeInboundText(
     }
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
-      return handOffToConversation(deps, inbound, outcome.optOutUnread === true);
+      return handOffToConversation(
+        deps,
+        inbound,
+        outcome.optOutUnread === true,
+        outcome.walkHandOff ?? null,
+      );
     }
     if (outcome.status === 'ignored') return 'ignored';
     if (outcome.status === 'secret_santa_draw' && outcome.delivered === 0) {
@@ -341,6 +347,7 @@ async function handOffToConversation(
   deps: InboundRouteDeps,
   inbound: InboundMessage,
   optOutUnread: boolean,
+  walkHandOff: WalkHandOff | null,
 ): Promise<InboundRouteOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
@@ -367,36 +374,57 @@ async function handOffToConversation(
     return 'not_a_parent';
   }
 
-  const [row] = await deps.database
-    .insert(schema.channelMessages)
-    .values({
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      // The pipe this turn arrived on. iMessage is its own ledger value; SMS is the
-      // rest.
-      channel: inbound.transport ?? 'sms',
-      direction: 'in',
-      category: 'reply',
-      providerMessageId: inbound.providerId,
-      providerChatId: inbound.chatId ?? null,
-      status: 'delivered',
-      // Inbound bodies ARE stored: this is the parent's own instruction, and C3 treats
-      // it as the legal instrument of an approval (the locked A2 contract).
-      body: inbound.body,
-      inboundMedia: persistableMedia(inbound.media),
-      // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
-      inGroup: inbound.isGroup ?? null,
-      // The service Linq said carried it: only a real iMessage chat takes several bubbles.
-      providerService: inbound.service ?? null,
-      // In the one write every hand-off needs, so a re-drive and a burst read it too.
-      optOutUnread,
-      sentAt: inbound.receivedAt,
-    })
-    .onConflictDoNothing({
-      target: schema.channelMessages.providerMessageId,
-      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
-    })
-    .returning({ id: schema.channelMessages.id });
+  const claimInbound = (database: Database) =>
+    database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: owner.familyId,
+        parentUserId: owner.userId,
+        // The pipe this turn arrived on. iMessage is its own ledger value; SMS is the
+        // rest.
+        channel: inbound.transport ?? 'sms',
+        direction: 'in',
+        category: 'reply',
+        providerMessageId: inbound.providerId,
+        providerChatId: inbound.chatId ?? null,
+        status: 'delivered',
+        // Inbound bodies ARE stored: this is the parent's own instruction, and C3 treats
+        // it as the legal instrument of an approval (the locked A2 contract).
+        body: inbound.body,
+        inboundMedia: persistableMedia(inbound.media),
+        // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
+        inGroup: inbound.isGroup ?? null,
+        // The service Linq said carried it: only a real iMessage chat takes several bubbles.
+        providerService: inbound.service ?? null,
+        // In the one write every hand-off needs, so a re-drive and a burst read it too.
+        optOutUnread,
+        sentAt: inbound.receivedAt,
+      })
+      .onConflictDoNothing({
+        target: schema.channelMessages.providerMessageId,
+        where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+      })
+      .returning({ id: schema.channelMessages.id });
+  // The model's read lands with the row, so a re-drive of this row still acts on it.
+  const [row] = walkHandOff
+    ? await deps.database.transaction(async (rawTx) => {
+        const tx = rawTx as unknown as Database;
+        const claimed = await claimInbound(tx);
+        const id = claimed[0]?.id;
+        if (id) {
+          await tx.insert(schema.auditLog).values({
+            familyId: owner.familyId,
+            actor: owner.userId,
+            actionTaken: 'onboarding_walk_handed_off',
+            targetTable: 'channel_messages',
+            targetId: id,
+            audience: owner.userId,
+            after: { read: walkHandOff },
+          });
+        }
+        return claimed;
+      })
+    : await claimInbound(deps.database);
   // No row means another delivery of this same MessageSid won the claim. It owns the
   // hand-off; a second job here would be a second reply to one text. A row this door
   // stored while the opt-out read was still failing is the exception: the read has now

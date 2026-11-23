@@ -103,10 +103,7 @@ import {
   findRevokedChannelOwner,
   reenrolOnStart,
 } from './channel-state';
-import {
-  matchConnectorDisconnectRequest,
-  matchFreshConnectorFollowUp,
-} from '~/lib/channel/connect/detect';
+import {} from '~/lib/channel/connect/detect';
 import { coldStartLadderEnabled } from './cold-start/flags';
 import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
@@ -218,6 +215,7 @@ import {
   resolveStatedPlace,
 } from './stated-place';
 import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import { type WalkHandOff, walkHandOffFrom } from './walk-hand-off';
 import type { ChannelTransport } from './transport';
 import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
@@ -471,6 +469,8 @@ export type IntakeOutcome =
        * the text, so no ask moves on it whether or not the hold row was written.
        */
       optOutUnread?: true;
+      /** VIL-721. On the hand-off only: the model read this text as leaving the walk. */
+      walkHandOff?: WalkHandOff;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -1809,7 +1809,7 @@ function threadForNext(
   transcript: TranscriptEntry[],
   inboundBody: string,
   inboundAt: string,
-  outboundBody: string,
+  outboundBody: string | null,
   now: Date,
   asked = false,
 ): TranscriptEntry[] {
@@ -1821,6 +1821,7 @@ function threadForNext(
           ...transcript,
           { direction: 'in' as const, body: inboundBody, providerId: null, at: inboundAt },
         ];
+  if (outboundBody === null) return base;
   return [
     ...base,
     {
@@ -2637,6 +2638,7 @@ async function friendColdTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  const linkIsOut = progress.googleOffered === true;
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
   const safety = await crisisReply(database, session, inbound, language, deps);
@@ -2677,8 +2679,15 @@ async function friendColdTurn(
         now,
         timeZone,
       }),
-      { pageScope: familyId },
+      {
+        pageScope: familyId,
+        replyDiscardedWhen: (capture) => walkHandOffFrom(capture, linkIsOut) !== null,
+      },
     );
+    const owedHandOff = walkHandOffFrom(owed.capture, linkIsOut);
+    if (owedHandOff) {
+      return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: owedHandOff };
+    }
     if (owed.source === 'unsent') {
       await recordInbound(database, ctx, inbound, session.transcript);
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -2761,8 +2770,19 @@ async function friendColdTurn(
         (gap === 'calendar' && progress.calendarOffered === true) ||
         (gap === 'google' && progress.googleOffered === true),
       pageScope: familyId,
+      // Once this turn's map went, the inbound row is the walk's: the router cannot take it.
+      ...(alreadyRecorded
+        ? {}
+        : {
+            replyDiscardedWhen: (capture: OnboardingCapture) =>
+              walkHandOffFrom(capture, linkIsOut) !== null,
+          }),
     },
   );
+  const handOff = alreadyRecorded ? null : walkHandOffFrom(spoken.capture, linkIsOut);
+  if (handOff) {
+    return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: handOff };
+  }
   if (spoken.capture.stopAsking) {
     const recorded =
       alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
@@ -2952,6 +2972,7 @@ async function friendColdTurn(
           ? 'google'
           : null;
   const pending = pendingConnector(nextGiven, progress) ?? askCard;
+  let voicedOut = true;
   if (pending === 'google') {
     // VIL-721. The one card: this reply, then one link for Gmail and the calendar. The
     // ledger's send class is CHECK-constrained (migration 0145), so the ask rides the
@@ -2962,7 +2983,6 @@ async function friendColdTurn(
       sendClass: 'calendar',
       askKey: 'google',
     });
-    let carried = false;
     if (gate.allow) {
       const label = await sendGoogleConnectorCard(
         database,
@@ -2976,7 +2996,7 @@ async function friendColdTurn(
         },
         { transport: deps.transport, threadMessage: deps.threadMessage },
       );
-      if (label === 'sent') {
+      if (label === 'sent' || label === 'link_unconfirmed') {
         await recordOptionalAsk(database, {
           familyId,
           now,
@@ -2984,16 +3004,17 @@ async function friendColdTurn(
           askKey: 'google',
         });
         nextProgress.googleOffered = true;
-        carried = true;
       } else {
         console.info({ google: label }, 'onboarding-friend: google card not sent');
-        // The words already went, or a stop or an erasure landed: nothing more goes.
-        if (label === 'link_unsent' || label === 'gated') carried = true;
+        if (label === 'already_sent') nextProgress.googleOffered = true;
       }
+      // The ask rides its card or does not go: prose pointing at a link that never went is
+      // a promise nothing backs, and the card's own key is what makes its retry safe.
+      voicedOut = label === 'sent' || label === 'link_unconfirmed' || label === 'link_unsent';
     } else {
       console.info({ reason: gate.reason, ask: 'google' }, 'onboarding-friend: connector held');
+      await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
     }
-    if (!carried) await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
   } else if (pending) {
     const provider = pending;
     const ask = provider === 'gmail' ? 'email' : 'calendar';
@@ -3045,7 +3066,7 @@ async function friendColdTurn(
         session.transcript,
         inbound.body,
         inbound.receivedAt.toISOString(),
-        voiced,
+        voicedOut ? voiced : null,
         now,
         spoken.asks,
       ),
@@ -3125,16 +3146,6 @@ async function runColdStartTurn(
       'cold-start: question is stale, handing the text to the coach',
     );
     await closeColdStartForCoach(database, session, inbound, now);
-    return { status: 'ignored', reason: 'no_open_conversation' };
-  }
-  // VIL-721. Lit, an open walk does not swallow a disconnect or a new-link ask: the
-  // router's handlers are what can act on them, and the walk resumes on the next text.
-  // A disconnect still acts only on the model's read (connectorDisconnectHandler).
-  if (
-    threadOnboardingV2Enabled() &&
-    (matchConnectorDisconnectRequest(inbound.body) !== null ||
-      (progress.googleOffered === true && matchFreshConnectorFollowUp(inbound.body)))
-  ) {
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
   return friendColdTurn(database, args, deps);
@@ -3675,7 +3686,8 @@ async function provision(
       // went is a promise nothing backs. A card that did not go leaves the ask open,
       // so the next turn writes it again with its link.
       connectorSent = true;
-      googleCardOut = google === 'sent' || google === 'already_sent';
+      googleCardOut =
+        google === 'sent' || google === 'already_sent' || google === 'link_unconfirmed';
     } else if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
       const provider = cardStep === 'calendar' ? 'gcal' : 'gmail';
       await sendYearConnectorCards(
