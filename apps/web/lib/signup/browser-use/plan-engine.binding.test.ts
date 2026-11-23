@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SignupIdentity } from '../types';
 import type { SignupTermsApproved } from '../terms/types';
+import { runBrowserUsePlanForMode } from './assisted-engine';
 import { browserUseApi } from './client';
 import type { BrowserUseEngineDeps } from './engine';
 import {
@@ -126,6 +127,7 @@ type Outputs = {
   plan: Record<string, unknown>;
   review?: Record<string, unknown>;
   payment?: Record<string, unknown>;
+  assisted?: Record<string, unknown>;
 };
 
 function harness(outputs: Outputs, opts: { browserId?: string | null } = {}) {
@@ -164,9 +166,11 @@ function harness(outputs: Outputs, opts: { browserId?: string | null } = {}) {
       const skill = skillOf.get(run) ?? '';
       const output = skill.includes('plan-signup')
         ? outputs.plan
-        : skill.includes('review')
-          ? (outputs.review ?? REVIEW)
-          : outputs.payment;
+        : skill.includes('assisted')
+          ? outputs.assisted
+          : skill.includes('review')
+            ? (outputs.review ?? REVIEW)
+            : outputs.payment;
       return Response.json({
         id: run,
         status: 'completed',
@@ -622,5 +626,114 @@ describe('the free path', () => {
     if (result.outcome === 'checkpointed') throw new Error('checkpointed');
     expect(result.detail).toBe('cart_mismatch');
     expect(result.cartDifferences).toEqual(['price']);
+  });
+});
+
+describe('a class with no stated price', () => {
+  const session = approved().sessions[0];
+  if (!session) throw new Error('no session');
+  const unstated = { ...session, amount: { kind: 'unstated' as const } };
+  const held = approved({ sessions: [unstated], maxCents: 0, hold: 'price_unstated' });
+  const armed = (over: Partial<SignupTermsApproved> = {}) =>
+    input({
+      maxPriceCents: 0,
+      paymentEnabled: true,
+      binding: binding({ approved: { ...held, ...over }, freeCheckoutEnabled: true }),
+    });
+
+  it.each([
+    ['a priced cart', CHECKOUT],
+    ['a $0 cart with the free switch on', FREE_CHECKOUT],
+  ])('stops at %s: no review, no payment, the browser goes to the parent', async (_, plan) => {
+    const h = harness({ plan, review: FREE_REVIEW, payment: FREE_PLACED });
+    const result = await runBrowserUsePlanSignup(armed().value, h.deps);
+    expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.outcome).toBe('needs_human');
+    expect(result.detail).toBe('price_unstated');
+    expect(result.charged).toBe('nothing');
+    expect(result.liveViewUrl).toBe(LIVE);
+  });
+
+  it('a stored approval with no hold still never pays', async () => {
+    const h = harness({ plan: FREE_CHECKOUT, review: FREE_REVIEW, payment: FREE_PLACED });
+    const result = await runBrowserUsePlanSignup(armed({ hold: null }).value, h.deps);
+    expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.detail).toBe('price_unstated');
+    expect(result.charged).toBe('nothing');
+  });
+
+  it('an earlier charge found at the run is what the parent hears', async () => {
+    const h = harness({ plan: CHECKOUT, payment: PAID });
+    const { value } = input({
+      maxPriceCents: 0,
+      binding: binding({ approved: held, priorChargeNow: async () => true }),
+    });
+    const result = await runBrowserUsePlanSignup(value, h.deps);
+    expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.detail).toBe('prior_charge_unknown');
+  });
+
+  it('a priced session picked beside it is held too', async () => {
+    const h = harness({ plan: CHECKOUT, payment: PAID });
+    const mix = armed({ sessions: [session, { ...unstated, sessionId: 's-2' }] });
+    const result = await runBrowserUsePlanSignup(mix.value, h.deps);
+    expect(h.skills()).toEqual(['# skill browser-use-plan-signup']);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.detail).toBe('price_unstated');
+  });
+
+  it('a different child in the cart is still a mismatch', async () => {
+    const h = harness({
+      plan: { ...CHECKOUT, cart_read: { ...CART_READ, participant_first_name: 'Grace' } },
+    });
+    const result = await runBrowserUsePlanSignup(armed().value, h.deps);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.detail).toBe('cart_mismatch');
+    expect(result.cartDifferences).toEqual(['kid']);
+  });
+
+  it('tells the run there is no limit, never a $0 maximum', async () => {
+    const h = harness({ plan: CHECKOUT });
+    await runBrowserUsePlanSignup(armed().value, h.deps);
+    const task = String(h.created()[0]?.task);
+    expect(task).toContain('# skill browser-use-price-unstated');
+    expect(task).toMatch(/"max_price_cents":\s*null/);
+  });
+
+  it('a priced run keeps its maximum and no addendum (control)', async () => {
+    const h = harness({ plan: CHECKOUT, payment: PAID });
+    await runBrowserUsePlanSignup(input().value, h.deps);
+    const task = String(h.created()[0]?.task);
+    expect(task).not.toContain('browser-use-price-unstated');
+    expect(task).toMatch(/"max_price_cents":\s*8488/);
+  });
+
+  it('an assisted run hands over at the fee, named as unstated, never as a price change', async () => {
+    const h = harness({
+      plan: CHECKOUT,
+      assisted: {
+        outcome: 'ready_for_parent',
+        detail: 'none',
+        choice_index: 0,
+        page_url: 'https://register.example-rec.test/Enroll',
+        fee_cents: 9800,
+        submitted: false,
+        payment_details_entered: false,
+      },
+    });
+    const { value } = armed();
+    const result = await runBrowserUsePlanForMode({ ...value, mode: 'assisted' }, h.deps);
+    if (result.outcome === 'checkpointed') throw new Error('checkpointed');
+    expect(result.outcome).toBe('ready_for_parent');
+    expect(result.detail).toBe('price_unstated');
+    expect(result.charged).toBe('nothing');
+    expect(result.liveViewUrl).toBe(LIVE);
+    expect(result.cartTotalCents).toBe(9800);
+    const task = String(h.created()[0]?.task);
+    expect(task).toContain('# skill browser-use-price-unstated');
+    expect(task).toMatch(/"max_price_cents":\s*null/);
   });
 });

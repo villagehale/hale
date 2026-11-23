@@ -11,6 +11,8 @@ import type {
   BrowserUsePlanInput,
   BrowserUsePlanResult,
 } from '../browser-use/plan-engine';
+import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
+import { browserUseApi } from '../browser-use/client';
 import { storeProviderSession } from '../browser-use/vault';
 import type { SignupConsentReader } from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
@@ -71,7 +73,6 @@ const YES: PlanReading = {
   waiverAccepted: false,
   named: null,
   prerequisiteMet: null,
-  ceilingCents: null,
 };
 
 let db: TestDb;
@@ -1221,7 +1222,7 @@ describe('the yes, against what happened since the ask', () => {
   it('on a page with no course model, the class is bound by the offer name', async () => {
     const f = await household();
     const offerId = await askedAndSent(f, { page: '<html><body>Swim class</body></html>' });
-    const turn = await yes(f, { ...YES, ceilingCents: 8488 });
+    const turn = await yes(f, YES);
     expect(turn.result.outcome).toBe('plan_approved');
     const session = (await termsRow(offerId))?.approved?.sessions[0];
     if (!session) throw new Error('no bound session');
@@ -1782,5 +1783,232 @@ describe('a pick after the options did not match', () => {
     expect(send).not.toHaveBeenCalled();
     expect(turn.result.claimed).toBe(true);
     expect((await offerRow(offerId)).status).toBe('planned');
+  });
+});
+
+describe('a class whose page states no price', () => {
+  const LIVE = 'https://live.browser-use.com/s/fixture-live-view-token';
+  const CHECKOUT = {
+    outcome: 'reached_checkout',
+    detail: 'none',
+    choice_index: 0,
+    checkout_url: `https://${HOST}/Checkout`,
+    cart_total_cents: 12300,
+    cart_currency: 'cad',
+    hold_minutes: 5,
+    saved_card_on_file: true,
+    security_code_required: false,
+    payment_details_entered: false,
+    cart_read: {
+      provider_course_id: null,
+      session_label: 'Get Ready Public Speaking',
+      session_date: '2026-03-28',
+      session_time: '09:30',
+      participant_first_name: 'Ada',
+      line_count: 1,
+      quantity: 1,
+    },
+  };
+
+  // The stipulated model output takes the worst read: an approval carrying their figure.
+  const approvesWith = (maxPriceCents: number | null): PlanReader => ({
+    read: vi.fn(async ({ text, offer }) =>
+      toPlanReading(
+        {
+          reason: 'r',
+          said: text,
+          named: null,
+          verdict: 'approve',
+          choiceIds: ['s-1'],
+          maxPriceCents,
+          waiverSaid: null,
+          waiverAccepted: false,
+          question: null,
+          prerequisiteSaid: null,
+          prerequisiteMet: null,
+        },
+        offer,
+        text,
+      ),
+    ),
+  });
+
+  /** The real engine over a fake Browser Use. It records every run it was asked to create. */
+  function realEngine(plan: Record<string, unknown>) {
+    const created: string[] = [];
+    const stopped: string[] = [];
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      const parsed = new URL(url);
+      const method = init.method ?? 'GET';
+      const path = `${parsed.pathname.replace('/api/v4', '')}${parsed.search}`;
+      if (method === 'POST' && path === '/runs') {
+        created.push(String(JSON.parse(String(init.body)).task).split('\n')[0] ?? '');
+        return Response.json({ id: 'run-1', sessionId: 'bu-session-1' });
+      }
+      if (path === '/runs/run-1/status') return Response.json({ status: 'completed' });
+      if (path.startsWith('/runs/run-1/events')) {
+        return Response.json({
+          events: [
+            {
+              id: 1,
+              type: 'browser.ready',
+              data: { live_view_url: LIVE, browser_session_id: 'browser-1' },
+            },
+          ],
+          nextAfter: null,
+        });
+      }
+      if (path === '/runs/run-1') {
+        return Response.json({
+          id: 'run-1',
+          status: 'completed',
+          sessionId: 'bu-session-1',
+          output: plan,
+          error: null,
+          totalCostUsd: '0.0100',
+        });
+      }
+      if (method === 'PATCH' && path.startsWith('/browsers/')) {
+        stopped.push(path);
+        return Response.json({});
+      }
+      if (path === '/sessions/bu-session-1/cost') {
+        return Response.json({ sessionId: 'bu-session-1', totalCostUsd: '0.020000' });
+      }
+      throw new Error(`unexpected ${method} ${path}`);
+    };
+    const engine = {
+      api: browserUseApi({ apiKey: 'test-key', fetch: fetchImpl as never }),
+      seeder: null,
+      loadTask: async (skill: string) => `# skill ${skill}`,
+      sleep: async () => undefined,
+      now: () => NOW,
+    };
+    const notices: PlanOutcomeNotice[] = [];
+    const deps: PlanRunDeps = {
+      runner: {
+        run: (input) =>
+          runBrowserUsePlanForMode(
+            {
+              ...input,
+              providerSession: { ...input.providerSession, browserUseProfileId: 'p-1' },
+            } as BrowserUsePlanInput,
+            engine,
+          ),
+        release: vi.fn(async () => null),
+        settlePayment: vi.fn(),
+      },
+      notifyParent: vi.fn(async (notice: PlanOutcomeNotice) => {
+        notices.push(notice);
+        return 'sent' as const;
+      }),
+    };
+    return { deps, created, stopped, notices };
+  }
+
+  // A sweep claims across every family, and earlier runs' costs count against the shared reserve.
+  beforeEach(async () => {
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'handed_back' })
+      .where(eq(schema.authorizedSignupOffers.status, 'planned'));
+    await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
+  });
+
+  /** The page read gave the age rule and no rate. */
+  const askedUnpriced = async (f: Household, options: Parameters<typeof ask>[1] = {}) => {
+    const offerId = await askedAndSent(f, options);
+    const row = await termsRow(offerId);
+    if (!row) throw new Error('no terms');
+    await db.database
+      .update(schema.authorizedSignupTerms)
+      .set({
+        shown: {
+          ...row.shown,
+          sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
+        },
+      })
+      .where(eq(schema.authorizedSignupTerms.offerId, offerId));
+    return offerId;
+  };
+
+  it.each([
+    ['yes', null, CHECKOUT],
+    ['yes up to $150', 15000, CHECKOUT],
+    ['yes up to ¥5000', 500000, CHECKOUT],
+    ['500元', 50000, CHECKOUT],
+    ['up to one fifty', 15000, CHECKOUT],
+    ['yes', null, { ...CHECKOUT, cart_total_cents: 0, cart_currency: null }],
+  ])('case %# binds the same hold, and the run stops at checkout', async (body, figure, plan) => {
+    vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_FREE_CHECKOUT_ENABLED', 'true');
+    const posted = stubOps();
+    const f = await household();
+    vi.stubEnv('REGISTRATION_FREE_CHECKOUT_FAMILIES', f.familyId);
+    const offerId = await askedUnpriced(f, { planOpensAt: new Date(NOW.getTime() - 60_000) });
+
+    const turn = await yes(f, YES, { body, reader: approvesWith(figure) });
+    expect(turn.result.outcome).toBe('plan_approved');
+    const row = await termsRow(offerId);
+    expect(row?.approved).toMatchObject({ hold: 'price_unstated', maxCents: 0 });
+    expect(row?.approved?.sessions[0]?.amount).toEqual({ kind: 'unstated' });
+    const offer = await offerRow(offerId);
+    expect(offer.status).toBe('planned');
+    expect(offer.planMaxPriceCents).toBe(0);
+    const ack = turn.written.at(-1);
+    expect(ack?.moment).toBe('approved');
+    expect(ack?.maxPriceCents).toBeNull();
+    expect(ack?.terms?.hold).toBe('price_unstated');
+
+    const engine = realEngine(plan);
+    await sweep(engine.deps, new Date(NOW.getTime() + 60_000));
+    expect(engine.created).toEqual(['# skill browser-use-plan-signup']);
+    expect(engine.stopped).toEqual([]);
+    const notice = engine.notices[0];
+    expect(notice).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'price_unstated',
+      charged: 'nothing',
+      liveViewUrl: LIVE,
+    });
+
+    const written: PlanReplyFacts[] = [];
+    const notify = createPlanNotifier(db.database, {
+      writer: {
+        write: async (facts) => {
+          written.push(facts);
+          return null;
+        },
+      },
+      transport: { send: vi.fn() },
+      now: () => NOW,
+    });
+    if (!notice) throw new Error('no notice');
+    await notify(notice);
+    expect(written[0]?.run).toMatchObject({ detail: 'price_unstated', charged: 'nothing' });
+    expect(written[0]?.maxPriceCents).toBeNull();
+    expect(written[0]?.terms?.unread).toContain('price');
+    expect(written[0]?.terms?.free).toBe(false);
+    expect(posted.join(' ')).toContain('registration_text_unwritten');
+  });
+
+  it('a later text about a held plan states no maximum', async () => {
+    const f = await household();
+    await askedUnpriced(f);
+    await yes(f, YES, { body: 'yes', reader: approvesWith(null) });
+    const later = await yes(
+      f,
+      { verdict: 'unclear', question: 'Should Hale take this plan back?', named: null },
+      { body: 'can it be the sunday one instead' },
+    );
+    expect(later.written.at(-1)?.moment).toBe('clarify');
+    expect(later.written.at(-1)?.maxPriceCents).toBeNull();
+  });
+
+  it('a priced class on the same path binds its price with no hold (control)', async () => {
+    const f = await household();
+    const offerId = await askedAndSent(f);
+    await yes(f, YES);
+    expect((await termsRow(offerId))?.approved).toMatchObject({ hold: null, maxCents: 8488 });
   });
 });

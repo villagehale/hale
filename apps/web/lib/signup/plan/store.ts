@@ -19,6 +19,7 @@ import {
   loadSignupIdentity,
 } from '../store';
 import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
+import { hasUnstatedPrice } from '../terms/cart';
 import { registrationPreflightEnabled } from '../terms/flag';
 import { loadSignupTerms } from '../terms/store';
 import type { SignupTermsApproved } from '../terms/types';
@@ -93,13 +94,17 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'choices' };
   }
-  // A class bound as free has a $0 maximum. Nothing else may.
-  const freeOrder =
+  // A class bound as free has a $0 maximum, and so does a pick with no stated price, which
+  // holds at checkout. Nothing else may.
+  const boundSessions = input.terms?.approved.sessions;
+  const zeroAllowed =
     input.maxPriceCents === 0 &&
-    input.terms?.approved.sessions.every((session) => session.amount.kind === 'free') === true;
+    boundSessions !== undefined &&
+    (hasUnstatedPrice(boundSessions) ||
+      boundSessions.every((session) => session.amount.kind === 'free'));
   if (
     !Number.isInteger(input.maxPriceCents) ||
-    (input.maxPriceCents <= 0 && !freeOrder) ||
+    (input.maxPriceCents <= 0 && !zeroAllowed) ||
     input.maxPriceCents > LINK_SPEND_CEILING_CENTS
   ) {
     return { ok: false, reason: 'max_price' };

@@ -1,5 +1,5 @@
 import type { AgeEligibility } from '~/lib/registration/sequence/prepare';
-import { boundWallClock, mostAllowedCents } from './cart';
+import { boundWallClock, hasUnstatedPrice, mostAllowedCents } from './cart';
 import type {
   SignupTermsAmount,
   SignupTermsApproved,
@@ -22,8 +22,6 @@ export interface BindInput {
   /** The offer's own name for the class: the program name when the page gave none. */
   activityLabel: string | null;
   choiceIds: readonly string[];
-  /** Money the parent wrote in this yes. Only a session with no stated rate reads it. */
-  ceilingCents: number | null;
   /** The parent's own words confirmed the prerequisite. Null when they said nothing about it. */
   prerequisiteMet: boolean | null;
   /** The age check run again at this yes. */
@@ -40,7 +38,7 @@ export type BindResult =
   /** A date of birth given since the ask puts the child outside the band. */
   | { kind: 'outside_band' }
   /** One question, and the offer stays open. */
-  | { kind: 'clarify'; reason: 'prerequisite' | 'no_amount' };
+  | { kind: 'clarify'; reason: 'prerequisite' };
 
 /** The rates this family can be charged: their own when residency is known, else all. */
 export function ratesFor(
@@ -57,28 +55,27 @@ export function ratesFor(
 function amountFor(
   session: SignupTermsShown['sessions'][number],
   input: BindInput,
-): SignupTermsAmount | { clarify: 'no_amount' } {
-  const currency = input.shown.currency;
-  const ceiling = input.ceilingCents;
+): SignupTermsAmount {
   const cents = ratesFor(input.shown.residency, session.rates).map((row) => row.cents);
-  if (cents.length === 0) {
-    return ceiling === null
-      ? { clarify: 'no_amount' }
-      : { kind: 'ceiling', cents: ceiling, currency };
-  }
+  if (cents.length === 0) return { kind: 'unstated' };
   if (cents.every((value) => value === 0)) return { kind: 'free' };
   return {
     kind: 'exact',
     cents,
-    currency,
+    currency: input.shown.currency,
     plusTax: session.tax === 'plus_tax' ? input.taxBound : null,
   };
 }
 
-function holdFor(input: BindInput, picked: SignupTermsShown['sessions']): SignupTermsHold | null {
+function holdFor(
+  input: BindInput,
+  picked: SignupTermsShown['sessions'],
+  sessions: readonly SignupTermsApprovedSession[],
+): SignupTermsHold | null {
   if (input.shown.priorChargeUnknown) return 'prior_charge_unknown';
   if (picked.some((session) => session.source === 'site_option')) return 'site_option';
-  return input.ageFit === 'unknown' ? 'age_unconfirmed' : null;
+  if (input.ageFit === 'unknown') return 'age_unconfirmed';
+  return hasUnstatedPrice(sessions) ? 'price_unstated' : null;
 }
 
 export function bindApproval(input: BindInput): BindResult {
@@ -98,13 +95,11 @@ export function bindApproval(input: BindInput): BindResult {
   const picked: SignupTermsShown['sessions'] = [];
   for (const choiceId of input.choiceIds) {
     const session = input.sessions.find((item) => item.id === choiceId);
-    if (!session) return { kind: 'clarify', reason: 'no_amount' };
     const shownSession = input.shown.sessions.find((item) => item.sessionId === choiceId);
-    // A session the text never stated has no terms to say yes to, and no ceiling stands in.
-    if (!shownSession) return { kind: 'terms_unsent' };
+    // A session the text never stated has no terms to say yes to.
+    if (!session || !shownSession) return { kind: 'terms_unsent' };
     picked.push(shownSession);
     const amount = amountFor(shownSession, input);
-    if ('clarify' in amount) return { kind: 'clarify', reason: amount.clarify };
     const date = wall.get(session.id) ?? null;
     sessions.push({
       sessionId: session.id,
@@ -125,11 +120,14 @@ export function bindApproval(input: BindInput): BindResult {
       v: 1,
       sessions,
       quantity: 1,
-      maxCents: Math.max(...sessions.map((session) => mostAllowedCents(session.amount))),
+      // A priced session beside an unpriced one lends it no limit: the whole pick is unpayable.
+      maxCents: hasUnstatedPrice(sessions)
+        ? 0
+        : Math.max(...sessions.map((session) => mostAllowedCents(session.amount))),
       prerequisiteConfirmed: needsPrerequisite ? true : null,
       countsAgainstSeason: input.shown.countsAgainstSeason,
       seasonKey: null,
-      hold: holdFor(input, picked),
+      hold: holdFor(input, picked, sessions),
     },
   };
 }

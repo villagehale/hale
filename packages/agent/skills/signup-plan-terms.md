@@ -30,7 +30,8 @@ This text is what the parent says yes to, so it carries the terms. Say:
 - When `ageFit` is `unknown`, that Hale could not confirm the age fit and will stop at checkout for them to finish.
 - When `prerequisite.required` is `yes`, name it and ask whether the child has it.
 - When `priorChargeUnknown` is true, that an earlier try may have gone through, to check their card and email first, and that Hale will stop at checkout this time.
-- Anything in `unread`, in a few words.
+- When `unread` has `price`, that Hale could not find the price and will stop at checkout for them to finish. When `rates` holds prices as well, they are for only some of these options, so do not say the whole thing costs that.
+- Anything else in `unread`, in a few words.
 
 Keep it to a short text or two. Do not say the child is registered, and do not call the terms a deal or a guarantee.
 
@@ -58,6 +59,7 @@ Ask `question`. When it is about the price or what Hale may pay, say the price f
 - `age_unconfirmed`: Hale could not confirm the age fit, so it stopped at checkout. Nothing was charged. They finish in the browser.
 - `site_option`: this was a different option from the site than the one Hale read, so it stopped at checkout. Nothing was charged. They finish in the browser.
 - `prior_charge_unknown`: an earlier try may have gone through, so Hale stopped at checkout rather than risk paying twice. Nothing was charged this time. They check their card and email, then finish in the browser if they need to.
+- `price_unstated`: Hale could not find the price, so it stopped at checkout. Nothing was charged. They see the real price in the browser and finish there.
 - `terms_unreadable`: Hale could not read what the parent approved, so it did not register or charge anything. They can register at the link.
 
 Never say registered unless `confirmed` is true.

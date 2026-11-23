@@ -79,8 +79,8 @@ export type SignupTermsAmount =
       currency: 'cad' | 'usd' | null;
       plusTax: SignupTermsTaxBound | null;
     }
-  /** Only when no rate was read: the most the parent said they would pay. */
-  | { kind: 'ceiling'; cents: number; currency: 'cad' | 'usd' | null }
+  /** No rate was read. Nothing is bound and nothing is payable: the run holds at checkout. */
+  | { kind: 'unstated' }
   | { kind: 'free' };
 
 export interface SignupTermsApprovedSession {
@@ -94,7 +94,11 @@ export interface SignupTermsApprovedSession {
 }
 
 /** Why the run stops at checkout and hands the browser over instead of paying. */
-export type SignupTermsHold = 'age_unconfirmed' | 'site_option' | 'prior_charge_unknown';
+export type SignupTermsHold =
+  | 'age_unconfirmed'
+  | 'site_option'
+  | 'prior_charge_unknown'
+  | 'price_unstated';
 
 /** What the yes bound. Written by code from `shown` and the parent's words, once. */
 export interface SignupTermsApproved {

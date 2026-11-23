@@ -118,10 +118,16 @@ export function chargesNothing(amount: SignupTermsAmount, total: number | null):
   return amount.kind === 'free' || (amount.kind === 'exact' && amount.cents.includes(0));
 }
 
+/** A pick holding a session with no stated price: the run never goes past checkout. */
+export function hasUnstatedPrice(
+  sessions: readonly Pick<SignupTermsApprovedSession, 'amount'>[],
+): boolean {
+  return sessions.some((session) => session.amount.kind === 'unstated');
+}
+
 /** The highest total this amount can pass with: the rate, tax included. */
 export function mostAllowedCents(amount: SignupTermsAmount): number {
-  if (amount.kind === 'free') return 0;
-  if (amount.kind === 'ceiling') return amount.cents;
+  if (amount.kind === 'free' || amount.kind === 'unstated') return 0;
   const top = Math.max(...amount.cents);
   if (amount.plusTax === null) return top;
   return (
@@ -154,6 +160,8 @@ function comparesAmount(
   cart: CartForCompare,
   stage: 'cart' | 'final',
 ): CartDifference | null {
+  // Nothing was bound to compare, and the hold stops the run before any payment.
+  if (amount.kind === 'unstated') return null;
   const total = cart.totalCents;
   if (total === null) return 'unread';
   if (amount.kind === 'free') return total === 0 ? null : 'price';
@@ -161,7 +169,6 @@ function comparesAmount(
   if (cart.currency === null || amount.currency === null) return 'unread';
   if (cart.currency !== amount.currency) return 'price';
   if (stage === 'cart') return total > 0 && total <= mostAllowedCents(amount) ? null : 'price';
-  if (amount.kind === 'ceiling') return total <= amount.cents ? null : 'price';
   return comparesFinalExact(amount, cart, total);
 }
 

@@ -298,7 +298,6 @@ export async function runPlanAsk(
 
 /** Asked once a date of birth is in: a date is not a yes. */
 const TERMS_CONFIRM_QUESTION = 'Now that Hale has the date of birth, should it go ahead?';
-const TERMS_AMOUNT_QUESTION = 'What is the most Hale may pay for this?';
 const TERMS_DOB_OTHER_QUESTION =
   "The date they gave is someone else's. What is this child's date of birth?";
 const TERMS_DOB_UNCLEAR_QUESTION =
@@ -477,7 +476,6 @@ async function approveOnTerms(
     sessions: plan.sessions,
     activityLabel: plan.activityLabel,
     choiceIds: reading.choiceIds,
-    ceilingCents: reading.ceilingCents ?? null,
     prerequisiteMet: reading.prerequisiteMet ?? null,
     ageFit: shown.age.rule
       ? ageFitFromRule(shown.age.rule, childFor(child), { now: input.now, timeZone })
@@ -510,7 +508,7 @@ async function approveOnTerms(
   }
   if (bound.kind === 'clarify') {
     // A no to what the class needs answers the ask: asking it again would never end.
-    if (bound.reason === 'prerequisite' && reading.prerequisiteMet === false) {
+    if (reading.prerequisiteMet === false) {
       await markOffer(database, {
         offerId: plan.offerId,
         familyId: input.familyId,
@@ -521,15 +519,9 @@ async function approveOnTerms(
       });
       return reply(database, input, deps, plan, 'declined', { boundBy });
     }
-    if (bound.reason === 'prerequisite') {
-      return reply(database, input, deps, plan, 'clarify', {
-        question: termsPrerequisiteQuestion(shown.prerequisite.quote),
-        asksPrerequisite: true,
-        boundBy,
-      });
-    }
     return reply(database, input, deps, plan, 'clarify', {
-      question: TERMS_AMOUNT_QUESTION,
+      question: termsPrerequisiteQuestion(shown.prerequisite.quote),
+      asksPrerequisite: true,
       boundBy,
     });
   }
@@ -860,7 +852,7 @@ async function reply(
     question?: string;
     refusal?: string;
     choiceIds?: readonly string[];
-    maxPriceCents?: number;
+    maxPriceCents?: number | null;
     waiverAccepted?: boolean;
     boundBy?: PlanBinding;
     /** VIL-715 · the terms this text states. Absent, the writer's request is what it was. */
@@ -883,7 +875,13 @@ async function reply(
     }),
     opensAt: planOpensAtLocal(plan.opensAt, await parentTimeZone(database, input.parentUserId)),
     sessions: replySessions(choices),
-    maxPriceCents: extra.maxPriceCents ?? plan.plan?.maxPriceCents ?? null,
+    // A stored $0 is no figure to say: a free class states none, and an unstated price has none.
+    maxPriceCents:
+      extra.maxPriceCents !== undefined
+        ? extra.maxPriceCents
+        : plan.plan && plan.plan.maxPriceCents > 0
+          ? plan.plan.maxPriceCents
+          : null,
     waiverAccepted: extra.waiverAccepted ?? plan.plan?.waiverAccepted ?? null,
     question: extra.question ?? null,
     refusal: extra.refusal ?? null,

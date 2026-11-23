@@ -19,7 +19,8 @@ import { MAX_PLAN_CHOICES } from './store';
  * it reaches the model marked as such, cleaned and cut short, and nothing in it can carry
  * an approval. An approval holds only on the parent's own words, copied whole (`said`); its
  * maximum only on a price Hale's offer stated or an amount of money they wrote (on an ask
- * with terms, a yes takes the stated price, and money of theirs beside it is a question); the waiver
+ * with terms, a yes takes the stated price, money of theirs beside it is a question, and a
+ * class with no stated price binds no amount at all); the waiver
  * only on a plan whose waiver question Hale sent, and only on their own words, whole, that
  * are no part of the go-ahead (`waiverSaid`). A plan is named only by their own words, whole,
  * that carry a whole word of its program's name or its site. Anything else fails closed.
@@ -80,8 +81,6 @@ export type PlanReading =
       named: PlanNaming | null;
       /** VIL-715 · on an ask with terms: their own words on the prerequisite. */
       prerequisiteMet?: boolean | null;
-      /** VIL-715 · on an ask with terms: money they wrote, for a session with no stated price. */
-      ceilingCents?: number | null;
     }
   | { verdict: 'take_back'; named: PlanNaming | null }
   | { verdict: 'unclear'; question: string; named: PlanNaming | null }
@@ -332,7 +331,8 @@ export function toPlanReading(
   if (offer.status === 'planned') return { verdict: 'unrelated' };
   const ids = raw.choiceIds;
   const chosen = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
-  const max = raw.maxPriceCents;
+  // No chosen session has a price: nothing is bound from any figure, theirs or the model's.
+  const max = offer.terms && !statesAPrice(offer.terms, ids) ? 0 : raw.maxPriceCents;
   const valid =
     ids.length > 0 &&
     ids.length <= MAX_PLAN_CHOICES &&
@@ -352,12 +352,7 @@ export function toPlanReading(
       maxPriceCents: max,
       waiverAccepted: waiverGranted(raw, offer, text),
       named,
-      ...(offer.terms
-        ? {
-            prerequisiteMet: prerequisiteAnswer(raw, text),
-            ceilingCents: ceilingWritten(offer.terms, ids, max, text),
-          }
-        : {}),
+      ...(offer.terms ? { prerequisiteMet: prerequisiteAnswer(raw, text) } : {}),
     };
   }
   const question = cleanQuestion(raw.question);
@@ -382,28 +377,19 @@ function yesTakesStatedPrice(
   max: number,
   text: string,
 ): boolean {
+  if (!statesAPrice(terms, ids)) return true;
   const stated = terms.sessionPrices
     .filter((session) => ids.includes(session.sessionId))
     .flatMap((session) => session.cents);
-  if (stated.length === 0) return true;
   return (
     stated.includes(max) && moneyWritten(text).length === 0 && moneyCentsWritten(text).length === 0
   );
 }
 
-/** A ceiling only where no chosen session has a price: the one amount of money they wrote. */
-function ceilingWritten(
-  terms: PlanReadTerms,
-  ids: readonly string[],
-  max: number,
-  text: string,
-): number | null {
-  const anyStated = terms.sessionPrices.some(
+function statesAPrice(terms: PlanReadTerms, ids: readonly string[]): boolean {
+  return terms.sessionPrices.some(
     (session) => ids.includes(session.sessionId) && session.cents.length > 0,
   );
-  if (anyStated || max <= 0) return null;
-  const amounts = new Set(moneyWritten(text));
-  return amounts.size === 1 && amounts.has(max) ? max : null;
 }
 
 function className(err: unknown): string {

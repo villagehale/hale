@@ -16,7 +16,7 @@ tools: []
 
 When a session they chose has a stated price, their yes is a yes to that price and nothing else. If it attaches any limit or condition to the amount, in any words or language, the verdict is `unclear`, and `question` asks whether Hale may pay the stated price, naming it. That covers a most they will pay, even one above the price, something the price has to stay under, what it cost before, and a credit or discount they are counting on. Saying the stated price back to Hale attaches nothing. A number about something else, such as a level, a time or a date, attaches nothing either.
 
-When no session they chose has a stated price, put the amount of money they name as the most Hale may pay in `maxPriceCents`.
+When no session they chose has a stated price, their yes is a yes to Hale going as far as checkout and stopping there for them to finish. The verdict is `approve` and `maxPriceCents` is null, whatever amount of money they wrote beside it, because nothing is bound from it. This replaces the rule that a yes with no price is `unclear`.
 
 Two more fields:
 

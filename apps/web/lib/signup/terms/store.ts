@@ -66,11 +66,7 @@ const amountSchema = z.discriminatedUnion('kind', [
       .object({ kind: z.enum(['rate', 'ceiling']), basisPoints: z.number().int().positive() })
       .nullable(),
   }),
-  z.object({
-    kind: z.literal('ceiling'),
-    cents: z.number().int().positive(),
-    currency: currencySchema,
-  }),
+  z.object({ kind: z.literal('unstated') }),
   z.object({ kind: z.literal('free') }),
 ]);
 
@@ -92,7 +88,9 @@ export const signupTermsApprovedSchema = z.object({
   prerequisiteConfirmed: z.boolean().nullable(),
   countsAgainstSeason: z.boolean(),
   seasonKey: z.string().nullable(),
-  hold: z.enum(['age_unconfirmed', 'site_option', 'prior_charge_unknown']).nullable(),
+  hold: z
+    .enum(['age_unconfirmed', 'site_option', 'prior_charge_unknown', 'price_unstated'])
+    .nullable(),
 });
 
 export interface SignupTermsRow {

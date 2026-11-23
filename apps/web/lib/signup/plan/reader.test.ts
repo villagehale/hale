@@ -450,7 +450,6 @@ describe('what an approval may rest on', () => {
       expect(toPlanReading(yes(), OFFER_T, 'yes')).toMatchObject({
         verdict: 'approve',
         maxPriceCents: 8488,
-        ceilingCents: null,
         prerequisiteMet: null,
       });
     });

@@ -1,7 +1,7 @@
 import { presentUntrusted } from '@hale/agent';
 import type { AuthorizedSignupPlanResume } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { chargesNothing, compareCart } from '../terms/cart';
+import { chargesNothing, compareCart, hasUnstatedPrice } from '../terms/cart';
 import type { CartDifference, CartRead, SignupTermsApproved } from '../terms/types';
 import { BrowserUseApiError } from './client';
 import {
@@ -62,6 +62,8 @@ export const CART_READ_SKILL = 'browser-use-cart-read';
 export const FREE_REVIEW_SKILL = 'browser-use-free-review';
 /** VIL-715 · a $0 order: place it, only when the page asks for no payment. */
 export const FREE_CHECKOUT_SKILL = 'browser-use-free-checkout';
+/** VIL-715 · a class with no stated price: no limit to compare, and the run stops for the parent. */
+export const PRICE_UNSTATED_SKILL = 'browser-use-price-unstated';
 /** The review chooses and reads; it never places the order. */
 export const CHECKOUT_REVIEW_RUN_MAX_COST_USD = 1;
 /**
@@ -291,7 +293,7 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
   const marked = isEnabled('untrusted-field-marking');
   return {
     ...base,
-    max_price_cents: input.maxPriceCents,
+    max_price_cents: priceUnstated(input) ? null : input.maxPriceCents,
     waiver_accepted_by_parent: input.waiverAccepted,
     choices: input.choices.map((choice, rank) => ({
       rank: rank + 1,
@@ -306,6 +308,20 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
   };
 }
 
+/** The approval holds a session with no stated price, so this run has no limit to compare. */
+export function priceUnstated(input: Pick<BrowserUsePlanInput, 'binding'>): boolean {
+  return input.binding ? hasUnstatedPrice(input.binding.approved.sessions) : false;
+}
+
+/** A task with the no-price addendum when the approval needs it. Otherwise today's task. */
+export async function withPriceUnstated(
+  input: Pick<BrowserUsePlanInput, 'binding'>,
+  deps: Pick<BrowserUseEngineDeps, 'loadTask'>,
+  task: string,
+): Promise<string> {
+  return priceUnstated(input) ? `${task}\n\n${await deps.loadTask(PRICE_UNSTATED_SKILL)}` : task;
+}
+
 /** A bound run's task carries the cart-read addendum. An unbound one is today's task. */
 async function boundSkill(
   input: BrowserUsePlanInput,
@@ -313,7 +329,8 @@ async function boundSkill(
   skill: string,
 ): Promise<string> {
   const task = await deps.loadTask(skill);
-  return input.binding ? `${task}\n\n${await deps.loadTask(CART_READ_SKILL)}` : task;
+  if (!input.binding) return task;
+  return withPriceUnstated(input, deps, `${task}\n\n${await deps.loadTask(CART_READ_SKILL)}`);
 }
 
 const NOTHING_READ: CartRead = {
@@ -545,9 +562,11 @@ async function drivePlan(
       if (differences.length > 0) {
         return { ...checkout, detail: 'cart_mismatch', cartDifferences: differences };
       }
-      const hold =
-        input.binding.approved.hold ??
-        ((await input.binding.priorChargeNow()) ? ('prior_charge_unknown' as const) : null);
+      // Read first: every hold hands the parent a browser to pay in, and they must hear this.
+      const hold = (await input.binding.priorChargeNow())
+        ? ('prior_charge_unknown' as const)
+        : (input.binding.approved.hold ??
+          (priceUnstated(input) ? ('price_unstated' as const) : null));
       if (hold) return { ...checkout, detail: hold };
     }
     if (total === null || (!input.binding && (total <= 0 || total > input.maxPriceCents))) {

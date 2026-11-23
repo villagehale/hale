@@ -74,6 +74,11 @@ const finished = (id, run, watchFor) => ({
 
 export const SIGNUP_TERMS_WRITER_FIXTURES = [
   offer(
+    'offer-price-unstated',
+    { rates: [], unread: ['refund', 'price'] },
+    'Says Hale could not find the price and will stop at checkout for them to finish. States no price or limit, and does not call the class free. Says plainly that Hale could not find a refund policy.',
+  ),
+  offer(
     'offer-resident-no-refund',
     {},
     'States $84.88. Says plainly that Hale could not find a refund policy. Does not say the child is registered.',
@@ -207,6 +212,18 @@ export const SIGNUP_TERMS_WRITER_FIXTURES = [
     'Says an earlier try may have gone through, so Hale stopped rather than risk paying twice. Nothing was charged this time. They check their card and email.',
   ),
   {
+    id: 'run-hold-price',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      maxPriceCents: null,
+      run: { ...RUN, detail: 'price_unstated', cartTotalCents: 12300 },
+      terms: { ...TERMS, rates: [], unread: ['refund', 'price'], hold: 'price_unstated' },
+    },
+    watchFor:
+      'Says Hale could not find the price, so it stopped at checkout. Nothing was charged. They finish in the browser, where they see the real price. It may state the $123.00 the site showed.',
+  },
+  {
     id: 'refused-age',
     facts: { ...BASE, moment: 'refused', refusal: 'age_outside_band' },
     watchFor:
@@ -252,7 +269,7 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-bare-yes',
     text: 'yes please',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+    expect: { verdict: 'approve', maxPriceCents: 8488 },
   },
   {
     id: 'read-yes-with-limit',
@@ -264,7 +281,7 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-yes-french',
     text: 'oui, vas-y',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+    expect: { verdict: 'approve', maxPriceCents: 8488 },
   },
   {
     id: 'read-prerequisite-met',
@@ -360,16 +377,25 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-level-is-no-condition',
     text: 'yes, she just finished level 3',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+    expect: { verdict: 'approve', maxPriceCents: 8488 },
   },
   {
-    id: 'read-unpriced-ceiling',
+    id: 'read-unpriced-money',
     text: 'yes, up to $150',
     offer: {
       ...READ_OFFER,
       terms: { ...READ_TERMS, sessionPrices: [{ sessionId: 's-1', cents: [] }] },
     },
-    expect: { verdict: 'approve', maxPriceCents: 15000, ceilingCents: 15000 },
+    expect: { verdict: 'approve', maxPriceCents: 0 },
+  },
+  {
+    id: 'read-unpriced-yes',
+    text: 'yes please',
+    offer: {
+      ...READ_OFFER,
+      terms: { ...READ_TERMS, sessionPrices: [{ sessionId: 's-1', cents: [] }] },
+    },
+    expect: { verdict: 'approve', maxPriceCents: 0 },
   },
   {
     id: 'read-free',

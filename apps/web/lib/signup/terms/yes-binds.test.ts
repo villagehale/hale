@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type PlanReadOffer, type PlanReading, toPlanReading } from '../plan/reader';
-import { planReadTerms } from './ask';
+import { planReadTerms, writerTerms } from './ask';
 import { type BindResult, bindApproval } from './bind';
 import type { SignupTermsShown } from './types';
 
@@ -80,7 +80,6 @@ function run(
     sessions: SESSION_ROWS,
     activityLabel: 'Parent and Tot Swim',
     choiceIds: reading.choiceIds,
-    ceilingCents: reading.ceilingCents ?? null,
     prerequisiteMet: reading.prerequisiteMet ?? null,
     ageFit: 'in_band',
     taxBound: { kind: 'rate', basisPoints: 1300 },
@@ -200,38 +199,50 @@ describe('what a yes to a stated price binds', () => {
 });
 
 describe('what a yes to a session with no stated price binds', () => {
-  it('money they wrote sets the ceiling', () => {
-    const { reading, bound } = run(shownWith(session('s-1', null)), 'yes up to $150', 15000);
-    expect(reading?.verdict === 'approve' && reading.ceilingCents).toBe(15000);
-    expect(amountOf(bound)).toEqual({ kind: 'ceiling', cents: 15000, currency: 'cad' });
+  it.each([
+    ['yes', null],
+    ['yes up to $150', 15000],
+    ['yes up to ¥5000', 500000],
+    ['500元', 50000],
+    ['up to one fifty', 15000],
+    ['yes, $100 or $150', 10000],
+  ])('case %# binds the checkout hold and no amount', (text, modelFigure) => {
+    const { reading, bound } = run(shownWith(session('s-1', null)), text, modelFigure);
+    expect(reading).toMatchObject({ verdict: 'approve', maxPriceCents: 0 });
+    expect(bound).toMatchObject({
+      kind: 'bound',
+      approved: { hold: 'price_unstated', maxCents: 0 },
+    });
+    expect(amountOf(bound)).toEqual({ kind: 'unstated' });
   });
 
-  it('a bare number sets no ceiling, and Hale asks for the amount', () => {
-    const { reading, bound } = run(shownWith(session('s-1', null)), 'yes up to 150', 15000);
-    expect(reading?.verdict === 'approve' && reading.ceilingCents).toBeNull();
-    expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
+  it('a plain yes to one priced and one unpriced session holds the whole pick', () => {
+    const shown = shownWith(session('s-1', 12000), session('s-2', null));
+    const { bound } = run(shown, 'yes both', 12000, ['s-1', 's-2']);
+    expect(amountOf(bound, 0)).toEqual(EXACT(12000));
+    expect(amountOf(bound, 1)).toEqual({ kind: 'unstated' });
+    expect(bound).toMatchObject({ approved: { hold: 'price_unstated', maxCents: 0 } });
   });
 
-  it('two amounts set no ceiling, and Hale asks for the amount', () => {
-    const { bound } = run(shownWith(session('s-1', null)), 'yes, $100 or $150', 15000);
-    expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
-  });
-
-  it('money beside a pick of one priced and one unpriced session sets no ceiling', () => {
+  it('money beside a yes to that mix still asks', () => {
     const shown = shownWith(session('s-1', 12000), session('s-2', null));
     const { reading, bound } = run(shown, 'yes both, up to $120', 12000, ['s-1', 's-2']);
     expect(reading?.verdict).toBe('unclear');
     expect(bound).toBeNull();
   });
 
-  it('a figure the parent never wrote sets no ceiling', () => {
-    const { bound } = run(shownWith(session('s-1', null)), 'yes up to $150', 20000);
-    expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
+  it('a free session beside an unpriced one is held, and is never called free', () => {
+    const shown = shownWith(session('s-1', 0), session('s-2', null));
+    const { bound } = run(shown, 'yes both', 0, ['s-1', 's-2']);
+    expect(amountOf(bound, 0)).toEqual({ kind: 'free' });
+    expect(amountOf(bound, 1)).toEqual({ kind: 'unstated' });
+    expect(bound).toMatchObject({ approved: { hold: 'price_unstated', maxCents: 0 } });
+    expect(writerTerms(shown)).toMatchObject({ free: false, unread: ['refund', 'price'] });
   });
 
-  it('a stated price beside it does not stand in for the unpriced session', () => {
-    const shown = shownWith(session('s-1', 12000), session('s-2', null));
-    const { bound } = run(shown, 'yes both', 12000, ['s-1', 's-2']);
-    expect(bound).toEqual({ kind: 'clarify', reason: 'no_amount' });
+  it('a priced class keeps its price and no hold (control)', () => {
+    const { bound } = run(shownWith(session('s-1', 8488)), 'yes', 8488);
+    expect(amountOf(bound)).toEqual(EXACT(8488));
+    expect(bound).toMatchObject({ approved: { hold: null, maxCents: 8488 } });
   });
 });

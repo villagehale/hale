@@ -8,6 +8,7 @@ import type { PlanReadTerms } from '../plan/reader';
 import type { PlanReplyTerms } from '../plan/writer';
 import type { SignupSession } from '../types';
 import { ratesFor } from './bind';
+import { hasUnstatedPrice } from './cart';
 import { residencyFor } from './evaluate';
 import { type ProgramTermsDeps, liveProgramTermsDeps, readProgramTerms } from './read-page';
 import { priorChargeUnknown } from './store';
@@ -155,15 +156,18 @@ export function writerTerms(
     });
   const taxes = new Set(shown.sessions.map((session) => session.tax));
   const [tax] = taxes;
+  const priceMissing =
+    rates.length === 0 ||
+    shown.sessions.some((session) => ratesFor(shown.residency, session.rates).length === 0);
   const unread: PlanReplyTerms['unread'] = [
     ...(shown.read === 'unread' ? (['page'] as const) : []),
     ...(shown.refund === null ? (['refund'] as const) : []),
     ...(shown.age.fit === 'unknown' ? (['age'] as const) : []),
     ...(shown.prerequisite.required === 'unknown' ? (['prerequisite'] as const) : []),
-    ...(rates.length === 0 ? (['price'] as const) : []),
+    ...(priceMissing ? (['price'] as const) : []),
   ];
   return {
-    free: rates.length > 0 && rates.every((row) => row.cents === 0),
+    free: !priceMissing && rates.every((row) => row.cents === 0),
     rates,
     residency: shown.residency,
     tax: taxes.size === 1 && tax ? tax : 'unknown',
@@ -208,15 +212,13 @@ export function childFor(row: {
   return { id: row.id, dateOfBirth: row.dateOfBirth, dobPrecision: row.dobPrecision };
 }
 
-/** The price the parent bound, for a writer to say. The maximum carries a tax allowance. */
-export function boundPriceCents(approved: SignupTermsApproved): number {
-  return Math.max(
-    ...approved.sessions.map(({ amount }) =>
-      amount.kind === 'free'
-        ? 0
-        : amount.kind === 'ceiling'
-          ? amount.cents
-          : Math.max(...amount.cents),
-    ),
+/**
+ * The price the parent bound, for a writer to say. The maximum carries a tax allowance.
+ * Null when a session has no stated price: there is no figure to say.
+ */
+export function boundPriceCents(approved: SignupTermsApproved): number | null {
+  const prices = approved.sessions.flatMap(({ amount }) =>
+    amount.kind === 'unstated' ? [] : amount.kind === 'free' ? [0] : amount.cents,
   );
+  return hasUnstatedPrice(approved.sessions) ? null : Math.max(...prices);
 }

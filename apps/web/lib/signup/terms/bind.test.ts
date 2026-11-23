@@ -34,7 +34,6 @@ const input = (over: Partial<BindInput> = {}): BindInput => ({
   sessions: [{ id: 's-1', label: 'Sat 9:30', startsAt: '2026-03-28T09:30:00' }],
   activityLabel: null,
   choiceIds: ['s-1'],
-  ceilingCents: null,
   prerequisiteMet: null,
   ageFit: 'in_band',
   taxBound: { kind: 'rate', basisPoints: 1300 },
@@ -66,7 +65,6 @@ describe('bindApproval', () => {
           { id: 's-2', label: 'Sun 9:30', startsAt: '2026-03-29T09:30:00' },
         ],
         choiceIds: ['s-2'],
-        ceilingCents: 5000,
       }),
     );
     expect(got).toEqual({ kind: 'terms_unsent' });
@@ -87,38 +85,31 @@ describe('bindApproval', () => {
     expect(got.kind === 'bound' && got.approved.maxCents).toBe(9760);
   });
 
-  it('money written beside a stated price changes nothing the yes binds', () => {
-    const got = bindApproval(input({ ceilingCents: 6000 }));
-    expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({
-      kind: 'exact',
-      cents: [8488],
-      currency: 'cad',
-      plusTax: null,
-    });
-    expect(got.kind === 'bound' && got.approved.maxCents).toBe(8488);
-  });
-
-  it('a ceiling binds only when no rate was read', () => {
+  it('no rate binds the checkout hold, with no amount and a $0 maximum', () => {
     const noRate = shown({
       sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
     });
-    const got = bindApproval(input({ shown: noRate, ceilingCents: 12000 }));
-    expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({
-      kind: 'ceiling',
-      cents: 12000,
-      currency: 'cad',
-    });
-    expect(got.kind === 'bound' && got.approved.maxCents).toBe(12000);
+    const got = bindApproval(input({ shown: noRate }));
+    expect(got.kind === 'bound' && got.approved.sessions[0]?.amount).toEqual({ kind: 'unstated' });
+    expect(got.kind === 'bound' && got.approved.maxCents).toBe(0);
+    expect(got.kind === 'bound' && got.approved.hold).toBe('price_unstated');
   });
 
-  it('no rate and no number asks for one', () => {
+  it.each([
+    ['an earlier possible charge', { priorChargeUnknown: true }, 'in_band', 'prior_charge_unknown'],
+    ['an unconfirmed age', {}, 'unknown', 'age_unconfirmed'],
+  ] as const)('%s outranks the price hold', (_, over, ageFit, hold) => {
     const noRate = shown({
+      ...over,
       sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
     });
-    expect(bindApproval(input({ shown: noRate }))).toEqual({
-      kind: 'clarify',
-      reason: 'no_amount',
-    });
+    const got = bindApproval(input({ shown: noRate, ageFit }));
+    expect(got.kind === 'bound' && got.approved.hold).toBe(hold);
+    expect(got.kind === 'bound' && got.approved.maxCents).toBe(0);
+  });
+
+  it('a choice that is not among the sessions binds nothing', () => {
+    expect(bindApproval(input({ choiceIds: ['s-9'] }))).toEqual({ kind: 'terms_unsent' });
   });
 
   it('a free class binds free, at zero', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CartForCompare, compareCart } from './cart';
+import { type CartForCompare, chargesNothing, compareCart, mostAllowedCents } from './cart';
 import type { SignupTermsApprovedSession } from './types';
 
 const who = { childFirstName: 'Ada', siblingFirstNames: [], timeZone: 'America/Toronto' };
@@ -216,10 +216,30 @@ describe('compareCart', () => {
     expect(compareCart(bound(), cart({ totalCents: 0 }), who, 'cart')).toEqual(['price']);
   });
 
-  it('a ceiling passes at or under the number and stops over it', () => {
-    const ceiling = bound({ amount: { kind: 'ceiling', cents: 10000, currency: 'cad' } });
-    expect(compareCart(ceiling, cart({ totalCents: 10000 }), who, 'final')).toEqual([]);
-    expect(compareCart(ceiling, cart({ totalCents: 10001 }), who, 'final')).toEqual(['price']);
+  describe('a session with no stated price', () => {
+    const unstated = bound({ amount: { kind: 'unstated' } });
+
+    it.each([
+      ['any total', { totalCents: 12345 }],
+      ['no total', { totalCents: null }],
+      ['no currency', { currency: null }],
+    ])('passes the amount on %s: the hold stops the run', (_, over) => {
+      expect(compareCart(unstated, cart(over), who, 'cart')).toEqual([]);
+    });
+
+    it.each([
+      ['session', { session_date: '2027-01-01' }],
+      ['kid', { participant_first_name: 'Grace' }],
+      ['quantity', { quantity: 2 }],
+    ])('still compares the %s', (difference, over) => {
+      expect(compareCart(unstated, cart(over), who, 'cart')).toEqual([difference]);
+    });
+
+    it('allows nothing, and is never a $0 order', () => {
+      expect(mostAllowedCents({ kind: 'unstated' })).toBe(0);
+      expect(chargesNothing({ kind: 'unstated' }, 0)).toBe(false);
+      expect(chargesNothing({ kind: 'free' }, 0)).toBe(true);
+    });
   });
 
   it('a cart code is compared only when the page gave ids to compare it with', () => {
