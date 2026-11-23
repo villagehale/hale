@@ -119,6 +119,9 @@ export type LocationRequestResult =
   | { status: 'refused'; code: string };
 
 export interface ChannelTransport {
+  /** This transport posts into one chat and ignores `to`. A send to anyone but the person
+   * in that chat has to take the phone door instead. */
+  readonly boundToChat?: true;
   /** `transport` in the result names which pipe actually carried the send, when
    * an implementation has more than one. Absent means the implementation has only
    * one pipe (the plain SMS transport, every Fake). The caller's ledger row

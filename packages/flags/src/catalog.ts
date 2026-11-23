@@ -217,6 +217,8 @@ export const FLAGS = [
   exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
+  // VIL-759. A co-parent or caregiver invite goes to that person's number, not the turn's chat.
+  exact('third-party-invite-route', 'THIRD_PARTY_INVITE_ROUTE_ENABLED', { envOnly: true }),
   // VIL-749 / VIL-753. One send path: a stable family-scoped Linq key, and a row
   // that says sent only after Linq accepts. Env-only: a failure has no family for
   // PostHog, and a synced 100% flag would light this with no env value.
