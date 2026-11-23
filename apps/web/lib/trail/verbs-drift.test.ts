@@ -278,6 +278,9 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
   // to say WHICH one an answer went out of.
   'apps/web/lib/channel/router/route.ts': ['sms_reply_sent', 'email_reply_sent'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
+  // VIL-759. A send Linq did not accept writes INVITE_SEND_FAILED_VERB, one constant
+  // for both lanes, so the scanner cannot read the verb off the insert.
+  'apps/web/lib/channel/caregiver/invite-send.ts': ['third_party_invite_send_failed'],
   // `LANE[lane].inbound|outbound` — one pair per lane, because a co-parent's own message
   // is not a disclosure to somebody outside the household (VIL-355).
   'apps/web/lib/channel/caregiver/route.ts': [
