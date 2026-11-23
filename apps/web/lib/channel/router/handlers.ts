@@ -14,10 +14,18 @@ import {
   type DisconnectReader,
   createDisconnectReader,
 } from '~/lib/channel/connect/disconnect-read';
-import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
-import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
+import {
+  defaultFreshLinkPorts,
+  textFreshConnectorLink,
+  writeGoogleLinkOrPage,
+} from '~/lib/channel/connect/fresh-link';
+import {
+  offerConnectorLink,
+  offerConnectorLinks,
+  offerGoogleBundleLink,
+} from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { asGoogleBundleLink, asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import {
@@ -361,7 +369,14 @@ export function connectorLinkHandler(
       const language = await familySpeechLanguage(database, ctx.familyId);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
-      const provider = target === 'both' ? 'both' : asTextConnectProvider(target);
+      // VIL-721. A fresh-link ask after the one link gets the one link, while it is lit.
+      // Dark, `google` names nothing this deployment mints, and the coach takes the turn.
+      const provider =
+        target === 'both'
+          ? 'both'
+          : target === 'google'
+            ? asGoogleBundleLink(target)
+            : asTextConnectProvider(target);
       if (!provider) {
         log.error(
           { familyId: ctx.familyId, provider: target, outcome: 'connector_not_offered' },
@@ -427,20 +442,18 @@ export function connectorLinkHandler(
         }
       }
 
-      const outcome = await offerConnectorLink(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        provider,
-        now: ctx.now,
-      });
+      const owner = { familyId: ctx.familyId, parentUserId: ctx.parentUserId, now: ctx.now };
+      const outcome =
+        provider === 'google'
+          ? await offerGoogleBundleLink(database, owner)
+          : await offerConnectorLink(database, { ...owner, provider });
       switch (outcome.status) {
         case 'minted': {
           // #868: the model writes the text around the one link.
-          const reply = await writeConnectorLink(saidLine, {
-            language,
-            provider,
-            url: outcome.url,
-          });
+          const reply =
+            provider === 'google'
+              ? await writeGoogleLinkOrPage(database, saidLine, { language, url: outcome.url })
+              : await writeConnectorLink(saidLine, { language, provider, url: outcome.url });
           if (!reply) {
             log.error(
               { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },

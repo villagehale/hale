@@ -225,4 +225,14 @@ describe('matchFreshConnectorFollowUp', () => {
     ).toBe('gcal');
     expect(connectOfferTarget('What should I call you?')).toBeNull();
   });
+
+  // VIL-721. The one link names both, so the model's own words around it can read like
+  // either connector's offer: the link's `to=google` is what it is.
+  it('reads the one Google link as the one link, whatever the words around it say', () => {
+    expect(
+      connectOfferTarget(
+        'Connect Gmail and your calendar with this one: https://app.villagehale.com/connect?t=abc&to=google',
+      ),
+    ).toBe('google');
+  });
 });

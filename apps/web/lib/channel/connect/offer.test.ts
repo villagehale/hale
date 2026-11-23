@@ -578,6 +578,66 @@ describe('connectorLinkHandler', () => {
     vi.unstubAllGlobals();
   });
 
+  describe('after the one Google link (VIL-721)', () => {
+    const GOOGLE_OFFER =
+      'Connect Gmail and your calendar with this one: https://app.villagehale.com/connect?t=old-one&to=google';
+
+    it('lit, a fresh-link ask mints ONE new link for both, never the two', async () => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      const conversationId = await threadOffer(GOOGLE_OFFER);
+
+      const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
+        db.database,
+        turn('give me a fresh one', conversationId),
+      );
+
+      expect(verdict).toMatchObject({ claimed: true, outcome: 'sent' });
+      const reply = verdict.claimed ? (verdict.reply ?? '') : '';
+      expect(reply.match(/to=google/g)).toHaveLength(1);
+      expect(reply).not.toMatch(/to=gmail|to=gcal/);
+      const tokens = await db.database.select().from(schema.channelSigninTokens);
+      expect(tokens).toHaveLength(1);
+    });
+
+    it('lit, a one-link text the model cannot write sends nothing and pages #ops', async () => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
+      vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.com/services/test');
+      const posted: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          posted.push(String(init?.body ?? ''));
+          return new Response('ok', { status: 200 });
+        }),
+      );
+      const conversationId = await threadOffer(GOOGLE_OFFER);
+
+      const verdict = await connectorLinkHandler(console, {
+        write: async () => null,
+      }).handle(db.database, turn('give me a fresh one', conversationId));
+
+      expect(verdict).toEqual({ claimed: true, outcome: 'links_unwritten', reply: null });
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain('site connector_link_unwritten.');
+      vi.unstubAllGlobals();
+    });
+
+    it('dark, the same ask goes to the coach and mints nothing', async () => {
+      vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+      const conversationId = await threadOffer(GOOGLE_OFFER);
+
+      const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(
+        db.database,
+        turn('give me a fresh one', conversationId),
+      );
+
+      expect(verdict).toEqual({ claimed: false });
+      expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    });
+  });
+
   it('a parent whose only thread with Hale is the group gets no_chat, not a link-less text called sent', async () => {
     const GROUP = 'chat-family-group';
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');

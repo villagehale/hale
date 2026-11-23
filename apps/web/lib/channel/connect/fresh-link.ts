@@ -29,6 +29,7 @@ import {
   writeGoogleBundleLink,
 } from '~/lib/channel/voice/said-line';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 
 /**
@@ -216,6 +217,24 @@ async function sendFresh(
   return 'sent';
 }
 
+/**
+ * VIL-721. The one link's text in the model's words, or nothing and a page to #ops:
+ * no onboarding text has a fixed line to fall back on, and a log line pages nobody.
+ */
+export async function writeGoogleLinkOrPage(
+  database: Database,
+  saidLine: SaidLineWriter | undefined,
+  input: { language: ReplyLanguage | null; url: string },
+): Promise<string | null> {
+  const body = await writeGoogleBundleLink(saidLine, input);
+  if (body) return body;
+  await pageOps(database, {
+    site: 'connector_link_unwritten',
+    facts: { reason: saidLine ? 'write_failed' : 'writer_absent' },
+  });
+  return null;
+}
+
 async function mintBody(
   database: Database,
   args: {
@@ -232,7 +251,7 @@ async function mintBody(
     // VIL-721. A failed one-link connect gets a fresh ONE link, never the two.
     const minted = await offerGoogleBundleLink(database, owner);
     if (minted.status !== 'minted') return minted;
-    const body = await writeGoogleBundleLink(saidLine, { language, url: minted.url });
+    const body = await writeGoogleLinkOrPage(database, saidLine, { language, url: minted.url });
     // A failed write sends nothing; the minted link simply expires unused.
     return body ? { status: 'minted', body } : { status: 'mint_failed' };
   }
