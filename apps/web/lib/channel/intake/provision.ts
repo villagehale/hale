@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, isNull } from 'drizzle-orm';
 import { noteFamilySignedUp, noteMessage } from '~/lib/analytics/product-hooks';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
@@ -201,20 +202,35 @@ async function existingActiveSmsChannel(
   return linked(byPhone);
 }
 
+/**
+ * VIL-763 · store a name only when the parent gave one.
+ *
+ * Off unless `STATED_CHILD_NAME_ENABLED` is exactly `true`. Off keeps the previous
+ * stand-in so a dark flag does not change a row written today. On, a missing name
+ * is null. Callers must not invent a name to pass in: this only trims what they
+ * already read out of the parent's words.
+ */
+export function childNameForStorage(name: string | null | undefined): string | null {
+  const given = name?.trim() ?? '';
+  const stated = given.length > 0 ? given : null;
+  if (isEnabled('stated-child-name')) return stated;
+  return stated ?? 'your child';
+}
+
 function childRowFromProvision(
   familyId: string,
   child: ProvisionChild,
   now: Date,
 ): {
   familyId: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
   dobPrecision: 'exact' | 'derived';
 } {
   const exact = child.dateOfBirth ? acceptCalendarDate(child.dateOfBirth) : null;
   return {
     familyId,
-    name: child.name?.trim() || 'your child',
+    name: childNameForStorage(child.name),
     dateOfBirth: exact ?? deriveDateOfBirth(child.ageMonths, child.agePrecision, now),
     dobPrecision: exact ? 'exact' : 'derived',
   };

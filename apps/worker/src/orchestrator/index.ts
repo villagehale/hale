@@ -380,7 +380,7 @@ export async function runOrchestrator(
       teenContent: resume.teenContent,
     };
   } else {
-    const childNames = familyContext.children.map((c) => c.name);
+    const childNames = familyContext.children.flatMap((child) => (child.name ? [child.name] : []));
 
     const isAcceptedVillageItem =
       job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;

@@ -19,7 +19,7 @@ import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
  * the pre-signed avatar URL (or null for the initials fallback). */
 export interface FamilyChild {
   id: string;
-  name: string;
+  name: string | null;
   lastName: string | null;
   dateOfBirth: string;
   stageLabel: string;
@@ -389,7 +389,7 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
           label="name or nickname"
           name="name"
           type="text"
-          required
+          required={mode === 'add' || (child?.name ?? '').trim().length > 0}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
           placeholder="maya"

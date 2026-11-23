@@ -374,7 +374,9 @@ async function familyTeenNames(database: Database, familyId: string, now: Date):
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const teens = teenChildIds(children, now);
-  return children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  return children
+    .filter((child) => teens.has(child.id))
+    .flatMap((child) => (child.name ? [child.name] : []));
 }
 
 /**

@@ -75,9 +75,13 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
  * the 18-year ceiling (isBeyondProductAge). On success the derived stage is
  * attached. `now` is injectable so the boundary checks are deterministic.
  */
-export function validateChild(input: ChildInput, now: Date = new Date()): ValidateChildResult {
+export function validateChild(
+  input: ChildInput,
+  now: Date = new Date(),
+  options?: { allowBlankName?: boolean },
+): ValidateChildResult {
   const name = input.name.trim();
-  if (name.length === 0) {
+  if (name.length === 0 && !options?.allowBlankName) {
     return { ok: false, error: 'name_required' };
   }
 
@@ -105,7 +109,7 @@ export function validateChild(input: ChildInput, now: Date = new Date()): Valida
   return {
     ok: true,
     child: {
-      name,
+      name: name.length > 0 ? name : '',
       lastName: lastName && lastName.length > 0 ? lastName : null,
       dateOfBirth: dob,
       stage: deriveStage(dob, now),

@@ -226,6 +226,8 @@ export interface NoticePlanInput {
   parentUserIds: readonly [string, string];
   parentNames: Readonly<Record<string, string>>;
   childNames: readonly string[];
+  /** Children in the household, named or not. The one-name fallback uses this, not the name list. */
+  rosterSize?: number;
   now: Date;
   timeZone: string;
   language: ReplyLanguage;
@@ -294,7 +296,7 @@ export async function planAmbiguousWhoTakes(
     if (!best || block.start.getTime() < (best.start?.getTime() ?? 0)) best = block;
   }
   if (!best?.start) return null;
-  const parts = blockParts(best, input.childNames);
+  const parts = blockParts(best, input.childNames, input.rosterSize);
   const recipient = otherParent(best.userId, first, second) ?? best.userId;
   if (!parts || !best.start) return null;
   const startIso = best.start.toISOString();
@@ -344,7 +346,7 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
     if (!best || at < best.at) best = { block, at };
   }
   if (!best?.block.start) return null;
-  const parts = blockParts(best.block, input.childNames);
+  const parts = blockParts(best.block, input.childNames, input.rosterSize);
   const recipient = otherParent(best.block.userId, first, second);
   if (!parts || !recipient) return null;
   const startIso = best.block.start.toISOString();
@@ -436,7 +438,7 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
   }
   if (!best?.start || !ownerId) return null;
   const name = input.parentNames[ownerId]?.trim();
-  const parts = blockParts(best, input.childNames);
+  const parts = blockParts(best, input.childNames, input.rosterSize);
   const recipient = otherParent(ownerId, first, second) ?? ownerId;
   if (!name || !parts) return null;
   const text = await groupHandoffText(input.language, {
@@ -472,7 +474,7 @@ async function batchedKidEvents(input: NoticePlanInput): Promise<HouseholdNotice
   for (const block of fresh) {
     if (lines.length >= KID_LINES_MAX) break;
     if (!block.start) continue;
-    const parts = blockParts(block, input.childNames);
+    const parts = blockParts(block, input.childNames, input.rosterSize);
     const name = input.parentNames[block.userId]?.trim();
     const other = otherParent(block.userId, first, second);
     if (!parts || !name || !other) continue;
@@ -586,8 +588,36 @@ function speakable(block: BusyBlock): boolean {
 }
 
 /** The title's kid and event when the group may hear the title; else its kid alone. */
-function blockParts(block: BusyBlock, childNames: readonly string[]): KidParts | null {
-  if (block.title !== null) return splitKidEvent(block.title, childNames);
+/** Whose event a kid-related title is, from the full roster. One child is that child.
+ * Several children attach only when the title says a name that is on file. */
+function childIdForKidTitle(
+  title: string | null | undefined,
+  children: readonly { id: string; name: string | null }[],
+  kidRelated: boolean,
+): string | null {
+  if (!kidRelated) return null;
+  if (children.length === 1) return children[0]?.id ?? null;
+  if (!title) return null;
+  const names = children.flatMap((child) => {
+    const name = child.name?.trim() ?? '';
+    return name.length >= 2 ? [name] : [];
+  });
+  const kid = splitKidEvent(title, names, children.length)?.kid ?? null;
+  if (!kid) return null;
+  return children.find((child) => (child.name?.trim() ?? '') === kid)?.id ?? null;
+}
+
+function soleChildIsTeen(children: readonly { id: string }[], teens: ReadonlySet<string>): boolean {
+  const only = children.length === 1 ? children[0] : undefined;
+  return only !== undefined && teens.has(only.id);
+}
+
+function blockParts(
+  block: BusyBlock,
+  childNames: readonly string[],
+  rosterSize = childNames.length,
+): KidParts | null {
+  if (block.title !== null) return splitKidEvent(block.title, childNames, rosterSize);
   return block.kid === null ? null : { kid: block.kid, event: null };
 }
 
@@ -840,17 +870,17 @@ export async function rememberCalendarChanges(
     familyId: string;
     userId: string;
     changes: readonly CalendarChange[];
-    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
+    children: ReadonlyArray<{ id: string; name: string | null; dateOfBirth: string }>;
     seeding: boolean;
     bothCalendars: boolean;
     now: Date;
   },
 ): Promise<void> {
-  const childNames = input.children.map((child) => child.name);
+  const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
   const teens = teenChildIds(input.children, input.now);
   const teenNames = input.children
     .filter((child) => teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   for (const change of input.changes) {
     const stamp = changeStamp(change);
     // The teen check reads the arriving title, because someone else's title is dropped below
@@ -864,13 +894,13 @@ export async function rememberCalendarChanges(
       ],
       childNames,
       teenNames,
+      soleChildIsTeen(input.children, teens),
     );
     const kidRelated = screened?.kidRelated === true;
     // The arriving title is read here to find the kid and is stored only when it is the
     // parent's own (VIL-651). An unanswered invite is kept, unannounced, so a later yes can be.
     const title = titleForStorage(kidRelated, spokenBlockTitle(change.standing, change.title));
-    const kid = kidRelated && change.title ? splitKidEvent(change.title, childNames)?.kid : null;
-    const childId = input.children.find((child) => child.name.trim() === kid)?.id ?? null;
+    const childId = childIdForKidTitle(change.title, input.children, kidRelated);
     const [prev] = await database
       .select({
         startAt: schema.parentCalendarBlocks.startAt,
@@ -959,7 +989,8 @@ async function loadFamilyCalendarContext(
   language: ReplyLanguage;
   chatId: string | null;
   childNames: string[];
-  children: Array<{ id: string; name: string; dateOfBirth: string }>;
+  rosterSize: number;
+  children: Array<{ id: string; name: string | null; dateOfBirth: string }>;
 }> {
   const members = await database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
@@ -1023,7 +1054,8 @@ async function loadFamilyCalendarContext(
     timeZone: zone?.timezone ?? 'America/Toronto',
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     chatId: family?.linqGroupChatId ?? null,
-    childNames: children.map((row) => row.name),
+    childNames: children.flatMap((row) => (row.name ? [row.name] : [])),
+    rosterSize: children.length,
     children,
   };
 }
@@ -1075,6 +1107,7 @@ export async function narrateHouseholdCalendar(
     parentUserIds: context.parentUserIds,
     parentNames,
     childNames: context.childNames,
+    rosterSize: context.rosterSize,
     now: input.now,
     timeZone: context.timeZone,
     language: context.language,
@@ -1278,7 +1311,7 @@ async function clashNotice(
     const parts = poll
       ? splitKidEvent(
           poll.plan.title,
-          input.children.map((child) => child.name),
+          input.children.flatMap((child) => (child.name ? [child.name] : [])),
         )
       : null;
     return {
@@ -1315,7 +1348,7 @@ interface ClashPlanningInput {
   calendarUserIds: readonly string[];
   blocks: readonly BusyBlock[];
   remembered: readonly RememberedLogistics[];
-  children: readonly { id: string; name: string }[];
+  children: readonly { id: string; name: string | null }[];
   teens: ReadonlySet<string>;
 }
 
@@ -1394,12 +1427,17 @@ async function planClashes(
           : ahead,
       ),
     );
-  const childNames = input.children.map((child) => child.name);
+  const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
   const teenNames = input.children
     .filter((child) => input.teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   const aboutTeen = (title: string) =>
-    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+    withoutTeenTitles(
+      [{ title, kidRelated: true }],
+      childNames,
+      teenNames,
+      soleChildIsTeen(input.children, input.teens),
+    )[0]?.title === null;
   // A private plan's calendar copy is busy time wherever either of them sits, so a copy
   // the parent dragged to another day still never carries the plan's title.
   const events = rows
@@ -1463,7 +1501,7 @@ async function planClashes(
 async function loadSweepBlocks(
   database: Database,
   familyId: string,
-  context: { children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }> },
+  context: { children: ReadonlyArray<{ id: string; name: string | null; dateOfBirth: string }> },
   now: Date,
 ): Promise<{ blocks: BusyBlock[]; teens: Set<string> }> {
   const rows = await database
@@ -1471,16 +1509,20 @@ async function loadSweepBlocks(
     .from(schema.parentCalendarBlocks)
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
   const teens = teenChildIds(context.children, now);
-  const childNames = context.children.map((child) => child.name);
+  const childNames = context.children.flatMap((child) => (child.name ? [child.name] : []));
   const teenNames = context.children
     .filter((child) => teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   const blocks = rows.map((row): BusyBlock => {
     const teen =
       (row.childId !== null && teens.has(row.childId)) ||
       (row.title !== null &&
-        withoutTeenTitles([{ title: row.title, kidRelated: true }], childNames, teenNames)[0]
-          ?.title === null);
+        withoutTeenTitles(
+          [{ title: row.title, kidRelated: true }],
+          childNames,
+          teenNames,
+          soleChildIsTeen(context.children, teens),
+        )[0]?.title === null);
     const kidRelated = row.kidRelated && !teen;
     const recorded = context.children.find((child) => child.id === row.childId)?.name;
     const named = row.title ? splitKidEvent(row.title, childNames)?.kid : undefined;
@@ -2406,7 +2448,13 @@ export async function captureLogisticsText(
         })
       : false;
   if (who && 'declined' in who) {
-    const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
+    const target = matchWhoTakesTarget(
+      input.body,
+      blocks,
+      input.now,
+      context.childNames,
+      context.children.length,
+    );
     if (target) {
       const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
       if (await changedSince(factKey)) return 'skipped';
@@ -2421,7 +2469,13 @@ export async function captureLogisticsText(
     return 'withheld';
   }
   if (who) {
-    const target = matchWhoTakesTarget(input.body, blocks, input.now, context.childNames);
+    const target = matchWhoTakesTarget(
+      input.body,
+      blocks,
+      input.now,
+      context.childNames,
+      context.children.length,
+    );
     if (!target) return 'skipped';
     const factKey = whoTakesFactKey(target.startIso, target.titleNorm);
     if (await changedSince(factKey)) return 'skipped';
@@ -2481,6 +2535,7 @@ function matchWhoTakesTarget(
   blocks: readonly BusyBlock[],
   now: Date,
   childNames: readonly string[],
+  rosterSize = childNames.length,
 ): { startIso: string; titleNorm: string; kid: string; event: string | null } | null {
   const open = blocks.filter((block) => upcomingKid(block, now) && block.start);
   const normalized = body.trim().toLowerCase();
@@ -2495,7 +2550,7 @@ function matchWhoTakesTarget(
   if (unique.size !== 1) return null;
   const block = [...unique.values()][0];
   if (!block?.start) return null;
-  const parts = blockParts(block, childNames);
+  const parts = blockParts(block, childNames, rosterSize);
   if (!parts) return null;
   return {
     startIso: block.start.toISOString(),
@@ -2558,10 +2613,17 @@ export async function familyFreeBusy(
         ),
       ),
   ]);
-  const childNames = children.map((child) => child.name);
-  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const childNames = children.flatMap((child) => (child.name ? [child.name] : []));
+  const teenNames = children
+    .filter((child) => teens.has(child.id))
+    .flatMap((child) => (child.name ? [child.name] : []));
   const aboutTeen = (title: string) =>
-    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+    withoutTeenTitles(
+      [{ title, kidRelated: true }],
+      childNames,
+      teenNames,
+      soleChildIsTeen(children, teens),
+    )[0]?.title === null;
   const privateCopies = new Set(
     placed
       .filter(

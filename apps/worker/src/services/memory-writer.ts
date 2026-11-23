@@ -831,7 +831,10 @@ export async function loadChildNames(
     .select({ name: schema.children.name })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.map((r) => r.name);
+  return rows.flatMap((row) => {
+    const name = row.name?.trim() ?? '';
+    return name.length > 0 ? [name] : [];
+  });
 }
 
 /**
@@ -849,7 +852,7 @@ export interface FamilyContext {
   /** The family's known children, for child attribution. Empty when the family
    * has no children rows. The orchestrator validates the classifier's
    * concerns_child_id against these ids before persisting events.child_id. */
-  children: Array<{ id: string; name: string; ageInMonths: number }>;
+  children: Array<{ id: string; name: string | null; ageInMonths: number }>;
   contextSlice: {
     childrenAgesMonths: number[];
     province: string;
@@ -857,7 +860,7 @@ export interface FamilyContext {
     /** Carried into the classifier so it can attribute a signal to a child by
      * name or age/stage cue. Omitted (undefined) when the family has no children
      * so the serialized slice for single-child/childless families is unchanged. */
-    children?: Array<{ id: string; name: string; ageInMonths: number }>;
+    children?: Array<{ id: string; name: string | null; ageInMonths: number }>;
   };
 }
 

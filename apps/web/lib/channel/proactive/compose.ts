@@ -2,11 +2,13 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { proactiveNoRepeatEnabled } from './flag';
 import {
   type ToolCandidate,
   WRITER_MAX_TOKENS,
   WRITER_TOOL,
   WRITER_TOOL_SCHEMA,
+  WRITER_TOOL_SCHEMA_OR_NOTHING,
   type WriterResult,
   readWriterText,
   withActivityLinks,
@@ -21,6 +23,8 @@ import {
  */
 
 export const WRITER_SKILL = 'proactive-writer';
+/** Loaded only when the repeat guard is on and there is a recent text to compare. */
+export const WRITER_NO_REPEAT_SKILL = 'proactive-writer-no-repeat';
 
 export { WRITER_TOOL_SCHEMA, type WriterResult, readWriterText, withActivityLinks };
 
@@ -29,20 +33,29 @@ export async function composeProactiveBatch(input: {
   client: AgentClient | null;
   /** The family's stored language tag, handed to the writer as-is. */
   language?: string | null;
+  /** Texts Hale already sent this parent. Ignored unless the repeat flag is exactly `true`. */
+  recentTexts?: readonly string[];
 }): Promise<WriterResult> {
   if (!input.client) return { skipped: 'no_client' };
+  const recent = proactiveNoRepeatEnabled() ? (input.recentTexts ?? []) : [];
+  const guard = recent.length > 0;
   const skill = await loadCronSkill(WRITER_SKILL);
+  const system = guard
+    ? `${skill.instructions}\n\n${(await loadCronSkill(WRITER_NO_REPEAT_SKILL)).instructions}`
+    : skill.instructions;
   let value: unknown;
   try {
     const result = await forceToolJson({
       client: input.client,
       lane: pickLane(skill.meta.task),
-      system: skill.instructions,
+      system,
       // No cadence note: a parent's words about pace are not stored (preference.ts).
-      userMessage: writerContext(input.items, null, input.language ?? null),
+      userMessage: writerContext(input.items, null, input.language ?? null, recent),
       toolName: WRITER_TOOL,
-      toolDescription: 'The one text Hale sends.',
-      inputJsonSchema: WRITER_TOOL_SCHEMA,
+      toolDescription: guard
+        ? 'The one text Hale sends, or null when it would repeat a recent text.'
+        : 'The one text Hale sends.',
+      inputJsonSchema: guard ? WRITER_TOOL_SCHEMA_OR_NOTHING : WRITER_TOOL_SCHEMA,
       schema: z.unknown(),
       maxTokens: WRITER_MAX_TOKENS,
     });
@@ -55,5 +68,5 @@ export async function composeProactiveBatch(input: {
     );
     return { skipped: 'model_failed' };
   }
-  return readWriterText(value, input.items);
+  return readWriterText(value, input.items, guard);
 }

@@ -378,9 +378,57 @@ describe('editChildAction', () => {
 
   it('rejects an invalid edit before resolving the family', async () => {
     fakeDbHandle = {};
-    const result = await editChildAction(CHILD_ID, { name: '', dateOfBirth: '2024-02-02' });
-    expect(result).toEqual({ status: 'invalid', error: 'name_required' });
+    const result = await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: 'not-a-date' });
+    expect(result).toEqual({ status: 'invalid', error: 'dob_invalid' });
     expect(resolveFamilyForUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects wiping a stored name and writes nothing', async () => {
+    const before = {
+      name: 'Robin',
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      dobPrecision: 'exact',
+      gender: 'unspecified',
+      biologicalSex: null,
+      interests: [],
+    };
+    const { tx, inserts, updates } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await editChildAction(CHILD_ID, { name: '  ', dateOfBirth: '2024-02-02' });
+
+    expect(result).toEqual({ status: 'invalid', error: 'name_required' });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('keeps a nameless child nameless when only the birthday changes', async () => {
+    const before = {
+      name: null,
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      dobPrecision: 'derived',
+      gender: 'unspecified',
+      biologicalSex: null,
+      interests: [],
+    };
+    const { tx, inserts, updates } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await editChildAction(CHILD_ID, { name: '', dateOfBirth: '2024-02-02' });
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.children)).toEqual({
+      name: null,
+      dateOfBirth: '2024-02-02',
+      dobPrecision: 'exact',
+    });
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      actionTaken: 'child_updated',
+      before,
+      after: { name: null, dateOfBirth: '2024-02-02' },
+    });
   });
 });
 

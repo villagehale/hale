@@ -283,7 +283,9 @@ async function callJudge(
       now,
     ),
   );
-  const contract = kidVerdictsContract(ports.children.map((child) => child.name));
+  const contract = kidVerdictsContract(
+    ports.children.flatMap((child) => (child.name ? [child.name] : [])),
+  );
   const ask = async (onLane: LaneConfig): Promise<CallResult> => {
     const { value } = await forceToolJson({
       client: ports.client,
@@ -455,7 +457,10 @@ export async function loadKidRelevanceChildren(
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.filter((row) => row.name.trim().length > 0);
+  return rows.flatMap((row) => {
+    const name = row.name?.trim() ?? '';
+    return name.length > 0 ? [{ ...row, name }] : [];
+  });
 }
 
 /** The kinds of thing this parent has said are theirs, from their own adult verdicts. */

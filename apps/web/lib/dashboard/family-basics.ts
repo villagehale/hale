@@ -22,7 +22,7 @@ const STAGE_LABEL: Record<FamilyStage, string> = {
 
 export interface FamilyChildBasics {
   id: string;
-  name: string;
+  name: string | null;
   /** Optional family / last name, or null when not given (rule #1: sensitive). */
   lastName: string | null;
   dateOfBirth: string;

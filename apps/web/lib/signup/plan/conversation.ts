@@ -339,6 +339,7 @@ async function runDobTurn(
   const child = await childAgeRow(database, input.familyId, plan.childId);
   if (!child || child.dobPrecision === 'exact') return null;
   const reader = deps.dobReader ?? createDobReader(() => resolveReplyClient(undefined));
+  if (!child.name) return null;
   const raw = await reader.read({ text: input.body, childFirstName: child.name });
   if (raw?.otherPerson) {
     return reply(database, input, deps, plan, 'clarify', {
