@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -7,8 +7,13 @@ import { type BubbleGaps, readBubbleGaps } from '~/lib/channel/linq/bubble-gap';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { chatServiceSaid } from '~/lib/channel/messaging-door';
-import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import {
+  createOutboundTransport,
+  linqRefusedForCertain,
+  readSendRefusal,
+} from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { readLineHold } from '~/lib/channel/proactive/review';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -236,6 +241,15 @@ export function createPlanPrepDeliver(
   deps: { transport: ChannelTransport; fetch?: typeof fetch },
 ): PlanPrepDeliver {
   return async (input) => {
+    const receipted = RECEIPTED_KINDS.has(input.kind);
+    // `no_sending_line` is not a hold: the transport answers that send as `not_configured`.
+    if (receipted && (await readLineHold(database)) === 'line_health') {
+      console.warn(
+        { offerId: input.offerId, kind: input.kind, code: 'line_held' },
+        'signup plan prep: the Linq line is on hold; not sent',
+      );
+      return 'withheld';
+    }
     const to = await resolveSendablePhone(database, input.parentUserId);
     if (!to) {
       console.info(
@@ -275,6 +289,7 @@ export function createPlanPrepDeliver(
           ...input,
           to,
           body: part.body,
+          receipted,
           dedupeKey:
             input.noticeKey === null
               ? null
@@ -298,6 +313,9 @@ export function createPlanPrepDeliver(
             parentUserId: input.parentUserId,
             now: input.now,
             fetch: deps.fetch,
+            ...(receipted && input.noticeKey !== null
+              ? { sendKey: `${PLAN_PREP_TEMPLATE}:${input.noticeKey}:link` }
+              : {}),
           }),
         (sent) => sent.status !== 'not_sent',
       );
@@ -325,6 +343,26 @@ export function createPlanPrepDeliver(
 }
 
 /**
+ * VIL-718 · the takeover's two texts send on receipts. The row's error code says what is known
+ * about a try that was not accepted: `refused:` Linq certainly did not take it, so it is not
+ * tried again; `unconfirmed:` it may have landed, so a retry goes under the same provider key
+ * and Linq drops a second copy. The dedupe key is that provider key. Every other notice kind
+ * keeps the door as it was.
+ */
+const RECEIPTED_KINDS: ReadonlySet<PlanNoticeKind> = new Set<PlanNoticeKind>([
+  'takeover',
+  'takeover_unfinished',
+]);
+const REFUSED_PREFIX = 'refused:';
+const UNCONFIRMED_PREFIX = 'unconfirmed:';
+
+function receiptCode(err: unknown): string {
+  const code = readSendRefusal(err)?.code ?? 'unknown';
+  if (code === 'not_configured') return code;
+  return `${linqRefusedForCertain(err) ? REFUSED_PREFIX : UNCONFIRMED_PREFIX}${code}`;
+}
+
+/**
  * The row a text sends under. With a dedupe key, a bubble that already went (or is going)
  * is not sent again: its row comes back as `went`, with the chat it used. A bubble whose
  * try failed is claimed again and sent.
@@ -337,10 +375,13 @@ async function claimPrepText(
     offerId: string;
     kind: PlanNoticeKind;
     dedupeKey: string | null;
+    receipted: boolean;
   },
 ): Promise<
   | { claimed: true; id: string }
   | { claimed: false; went: { channel: 'sms' | 'imessage'; chatId: string | null } }
+  /** On receipts: Linq certainly refused this text. It is not sent again. */
+  | { claimed: false; went: null }
 > {
   const messages = schema.channelMessages;
   const [row] = await database
@@ -368,16 +409,31 @@ async function claimPrepText(
         eq(messages.dedupeKey, input.dedupeKey),
         eq(messages.familyId, input.familyId),
         eq(messages.status, 'failed'),
+        input.receipted
+          ? sql`coalesce(${messages.errorCode}, '') not like ${`${REFUSED_PREFIX}%`}`
+          : undefined,
       ),
     )
     .returning({ id: messages.id });
   if (retried) return { claimed: true, id: retried.id };
   const [prior] = await database
-    .select({ channel: messages.channel, chatId: messages.providerChatId, sentAt: messages.sentAt })
+    .select({
+      id: messages.id,
+      status: messages.status,
+      channel: messages.channel,
+      chatId: messages.providerChatId,
+      sentAt: messages.sentAt,
+    })
     .from(messages)
     .where(and(eq(messages.dedupeKey, input.dedupeKey), eq(messages.familyId, input.familyId)))
     .limit(1);
   if (!prior) throw new Error('channel_messages dedupe row not found');
+  if (input.receipted && !prior.sentAt) {
+    // Still `queued`: a run died mid-send. The same provider key makes sending it again safe.
+    return prior.status === 'failed'
+      ? { claimed: false, went: null }
+      : { claimed: true, id: prior.id };
+  }
   if (!prior.sentAt) {
     console.warn(
       { offerId: input.offerId, kind: input.kind, code: 'claimed_unconfirmed' },
@@ -406,12 +462,14 @@ async function sendPrepText(
     to: string;
     body: string;
     dedupeKey: string | null;
+    receipted: boolean;
     now: Date;
   },
 ): Promise<{ channel: 'sms' | 'imessage'; chatId: string | null } | null> {
   const messages = schema.channelMessages;
   const claim = await claimPrepText(database, input);
   if (!claim.claimed) return claim.went;
+  const sendKey = input.receipted && input.dedupeKey ? input.dedupeKey : undefined;
   const failed = async (code: string): Promise<null> => {
     await database
       .update(messages)
@@ -442,16 +500,22 @@ async function sendPrepText(
             target: { channel: 'legacy' },
             shareGroupCap: false,
             now: input.now,
+            ...(sendKey ? { sendKey } : {}),
           },
         ),
       (sent) => !(sent instanceof AskOrderUnmarked) && sent.delivered.status === 'sent',
     );
   } catch (err) {
+    if (input.receipted) return failed(receiptCode(err));
     return failed(err instanceof Error ? err.constructor.name : 'send_threw');
   }
   if (delivered instanceof AskOrderUnmarked) return failed(delivered.message);
   const went = delivered.delivered;
-  if (went.status !== 'sent') return failed(went.reason);
+  if (went.status !== 'sent') {
+    if (!input.receipted || went.status !== 'skipped') return failed(went.reason);
+    if (went.reason === 'not_configured') return failed(went.reason);
+    return failed(`${went.mayHaveLanded ? UNCONFIRMED_PREFIX : REFUSED_PREFIX}${went.reason}`);
+  }
   await database
     .update(messages)
     .set({

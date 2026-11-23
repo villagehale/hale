@@ -96,7 +96,12 @@ const LINQ_CERTAIN_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 
  */
 export function linqRefusedForCertain(err: unknown): boolean {
   if (!(err instanceof LinqSendError) || !err.permanent) return false;
-  return err.httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(err.httpStatus);
+  return linqStatusRefusedForCertain(err.httpStatus);
+}
+
+/** The status half of {@link linqRefusedForCertain}, for a caller left only the status. */
+export function linqStatusRefusedForCertain(httpStatus: number): boolean {
+  return httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(httpStatus);
 }
 
 /**

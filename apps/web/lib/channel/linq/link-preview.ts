@@ -6,7 +6,7 @@ import {
   readSendRefusal,
   sendLinqParts,
 } from '~/lib/channel/outbound-transport';
-import { LinqSendError } from './transport';
+import { LinqSendError, linqStatusRefusedForCertain } from './transport';
 
 /**
  * VIL-335 — a rich link preview beside a locked text, never instead of it.
@@ -72,11 +72,17 @@ export async function sendLinkOnce(input: {
   parentUserId: string;
   now: Date;
   fetch?: typeof fetch;
+  /**
+   * The link's identity at Linq. The text fallback reuses it after a preview that may have
+   * landed, so Linq drops the second copy, and takes its own after a certain refusal.
+   */
+  sendKey?: string;
 }): Promise<LinkOnceOutcome> {
   const preview = await sendLinqLinkPreview({
     channel: input.channel,
     chatId: input.chatId,
     url: input.url,
+    sendKey: input.sendKey,
     fetch: input.fetch,
     database: input.database,
     familyId: input.familyId,
@@ -89,7 +95,13 @@ export async function sendLinkOnce(input: {
   const why = preview.reason;
   let sent: Awaited<ReturnType<ChannelTransport['send']>>;
   try {
-    sent = await input.transport.send({ to: input.to, body: input.url });
+    sent = await input.transport.send({
+      to: input.to,
+      body: input.url,
+      ...(input.sendKey
+        ? { sendKey: previewMayHaveLanded(preview) ? input.sendKey : `${input.sendKey}:text` }
+        : {}),
+    });
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
     console.error({ why, code }, 'link once: no preview and the link text was refused');
@@ -126,6 +138,12 @@ export async function sendLinkOnce(input: {
   return { status: 'text', why, providerMessageId: sent.providerMessageId };
 }
 
+function previewMayHaveLanded(preview: Extract<LinqLinkPreviewOutcome, { status: 'not_sent' }>) {
+  if (preview.reason === 'unreachable') return true;
+  if (preview.reason !== 'refused') return false;
+  return preview.httpStatus === undefined || !linqStatusRefusedForCertain(preview.httpStatus);
+}
+
 export type LinqLinkPreviewOutcome =
   | { status: 'sent'; providerMessageId: string }
   | { status: 'not_sent'; reason: 'no_url' | 'not_imessage' | 'no_chat' }
@@ -140,6 +158,7 @@ export async function sendLinqLinkPreview(input: {
   channel: string;
   chatId: string | null;
   url: string | null;
+  sendKey?: string;
   fetch?: typeof fetch;
   /** When the family exists, the follow-up link is its own ledger row. */
   database?: Database;
@@ -155,6 +174,7 @@ export async function sendLinqLinkPreview(input: {
     const sent = await sendLinqParts({
       chatId: input.chatId,
       parts: [{ type: 'link', value: input.url }],
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
       fetch: input.fetch,
     });
     if (input.database && input.familyId && input.parentUserId) {
