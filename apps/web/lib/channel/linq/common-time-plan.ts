@@ -3,9 +3,11 @@ import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { productionChannels } from '~/lib/channel/adapters/production';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
+import { withInviteUnwrittenPage } from '~/lib/loop/calendar-invite-page';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
 import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { COMMON_TIME_MINUTES } from './common-time';
 import { linqChatAuditKey } from './family-audit';
@@ -295,12 +297,16 @@ export function productionCommonTimePlanPorts(
   const client = () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'plan' });
   return {
     reader: createGroupPlanAttendanceReader(client),
-    invites: createCalendarInviteSender(database, {
-      channels: productionChannels(database),
-      renderer: loopTemplateRenderer,
-      inviteVoice: productionCalendarInviteVoice(),
-      cancelVoice: productionCalendarCancelVoice(),
-    }),
+    // VIL-719: an invite text the model cannot write tells #ops while the ask policy is on.
+    invites: withInviteUnwrittenPage(
+      createCalendarInviteSender(database, {
+        channels: productionChannels(database),
+        renderer: loopTemplateRenderer,
+        inviteVoice: productionCalendarInviteVoice(),
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+      failurePageOpsPager(() => database),
+    ),
     noteWriter: createGroupPlanNoteWriter(client),
     sendOneToOne,
   };

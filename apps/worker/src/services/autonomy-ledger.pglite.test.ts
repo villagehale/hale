@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { and, asc, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTONOMY_STREAK_REQUIRED } from '../orchestrator/autonomy-gate.js';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '../testing/pglite.js';
 import {
@@ -115,6 +115,15 @@ async function seedAction(
 }
 
 const evidence = { reply: 'parent words', interpretation: 'stop doing this on your own' };
+
+// VIL-719: the ledger cases use send_email, an ask-first kind under the ask policy, as the
+// grantable kind, so they pin the policy off (ask-policy-grant.pglite.test.ts has it on).
+beforeEach(() => {
+  vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('revokeAutonomyForKind — one parent message turns a kind off', () => {
   it('the primary parent revokes send_email → that kind is off, calendar_add is untouched, audited', async () => {

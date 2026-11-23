@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, eq, gte, inArray, isNotNull, isNull, ne, notExists, or, sql } from 'drizzle-orm';
 import { SEND_RETRIES_EXHAUSTED } from '~/lib/channel/config';
 import {
@@ -26,6 +27,7 @@ import {
   sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -34,7 +36,7 @@ import {
   nextComposeHold,
   reminderFireAt,
 } from '~/lib/loop/reminders/schedule';
-import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { dayKeyIn } from '~/lib/plan/spine';
 import { teamScheduleChangesActive, teamScheduleSendReceiptEnabled } from './flag';
 import type { SpokenChange } from './voice';
@@ -76,7 +78,11 @@ export interface DriverNotifyPorts {
   threadMessage: typeof threadProactiveMessage;
   /** The time now. A compose can outlast the run's own start time. */
   clock(): Date;
-  /** #ops, when a driver's text reached them on no try. */
+  /**
+   * #ops, when a driver's text reached them on no try. VIL-719 · also when the text after
+   * an applied change could not be written, read while ASK_POLICY_TIERS_ENABLED is on for
+   * the family. Required (rule #11).
+   */
   pager: OpsPager;
 }
 
@@ -261,6 +267,34 @@ export async function reanchorCarpoolReminders(
     .where(eq(schema.linqGroupCarpools.id, target.id));
 }
 
+/**
+ * VIL-719 · the drivers who are this family's own parents. Anyone else, another family's
+ * parent or this family's caregiver, is a third party under docs/ask-policy.md.
+ */
+export async function parentDrivers(
+  database: Database,
+  familyId: string,
+  drivers: readonly TeamScheduleDriver[],
+): Promise<TeamScheduleDriver[]> {
+  if (drivers.length === 0) return [];
+  const members = await database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        inArray(
+          schema.familyMembers.userId,
+          drivers.map((driver) => driver.userId),
+        ),
+      ),
+    );
+  const parents = new Set(
+    members.filter((member) => isParentRole(member.role)).map((member) => member.userId),
+  );
+  return drivers.filter((driver) => parents.has(driver.userId));
+}
+
 /** What a try at the driver's text is written from. */
 export interface DriverNotice {
   change: SpokenChange;
@@ -330,8 +364,15 @@ export async function notifyDrivers(
       place: input.place,
     });
     if (text === null) {
+      const page = askPolicyTiersEnabled(input.familyId)
+        ? await ports.pager.page({
+            site: 'team_schedule_driver_unwritten',
+            facts: { change: input.change },
+            ref: input.changeId,
+          })
+        : null;
       console.info(
-        { familyId: input.familyId, outcome: 'driver_unwritten' },
+        { familyId: input.familyId, outcome: 'driver_unwritten', ...(page ? { page } : {}) },
         'team schedule: driver text unwritten',
       );
       continue;
@@ -1245,12 +1286,7 @@ export function productionDriverNotifyPorts(
     sendChat: sendLinqChatMessage,
     threadMessage: threadProactiveMessage,
     clock: () => new Date(),
-    pager: {
-      async page(page) {
-        const { pageOps } = await import('~/lib/monitoring/failure-page');
-        return pageOps(database, page);
-      },
-    },
+    pager: failurePageOpsPager(() => database),
   };
 }
 

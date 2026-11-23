@@ -9,9 +9,11 @@ import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/chann
 import { createGoogleCalendarPlacement } from '~/lib/integrations/google-calendar-placement';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
+import { withInviteUnwrittenPage } from '~/lib/loop/calendar-invite-page';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
 import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
+import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './undo-window';
 
 // The window and the reversible-type set live in undo-window.ts, so the surfaces that
@@ -206,13 +208,17 @@ export async function reverseExecutedCalendarAction(
  * undo's CANCEL gets the identical consent / ledger / audit treatment as the invite it
  * takes back. A group's plan is taken back in that group (VIL-443). */
 function defaultWithdrawInvites(database: Database): WithdrawInvites {
+  // VIL-719: a withdrawal text the model cannot write tells #ops while the ask policy is on.
   const sender = withGroupPlanReport(
-    createCalendarInviteSender(database, {
-      channels: productionChannels(database),
-      renderer: loopTemplateRenderer,
-      inviteVoice: productionCalendarInviteVoice(),
-      cancelVoice: productionCalendarCancelVoice(),
-    }),
+    withInviteUnwrittenPage(
+      createCalendarInviteSender(database, {
+        channels: productionChannels(database),
+        renderer: loopTemplateRenderer,
+        inviteVoice: productionCalendarInviteVoice(),
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+      failurePageOpsPager(() => database),
+    ),
     productionGroupPlanReportPorts(database),
   );
   return (request) => sender.send(request);

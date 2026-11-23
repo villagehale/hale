@@ -10,6 +10,8 @@ import type {
   GoogleCalendarPlacementRequest,
   GoogleCalendarSkipReason,
   GoogleCalendarSyncReport,
+  GoogleCalendarWriteTarget,
+  GoogleCalendarWriteTargetRequest,
 } from '@hale/worker/google-calendar-placement';
 import { and, eq } from 'drizzle-orm';
 import { refreshAccessToken } from './google-oauth';
@@ -108,12 +110,42 @@ export interface GooglePlacementDeps {
   }) => Promise<void>;
 }
 
+function writeArmed(deps: Pick<GooglePlacementDeps, 'flagOn'>, actorUserId: string | null) {
+  return typeof deps.flagOn === 'function' ? deps.flagOn(actorUserId) : deps.flagOn;
+}
+
+/**
+ * Whose calendar a sync of this request would write to, answered by the same flag read and
+ * the same connection choice the write uses, so the two cannot disagree. Writes nothing.
+ */
+export async function resolveGoogleWriteTarget(
+  request: GoogleCalendarWriteTargetRequest,
+  deps: Pick<GooglePlacementDeps, 'flagOn' | 'loadEvent' | 'listGcal'>,
+): Promise<GoogleCalendarWriteTarget> {
+  if (!writeArmed(deps, request.actorUserId)) return { writes: false };
+  const event = request.familyEventId
+    ? await deps.loadEvent(request.familyId, request.familyEventId)
+    : null;
+  if (request.familyEventId && !event) return { writes: false };
+  const connections = await deps.listGcal(request.familyId);
+  const selected = selectGcalConnection({
+    op: request.op,
+    actorUserId: request.actorUserId,
+    placedGoogleEventId: event ? event.placedGoogleEventId : null,
+    placedGoogleIntegrationId: event ? event.placedGoogleIntegrationId : null,
+    connections,
+  });
+  if (!selected.ok) return { writes: false };
+  const connection = connections.find((row) => row.id === selected.integrationId);
+  if (!connection) return { writes: false };
+  return { writes: true, ownerUserId: connection.userId };
+}
+
 export async function applyPlacedGoogleCalendar(
   request: GoogleCalendarPlacementRequest,
   deps: GooglePlacementDeps,
 ): Promise<GoogleCalendarSyncReport> {
-  const armed = typeof deps.flagOn === 'function' ? deps.flagOn(request.actorUserId) : deps.flagOn;
-  if (!armed) return { status: 'skipped', reason: 'flag_off' };
+  if (!writeArmed(deps, request.actorUserId)) return { status: 'skipped', reason: 'flag_off' };
 
   const event = await deps.loadEvent(request.familyId, request.familyEventId);
   if (!event) return { status: 'skipped', reason: 'event_missing' };
@@ -188,95 +220,100 @@ async function freshAccessToken(
   }
 }
 
-export function createGoogleCalendarPlacement(database: Database): GoogleCalendarPlacement {
+function placementDeps(database: Database): GooglePlacementDeps {
   return {
-    sync: (request) =>
-      applyPlacedGoogleCalendar(request, {
-        flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
-        loadEvent: async (familyId, familyEventId) => {
-          const rows = await database
-            .select({
-              id: schema.familyEvents.id,
-              title: schema.familyEvents.title,
-              startsAt: schema.familyEvents.startsAt,
-              endsAt: schema.familyEvents.endsAt,
-              location: schema.familyEvents.location,
-              placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
-              placedGoogleIntegrationId: schema.familyEvents.placedGoogleIntegrationId,
-            })
-            .from(schema.familyEvents)
-            .where(
-              and(
-                eq(schema.familyEvents.id, familyEventId),
-                eq(schema.familyEvents.familyId, familyId),
-              ),
-            )
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        listGcal: async (familyId) => {
-          const rows = await database
-            .select({
-              id: schema.integrations.id,
-              userId: schema.integrations.userId,
-              scopes: schema.integrations.scopes,
-            })
-            .from(schema.integrations)
-            .where(
-              and(
-                eq(schema.integrations.familyId, familyId),
-                eq(schema.integrations.provider, 'gcal'),
-                eq(schema.integrations.status, 'active'),
-              ),
-            );
-          return rows.map((row) => ({ id: row.id, userId: row.userId, scopes: row.scopes }));
-        },
-        accessToken: async (integrationId) => {
-          const rows = await database
-            .select({ enc: schema.integrations.oauthTokensEncrypted })
-            .from(schema.integrations)
-            .where(eq(schema.integrations.id, integrationId))
-            .limit(1);
-          const enc = rows[0]?.enc;
-          if (!enc) return null;
-          try {
-            return await freshAccessToken(database, integrationId, decryptTokens(enc));
-          } catch {
-            return null;
-          }
-        },
-        write: async ({ accessToken, op, googleEventId, event }) => {
-          const body = {
-            summary: event.title,
-            location: event.location,
-            startsAt: event.startsAt,
-            endsAt: event.endsAt,
-          };
-          if (op === 'create') return createGoogleCalendarEvent(accessToken, body);
-          if (!googleEventId) throw new Error('google calendar update without an id Hale created');
-          if (op === 'update') return updateGoogleCalendarEvent(accessToken, googleEventId, body);
-          const deleted = await deleteGoogleCalendarEvent(accessToken, googleEventId);
-          return { googleEventId: deleted.googleEventId };
-        },
-        storePlaced: async (familyEventId, googleEventId, integrationId) => {
-          await database
-            .update(schema.familyEvents)
-            .set({
-              placedGoogleEventId: googleEventId,
-              placedGoogleIntegrationId: integrationId,
-            })
-            .where(eq(schema.familyEvents.id, familyEventId));
-        },
-        audit: async (entry) => {
-          await database.insert(schema.auditLog).values({
-            familyId: entry.familyId,
-            actor: entry.actor,
-            actionTaken: entry.actionTaken,
-            targetTable: 'family_events',
-            targetId: entry.targetId,
-            after: entry.after,
-          });
-        },
-      }),
+    flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
+    loadEvent: async (familyId, familyEventId) => {
+      const rows = await database
+        .select({
+          id: schema.familyEvents.id,
+          title: schema.familyEvents.title,
+          startsAt: schema.familyEvents.startsAt,
+          endsAt: schema.familyEvents.endsAt,
+          location: schema.familyEvents.location,
+          placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+          placedGoogleIntegrationId: schema.familyEvents.placedGoogleIntegrationId,
+        })
+        .from(schema.familyEvents)
+        .where(
+          and(
+            eq(schema.familyEvents.id, familyEventId),
+            eq(schema.familyEvents.familyId, familyId),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
+    },
+    listGcal: async (familyId) => {
+      const rows = await database
+        .select({
+          id: schema.integrations.id,
+          userId: schema.integrations.userId,
+          scopes: schema.integrations.scopes,
+        })
+        .from(schema.integrations)
+        .where(
+          and(
+            eq(schema.integrations.familyId, familyId),
+            eq(schema.integrations.provider, 'gcal'),
+            eq(schema.integrations.status, 'active'),
+          ),
+        );
+      return rows.map((row) => ({ id: row.id, userId: row.userId, scopes: row.scopes }));
+    },
+    accessToken: async (integrationId) => {
+      const rows = await database
+        .select({ enc: schema.integrations.oauthTokensEncrypted })
+        .from(schema.integrations)
+        .where(eq(schema.integrations.id, integrationId))
+        .limit(1);
+      const enc = rows[0]?.enc;
+      if (!enc) return null;
+      try {
+        return await freshAccessToken(database, integrationId, decryptTokens(enc));
+      } catch {
+        return null;
+      }
+    },
+    write: async ({ accessToken, op, googleEventId, event }) => {
+      const body = {
+        summary: event.title,
+        location: event.location,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+      };
+      if (op === 'create') return createGoogleCalendarEvent(accessToken, body);
+      if (!googleEventId) throw new Error('google calendar update without an id Hale created');
+      if (op === 'update') return updateGoogleCalendarEvent(accessToken, googleEventId, body);
+      const deleted = await deleteGoogleCalendarEvent(accessToken, googleEventId);
+      return { googleEventId: deleted.googleEventId };
+    },
+    storePlaced: async (familyEventId, googleEventId, integrationId) => {
+      await database
+        .update(schema.familyEvents)
+        .set({
+          placedGoogleEventId: googleEventId,
+          placedGoogleIntegrationId: integrationId,
+        })
+        .where(eq(schema.familyEvents.id, familyEventId));
+    },
+    audit: async (entry) => {
+      await database.insert(schema.auditLog).values({
+        familyId: entry.familyId,
+        actor: entry.actor,
+        actionTaken: entry.actionTaken,
+        targetTable: 'family_events',
+        targetId: entry.targetId,
+        after: entry.after,
+      });
+    },
+  };
+}
+
+export function createGoogleCalendarPlacement(database: Database): GoogleCalendarPlacement {
+  const deps = placementDeps(database);
+  return {
+    sync: (request) => applyPlacedGoogleCalendar(request, deps),
+    writeTarget: (request) => resolveGoogleWriteTarget(request, deps),
   };
 }

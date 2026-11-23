@@ -190,7 +190,7 @@ export interface ExecutorDeps {
    * drain has bound one. Absent in a test that does not care: the placement
    * still names the skip (`not_configured`) rather than omitting it.
    */
-  googleCalendar?: GoogleCalendarPlacement;
+  googleCalendar?: Pick<GoogleCalendarPlacement, 'sync'>;
   /** Google Calendar transport (create/update). Real impl throws until OAuth exists. */
   calendar: CalendarClient;
 }

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { autonomyActedDedupeKey, autonomyArmedDedupeKey } from '@hale/worker/memory-writer';
 import { and, desc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -19,6 +20,7 @@ import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import {
   type AutonomyNoticeContext,
   type AutonomyNoticeItem,
@@ -63,6 +65,12 @@ export interface AutonomyNoticePorts {
   compose(input: AutonomyNoticeContext): Promise<AutonomyNoticeText>;
   transport: ChannelTransport;
   threadMessage: typeof threadProactiveMessage;
+  /**
+   * VIL-719 · tells #ops when an on-its-own text (the tell-after for a tell-after action)
+   * could not be written. Required (rule #11); read only while ASK_POLICY_TIERS_ENABLED is
+   * on for the family.
+   */
+  pager: OpsPager;
 }
 
 export function autonomyNoticeReaders(
@@ -245,6 +253,8 @@ interface NoticeClaim {
   auditVerb: 'autonomy_armed_notice_sent' | 'autonomy_acted_notice_sent';
   occasion: AutonomyNoticeOccasion;
   actionType: string;
+  /** The action an on-its-own notice is about; what ops resolves a page from. */
+  actionId?: string;
 }
 
 interface BuiltNotice {
@@ -301,10 +311,34 @@ async function sendAutonomyNotice(
     return `gate_refused:${verdict.reason}`;
   }
 
-  const written = await ports.compose(input.context);
+  let written: AutonomyNoticeText;
+  try {
+    written = await ports.compose(input.context);
+  } catch (err) {
+    // VIL-719 · a skill that will not load left the text unwritten. With the ask policy on
+    // it is a named skip, so the pass carries on and ops hears of it.
+    if (!askPolicyTiersEnabled(familyId)) throw err;
+    console.error(
+      { familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'autonomy notice: the writer could not run, nothing sent',
+    );
+    written = { skipped: 'skill_unavailable' };
+  }
   if ('skipped' in written) {
+    // VIL-719 · an on-its-own text is the tell-after for something Hale already did. When it
+    // cannot be written, nothing is sent, the notice stays owed, and ops hears of it. A text
+    // that covers only turn-ons is not a tell-after: the kind stays held until it lands.
+    const acted = input.claims.find((claim) => claim.kind === 'autonomy_acted');
+    const page =
+      acted && askPolicyTiersEnabled(familyId)
+        ? await ports.pager.page({
+            site: 'autonomy_acted_unwritten',
+            facts: { reason: written.skipped },
+            ...(acted.actionId ? { ref: acted.actionId } : {}),
+          })
+        : null;
     console.warn(
-      { familyId, skipped: written.skipped, kind: primary.kind },
+      { familyId, skipped: written.skipped, kind: primary.kind, ...(page ? { page } : {}) },
       'autonomy notice: model wrote nothing, send stays owed',
     );
     return `compose_skipped:${written.skipped}`;
@@ -496,6 +530,7 @@ export async function tellParentOpenNotices(
         auditVerb: 'autonomy_acted_notice_sent',
         occasion: 'acted',
         actionType: notice.actionType,
+        actionId: notice.actionId,
       },
     });
   }
