@@ -348,7 +348,10 @@ describe('VIL-325 designer-locked intake copy', () => {
         expect(blob, `${locale} meta must not say "${phrase}"`).not.toContain(phrase);
       }
       expect(bundle.HomeMeta.description.startsWith(h1[locale])).toBe(true);
-      expect(bundle.HomeMeta.twitterDescription).toContain(sub[locale]);
+      expect(bundle.HomeMeta.twitterDescription).toContain(
+        locale === 'fr' ? 'agent d’IA' : 'AI 代理',
+      );
+      expect(bundle.HomeMeta.twitterDescription).not.toContain(sub[locale]);
       // zh sets the two locked sentences solid; fr takes a word space.
       const textMeta =
         locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;

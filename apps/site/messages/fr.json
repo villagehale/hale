@@ -8,8 +8,8 @@
   "HomeMeta": {
     "title": "Hale · L’année de tes enfants, sans casse-tête.",
     "description": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places et revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
-    "ogDescription": "L’année de tes enfants, sans casse-tête. Hale trouve ce qui se passe, surveille les places, puis revient demander comment ça s’est passé. Pas d’appli, pas de compte.",
-    "twitterDescription": "L’année de tes enfants, sans casse-tête. Ce qui vaut la peine avec les enfants."
+    "ogDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille. Elle trouve ce qui convient, les inscrit avec ton accord et tient le groupe.",
+    "twitterDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille. Elle trouve ce qui convient, les inscrit avec ton accord et tient le groupe."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -54,20 +54,20 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est une aide par iMessage et texto qui planifie les activités des enfants et l’année familiale pour les parents aux États-Unis et au Canada. Créée par Barton Dong, PDG, et Eugene Song, directeur technique, chez Village Hale Technologies Inc."
+    "metaDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants, pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "Aucun montant n’a été débité.",
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Gratuit, textos illimités. Plus, c’est plus de choses faites pour toi, toute l’année. Max, c’est le maximum de ce que Hale peut faire."
+    "metaDescription": "Un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants. La plus grande vente de l’année, inscris-toi d’ici le 31 décembre."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
     "metaDescription": "Joignez l’équipe derrière Hale. Écrivez à aloha@villagehale.com pour tout; privacy@villagehale.com pour la confidentialité et les demandes de données."
   },
   "Faq": {
-    "metaTitle": "Hale : gratuit, privé, fait pour ta famille? · Hale",
-    "metaDescription": "Des réponses claires sur Hale pour les parents : Gratuit, Plus et Max, pour les enfants de 0 à 18 ans, et Hale n'agit jamais sans toi."
+    "metaTitle": "Questions sur Hale · Hale",
+    "metaDescription": "Ce que fait Hale, ce qu’elle lit, comment elle garde privées les données de ta famille, et pourquoi elle n’inscrit personne et ne paie pas sans ton accord."
   },
   "Activities": {
     "metaTitle": "Activités à faire avec les enfants, près de chez toi · Hale",

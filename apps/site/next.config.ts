@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { posthogProxyRewrites } from './lib/analytics/posthog-proxy';
+import { foundingToPricingRedirects } from './lib/site/founding-redirect';
 import { retiredRegistrationRedirects } from './lib/site/retired-registration-redirects';
 
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
@@ -23,7 +24,7 @@ const config: NextConfig = {
     return posthogProxyRewrites();
   },
   async redirects() {
-    return retiredRegistrationRedirects();
+    return [...foundingToPricingRedirects(), ...retiredRegistrationRedirects()];
   },
 };
 

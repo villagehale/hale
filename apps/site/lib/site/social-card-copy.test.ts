@@ -9,17 +9,18 @@ import { socialCardCopy } from './social-card-copy';
  */
 
 describe('homepage share card copy', () => {
-  it('sells the kids-year planner', () => {
+  it('sells the kids-year agent', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe('Find what’s on. Hear how it went.');
-    expect(copy.alt).toContain('a planner for your kids’ year');
-    expect(`${copy.headline} ${copy.subline} ${copy.alt}`).not.toContain('assistant');
-    expect(copy.alt).not.toContain('chief of staff');
-    expect(`${copy.headline} ${copy.subline} ${copy.alt}`).not.toContain('number you text');
-    // The card has room for three beats and the residency line does not fit
-    // beside them; the page's own metadata still carries it (HomeMeta), and the
-    // card's job is the loop. Pinned so dropping the third beat is a choice.
-    expect(copy.subline).toContain('asks how it went');
+    expect(copy.headline).toBe('Your kids’ year, handled.');
+    expect(copy.subline).toBe('An AI agent you text that knows your family.');
+    expect(copy.alt).toBe('Hale, an AI agent you text for your kids’ year');
+    const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
+    expect(blob).not.toContain('assistant');
+    expect(blob).not.toContain('planner');
+    expect(blob).not.toContain('chief of staff');
+    expect(blob).not.toContain('number you text');
+    expect(blob).not.toContain('Find what’s on');
+    expect(blob).not.toContain('sign-up morning');
   });
 
   it('never describes the village on the share card', () => {

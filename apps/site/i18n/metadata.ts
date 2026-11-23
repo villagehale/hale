@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { SITE_URL } from '~/lib/app-url';
+import { type ShareCardId, shareCardImage } from '~/lib/site/share-cards';
 import { localeHref } from './navigation';
 import { type Locale, routing } from './routing';
 
@@ -26,22 +28,35 @@ export function buildAlternates(locale: Locale, path: string): NonNullable<Metad
  * Same shape pricing, FAQ, and activities already emit. A title template is
  * deliberately not used: every metaTitle is already a full "… · Hale" string.
  */
+/** Canonical absolute URL for a locale path. metadata og:url uses this. */
+export function absolutePageUrl(locale: Locale, path: string): string {
+  return `${SITE_URL}${localeHref(locale, path)}`;
+}
+
 export function socialMetadata(
   locale: Locale,
   path: string,
   title: string,
   description: string,
+  card: ShareCardId,
 ): Pick<Metadata, 'openGraph' | 'twitter'> {
+  const image = shareCardImage(card);
   return {
     openGraph: {
       type: 'website',
       title,
       description,
-      url: localeHref(locale, path),
+      url: absolutePageUrl(locale, path),
       siteName: 'Hale',
       locale: ogLocale(locale),
+      images: [image],
     },
-    twitter: { card: 'summary_large_image', title, description },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [image],
+    },
   };
 }
 
