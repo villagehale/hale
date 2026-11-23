@@ -12,9 +12,13 @@ import { FreeJoinCard } from '~/components/billing/free-join-card';
 import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import stage from '~/components/hale/connect/connect.module.css';
 import { authConfigured } from '~/lib/auth-config';
+import { signInHref } from '~/lib/auth/redirect';
 import { checkoutServerCurrencyEnabled } from '~/lib/billing/flags';
 import { promoPriceLabel } from '~/lib/billing/price-display';
-import { newVisitorFoundingAllowed } from '~/lib/billing/promo-access';
+import {
+  familyMayUseFoundingCheckout,
+  newVisitorFoundingAllowed,
+} from '~/lib/billing/promo-access';
 import {
   PROMO_PREVIEW_COOKIE,
   PROMO_PREVIEW_COOKIE_TTL_SECONDS,
@@ -53,7 +57,9 @@ export function settingsFoundingHref(search: FoundingSearch): string {
  * This page does not read `plan`: after the code the parent chooses Plus or Max.
  * A signed-in family is sent to the signed-in checkout so they can still pay.
  * A matching preview token or cookie stays here — that door is the new-visitor
- * proof while the live flags are off.
+ * proof while the live flags are off. When the sale is on and new-visitor
+ * checkout is not, a signed-out visitor goes to sign-in and then that same
+ * checkout, instead of a 404.
  */
 export default async function FoundingJoinPage({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -77,7 +83,14 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
       });
     }
   }
-  if (!newVisitorFoundingAllowed(new Date(), token, process.env, previewCookie)) {
+  const now = new Date();
+  if (!newVisitorFoundingAllowed(now, token, process.env, previewCookie)) {
+    // Sale on, new-visitor checkout off: returning families still pay after sign-in.
+    // Both flags off stays a 404. familyMayUseFoundingCheckout(null) is the sale
+    // gate only — a null id is not a preview family.
+    if (familyMayUseFoundingCheckout(null, now)) {
+      redirect(signInHref(settingsFoundingHref(params)));
+    }
     notFound();
   }
 

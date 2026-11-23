@@ -146,6 +146,29 @@ describe('/founding offer surface', () => {
     expect(html).toContain('$99/yr');
   });
 
+  it('sends a signed-out visitor to sign-in when the sale is on and new-visitor checkout is off', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', '');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    try {
+      await renderFounding({ utm_source: 'meta' });
+      expect.fail('expected a sign-in redirect');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message.startsWith('NEXT_REDIRECT:')).toBe(true);
+      const target = new URL(message.slice('NEXT_REDIRECT:'.length), 'https://app.example.com');
+      expect(target.pathname).toBe('/sign-in');
+      expect(target.searchParams.get('callbackUrl')).toBe('/settings/founding?utm_source=meta');
+    }
+  });
+
+  it('is not found when both promo flags are off', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', '');
+    vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', '');
+    vi.stubEnv('AUTH_SECRET', 'test-secret');
+    await expect(renderFounding()).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+
   it('after the cutoff is not found — monthly does not come back on this page', async () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
