@@ -26,11 +26,11 @@ import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
+import { linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { openChosenHouseholdGroup } from './open-chosen-group';
-import { linqRefusedForCertain } from './transport';
 /**
  * A phone number texted after `intake:coparent_ask`.
  *
