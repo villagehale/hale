@@ -12,8 +12,9 @@ export interface GroupSignupDelivery {
   dedupeKey: string;
   now: Date;
   /** The ask this result is about: brackets the send (`askStamp`). A row that already
-   * went (`already_sent`) is not sent again, and the attempt that sent it stamped it. */
-  stamp: SendStamp;
+   * went (`already_sent`) is not sent again, and the attempt that sent it stamped it. Absent:
+   * this text is about no open ask, so the parent's ask order stays as it was. */
+  stamp?: SendStamp;
 }
 
 const refusedNewThread: ChannelTransport = {
@@ -50,7 +51,7 @@ export async function sendSignupToGroup(
   const row = inserted[0];
   if (!row) return 'already_sent';
   try {
-    const keep = await input.stamp();
+    const keep = await input.stamp?.();
     const delivered = await deliverFamilyOutbound(database, {
       familyId: input.familyId,
       body: input.body,
@@ -79,7 +80,7 @@ export async function sendSignupToGroup(
         ),
       );
     // After the row recorded the send: its recorded time is the text's (VIL-302).
-    await keep(row.id);
+    await keep?.(row.id);
     return 'sent';
   } catch (err) {
     const code = err instanceof Error ? err.message : 'send_threw';

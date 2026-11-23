@@ -23,9 +23,10 @@ import { type PlanReader, type PlanReading, toPlanReading } from '../plan/reader
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from '../plan/run';
 import { parkSignupPlan } from '../plan/store';
 import type { PlanReplyFacts, PlanReplyWriter } from '../plan/writer';
-import { runAuthorizedSignup } from '../run';
+import { type SignupRunDeps, runAuthorizedSignup } from '../run';
+import type { GroupSignupDelivery } from '../report';
 import { sentSignupText } from '../sent-text.fixture';
-import { recordSignupOffer } from '../store';
+import { loadLastAsked, recordSignupOffer } from '../store';
 import { createSignupSupersedeReader, signupSupersedeReadUserMessage } from '../supersede-reader';
 import type { SignupSession } from '../types';
 import type { PreflightReader, SignupPreflightRead } from './read-page';
@@ -35,6 +36,18 @@ vi.mock('../browser-use/receipt', async (actual) => ({
   ...(await actual<typeof import('../browser-use/receipt')>()),
   captureMaskedReceipt: vi.fn(async () => ({ ok: false as const, reason: 'no_browser' as const })),
 }));
+
+const groupDoor = vi.hoisted(() => ({ chatId: null as string | null }));
+vi.mock('~/lib/channel/linq/family-outbound', async (actual) => {
+  const real = await actual<typeof import('~/lib/channel/linq/family-outbound')>();
+  return {
+    ...real,
+    familyOutboundTarget: async (...args: Parameters<typeof real.familyOutboundTarget>) =>
+      groupDoor.chatId
+        ? { channel: 'group' as const, chatId: groupDoor.chatId, familyId: args[1] }
+        : real.familyOutboundTarget(...args),
+  };
+});
 
 const PAGE = readFileSync(
   join(__dirname, '../../channel/spots/fixtures/markham-course.html'),
@@ -119,6 +132,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.mocked(captureMaskedReceipt).mockClear();
+  groupDoor.chatId = null;
 });
 
 async function household(postal: string | null = 'L3R 1A1') {
@@ -239,6 +253,7 @@ async function turn(
     consentReader?: SignupConsentReader;
     outcomeWriter?: { write(facts: SignupOutcomeFacts): Promise<string | null> };
     declineSeat?: () => Promise<boolean>;
+    deliverGroup?: SignupRunDeps['deliverGroup'];
   } = {},
 ) {
   const body = options.body ?? 'yes';
@@ -264,7 +279,7 @@ async function turn(
       consentReader: options.consentReader,
       outcomeWriter: options.outcomeWriter,
       declineSeat: options.declineSeat,
-      deliverGroup: async () => 'sent',
+      deliverGroup: options.deliverGroup ?? (async () => 'sent'),
       browserUseSignup: { run: vi.fn() } as never,
     },
   );
@@ -867,7 +882,7 @@ describe('a take-back typed outside the private thread', () => {
         childId: f.childId,
         parentUserId: f.parentUserId,
         activityKey: 'gym',
-        activityLabel: 'Gym',
+        activityLabel: 'Gymnastics',
         registrationUrl: URL_,
         sessions: [...SESSIONS],
         approvedPriceCents: null,
@@ -901,6 +916,80 @@ describe('a take-back typed outside the private thread', () => {
         sessionLabel: null,
         link: '',
         prefilled: [],
+      });
+    });
+
+    describe('with a newer ask open', () => {
+      async function olderAndNewer(f: Household) {
+        const older = await oneShot(f);
+        const newer = await recordSignupOffer(db.database, {
+          familyId: f.familyId,
+          childId: f.childId,
+          parentUserId: f.parentUserId,
+          activityKey: 'swim',
+          activityLabel: 'Swim',
+          registrationUrl: OTHER_URL,
+          sessions: [...SESSIONS],
+          approvedPriceCents: null,
+          now: NOW,
+        });
+        if (!newer.ok) throw new Error(newer.reason);
+        await sentOn(f, newer.id);
+        return { older, newer: newer.id };
+      }
+      const declinesGym: SignupConsentReader = {
+        read: vi.fn(async ({ offer }) =>
+          offer.activityLabel === 'Gymnastics'
+            ? { verdict: 'decline' as const }
+            : { verdict: 'unrelated' as const },
+        ),
+      };
+
+      it('the reply on the thread leaves the newer ask the one a bare yes answers', async () => {
+        const f = await household();
+        const ids = await olderAndNewer(f);
+
+        const taken = await turn(f, TAKE_BACK, {
+          body: 'cancel gymnastics',
+          inGroup: true,
+          consentReader: declinesGym,
+          outcomeWriter,
+        });
+
+        expect(taken.result.outcome).toBe('declined');
+        expect((await offerRow(ids.older)).status).toBe('handed_back');
+        expect(taken.result.stamp).toBeUndefined();
+        expect(await loadLastAsked(db.database, f)).toMatchObject({
+          status: 'asked',
+          offerId: ids.newer,
+        });
+      });
+
+      it('the send to the group carries no stamp either', async () => {
+        const f = await household();
+        const ids = await olderAndNewer(f);
+        groupDoor.chatId = 'group-chat-fixture';
+        const deliverGroup = vi.fn(async (item: GroupSignupDelivery) => {
+          const keep = await item.stamp?.();
+          await keep?.(await sentSignupText(db.database, f));
+          return 'sent' as const;
+        });
+
+        const taken = await turn(f, TAKE_BACK, {
+          body: 'cancel gymnastics',
+          inGroup: true,
+          consentReader: declinesGym,
+          outcomeWriter,
+          deliverGroup,
+        });
+
+        expect(taken.result.outcome).toBe('declined');
+        expect(deliverGroup).toHaveBeenCalledTimes(1);
+        expect(deliverGroup.mock.calls[0]?.[0].stamp).toBeUndefined();
+        expect(await loadLastAsked(db.database, f)).toMatchObject({
+          status: 'asked',
+          offerId: ids.newer,
+        });
       });
     });
 

@@ -357,6 +357,7 @@ async function declineOneShot(
     prefilled: [],
     host: offer.providerHost,
     inGroup: true,
+    leavesAskOrder: true,
   });
 }
 
@@ -1324,6 +1325,8 @@ interface ReplyFacts {
   confirmation?: SignupConfirmation;
   /** The consent read's clarifying question, for `clarify`. */
   question?: string;
+  /** Not a text about an open ask: the parent's next bare yes still answers the one before. */
+  leavesAskOrder?: boolean;
 }
 
 /**
@@ -1544,6 +1547,13 @@ async function replyFor(
     ...(facts.rush ? { rushSignal: facts.rush.signal, rushOpensAt: facts.rush.opensAt } : {}),
   });
   const rush = facts.rush ? { rush: facts.rush } : {};
+  const stamp = facts.leavesAskOrder
+    ? undefined
+    : askStamp(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        offerIds: [facts.offerId],
+      });
   if (door.kind === 'held') {
     return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
   }
@@ -1569,11 +1579,7 @@ async function replyFor(
       body: line,
       dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
-      stamp: askStamp(database, {
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        offerIds: [facts.offerId],
-      }),
+      stamp,
     });
     if (status === 'sent' || status === 'already_sent') {
       return {
@@ -1604,11 +1610,7 @@ async function replyFor(
     outcome: facts.outcome,
     reply: line,
     deliverOnThread: true,
-    stamp: askStamp(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      offerIds: [facts.offerId],
-    }),
+    ...(stamp ? { stamp } : {}),
   };
 }
 
