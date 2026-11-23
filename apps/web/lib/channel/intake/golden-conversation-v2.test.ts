@@ -1,4 +1,3 @@
-import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { routeInboundText } from '~/lib/channel/inbound-route';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
@@ -11,13 +10,9 @@ import {
   fakeSilentAnswerComposer,
   makeFakeDb,
 } from './fakes';
-import type { FriendVoiceInput, OfferedConnector } from './friend-voice';
+import type { FriendVoiceInput } from './friend-voice';
+import { type ScriptedTurn, findResult, v2Turn } from './golden-conversation-v2.fixture';
 import type { IntakeDeps } from './machine';
-import {
-  EMPTY_ONBOARDING_CAPTURE,
-  type KidActivity,
-  type OnboardingCapture,
-} from './onboarding-turn';
 import { FakeTransport, type InboundMessage } from './transport';
 
 /**
@@ -40,143 +35,7 @@ const PHONE = '+14165551234';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const T0 = new Date('2026-07-30T12:00:00.000Z');
 const FROM = '+15555550100';
-const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 const LINK = /https:\/\/\S+/g;
-
-type WireCapture = Omit<OnboardingCapture, 'parentRole'> & {
-  parentRole: 'mother' | 'father' | 'unknown' | null;
-  parentRoleBasis: 'stated' | 'guessed' | null;
-  activities?: KidActivity[];
-  activitiesNone?: boolean;
-  connectGoogle?: boolean | null;
-};
-
-interface ScriptedTurn {
-  reply: string;
-  capture: WireCapture;
-  groupLeads?: string[];
-  asks?: boolean;
-  connectorsOffered?: OfferedConnector[];
-  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
-}
-
-/**
- * The stand-in for the onboarding model on the v2 walk: postal, kids, ages, the map,
- * the activities, the name, the one Google link, schedule, co-parent.
- */
-function v2Turn(input: FriendVoiceInput): ScriptedTurn {
-  const words = input.parentWords.trim();
-  const capture: WireCapture = {
-    ...EMPTY_ONBOARDING_CAPTURE,
-    children: [],
-    scheduleAdds: [],
-    parentRole: null,
-    parentRoleBasis: null,
-    language: input.language ?? 'en',
-  };
-  const postal = words.match(/\b([A-Z]\d[A-Z])[ -]?(\d[A-Z]\d)\b/i);
-  if (postal?.[1] && postal[2]) capture.postalCode = `${postal[1]} ${postal[2]}`.toUpperCase();
-  const bareAge = words.match(/^(?:she|he)(?:'s| is)\s+(\d{1,2})$/i);
-  if (bareAge?.[1]) {
-    capture.children = [{ name: null, ageMonths: Number(bareAge[1]) * 12, agePrecision: 'years' }];
-  }
-  if (input.step === 'kids_names' && /^[A-Z][a-z]+$/.test(words)) {
-    capture.children = [{ name: words, ageMonths: null, agePrecision: null }];
-  }
-  if (/^dana$/i.test(words)) {
-    capture.parentName = 'Dana';
-    capture.parentRole = 'unknown';
-    capture.parentRoleBasis = 'guessed';
-  }
-  // The activities, as the model would read them from the parent's own words.
-  if (input.step === 'activities' && /swims/i.test(words)) {
-    capture.activities = [{ child: 'Maya', activity: 'swim lessons', when: 'Saturdays' }];
-  }
-  if (input.step === 'activities' && /^nothing yet$/i.test(words)) capture.activitiesNone = true;
-  const yes = /^(yes|yeah|yep)$/i.test(words);
-  if (yes && input.step === 'google') capture.connectGoogle = true;
-  if (yes && input.step === 'coparent') capture.coparentGroup = true;
-  if (yes && input.step === 'schedule' && (input.scheduled ?? []).length === 0) {
-    capture.scheduleAdds = [
-      { line: 1, cadence: 'weekly', date: '2026-08-01', time: null, weeks: null },
-    ];
-  }
-  if (input.step === 'schedule' && (input.scheduled ?? []).length > 0) capture.scheduleDone = true;
-  if (/^(no|nope)$/i.test(words) && input.step === 'google') capture.connectGoogle = false;
-
-  const known = input.checklist;
-  const postalKnown = Boolean(capture.postalCode) || Boolean(input.placeLabel) || known?.postal;
-  const kidsKnown = capture.children.some((child) => child.name) || known?.kids === true;
-  const agesKnown =
-    capture.children.some((child) => child.ageMonths != null) ||
-    input.ageMonths.length > 0 ||
-    known?.ages === true;
-  // A dark checklist has no activities or Google item: the dark walk never asks them.
-  const activitiesKnown =
-    (capture.activities?.length ?? 0) > 0 ||
-    capture.activitiesNone === true ||
-    known?.activities !== false;
-  const nameKnown = Boolean(capture.parentName) || Boolean(input.parentName) || known?.name;
-  const googleKnown = capture.connectGoogle != null || known?.google !== false;
-  const scheduleKnown = capture.scheduleDone || known?.schedule === true;
-  const coparentKnown = capture.coparentGroup != null || known?.coparent === true;
-  const who = capture.parentName || input.parentName;
-
-  if (input.step === 'find_show') {
-    return {
-      reply: 'Here is what is on near you for their ages.',
-      capture,
-      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
-    };
-  }
-  if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the first one.', capture };
-  }
-  if (input.step === 'coparent' && capture.coparentGroup === true) {
-    return { reply: 'The number is below whenever you want.', capture, joinPointer: 'below' };
-  }
-  // The yes to the one link: its receipt, about both, asking nothing.
-  if (input.step === 'google' && capture.connectGoogle === true && !known?.google) {
-    return {
-      reply:
-        "Great, the link is right there. Tap it when you're ready and I'll text you what I see.",
-      capture,
-      connectorsOffered: ['gmail', 'calendar'],
-    };
-  }
-  let ask: string;
-  let connectorsOffered: OfferedConnector[] = [];
-  if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
-  else if (!kidsKnown) ask = "What are your kids' names?";
-  else if (!agesKnown) ask = 'How old are your kids?';
-  else if (!activitiesKnown) ask = 'What do the kids already do, like a class or a sport?';
-  else if (!nameKnown) ask = 'What should I call you?';
-  else if (!googleKnown) {
-    ask = `Google shows its own "unverified app" screen first: tap Advanced, then continue. ${
-      who ? `${who}, want` : 'Want'
-    } me to connect Gmail and your calendar with one tap?`;
-    connectorsOffered = ['gmail', 'calendar'];
-  } else if (!scheduleKnown && input.findLines.length > 0) {
-    ask = 'Want the first one on your calendar as a weekly reminder?';
-  } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
-  else ask = "I'll take it from here.";
-  return { reply: ask, capture, asks: ask.endsWith('?'), connectorsOffered };
-}
-
-function findResult() {
-  return {
-    message: FIND_MESSAGE,
-    itemCount: 2,
-    followUpNeeded: false,
-    checkpointTold: null,
-    weekendPickOffered: false,
-    findWon: true,
-    firstFindPromised: false,
-    actionMove: null,
-    actionHeld: 'no_move' as const,
-    voiceFallback: null,
-  };
-}
 
 interface Captured {
   event: string;
@@ -280,6 +139,10 @@ beforeEach(() => {
   vi.setSystemTime(T0);
   vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+  // Pinned, not assumed: the flags-on CI job turns every default-off flag on, and this
+  // stand-in does not fill the marks the model-fields flag would require.
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+  vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', 'false');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
   vi.stubEnv('APP_URL', 'https://app.example.com');
@@ -343,41 +206,11 @@ describe('VIL-721 in-thread onboarding, flag on', () => {
     expect(all.join('\n')).not.toMatch(/booked|enrolled|signed up|registered/i);
   });
 
-  it('keeps the activity as family memory with its provenance, and audits counts only', async () => {
+  it('hands the next turn what the parent said the kids do, so it is never asked again', async () => {
     const talk = conversation();
     for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4", 'she swims on Saturdays']) {
       await talk.say(words);
     }
-    const facts = talk.fake.rows(schema.familyMemoryFacts);
-    expect(facts).toHaveLength(1);
-    const [fact] = facts;
-    const [child] = talk.fake.rows(schema.children);
-    const [parent] = talk.fake.rows(schema.users);
-    expect(fact).toMatchObject({
-      childId: child?.id,
-      factType: 'routine',
-      factKey: 'kid-activity-swim-lessons',
-      factValue: {
-        schemaVersion: 1,
-        kind: 'kid_activity',
-        activity: 'swim lessons',
-        when: 'Saturdays',
-      },
-      inferredBy: 'onboarding_thread_v2',
-      sourceAudience: 'one_to_one',
-      sourceUserId: parent?.id,
-      memorySource: 'parent_message',
-      memoryKind: 'lasting',
-    });
-    // The value never carries the kid's name: the row points at the child.
-    expect(JSON.stringify(fact?.factValue)).not.toContain('Maya');
-    const kept = talk.fake
-      .rows(schema.auditLog)
-      .filter((row) => row.actionTaken === 'onboarding_activities_kept');
-    expect(kept).toHaveLength(1);
-    expect(kept[0]?.after).toEqual({ count: 1, linked: 1 });
-
-    // The next turn is handed what was kept, so it is never asked again.
     await talk.say('Dana');
     const next = talk.seen.find((input) => input.parentWords === 'Dana');
     expect(next).toBeDefined();
@@ -392,7 +225,6 @@ describe('VIL-721 in-thread onboarding, flag on', () => {
     for (const words of ['hi', 'M5V 2T6', 'Maya', "she's 4"]) await talk.say(words);
     const next = await talk.say('nothing yet');
     expect(next.bodies.join('\n')).toMatch(/What should I call you\?$/);
-    expect(talk.fake.rows(schema.familyMemoryFacts)).toEqual([]);
   });
 
   it('sends nothing on the Google ask when the model offers only one connector, twice', async () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import { loadCronSkill } from '~/lib/cron/skill';
 import {
@@ -78,6 +78,12 @@ function lit() {
   // The in-thread walk rides the friend walk.
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
 }
+
+// Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+beforeEach(() => {
+  vi.stubEnv(THREAD_ONBOARDING_V2_ENABLED_ENV, 'false');
+  vi.stubEnv(FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV, 'false');
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();

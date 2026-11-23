@@ -141,6 +141,8 @@ describe('sendConnectorConnectedText', () => {
   it('VIL-721 lit: a Gmail receipt is not followed by a calendar card, so no second link goes', async () => {
     vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    // This stand-in does not fill the marks the model-fields flag would require.
+    vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', 'false');
     await seedChannel();
 
     const outcome = await send('gmail');

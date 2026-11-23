@@ -50,6 +50,8 @@ describe('redeemChannelLinkAction — the one Google link (VIL-721)', () => {
     recallMock.mockResolvedValue(null);
     freshMock.mockReset();
     freshMock.mockResolvedValue('sent');
+    // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
   });
   afterEach(() => {
     vi.unstubAllEnvs();

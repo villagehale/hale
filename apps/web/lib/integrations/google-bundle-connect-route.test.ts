@@ -61,6 +61,8 @@ beforeEach(() => {
   vi.stubEnv('GOOGLE_CONNECTOR_CLIENT_SECRET', '');
   vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'true');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+  // Read scopes only, pinned: the flags-on CI job also arms the write scopes.
+  vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'false');
   authMock.mockResolvedValue({ user: { id: 'ext-parent' } });
   resolveFamilyMock.mockResolvedValue(FAMILY);
   resolveUserIdMock.mockResolvedValue(USER);
