@@ -10,8 +10,14 @@ import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { ROLE_LABEL } from './copy';
 import type { AddRole, ParsedCaregiverAdd, ParsedCoParentAdd } from './parse';
+
+/** How a caregiver role is named in consent evidence. Not a text. */
+const ROLE_LABEL: Record<CaregiverRole, string> = {
+  grandparent: 'grandparent',
+  nanny: 'nanny',
+  babysitter: 'babysitter',
+};
 
 /**
  * VIL-241 · M6 — the caregiver invite's state transitions and the rows they write.
@@ -342,8 +348,8 @@ export async function startCaregiverInvite(
   const { parsed, now } = input;
   if (parsed.phoneE164 === input.inviterPhoneE164) return { status: 'own_number' };
 
-  // THE REFUSAL BINDS THIS DOOR TOO (VIL-355). "Reply STOP anytime" rides on the
-  // co-parent invite, and a promise that only covered the lane it was written on would
+  // THE REFUSAL BINDS THIS DOOR TOO (VIL-355). The co-parent invite promises a stranger
+  // they can opt out, and a promise that only covered the lane it was written on would
   // be no promise at all: without this, somebody who replied STOP could be re-texted a
   // minute later as a nanny, five a day, on a path that bypasses the outbound gate.
   const refusedBefore = await refusalBlock(database, {
@@ -1296,8 +1302,8 @@ export async function acceptInvite(
  *
  * `loadOpenInviteByPhone` answers a different question — "is there an invitation this
  * number can still say YES to" — and its sweep closes a lapsed row as 'expired' and
- * returns null. Reading a refusal through it made "Reply STOP anytime", printed verbatim
- * on the one cold text this feature sends, expire with the invitation: a STOP arriving at
+ * returns null. Reading a refusal through it made the opt-out promised on the one cold
+ * text this feature sends expire with the invitation: a STOP arriving at
  * 72h + 1 minute wrote no memory, and the same household opened a fresh invite and texted
  * the same stranger again an hour later. Under CASL a withdrawal is effective when it is
  * sent, not while a timer happens to be running.
@@ -1365,8 +1371,8 @@ export async function hasInviteAStopWouldClose(
 }
 
 /**
- * A STOP from a number that was asked something. "Reply STOP anytime" is on the invite
- * itself, so it has to close the invite too — otherwise the one thing we promised
+ * A STOP from a number that was asked something. The invite itself promises they can
+ * opt out, so it has to close the invite too — otherwise the one thing we promised
  * them would only cover messages we had already stopped sending.
  */
 export async function declineOpenInviteOnStop(

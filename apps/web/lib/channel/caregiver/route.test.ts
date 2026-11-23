@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentInviteExpired } from '~/lib/channel/coparent/copy';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -15,19 +15,11 @@ import {
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { speak } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter } from '~/lib/testing/consent-double';
-import {
-  ADD_EXAMPLE,
-  ALREADY_INVITED,
-  CAREGIVER_WELCOME,
-  CO_PARENT_REDIRECT,
-  NUMBER_IN_USE,
-  OWN_NUMBER,
-  TOO_MANY_INVITES,
-} from './copy';
 import { INVITE_DAILY_CAP, INVITE_SILENCE_MS, loadOpenInviteByPhone } from './invites';
 
 /**
@@ -185,11 +177,18 @@ async function upToInvite(fake: FakeDb, transport: FakeTransport, deps: IntakeDe
   await text(fake, transport, deps, PARENT_PHONE, 'yes');
 }
 
+function door(purpose: string, facts?: Record<string, string>) {
+  return speak({ purpose, language: null, facts });
+}
+
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
+  process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  vi.unstubAllEnvs();
 });
 
 describe('caregiver invite · the double opt-in', () => {
@@ -224,7 +223,7 @@ describe('caregiver invite · the double opt-in', () => {
 
     const sent = await text(fake, transport, deps, PARENT_PHONE, 'yes');
 
-    expect(sent).toEqual({ status: 'caregiver_invite_sent' });
+    expect(sent).toEqual({ status: 'caregiver_invite_sent', lineHeld: null });
     const grantRows = inserts(fake, schema.consentRecords).filter(
       (r) => r.consentType === 'caregiver_access_grant',
     );
@@ -247,7 +246,7 @@ describe('caregiver invite · the double opt-in', () => {
 
     const accepted = await text(fake, transport, deps, GRAN_PHONE, 'yes');
 
-    expect(accepted).toEqual({ status: 'caregiver_accepted' });
+    expect(accepted).toEqual({ status: 'caregiver_accepted', lineHeld: null });
 
     const caregiverConsent = inserts(fake, schema.consentRecords).filter(
       (r) => r.consentType === 'caregiver_scoped_messages',
@@ -285,7 +284,10 @@ describe('caregiver invite · the double opt-in', () => {
         'channel_sms_enrolled',
       ]),
     );
-    expect(transport.sent.at(-1)).toEqual({ to: GRAN_PHONE, body: CAREGIVER_WELCOME });
+    expect(transport.sent.at(-1)).toEqual({
+      to: GRAN_PHONE,
+      body: await door('caregiver_welcome', { role: 'grandparent' }),
+    });
   });
 
   it("never stores an outbound body, and stores the caregiver's own words verbatim", async () => {
@@ -319,8 +321,15 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add my mum 647-555-0199 as chauffeur',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unparseable' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: ADD_EXAMPLE });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'unparseable',
+      lineHeld: null,
+    });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_add_example'),
+    });
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -352,6 +361,8 @@ describe('caregiver invite · the ways it does not happen', () => {
    * FLAG, and an operator counting `unsupported_role` must not be shown a dark launch.
    */
   it('answers a co-parent add with the forwardable link while the flag is off', async () => {
+    // Pinned dark, so a run with every default-off flag lit still reads this as written.
+    vi.stubEnv('F14_ENABLED', '');
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
@@ -363,8 +374,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Sam 647-555-0199 as co-parent',
     );
 
-    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });
+    expect(outcome).toEqual({ status: 'co_parent_add_refused', reason: 'dark', lineHeld: null });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_co_parent_redirect'),
+    });
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -383,8 +397,15 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Sam 647-555-0199 as parent',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unsupported_role' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: CO_PARENT_REDIRECT });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'unsupported_role',
+      lineHeld: null,
+    });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_co_parent_redirect'),
+    });
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -404,8 +425,15 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add grandma 647-555-0199 as nanny',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'number_in_use' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: NUMBER_IN_USE });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'number_in_use',
+      lineHeld: null,
+    });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_number_in_use'),
+    });
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'nanny')).toBe(false);
   });
 
@@ -439,8 +467,15 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add grandma 647-555-0199 as nanny',
     );
 
-    expect(again).toEqual({ status: 'caregiver_add_refused', reason: 'already_invited' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: ALREADY_INVITED });
+    expect(again).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'already_invited',
+      lineHeld: null,
+    });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_already_invited'),
+    });
     // One reply to the parent, and not a second text to grandma.
     expect(transport.sent.slice(sentSoFar).every((s) => s.to === PARENT_PHONE)).toBe(true);
   });
@@ -460,6 +495,7 @@ describe('caregiver invite · the ways it does not happen', () => {
       await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
       expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
         status: 'caregiver_invite_sent',
+        lineHeld: null,
       });
     }
     const strangersTexted = transport.sent.filter((s) => s.to !== PARENT_PHONE).length;
@@ -473,8 +509,11 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add helper 647-555-0106 as nanny',
     );
 
-    expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: TOO_MANY_INVITES });
+    expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many', lineHeld: null });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_too_many'),
+    });
     // The meter stopped a SIXTH stranger being texted, which is the only thing it is for.
     expect(transport.sent.filter((s) => s.to !== PARENT_PHONE)).toHaveLength(INVITE_DAILY_CAP);
   });
@@ -498,6 +537,7 @@ describe('caregiver invite · the ways it does not happen', () => {
     await text(fake, transport, deps, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
     expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
       status: 'caregiver_invite_sent',
+      lineHeld: null,
     });
     expect(transport.sent.filter((s) => s.to !== PARENT_PHONE)).toHaveLength(1);
   });
@@ -540,8 +580,15 @@ describe('caregiver invite · the ways it does not happen', () => {
       'add Ana 416-555-1234 as babysitter',
     );
 
-    expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'own_number' });
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: OWN_NUMBER });
+    expect(outcome).toEqual({
+      status: 'caregiver_add_refused',
+      reason: 'own_number',
+      lineHeld: null,
+    });
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_own_number'),
+    });
   });
 
   /**
@@ -585,8 +632,11 @@ describe('caregiver invite · the ways it does not happen', () => {
 
     await text(fake, transport, deps, PARENT_PHONE, `add me ${PARENT_PHONE} as grandparent`);
 
-    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: OWN_NUMBER });
-    expect(threaded.map((t) => t.body)).toEqual([OWN_NUMBER]);
+    expect(transport.sent.at(-1)).toEqual({
+      to: PARENT_PHONE,
+      body: await door('caregiver_own_number'),
+    });
+    expect(threaded.map((t) => t.body)).toEqual([await door('caregiver_own_number')]);
   });
 
   it('threads nothing when it had nothing to say', async () => {
@@ -624,7 +674,7 @@ describe('caregiver invite · the ways it does not happen', () => {
 
       const sent = await text(fake, transport, deps, PARENT_PHONE, answer);
 
-      expect(sent).toEqual({ status: 'caregiver_invite_sent' });
+      expect(sent).toEqual({ status: 'caregiver_invite_sent', lineHeld: null });
       expect(transport.sent.some((s) => s.to === GRAN_PHONE)).toBe(true);
     },
   );
@@ -636,7 +686,7 @@ describe('caregiver invite · the ways it does not happen', () => {
 
     const dropped = await text(fake, transport, deps, PARENT_PHONE, 'no');
 
-    expect(dropped).toEqual({ status: 'caregiver_invite_dropped' });
+    expect(dropped).toEqual({ status: 'caregiver_invite_dropped', lineHeld: null });
     expect(transport.sent.every((s) => s.to === PARENT_PHONE)).toBe(true);
     expect(inserts(fake, schema.consentRecords)).toHaveLength(0);
     expect(auditActions(fake)).toContain('caregiver_invite_withdrawn');
@@ -662,9 +712,8 @@ describe('caregiver invite · the ways it does not happen', () => {
     expect(auditActions(fake)).toContain('caregiver_invite_expired');
     expect(auditActions(fake)).toContain('caregiver_invite_expired_answered');
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'grandparent')).toBe(false);
-    expect(transport.sent.slice(sentByInvite).every((s) => s.body !== CAREGIVER_WELCOME)).toBe(
-      true,
-    );
+    const welcome = await door('caregiver_welcome', { role: 'grandparent' });
+    expect(transport.sent.slice(sentByInvite).every((s) => s.body !== welcome)).toBe(true);
   });
 
   it('asks once more when the caregiver replies with neither a yes nor a STOP', async () => {
@@ -686,7 +735,7 @@ describe('caregiver · after they are in', () => {
 
     const outcome = await text(fake, transport, deps, GRAN_PHONE, 'is Maya feeling better?');
 
-    expect(outcome).toEqual({ status: 'caregiver_scoped_reply' });
+    expect(outcome).toEqual({ status: 'caregiver_scoped_reply', lineHeld: null });
     expect(transport.sent.at(-1)).toEqual({
       to: GRAN_PHONE,
       body: "That's one for Ana - I only share the schedule here.",

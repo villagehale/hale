@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { channelSendJobPayloadSchema } from '@hale/tools-contracts';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SpokenLineRequest } from '~/lib/channel/spoken-line';
 import type { CaregiverSeat } from '~/lib/loop/caregiver-audience';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
@@ -134,6 +135,13 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 }
 
 const db = {} as Database;
+
+/** The code-built caregiver line is the flag-off answer, pinned here so a run with every
+ * default-off flag lit still reads these tests as written (VIL-706 has its own below). */
+const CAREGIVER_MODEL_COPY = 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED';
+beforeEach(() => {
+  vi.stubEnv(CAREGIVER_MODEL_COPY, '');
+});
 
 function body(job: ChannelSendJob): string {
   const rendered = loopTemplateRenderer.render(
@@ -373,6 +381,121 @@ describe('fire — what actually reaches a caregiver', () => {
     // The parents' own text is the model's, written from the parents' redacted facts
     // (the fake writer echoes them) — not the caregiver's template.
     expect(body(enqueued[0] as ChannelSendJob)).toBe('Mia: Swim class');
+  });
+});
+
+/**
+ * VIL-706 · with CAREGIVER_REMINDER_MODEL_COPY_ENABLED lit, the caregiver's reminder is
+ * written whole by the model from the facts this caregiver may see, and a line it did not
+ * write is nothing sent. The writer here is a recorder at the port: these tests are about
+ * the request it is handed and what the run does with the answer, not about the words.
+ */
+describe("VIL-706 · lit, a caregiver's reminder is written from facts", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  function writer(answer: string | null) {
+    const requests: SpokenLineRequest[] = [];
+    return {
+      requests,
+      composeCaregiverLine: async (request: SpokenLineRequest) => {
+        requests.push(request);
+        return answer;
+      },
+    };
+  }
+
+  const LINE = 'Swim class is at 10:00 this morning at Stouffville Public School.';
+
+  it('asks for the line with the time and the place, and sends that line alone', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv(CAREGIVER_MODEL_COPY, 'true');
+    const { requests, composeCaregiverLine } = writer(LINE);
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => event(),
+      composeCaregiverLine,
+    });
+    await runReminderCron(db, deps, NOW);
+
+    expect(requests).toEqual([
+      {
+        purpose: 'caregiver_reminder',
+        language: 'en',
+        facts: {
+          when: 'hour_before',
+          count: '1',
+          event_1: 'Swim class',
+          date_1: 'Saturday, July 25, 2026',
+          day_1: 'today',
+          start_1: '10:00 AM',
+          minutes_until_1: '60',
+          place_1: 'Stouffville Public School',
+        },
+        verbatim: ['Stouffville Public School'],
+        mayRepeat: ['Swim class'],
+        addendum: 'caregiver-reminder',
+      },
+    ]);
+    // Nothing about the child, the roster or the teenager reaches the writer.
+    expect(JSON.stringify(requests)).not.toMatch(/Mia|Noor|dateOfBirth|childId/);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toMatchObject({ templateKey: 'reminder:caregiver', channel: 'sms' });
+    expect(enqueued[0]?.payload).toMatchObject({ texts: [LINE] });
+    expect(body(enqueued[0] as ChannelSendJob)).toBe(LINE);
+  });
+
+  it('a line the model did not write is nothing sent, and a logged, audited drop', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv(CAREGIVER_MODEL_COPY, 'true');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { composeCaregiverLine } = writer(null);
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => event(),
+      composeCaregiverLine,
+    });
+    await runReminderCron(db, deps, NOW);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'unwritten' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'unwritten' },
+    ]);
+  });
+
+  it("never asks the caregiver writer for a parent's reminder (positive control)", async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv(CAREGIVER_MODEL_COPY, 'true');
+    const { requests, composeCaregiverLine } = writer(LINE);
+    const { deps, enqueued } = makeDeps({
+      selectReminderCaregivers: async () => [],
+      loadDueReminders: async () => [dueRow({ parentUserId: 'p1', role: 'primary_parent' })],
+      loadEvent: async () => event(),
+      composeCaregiverLine,
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(requests).toEqual([]);
+    expect(body(enqueued[0] as ChannelSendJob)).toBe('Mia: Swim class');
+  });
+
+  it('dark: the writer is never asked and the code-built line goes out as before', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { requests, composeCaregiverLine } = writer(LINE);
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => event(),
+      composeCaregiverLine,
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(requests).toEqual([]);
+    expect(enqueued[0]?.payload).not.toHaveProperty('texts');
+    expect(body(enqueued[0] as ChannelSendJob)).toBe(
+      'Sat, Jul 25 - Swim class at 10:00, Stouffville Public School',
+    );
   });
 });
 

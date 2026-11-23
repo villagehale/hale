@@ -36,7 +36,8 @@ import { joinTokenHash, mintJoinCode } from './code';
 
 /** How long a forwarded link stays good. Long enough to sit unread in a busy thread
  * over a weekend, short enough that a link in an old text is not a live key. */
-export const JOIN_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const JOIN_LINK_TTL_DAYS = 7;
+export const JOIN_LINK_TTL_MS = JOIN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000;
 
 /** The CASL basis recorded on the joining co-parent's channel consent: they texted US
  * first, exactly as an intake arrival does. */

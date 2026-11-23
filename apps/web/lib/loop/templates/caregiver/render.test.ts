@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { caregiverReminderRenderer } from './index';
+import { asCaregiverReminderPayload } from './payload';
 import { renderCaregiverReminderSms } from './reminder-sms';
+
+const MODEL_COPY = 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED';
+
+// The code-built line is the flag-off answer; VIL-706's lit path has its own block below.
+beforeEach(() => {
+  vi.stubEnv(MODEL_COPY, '');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 /**
  * The body a caregiver actually reads. Pure — no DB, no clock of its own.
@@ -109,5 +120,50 @@ describe('the broadcast header', () => {
     expect(reminder).not.toContain('Hale:');
     // Sentence case, not the lowercase that only read right after a label.
     expect(reminder[0]).toBe(reminder[0]?.toUpperCase());
+  });
+});
+
+describe('VIL-706 · the model-written caregiver reminder', () => {
+  const PAYLOAD = {
+    offset: '-PT1H' as const,
+    timeZone: 'America/Toronto',
+    events: [
+      { eventRef: 'e1', title: 'Swim class', startsAt: '2026-07-25T20:15:00Z', location: null },
+    ],
+  };
+
+  it('sends the words the model wrote, as written, with or without the flag', () => {
+    const texts = ['Swim class at 4:15 today, see you there.'];
+    for (const flag of ['true', '']) {
+      vi.stubEnv(MODEL_COPY, flag);
+      expect(renderCaregiverReminderSms({ ...PAYLOAD, texts })).toEqual({
+        kind: 'sms',
+        text: texts[0],
+        modelWritten: true,
+      });
+    }
+  });
+
+  it('sends several texts in order when the model wrote several', () => {
+    vi.stubEnv(MODEL_COPY, 'true');
+    const texts = ['Swim at 10:00 at the leisure centre.', 'Soccer at 2:00 at Memorial Park.'];
+    expect(renderCaregiverReminderSms({ ...PAYLOAD, texts })).toEqual({
+      kind: 'sms',
+      text: texts.join('\n\n'),
+      texts,
+      modelWritten: true,
+    });
+  });
+
+  it('lit, refuses a leg with no composed text rather than build one (the send holds)', () => {
+    vi.stubEnv(MODEL_COPY, 'true');
+    expect(() => renderCaregiverReminderSms(PAYLOAD)).toThrow(/no text was composed/);
+  });
+
+  it('refuses composed texts that are empty or not text', () => {
+    for (const texts of [[], [''], ['  '], [42]]) {
+      expect(() => asCaregiverReminderPayload({ ...PAYLOAD, texts })).toThrow(/malformed texts/);
+    }
+    expect(asCaregiverReminderPayload({ ...PAYLOAD })).not.toHaveProperty('texts');
   });
 });

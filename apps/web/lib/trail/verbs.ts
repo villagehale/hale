@@ -298,6 +298,9 @@ export const AUDIT_VERBS = [
   'channel_sent',
   // VIL-683 · the send seam refused a garbled text, so nothing went out.
   'channel_text_garbled',
+  // VIL-749 / VIL-753. The shared receipt stopped a parent text: Linq refused it,
+  // or a one-shot sender will not try an unconfirmed send again.
+  'parent_send_unsent',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
   // The claim sweep naming an executor send claim nothing ever confirmed.
@@ -1242,6 +1245,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  parent_send_unsent: {
+    sentence: 'Hale could not send a text',
+    family: 'problem',
+  },
   channel_text_garbled: {
     sentence: 'Hale held back a message that came out garbled',
     family: 'problem',
@@ -1624,7 +1631,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   caregiver_invite_superseded_by_join: {
-    // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
+    // Says only what the parent's own number-in-use refusal already says to them —
     // never which household the number joined, which may not be theirs (rule #1).
     sentence: 'a caregiver invite closed because that number is already set up with Hale',
     family: 'note',

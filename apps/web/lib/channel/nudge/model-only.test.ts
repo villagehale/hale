@@ -20,9 +20,10 @@ vi.mock('~/lib/cron/skill', async (importOriginal) => {
   };
 });
 import type { AgentClient } from '@hale/agent';
+import { OPT_OUT_LINE as NUDGE_OPT_OUT } from '~/lib/channel/opt-out';
 import { writeNudgeModelOnly } from './model-only';
 import type { Nudge } from './nudge-decide.js';
-import { NUDGE_OPT_OUT, type VoicedNudge } from './nudge-voice.js';
+import type { VoicedNudge } from './nudge-voice.js';
 
 /**
  * The flag-on writer (NUDGE_MODEL_ONLY_ENABLED): when the model cannot write the nudge,

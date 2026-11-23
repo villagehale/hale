@@ -2,10 +2,19 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import type { RenderedContent } from '~/lib/channel/types';
 import { localTimeLabel, reminderLead } from '../reminder/core';
 import { gsmSafe } from '../weekly-plan/core';
+import { caregiverReminderModelCopyEnabled } from './compose';
 import type { CaregiverReminderEvent, CaregiverReminderPayload } from './payload';
 
 /**
  * A caregiver's event reminder: where to be, when.
+ *
+ * VIL-706 · with CAREGIVER_REMINDER_MODEL_COPY_ENABLED lit, the model wrote the whole
+ * text from facts before the leg was enqueued (compose.ts), and this renderer sends
+ * `payload.texts` as written: no lead, no line, no fold. A lit leg that arrives with no
+ * composed text is a caller that skipped the writer, and it throws rather than render
+ * around it, so the send holds. The code-built body below is the flag-off answer only,
+ * kept until the flag is lit and proven; it is never a fallback for a line the model
+ * did not write.
  *
  * It shares the parents' lead (the events' own local day) and their two-segment ceiling,
  * and diverges in the two places the recipient differs. It carries the LOCATION, which is
@@ -29,6 +38,17 @@ function eventLine(event: CaregiverReminderEvent, timeZone: string): string {
 }
 
 export function renderCaregiverReminderSms(payload: CaregiverReminderPayload): RenderedContent {
+  if (payload.texts) {
+    return {
+      kind: 'sms',
+      text: payload.texts.join('\n\n'),
+      ...(payload.texts.length > 1 ? { texts: [...payload.texts] } : {}),
+      modelWritten: true,
+    };
+  }
+  if (caregiverReminderModelCopyEnabled()) {
+    throw new Error('caregiver reminder renderer: model copy is lit and no text was composed');
+  }
   const lead = reminderLead(payload.events, payload.timeZone);
   const lines = payload.events.map((event) => eventLine(event, payload.timeZone));
   // NO `Hale: ` PREFIX (docs/voice.md rule 2).
