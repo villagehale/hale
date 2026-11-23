@@ -369,7 +369,7 @@ describe('billing trail rows a parent can read', () => {
     assertCleanHuman(PLAN_CHANGED_UNSETTLED_SENTENCE, 'billing_plan_unsettled');
   });
 
-  it('says a dispute is a dispute, and leaves an unmatched refund on the registry sentence', () => {
+  it('never names a dispute, which every parent seat reads in the family export, and leaves an unmatched refund on the registry sentence', () => {
     expect(billingRevokeUnresolvedSentence({ reason: 'subscription_unresolved' })).toBeNull();
     expect(billingRevokeUnresolvedSentence({ reason: 'dispute_needs_review' })).toBe(
       DISPUTE_NEEDS_REVIEW_SENTENCE,
@@ -385,6 +385,7 @@ describe('billing trail rows a parent can read', () => {
       () => 'hale',
     );
     expect(view.summary).toBe(DISPUTE_NEEDS_REVIEW_SENTENCE);
+    expect(view.summary).not.toMatch(/dispute|chargeback/i);
     expect(view.summary).not.toContain('refund');
     assertCleanHuman(DISPUTE_NEEDS_REVIEW_SENTENCE, 'billing_revoke_unresolved');
   });

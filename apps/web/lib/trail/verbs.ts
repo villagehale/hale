@@ -2436,9 +2436,12 @@ export function calendarWithdrawnSentences(): readonly string[] {
   return Object.values(CALENDAR_WITHDRAW_LINE);
 }
 
-/** The registry sentence says a refund could not be matched. A dispute is not that. */
+/**
+ * The registry sentence says a refund could not be matched, and a dispute is not that. It
+ * never names the dispute: one adult paid, and every parent seat reads the family export.
+ */
 export const DISPUTE_NEEDS_REVIEW_SENTENCE =
-  'a card dispute came in, so the plan was left as it is';
+  'a payment needs a second look, so the plan was left as it is';
 
 /** The registry sentence does not say the plan moved. This row did. */
 export const PLAN_CHANGED_UNSETTLED_SENTENCE =
