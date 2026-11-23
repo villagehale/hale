@@ -316,6 +316,7 @@ const LEFT_NOTHING_DETAILS: ReadonlySet<PlanRunDetail> = new Set<PlanRunDetail>(
   'captcha',
   'verification_code',
   'login_wall',
+  'passkey',
   'password_rejected',
   'waiting_room',
   'timed_open',
@@ -476,8 +477,9 @@ async function runOnePlan(
     // that ran is always reported.
     const opsStopped =
       ending.charged === 'nothing' && !paymentMayExist && (await planOpsStopped(database, plan));
-    // A run let go here was cancelled before anyone read what it did.
-    const letGoUnread = held !== null && !engineRan;
+    // A run let go here was cancelled before anyone read what it did. A takeover's run was
+    // read: it stopped at the step the parent was asked to do.
+    const letGoUnread = held !== null && held.phase !== 'takeover' && !engineRan;
     const silenced = opsStopped && !letGoUnread && leftNothingAtProvider(ending);
     const result = silenced
       ? {
@@ -685,6 +687,13 @@ async function runOnePlan(
       sessionCostUsd: await letBrowserGo(stop),
       started: true,
     };
+    if (offered.status === 'withdrawn') {
+      // A charge is always reported, and an ops stop's ending reads where the run really
+      // stopped. Otherwise nobody is texted.
+      return stop.charged !== 'nothing' || (await planOpsStopped(database, plan))
+        ? end(stopped)
+        : end({ ...stopped, outcome: 'cancelled', detail: 'authorization_lapsed' });
+    }
     if (offered.status === 'unwritten') {
       // Nothing the model wrote, so nothing goes: #ops was paged.
       return end({ ...stopped, detail: 'takeover_unwritten' }, { notice: 'failed' });

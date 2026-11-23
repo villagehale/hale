@@ -25,7 +25,7 @@ import {
   type PlanRunDeps,
   runDueSignupPlans,
 } from './run';
-import { approveSignupPlan, cancelSignupPlan } from './store';
+import { approveSignupPlan, cancelSignupPlan, requestStopForRunningPlans } from './store';
 
 // VIL-718 · the takeover link on the plan lane, over the real DDL. The Browser Use engine is
 // its own tested unit (plan-engine.takeover.test.ts); here a stand-in runner returns the stops
@@ -203,6 +203,8 @@ function takeoverDoor(
     delivery?: 'sent' | 'failed' | 'withheld' | 'throws';
     /** When the text goes: the moment the run stopped, not when the sweep began. */
     now?: Date;
+    /** What lands while the model is writing: the write is the slow part of an offer. */
+    duringWrite?: () => Promise<void>;
   } = {},
 ) {
   const facts: PlanPrepFacts[] = [];
@@ -214,6 +216,7 @@ function takeoverDoor(
       writer: {
         write: async (input: PlanPrepFacts) => {
           facts.push(input);
+          await options.duringWrite?.();
           if (options.unwritten) return null;
           return {
             bubbles: [`bubble for ${input.kind}`, 'second bubble'],
@@ -831,6 +834,174 @@ describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
     expect(released).toHaveLength(1);
     expect(swept.notices).toHaveLength(1);
+  });
+});
+
+describe('VIL-718 · an offer never goes to a parent who took the plan back or whose yes lapsed', () => {
+  const lapseFamily = (familyId: string) =>
+    db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: new Date(NOW.getTime() + 24 * 60 * 60_000) })
+      .where(eq(schema.families.id, familyId));
+  // A run with no checkpoint yet has no resume token for cancelSignupPlan to find, so the
+  // take-back's own column is set directly.
+  const takeBack = (offerId: string) =>
+    db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ planCancelRequestedAt: NOW })
+      .where(eq(schema.authorizedSignupOffers.id, offerId));
+
+  /** The run stops at a captcha; `landed` happens as the engine hands the stop back. */
+  function stoppingRunner(landed: () => Promise<unknown>) {
+    const scripted = runnerReturning(stopAt('needs_human', 'captcha'));
+    const run = scripted.runner.run;
+    scripted.runner.run = vi.fn(async (input: BrowserUsePlanInput) => {
+      const result = await run(input);
+      await landed();
+      return result;
+    });
+    return scripted;
+  }
+
+  async function expectSilentEnd(
+    family: { offerId: string; familyId: string },
+    result: Awaited<ReturnType<typeof runDueSignupPlans>>,
+    swept: ReturnType<typeof sweepDeps>,
+    released: PlanResumeToken[],
+  ) {
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(swept.takeover.parts).toEqual([]);
+    expect(swept.notices).toEqual([]);
+    expect(released).toEqual([expect.objectContaining({ runId: 'run-1', browserId: 'browser-1' })]);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    for (const row of await linkRows(family.familyId)) {
+      expect(row.consumedAt).not.toBeNull();
+      expect(row.browserHandleCiphertext).toBeNull();
+    }
+  }
+
+  it('a take-back that landed during the run: no write, no card, no text', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = stoppingRunner(() => takeBack(family.offerId));
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(swept.takeover.facts).toEqual([]);
+    expect(await linkRows(family.familyId)).toEqual([]);
+    await expectSilentEnd(family, result, swept, released);
+  });
+
+  it('a yes that lapsed during the run (erasure scheduled): no write, no card, no text', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = stoppingRunner(() => lapseFamily(family.familyId));
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(swept.takeover.facts).toEqual([]);
+    expect(await linkRows(family.familyId)).toEqual([]);
+    await expectSilentEnd(family, result, swept, released);
+  });
+
+  it('a take-back during the model write: the plan is not parked, the minted card is spent, nothing goes', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const door = takeoverDoor({
+      duringWrite: () => takeBack(family.offerId).then(() => undefined),
+    });
+    const swept = sweepDeps(runner, door);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(door.facts).toHaveLength(1);
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+    expect((await offerRow(family.offerId))?.planResume?.phase).toBe('signup');
+    await expectSilentEnd(family, result, swept, released);
+  });
+
+  it('a lapse during the model write: the card is spent right before delivery, nothing goes', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning(stopAt('needs_human', 'verification_code'));
+    const door = takeoverDoor({
+      duringWrite: () => lapseFamily(family.familyId).then(() => undefined),
+    });
+    const swept = sweepDeps(runner, door);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(door.facts).toHaveLength(1);
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+    await expectSilentEnd(family, result, swept, released);
+  });
+
+  it('a stop with a charge it cannot rule out is still reported, without the live browser', async () => {
+    const family = await plannedFamily();
+    const stop = { ...stopAt('needs_human', 'captcha'), charged: 'unknown' as const };
+    const { runner, released } = runnerReturning(stop);
+    runner.run = vi.fn(async () => {
+      await takeBack(family.offerId);
+      return stop;
+    });
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(swept.takeover.parts).toEqual([]);
+    expect(swept.notices).toEqual([
+      expect.objectContaining({ charged: 'unknown', liveViewUrl: null }),
+    ]);
+    expect(released).toHaveLength(1);
+  });
+
+  it('an ops stop during a run that ends at a passkey: no text, no page, and the real stop is kept', async () => {
+    const posted = stubOpsSlack();
+    const family = await plannedFamily();
+    const { runner, released } = stoppingRunner(() =>
+      requestStopForRunningPlans(db.database, { now: NOW }),
+    );
+    runner.run = vi.fn(async () => {
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ planResume: { phase: 'signup', runId: 'run-1', sessionId: null, browserId: null } })
+        .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+      await requestStopForRunningPlans(db.database, { now: NOW });
+      return stopAt('needs_login', 'passkey');
+    });
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(swept.takeover.parts).toEqual([]);
+    expect(swept.notices).toEqual([]);
+    expect(released).toHaveLength(1);
+    expect(posted.join('\n')).not.toContain('registration_stop_unverified');
+    const finished = (await steps(family.offerId)).find((row) => row.step === 'plan_finished');
+    expect(finished?.stoppedFrom).toEqual({ outcome: 'needs_login', detail: 'passkey' });
+  });
+
+  it('an ops stop on a parked plan ends without a text or a page once the card closes', async () => {
+    const posted = stubOpsSlack();
+    const { family } = await parkedCaptcha();
+    await requestStopForRunningPlans(db.database, { now: NOW });
+    const { runner, released } = runnerReturning();
+    const door = takeoverDoor();
+    const swept = sweepDeps(runner, door);
+    const late = new Date(NOW.getTime() + 14 * 60_000);
+    const result = await runDueSignupPlans(db.database, { now: late }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(door.facts).toEqual([]);
+    expect(swept.notices).toEqual([]);
+    expect(released).toHaveLength(1);
+    expect(posted.join('\n')).not.toContain('registration_stop_unverified');
   });
 });
 

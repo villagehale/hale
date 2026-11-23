@@ -19,7 +19,7 @@ import {
   type TakeoverNoticeFacts,
   firstChoiceLabel,
 } from './prep';
-import { type ClaimedPlan, planLapse, writePlanAudit } from './store';
+import { type ClaimedPlan, planLapse, planTakenBack, writePlanAudit } from './store';
 import { planOpensAtLocal } from './writer';
 
 /**
@@ -51,9 +51,11 @@ export type TakeoverOffer =
   | { status: 'parked'; token: TakeoverToken }
   /** Too little time left, or the plan was no longer this sweep's: the run ends as today. */
   | { status: 'not_offered'; why: 'no_window' | 'not_parked' }
+  /** The parent took the plan back, or their yes lapsed: nothing was sent, the link is spent. */
+  | { status: 'withdrawn'; why: 'taken_back' | 'lapsed' }
   /** The model wrote nothing: nothing was sent, #ops was paged. */
   | { status: 'unwritten' }
-  /** Written, but a part did not reach the parent. The link is spent. */
+  /** Linq did not accept every part, though one may still have landed. The link is spent. */
   | { status: 'undelivered'; delivery: 'failed' | 'withheld' };
 
 /** The takeover's writer and door, and the clock the time left on its link is counted from. */
@@ -83,10 +85,21 @@ async function baseFacts(
   };
 }
 
+/** Why this plan may no longer text its parent. The lapse's reason stays out of the result. */
+async function yesGone(
+  database: Database,
+  plan: ClaimedPlan,
+): Promise<'taken_back' | 'lapsed' | null> {
+  if (await planTakenBack(database, plan)) return 'taken_back';
+  return (await planLapse(database, plan)) ? 'lapsed' : null;
+}
+
 /**
  * Offers the takeover for one stopped run: the text first (nothing is minted for a text the
- * model could not write), then the card, then the plan parked on it, then the send. Audit
- * row `plan_takeover` when it went (rule #6): the step, the round, the minutes and the host.
+ * model could not write), then the card, then the plan parked on it, then the send. The yes
+ * is read before the write and again right before the send, because the write can be slow.
+ * Audit row `plan_takeover` when it went (rule #6): the step, the round, the minutes and the
+ * host.
  */
 export async function offerTakeover(
   database: Database,
@@ -101,6 +114,8 @@ export async function offerTakeover(
   deps: TakeoverDeps,
 ): Promise<TakeoverOffer> {
   const { plan, stop, purpose } = input;
+  const gone = await yesGone(database, plan);
+  if (gone) return { status: 'withdrawn', why: gone };
   const now = deps.now();
   const window = takeoverWindow({
     now,
@@ -162,7 +177,15 @@ export async function offerTakeover(
   });
   if (!parked) {
     await consumeLoginLink(database, { id: link.id, now });
-    return { status: 'not_offered', why: 'not_parked' };
+    const refused = await yesGone(database, plan);
+    return refused
+      ? { status: 'withdrawn', why: refused }
+      : { status: 'not_offered', why: 'not_parked' };
+  }
+  const goneAtSend = await yesGone(database, plan);
+  if (goneAtSend) {
+    await consumeLoginLink(database, { id: link.id, now });
+    return { status: 'withdrawn', why: goneAtSend };
   }
   // A door that throws has not sent: the plan must not sit parked on a card nobody got.
   const delivered = await deps
@@ -205,8 +228,8 @@ export async function offerTakeover(
 /**
  * The honest close, in the model's words: the takeover ended without the step done, Hale
  * stopped and did not register, and the site's page follows for the parent to do it
- * themselves. Withheld when the parent's yes no longer stands. Nothing written: nothing sent,
- * #ops paged.
+ * themselves. Withheld when the plan was taken back or the parent's yes no longer stands, read
+ * again after the write. Nothing written: nothing sent, #ops paged.
  */
 export async function tellTakeoverUnfinished(
   database: Database,
@@ -223,7 +246,7 @@ export async function tellTakeoverUnfinished(
   deps: PlanPrepDeps,
 ): Promise<'sent' | 'failed' | 'withheld'> {
   const { plan, purpose } = input;
-  if (await planLapse(database, plan)) return 'withheld';
+  if (await yesGone(database, plan)) return 'withheld';
   const draft = await deps.writer.write({
     ...(await baseFacts(database, plan, input.host)),
     kind: 'takeover_unfinished',
@@ -240,6 +263,7 @@ export async function tellTakeoverUnfinished(
     console.warn({ offerId: plan.offerId, purpose, page }, 'takeover: the close was not written');
     return 'failed';
   }
+  if (await yesGone(database, plan)) return 'withheld';
   const parts: PlanNoticePart[] = [
     ...bubbles.map((body): PlanNoticePart => ({ type: 'text', body })),
     ...(input.registrationUrl ? [{ type: 'text' as const, body: input.registrationUrl }] : []),

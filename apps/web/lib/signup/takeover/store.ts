@@ -12,7 +12,7 @@ export type TakeoverToken = Extract<AuthorizedSignupPlanResume, { phase: 'takeov
  * The plan stays `submitting` (one family, one session at a time) and no sweep picks it up
  * until the link closes: the lease runs to the link's own end. A done clears the lease, so
  * the next sweep picks the session back up at once. False when the plan is no longer this
- * sweep's to park.
+ * sweep's to park, or the parent has taken it back.
  */
 export async function parkPlanForTakeover(
   database: Database,
@@ -31,6 +31,7 @@ export async function parkPlanForTakeover(
         eq(offers.id, input.offerId),
         eq(offers.familyId, input.familyId),
         eq(offers.status, 'submitting'),
+        isNull(offers.planCancelRequestedAt),
       ),
     )
     .returning({ id: offers.id });
