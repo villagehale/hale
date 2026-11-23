@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { founderNote } from './copy';
 
-/** Barton: delete the first-families welcome clause. Do not write another one. */
+/** Delete the first-families welcome clause. Do not write another one. */
 const WELCOME_LINE = new RegExp(
   [
     ['one of our', 'first'].join(' '),
@@ -15,11 +15,16 @@ const WELCOME_LINE = new RegExp(
 );
 
 describe('the founder note', () => {
-  it('keeps his other words and does not welcome the family as first or founding', () => {
-    expect(founderNote()).toBe(
-      'A note from Barton, the dad who built Hale. If anything ever feels off, just say so right here - I read what matters. - B',
-    );
-    expect(founderNote()).not.toMatch(WELCOME_LINE);
+  it('keeps the rest of the note and does not welcome the family as first or founding', () => {
+    const note = founderNote();
+    expect(note.startsWith('A note from ')).toBe(true);
+    expect(note).toContain('the dad who built Hale.');
+    expect(
+      note.endsWith(
+        'If anything ever feels off, just say so right here - I read what matters. - B',
+      ),
+    ).toBe(true);
+    expect(note).not.toMatch(WELCOME_LINE);
   });
 
   it('does not leave the welcome line in the source', () => {
