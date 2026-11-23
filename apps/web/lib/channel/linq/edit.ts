@@ -4,6 +4,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq, gte } from 'drizzle-orm';
 import { z } from 'zod';
+import { withoutConnectTokens } from '~/lib/channel/connect/text-connect';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { editLinqMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -414,10 +415,11 @@ async function rewriteAssistantBubble(
   if (matches.length !== 1) return 'missing';
   const match = matches[0];
   if (!match) return 'missing';
-  if (match.content === text) return 'unchanged';
+  const stored = withoutConnectTokens(text);
+  if (match.content === stored) return 'unchanged';
   await database
     .update(schema.messages)
-    .set({ content: text })
+    .set({ content: stored })
     .where(eq(schema.messages.id, match.id as string));
   return 'updated';
 }
@@ -682,10 +684,11 @@ async function rewriteParentTurn(
     (row) => row.providerMessageId === providerMessageId && row.role === 'user' && !row.deletedAt,
   );
   if (match.length !== 1 || !match[0]) return 'missing';
-  if (match[0].content === text) return 'unchanged';
+  const stored = withoutConnectTokens(text);
+  if (match[0].content === stored) return 'unchanged';
   await database
     .update(schema.messages)
-    .set({ content: text })
+    .set({ content: stored })
     .where(eq(schema.messages.id, match[0].id));
   return 'updated';
 }

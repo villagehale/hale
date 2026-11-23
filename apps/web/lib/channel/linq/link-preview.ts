@@ -105,14 +105,20 @@ export async function sendLinkOnce(input: {
   if (preview.status === 'sent') {
     return { status: 'preview', providerMessageId: preview.providerMessageId };
   }
-  // The preview did not land. A stop that arrived while it was in flight stops the text too.
-  if (input.maySend && !(await input.maySend())) {
-    return { status: 'not_sent', why: 'refused', code: 'gated' };
-  }
   const why = preview.reason;
   const previewRefused = preview.reason === 'refused' && preview.certain === true;
   const previewUnclear =
     preview.reason === 'unreachable' || (preview.reason === 'refused' && !previewRefused);
+  // The preview did not land. A stop that arrived while it was in flight stops the text too,
+  // and a keyed preview that may have landed still says so.
+  if (input.maySend && !(await input.maySend())) {
+    return {
+      status: 'not_sent',
+      why,
+      code: 'gated',
+      ...(input.sendKey && previewUnclear ? { unconfirmed: true } : {}),
+    };
+  }
   const textKey = input.sendKey && previewRefused ? `${input.sendKey}:text` : input.sendKey;
   let sent: Awaited<ReturnType<ChannelTransport['send']>>;
   try {

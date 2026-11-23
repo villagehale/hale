@@ -10,7 +10,7 @@ import {
 import { offerConnectorLinks, offerGoogleBundleLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
+import { type LinkOnceOutcome, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -103,6 +103,12 @@ export type ConnectorOfferOutcome =
    * minted (hash-only at rest), and a parent who has no link asks for one in the thread.
    */
   | { status: 'not_sent'; reason: 'link_unconfirmed' }
+  /**
+   * VIL-721. Another try holds this card's key and nothing proves its text went: one still
+   * running, or a crash. Not `already_sent`, so no reply says the link is in the thread.
+   * A crashed try is taken over once it is stale, on the same provider key.
+   */
+  | { status: 'not_sent'; reason: 'in_flight' }
   /** VIL-721. The turn is in a group chat. The link signs its holder in, so it never goes
    * there: no token is minted, and the family's one offer is not spent. */
   | { status: 'not_sent'; reason: 'group_thread' };
@@ -317,6 +323,10 @@ export async function sendGoogleConnectorCard(
     providerChatId: null,
     now: args.now,
   });
+  if (claimed.kind === 'in_flight') {
+    console.info({ familyId: args.familyId }, 'intake google card: another try holds the card');
+    return 'in_flight';
+  }
   if (claimed.kind !== 'try') return 'already_sent';
   const { claim } = claimed;
   const minted = await offerGoogleBundleLink(database, {
@@ -385,8 +395,16 @@ export async function sendGoogleConnectorCard(
       now: args.now,
       sendKey: `${claim.id}:link`,
       maySend: async () => (await googleSendGate(database, args)) === 'open',
-    });
-    if (link.status === 'not_sent' && link.code === 'gated') {
+    }).catch(
+      // It can throw after Linq took the link, so a throw is not proof the link stayed home.
+      (): LinkOnceOutcome => ({
+        status: 'not_sent',
+        why: 'refused',
+        code: 'unexpected',
+        unconfirmed: true,
+      }),
+    );
+    if (link.status === 'not_sent' && link.code === 'gated' && !link.unconfirmed) {
       await freeGoogleSendKey(database, claim.id);
       await ports.threadMessage(database, {
         familyId: args.familyId,

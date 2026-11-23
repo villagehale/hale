@@ -88,7 +88,10 @@ export interface TranscriptEntry {
   channel?: 'sms' | 'imessage';
   /** Linq chat id when `channel` is imessage. Replay writes it onto the ledger row. */
   chatId?: string | null;
-  /** INBOUND only: the door's group bit (`channel_messages.in_group`). Absent is unknown. */
+  /**
+   * The door's group bit (`channel_messages.in_group`). Absent is unknown. Inbound, and with
+   * THREAD_ONBOARDING_V2_ENABLED on, Hale's replies in the walk too.
+   */
   inGroup?: boolean;
   /**
    * The model set `asks` on this outbound. Absent on older rows and on

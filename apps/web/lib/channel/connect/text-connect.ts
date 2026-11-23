@@ -68,6 +68,20 @@ export function asGoogleBundleLink(value: string | undefined | null): GoogleBund
   return value === GOOGLE_BUNDLE_LINK && threadOnboardingV2Enabled() ? GOOGLE_BUNDLE_LINK : null;
 }
 
+const CONNECT_LINK_TOKEN = /(\/connect\?(?:[^\s#&]+&)*?)t=[^\s&#]*(&?)/g;
+
+/**
+ * VIL-721. The connect link as the thread may keep it: its target and no sign-in token.
+ * Later turns re-read this text, and the token signs its holder in. Dark, the text is
+ * stored as it always was.
+ */
+export function withoutConnectTokens(text: string): string {
+  if (!threadOnboardingV2Enabled()) return text;
+  return text.replace(CONNECT_LINK_TOKEN, (_link, before: string, joiner: string) =>
+    joiner ? before : before.replace(/[?&]$/, ''),
+  );
+}
+
 export type TextLinkTarget = TextConnectProvider | TextLinkPage | GoogleBundleLink;
 
 export const TEXT_LINK_PAGE_PATH: Record<TextLinkPage, Route> = { privacy: '/privacy' };

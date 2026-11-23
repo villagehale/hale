@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
-import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqRefusedForCertain, readSendRefusal } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { pageOps } from '~/lib/monitoring/failure-page';
@@ -48,7 +48,9 @@ export interface GoogleSendClaim {
 
 export type GoogleClaimResult =
   | { kind: 'try'; claim: GoogleSendClaim }
+  /** The row holds a provider id: Linq accepted this text. Nothing else proves a send. */
   | { kind: 'already_sent' }
+  /** Another try holds the key and nothing proves its text went. */
   | { kind: 'in_flight' };
 
 export type GoogleSendOutcome<R> =
@@ -114,14 +116,13 @@ export async function claimGoogleSend(
     .limit(1);
   if (!held) return { kind: 'in_flight' };
   if (held.providerMessageId !== null) return { kind: 'already_sent' };
-  if ((SENT_STATUSES as readonly string[]).includes(held.status)) return { kind: 'already_sent' };
   const code = held.errorCode;
   const running =
     code === GOOGLE_SEND_IN_FLIGHT &&
     row.now.getTime() - held.createdAt.getTime() <= IN_FLIGHT_STALE_MS;
   if (running) return { kind: 'in_flight' };
   if (code !== GOOGLE_SEND_IN_FLIGHT && !code?.startsWith(MAY_HAVE_LANDED_PREFIX)) {
-    return { kind: 'already_sent' };
+    return { kind: 'in_flight' };
   }
   const [retaken] = await database
     .update(schema.channelMessages)
