@@ -58,6 +58,8 @@ export type AuthorizedSignupPlanResume =
       browserId: string | null;
       reviewStarted?: true;
       takeover?: { purpose: AuthorizedSignupTakeoverPurpose; round: number };
+      /** This run was given a login its parent may not be shown: it never gets a takeover link. */
+      takeoverBarred?: true;
     }
   | {
       phase: 'takeover';

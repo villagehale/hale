@@ -11,6 +11,12 @@ import type {
   PlanResumeToken,
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
+import {
+  PLAN_CITY_LOGIN_OWNER_ENABLED_ENV,
+  PROVIDER_CREDENTIALS_ENABLED_ENV,
+} from '../credentials/flag';
+import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
+import { deleteProviderCredentials, saveProviderCredentials } from '../credentials/store';
 import { hashLoginCode } from '../login-link/code';
 import { lookupLoginLink } from '../login-link/store';
 import { recordSignupOffer } from '../store';
@@ -1174,9 +1180,7 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     const { family } = await parkedCaptcha();
     const parkedRow = await offerRow(family.offerId);
     const resume = parkedRow?.planResume as TakeoverToken;
-    expect(parkedRow?.planLeaseUntil?.toISOString()).toBe(
-      new Date(resume.expiresAt).toISOString(),
-    );
+    expect(parkedRow?.planLeaseUntil?.toISOString()).toBe(new Date(resume.expiresAt).toISOString());
     const driven = new Date(new Date(resume.expiresAt).getTime() + 15 * 60_000);
     await db.database
       .update(schema.authorizedSignupOffers)
@@ -1246,6 +1250,169 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     await change(family);
 
     expect(await takeoverLiveView(db.database, code, NOW)).toEqual({ ok: false, reason: 'gone' });
+  });
+});
+
+describe('VIL-718 · a link never opens a browser that may hold a login this parent cannot see', () => {
+  const SECRET = 'fixture-co-parent-city-secret';
+  const QUEUED: BrowserUsePlanCheckpoint = {
+    outcome: 'checkpointed',
+    resume: { phase: 'signup', runId: 'run-1', sessionId: 'bu-session-1', browserId: 'browser-1' },
+  };
+
+  function armSavedLogins() {
+    vi.stubEnv(PROVIDER_CREDENTIALS_ENABLED_ENV, 'true');
+    vi.stubEnv(PROVIDER_CREDENTIALS_MASTER_KEY_ENV, Buffer.alloc(32, 9).toString('base64'));
+  }
+
+  async function saveLogin(family: { familyId: string; parentUserId: string }) {
+    const saved = await saveProviderCredentials(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      providerHost: HOST,
+      username: 'fixture-user',
+      password: SECRET,
+      now: NOW,
+    });
+    expect(saved.ok).toBe(true);
+  }
+
+  async function dropSavedSession(familyId: string) {
+    await db.database
+      .delete(schema.providerSignupSessions)
+      .where(eq(schema.providerSignupSessions.familyId, familyId));
+  }
+
+  /** The plan now belongs to a co-parent who is enrolled and consented; the saver is not them. */
+  async function giveToCoParent(family: { familyId: string; offerId: string }) {
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${family.offerId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('no co-parent');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: family.familyId, userId: user.id, role: 'co_parent' });
+    seq += 1;
+    const phone = `+1202556${String(300 + seq).padStart(4, '0')}`;
+    await db.database.insert(schema.parentChannels).values({
+      userId: user.id,
+      familyId: family.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: new Date(NOW.getTime() - 30 * 24 * 60 * 60_000),
+    });
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ parentUserId: user.id })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    await db.database
+      .update(schema.authorizedSignupConsents)
+      .set({ parentUserId: user.id })
+      .where(eq(schema.authorizedSignupConsents.familyId, family.familyId));
+    return user.id;
+  }
+
+  async function expectNoCard(
+    family: { offerId: string; familyId: string },
+    swept: ReturnType<typeof sweepDeps>,
+  ) {
+    expect(swept.takeover.facts).toEqual([]);
+    expect(swept.takeover.parts).toEqual([]);
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    expect(swept.notices).toHaveLength(1);
+  }
+
+  it.each([
+    ['a captcha', 'needs_human', 'captcha'],
+    ['a sign-in wall', 'needs_login', 'login_wall'],
+  ] as const)(
+    'a co-parent’s saved login with the owner check off: %s mints no card',
+    async (_name, outcome, detail) => {
+      armSavedLogins();
+      const family = await plannedFamily();
+      await saveLogin(family);
+      await dropSavedSession(family.familyId);
+      await giveToCoParent(family);
+      const { runner, inputs } = runnerReturning(stopAt(outcome, detail));
+      const swept = sweepDeps(runner);
+      await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+      expect(inputs[0]?.credentials?.password).toBe(SECRET);
+      expect(inputs[0]?.takeover).toBe(false);
+      await expectNoCard(family, swept);
+    },
+  );
+
+  it('a co-parent’s saved session with the owner check off mints no card', async () => {
+    const family = await plannedFamily();
+    await giveToCoParent(family);
+    const { runner, inputs } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs[0]?.credentials).toBeNull();
+    expect(inputs[0]?.takeover).toBe(false);
+    await expectNoCard(family, swept);
+  });
+
+  it('with the owner check on, the parent’s own saved login still gets the card', async () => {
+    armSavedLogins();
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
+    const family = await plannedFamily();
+    await saveLogin(family);
+    await dropSavedSession(family.familyId);
+    const { runner, inputs } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs[0]?.credentials?.password).toBe(SECRET);
+    expect(inputs[0]?.takeover).toBe(true);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'checkpointed',
+      phase: 'takeover',
+    });
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+    expect(swept.takeover.parts).toHaveLength(1);
+  });
+
+  it('a login bound when the run began still bars the card after it is deleted mid-queue', async () => {
+    armSavedLogins();
+    const family = await plannedFamily();
+    await saveLogin(family);
+    await giveToCoParent(family);
+    const { runner, inputs } = runnerReturning(QUEUED, stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+    expect(await deleteProviderCredentials(db.database, { familyId: family.familyId })).toBe(1);
+    await db.database
+      .update(schema.providerSignupSessions)
+      .set({ parentUserId: (await offerRow(family.offerId))?.parentUserId })
+      .where(eq(schema.providerSignupSessions.familyId, family.familyId));
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]?.credentials).toBeNull();
+    expect(inputs[1]?.takeover).toBe(false);
+    await expectNoCard(family, swept);
+  });
+
+  it('a run with no such login keeps its card across a queue checkpoint', async () => {
+    const family = await plannedFamily();
+    const { runner, inputs } = runnerReturning(QUEUED, stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]?.takeover).toBe(true);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'checkpointed',
+      phase: 'takeover',
+    });
+    expect(await linkRows(family.familyId)).toHaveLength(1);
   });
 });
 

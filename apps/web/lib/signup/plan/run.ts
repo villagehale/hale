@@ -716,6 +716,7 @@ async function runOnePlan(
   };
 
   const carry = async (
+    takeoverBarred: boolean,
     go: () => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
   ): Promise<PlanRunSummary> => {
     let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
@@ -750,13 +751,14 @@ async function runOnePlan(
       await savePlanResume(database, {
         offerId: plan.offerId,
         familyId: plan.familyId,
-        resume: result.resume,
+        resume: markTakeoverBarred(result.resume, takeoverBarred),
         letGo: true,
       });
       await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
     }
-    const purpose = takeoverOn ? takeoverPurpose(result.outcome, result.detail) : null;
+    const purpose =
+      takeoverOn && !takeoverBarred ? takeoverPurpose(result.outcome, result.detail) : null;
     if (purpose && isTakeoverStop(result)) {
       const handed = await handTakeover(result, purpose);
       if (handed) return handed;
@@ -822,7 +824,10 @@ async function runOnePlan(
   }
   // The card may already be charged: read the payment before any check may end the plan.
   if (held?.phase === 'paying') {
-    return carry(() => runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep }));
+    // A payment under way is read and reported; it is never handed to the parent mid-charge.
+    return carry(true, () =>
+      runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep }),
+    );
   }
   // An earlier sweep died during the checkout review. What the review did was never read and
   // it may have placed the order, so a charge may exist, whatever the plan's state now.
@@ -910,11 +915,27 @@ async function runOnePlan(
   if (!stored && !credentials && !lastTakeover) {
     return handBack('no_provider_session', 'needs_login');
   }
+  // A saved password is bound into the browser when its run is created, and only a skill
+  // sentence clears it from the page. While the owner check is off nothing proves that login is
+  // this parent's, so that browser is never handed over. A later sweep cannot see what the run
+  // was given, so the first sweep's answer travels on the resume token.
+  const loginIsTheirs =
+    ownerGate || (!credentials && (!stored || stored.parentUserId === plan.parentUserId));
+  const takeoverBarred =
+    lastTakeover === null &&
+    (held?.phase === 'signup' ? held.takeoverBarred === true : !loginIsTheirs);
+  const mayOfferTakeover = takeoverOn && !takeoverBarred;
+  if (takeoverOn && takeoverBarred) {
+    console.info(
+      { offerId: plan.offerId },
+      'signup plans: no takeover link, this browser may hold a login its parent may not see',
+    );
+  }
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {
       offerId: plan.offerId,
       familyId: plan.familyId,
-      allowanceUsd: planRunAllowanceUsd(takeoverOn),
+      allowanceUsd: planRunAllowanceUsd(mayOfferTakeover),
       reserveUsd: BROWSER_USE_REGISTRATION_RESERVE_USD,
       now,
     });
@@ -924,7 +945,7 @@ async function runOnePlan(
 
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
   const pick = typeof plan.availability?.kind === 'string' ? plan.availability.kind : null;
-  return carry(() =>
+  return carry(takeoverBarred, () =>
     runner.run({
       mode,
       correlationId: plan.offerId,
@@ -966,7 +987,7 @@ async function runOnePlan(
       onStep,
       // A takeover token's run is over: the parent's done picks up its session instead.
       resume: parked ? null : held,
-      takeover: takeoverOn,
+      takeover: mayOfferTakeover,
       takeoverResume: parked?.doneAt
         ? {
             sessionId: parked.sessionId,
@@ -980,7 +1001,7 @@ async function runOnePlan(
         const saved = await savePlanResume(database, {
           offerId: plan.offerId,
           familyId: plan.familyId,
-          resume,
+          resume: markTakeoverBarred(resume, takeoverBarred),
           letGo: false,
         });
         if (saved && resume.phase === 'paying') paymentMayExist = true;
@@ -988,6 +1009,10 @@ async function runOnePlan(
       },
     }),
   );
+}
+
+function markTakeoverBarred(resume: PlanResumeToken, barred: boolean): PlanResumeToken {
+  return barred && resume.phase === 'signup' ? { ...resume, takeoverBarred: true } : resume;
 }
 
 /** The URL's host, or the text itself when it does not parse. Never throws. */
