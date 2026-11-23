@@ -160,15 +160,9 @@ describe('the shared-group join intro, lit', () => {
       audience: 'shared',
       knownParentName: null,
       adderName: null,
-      // The shared turn is always the model's read, so the speaking and private claims
-      // hold even with the household turn reader dark.
-      claims: [
-        'reads_this_chat',
-        'email_never_shown',
-        'speaks_when_called',
-        'private_goes_direct',
-        'anyone_can_remove',
-      ],
+      // The shared turn is always the model's read. A private text is not promised:
+      // joining does not consent a household to the aside.
+      claims: ['reads_this_chat', 'email_never_shown', 'speaks_when_called', 'anyone_can_remove'],
       ask: 'who_and_kid',
     });
     expect(JSON.stringify(input)).not.toContain(CHILD);

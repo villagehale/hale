@@ -201,8 +201,9 @@ export const FLAGS = [
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
   // VIL-727. When Hale joins a group, its line carries the ground rules that are true
-  // today, written by the model. Exact `true`.
-  exact('group-join-intro', 'GROUP_JOIN_INTRO_ENABLED'),
+  // today, written by the model. Exact `true`. Env-only: the intro is decided before a
+  // family-scoped PostHog answer exists, and a sync must not turn it on or off.
+  exact('group-join-intro', 'GROUP_JOIN_INTRO_ENABLED', { envOnly: true }),
   // VIL-719. The three-tier ask policy: an ask-first kind runs only on the parent's
   // recorded yes, a just-do kind sends no on-its-own text, and a tell-after text the
   // model cannot write pages #ops. Exact `true`. Env-only (VIL-755): a PostHog sync must

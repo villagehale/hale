@@ -2,6 +2,7 @@ import type { Database } from '@hale/db';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { groupJoinIntroEnabled } from './config';
 import {
   deliverConnectLinkOneToOne,
   noticeIfGroupQuiet,
@@ -128,8 +129,12 @@ export async function takeRosterTurn(
   }
 
   let askedNow: string | null = null;
-  if (roster.status !== 'confirmed' && !roster.askedAt) {
-    // VIL-727: lit, the line that asks is the join intro; dark, it is roster_ask.
+  // VIL-727: the no-family line sets askedAt, and a roster can settle straight to
+  // confirmed. The intro's own dedupe says whether this join already heard it.
+  if (groupJoinIntroEnabled()) {
+    const asked = await introduceOrAskRoster(database, { chatId: message.chatId, ...ports });
+    if (rosterWasAsked(asked)) askedNow = asked.outcome;
+  } else if (roster.status !== 'confirmed' && !roster.askedAt) {
     const asked = await introduceOrAskRoster(database, { chatId: message.chatId, ...ports });
     if (rosterWasAsked(asked)) askedNow = asked.outcome;
   }

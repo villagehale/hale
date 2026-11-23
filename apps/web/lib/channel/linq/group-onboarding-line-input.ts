@@ -63,9 +63,9 @@ export const MIN_OTHER_PEOPLE_TO_REMOVE_HALE = 3;
  *   `LINQ_GROUP_TURN_AI_ENABLED` is on (addressed, or a question only Hale could answer).
  *   Dark, Hale is silent there and the claim is left out. A shared group's turn is the
  *   model's read whenever that intro can be sent (`LINQ_MULTI_FAMILY_GROUPS_ENABLED`).
- * - `private_goes_direct`: a shared group moves a household's own facts to that family's
- *   1:1 (VIL-457). A household group only holds a line the audience may not hear; it does
- *   not move it to a private text, so the claim is never made there.
+ * - `private_goes_direct`: never, at the moment Hale joins. A household group only holds
+ *   a line the audience may not hear. A shared group's private aside sends a 1:1 only
+ *   after that household has consented for this chat, which joining does not grant.
  * - `anyone_can_remove`: {@link MIN_OTHER_PEOPLE_TO_REMOVE_HALE}. `otherPeople` counts
  *   the numbers code knows, so a member on an email handle is not counted: a low count
  *   leaves the claim out rather than risk saying it in a group too small for it.
@@ -81,7 +81,7 @@ export function groupJoinIntroClaims(input: {
     reads_this_chat: true,
     email_never_shown: !input.mailNoticeLive,
     speaks_when_called: answersWhenCalled,
-    private_goes_direct: input.audience === 'shared',
+    private_goes_direct: false,
     anyone_can_remove: input.otherPeople >= MIN_OTHER_PEOPLE_TO_REMOVE_HALE,
   };
   return GROUP_JOIN_INTRO_CLAIMS.filter((claim) => holds[claim]);

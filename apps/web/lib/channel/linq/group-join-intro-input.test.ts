@@ -51,7 +51,7 @@ describe('groupJoinIntroClaims', () => {
     ).toEqual(['reads_this_chat', 'email_never_shown', 'anyone_can_remove']);
   });
 
-  it('keeps the speaking and private claims in a shared group, whose turn is always read', () => {
+  it('keeps the speaking claim in a shared group and does not promise a private text', () => {
     expect(
       groupJoinIntroClaims({
         audience: 'shared',
@@ -59,7 +59,7 @@ describe('groupJoinIntroClaims', () => {
         turnReaderLive: false,
         mailNoticeLive: false,
       }),
-    ).toEqual([...GROUP_JOIN_INTRO_CLAIMS]);
+    ).toEqual(['reads_this_chat', 'email_never_shown', 'speaks_when_called', 'anyone_can_remove']);
   });
 
   it('drops the email claim while the provider mail notice posts mail facts into the group', () => {

@@ -2,14 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { groupJoinIntroClaims } from '../../web/lib/channel/linq/group-onboarding-line-input.ts';
 import { GROUP_JOIN_INTRO_FIXTURES } from './group-join-intro-fixtures.mjs';
 
-const ALL = [
-  'reads_this_chat',
-  'email_never_shown',
-  'speaks_when_called',
-  'private_goes_direct',
-  'anyone_can_remove',
-];
-
 function claimsOf(fixture) {
   return groupJoinIntroClaims({
     audience: fixture.audience,
@@ -54,9 +46,15 @@ describe('group join intro eval fixtures (VIL-727)', () => {
     ]);
   });
 
-  it('adds the private-text claim only for a shared group', () => {
+  it('does not promise a private text, including in a shared group', () => {
     const shared = GROUP_JOIN_INTRO_FIXTURES.find((fixture) => fixture.id === 'en-shared-adder');
-    expect(claimsOf(shared)).toEqual(ALL);
+    expect(claimsOf(shared)).not.toContain('private_goes_direct');
+    expect(claimsOf(shared)).toEqual([
+      'reads_this_chat',
+      'email_never_shown',
+      'speaks_when_called',
+      'anyone_can_remove',
+    ]);
   });
 
   it('leaves removal out of every group of three', () => {

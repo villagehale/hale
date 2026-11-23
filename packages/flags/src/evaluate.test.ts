@@ -333,6 +333,19 @@ describe('an env-only flag, read before any family is known', () => {
     ).toBe(true);
     expect(FLAG_BY_KEY['ask-policy-tiers'].envOnly).toBe(true);
   });
+
+  it('VIL-727: PostHog cannot light or darken the group join intro', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('group-join-intro', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('group-join-intro', undefined, { ...ON, GROUP_JOIN_INTRO_ENABLED: 'true\n' }),
+    ).toBe(false);
+    setFlagEvaluatorForTests(() => false);
+    expect(
+      isEnabled('group-join-intro', undefined, { ...ON, GROUP_JOIN_INTRO_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['group-join-intro'].envOnly).toBe(true);
+  });
 });
 
 describe('catalog', () => {

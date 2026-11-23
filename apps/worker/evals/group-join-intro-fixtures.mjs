@@ -84,7 +84,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. All five claims. One question: who each person is and which kid they are with; no role list and no child named.',
+      'A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts. One question: who each person is and which kid they are with; no role list and no child named.',
   },
   {
     id: 'es-shared-no-adder',
@@ -97,7 +97,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'Written in Spanish, plural you to the whole group (ustedes). Names nobody as the adder and no household. All five claims and one question about who they are and which kid they are with.',
+      'Written in Spanish, plural you to the whole group (ustedes). Names nobody as the adder and no household. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts. One question about who they are and which kid they are with.',
   },
   {
     id: 'fr-shared-small',
@@ -110,6 +110,6 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'French, vous throughout. Says Léa added Hale. Four claims and nothing about removing Hale or leaving, because a group of three cannot remove a member. One question about who they are and which kid they are with.',
+      'French, vous throughout. Says Léa added Hale. Reads this chat, email is never shown, and speaks when called. Nothing about private texts, and nothing about removing Hale or leaving, because a group of three cannot remove a member. One question about who they are and which kid they are with.',
   },
 ];
