@@ -112,7 +112,7 @@ export type CoParentNumberOutcome =
     }
   /** The invite text could not be written. Nobody was texted. */
   | { status: 'ask_unwritten'; reply: null }
-  /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
+  /** Linq did not accept the invite. #ops was paged and the parent was not told. */
   | { status: 'invite_unsent'; reply: null; opsPage: OpsPagerOutcome }
   /** Another turn already took this invite. Nothing was sent here. */
   | { status: 'assent_already_claimed'; reply: null };
@@ -259,7 +259,6 @@ export async function deliverCoParentNumberInvite(
     if (!line) return { status: 'ask_unwritten', reply: null };
     return held(line);
   }
-  if (started.status === 'reasked') return held(started.reply);
 
   if (thirdPartyInviteRouteEnabled()) {
     const claimed = await recordCoParentAssent(database, {

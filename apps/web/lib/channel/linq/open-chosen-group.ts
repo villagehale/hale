@@ -154,9 +154,7 @@ async function startInviteForUnconfirmed(
     ask: args.ask,
   });
   if (started.status === 'refused') return { status: 'invite_refused', reason: started.reason };
-  if (started.status === 'ask_unwritten') {
-    return { status: 'invite_refused', reason: 'ask_unwritten' };
-  }
+  if (started.status !== 'started') return { status: 'invite_refused', reason: 'ask_unwritten' };
   return { status: 'invite_started', reply: started.reply };
 }
 

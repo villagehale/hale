@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,13 +20,17 @@ import {
   createOutboundTransport,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
-import type { OpenQuestion } from '~/lib/channel/router/open-questions';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { askWriter, writtenAsk, yesNoReader } from '~/lib/testing/consent-double';
+import { askWriter, yesNoReader } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import type { CoParentInvite } from './invites';
+import {
+  type CaregiverLaneInvite,
+  type CoParentInvite,
+  InviteNotAwaitingReply,
+  acceptInvite,
+} from './invites';
 
 const FLAG = 'THIRD_PARTY_INVITE_ROUTE_ENABLED';
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -38,16 +43,6 @@ const OPS_WEBHOOK = 'https://ops.example.test/hook';
 const NOW = new Date('2026-11-23T15:00:00.000Z');
 const ADD_CO_PARENT = 'add Sam 647-555-0199 as my partner';
 const ADD_CAREGIVER = 'add grandma 647-555-0199 as grandparent';
-const ADD_SOMEONE_ELSE = 'add grandma 647-555-0188 as grandparent';
-const ANOTHER_QUESTION: OpenQuestion = {
-  id: 'another-question',
-  kind: 'plan_offer',
-  description: 'Whether to send a plan',
-  subject: 'the plan',
-  answerable: { yes: true, no: true },
-  askedAt: NOW,
-  solicited: false,
-};
 
 type LinqPost = {
   path: string;
@@ -190,7 +185,7 @@ function iMessageDeps(chatId: string): IntakeDeps {
   };
 }
 
-async function parentSays(body: string, openQuestions: readonly OpenQuestion[] = []) {
+async function parentSays(body: string) {
   inboundCount += 1;
   return handleInboundSms(
     db.database,
@@ -202,7 +197,7 @@ async function parentSays(body: string, openQuestions: readonly OpenQuestion[] =
       transport: 'imessage',
       chatId: PARENT_CHAT,
     },
-    { ...iMessageDeps(PARENT_CHAT), openQuestions: async () => [...openQuestions] },
+    iMessageDeps(PARENT_CHAT),
   );
 }
 
@@ -251,84 +246,280 @@ async function seatsFor(familyId: string, role: 'co_parent' | 'grandparent'): Pr
   return rows.length;
 }
 
-describe('flag on: an invite reaches the person it is for', () => {
-  it('posts the co-parent invite to their number and the ack into the parent chat', async () => {
+function linqKey(lane: 'co_parent' | 'caregiver', inviteId: string): string {
+  return createHash('sha256').update(`${lane}_invite:${inviteId}`).digest('hex');
+}
+
+async function failureAudit(inviteId: string) {
+  return db.database
+    .select({ after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.targetId, inviteId),
+        eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
+      ),
+    );
+}
+
+async function rowById(inviteId: string) {
+  const [row] = await db.database
+    .select({ state: schema.caregiverInvites.state, closedAt: schema.caregiverInvites.closedAt })
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.id, inviteId));
+  return row;
+}
+
+async function newestRowId(familyId: string, otherThan: string): Promise<string> {
+  const rows = await db.database
+    .select({ id: schema.caregiverInvites.id })
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.familyId, familyId));
+  const other = rows.find((row) => row.id !== otherThan);
+  expect(other).toBeTruthy();
+  return other?.id as string;
+}
+
+function expectPagedOnce(why: 'refused' | 'unclear'): void {
+  expect(pages).toHaveLength(1);
+  expect(pages[0]).toContain('third_party_invite_unsent');
+  expect(pages[0]).toContain(`why ${why}`);
+  expect(pages[0]).not.toContain(PERSON_PHONE);
+  expect(pages[0]).not.toContain('Sam');
+  expect(pages[0]).not.toContain('added you');
+}
+
+const LANES = [
+  {
+    lane: 'co_parent',
+    add: ADD_CO_PARENT,
+    seat: 'co_parent',
+    sent: 'co_parent_invite_sent',
+    unsent: 'co_parent_invite_unsent',
+    accepted: 'co_parent_accepted',
+    declined: 'co_parent_declined',
+    alreadyInvited: { status: 'co_parent_add_refused', reason: 'already_invited' },
+  },
+  {
+    lane: 'caregiver',
+    add: ADD_CAREGIVER,
+    seat: 'grandparent',
+    sent: 'caregiver_invite_sent',
+    unsent: 'caregiver_invite_unsent',
+    accepted: 'caregiver_accepted',
+    declined: 'caregiver_declined',
+    alreadyInvited: { status: 'caregiver_add_refused', reason: 'already_invited' },
+  },
+] as const;
+
+const UNCLEAR_FAILURES: ReadonlyArray<readonly [string, () => void]> = [
+  [
+    'a timeout',
+    () => {
+      timeouts = ['/chats'];
+    },
+  ],
+  [
+    'a 500',
+    () => {
+      linqStatuses = [500];
+    },
+  ],
+];
+
+describe.each(LANES)('flag on, the add command: $lane', (lane) => {
+  it("posts to the person's number under the row's key, then acks the parent", async () => {
     const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
+    await parentSays(lane.add);
+    const row = await inviteRow(familyId);
     posts.length = 0;
 
     const outcome = await parentSays('yes');
 
-    expect(outcome.status).toBe('co_parent_invite_sent');
-    const [invite] = postsToPerson();
-    expect(invite?.text).toBe('Ana added you as a co-parent. Reply STOP anytime.');
-    expect(invite?.key).toMatch(/^[0-9a-f]{64}$/);
-    expect(postsIntoParentChat().map((post) => post.text)).not.toContain(invite?.text);
-    expect(postsIntoParentChat()).toHaveLength(1);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
-  });
-
-  it('posts a caregiver invite to their number and not the parent chat', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    posts.length = 0;
-
-    const outcome = await parentSays('yes');
-
-    expect(outcome.status).toBe('caregiver_invite_sent');
+    expect(outcome.status).toBe(lane.sent);
     expect(postsToPerson()).toHaveLength(1);
+    expect(postsToPerson()[0]?.key).toBe(linqKey(lane.lane, row.id));
     expect(postsToPerson()[0]?.text).toContain('added you as');
     expect(postsIntoParentChat()).toHaveLength(1);
     expect(postsIntoParentChat()[0]?.text).not.toContain('added you as');
     expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
+    expect(pages).toHaveLength(0);
   });
 
-  it('on a Linq timeout: no ack, row back with the parent, #ops paged, next yes re-sends under one key', async () => {
+  it('a certain refusal closes the row unsent, pages, sends no ack, and a new invite works', async () => {
     const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
+    await parentSays(lane.add);
+    const first = await inviteRow(familyId);
     posts.length = 0;
-    timeouts = ['/chats'];
+    linqStatuses = [400];
 
     const failed = await parentSays('yes');
 
-    expect(failed.status).toBe('co_parent_invite_unsent');
+    expect(failed).toEqual({ status: lane.unsent, opsPage: 'paged' });
     expect(postsIntoParentChat()).toHaveLength(0);
-    const held = await inviteRow(familyId);
-    expect(held.state).toBe('awaiting_parent_assent');
-    expect(pages).toHaveLength(1);
-    expect(pages[0]).toContain('third_party_invite_unsent');
-    expect(pages[0]).toContain('why unclear');
-    expect(pages[0]).not.toContain(PERSON_PHONE);
-    const audit = await db.database
-      .select({ actionTaken: schema.auditLog.actionTaken })
-      .from(schema.auditLog)
-      .where(
-        and(
-          eq(schema.auditLog.targetId, held.id),
-          eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
-        ),
-      );
-    expect(audit).toHaveLength(1);
+    const closed = await inviteRow(familyId);
+    expect(closed.state).toBe('expired_unsent');
+    expect(closed.closedAt).not.toBeNull();
+    expectPagedOnce('refused');
+    expect((await failureAudit(first.id)).map((row) => row.after)).toEqual([
+      {
+        role: lane.lane === 'co_parent' ? 'co_parent' : 'grandparent',
+        why: 'refused',
+        opsPage: 'paged',
+        closedUnsent: true,
+      },
+    ]);
 
-    const retried = await parentSays('yes');
+    posts.length = 0;
+    await parentSays(lane.add);
+    const again = await parentSays('yes');
 
-    expect(retried.status).toBe('co_parent_invite_sent');
-    const attempts = postsToPerson();
-    expect(attempts).toHaveLength(2);
-    expect(attempts[1]?.key).toBe(attempts[0]?.key);
-    expect(postsIntoParentChat()).toHaveLength(1);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
+    expect(again.status).toBe(lane.sent);
+    const second = await newestRowId(familyId, first.id);
+    expect(postsToPerson().map((post) => post.key)).toEqual([linqKey(lane.lane, second)]);
+    expect((await rowById(second))?.state).toBe('awaiting_caregiver_reply');
   });
 
-  it('a redelivery of the same yes texts nobody and leaves the row with the parent', async () => {
+  it('a stop still binds to a row closed by a certain refusal', async () => {
     const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
+    await parentSays(lane.add);
+    linqStatuses = [400];
+    await parentSays('yes');
+    expect((await inviteRow(familyId)).state).toBe('expired_unsent');
+
+    await personSays('STOP');
+
+    expect((await inviteRow(familyId)).state).toBe('declined');
+    expect((await parentSays(lane.add)).status).toBe(lane.alreadyInvited.status);
+  });
+
+  it('a late yes from a number Linq refused hears nothing about an invitation', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(lane.add);
+    linqStatuses = [400];
+    await parentSays('yes');
+    posts.length = 0;
+
+    const late = await personSays('yes');
+
+    expect(late.status).not.toBe('invite_expired_answered');
+    expect(await seatsFor(familyId, lane.seat)).toBe(0);
+    expect((await inviteRow(familyId)).state).toBe('expired_unsent');
+  });
+
+  it('does not overwrite a stop that closed the row during the refused send', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(lane.add);
+    const row = await inviteRow(familyId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        if (String(url) === OPS_WEBHOOK) {
+          pages.push((JSON.parse(String(init?.body)) as { text: string }).text);
+          return new Response('ok', { status: 200 });
+        }
+        await db.database
+          .update(schema.caregiverInvites)
+          .set({ state: 'declined', closedAt: NOW })
+          .where(eq(schema.caregiverInvites.id, row.id));
+        return new Response('{}', { status: 400 });
+      }),
+    );
+
+    await parentSays('yes');
+
+    expect((await inviteRow(familyId)).state).toBe('declined');
+    expect((await failureAudit(row.id))[0]?.after).toMatchObject({
+      why: 'refused',
+      closedUnsent: false,
+    });
+  });
+
+  describe.each(UNCLEAR_FAILURES)('after %s', (_name, failNextSend) => {
+    async function unclearRow(familyId: string) {
+      await parentSays(lane.add);
+      const row = await inviteRow(familyId);
+      posts.length = 0;
+      failNextSend();
+      const failed = await parentSays('yes');
+      expect(failed).toEqual({ status: lane.unsent, opsPage: 'paged' });
+      return row;
+    }
+
+    it('leaves the row waiting on the person, pages, and sends no ack', async () => {
+      const { familyId } = await seedHousehold();
+      const row = await unclearRow(familyId);
+
+      expect(postsIntoParentChat()).toHaveLength(0);
+      const held = await inviteRow(familyId);
+      expect(held.state).toBe('awaiting_caregiver_reply');
+      expect(held.closedAt).toBeNull();
+      expectPagedOnce('unclear');
+      expect((await failureAudit(row.id)).map((audit) => audit.after)).toEqual([
+        {
+          role: lane.lane === 'co_parent' ? 'co_parent' : 'grandparent',
+          why: 'unclear',
+          opsPage: 'paged',
+          closedUnsent: false,
+        },
+      ]);
+    });
+
+    it("the person's yes seats them", async () => {
+      const { familyId } = await seedHousehold();
+      await unclearRow(familyId);
+
+      const outcome = await personSays('yes');
+
+      expect(outcome.status).toBe(lane.accepted);
+      expect(await seatsFor(familyId, lane.seat)).toBe(1);
+      expect((await inviteRow(familyId)).state).toBe('accepted');
+    });
+
+    it("the person's no declines it", async () => {
+      const { familyId } = await seedHousehold();
+      await unclearRow(familyId);
+
+      const outcome = await personSays('no');
+
+      expect(outcome.status).toBe(lane.declined);
+      expect(await seatsFor(familyId, lane.seat)).toBe(0);
+      expect((await inviteRow(familyId)).state).toBe('declined');
+    });
+
+    it("the person's stop closes it", async () => {
+      const { familyId } = await seedHousehold();
+      await unclearRow(familyId);
+
+      await personSays('STOP');
+
+      const row = await inviteRow(familyId);
+      expect(row.state).toBe('declined');
+      expect(row.closedAt).not.toBeNull();
+    });
+
+    it('a re-invite is refused as already invited and texts nobody', async () => {
+      const { familyId } = await seedHousehold();
+      await unclearRow(familyId);
+      posts.length = 0;
+
+      const again = await parentSays(lane.add);
+
+      expect(again).toEqual(lane.alreadyInvited);
+      expect(postsToPerson()).toHaveLength(0);
+      expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
+    });
+  });
+
+  it('a redelivered yes after an unclear failure posts nothing more', async () => {
+    const { familyId } = await seedHousehold();
+    await parentSays(lane.add);
     posts.length = 0;
     timeouts = ['/chats'];
     const yes = {
       from: PARENT_PHONE,
       body: 'yes',
-      providerId: 'in-parent-redelivered',
+      providerId: `in-parent-redelivered-${lane.lane}`,
       receivedAt: NOW,
       transport: 'imessage' as const,
       chatId: PARENT_CHAT,
@@ -336,142 +527,35 @@ describe('flag on: an invite reaches the person it is for', () => {
     await handleInboundSms(db.database, yes, iMessageDeps(PARENT_CHAT));
     expect(postsToPerson()).toHaveLength(1);
 
-    await expect(handleInboundSms(db.database, yes, iMessageDeps(PARENT_CHAT))).rejects.toThrow(
-      /channel_messages_inbound_provider_msg_uniq/,
-    );
+    const redelivered = await handleInboundSms(db.database, yes, iMessageDeps(PARENT_CHAT));
+
+    expect(redelivered.status).toBe('ignored');
 
     expect(postsToPerson()).toHaveLength(1);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
+    expect(pages).toHaveLength(1);
+    expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
   });
 
   it('names a page that did not leave, on the outcome and the audit row', async () => {
     const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
+    await parentSays(lane.add);
     timeouts = ['/chats'];
     opsStatus = 500;
 
     const failed = await parentSays('yes');
 
-    expect(failed).toEqual({ status: 'co_parent_invite_unsent', opsPage: 'page_failed' });
-    const [row] = await db.database
-      .select({ after: schema.auditLog.after })
-      .from(schema.auditLog)
-      .where(
-        and(
-          eq(schema.auditLog.targetId, (await inviteRow(familyId)).id),
-          eq(schema.auditLog.actionTaken, 'third_party_invite_send_failed'),
-        ),
-      );
-    expect(row?.after).toEqual({
-      role: 'co_parent',
-      returnedToParent: true,
-      opsPage: 'page_failed',
-      why: 'unclear',
-    });
+    expect(failed).toEqual({ status: lane.unsent, opsPage: 'page_failed' });
+    const [audit] = await failureAudit((await inviteRow(familyId)).id);
+    expect(audit?.after).toMatchObject({ why: 'unclear', opsPage: 'page_failed' });
   });
+});
 
-  it('names a page that left as paged', async () => {
-    await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    timeouts = ['/chats'];
-
-    expect(await parentSays('yes')).toEqual({
-      status: 'co_parent_invite_unsent',
-      opsPage: 'paged',
-    });
-  });
-
-  it('a stop still binds after a new ask replaces a row whose send Linq never confirmed', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    await parentSays('add grandma 647-555-0188 as grandparent');
-
-    const [replaced] = await db.database
-      .select({ state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.id, first.id));
-    expect(replaced?.state).toBe('expired');
-
-    await personSays('STOP');
-
-    const [stopped] = await db.database
-      .select({ state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.id, first.id));
-    expect(stopped?.state).toBe('declined');
-    expect(await parentSays(ADD_CO_PARENT)).toEqual({
-      status: 'co_parent_add_refused',
-      reason: 'previously_declined',
-    });
-  });
-
-  it('a row nobody tried to send still closes as superseded', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-
-    await parentSays('add grandma 647-555-0188 as grandparent');
-
-    const [replaced] = await db.database
-      .select({ state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.id, first.id));
-    expect(replaced?.state).toBe('superseded');
-  });
-
-  it('a caregiver invite whose send times out goes back the same way', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    posts.length = 0;
-    timeouts = ['/chats'];
-
-    const failed = await parentSays('yes');
-
-    expect(failed.status).toBe('caregiver_invite_unsent');
-    expect(postsIntoParentChat()).toHaveLength(0);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
-    expect(pages).toHaveLength(1);
-
-    const retried = await parentSays('yes');
-
-    expect(retried.status).toBe('caregiver_invite_sent');
-    expect(postsToPerson()).toHaveLength(2);
-    expect(postsToPerson()[1]?.key).toBe(postsToPerson()[0]?.key);
-  });
-
-  it("a person's yes while the row waits on the parent seats nobody", async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    await personSays('yes');
-
-    expect(await seatsFor(familyId, 'co_parent')).toBe(0);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
-  });
-
-  it("once the parent's retry lands, the person's yes seats them", async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    await parentSays('yes');
-
-    await personSays('yes');
-
-    expect(await seatsFor(familyId, 'co_parent')).toBe(1);
-    expect((await inviteRow(familyId)).state).toBe('accepted');
-  });
-
-  it('the seating claim refuses a row that went back to the parent', async () => {
+describe('flag on: the seat', () => {
+  it('the co-parent seating claim refuses a row not waiting on the person', async () => {
     const { familyId, parentUserId } = await seedHousehold();
     await parentSays(ADD_CO_PARENT);
     const row = await inviteRow(familyId);
+    expect(row.state).toBe('awaiting_parent_assent');
     const invite: CoParentInvite = {
       id: row.id,
       familyId,
@@ -494,56 +578,28 @@ describe('flag on: an invite reaches the person it is for', () => {
     expect((await inviteRow(familyId)).closedAt).toBeNull();
   });
 
-  it('a stop still closes a row that went back to the parent', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    await personSays('STOP');
-
-    const row = await inviteRow(familyId);
-    expect(row.state).toBe('declined');
-    expect(row.closedAt).not.toBeNull();
-  });
-
-  it('a newer ask opened during the failed send keeps the only pending seat', async () => {
+  it('the caregiver seating claim refuses a row not waiting on the person', async () => {
     const { familyId, parentUserId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    const newerPhone = '+16475550188';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string | URL, init?: RequestInit) => {
-        const href = String(url);
-        if (href === OPS_WEBHOOK) {
-          pages.push((JSON.parse(String(init?.body)) as { text: string }).text);
-          return new Response('ok', { status: 200 });
-        }
-        await db.database.insert(schema.caregiverInvites).values({
-          familyId,
-          invitedByUserId: parentUserId,
-          role: 'grandparent',
-          displayName: 'Lee',
-          phoneE164Encrypted: encryptString(newerPhone),
-          phoneE164Hash: phoneBlindIndex(newerPhone),
-          state: 'awaiting_parent_assent',
-          expiresAt: new Date(NOW.getTime() + 3_600_000),
-          createdAt: NOW,
-        });
-        throw new DOMException('aborted', 'AbortError');
-      }),
-    );
+    await parentSays(ADD_CAREGIVER);
+    const row = await inviteRow(familyId);
+    expect(row.state).toBe('awaiting_parent_assent');
+    const invite: CaregiverLaneInvite = {
+      id: row.id,
+      familyId,
+      invitedByUserId: parentUserId,
+      displayName: 'grandma',
+      phoneE164: PERSON_PHONE,
+      state: 'awaiting_caregiver_reply',
+      expiresAt: new Date(NOW.getTime() + 3_600_000),
+      role: 'grandparent',
+    };
 
-    await parentSays('yes');
+    await expect(
+      acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW }),
+    ).rejects.toBeInstanceOf(InviteNotAwaitingReply);
 
-    const rows = await db.database
-      .select({ id: schema.caregiverInvites.id, state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.familyId, familyId));
-    expect(rows.filter((row) => row.state === 'awaiting_parent_assent')).toHaveLength(1);
-    expect(rows.find((row) => row.id === first.id)?.state).toBe('awaiting_caregiver_reply');
-    expect(pages).toHaveLength(1);
+    expect(await seatsFor(familyId, 'grandparent')).toBe(0);
+    expect((await inviteRow(familyId)).closedAt).toBeNull();
   });
 
   it("tells the inviter the person joined through the phone door, not the person's chat", async () => {
@@ -561,226 +617,6 @@ describe('flag on: an invite reaches the person it is for', () => {
     );
     expect(toInviter).toHaveLength(1);
     expect(posts.filter((post) => post.path === `/chats/${PERSON_CHAT}/messages`)).toHaveLength(1);
-  });
-});
-
-describe('flag on: the parent repeats the add while the row waits on them', () => {
-  async function displayName(inviteId: string): Promise<string> {
-    const [row] = await db.database
-      .select({ displayName: schema.caregiverInvites.displayName })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.id, inviteId));
-    return row?.displayName as string;
-  }
-
-  it('co-parent: asks the scope question again on the same row, and the next yes keeps the key', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    const firstKey = postsToPerson()[0]?.key;
-    posts.length = 0;
-
-    const again = await parentSays(ADD_CO_PARENT);
-
-    expect(again).toEqual({ status: 'co_parent_invite_reasked' });
-    expect(postsIntoParentChat().map((post) => post.text)).toEqual([
-      writtenAsk({ kind: 'coparent_scope', name: 'Sam', language: null }),
-    ]);
-    expect(postsToPerson()).toHaveLength(0);
-    const held = await inviteRow(familyId);
-    expect(held.id).toBe(first.id);
-    expect(held.state).toBe('awaiting_parent_assent');
-    posts.length = 0;
-
-    expect((await parentSays('yes')).status).toBe('co_parent_invite_sent');
-    expect(postsToPerson().map((post) => post.key)).toEqual([firstKey]);
-  });
-
-  it('caregiver: asks the scope question again on the same row, and the next yes keeps the key', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    const first = await inviteRow(familyId);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    const firstKey = postsToPerson()[0]?.key;
-    posts.length = 0;
-
-    const again = await parentSays(ADD_CAREGIVER);
-
-    expect(again).toEqual({ status: 'caregiver_invite_reasked' });
-    expect(postsIntoParentChat().map((post) => post.text)).toEqual([
-      writtenAsk({
-        kind: 'caregiver_scope',
-        name: await displayName(first.id),
-        role: 'grandparent',
-      }),
-    ]);
-    expect(postsToPerson()).toHaveLength(0);
-    expect((await inviteRow(familyId)).id).toBe(first.id);
-    posts.length = 0;
-
-    expect((await parentSays('yes')).status).toBe('caregiver_invite_sent');
-    expect(postsToPerson().map((post) => post.key)).toEqual([firstKey]);
-  });
-
-  it('asks again on a row no send has touched yet', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-
-    expect(await parentSays(ADD_CO_PARENT)).toEqual({ status: 'co_parent_invite_reasked' });
-
-    expect((await inviteRow(familyId)).id).toBe(first.id);
-  });
-
-  it('still says already invited once Linq took the text', async () => {
-    await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    await parentSays('yes');
-
-    expect(await parentSays(ADD_CO_PARENT)).toEqual({
-      status: 'co_parent_add_refused',
-      reason: 'already_invited',
-    });
-  });
-
-  it('a different role on that number replaces the row, so a yes grants only what was last asked', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    expect(await parentSays(ADD_CAREGIVER)).toEqual({ status: 'caregiver_invite_started' });
-
-    const rows = await db.database
-      .select({
-        id: schema.caregiverInvites.id,
-        state: schema.caregiverInvites.state,
-        role: schema.caregiverInvites.role,
-      })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.familyId, familyId));
-    expect(rows.find((row) => row.id === first.id)?.state).toBe('expired');
-    expect(rows.find((row) => row.id !== first.id)).toMatchObject({
-      state: 'awaiting_parent_assent',
-      role: 'grandparent',
-    });
-  });
-});
-
-describe('flag on: how a replaced row closes depends on what Linq said', () => {
-  async function stateOf(inviteId: string) {
-    const [row] = await db.database
-      .select({ state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites)
-      .where(eq(schema.caregiverInvites.id, inviteId));
-    return row?.state;
-  }
-
-  it('a send Linq refused for certain closes as superseded, and that number hears nothing about an invitation', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    linqStatuses = [400];
-    await parentSays('yes');
-
-    await parentSays(ADD_SOMEONE_ELSE);
-
-    expect(await stateOf(first.id)).toBe('superseded');
-    const late = await personSays('yes');
-    expect(late.status).not.toBe('invite_expired_answered');
-    expect(posts.some((post) => post.text?.includes('invitation has expired'))).toBe(false);
-  });
-
-  it('a timed-out send closes as expired, and a late yes hears that it expired', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    await parentSays(ADD_SOMEONE_ELSE);
-
-    expect(await stateOf(first.id)).toBe('expired');
-    const late = await personSays('yes');
-    expect(late.status).toBe('invite_expired_answered');
-  });
-
-  it('a 500 cannot prove the text did not land, so it closes as expired', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    linqStatuses = [500];
-    await parentSays('yes');
-
-    await parentSays(ADD_SOMEONE_ELSE);
-
-    expect(await stateOf(first.id)).toBe('expired');
-  });
-
-  it('one unclear attempt among refused ones closes as expired', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
-    const first = await inviteRow(familyId);
-    linqStatuses = [400];
-    await parentSays('yes');
-    timeouts = ['/chats'];
-    await parentSays('yes');
-
-    await parentSays(ADD_SOMEONE_ELSE);
-
-    expect(await stateOf(first.id)).toBe('expired');
-  });
-});
-
-describe('flag on: a caregiver row back from a failed send claims a bare yes only when nothing else is open', () => {
-  it('leaves a yes alone while another question is open', async () => {
-    const { familyId } = await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    posts.length = 0;
-
-    const outcome = await parentSays('yes', [ANOTHER_QUESTION]);
-
-    expect(outcome.status).not.toBe('caregiver_invite_sent');
-    expect(postsToPerson()).toHaveLength(0);
-    expect((await inviteRow(familyId)).state).toBe('awaiting_parent_assent');
-  });
-
-  it('takes the yes when no other question is open', async () => {
-    await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    posts.length = 0;
-
-    expect((await parentSays('yes')).status).toBe('caregiver_invite_sent');
-    expect(postsToPerson()).toHaveLength(1);
-  });
-
-  it('takes the yes once the parent has been asked again, even with another question open', async () => {
-    await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    timeouts = ['/chats'];
-    await parentSays('yes');
-    await parentSays(ADD_CAREGIVER);
-    posts.length = 0;
-
-    expect((await parentSays('yes', [ANOTHER_QUESTION])).status).toBe('caregiver_invite_sent');
-    expect(postsToPerson()).toHaveLength(1);
-  });
-
-  it('a row that was never sent keeps the first-ask behaviour beside another question', async () => {
-    await seedHousehold();
-    await parentSays(ADD_CAREGIVER);
-    posts.length = 0;
-
-    expect((await parentSays('yes', [ANOTHER_QUESTION])).status).toBe('caregiver_invite_sent');
-    expect(postsToPerson()).toHaveLength(1);
   });
 });
 
@@ -814,54 +650,84 @@ describe('flag on: the number door', () => {
     });
   }
 
-  it('records the yes first, and a failed send goes back with no ack and one key on retry', async () => {
+  it("a clean send goes to the person's number under the row's key and acks", async () => {
+    const seeded = await seedHousehold();
+    await seedAsk(seeded);
+
+    const sent = await numberTurn(seeded);
+
+    expect(sent).toMatchObject({ status: 'sent', reply: expect.stringContaining('Sam') });
+    const row = await inviteRow(seeded.familyId);
+    expect(row.state).toBe('awaiting_caregiver_reply');
+    expect(postsToPerson().map((post) => post.key)).toEqual([linqKey('co_parent', row.id)]);
+    expect(postsIntoParentChat()).toHaveLength(0);
+  });
+
+  it('a certain refusal closes the row, pages, sends no ack, and the number can be sent again', async () => {
+    const seeded = await seedHousehold();
+    await seedAsk(seeded);
+    linqStatuses = [400];
+
+    const failed = await numberTurn(seeded);
+
+    expect(failed).toEqual({ status: 'invite_unsent', reply: null, opsPage: 'paged' });
+    const first = await inviteRow(seeded.familyId);
+    expect(first.state).toBe('expired_unsent');
+    expectPagedOnce('refused');
+    posts.length = 0;
+
+    const again = await numberTurn(seeded);
+
+    expect(again.status).toBe('sent');
+    const second = await newestRowId(seeded.familyId, first.id);
+    expect(postsToPerson().map((post) => post.key)).toEqual([linqKey('co_parent', second)]);
+  });
+
+  it('an unclear failure leaves the row, sends no ack, and a repeat texts nobody', async () => {
     const seeded = await seedHousehold();
     await seedAsk(seeded);
     timeouts = ['/chats'];
 
     const failed = await numberTurn(seeded);
 
-    expect(failed).toMatchObject({ status: 'invite_unsent', reply: null });
-    const held = await inviteRow(seeded.familyId);
-    expect(held.state).toBe('awaiting_parent_assent');
-    const grants = await db.database
-      .select({ id: schema.consentRecords.id })
-      .from(schema.consentRecords)
-      .where(eq(schema.consentRecords.consentType, 'co_parent_access_grant'));
-    expect(grants).toHaveLength(1);
-    expect(pages).toHaveLength(1);
+    expect(failed).toEqual({ status: 'invite_unsent', reply: null, opsPage: 'paged' });
+    expect((await inviteRow(seeded.familyId)).state).toBe('awaiting_caregiver_reply');
+    expectPagedOnce('unclear');
+    posts.length = 0;
 
-    const retried = await parentSays('yes');
+    const repeat = await numberTurn(seeded);
 
-    expect(retried.status).toBe('co_parent_invite_sent');
-    const attempts = postsToPerson();
-    expect(attempts).toHaveLength(2);
-    expect(attempts[1]?.key).toBe(attempts[0]?.key);
+    expect(repeat.status).toBe('refused');
+    expect(postsToPerson()).toHaveLength(0);
+    expect((await inviteRow(seeded.familyId)).state).toBe('awaiting_caregiver_reply');
   });
 
-  it('a sent number invite carries the row key and still acks', async () => {
+  it("the person's yes on an unclear row seats them", async () => {
     const seeded = await seedHousehold();
     await seedAsk(seeded);
+    timeouts = ['/chats'];
+    await numberTurn(seeded);
 
-    const sent = await numberTurn(seeded);
+    const outcome = await personSays('yes');
 
-    expect(sent.status).toBe('sent');
-    expect(postsToPerson()).toHaveLength(1);
-    expect(postsToPerson()[0]?.key).toMatch(/^[0-9a-f]{64}$/);
-    expect((await inviteRow(seeded.familyId)).state).toBe('awaiting_caregiver_reply');
+    expect(outcome.status).toBe('co_parent_accepted');
+    expect(await seatsFor(seeded.familyId, 'co_parent')).toBe(1);
   });
 });
 
-describe('flag off', () => {
-  it("keeps main's route: the invite goes into the turn's chat with no row key", async () => {
-    vi.stubEnv(FLAG, 'TRUE');
+describe.each(LANES)('flag off: $lane', (lane) => {
+  it.each([
+    ['unset', undefined],
+    ['not exactly true', 'TRUE'],
+  ])("keeps main's route when %s: the invite goes into the turn's chat", async (_name, value) => {
+    vi.stubEnv(FLAG, value as string);
     const { familyId } = await seedHousehold();
-    await parentSays(ADD_CO_PARENT);
+    await parentSays(lane.add);
     posts.length = 0;
 
     const outcome = await parentSays('yes');
 
-    expect(outcome.status).toBe('co_parent_invite_sent');
+    expect(outcome.status).toBe(lane.sent);
     expect(postsToPerson()).toHaveLength(0);
     expect(postsIntoParentChat()).toHaveLength(2);
     expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');

@@ -1665,7 +1665,7 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
   // one adult's own invite. #ops is paged; the parent has not been told in words.
   third_party_invite_send_failed: {
-    sentence: 'a text to the person you invited did not go through',
+    sentence: 'a text to the person you invited may not have gone through',
     family: 'note',
   },
   co_parent_invite_accepted: {

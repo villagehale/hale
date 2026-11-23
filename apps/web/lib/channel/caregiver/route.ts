@@ -55,7 +55,6 @@ import {
   InviteNotAwaitingReply,
   acceptInvite,
   declineInvite,
-  inviteHasNoStandingAsk,
   inviteSendKey,
   loadPendingAssent,
   recordCoParentAssent,
@@ -129,10 +128,8 @@ export type LapsedInviteOutcome = {
 
 export type CaregiverOutcome =
   | { status: 'caregiver_invite_started' }
-  /** The parent repeated the add while their own row waited on them: asked again. */
-  | { status: 'caregiver_invite_reasked' }
   | { status: 'caregiver_invite_sent' }
-  /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
+  /** Linq did not accept the invite. #ops was paged and the parent was not told. */
   | { status: 'caregiver_invite_unsent'; opsPage: OpsPagerOutcome }
   /** Another turn already took this yes. Nothing was sent here. */
   | { status: 'caregiver_assent_already_claimed' }
@@ -167,10 +164,8 @@ export type CaregiverOutcome =
  */
 export type CoParentOutcome =
   | { status: 'co_parent_invite_started' }
-  /** The parent repeated the add while their own row waited on them: asked again. */
-  | { status: 'co_parent_invite_reasked' }
   | { status: 'co_parent_invite_sent' }
-  /** Linq did not accept the invite. The row is back with the parent and #ops was paged. */
+  /** Linq did not accept the invite. #ops was paged and the parent was not told. */
   | { status: 'co_parent_invite_unsent'; opsPage: OpsPagerOutcome }
   | { status: 'co_parent_invite_dropped' }
   /** `dark` is the flag, and it is a refusal like any other: the parent asked and Hale
@@ -331,7 +326,7 @@ async function reply(
 
 /**
  * The invite itself, to the person's own number under the row's one key. A failed send
- * stays inside the turn: a throw here would have the job redelivered and re-drive a yes.
+ * stays inside the turn: it is settled here, and a throw would have the job redelivered.
  * Null means Linq accepted it; otherwise the answer names whether #ops heard.
  */
 async function sendInviteToPerson(
@@ -818,9 +813,8 @@ export async function handleKnownNumberInbound(
     });
     const answer = reading?.verdict ?? 'neither';
     const claimable =
-      pending.role === 'co_parent'
-        ? await coParentAssentIsSoleQuestion(database, owner, now, deps)
-        : await caregiverAssentIsClaimable(database, pending, owner, now, deps);
+      pending.role !== 'co_parent' ||
+      (await coParentAssentIsSoleQuestion(database, owner, now, deps));
     if (answer === 'yes' && claimable) {
       return pending.role === 'co_parent'
         ? sendCoParentInvite(database, { pending, owner, inbound, parentPhoneE164, now }, deps)
@@ -860,27 +854,6 @@ async function coParentAssentIsSoleQuestion(
     now,
   });
   return soleOpenKind(questions, 'co_parent_assent');
-}
-
-/**
- * A caregiver row claims a bare word straight off the pending assent, unless a failed send
- * left it with no question standing. Then any other open question makes the word ambiguous.
- * The row is not a listed kind, so `null` is the honest reading: nothing else may be open.
- */
-async function caregiverAssentIsClaimable(
-  database: Database,
-  pending: CaregiverLaneInvite,
-  owner: { userId: string; familyId: string },
-  now: Date,
-  deps: CaregiverDeps,
-): Promise<boolean> {
-  if (!(await inviteHasNoStandingAsk(database, pending))) return true;
-  const questions = await deps.openQuestions(database, {
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    now,
-  });
-  return soleOpenKind(questions, null);
 }
 
 /**
@@ -1252,9 +1225,6 @@ async function startFromCommand(
         reason: opened.reason,
       });
     }
-    if (opened.status === 'reasked') {
-      return answer(opened.reply, { status: 'co_parent_invite_reasked' });
-    }
     return answer(opened.reply, { status: 'co_parent_invite_started' });
   }
 
@@ -1289,8 +1259,5 @@ async function startFromCommand(
     });
   }
   if (started.status === 'ask_unwritten') return { status: 'caregiver_ask_unwritten' };
-  if (started.status === 'reasked') {
-    return answer(started.reply, { status: 'caregiver_invite_reasked' });
-  }
   return answer(started.reply, { status: 'caregiver_invite_started' });
 }
