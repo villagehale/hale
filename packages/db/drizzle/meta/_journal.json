@@ -1709,6 +1709,13 @@
       "when": 1795449494615,
       "tag": "0265_children_name_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1795458387882,
+      "tag": "0266_linq_group_loop_guards",
+      "breakpoints": true
     }
   ]
 }

@@ -204,6 +204,8 @@ export const AUDIT_VERBS = [
   'linq_group_sends_held',
   'linq_group_stop',
   'linq_group_coach_held',
+  // VIL-728. The loop guard took a group chat quiet. Internal: hidden from History.
+  'linq_group_loop_guard_quiet',
   'linq_group_plan_started',
   'linq_group_plan_rsvp_recorded',
   'linq_group_plan_rsvp_edited',
@@ -958,6 +960,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
     family: 'awaiting',
   },
+  // VIL-728 · internal-only: no parent-facing copy. Hidden from the trail via
+  // INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  linq_group_loop_guard_quiet: { sentence: 'recorded an update', family: 'neutral' },
   linq_group_plan_started: {
     sentence: 'Hale started counting who is coming to a plan in your family group',
     family: 'done',
@@ -2527,6 +2532,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'integration_google_revoke_cancelled',
   'linq_group_background_set',
   'linq_group_background_parent_set',
+  // VIL-728. Loop-guard bookkeeping for ops: counts only, no words and no handle.
+  'linq_group_loop_guard_quiet',
   // VIL-303. A no Hale said to one parent, and its correction to that same parent.
   'capability_denial_recorded',
   'capability_denial_corrected',
