@@ -254,8 +254,11 @@ export interface GroupLoopGuardTrip {
   page: OpsPagerOutcome | 'page_threw';
 }
 
+/** A connection or the transaction it is already inside. */
+type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+
 /** Every household this chat belongs to: the claimed group, its roster, a shared chat's. */
-async function familiesInChat(database: Database, chatId: string): Promise<string[]> {
+async function familiesInChat(database: DbOrTx, chatId: string): Promise<string[]> {
   const claimed = await database
     .select({ id: schema.families.id })
     .from(schema.families)
@@ -283,7 +286,7 @@ async function familiesInChat(database: Database, chatId: string): Promise<strin
  * Throws when the write throws, so a caller inside the quiet transaction can roll it back.
  */
 async function auditGroupLoopGuardQuiet(
-  database: Database,
+  database: DbOrTx,
   input: { chatId: string; haleSince: number; cap: number },
 ): Promise<number> {
   const families = await familiesInChat(database, input.chatId);
