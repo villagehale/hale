@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetCanaryFamilyCacheForTests, setCanaryFamilyLookupForTests } from './canary-tag';
-import { resetPosthogClientsForTests } from './posthog-node';
+import { flushPosthog, resetPosthogClientsForTests } from './posthog-node';
 import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   type AgentError,
@@ -205,7 +205,12 @@ describe('reporting never makes a failure worse', () => {
     vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
     resetPosthogClientsForTests();
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // captureAgentError does not await the exception report. Flush it on this
+    // test's own fetch stub before the next test installs a new one.
+    await flushPosthog();
+    resetPosthogClientsForTests();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     resetCanaryFamilyCacheForTests();

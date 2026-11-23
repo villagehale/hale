@@ -65,6 +65,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'billing_notice_sent',
   'billing_notice_send_failed',
   'billing_notice_dropped',
+  // VIL-759. One adult's invite that Linq did not accept.
+  'third_party_invite_send_failed',
 ] as const satisfies readonly AuditVerb[];
 
 /** Of those, the rows the adult they are about gets in their own copy (right of access). */
@@ -77,6 +79,7 @@ const OWN_ROWS_IN_EXPORT = [
   'ack_eta_late_note_sent',
   'team_schedule_driver_unreachable',
   'team_schedule_change_not_run',
+  'third_party_invite_send_failed',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {

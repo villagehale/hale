@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FOUNDING_PROMO_ENDS_AT,
   FOUNDING_PRICE_DISPLAY,
+  HOLIDAY_SALE_STARTS_AT,
   MAX_LIST_PRICE_DISPLAY,
   PLUS_LIST_PRICE_DISPLAY,
   PROMO_PRICE_DISPLAY,
   currencyFromIpCountry,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
+  promoPhaseAt,
   serverCheckoutCurrency,
 } from './promo.js';
 
@@ -69,6 +71,17 @@ describe('founding promo window', () => {
   it('is open before the cutoff', () => {
     const ends = parseFoundingPromoEndsAt(undefined);
     expect(isFoundingPromoWindowOpen(new Date('2026-11-16T00:00:00-05:00'), ends)).toBe(true);
+  });
+});
+
+describe('promo phase', () => {
+  it('is black_friday through Nov 30 and holiday from Dec 1 00:00 America/Toronto', () => {
+    expect(HOLIDAY_SALE_STARTS_AT).toBe('2026-12-01T00:00:00-05:00');
+    expect(promoPhaseAt(new Date('2026-11-16T00:00:00-05:00'))).toBe('black_friday');
+    expect(promoPhaseAt(new Date('2026-11-28T00:00:00-05:00'))).toBe('black_friday');
+    expect(promoPhaseAt(new Date('2026-11-30T23:59:59-05:00'))).toBe('black_friday');
+    expect(promoPhaseAt(new Date('2026-12-01T00:00:00-05:00'))).toBe('holiday');
+    expect(promoPhaseAt(new Date('2026-12-31T23:59:59-05:00'))).toBe('holiday');
   });
 });
 
