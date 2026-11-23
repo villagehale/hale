@@ -1,8 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, inArray, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { isUndefinedTable } from '~/lib/channel/linq/roster';
 
 /**
- * Retention for two records that had no clock of their own. Runs on the hourly
+ * Retention for the records that had no clock of their own. Runs on the hourly
  * delete sweep beside the twelve-month message retention (message-retention.ts),
  * and like it is not behind a feature flag.
  *
@@ -10,6 +11,7 @@ import { and, asc, inArray, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
  * | --- | --- | --- | --- |
  * | `family_memory_episodes`, removed by the parent | 30 days after `deleted_at` | BLANK `summary` and `payload`, keep `occurred_at` and `episode_type` | The soft delete keeps the row so audit rows that point at it still resolve. The words are what the parent removed, and thirty days is the erasure window the site promises. An episode's audit rows carry its time and type, not its words (companion/log-write.ts). |
  * | `proactive_candidates`, any status | 365 days after `created_at` | DELETE the row | A text Hale considered sending, kept as long as a sent message is. A settled row already holds no composed text (proactive/review.ts `mark`); its ids, codes and source link go with it. |
+ * | `ack_promises` | 7 days after `claimed_at`, or after `due_at` if never claimed | DELETE the row | It holds a chat id and a message id only so one late note can be threaded. A row the flag stopped sweeping is never claimed, and is past saying a week on. A database without the table answers `not_migrated`. |
  *
  * What each clock leaves behind, decided:
  *
@@ -36,6 +38,7 @@ import { and, asc, inArray, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
 
 export const REMOVED_EPISODE_RETENTION_DAYS = 30;
 export const PROACTIVE_CANDIDATE_RETENTION_DAYS = 365;
+export const ACK_PROMISE_RETENTION_DAYS = 7;
 
 /** Rows handled per table per hourly run, as the message sweep's own cap. */
 export const RECORD_RETENTION_BATCH = 200;
@@ -45,6 +48,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface RecordRetentionSummary {
   removedEpisodesBlanked: number;
   proactiveCandidatesDeleted: number;
+  ackPromisesDeleted: number | 'not_migrated';
 }
 
 export async function sweepRecordRetention(
@@ -67,7 +71,50 @@ export async function sweepRecordRetention(
       new Date(now.getTime() - PROACTIVE_CANDIDATE_RETENTION_DAYS * DAY_MS),
       batch,
     ),
+    ackPromisesDeleted: await deleteAgedAckPromises(
+      database,
+      new Date(now.getTime() - ACK_PROMISE_RETENTION_DAYS * DAY_MS),
+      batch,
+    ),
   };
+}
+
+async function deleteAgedAckPromises(
+  database: Database,
+  cutoff: Date,
+  batch: number,
+): Promise<number | 'not_migrated'> {
+  const promises = schema.ackPromises;
+  try {
+    const due = await database
+      .select({ id: promises.id })
+      .from(promises)
+      .where(
+        or(
+          lt(promises.claimedAt, cutoff),
+          and(isNull(promises.claimedAt), lt(promises.dueAt, cutoff)),
+        ),
+      )
+      .orderBy(asc(promises.dueAt), asc(promises.id))
+      .limit(batch);
+    if (due.length === 0) return 0;
+    const deleted = await database
+      .delete(promises)
+      .where(
+        inArray(
+          promises.id,
+          due.map((row) => row.id),
+        ),
+      )
+      .returning({ id: promises.id });
+    return deleted.length;
+  } catch (err) {
+    if (isUndefinedTable(err)) {
+      console.warn({ outcome: 'not_migrated' }, 'record retention: ack_promises is missing');
+      return 'not_migrated';
+    }
+    throw err;
+  }
 }
 
 async function blankRemovedEpisodes(

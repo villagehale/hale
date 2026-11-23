@@ -247,6 +247,25 @@ export const OPS_PAGE_VOCABULARY = {
   signup_ask_order_unmarked: {},
   side_turn_claim_unreleased: {},
   parent_text_unanswered: {},
+  // VIL-717. No ack or late note reached the parent: the model could not write one, or an
+  // owed late note was finally dropped (Linq refused it, its send never confirmed, the line
+  // stayed held, it went stale) or its claim could not be given back.
+  ack_eta_unwritten: {
+    stage: ['read', 'ack', 'late_note'],
+    reason: [
+      'client_unavailable',
+      'skill_unavailable',
+      'model_failed',
+      'judge_unavailable',
+      'judge_failed',
+      'gate_exhausted',
+      'send_refused',
+      'send_unconfirmed',
+      'line_held',
+      'note_dropped',
+      'claim_stuck',
+    ],
+  },
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {
@@ -1770,6 +1789,32 @@ export async function noteDeadLetteredTurn(
     });
   }
   return pageFailureAlerts(database, deps);
+}
+
+/**
+ * Whether this text's turn ran out of retries. {@link noteDeadLetteredTurn}'s claim row is
+ * the durable record of it, whichever job id it carries.
+ */
+export async function turnWasDeadLettered(
+  database: Database,
+  input: { familyId: string; channelMessageId: string },
+): Promise<boolean> {
+  const subject = `${input.familyId}:${input.channelMessageId}`;
+  const rows = await database
+    .select({ id: schema.rateLimits.id })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, DEAD_LETTER_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        or(
+          eq(schema.rateLimits.identifier, subject),
+          like(schema.rateLimits.identifier, `${subject}:%`),
+        ),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 function pagerOutcome(outcome: OpsPageOutcome): OpsPagerOutcome {
