@@ -47,7 +47,7 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
-import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { type OpsPagerOutcome, pageOps as pageFailure } from '~/lib/monitoring/failure-page';
 import {
   type ProviderErrorShape,
   type ProviderFailureClass,
@@ -320,8 +320,8 @@ export interface ReminderRunDeps {
     input: { familyId: string; ownerUserId: string; eventIds: readonly string[] },
   ) => Promise<Map<string, string[]>>;
   /** VIL-720 · pages #ops when a reminder that carried a list could not be written.
-   * Defaults to the #ops Slack page; its own `skipped_not_configured` is logged. */
-  pageOps?: (text: string) => Promise<OpsPageOutcome>;
+   * Defaults to pageOps. The count is how many. No item text. */
+  pageOps?: (count: number) => Promise<OpsPagerOutcome>;
 }
 
 function sqlExcluded(column: string) {
@@ -627,7 +627,6 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     loadPrefs: (db, userId) => loadLoopPrefsView(userId, db),
     parentPhone: resolveSendablePhone,
     loadBringItems: loadBringItemsFor,
-    pageOps: (text) => postOpsSlack(text),
   };
 }
 
@@ -1371,10 +1370,14 @@ async function fireDueReminders(
   if (unwrittenBring > 0) {
     // VIL-720 · the model could not write a reminder that carried what to bring: nothing
     // went out, and #ops hears it (the handoff's hard rule #1). Counts only.
-    const page = await (deps.pageOps ?? postOpsSlack)(
-      `Hale reminder: ${unwrittenBring} due reminder(s) that carried what to bring could not be written. Nothing was sent.`,
+    const page = await (
+      deps.pageOps ??
+      ((count: number) => pageFailure(db, { site: 'reminder_bring_unwritten', facts: {}, count }))
+    )(unwrittenBring);
+    console.error(
+      { unwrittenBring, page },
+      'reminder: a bring reminder was not written, nothing was sent',
     );
-    console.error({ unwrittenBring, page }, 'reminder: bring reminder not written, #ops paged');
   }
 
   return {

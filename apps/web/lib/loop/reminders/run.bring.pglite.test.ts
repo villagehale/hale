@@ -32,7 +32,7 @@ let parentUserId: string;
 let coParentUserId: string;
 let eventId: string;
 let enqueued: ChannelSendJob[];
-let pages: string[];
+let pages: number[];
 
 /** Saturday 10:00 EST. */
 const STARTS_AT = new Date('2026-11-21T15:00:00Z');
@@ -169,9 +169,9 @@ function deps(client: AgentClient): ReminderRunDeps {
       enqueued.push(job);
     },
     loadLanguage: async (_db, _familyId, userId) => (userId === parentUserId ? 'en' : 'fr'),
-    pageOps: async (text) => {
-      pages.push(text);
-      return 'sent';
+    pageOps: async (count) => {
+      pages.push(count);
+      return 'paged';
     },
   };
 }
@@ -255,9 +255,7 @@ describe('reminders with what to bring (VIL-720), flag on', () => {
 
     expect(result).toMatchObject({ fired: 0, suppressed: 2 });
     expect(enqueued).toEqual([]);
-    expect(pages).toHaveLength(1);
-    expect(pages[0]).toContain('1 due reminder');
-    for (const item of ITEMS) expect(pages[0]).not.toContain(item);
+    expect(pages).toEqual([1]);
   });
 
   it('a failure with no list anywhere pages nothing new', async () => {
