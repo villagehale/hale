@@ -4,6 +4,7 @@ import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reconcileBillingTiers } from '~/lib/billing/billing-live';
+import { alertUnsettledBillingPlan } from '~/lib/monitoring/billing-tier-alert';
 import { type FakeStripe, createFakeStripe, stripeError } from '~/lib/testing/fake-stripe';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { type ApplyStripeBillingDeps, applyStripeBillingEvent } from './stripe-billing-apply.js';
@@ -59,7 +60,7 @@ afterEach(() => {
 
 function harness(env: Env = FLAG_ON) {
   const fake = createFakeStripe();
-  const held: Array<{ eventId: string; reason: string }> = [];
+  const held: Array<{ eventId: string; reason: string; planChanged?: boolean }> = [];
   const unresolved: Array<{ eventId: string; reason: string }> = [];
   const pages: string[] = [];
   pageHour += 1;
@@ -501,6 +502,8 @@ describe('a full refund of the current period', () => {
     expect(h.fake.calls.map((call) => call.headers.get('stripe-version'))).toEqual(
       h.fake.calls.map(() => '2026-11-18.endive'),
     );
+    const cancel = h.fake.calls.find((call) => call.method === 'DELETE');
+    expect(cancel?.body).toBe('prorate=false&invoice_now=false');
   });
 
   it('a sibling whose own refund failed still counts as paid', async () => {
@@ -1752,10 +1755,26 @@ describe('only a paid period grants a tier', () => {
           state: 'held',
           reason: 'cancel_would_stop_collection',
           stripeEventId: event.id,
+          planTier: 'free',
         }),
       ]);
-      expect(h.held).toEqual([{ eventId: event.id, reason: 'cancel_would_stop_collection' }]);
+      expect(h.held).toEqual([
+        { eventId: event.id, reason: 'cancel_would_stop_collection', planChanged: true },
+      ]);
       expect(h.fake.deletes()).toEqual([]);
+
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://hooks.slack.test/ops');
+      const bodies: string[] = [];
+      await alertUnsettledBillingPlan(h.held[0] ?? { eventId: event.id, reason: 'missing' }, ((
+        _url: string,
+        init?: RequestInit,
+      ) => {
+        bodies.push(String(init?.body));
+        return Promise.resolve(new Response('ok'));
+      }) as typeof fetch);
+      expect(bodies[0]).toContain('plan changed and the subscription is still live');
+      expect(bodies[0]).not.toContain('left unchanged');
+      vi.unstubAllEnvs();
 
       expect(await h.apply(event)).toEqual({ status: 'duplicate' });
       expect(h.held).toHaveLength(1);
@@ -2103,6 +2122,43 @@ describe('with the flag on a dispute never moves the plan', () => {
     expect(await isClaimed(event.id)).toBe(true);
     expect(await h.apply(event)).toEqual({ status: 'duplicate' });
     expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'no_family' }]);
+  });
+
+  it('a full refund naming a family Hale no longer has pages once and does not throw', async () => {
+    const h = harness();
+    const gone = randomUUID();
+    buy(h.fake, 'rerased', gone);
+    const charge = h.fake.charges.get('ch_rerased');
+    if (!charge) throw new Error('fixture');
+    charge.metadata = { familyId: gone };
+    charge.payment_intent = null;
+    const event = refundEvent(h.fake, 'ch_rerased');
+
+    expect(await h.apply(event)).toEqual({
+      status: 'unresolved',
+      reason: 'no_family',
+      opsAlert: 'sent',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+    expect(await isClaimed(event.id)).toBe(true);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'no_family' }]);
+
+    expect(await h.apply(event)).toEqual({ status: 'duplicate' });
+    expect(h.unresolved).toHaveLength(1);
+  });
+
+  it('a full refund of an erased family whose subscription is still linked pages and does not cancel', async () => {
+    const h = harness();
+    buy(h.fake, 'rerasedsub', randomUUID());
+    const event = refundEvent(h.fake, 'ch_rerasedsub');
+
+    expect(await h.apply(event)).toEqual({
+      status: 'unresolved',
+      reason: 'no_family',
+      opsAlert: 'sent',
+    });
+    expect(h.fake.deletes()).toEqual([]);
+    expect(await isClaimed(event.id)).toBe(true);
   });
 
   it('a family Stripe still names but Hale no longer has is the no_family page', async () => {
