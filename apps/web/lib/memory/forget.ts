@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { closeFacts } from './facts';
-import { isReceiptKey } from './lexicon';
+import { ONBOARDING_ACTIVITY_WRITER, isReceiptKey } from './lexicon';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 /**
@@ -12,11 +12,12 @@ import { SYNTHESIS_WRITERS } from './synthesis';
  * Control-plane receipts are refused even when a model names their id: closing
  * one would let a completed health or registration prompt come back.
  *
- * Belief writers only. A row with no writer, or a writer outside the synthesis
- * allowlist, is not Hale's to quietly drop.
+ * Belief writers only: the synthesis allowlist, and a kid's activity the parent told
+ * the onboarding thread (VIL-721), theirs to take back. A row with no writer, or any
+ * other writer, is not Hale's to quietly drop.
  */
 
-const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
+const BELIEF_WRITERS = new Set<string>([...SYNTHESIS_WRITERS, ONBOARDING_ACTIVITY_WRITER]);
 
 export interface ForgetFactResult {
   forgotten: number;

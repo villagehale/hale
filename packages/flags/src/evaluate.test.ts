@@ -322,6 +322,20 @@ describe('an env-only flag, read before any family is known', () => {
     expect(isEnabled('f14', undefined, ON)).toBe(true);
   });
 
+  it('never lights the in-thread onboarding from a PostHog 100% rollout', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('thread-onboarding-v2', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, {
+        ...ON,
+        THREAD_ONBOARDING_V2_ENABLED: 'true\n',
+      }),
+    ).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true' }),
+    ).toBe(true);
+  });
+
   it('VIL-719: PostHog at 100% can never light the ask policy, and a sync never creates it', () => {
     setFlagEvaluatorForTests(() => true);
     expect(isEnabled('ask-policy-tiers', 'family-1', ON)).toBe(false);

@@ -27,3 +27,17 @@ What it covers:
 9. The aha after a calendar or Gmail connect. The model is handed fixture events or mail that match the kids' activities and writes one specific line from them. An empty read stays a short receipt with none of those facts. An invented event is not sent, and Slack #ops is paged. The stand-in chooses; production code does not.
 
 A change under `apps/web/lib/channel/intake` has to leave this file green.
+
+## The in-thread walk (VIL-721)
+
+`apps/web/lib/channel/intake/golden-conversation-v2.test.ts` drives the same machine with `THREAD_ONBOARDING_V2_ENABLED` on, and once with it off:
+
+1. Postal, the kids' names, their ages, the map, then **what the kids already do**, the parent's name, and **one Google link** that connects Gmail and the calendar together, then schedule and co-parent. The whole conversation carries exactly one link (`to=google`), never `to=gmail` or `to=gcal`.
+2. The activity the parent names is kept as a family memory fact with its provenance (parent message, one-to-one, the parent as speaker, the onboarding writer), on the kid it is for, with one audit row of counts. The next turn is handed it, so it is not asked again. "Nothing yet" is an answer and keeps nothing.
+3. The clock moves one minute per parent text. The map, the first useful thing, lands on the fourth text: `intake_completed.duration_s` is 180, under the 10-minute target.
+4. A Google ask the model writes about one connector only is refused, retried, refused, and nothing is sent.
+5. Flag off, the walk is today's: the name ask after the map, then Gmail with its own link.
+
+```bash
+pnpm --filter @hale/web exec vitest run lib/channel/intake/golden-conversation-v2.test.ts
+```

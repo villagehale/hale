@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EMPTY_CHECKLIST,
   ONBOARDING_ORDER,
@@ -28,6 +28,15 @@ const prior = {
   connectCalendar: null,
   connectGmail: null,
 };
+
+// Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+beforeEach(() => {
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('the onboarding order', () => {
   it('is postal, kids, ages, name, Gmail, calendar, schedule, co-parent — with no pick gate', () => {

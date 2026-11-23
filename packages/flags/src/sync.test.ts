@@ -66,6 +66,7 @@ describe('syncFlags', () => {
     expect(result.flags.find((row) => row.key === 'f14')?.action).toBe('unchanged');
     expect(created.length).toBe(SYNCED.length - 1);
     expect(created).not.toContain('ingest-body-max');
+    expect(created).not.toContain('thread-onboarding-v2');
     expect(created).not.toContain('browser-use-signup-payment');
     expect(created).toContain('authorized-signup');
     expect(created).toContain('claim-reader-mode');
