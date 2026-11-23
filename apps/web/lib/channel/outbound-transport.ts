@@ -117,6 +117,7 @@ export function refusalIsRateLimit(err: unknown): boolean {
 }
 
 export const linqRefusedForCertain = linq.linqRefusedForCertain;
+export const linqSendMayHaveLanded = linq.linqSendMayHaveLanded;
 
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 

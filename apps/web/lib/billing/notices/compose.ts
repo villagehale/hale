@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
 import { llmFamilyContext, withLlmContext } from '~/lib/analytics/llm-trace';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { OPT_OUT_LINE, OPT_OUT_SHORT } from '~/lib/channel/opt-out';
+import { writesOptOutLine } from '~/lib/channel/opt-out';
 import {
   type BillingClaimFacts,
   type BillingPlanName,
@@ -86,7 +86,7 @@ export function billingNoticeRefusals(text: string): string[] {
   if (trimmed === '') return ['empty'];
   const found: string[] = [];
   if (hasLinkShape(trimmed)) found.push('link');
-  if (trimmed.includes(OPT_OUT_LINE) || trimmed.includes(OPT_OUT_SHORT)) found.push('opt_out_line');
+  if (writesOptOutLine(trimmed)) found.push('opt_out_line');
   return found;
 }
 

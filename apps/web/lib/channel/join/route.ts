@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -8,8 +9,14 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from './copy';
-import { type JoinInvite, loadOpenJoinInvite, mintJoinInvite, redeemJoinInvite } from './invites';
+import { joinLink } from './code';
+import {
+  JOIN_LINK_TTL_DAYS,
+  type JoinInvite,
+  loadOpenJoinInvite,
+  mintJoinInvite,
+  redeemJoinInvite,
+} from './invites';
 
 /**
  * The two ends of the forwardable co-parent link: where it is minted, and where it is
@@ -62,7 +69,12 @@ export interface JoinAcceptance {
    * happens either way, and the inviter finds out the way they always could: their
    * partner is in the same house.
    */
-  inviterHeld: 'no_channel' | 'quiet_hours' | null;
+  inviterHeld: 'no_channel' | 'quiet_hours' | DoorLineHold | null;
+  /**
+   * The partner's welcome. Null when it went out. `flag_off` is the dark flag;
+   * `unwritten` is a model that wrote nothing. The seat exists either way.
+   */
+  welcomeHeld: DoorLineHold | null;
   supersededInviteId: string | null;
 }
 
@@ -82,7 +94,14 @@ export interface JoinSeatTaken {
 }
 
 export type JoinOutcome =
+  /** The link exists and the parent was handed it. */
   | { status: 'join_link_minted' }
+  /**
+   * The forward line was not written, so no link was minted: no invite, no grant, no
+   * audit row. `flag_off` is the dark flag; `unwritten` is a model that wrote nothing;
+   * `group_chat` is an ask made in a chat other people may read.
+   */
+  | { status: 'join_link_held'; lineHeld: DoorLineHold | 'group_chat' }
   | JoinSeatTaken
   /**
    * `supersededSessionId` is the other absence this path has to name: a link can arrive
@@ -129,9 +148,9 @@ async function record(
       category: input.category,
       providerMessageId: input.providerId,
       status: input.direction === 'in' ? 'delivered' : acceptedStatus('sms'),
-      // Verbatim for INBOUND only, the rule the whole ledger keeps: an outbound is
-      // reconstructable from copy.ts, and an outbound here carries a live capability
-      // token (rule #1).
+      // Verbatim for INBOUND only, the rule the whole ledger keeps: an outbound
+      // is model-written and not stored, and an outbound here carries a live
+      // capability token (rule #1).
       body: input.direction === 'in' ? input.body : null,
       sentAt: input.now,
     })
@@ -160,6 +179,8 @@ async function sendThreaded(
   input: {
     to: string;
     body: string;
+    /** What the thread keeps when it must differ from the wire (a line carrying a token). */
+    threadBody?: string;
     familyId: string;
     parentUserId: string;
     category: 'caregiver' | 'intake' | 'co_parent_invite';
@@ -179,7 +200,7 @@ async function sendThreaded(
   await deps.threadMessage(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
-    body: input.body,
+    body: input.threadBody ?? input.body,
   });
 }
 
@@ -196,6 +217,15 @@ async function inviterRow(
   // store that skipped the default.
   return { name: row?.name ?? null, timeZone: row?.timezone ?? DEFAULT_TIMEZONE };
 }
+
+/** Where the forward line puts the link. The model never holds the token (it is a capability). */
+const JOIN_LINK_SLOT = '[[link]]';
+
+/**
+ * What the parent's thread keeps where the line carried the link, the way history withholds
+ * a live-view link: the coach re-reads the thread every turn. Model context only, never sent.
+ */
+export const JOIN_LINK_IN_THREAD = '[join link, not kept]';
 
 /**
  * "add my partner" — a parent asking for their co-parent, with no number to text.
@@ -226,6 +256,26 @@ export async function handleJoinRequest(
     now,
   });
 
+  // The link seats whoever opens it, and a turn's transport posts into its own chat
+  // whatever `to` says. A chat Linq did not call a 1:1 is treated as a group.
+  if (inbound.isGroup === true || (inbound.isGroup === undefined && Boolean(inbound.chatId))) {
+    console.info(
+      { familyId: owner.familyId, reason: 'group_chat' },
+      'join: asked for in a chat others may read - no link minted, nothing sent',
+    );
+    return { status: 'join_link_held', lineHeld: 'group_chat' };
+  }
+
+  // Written BEFORE the link exists. The model never holds the token, and a line nobody
+  // wrote leaves no invite, grant or audit row for a link nobody can ever receive.
+  const forward = await composeDoorLine({
+    purpose: 'join_invite_forward',
+    language: await familySpeechLanguage(database, owner.familyId),
+    facts: { validForDays: String(JOIN_LINK_TTL_DAYS) },
+    slot: JOIN_LINK_SLOT,
+  });
+  if (!forward.sent) return { status: 'join_link_held', lineHeld: forward.held };
+
   const { code } = await mintJoinInvite(database, {
     familyId: owner.familyId,
     invitedByUserId: owner.userId,
@@ -233,10 +283,10 @@ export async function handleJoinRequest(
     channelMessageId,
     now,
   });
-
   await sendThreaded(database, deps, {
     to: args.phoneE164,
-    body: joinInviteForward(code),
+    body: forward.body.replace(JOIN_LINK_SLOT, () => joinLink(code)),
+    threadBody: forward.body.replace(JOIN_LINK_SLOT, JOIN_LINK_IN_THREAD),
     familyId: owner.familyId,
     parentUserId: owner.userId,
     category: 'caregiver',
@@ -357,14 +407,21 @@ export async function handleJoinArrival(
     now,
   });
 
-  await sendThreaded(database, deps, {
-    to: args.phoneE164,
-    body: joinWelcome(inviter.name),
-    familyId: invite.familyId,
-    parentUserId: coParentUserId,
-    category: 'intake',
-    now,
+  const welcome = await composeDoorLine({
+    purpose: 'join_welcome',
+    language: await familySpeechLanguage(database, invite.familyId),
+    facts: { inviterName: inviter.name?.trim() ?? '' },
   });
+  if (welcome.sent) {
+    await sendThreaded(database, deps, {
+      to: args.phoneE164,
+      body: welcome.body,
+      familyId: invite.familyId,
+      parentUserId: coParentUserId,
+      category: 'intake',
+      now,
+    });
+  }
 
   // The ack is the one send on this path to somebody who texted NOTHING this turn — a
   // proactive extra, not a reply — so it keeps the proactive quiet window (2026-08-28
@@ -379,14 +436,22 @@ export async function handleJoinArrival(
     );
   }
   if (inviterPhone && inviterHeld === null) {
-    await sendThreaded(database, deps, {
-      to: inviterPhone,
-      body: JOIN_ACCEPTED_ACK,
-      familyId: invite.familyId,
-      parentUserId: invite.invitedByUserId,
-      category: 'caregiver',
-      now,
+    const ack = await composeDoorLine({
+      purpose: 'join_accepted_ack',
+      language: await familySpeechLanguage(database, invite.familyId),
     });
+    if (ack.sent) {
+      await sendThreaded(database, deps, {
+        to: inviterPhone,
+        body: ack.body,
+        familyId: invite.familyId,
+        parentUserId: invite.invitedByUserId,
+        category: 'caregiver',
+        now,
+      });
+    } else {
+      inviterHeld = ack.held;
+    }
   }
 
   return {
@@ -394,6 +459,7 @@ export async function handleJoinArrival(
     familyId: invite.familyId,
     inviterNotified: inviterHeld === null,
     inviterHeld,
+    welcomeHeld: lineHeld(welcome),
     supersededInviteId,
   };
 }

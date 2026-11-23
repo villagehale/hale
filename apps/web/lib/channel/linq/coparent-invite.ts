@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { settleFailedInviteSend } from '~/lib/channel/caregiver/invite-send';
 import {
   familyHasCoParent,
@@ -17,6 +16,7 @@ import {
   coParentReferrerUnnamed,
   coParentRefusal,
 } from '~/lib/channel/coparent/copy';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
@@ -109,6 +109,8 @@ export type CoParentNumberOutcome =
       status: 'refused' | 'unreached';
       reply: string | null;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
+      /** Null when the line went out, or why it did not (rule #11). */
+      lineHeld: DoorLineHold | null;
     }
   /** The invite text could not be written. Nobody was texted. */
   | { status: 'ask_unwritten'; reply: null }
@@ -204,32 +206,41 @@ export async function deliverCoParentNumberInvite(
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
-  const held = (reply: string): CoParentNumberOutcome => ({
+  const held = (reply: string | null, hold: DoorLineHold | null): CoParentNumberOutcome => ({
     status: 'refused',
     reply,
     templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+    lineHeld: hold,
   });
 
   const parentPhone = await resolveSendablePhone(database, input.parentUserId);
+  const redirect = async () =>
+    composeDoorLine({
+      purpose: 'caregiver_co_parent_redirect',
+      language,
+    });
   if (!parentPhone) {
+    const line = await redirect();
     return {
       status: 'unreached',
-      reply: CO_PARENT_REDIRECT,
+      reply: line.sent ? line.body : null,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+      lineHeld: lineHeld(line),
     };
   }
 
   // Same gate as the YES that texts a stranger (D21). The ask can be on the
   // thread while the flag is dark; the SMS send is what the flag holds.
   if (!f14EnabledFor(input.familyId)) {
-    return held(CO_PARENT_REDIRECT);
+    const line = await redirect();
+    return held(line.sent ? line.body : null, lineHeld(line));
   }
 
   const name = await parentName(database, input.parentUserId);
   const unnamed = await coParentReferrerUnnamed(language);
   if (!name) {
     if (!unnamed) return { status: 'ask_unwritten', reply: null };
-    return held(unnamed);
+    return held(unnamed, null);
   }
   const inviteText = await writeConsentAsk(input.ask, {
     kind: 'coparent_invite',
@@ -257,7 +268,7 @@ export async function deliverCoParentNumberInvite(
   if (started.status === 'refused') {
     const line = await coParentRefusal(started.reason, language);
     if (!line) return { status: 'ask_unwritten', reply: null };
-    return held(line);
+    return held(line, null);
   }
 
   if (thirdPartyInviteRouteEnabled()) {

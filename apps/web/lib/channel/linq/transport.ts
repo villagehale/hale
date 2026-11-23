@@ -10,7 +10,12 @@ import {
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
+import {
+  linqApiKey,
+  linqFromE164,
+  linqVoiceMemosEnabled,
+  parentSendReceiptEnabled,
+} from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
@@ -97,6 +102,20 @@ const LINQ_CERTAIN_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 
 export function linqRefusedForCertain(err: unknown): boolean {
   if (!(err instanceof LinqSendError) || !err.permanent) return false;
   return err.httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(err.httpStatus);
+}
+
+/**
+ * A Linq answer that does not prove the text stayed home, while the receipt flag is on.
+ * The caller must not send a second bubble, including an apology, in its place.
+ */
+export function linqSendMayHaveLanded(err: unknown): boolean {
+  if (!parentSendReceiptEnabled()) return false;
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current != null; depth += 1) {
+    if (current instanceof LinqSendError) return !linqRefusedForCertain(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**
@@ -600,7 +619,8 @@ export async function sendLinqChatMessage(input: {
       input.mention &&
       err instanceof LinqSendError &&
       err.permanent &&
-      MENTION_REFUSED.has(err.code)
+      MENTION_REFUSED.has(err.code) &&
+      (!parentSendReceiptEnabled() || linqRefusedForCertain(err))
     ) {
       // Code and status only. The handle, the body, and the chat id stay out (rule #1).
       console.warn(
@@ -623,7 +643,8 @@ export async function sendLinqChatMessage(input: {
       !(err instanceof LinqSendError) ||
       !err.permanent ||
       err.httpStatus < 400 ||
-      (input.plainResendOnlyIfRefused && !linqRefusedForCertain(err))
+      ((input.plainResendOnlyIfRefused || parentSendReceiptEnabled()) &&
+        !linqRefusedForCertain(err))
     ) {
       throw err;
     }

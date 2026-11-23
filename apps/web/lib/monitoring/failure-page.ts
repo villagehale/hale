@@ -240,6 +240,15 @@ export const OPS_PAGE_VOCABULARY = {
   },
   /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
   duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
+  /**
+   * VIL-749 / VIL-753. A parent text on the shared receipt that Linq refused, or
+   * that a one-shot sender will not try again after an answer that did not prove
+   * a refusal. Nothing in the facts is a body, a name, or a phone.
+   */
+  parent_send_unsent: {
+    surface: ['one_to_one', 'group_line'],
+    reason: ['send_refused', 'not_confirmed'],
+  },
   /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
   claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },

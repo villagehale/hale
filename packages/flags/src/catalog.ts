@@ -92,6 +92,7 @@ export const FLAGS = [
   exact('browser-use-signup', 'BROWSER_USE_SIGNUP_ENABLED'),
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
+  exact('caregiver-reminder-model-copy', 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
   exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
@@ -153,6 +154,7 @@ export const FLAGS = [
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
   exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
+  exact('join-door-model-copy', 'JOIN_DOOR_MODEL_COPY_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',
@@ -207,6 +209,10 @@ export const FLAGS = [
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
   // VIL-759. A co-parent or caregiver invite goes to that person's number, not the turn's chat.
   exact('third-party-invite-route', 'THIRD_PARTY_INVITE_ROUTE_ENABLED', { envOnly: true }),
+  // VIL-749 / VIL-753. One send path: a stable family-scoped Linq key, and a row
+  // that says sent only after Linq accepts. Env-only: a failure has no family for
+  // PostHog, and a synced 100% flag would light this with no env value.
+  exact('parent-send-receipt', 'PARENT_SEND_RECEIPT_ENABLED', { envOnly: true }),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.
   exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
   // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply
