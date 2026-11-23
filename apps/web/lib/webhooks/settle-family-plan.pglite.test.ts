@@ -2286,7 +2286,7 @@ describe('flag off is main plus one claim', () => {
     assertPinnedLookupWithoutCancel(h.fake);
   });
 
-  it('a dispute on a live subscription is a quiet keep and is claimed', async () => {
+  it('a dispute is not resolved through the refund lookup and is not recorded as a refund', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_dis', 'sub_dis');
     buy(h.fake, 'dis', familyId);
@@ -2299,18 +2299,18 @@ describe('flag off is main plus one claim', () => {
       },
     };
 
-    expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(await h.apply(event)).toMatchObject({
+      status: 'unresolved',
+      reason: 'subscription_unresolved',
+    });
     expect(await planTier(familyId)).toBe('plus');
-    expect(await isClaimed(event.id)).toBe(true);
-    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'dispute_needs_review' }]);
+    expect(await isClaimed(event.id)).toBe(false);
     expect(await afters(familyId, 'billing_refunded')).toHaveLength(0);
-    expect(await afters(familyId, 'billing_revoke_unresolved')).toEqual([
-      expect.objectContaining({ reason: 'dispute_needs_review', tierChanged: false }),
-    ]);
-    assertPinnedLookupWithoutCancel(h.fake);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'subscription_unresolved' }]);
+    expect(h.fake.calls.map((call) => call.path)).not.toContain('/v1/invoice_payments');
   });
 
-  it('a dispute on a live subscription with no stored id keeps the plan', async () => {
+  it('a dispute with no stored id still drops to Free', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_disfree', null);
     buy(h.fake, 'disfree', familyId);
@@ -2323,10 +2323,8 @@ describe('flag off is main plus one claim', () => {
       },
     };
 
-    expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
-    expect(await planTier(familyId)).toBe('plus');
+    expect(await h.apply(event)).toEqual({ status: 'applied', tier: 'free' });
+    expect(await planTier(familyId)).toBe('free');
     expect(await afters(familyId, 'billing_refunded')).toHaveLength(0);
-    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'dispute_needs_review' }]);
-    assertPinnedLookupWithoutCancel(h.fake);
   });
 });

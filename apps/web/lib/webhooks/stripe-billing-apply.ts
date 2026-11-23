@@ -11,6 +11,7 @@ import {
   type RefundedCharge,
   type StripeChargeLookup,
   stripeChargeLookupFromEnv,
+  stripeDisputeChargeLookupFromEnv,
 } from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
@@ -473,7 +474,7 @@ async function applyChargeRevoke(
   database: Database,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
-  const linked = await linkCharge(event, deps);
+  const linked = await linkCharge(event, deps, decision.kind);
   const familyId = await familyIdForLinkedCharge(linked, database);
   const claimUnresolved = isFullRefund(decision);
   if (!familyId) {
@@ -521,10 +522,9 @@ async function applyChargeRevoke(
         const reason = partial ? 'partial_refund' : 'active_subscription';
         const claimed = await claimEvent(tx, eventId);
         if (!claimed) return { status: 'duplicate' };
-        // A kept dispute is not a refund. billing_refunded is what History reads
-        // as "Hale refunded a payment", and a dispute must not be named that way.
-        // The two writes stay literal so the audit-verb scan can see both.
         if (decision.kind === 'dispute') {
+          // A dispute is not a refund. History reads billing_refunded as
+          // "Hale refunded a payment". The plan decision is unchanged.
           await tx.insert(schema.auditLog).values({
             familyId,
             actor: 'system',
@@ -538,22 +538,22 @@ async function applyChargeRevoke(
               tierChanged: false,
             },
           });
-        } else {
-          await tx.insert(schema.auditLog).values({
-            familyId,
-            actor: 'system',
-            actionTaken: 'billing_refunded',
-            targetTable: 'families',
-            targetId: familyId,
-            after: {
-              planTier: current.planTier,
-              source: 'stripe',
-              stripeEventId: eventId,
-              reason,
-              tierChanged: false,
-            },
-          });
+          return { status: 'kept', reason };
         }
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'billing_refunded',
+          targetTable: 'families',
+          targetId: familyId,
+          after: {
+            planTier: current.planTier,
+            source: 'stripe',
+            stripeEventId: eventId,
+            reason,
+            tierChanged: false,
+          },
+        });
         return { status: 'kept', reason };
       }
 
@@ -594,15 +594,15 @@ async function applyChargeRevoke(
           claimUnresolved,
         );
       }
-      if (result.status === 'kept' && decision.kind === 'dispute') {
-        const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
-        await alert({ eventId, reason: 'dispute_needs_review' });
-      }
       return result;
     });
 }
 
-async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise<LinkedCharge> {
+async function linkCharge(
+  event: unknown,
+  deps: ApplyStripeBillingDeps,
+  kind: 'refund' | 'dispute',
+): Promise<LinkedCharge> {
   const link = chargeLinkFromStripeEvent(event);
   const base: LinkedCharge = {
     familyId: familyIdFromStripeEvent(event),
@@ -610,13 +610,19 @@ async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise
     subscriptionId: link.subscriptionId,
     subscriptionStatus: link.subscriptionStatus,
   };
+  // Refunds may be tied through the payment intent. Disputes keep the invoice-only
+  // lookup, so a live chargeback is not newly resolved into a refund record.
   const needsLookup =
-    !base.subscriptionId || !base.subscriptionStatus || (!base.familyId && !base.customerId);
+    kind === 'refund'
+      ? !base.subscriptionId || !base.subscriptionStatus || (!base.familyId && !base.customerId)
+      : !base.subscriptionId || (!base.familyId && !base.customerId);
   if (!needsLookup || !link.chargeId) return base;
   const lookup =
-    deps.chargeLookup === undefined
-      ? stripeChargeLookupFromEnv(deps.env ?? process.env)
-      : deps.chargeLookup;
+    deps.chargeLookup !== undefined
+      ? deps.chargeLookup
+      : kind === 'refund'
+        ? stripeChargeLookupFromEnv(deps.env ?? process.env)
+        : stripeDisputeChargeLookupFromEnv(deps.env ?? process.env);
   if (!lookup) return base;
   const found = await lookup.lookupCharge(link.chargeId);
   const sameSubscription =

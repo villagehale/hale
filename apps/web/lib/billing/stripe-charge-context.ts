@@ -21,6 +21,50 @@ export interface StripeChargeLookup {
   lookupCharge(chargeId: string): Promise<StripeChargeContext>;
 }
 
+/**
+ * Dispute linking stays on the invoice id. A charge.refunded lookup may walk the
+ * payment intent; doing that for a dispute turns a live chargeback into a refund record.
+ */
+export function stripeDisputeChargeLookupFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  fetchImpl: typeof fetch = fetch,
+): StripeChargeLookup | null {
+  const secret = env.STRIPE_SECRET_KEY?.trim();
+  if (!secret) return null;
+  return {
+    async lookupCharge(chargeId) {
+      const charge = await stripeGet(
+        secret,
+        `/v1/charges/${encodeURIComponent(chargeId)}`,
+        fetchImpl,
+      );
+      const invoiceId = readId(charge.invoice);
+      const invoice = invoiceId
+        ? await stripeGet(secret, `/v1/invoices/${encodeURIComponent(invoiceId)}`, fetchImpl)
+        : null;
+      const subscriptionId = invoice ? subscriptionIdFromInvoice(invoice) : null;
+      const subscription = subscriptionId
+        ? await stripeGet(
+            secret,
+            `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+            fetchImpl,
+          )
+        : null;
+      const status = readString(subscription?.status)?.toLowerCase() ?? null;
+      return {
+        customerId: readId(charge.customer) ?? (invoice ? readId(invoice.customer) : null),
+        subscriptionId,
+        subscriptionStatus: status,
+        familyId:
+          familyFromMetadata(charge) ??
+          (invoice ? familyFromMetadata(invoice) : null) ??
+          (invoice ? familyFromSubscriptionDetails(invoice) : null) ??
+          (subscription ? familyFromMetadata(subscription) : null),
+      };
+    },
+  };
+}
+
 export function stripeChargeLookupFromEnv(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
