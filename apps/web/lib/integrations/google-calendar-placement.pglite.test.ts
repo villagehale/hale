@@ -81,6 +81,7 @@ describe('createGoogleCalendarPlacement().writeTarget', () => {
   });
 
   it('writes nowhere while the write flag is off, with the same rows', async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'false');
     const fam = await seedFamily(db.database);
     await connect(fam.familyId, fam.parentUserId, [CALENDAR_EVENTS_SCOPE]);
     await expect(

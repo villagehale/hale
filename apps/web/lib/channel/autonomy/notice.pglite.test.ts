@@ -434,6 +434,7 @@ describe('telling a parent a kind turned on', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     // VIL-719: the unstub above dropped the suite's pin; this case grants send_email.
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', undefined);
     expect(process.env.AUTONOMOUS_EXECUTE_ENABLED).not.toBe('true');
     const parent = await seedParent();
     await grant(parent.familyId, parent.parentUserId, 'send_email');
