@@ -4,6 +4,7 @@ import {
   PROACTIVE_ROUTING,
   familyDecisionCapEnabled,
   proactiveCadence,
+  proactiveNoRepeatEnabled,
   proactiveReviewGuardsEnabled,
   proactiveSendsPaused,
   requestedCadence,
@@ -13,6 +14,17 @@ import {
 afterEach(() => {
   vi.unstubAllEnvs();
   setFlagEvaluatorForTests(null);
+});
+
+describe('proactive no-repeat flag', () => {
+  it('is on only for exact true', () => {
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', undefined);
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true\n');
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    expect(proactiveNoRepeatEnabled()).toBe(true);
+  });
 });
 
 describe('proactive cadence flag', () => {

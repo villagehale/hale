@@ -129,7 +129,7 @@ function toOp(value: z.infer<typeof opSchema>): WorkstreamOp {
 
 interface ExtractChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
 }
 
@@ -147,7 +147,8 @@ interface ExtractContext {
   events: ExtractEvent[];
 }
 
-function firstName(name: string): string {
+function firstName(name: string | null): string | null {
+  if (!name) return null;
   const first = name.trim().split(/\s+/)[0] ?? '';
   return first.replace(/[\r\n]/g, '').slice(0, 40);
 }
@@ -276,7 +277,7 @@ export function renderWorkstreamExtractInput(input: {
   now: Date;
   timeZone: string;
   language: 'en' | 'fr';
-  children: readonly { id: string; name: string; ageMonths: number }[];
+  children: readonly { id: string; name: string | null; ageMonths: number }[];
   events: readonly { id: string; title: string; startsAt: string }[];
   parentText: string;
   haleText: string;

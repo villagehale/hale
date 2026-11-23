@@ -24,7 +24,7 @@ export interface InboxEnvelope {
  * (rule #1: one family's children names only in context). */
 export interface FamilyChildRef {
   id: string;
-  name: string;
+  name: string | null;
   ageInMonths: number;
 }
 

@@ -19,7 +19,7 @@ import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
  * the pre-signed avatar URL (or null for the initials fallback). */
 export interface FamilyChild {
   id: string;
-  name: string;
+  name: string | null;
   lastName: string | null;
   dateOfBirth: string;
   stageLabel: string;

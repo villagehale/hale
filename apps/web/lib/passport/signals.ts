@@ -32,7 +32,7 @@ export type SkipReason =
 
 export interface ChildRef {
   id: string;
-  name: string;
+  name: string | null;
   teenager: boolean;
 }
 
@@ -338,7 +338,7 @@ export function assignChild(
     return { ok: true, childId: hit.id, ambiguous: false };
   }
   const named = children.filter((child) => {
-    const name = child.name.trim();
+    const name = child.name?.trim() ?? '';
     if (!name) return false;
     return new RegExp(`\\b${escapeRegExp(name)}\\b`, 'i').test(text);
   });

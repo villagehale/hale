@@ -238,7 +238,7 @@ export interface AgentContext {
 }
 
 function toChildContext(
-  row: { id: string; name: string; dateOfBirth: string },
+  row: { id: string; name: string | null; dateOfBirth: string },
   now: Date,
 ): ChildContext {
   const stage = deriveStage(row.dateOfBirth, now);
@@ -283,7 +283,7 @@ export interface LoadAgentContextInput {
  */
 function toFocusedChild(
   focusedChildId: string,
-  childRows: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>,
+  childRows: ReadonlyArray<{ id: string; name: string | null; dateOfBirth: string }>,
   storedCountry: string | null,
   now: Date,
 ): FocusedChildContext | null {

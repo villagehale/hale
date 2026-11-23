@@ -93,6 +93,14 @@ export function proactiveReviewGuardsEnabled(): boolean {
 }
 
 /**
+ * VIL-763 · a proactive text that would mean the same thing as one already sent
+ * is not sent. Off unless the env is exactly `true`.
+ */
+export function proactiveNoRepeatEnabled(): boolean {
+  return isEnabled('proactive-no-repeat');
+}
+
+/**
  * VIL-701 · per-family daily model-decision cap inside the hourly review. Off unless
  * the env is exactly `true`.
  */

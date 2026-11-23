@@ -541,6 +541,69 @@ describe('runProactiveReview', () => {
     expect(sent?.after).toMatchObject({ kind: 'weather_swap', itemIds: [id], mode: 'live' });
   });
 
+  it('drops a repeat and sends nothing when the flag is exactly true', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    const prior = 'Hey, just checking in tonight. How is everything going?';
+    await threadProactiveMessage(db.database, { familyId, parentUserId, body: prior });
+    await db.database
+      .update(schema.messages)
+      .set({ createdAt: new Date(THURSDAY_EVENING.getTime() - 24 * 3_600_000) });
+    const id = await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'how the day went',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const seen: string[][] = [];
+    const h = harness(sendAll, {
+      compose: async (input) => {
+        seen.push([...(input.recentTexts ?? [])]);
+        return { skipped: 'repeat' };
+      },
+    });
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(seen).toEqual([[prior]]);
+    expect(h.transport.sent).toEqual([]);
+    expect(summary.sent).toBe(0);
+    expect(summary.dropped).toBe(1);
+    expect(await candidate(id)).toMatchObject({
+      status: 'dropped',
+      reason: 'repeat',
+      decision: 'send_now',
+    });
+  });
+
+  it('does not hand the writer a prior text when the repeat flag is off', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'false');
+    await threadProactiveMessage(db.database, {
+      familyId,
+      parentUserId,
+      body: 'Hey, just checking in tonight. How is everything going?',
+    });
+    await enqueue('evening_check_in:fam:2026-10-08', {
+      kind: 'evening_check_in',
+      category: 'evening_check_in',
+      templateKey: 'checkin:ask',
+      what: 'how the day went',
+      why: 'evening check-in',
+      sourceUrl: null,
+    });
+    const seen: Array<readonly string[] | undefined> = [];
+    const h = harness(sendAll, {
+      compose: async (input) => {
+        seen.push(input.recentTexts);
+        return { message: MESSAGE };
+      },
+    });
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+    expect(seen).toEqual([undefined]);
+    expect(h.transport.bodies()).toEqual([MESSAGE]);
+  });
+
   it('writes each parent their own text when their items differ and there is no group', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const [coParent] = await db.database

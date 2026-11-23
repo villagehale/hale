@@ -19,7 +19,7 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * (loopChildName composes the teen age gate on top). */
 export interface PlanChild {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
   gender: string;
 }

@@ -192,7 +192,7 @@ export interface NudgeFamily {
 
 export interface NudgeChildRow {
   id: string;
-  name: string;
+  name: string | null;
   dateOfBirth: string;
   /** As STORED. A date derived from an age a parent spoke earns the ±6-month early-edge
    * tolerance in the registration and health matchers; a birthday a parent typed does

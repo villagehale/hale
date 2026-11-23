@@ -36,7 +36,7 @@ import { type RefLink, attachLinks } from './activity-links';
 /** A child of this family, as the redactor needs them: enough to age the gate and to
  * render the replacement identifier at the right level. */
 export interface ReplyChild {
-  name: string;
+  name: string | null;
   gender: string;
   dateOfBirth: string;
 }
@@ -96,6 +96,7 @@ export function redactTeenNames(
 ): string {
   let out = text;
   for (const child of children) {
+    if (!child.name) continue;
     if (resolveChildNameLevel(child.dateOfBirth, 'first_name', now) !== 'generic') continue;
     const generic = renderChildName(child, 'generic');
     out = out.replace(nameAnywhere(child.name), (_match, before: string) => `${before}${generic}`);

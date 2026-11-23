@@ -62,8 +62,8 @@ export function AuthoredPlanCard({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <ChildTag childId={plan.childId} label={plan.childName} />
             {/* "Settled" was carried by a 60% dim alone — appearance as the sole
-              * carrier of a state (a11y rule), and invisible to anyone reading the
-              * card on its own. The chip says it; the dim stays as reinforcement. */}
+             * carrier of a state (a11y rule), and invisible to anyone reading the
+             * card on its own. The chip says it; the dim stays as reinforcement. */}
             {settled ? <span className="pill pill-tint chip-gray">settled</span> : null}
             {when ? <span className="meta text-ink-2">{when}</span> : null}
           </div>
@@ -94,8 +94,8 @@ export function PlanItemCard({ item }: { item: PlanChildItem }) {
     return (
       <Card>
         {/* Shore's privacy mark — the same shield + terracotta wash Approvals and the
-          * trail use for the same fact, so "held back for a teen" reads as one thing
-          * across the receipts path. */}
+         * trail use for the same fact, so "held back for a teen" reads as one thing
+         * across the receipts path. */}
         <span className="pill pill-berry inline-flex items-center gap-1.5">
           <Shield size={13} strokeWidth={1.8} aria-hidden="true" />
           private
@@ -113,7 +113,13 @@ export function PlanItemCard({ item }: { item: PlanChildItem }) {
         {item.what}
       </p>
       <p className="meta mt-1 text-ink-2">
-        <span data-hale-pii>{item.childName}</span> · {item.when}
+        {item.childName ? (
+          <>
+            <span data-hale-pii>{item.childName}</span>
+            {' · '}
+          </>
+        ) : null}
+        {item.when}
       </p>
     </Card>
   );

@@ -840,17 +840,17 @@ export async function rememberCalendarChanges(
     familyId: string;
     userId: string;
     changes: readonly CalendarChange[];
-    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
+    children: ReadonlyArray<{ id: string; name: string | null; dateOfBirth: string }>;
     seeding: boolean;
     bothCalendars: boolean;
     now: Date;
   },
 ): Promise<void> {
-  const childNames = input.children.map((child) => child.name);
+  const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
   const teens = teenChildIds(input.children, input.now);
   const teenNames = input.children
     .filter((child) => teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   for (const change of input.changes) {
     const stamp = changeStamp(change);
     // The teen check reads the arriving title, because someone else's title is dropped below
@@ -870,7 +870,7 @@ export async function rememberCalendarChanges(
     // parent's own (VIL-651). An unanswered invite is kept, unannounced, so a later yes can be.
     const title = titleForStorage(kidRelated, spokenBlockTitle(change.standing, change.title));
     const kid = kidRelated && change.title ? splitKidEvent(change.title, childNames)?.kid : null;
-    const childId = input.children.find((child) => child.name.trim() === kid)?.id ?? null;
+    const childId = input.children.find((child) => child.name?.trim() === kid)?.id ?? null;
     const [prev] = await database
       .select({
         startAt: schema.parentCalendarBlocks.startAt,
@@ -959,7 +959,7 @@ async function loadFamilyCalendarContext(
   language: ReplyLanguage;
   chatId: string | null;
   childNames: string[];
-  children: Array<{ id: string; name: string; dateOfBirth: string }>;
+  children: Array<{ id: string; name: string | null; dateOfBirth: string }>;
 }> {
   const members = await database
     .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
@@ -1023,7 +1023,7 @@ async function loadFamilyCalendarContext(
     timeZone: zone?.timezone ?? 'America/Toronto',
     language: family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     chatId: family?.linqGroupChatId ?? null,
-    childNames: children.map((row) => row.name),
+    childNames: children.flatMap((row) => (row.name ? [row.name] : [])),
     children,
   };
 }
@@ -1278,7 +1278,7 @@ async function clashNotice(
     const parts = poll
       ? splitKidEvent(
           poll.plan.title,
-          input.children.map((child) => child.name),
+          input.children.flatMap((child) => (child.name ? [child.name] : [])),
         )
       : null;
     return {
@@ -1315,7 +1315,7 @@ interface ClashPlanningInput {
   calendarUserIds: readonly string[];
   blocks: readonly BusyBlock[];
   remembered: readonly RememberedLogistics[];
-  children: readonly { id: string; name: string }[];
+  children: readonly { id: string; name: string | null }[];
   teens: ReadonlySet<string>;
 }
 
@@ -1394,10 +1394,10 @@ async function planClashes(
           : ahead,
       ),
     );
-  const childNames = input.children.map((child) => child.name);
+  const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
   const teenNames = input.children
     .filter((child) => input.teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   const aboutTeen = (title: string) =>
     withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
   // A private plan's calendar copy is busy time wherever either of them sits, so a copy
@@ -1463,7 +1463,7 @@ async function planClashes(
 async function loadSweepBlocks(
   database: Database,
   familyId: string,
-  context: { children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }> },
+  context: { children: ReadonlyArray<{ id: string; name: string | null; dateOfBirth: string }> },
   now: Date,
 ): Promise<{ blocks: BusyBlock[]; teens: Set<string> }> {
   const rows = await database
@@ -1471,10 +1471,10 @@ async function loadSweepBlocks(
     .from(schema.parentCalendarBlocks)
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
   const teens = teenChildIds(context.children, now);
-  const childNames = context.children.map((child) => child.name);
+  const childNames = context.children.flatMap((child) => (child.name ? [child.name] : []));
   const teenNames = context.children
     .filter((child) => teens.has(child.id))
-    .map((child) => child.name);
+    .flatMap((child) => (child.name ? [child.name] : []));
   const blocks = rows.map((row): BusyBlock => {
     const teen =
       (row.childId !== null && teens.has(row.childId)) ||
@@ -2558,8 +2558,10 @@ export async function familyFreeBusy(
         ),
       ),
   ]);
-  const childNames = children.map((child) => child.name);
-  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const childNames = children.flatMap((child) => (child.name ? [child.name] : []));
+  const teenNames = children
+    .filter((child) => teens.has(child.id))
+    .flatMap((child) => (child.name ? [child.name] : []));
   const aboutTeen = (title: string) =>
     withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
   const privateCopies = new Set(

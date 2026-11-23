@@ -106,6 +106,7 @@ export function eventDescriptor(
   if (
     child &&
     level !== 'generic' &&
+    child.name !== null &&
     !event.title.toLowerCase().includes(child.name.toLowerCase())
   ) {
     const leveled = loopChildName({ ...child, gender: child.gender ?? '' }, level, now);

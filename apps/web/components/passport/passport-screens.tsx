@@ -33,7 +33,7 @@ export function PassportKidScreen({
         <span aria-hidden="true"> › </span>
         <span>{kid.name}</span>
       </p>
-      <PortalHeading title={kid.name} lede={passportLede(kid)} />
+      <PortalHeading title={kid.name ?? ''} lede={passportLede(kid)} />
       <KidPassport model={model} kid={kid} initialStampId={initialStampId} />
     </div>
   );

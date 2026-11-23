@@ -258,14 +258,14 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
 }
 
 export function toFitChild(
-  row: { id: string; name: string; dateOfBirth: string },
+  row: { id: string; name: string | null; dateOfBirth: string },
   now: Date = new Date(),
 ): FamilyFitChild {
   const stage = deriveStage(row.dateOfBirth, now);
   if (stage === 'teenager') return { childId: row.id, name: null, stage, ageYears: null };
   return {
     childId: row.id,
-    name: row.name.trim() || null,
+    name: row.name?.trim() || null,
     stage,
     ageYears: Math.floor(ageInMonths(row.dateOfBirth, now) / 12),
   };

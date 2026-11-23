@@ -474,7 +474,10 @@ async function readNamableChildren(
     .where(eq(schema.children.familyId, familyId));
   return rows
     .filter((row) => deriveStage(row.dateOfBirth, now) !== 'teenager')
-    .map((row) => row.name);
+    .flatMap((row) => {
+      const name = row.name?.trim() ?? '';
+      return name.length > 0 ? [name] : [];
+    });
 }
 
 /**

@@ -23,7 +23,7 @@ export function StampBook({
   onOpenId,
 }: {
   kid: KidCard;
-  kids: { id: string; name: string }[];
+  kids: { id: string; name: string | null }[];
   initialStampId?: string | null;
   openId?: string | null;
   onOpenId?: (id: string | null) => void;
@@ -124,7 +124,7 @@ function StampSheet({
 }: {
   stamp: StampCard;
   kid: KidCard;
-  kids: { id: string; name: string }[];
+  kids: { id: string; name: string | null }[];
   onClose: () => void;
 }) {
   const [childId, setChildId] = useState(stamp.childId ?? kid.id);

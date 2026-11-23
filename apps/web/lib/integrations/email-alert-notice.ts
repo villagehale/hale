@@ -165,9 +165,9 @@ export function emailAlertNoticeFacts(input: {
     children: hidden
       ? []
       : input.children
-          .filter((child) => child.name.trim() !== '')
+          .filter((child) => (child.name ?? '').trim() !== '')
           .map((child) => ({
-            name: child.name.trim(),
+            name: (child.name ?? '').trim(),
             ageYears: Math.floor(child.ageInMonths / 12),
           })),
     email: {
@@ -176,7 +176,7 @@ export function emailAlertNoticeFacts(input: {
       subject: hidden ? null : input.subject.trim() || null,
       kind: input.kind,
       title: extraction.event.title.trim(),
-      namedChild: hidden ? null : (named?.name.trim() ?? null),
+      namedChild: hidden ? null : (named?.name?.trim() ?? null),
       was: hidden ? null : moment(extraction.event.originalTime, timeZone),
       when: hidden ? null : moment(extraction.event.newTime, timeZone),
       durationMinutes: hidden ? null : input.durationMinutes,

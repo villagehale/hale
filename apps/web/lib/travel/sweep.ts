@@ -716,7 +716,9 @@ async function readChildNames(
   const namable: string[] = [];
   const teens: string[] = [];
   for (const row of rows) {
-    (deriveStage(row.dateOfBirth, now) === 'teenager' ? teens : namable).push(row.name);
+    const name = row.name?.trim() ?? '';
+    if (name.length === 0) continue;
+    (deriveStage(row.dateOfBirth, now) === 'teenager' ? teens : namable).push(name);
   }
   return { namable, teens };
 }
