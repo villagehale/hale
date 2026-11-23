@@ -468,7 +468,9 @@ export const REDEEM_TRY_AGAIN = 'This link did not open. Tap it again in a momen
 export const REDEEM_UNAVAILABLE = 'Sign-in is not available right now.';
 export const REDEEM_NO_NUMBER =
   "Hale can't send a code for this link. Text Hale and ask for a new one.";
-export const REDEEM_CODE_JUST_SENT = 'A code just went out. Give it a minute.';
+// The pending code may belong to a sibling link and not open this one.
+export const REDEEM_CODE_JUST_SENT =
+  "A code just went out. If it doesn't work, send a new one in a minute.";
 
 export const CODE_HEADING = 'Enter your code';
 export const CODE_LEDE = 'Hale texted a 6-digit code to the number on this account.';

@@ -56,6 +56,25 @@ export type RequestOtpResult =
   | { status: 'invalid_phone' }
   | { status: 'cooldown'; retryAfterMs: number };
 
+/** Milliseconds until this user may be sent another code, or null when they may be now. */
+export async function otpResendWaitMs(
+  database: Database,
+  userId: string,
+  now: Date,
+): Promise<number | null> {
+  const [recent] = await database
+    .select({ lastSentAt: schema.phoneVerifications.lastSentAt })
+    .from(schema.phoneVerifications)
+    .where(
+      and(eq(schema.phoneVerifications.userId, userId), isNull(schema.phoneVerifications.consumedAt)),
+    )
+    .orderBy(desc(schema.phoneVerifications.lastSentAt))
+    .limit(1);
+
+  if (!recent?.lastSentAt || !isResendInCooldown(recent.lastSentAt, now)) return null;
+  return OTP_RESEND_COOLDOWN_MS - (now.getTime() - recent.lastSentAt.getTime());
+}
+
 /**
  * Mint + send a fresh OTP for `phoneRaw`. Refuses an invalid NANP number, honours
  * the 60s resend cooldown, and persists NOTHING when the sender is unconfigured
@@ -79,23 +98,9 @@ export async function requestPhoneOtp(
     return { status: 'invalid_phone' };
   }
 
-  const [recent] = await database
-    .select({ lastSentAt: schema.phoneVerifications.lastSentAt })
-    .from(schema.phoneVerifications)
-    .where(
-      and(
-        eq(schema.phoneVerifications.userId, input.userId),
-        isNull(schema.phoneVerifications.consumedAt),
-      ),
-    )
-    .orderBy(desc(schema.phoneVerifications.lastSentAt))
-    .limit(1);
-
-  if (recent?.lastSentAt && isResendInCooldown(recent.lastSentAt, now)) {
-    return {
-      status: 'cooldown',
-      retryAfterMs: OTP_RESEND_COOLDOWN_MS - (now.getTime() - recent.lastSentAt.getTime()),
-    };
+  const retryAfterMs = await otpResendWaitMs(database, input.userId, now);
+  if (retryAfterMs !== null) {
+    return { status: 'cooldown', retryAfterMs };
   }
 
   const code = (deps.generateCode ?? generateOtpCode)();

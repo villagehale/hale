@@ -470,8 +470,47 @@ describe('a texted connect link needs a code', () => {
         states.push((await tap(link.token, 'gcal')).state);
       }
 
-      expect(sender.sent).toHaveLength(4);
+      expect(sender.sent).toHaveLength(5);
       expect(states.at(-1)).toEqual({ status: 'code', message: CLAIM_RATE_LIMIT });
+    });
+
+    it('spends the hourly budget only on real sends, not on taps inside the cooldown', async () => {
+      const parent = await seedParent();
+      const link = await mintLink(parent.userId);
+
+      for (let i = 0; i < 5; i += 1) await tap(link.token, 'gcal');
+      expect(sender.sent).toHaveLength(1);
+
+      advance(COOLDOWN_PASSED_MS);
+      const afterCooldown = await tap(link.token, 'gcal');
+
+      expect(afterCooldown.state).toEqual({ status: 'code', message: null });
+      expect(sender.sent).toHaveLength(2);
+    });
+
+    it('does not promise a usable code to a sibling link tapped inside the cooldown', async () => {
+      const parent = await seedParent();
+      const [first, sibling] = await mintChannelSigninTokens(db.database, {
+        userId: parent.userId,
+        count: 2,
+        now: new Date(),
+      });
+      if (!first || !sibling) throw new Error('expected two links');
+
+      await tap(first.token, 'gcal');
+      const siblingTap = await tap(sibling.token, 'gcal');
+
+      expect(sender.sent).toHaveLength(1);
+      expect(siblingTap.state).toEqual({
+        status: 'code',
+        message: "A code just went out. If it doesn't work, send a new one in a minute.",
+      });
+
+      advance(COOLDOWN_PASSED_MS);
+      await tap(sibling.token, 'gcal');
+      expect(sender.sent).toHaveLength(2);
+      const opened = await tap(sibling.token, 'gcal', { code: lastCode() });
+      expect(opened.redirect).toContain('/api/integrations/gcal/connect');
     });
   });
 

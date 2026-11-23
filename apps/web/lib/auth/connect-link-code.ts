@@ -5,7 +5,11 @@ import { recallChannelSigninParent } from '~/lib/auth/channel-signin';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { OTP_MAX_ATTEMPTS, isOtpExpired, verifyBoundOtpCode } from '~/lib/channels/otp';
 import type { OtpSender } from '~/lib/channels/otp-sender';
-import { requestPhoneOtp, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import {
+  otpResendWaitMs,
+  requestPhoneOtp,
+  resolveSendablePhone,
+} from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
@@ -43,6 +47,10 @@ export async function requestConnectLinkCode(
 
   const phone = await resolveSendablePhone(database, link.userId);
   if (!phone) return 'no_verified_number';
+
+  // Before the limiter, because a tap that sends nothing must not spend the budget
+  // /sign-in shares: family members tapping a posted link would lock the parent out.
+  if ((await otpResendWaitMs(database, link.userId, now)) !== null) return 'cooldown';
 
   // The sign-in door's per-number budget, shared on purpose: a link must not buy a
   // number more texts than /sign-in allows. The limiter's upsert is atomic, which the
