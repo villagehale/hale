@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -45,9 +46,13 @@ export const eventNotesJsonSchema = {
 
 const eventNotesSchema = z.object({ parking: z.string(), bring: z.string() });
 
-/** Same bytes the eval replays (run-event-notes-eval.mjs). */
+/** Same bytes the eval replays (run-event-notes-eval.mjs). Flag off keeps those bytes. */
 export function eventNotesUserMessage(title: string, description: string): string {
-  return JSON.stringify({ title, description });
+  const marked = isEnabled('untrusted-field-marking');
+  return JSON.stringify({
+    title: presentUntrusted(marked, 'calendar', 'title', title),
+    description: presentUntrusted(marked, 'calendar', 'description', description),
+  });
 }
 
 /** Hash of what the facts were read from: the title AND the description. A renamed event with

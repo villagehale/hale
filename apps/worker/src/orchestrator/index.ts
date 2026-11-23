@@ -588,6 +588,7 @@ export async function runOrchestrator(
       const slice = await getMemorySlice(familyId);
       const drafted = await runDrafter({
         familyId,
+        source: job.source,
         event: { eventId, eventType: classified.eventType, payload: classified.payload },
         actionType,
         memorySlice: { relevantFacts: slice.facts, relevantEpisodes: slice.episodes },

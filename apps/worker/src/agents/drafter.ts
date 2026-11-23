@@ -1,4 +1,11 @@
-import { SPARSE_CACHE_TTL, forceToolJson, pickLane } from '@hale/agent';
+import {
+  SPARSE_CACHE_TTL,
+  forceToolJson,
+  pickLane,
+  presentUntrustedJson,
+  untrustedSourceFor,
+} from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import type { ActionType, DraftedAction } from '@hale/types';
 import { z } from 'zod';
 import { llmFamilyContext, withLlmContext } from '../analytics/llm-trace.js';
@@ -34,6 +41,8 @@ const drafterOutputJsonSchema = {
 
 interface DrafterRunInput {
   familyId: string;
+  /** Where the event came from (`events.source`): the label on its untrusted fields. */
+  source: string;
   event: {
     eventId: string;
     eventType: string;
@@ -58,7 +67,15 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
 
   const userMessage = JSON.stringify({
     action_type: input.actionType,
-    event: input.event,
+    event: {
+      ...input.event,
+      payload: presentUntrustedJson(
+        isEnabled('untrusted-field-marking'),
+        untrustedSourceFor(input.source),
+        'payload',
+        input.event.payload,
+      ),
+    },
     memory_slice: input.memorySlice ?? null,
     voice_profile: input.voiceProfile ?? null,
     action_template_hint: input.actionTemplateHint ?? null,
