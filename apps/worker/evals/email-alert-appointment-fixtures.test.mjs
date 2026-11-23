@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { EMAIL_ALERT_APPOINTMENT_FIXTURES } from './email-alert-appointment-fixtures.mjs';
 
-const RUNNER = fileURLToPath(new URL('./email-alert-appointment-eval.mjs', import.meta.url));
+const RUNNER = fileURLToPath(new URL('./run-email-alert-appointment-eval.mjs', import.meta.url));
 
 function run(args) {
   const { ANTHROPIC_API_KEY: _key, ANTHROPIC_API_KEY_TEST: _test, ...env } = process.env;
