@@ -148,7 +148,10 @@ export type TurnFailureReason =
   | 'ask_order_unmarked'
   /** VIL-683 · the send seam refused the reply as garbled after the writer was asked once
    * more. Nothing was texted; the turn is claimed. */
-  | 'garbled_text';
+  | 'garbled_text'
+  /** Linq's answer did not prove the reply stayed home. Nothing else is texted, and the
+   * turn is claimed so the coach does not run again and write an apology on top. */
+  | 'send_unconfirmed';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

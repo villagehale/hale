@@ -44,7 +44,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { BUBBLE_GAP_MS } from '~/lib/channel/linq/bubble-gap';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
-import { createLinqPhoneTransport } from '~/lib/channel/linq/transport';
+import { LinqSendError, createLinqPhoneTransport } from '~/lib/channel/linq/transport';
 import { type VoiceReplyOutcome, sendReplyAsVoiceMemo } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
@@ -2113,6 +2113,22 @@ describe('failure honesty', () => {
       throw new Error('cannot read properties of undefined');
     },
   };
+
+  it('does not apologize when a threaded send may already have landed', async () => {
+    vi.stubEnv('PARENT_SEND_RECEIPT_ENABLED', 'true');
+    const apology = fakeApology();
+    const coach: ChannelCoachRuntime = {
+      respond: async () => {
+        throw new LinqSendError('409', 409, true);
+      },
+    };
+    const h = harness({ coach, apology });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(apology.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+  });
 
   it('sends the composed apology, not a stock sentence', async () => {
     const apology = fakeApology();
