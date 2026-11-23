@@ -169,6 +169,60 @@ async function pageUnsent(
   });
 }
 
+/** One caller owns this row until it settles. `claimAt` is the fence the next writer must match. */
+export interface OwnedParentSend {
+  claimId: string;
+  claimAt: Date;
+  retry: number;
+  sendKey: string;
+  inFlightCode: string;
+}
+
+export type BegunParentSend =
+  | { state: 'owned'; owned: OwnedParentSend }
+  | { state: 'already_sent'; rowId: string }
+  | { state: 'in_flight' };
+
+/**
+ * Claim the row before any work that must not run twice, such as minting a sign-in
+ * link. A fresh in-flight row, or a claim another caller just took, returns without
+ * a send. The timestamp on the row changes on every claim, so two callers that read
+ * the same stale row cannot both take it.
+ */
+export async function beginParentSend(
+  database: Database,
+  input: Omit<ParentSendInput, 'send' | 'pager' | 'final'>,
+): Promise<BegunParentSend> {
+  const existing = await readRow(database, input);
+  if (existing && parentSendClosed(existing)) {
+    return { state: 'already_sent', rowId: existing.id };
+  }
+  if (existing && freshInFlight(existing, input.now)) {
+    return { state: 'in_flight' };
+  }
+
+  const retry = nextRetry(existing);
+  const inFlightCode = withRetry(PARENT_SEND_IN_FLIGHT, retry);
+  const claimed = existing
+    ? await takeOver(database, existing, input.now, inFlightCode)
+    : await insertClaim(database, input, inFlightCode);
+  if (!claimed) {
+    const raced = await readRow(database, input);
+    if (raced && parentSendClosed(raced)) return { state: 'already_sent', rowId: raced.id };
+    return { state: 'in_flight' };
+  }
+  return {
+    state: 'owned',
+    owned: {
+      claimId: claimed.id,
+      claimAt: claimed.createdAt,
+      retry,
+      sendKey: linqKeyFor(input.familyId, input.logicalKey, retry),
+      inFlightCode,
+    },
+  };
+}
+
 /**
  * Send one logical text, or continue the row a previous try left. An unclear try
  * reuses {@link parentLinqKey} of this family and `logicalKey`. A certain refusal
@@ -178,60 +232,33 @@ export async function deliverParentText(
   database: Database,
   input: ParentSendInput,
 ): Promise<ParentSendResult> {
-  const existing = await readRow(database, input);
-  if (existing && parentSendClosed(existing)) {
-    return { outcome: 'already_sent', rowId: existing.id };
-  }
-  if (existing && freshInFlight(existing, input.now)) {
-    return { outcome: 'in_flight' };
-  }
-
-  const retry = nextRetry(existing);
-  const claimId = existing
-    ? await takeOver(database, existing, input.now, retry)
-    : await insertClaim(database, input);
-  if (claimId === null) {
-    const raced = await readRow(database, input);
-    if (raced && parentSendClosed(raced)) return { outcome: 'already_sent', rowId: raced.id };
-    return { outcome: 'in_flight' };
-  }
-
-  const sendKey = linqKeyFor(input.familyId, input.logicalKey, retry);
-  try {
-    const sent = await input.send(sendKey);
-    await database.transaction(async (tx) => {
-      await tx
-        .update(schema.channelMessages)
-        .set({
-          status: acceptedStatus(input.channel),
-          errorCode: null,
-          providerMessageId: sent.providerMessageId,
-          providerChatId: sent.chatId ?? input.providerChatId,
-          sentAt: input.now,
-          body: input.recordBody,
-        })
-        .where(eq(schema.channelMessages.id, claimId));
-      await tx.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: input.parentUserId,
-        actionTaken: 'sms_reply_sent',
-        targetTable: 'channel_messages',
-        targetId: claimId,
-        after: { templateKey: input.templateKey, surface: input.surface },
-      });
-    });
-    return {
-      outcome: 'sent',
-      rowId: claimId,
-      providerMessageId: sent.providerMessageId,
-      chatId: sent.chatId ?? input.providerChatId,
-    };
-  } catch (err) {
-    return settleFailure(database, input, claimId, retry, err);
-  }
+  const begun = await beginParentSend(database, input);
+  if (begun.state === 'already_sent') return { outcome: 'already_sent', rowId: begun.rowId };
+  if (begun.state === 'in_flight') return { outcome: 'in_flight' };
+  return completeParentSend(database, begun.owned, input);
 }
 
-async function insertClaim(database: Database, input: ParentSendInput): Promise<string | null> {
+/** Drop a claim that never reached Linq, so a later try can start clean. */
+export async function releaseParentSend(database: Database, owned: OwnedParentSend): Promise<void> {
+  await database
+    .update(schema.channelMessages)
+    .set({ status: 'failed', errorCode: 'released', dedupeKey: null, body: null })
+    .where(owns(owned));
+}
+
+function owns(owned: OwnedParentSend) {
+  return and(
+    eq(schema.channelMessages.id, owned.claimId),
+    eq(schema.channelMessages.errorCode, owned.inFlightCode),
+    eq(schema.channelMessages.createdAt, owned.claimAt),
+  );
+}
+
+async function insertClaim(
+  database: Database,
+  input: Omit<ParentSendInput, 'send' | 'pager' | 'final'>,
+  inFlightCode: string,
+): Promise<{ id: string; createdAt: Date } | null> {
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({
@@ -244,12 +271,15 @@ async function insertClaim(database: Database, input: ParentSendInput): Promise<
       dedupeKey: input.logicalKey,
       providerChatId: input.providerChatId,
       status: 'failed',
-      errorCode: PARENT_SEND_IN_FLIGHT,
+      errorCode: inFlightCode,
       body: null,
     })
     .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
-  return claimed?.id ?? null;
+    .returning({
+      id: schema.channelMessages.id,
+      createdAt: schema.channelMessages.createdAt,
+    });
+  return claimed ?? null;
 }
 
 /** A crashed or unconfirmed try. Null: another caller took the row first. */
@@ -257,19 +287,66 @@ async function takeOver(
   database: Database,
   row: SendRow,
   now: Date,
-  retry: number,
-): Promise<string | null> {
+  inFlightCode: string,
+): Promise<{ id: string; createdAt: Date } | null> {
   const [taken] = await database
     .update(schema.channelMessages)
-    .set({ errorCode: withRetry(PARENT_SEND_IN_FLIGHT, retry), createdAt: now })
+    .set({ errorCode: inFlightCode, createdAt: now })
     .where(
       and(
         eq(schema.channelMessages.id, row.id),
         eq(schema.channelMessages.errorCode, row.errorCode ?? ''),
+        eq(schema.channelMessages.createdAt, row.createdAt),
       ),
     )
-    .returning({ id: schema.channelMessages.id });
-  return taken?.id ?? null;
+    .returning({
+      id: schema.channelMessages.id,
+      createdAt: schema.channelMessages.createdAt,
+    });
+  return taken ?? null;
+}
+
+export async function completeParentSend(
+  database: Database,
+  owned: OwnedParentSend,
+  input: ParentSendInput,
+): Promise<ParentSendResult> {
+  try {
+    const sent = await input.send(owned.sendKey);
+    const wrote = await database.transaction(async (tx) => {
+      const [row] = await tx
+        .update(schema.channelMessages)
+        .set({
+          status: acceptedStatus(input.channel),
+          errorCode: null,
+          providerMessageId: sent.providerMessageId,
+          providerChatId: sent.chatId ?? input.providerChatId,
+          sentAt: input.now,
+          body: input.recordBody,
+        })
+        .where(owns(owned))
+        .returning({ id: schema.channelMessages.id });
+      if (!row) return false;
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: input.parentUserId,
+        actionTaken: 'sms_reply_sent',
+        targetTable: 'channel_messages',
+        targetId: owned.claimId,
+        after: { templateKey: input.templateKey, surface: input.surface },
+      });
+      return true;
+    });
+    if (!wrote) return { outcome: 'in_flight' };
+    return {
+      outcome: 'sent',
+      rowId: owned.claimId,
+      providerMessageId: sent.providerMessageId,
+      chatId: sent.chatId ?? input.providerChatId,
+    };
+  } catch (err) {
+    return settleFailure(database, input, owned, err);
+  }
 }
 
 type FailureKind = 'garbled' | 'release' | 'refused' | 'unknown';
@@ -296,41 +373,50 @@ function failureCode(err: unknown): string {
 async function settleFailure(
   database: Database,
   input: ParentSendInput,
-  claimId: string,
-  retry: number,
+  owned: OwnedParentSend,
   err: unknown,
 ): Promise<ParentSendResult> {
   const kind = failureKind(err);
   const code = failureCode(err);
   if (kind === 'garbled' || kind === 'release') {
-    await database
+    const [released] = await database
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: code, dedupeKey: null, body: null })
-      .where(eq(schema.channelMessages.id, claimId));
+      .where(owns(owned))
+      .returning({ id: schema.channelMessages.id });
+    if (!released) return { outcome: 'in_flight' };
+    console.warn(
+      { familyId: input.familyId, surface: input.surface, code },
+      'parent send: nothing sent',
+    );
     return { outcome: 'released', code };
   }
 
   const unconfirmed = kind === 'unknown';
-  const stored = withRetry(unconfirmed ? `${UNCONFIRMED_PREFIX}${code}` : code, retry);
+  const stored = withRetry(unconfirmed ? `${UNCONFIRMED_PREFIX}${code}` : code, owned.retry);
   const page = kind === 'refused' || (unconfirmed && input.final);
-  await database.transaction(async (tx) => {
-    await tx
+  const wrote = await database.transaction(async (tx) => {
+    const [row] = await tx
       .update(schema.channelMessages)
       .set({ status: 'failed', errorCode: stored, body: null })
-      .where(eq(schema.channelMessages.id, claimId));
-    if (!page) return;
+      .where(owns(owned))
+      .returning({ id: schema.channelMessages.id });
+    if (!row) return false;
+    if (!page) return true;
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: 'system',
       actionTaken: 'parent_send_unsent',
       targetTable: 'channel_messages',
-      targetId: claimId,
+      targetId: owned.claimId,
       after: {
         surface: input.surface,
         failure: kind === 'refused' ? 'send_refused' : 'not_confirmed',
       },
     });
+    return true;
   });
+  if (!wrote) return { outcome: 'in_flight' };
   if (page) {
     await pageUnsent(
       input.pager,
@@ -342,8 +428,8 @@ async function settleFailure(
     { familyId: input.familyId, surface: input.surface, code: stored },
     'parent send: Linq did not accept, not marked sent',
   );
-  if (kind === 'refused') return { outcome: 'refused', code, rowId: claimId };
-  return { outcome: 'unknown', code, rowId: claimId };
+  if (kind === 'refused') return { outcome: 'refused', code, rowId: owned.claimId };
+  return { outcome: 'unknown', code, rowId: owned.claimId };
 }
 
 export { parentSendReceiptEnabled };

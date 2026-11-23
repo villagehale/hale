@@ -6,9 +6,13 @@ import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-re
 import { acceptedStatus, familySendSpent } from '~/lib/channel/ledger';
 import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import {
+  type OwnedParentSend,
+  beginParentSend,
+  completeParentSend,
   deliverParentText,
   parentSendClosed,
   parentSendReceiptEnabled,
+  releaseParentSend,
 } from '~/lib/channel/parent-send';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -117,6 +121,14 @@ async function deliverOneToOne(
       return { providerMessageId: sent.providerMessageId, chatId: sent.chatId };
     },
   });
+  return oneToOneFromReceipt(database, input.familyId, result);
+}
+
+async function oneToOneFromReceipt(
+  database: Database,
+  familyId: string,
+  result: Awaited<ReturnType<typeof deliverParentText>>,
+): Promise<OneToOneSent> {
   if (result.outcome === 'sent') {
     return {
       outcome: 'sent',
@@ -127,7 +139,7 @@ async function deliverOneToOne(
   }
   if (result.outcome === 'already_sent') return { outcome: 'already_sent' };
   if (result.outcome === 'released' && result.code === GARBLED_TEXT) {
-    await recordGarbledRefusal(database, { familyId: input.familyId, surface: 'one_to_one' });
+    await recordGarbledRefusal(database, { familyId, surface: 'one_to_one' });
     return { outcome: 'garbled_text' };
   }
   if (result.outcome === 'released') {
@@ -141,6 +153,40 @@ async function deliverOneToOne(
     code: result.code,
     permanent: result.outcome === 'refused',
   };
+}
+
+async function finishOwnedOneToOne(
+  database: Database,
+  owned: OwnedParentSend,
+  input: {
+    familyId: string;
+    ledgerUserId: string;
+    to: string;
+    body: string;
+    templateKey: string;
+    now: Date;
+    send: OneToOneSend;
+  },
+): Promise<OneToOneSent> {
+  const result = await completeParentSend(database, owned, {
+    familyId: input.familyId,
+    parentUserId: input.ledgerUserId,
+    logicalKey: owned.sendKey,
+    channel: 'imessage',
+    category: 'reply',
+    templateKey: input.templateKey,
+    providerChatId: null,
+    now: input.now,
+    recordBody: null,
+    surface: 'one_to_one',
+    final: false,
+    pager: failurePageOpsPager(() => database),
+    send: async (sendKey) => {
+      const sent = await input.send.text({ to: input.to, body: input.body, sendKey });
+      return { providerMessageId: sent.providerMessageId, chatId: sent.chatId };
+    },
+  });
+  return oneToOneFromReceipt(database, input.familyId, result);
 }
 
 export async function sendOneToOne(
@@ -409,23 +455,40 @@ export async function deliverConnectLinkOneToOne(
   },
 ): Promise<ConnectLinkOutcome> {
   const dedupeKey = `${LINK_TEMPLATE}:${input.userId}`;
-  const [prior] = await database
-    .select({
-      id: schema.channelMessages.id,
-      status: schema.channelMessages.status,
-      errorCode: schema.channelMessages.errorCode,
-      providerMessageId: schema.channelMessages.providerMessageId,
-    })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
-  // Off: any row holds the key, which a refusal releases. On: only a text Linq
-  // accepted holds it, so a refusal can be tried again when the parent texts.
-  if (prior && (!parentSendReceiptEnabled() || parentSendClosed(prior))) {
-    return { outcome: 'already_sent' };
+  // The claim is taken before any link is minted. A second turn that arrives while
+  // the first still holds it stops here, so it cannot spend the first turn's tokens.
+  let owned: OwnedParentSend | null = null;
+  if (parentSendReceiptEnabled()) {
+    const begun = await beginParentSend(database, {
+      familyId: input.familyId,
+      parentUserId: input.userId,
+      logicalKey: dedupeKey,
+      channel: 'imessage',
+      category: 'reply',
+      templateKey: LINK_TEMPLATE,
+      providerChatId: null,
+      now: input.now,
+      recordBody: null,
+      surface: 'one_to_one',
+    });
+    if (begun.state !== 'owned') return { outcome: 'already_sent' };
+    owned = begun.owned;
+  } else {
+    const [prior] = await database
+      .select({ id: schema.channelMessages.id })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.dedupeKey, dedupeKey));
+    if (prior) return { outcome: 'already_sent' };
   }
+  const releaseOwned = async () => {
+    if (owned) await releaseParentSend(database, owned);
+  };
 
   const primary = await primaryParentId(database, input.familyId);
-  if (!primary) return { outcome: 'no_primary_parent' };
+  if (!primary) {
+    await releaseOwned();
+    return { outcome: 'no_primary_parent' };
+  }
   const language = await familyLanguage(database, input.familyId);
   const name = await firstName(database, input.userId);
   const request: GroupOnboardingRequest = {
@@ -441,7 +504,10 @@ export async function deliverConnectLinkOneToOne(
     templateKey: LINK_TEMPLATE,
     voice: input.voice,
   });
-  if ('outcome' in composed) return composed;
+  if ('outcome' in composed) {
+    await releaseOwned();
+    return composed;
+  }
 
   const minted = await offerConnectorLinks(database, {
     familyId: input.familyId,
@@ -449,22 +515,38 @@ export async function deliverConnectLinkOneToOne(
     providers: PROVIDERS,
     now: input.now,
   });
-  if (minted.status !== 'minted') return { outcome: minted.status };
+  if (minted.status !== 'minted') {
+    await releaseOwned();
+    return { outcome: minted.status };
+  }
   const phone = await resolveSendablePhone(database, input.userId);
-  if (!phone) return { outcome: 'not_enrolled' };
+  if (!phone) {
+    await releaseOwned();
+    return { outcome: 'not_enrolled' };
+  }
 
   const send = input.oneToOne ?? defaultOneToOneSend();
-  const said = await sendOneToOne(database, {
-    familyId: input.familyId,
-    ledgerUserId: input.userId,
-    to: phone,
-    body: composed.body,
-    recordBody: false,
-    templateKey: LINK_TEMPLATE,
-    dedupeKey,
-    now: input.now,
-    send,
-  });
+  const said = owned
+    ? await finishOwnedOneToOne(database, owned, {
+        familyId: input.familyId,
+        ledgerUserId: input.userId,
+        to: phone,
+        body: composed.body,
+        templateKey: LINK_TEMPLATE,
+        now: input.now,
+        send,
+      })
+    : await sendOneToOne(database, {
+        familyId: input.familyId,
+        ledgerUserId: input.userId,
+        to: phone,
+        body: composed.body,
+        recordBody: false,
+        templateKey: LINK_TEMPLATE,
+        dedupeKey,
+        now: input.now,
+        send,
+      });
   if (said.outcome === 'already_sent' || said.outcome === 'garbled_text') return said;
   if (said.outcome === 'not_sent' && (!said.permanent || said.code === 'not_configured')) {
     return { outcome: '1to1_not_sent', code: said.code };

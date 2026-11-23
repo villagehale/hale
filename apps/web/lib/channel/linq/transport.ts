@@ -105,6 +105,20 @@ export function linqRefusedForCertain(err: unknown): boolean {
 }
 
 /**
+ * A Linq answer that does not prove the text stayed home, while the receipt flag is on.
+ * The caller must not send a second bubble, including an apology, in its place.
+ */
+export function linqSendMayHaveLanded(err: unknown): boolean {
+  if (!parentSendReceiptEnabled()) return false;
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current != null; depth += 1) {
+    if (current instanceof LinqSendError) return !linqRefusedForCertain(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * VIL-226 · the in-call rate-limit retry rides PROACTIVE_CADENCE. Unset, a 429 is
  * today's refusal: one attempt, not retried.
  *

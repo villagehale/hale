@@ -5,7 +5,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { sendOneToOne } from '~/lib/channel/linq/connect-link-1to1';
 import { LinqSendError, sendLinqChatMessage } from '~/lib/channel/linq/transport';
-import { deliverParentText, parentLinqKey } from '~/lib/channel/parent-send';
+import {
+  beginParentSend,
+  completeParentSend,
+  deliverParentText,
+  parentLinqKey,
+} from '~/lib/channel/parent-send';
 import type { OpsPage, OpsPager } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 
@@ -197,6 +202,46 @@ describe('deliverParentText through Linq, fetch stubbed', () => {
         count: 1,
       },
     ]);
+  });
+
+  it('a second claim of a row just taken does not send', async () => {
+    const key = 'linq:coparent_welcome:twice';
+    let posts = 0;
+    const fetchImpl: typeof fetch = async () => {
+      posts += 1;
+      return Response.json({ message: { id: 'msg-once' } }, { status: 201 });
+    };
+    const fields = {
+      familyId,
+      parentUserId,
+      logicalKey: key,
+      channel: 'imessage' as const,
+      category: 'reply' as const,
+      templateKey: 'linq:coparent_welcome',
+      providerChatId: CHAT,
+      now: new Date(),
+      recordBody: null,
+      surface: 'group_line' as const,
+    };
+    const first = await beginParentSend(db.database, fields);
+    const second = await beginParentSend(db.database, fields);
+    expect(first.state).toBe('owned');
+    expect(second.state).toBe('in_flight');
+    if (first.state !== 'owned') return;
+    const done = await completeParentSend(db.database, first.owned, {
+      ...fields,
+      final: false,
+      pager: pager().pager,
+      send: (sendKey) =>
+        sendLinqChatMessage({
+          chatId: CHAT,
+          text: BODY,
+          sendKey,
+          fetch: fetchImpl,
+        }).then((sent) => ({ providerMessageId: sent.providerMessageId, chatId: CHAT })),
+    });
+    expect(done).toMatchObject({ outcome: 'sent', providerMessageId: 'msg-once' });
+    expect(posts).toBe(1);
   });
 });
 
