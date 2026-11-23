@@ -1,7 +1,7 @@
-import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
+import { GuardrailError, defineTool, invokeTool, markUntrusted } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -28,8 +28,13 @@ afterAll(async () => {
   await db.close();
 });
 
+beforeEach(() => {
+  vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', '');
+});
+
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
 });
 
@@ -91,6 +96,38 @@ describe('read_email · production reader', () => {
     ).resolves.toEqual({ read: true, body: BODY, truncated: false });
     expect(fetched).toEqual(['gm-1:token-1']);
   });
+
+  it.each([
+    ['off', '', BODY],
+    ['on', 'true', markUntrusted('email', 'body', BODY)],
+  ])(
+    'with the marking flag %s, the coach gets the body in its exact form',
+    async (_state, env, expected) => {
+      vi.stubEnv('UNTRUSTED_FIELD_MARKING_ENABLED', env);
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const { familyId, parentUserId } = await seedFamily(db.database);
+      await connectGmail(familyId, parentUserId);
+      const conversationId = await alert(familyId, parentUserId, 'gm-mark');
+      const { reader: r } = reader(async () => BODY);
+      const { tools, emailTexts } = taintTurnOnEmailRead([
+        readEmailTool((gmailMessageId) =>
+          r.read({ familyId, parentUserId, conversationId, gmailMessageId }),
+        ),
+      ]);
+      const tool = tools.find((t) => t.name === 'read_email');
+      if (!tool) throw new Error('no read_email');
+
+      await expect(
+        invokeTool(
+          tool,
+          { gmailMessageId: 'gm-mark' },
+          { familyId, actor: parentUserId },
+          buildGuardDeps(db.database, parentUserId),
+        ),
+      ).resolves.toEqual({ read: true, body: expected, truncated: false });
+      expect(emailTexts()).toEqual([BODY]);
+    },
+  );
 
   it('refuses an id this conversation never carried, even one alerted to the other parent', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});

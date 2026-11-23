@@ -202,7 +202,7 @@ export const FLAGS = [
   exact('team-schedule-send-receipt', 'TEAM_SCHEDULE_SEND_RECEIPT_ENABLED'),
   // VIL-734. A group reminder that closes failed pages #ops. Exact `true`.
   exact('group-reminder-unsent-page', 'GROUP_REMINDER_UNSENT_PAGE_ENABLED'),
-  exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED', { upcoming: true }),
+  exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED'),
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,

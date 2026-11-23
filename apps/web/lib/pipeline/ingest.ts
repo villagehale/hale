@@ -211,6 +211,7 @@ export async function ingestEvent(
         draftAction(
           {
             familyId,
+            source: input.source,
             event: { eventId, eventType: classified.eventType, payload: classified.payload },
             actionType,
           },

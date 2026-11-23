@@ -9,3 +9,4 @@ export * from './structured.js';
 export * from './llm-analytics.js';
 export * from './credit-alert.js';
 export * from './garbled-text.js';
+export * from './untrusted.js';

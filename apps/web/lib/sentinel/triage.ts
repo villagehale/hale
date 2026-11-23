@@ -1,4 +1,5 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, pickLane, presentUntrusted } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
@@ -63,11 +64,12 @@ async function runCurrentTriage(
   client: AgentClient,
 ): Promise<Omit<TriageResult, 'candidateRefusal'>> {
   const skill = await loadTriageChildEventSkill();
+  const marked = isEnabled('untrusted-field-marking');
   const userMessage = JSON.stringify({
     envelope: {
-      subject: envelope.subject,
-      from: envelope.from,
-      snippet: envelope.snippet,
+      subject: presentUntrusted(marked, 'email', 'subject', envelope.subject),
+      from: presentUntrusted(marked, 'email', 'from', envelope.from),
+      snippet: presentUntrusted(marked, 'email', 'snippet', envelope.snippet),
     },
     children: childNames,
   });

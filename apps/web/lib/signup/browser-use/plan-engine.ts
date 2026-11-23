@@ -1,4 +1,6 @@
+import { presentUntrusted } from '@hale/agent';
 import type { AuthorizedSignupPlanResume } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { BrowserUseApiError } from './client';
 import {
   ACTION_MODEL,
@@ -227,13 +229,17 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
     approvedPriceCents: input.maxPriceCents,
   });
   const labels = input.fieldsAllowed.includes('session');
+  const marked = isEnabled('untrusted-field-marking');
   return {
     ...base,
     max_price_cents: input.maxPriceCents,
     waiver_accepted_by_parent: input.waiverAccepted,
     choices: input.choices.map((choice, rank) => ({
       rank: rank + 1,
-      label: labels && choice.label.trim() ? choice.label.trim() : undefined,
+      label:
+        labels && choice.label.trim()
+          ? presentUntrusted(marked, 'web', 'label', choice.label.trim())
+          : undefined,
       starts_at: choice.startsAt,
       ends_at: choice.endsAt,
     })),
