@@ -85,7 +85,6 @@ export async function GET(req: NextRequest) {
   const authUrl = buildGoogleBundleAuthUrl({
     state,
     redirectUri: connectorRedirectUri(),
-    userId,
   });
   // Which Google project is about to be asked, said once (rule #11). Ids and the named
   // source only, never a client id or a secret (rule #1).

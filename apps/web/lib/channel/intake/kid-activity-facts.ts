@@ -182,6 +182,8 @@ export async function keepKidActivities(
         actionTaken: 'onboarding_activities_kept',
         targetTable: 'sms_intake_sessions',
         targetId: input.sessionId,
+        // Said in one parent's own thread, it is that parent's row on the trail.
+        audience: input.heardIn === 'one_to_one' ? input.parentUserId : null,
         after: {
           count: placed.length,
           linked: placed.filter((entry) => entry.childId !== null).length,

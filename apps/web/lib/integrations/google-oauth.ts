@@ -170,36 +170,26 @@ export function buildGoogleAuthUrl(opts: {
  * that parent and revokes its tokens (google-disconnect.ts, store.ts
  * endGoogleConnections). A token that carries both read scopes therefore leaves Hale
  * nothing a disconnect does not end, while the parent meets Google's unverified-app
- * screen once instead of twice. The bundle still asks for exactly what each connector
- * asks for alone (read-only, plus that connector's write scope only for an armed
- * user) and still never sets include_granted_scopes.
+ * screen once instead of twice. The bundle asks for the two read scopes and no write
+ * scope, whoever the user is, and still never sets include_granted_scopes.
  */
 export const GOOGLE_BUNDLE_CONNECTORS = [
   'gmail',
   'gcal',
 ] as const satisfies readonly ConsentConnector[];
 
-/** The one-link consent's scopes: each connector's own request, together. */
-export function requestedBundleScopes(
-  env: WriteScopeEnv = process.env,
-  userId?: string | null,
-): readonly string[] {
-  return GOOGLE_BUNDLE_CONNECTORS.flatMap((provider) =>
-    requestedConnectorScopes(provider, env, userId),
-  );
+/** The one-link consent's scopes: the two connectors' read scopes, and nothing else. */
+export function requestedBundleScopes(): readonly string[] {
+  return GOOGLE_BUNDLE_CONNECTORS.flatMap((provider) => CONNECTOR_SCOPES[provider]);
 }
 
 /** The Google consent URL for the one link. Same parameters as one connector's. */
-export function buildGoogleBundleAuthUrl(opts: {
-  state: string;
-  redirectUri: string;
-  userId?: string | null;
-}): string {
+export function buildGoogleBundleAuthUrl(opts: { state: string; redirectUri: string }): string {
   const params = new URLSearchParams({
     client_id: clientId(),
     redirect_uri: opts.redirectUri,
     response_type: 'code',
-    scope: [...requestedBundleScopes(process.env, opts.userId), GOOGLE_PROFILE_SCOPE].join(' '),
+    scope: [...requestedBundleScopes(), GOOGLE_PROFILE_SCOPE].join(' '),
     access_type: 'offline',
     prompt: 'consent',
     // Still NOT include_granted_scopes: the token carries what THIS consent asked for.
@@ -213,12 +203,12 @@ export function buildGoogleBundleAuthUrl(opts: {
  * a connector is granted only when every scope it needs is in the token. Anything
  * outside what the consent asked for is `unexpected`, and the caller stores nothing.
  */
-export function splitBundleGrant(
-  scopes: readonly string[],
-  env: WriteScopeEnv = process.env,
-  userId?: string | null,
-): { granted: ConsentConnector[]; missing: string[]; unexpected: string[] } {
-  const allowed = new Set<string>([...requestedBundleScopes(env, userId), GOOGLE_PROFILE_SCOPE]);
+export function splitBundleGrant(scopes: readonly string[]): {
+  granted: ConsentConnector[];
+  missing: string[];
+  unexpected: string[];
+} {
+  const allowed = new Set<string>([...requestedBundleScopes(), GOOGLE_PROFILE_SCOPE]);
   const granted = GOOGLE_BUNDLE_CONNECTORS.filter((provider) =>
     CONNECTOR_SCOPES[provider].every((scope) => scopes.includes(scope)),
   );

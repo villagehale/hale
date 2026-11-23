@@ -142,6 +142,8 @@ export async function keepKidProfiles(
         actionTaken: 'onboarding_kids_kept',
         targetTable: 'sms_intake_sessions',
         targetId: input.sessionId,
+        // Said in one parent's own thread, it is that parent's row on the trail.
+        audience: input.heardIn === 'one_to_one' ? input.parentUserId : null,
         after: { count: placed.length, ...(skipped > 0 ? { skipped } : {}) },
       });
     });

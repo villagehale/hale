@@ -665,7 +665,7 @@ async function completeGoogleBundle(
     });
     grantedAccessToken = tokens.accessToken;
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
-    const split = splitBundleGrant(scopes, process.env, bound.userId);
+    const split = splitBundleGrant(scopes);
     if (split.unexpected.length > 0 || split.granted.length === 0) {
       const grantStatus = split.unexpected.length > 0 ? 'denied' : 'partial';
       console.info(

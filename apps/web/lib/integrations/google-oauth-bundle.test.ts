@@ -11,7 +11,7 @@ import { CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE } from './google-write-flag'
 
 /**
  * VIL-721 · the one texted link asks Google for Gmail and the calendar in ONE consent.
- * The bundle asks for exactly what each connector asks for alone, never sets
+ * The bundle asks for the two read scopes and no write scope, never sets
  * include_granted_scopes, and a grant is split back into the connectors whose scopes
  * all arrived; anything the consent did not ask for is `unexpected`.
  */
@@ -19,8 +19,6 @@ import { CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE } from './google-write-flag'
 const GMAIL = CONNECTOR_SCOPES.gmail[0] as string;
 const GCAL = CONNECTOR_SCOPES.gcal[0] as string;
 const DRIVE = 'https://www.googleapis.com/auth/drive.readonly';
-const ARMED = { GOOGLE_WRITE_SCOPES_ENABLED: 'true' };
-const UNARMED = {};
 
 beforeEach(() => {
   vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'client-test.apps.googleusercontent.com');
@@ -37,16 +35,12 @@ afterEach(() => {
 describe('requestedBundleScopes', () => {
   it('asks for the two read-only scopes and nothing else for an unarmed user', () => {
     expect(GOOGLE_BUNDLE_CONNECTORS).toEqual(['gmail', 'gcal']);
-    expect(requestedBundleScopes(UNARMED, 'user-1')).toEqual([GMAIL, GCAL]);
+    expect(requestedBundleScopes()).toEqual([GMAIL, GCAL]);
   });
 
-  it('adds each connector its own write scope only for an armed user', () => {
-    expect(requestedBundleScopes(ARMED, 'user-1')).toEqual([
-      GMAIL,
-      GMAIL_COMPOSE_SCOPE,
-      GCAL,
-      CALENDAR_EVENTS_SCOPE,
-    ]);
+  it('asks for only the two read scopes even with write scopes armed', () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+    expect(requestedBundleScopes()).toEqual([GMAIL, GCAL]);
   });
 });
 
@@ -76,7 +70,7 @@ describe('buildGoogleBundleAuthUrl', () => {
 
 describe('splitBundleGrant', () => {
   it('grants both connectors when both read scopes arrived', () => {
-    expect(splitBundleGrant([GMAIL, GCAL, GOOGLE_PROFILE_SCOPE], UNARMED, 'user-1')).toEqual({
+    expect(splitBundleGrant([GMAIL, GCAL, GOOGLE_PROFILE_SCOPE])).toEqual({
       granted: ['gmail', 'gcal'],
       missing: [],
       unexpected: [],
@@ -84,7 +78,7 @@ describe('splitBundleGrant', () => {
   });
 
   it('grants only Gmail when the calendar box was left unticked', () => {
-    expect(splitBundleGrant([GMAIL, GOOGLE_PROFILE_SCOPE], UNARMED, 'user-1')).toEqual({
+    expect(splitBundleGrant([GMAIL, GOOGLE_PROFILE_SCOPE])).toEqual({
       granted: ['gmail'],
       missing: [GCAL],
       unexpected: [],
@@ -92,7 +86,7 @@ describe('splitBundleGrant', () => {
   });
 
   it('grants only the calendar when the Gmail box was left unticked', () => {
-    expect(splitBundleGrant([GCAL], UNARMED, 'user-1')).toEqual({
+    expect(splitBundleGrant([GCAL])).toEqual({
       granted: ['gcal'],
       missing: [GMAIL],
       unexpected: [],
@@ -100,7 +94,7 @@ describe('splitBundleGrant', () => {
   });
 
   it('grants nothing when only the profile came back', () => {
-    expect(splitBundleGrant([GOOGLE_PROFILE_SCOPE], UNARMED, 'user-1')).toEqual({
+    expect(splitBundleGrant([GOOGLE_PROFILE_SCOPE])).toEqual({
       granted: [],
       missing: [GMAIL, GCAL],
       unexpected: [],
@@ -108,16 +102,18 @@ describe('splitBundleGrant', () => {
   });
 
   it('names a scope the consent never asked for', () => {
-    expect(splitBundleGrant([GMAIL, GCAL, DRIVE], UNARMED, 'user-1').unexpected).toEqual([DRIVE]);
+    expect(splitBundleGrant([GMAIL, GCAL, DRIVE]).unexpected).toEqual([DRIVE]);
   });
 
-  it('names a write scope as unexpected for an unarmed user, and allows it for an armed one', () => {
-    expect(splitBundleGrant([GMAIL, GCAL, CALENDAR_EVENTS_SCOPE], UNARMED, 'user-1')).toMatchObject(
-      { granted: ['gmail', 'gcal'], unexpected: [CALENDAR_EVENTS_SCOPE] },
-    );
-    expect(splitBundleGrant([GMAIL, GCAL, CALENDAR_EVENTS_SCOPE], ARMED, 'user-1')).toMatchObject({
-      granted: ['gmail', 'gcal'],
-      unexpected: [],
-    });
+  it('names a write scope as unexpected, for an armed user too: this consent never asks for one', () => {
+    for (const armed of ['', 'true']) {
+      vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', armed);
+      expect(
+        splitBundleGrant([GMAIL, GCAL, CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE]),
+      ).toMatchObject({
+        granted: ['gmail', 'gcal'],
+        unexpected: [CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE],
+      });
+    }
   });
 });
