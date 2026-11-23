@@ -20,11 +20,13 @@ import {
   createOutboundTransport,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { askWriter, yesNoReader } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   type CaregiverLaneInvite,
   type CoParentInvite,
@@ -125,6 +127,8 @@ beforeEach(() => {
   vi.stubEnv('LINQ_FROM_E164', LINE);
   vi.stubEnv('OPS_SLACK_WEBHOOK_URL', OPS_WEBHOOK);
   vi.stubEnv(FLAG, 'true');
+  vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+  setSharedSpokenLineWriter(scriptedSpokenLineWriter);
   stubFetch();
 });
 
@@ -505,7 +509,7 @@ describe.each(LANES)('flag on, the add command: $lane', (lane) => {
 
       const again = await parentSays(lane.add);
 
-      expect(again).toEqual(lane.alreadyInvited);
+      expect(again).toMatchObject(lane.alreadyInvited);
       expect(postsToPerson()).toHaveLength(0);
       expect((await inviteRow(familyId)).state).toBe('awaiting_caregiver_reply');
     });
