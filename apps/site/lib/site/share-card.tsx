@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
 import { SocialCardBrand } from '~/components/social-card-brand';
 import { SHARE_CARD_SIZE, type ShareCardSpec } from '~/lib/site/share-cards';
@@ -24,32 +24,30 @@ const IM_META = '#6e6e73';
 
 // Satori cannot read the site's variable woff2 masters. These are static
 // instances of the same OFL files (Figtree 400/500/600, Source Serif 4 400).
-// Each file is its own URL so the production bundler can trace it.
-const FIGTREE_400 = readFileSync(
-  fileURLToPath(new URL('../../assets/og-fonts/figtree-400.ttf', import.meta.url)),
-);
-const FIGTREE_500 = readFileSync(
-  fileURLToPath(new URL('../../assets/og-fonts/figtree-500.ttf', import.meta.url)),
-);
-const FIGTREE_600 = readFileSync(
-  fileURLToPath(new URL('../../assets/og-fonts/figtree-600.ttf', import.meta.url)),
-);
-const SOURCE_SERIF = readFileSync(
-  fileURLToPath(new URL('../../assets/og-fonts/source-serif-4-400.ttf', import.meta.url)),
-);
+// Read by path, not `new URL(..., import.meta.url)`: webpack rewrites that
+// into its own URL, and readFileSync on it fails the production build while
+// collecting /og/[card]. next.config traces these files into the function.
 
-const LOGO = `data:image/png;base64,${readFileSync(
-  fileURLToPath(new URL('../../app/icon.png', import.meta.url)),
-).toString('base64')}`;
+function readSiteFile(...parts: string[]): Buffer {
+  const candidates = [join(process.cwd(), ...parts), join(process.cwd(), 'apps', 'site', ...parts)];
+  const found = candidates.find((path) => existsSync(path));
+  if (!found) throw new Error(`share card asset missing: ${parts.join('/')}`);
+  return readFileSync(found);
+}
+
+const FIGTREE_400 = readSiteFile('assets', 'og-fonts', 'figtree-400.ttf');
+const FIGTREE_500 = readSiteFile('assets', 'og-fonts', 'figtree-500.ttf');
+const FIGTREE_600 = readSiteFile('assets', 'og-fonts', 'figtree-600.ttf');
+const SOURCE_SERIF = readSiteFile('assets', 'og-fonts', 'source-serif-4-400.ttf');
+
+const LOGO = `data:image/png;base64,${readSiteFile('app', 'icon.png').toString('base64')}`;
 
 /**
  * hale-shore-hero.webp, cover-cropped to 1200×630 at object-position center 32%,
  * the same placement as .shore-art on the homepage. PNG because the OG renderer
- * does not decode webp.
+ * does not decode webp. File: assets/hale-shore-og.png.
  */
-const SHORE = `data:image/png;base64,${readFileSync(
-  fileURLToPath(new URL('../../assets/hale-shore-og.png', import.meta.url)),
-).toString('base64')}`;
+const SHORE = `data:image/png;base64,${readSiteFile('assets', 'hale-shore-og.png').toString('base64')}`;
 
 const CHAT = {
   parent: 'anything for the kids saturday?',
