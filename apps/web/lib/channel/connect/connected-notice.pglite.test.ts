@@ -62,6 +62,8 @@ describe('sendConnectorConnectedText', () => {
 
   beforeEach(async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', APP_KEY);
+    // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
     db = await createTestDb();
     const seeded = await seedFamily(db.database);
     familyId = seeded.familyId;
