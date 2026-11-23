@@ -10,7 +10,12 @@ import {
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
+import {
+  linqApiKey,
+  linqFromE164,
+  linqVoiceMemosEnabled,
+  parentSendReceiptEnabled,
+} from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
@@ -600,7 +605,8 @@ export async function sendLinqChatMessage(input: {
       input.mention &&
       err instanceof LinqSendError &&
       err.permanent &&
-      MENTION_REFUSED.has(err.code)
+      MENTION_REFUSED.has(err.code) &&
+      (!parentSendReceiptEnabled() || linqRefusedForCertain(err))
     ) {
       // Code and status only. The handle, the body, and the chat id stay out (rule #1).
       console.warn(
@@ -623,7 +629,8 @@ export async function sendLinqChatMessage(input: {
       !(err instanceof LinqSendError) ||
       !err.permanent ||
       err.httpStatus < 400 ||
-      (input.plainResendOnlyIfRefused && !linqRefusedForCertain(err))
+      ((input.plainResendOnlyIfRefused || parentSendReceiptEnabled()) &&
+        !linqRefusedForCertain(err))
     ) {
       throw err;
     }
