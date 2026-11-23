@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
+  linqRefusedForCertain,
   plainTextWithoutLinks,
   readSendRefusal,
   sendLinqParts,
@@ -52,8 +53,11 @@ export type LinkOnceOutcome =
   | { status: 'preview'; providerMessageId: string }
   /** The preview did not go, so the URL went as its own text. `why` names the preview's refusal. */
   | { status: 'text'; why: LinkPreviewRefusal; providerMessageId: string }
-  /** Neither went. The text before it reached the parent without a link. */
-  | { status: 'not_sent'; why: LinkPreviewRefusal; code: string };
+  /**
+   * Neither went. The text before it reached the parent without a link. `unconfirmed`, set
+   * only for a keyed send: Linq may still have taken one of the tries.
+   */
+  | { status: 'not_sent'; why: LinkPreviewRefusal; code: string; unconfirmed?: boolean };
 
 type LinkPreviewRefusal = Extract<LinqLinkPreviewOutcome, { status: 'not_sent' }>['reason'];
 
@@ -72,7 +76,21 @@ export async function sendLinkOnce(input: {
   parentUserId: string;
   now: Date;
   fetch?: typeof fetch;
+  /**
+   * Names this link across a retry. An unclear preview keeps it on the text, so Linq drops
+   * the copy if the preview landed; a certain refusal moves the text to its own key, because
+   * Linq may remember the refused one.
+   */
+  sendKey?: string;
+  /**
+   * Read again before the preview and before the text that follows a preview that did not
+   * land. False sends nothing and returns `code: 'gated'`. Callers that omit it send as before.
+   */
+  maySend?: () => Promise<boolean>;
 }): Promise<LinkOnceOutcome> {
+  if (input.maySend && !(await input.maySend())) {
+    return { status: 'not_sent', why: 'refused', code: 'gated' };
+  }
   const preview = await sendLinqLinkPreview({
     channel: input.channel,
     chatId: input.chatId,
@@ -82,18 +100,36 @@ export async function sendLinkOnce(input: {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
     now: input.now,
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
   });
   if (preview.status === 'sent') {
     return { status: 'preview', providerMessageId: preview.providerMessageId };
   }
+  // The preview did not land. A stop that arrived while it was in flight stops the text too.
+  if (input.maySend && !(await input.maySend())) {
+    return { status: 'not_sent', why: 'refused', code: 'gated' };
+  }
   const why = preview.reason;
+  const previewRefused = preview.reason === 'refused' && preview.certain === true;
+  const previewUnclear =
+    preview.reason === 'unreachable' || (preview.reason === 'refused' && !previewRefused);
+  const textKey = input.sendKey && previewRefused ? `${input.sendKey}:text` : input.sendKey;
   let sent: Awaited<ReturnType<ChannelTransport['send']>>;
   try {
-    sent = await input.transport.send({ to: input.to, body: input.url });
+    sent = await input.transport.send({
+      to: input.to,
+      body: input.url,
+      ...(textKey ? { sendKey: textKey } : {}),
+    });
   } catch (err) {
     const code = readSendRefusal(err)?.code ?? 'unknown';
     console.error({ why, code }, 'link once: no preview and the link text was refused');
-    return { status: 'not_sent', why, code };
+    return {
+      status: 'not_sent',
+      why,
+      code,
+      ...(input.sendKey ? { unconfirmed: previewUnclear || !linqRefusedForCertain(err) } : {}),
+    };
   }
   const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
   const [row] = await input.database
@@ -134,6 +170,8 @@ export type LinqLinkPreviewOutcome =
       reason: 'refused' | 'not_configured' | 'unreachable';
       code: string;
       httpStatus?: number;
+      /** Only on a keyed send: Linq certainly did not take this one. */
+      certain?: boolean;
     };
 
 export async function sendLinqLinkPreview(input: {
@@ -146,6 +184,7 @@ export async function sendLinqLinkPreview(input: {
   familyId?: string;
   parentUserId?: string;
   now?: Date;
+  sendKey?: string;
 }): Promise<LinqLinkPreviewOutcome> {
   if (input.channel !== 'imessage') return { status: 'not_sent', reason: 'not_imessage' };
   if (!input.chatId) return { status: 'not_sent', reason: 'no_chat' };
@@ -156,6 +195,7 @@ export async function sendLinqLinkPreview(input: {
       chatId: input.chatId,
       parts: [{ type: 'link', value: input.url }],
       fetch: input.fetch,
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     });
     if (input.database && input.familyId && input.parentUserId) {
       const [row] = await input.database
@@ -187,7 +227,12 @@ export async function sendLinqLinkPreview(input: {
   } catch (err) {
     if (!(err instanceof LinqSendError)) {
       console.warn({ code: 'unknown' }, 'linq link preview: refused — the text already went out');
-      return { status: 'not_sent', reason: 'refused', code: 'unknown' };
+      return {
+        status: 'not_sent',
+        reason: 'refused',
+        code: 'unknown',
+        ...(input.sendKey ? { certain: false } : {}),
+      };
     }
     if (err.code === 'not_configured') {
       return { status: 'not_sent', reason: 'not_configured', code: err.code };
@@ -203,6 +248,12 @@ export async function sendLinqLinkPreview(input: {
       { code: err.code, httpStatus: err.httpStatus },
       'linq link preview: refused — the text already went out',
     );
-    return { status: 'not_sent', reason: 'refused', code: err.code, httpStatus: err.httpStatus };
+    return {
+      status: 'not_sent',
+      reason: 'refused',
+      code: err.code,
+      httpStatus: err.httpStatus,
+      ...(input.sendKey ? { certain: linqRefusedForCertain(err) } : {}),
+    };
   }
 }

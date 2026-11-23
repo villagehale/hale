@@ -178,6 +178,13 @@ export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
+  /** VIL-721 · the one Google link's text: the model could not write it, so it did not go. */
+  connector_link_unwritten: { reason: ['write_failed', 'writer_absent'] },
+  /** VIL-721 · a text the one Google link adds did not reach the parent. */
+  google_connect_text_unsent: {
+    surface: ['card', 'fresh_link', 'receipt', 'ask'],
+    failure: ['refused', 'unconfirmed', 'no_link'],
+  },
   shared_group_unwritten: {
     kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],
     fallback: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'declined'],

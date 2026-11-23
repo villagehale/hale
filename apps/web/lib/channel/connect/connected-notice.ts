@@ -21,6 +21,7 @@ import {
   loadOpenSessionByFamily,
   saveSession,
 } from '~/lib/channel/intake/session';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -45,7 +46,13 @@ import {
   loadKidContext,
 } from './aha-kids';
 import { type AhaSnapshot, failedAha } from './aha-read';
-import type { TextConnectProvider } from './text-connect';
+import {
+  type GoogleSendClaim,
+  claimGoogleSend,
+  releaseGoogleClaim,
+  sendClaimedGoogleText,
+} from './google-send-receipt';
+import type { GoogleBundleLink, TextConnectProvider } from './text-connect';
 
 /**
  * The text back that ends the texted connect: the parent tapped a link in a thread,
@@ -84,7 +91,11 @@ export interface ConnectedNoticePorts {
    * is named `imessage_not_configured` when the door is iMessage — never a
    * silent hop onto SMS.
    */
-  imessage?: (input: { chatId: string; body: string }) => Promise<{ providerMessageId: string }>;
+  imessage?: (input: {
+    chatId: string;
+    body: string;
+    sendKey?: string;
+  }) => Promise<{ providerMessageId: string }>;
   threadMessage: typeof threadProactiveMessage;
   /**
    * Friend voice for the 1:1 receipt.
@@ -115,6 +126,8 @@ export type ConnectedNoticeOutcome =
   | { status: 'not_sent'; reason: 'voice_unsent' }
   /** The provider refused it. `code` is the provider's, or `unknown`. */
   | { status: 'not_sent'; reason: 'send_failed'; code: string }
+  /** VIL-721. A stop, an erasure or a line hold arrived before the send. Nothing went. */
+  | { status: 'not_sent'; reason: 'gated' }
   /** Something on this path threw — a ledger write, the thread append. Its own outcome
    * and not a `send_failed`, because the throw can land either side of the send: what
    * reached the parent is genuinely unknown, and saying "not sent" would be a guess. */
@@ -127,6 +140,7 @@ export type ConnectedNoticeLabel =
   | 'no_send_target'
   | 'no_chat'
   | 'voice_unsent'
+  | 'gated'
   | 'errored'
   | `send_failed:${string}`;
 
@@ -143,7 +157,12 @@ export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
   const client = apiKey ? budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'onboarding' }) : null;
   return {
     transport: createOutboundTransport(),
-    imessage: (input) => sendLinqChatMessage({ chatId: input.chatId, text: input.body }),
+    imessage: (input) =>
+      sendLinqChatMessage({
+        chatId: input.chatId,
+        text: input.body,
+        ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+      }),
     threadMessage: threadProactiveMessage,
     friendVoice: client ? createFriendVoiceComposer(client) : undefined,
     kidItems: client ? createKidItemClassifier(client) : undefined,
@@ -154,7 +173,8 @@ export function defaultConnectedNoticePorts(): ConnectedNoticePorts {
  * A failed compose returns an empty string and the caller does not send it. */
 export async function connectedReceiptBody(
   language: ReplyLanguage,
-  provider: TextConnectProvider,
+  /** What landed: one connector, or `google` for both from VIL-721's one link. */
+  provider: TextConnectProvider | GoogleBundleLink,
   composer: FriendVoiceComposer | undefined,
   aha?: AhaSnapshot | null,
   options?: {
@@ -193,7 +213,13 @@ export async function connectedReceiptBody(
 export interface ConnectedNoticeArgs {
   familyId: string;
   parentUserId: string;
-  provider: TextConnectProvider;
+  /** What landed: one connector, or `google` for both from VIL-721's one link. */
+  provider: TextConnectProvider | GoogleBundleLink;
+  /**
+   * VIL-721. This connect came from the one link (both, or the one box the parent left
+   * ticked). The next beat is the schedule or co-parent ask, never a second card.
+   */
+  fromBundle?: boolean;
   /** This connect, as `saveConnection` recorded it — the audit row's id. */
   connectId: string;
   now: Date;
@@ -271,27 +297,47 @@ async function sendReceipt(
   }
   const channel = door.channel === 'imessage' ? 'imessage' : 'sms';
 
-  // CLAIM FIRST: the unique index is the claim, so "did we already say this?" is
-  // answered by the insert rather than by a read a second callback can race.
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
+  // VIL-721. The receipt of the one link, and any receipt while that walk is lit, says sent
+  // only on Linq's word. Dark, this is the claim it always was.
+  const strict = strictGoogleSend(args.fromBundle);
+  let strictClaim: GoogleSendClaim | null = null;
+  if (strict) {
+    const held = await claimGoogleSend(database, {
       familyId,
       parentUserId,
       channel,
-      direction: 'out',
-      // 'reply' rather than 'intake': this answers something the parent just did, and it
-      // can happen years after onboarding. It is outside every loop category, so it
-      // spends none of a family's nudge budget.
       category: 'reply',
       templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
       dedupeKey: connectorConnectedDedupeKey(connectId),
       providerChatId: door.channel === 'imessage' ? receiptChatId : null,
-      status: acceptedStatus(channel),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
+      now,
+    });
+    if (held.kind !== 'try') return { status: 'not_sent', reason: 'already_sent' };
+    strictClaim = held.claim;
+  }
+  // CLAIM FIRST: the unique index is the claim, so "did we already say this?" is
+  // answered by the insert rather than by a read a second callback can race.
+  const [claimed] = strictClaim
+    ? [{ id: strictClaim.id }]
+    : await database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel,
+          direction: 'out',
+          // 'reply' rather than 'intake': this answers something the parent just did, and it
+          // can happen years after onboarding. It is outside every loop category, so it
+          // spends none of a family's nudge budget.
+          category: 'reply',
+          templateKey: CONNECTOR_CONNECTED_TEMPLATE_KEY,
+          dedupeKey: connectorConnectedDedupeKey(connectId),
+          providerChatId: door.channel === 'imessage' ? receiptChatId : null,
+          status: acceptedStatus(channel),
+          sentAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: schema.channelMessages.id });
   if (!claimed) return { status: 'not_sent', reason: 'already_sent' };
 
   if (args.aha == null) {
@@ -303,7 +349,7 @@ async function sendReceipt(
   // HARD RULE: the one useful line is about the kids only. Items the
   // classifier does not read as about a child or a kid activity never reach
   // the model. A mailbox or calendar with nothing kid-related yields no mention.
-  const session = await openOnboarding(database, familyId);
+  const session = await openOnboarding(database, familyId, strict ? parentUserId : null);
   const timeZone = await householdTimezone(database, familyId);
   const aha = args.aha
     ? await kidRelatedAha(
@@ -333,6 +379,7 @@ async function sendReceipt(
     familyId,
     parentUserId,
     provider,
+    fromBundle: args.fromBundle === true,
     now,
     chatId: door.channel === 'imessage' ? receiptChatId : null,
     phone,
@@ -341,11 +388,50 @@ async function sendReceipt(
   if (body.trim().length === 0) {
     // The wow moment is skipped, not the walk: the next beat still goes out,
     // and the released claim lets a later callback write the receipt.
-    await database.delete(schema.channelMessages).where(eq(schema.channelMessages.id, claimed.id));
+    if (strictClaim) await releaseGoogleClaim(database, strictClaim, 'voice_unsent');
+    else {
+      await database
+        .delete(schema.channelMessages)
+        .where(eq(schema.channelMessages.id, claimed.id));
+    }
     console.error({ reason: 'voice_unsent' }, 'connector connected: reply not sent');
     await continueAfterReceipt(database, continuation, ports);
     return { status: 'not_sent', reason: 'voice_unsent' };
   }
+  if (strictClaim) {
+    const outcome = await sendClaimedGoogleText(
+      database,
+      strictClaim,
+      {
+        familyId,
+        parentUserId,
+        now,
+        channel,
+        chatId: door.channel === 'imessage' ? receiptChatId : null,
+        surface: 'receipt',
+      },
+      async (sendKey) => {
+        if (door.channel === 'imessage') {
+          const send = ports.imessage;
+          if (!send || !receiptChatId) throw new LinqSendError('imessage_not_configured', 0, true);
+          return send({ chatId: receiptChatId, body, sendKey });
+        }
+        return sendResolvingNewChat(ports.transport, { to: phone, body, sendKey });
+      },
+    );
+    if (outcome.status === 'gated') return { status: 'not_sent', reason: 'gated' };
+    if (outcome.status !== 'accepted') {
+      console.error(
+        { familyId, provider, code: outcome.code },
+        'connector connected: the receipt did not reach the parent - the connection is stored',
+      );
+      return { status: 'not_sent', reason: 'send_failed', code: outcome.code };
+    }
+    await ports.threadMessage(database, { familyId, parentUserId, body });
+    await continueAfterReceipt(database, continuation, ports);
+    return { status: 'sent', channelMessageId: strictClaim.id };
+  }
+
   let providerMessageId: string;
   let reportedImessage = false;
   let reportedChatId: string | null = null;
@@ -413,7 +499,8 @@ async function continueAfterReceipt(
   args: {
     familyId: string;
     parentUserId: string;
-    provider: TextConnectProvider;
+    provider: TextConnectProvider | GoogleBundleLink;
+    fromBundle: boolean;
     now: Date;
     chatId: string | null;
     phone: string;
@@ -421,6 +508,19 @@ async function continueAfterReceipt(
   },
   ports: ConnectedNoticePorts,
 ): Promise<void> {
+  // VIL-721. The one link has no second card: its receipt carries the schedule ask
+  // (or the co-parent ask), as the calendar receipt does. Lit, a Gmail connect made
+  // any other way gets no calendar card either: the walk offers one link, and a
+  // parent who turned the link down is not handed half of it again.
+  const bundle = args.fromBundle || args.provider === 'google';
+  if (bundle || threadOnboardingV2Enabled()) {
+    await askAfterCalendarReceipt(
+      database,
+      { ...args, connected: args.provider, fromBundle: bundle },
+      ports,
+    );
+    return;
+  }
   if (args.provider === 'gmail') {
     await sendCalendarCardAfterGmailReceipt(database, args, ports);
     return;
@@ -449,7 +549,11 @@ function receiptTransport(
   return {
     send: async (input) => {
       if (args.chatId && ports.imessage) {
-        const sent = await ports.imessage({ chatId: args.chatId, body: input.body });
+        const sent = await ports.imessage({
+          chatId: args.chatId,
+          body: input.body,
+          ...(input.sendKey ? { sendKey: input.sendKey } : {}),
+        });
         return {
           providerMessageId: sent.providerMessageId,
           transport: 'imessage' as const,
@@ -570,11 +674,22 @@ async function askAfterCalendarReceipt(
     now: Date;
     chatId: string | null;
     phone: string;
+    /** What landed. Absent is the calendar, as before VIL-721. */
+    connected?: TextConnectProvider | GoogleBundleLink;
+    /** VIL-721: the connect came from the one link. */
+    fromBundle?: boolean;
   },
   ports: ConnectedNoticePorts,
 ): Promise<void> {
+  const landed = args.connected ?? 'gcal';
+  const remember = { provider: landed, bundle: args.fromBundle === true } as const;
+  const strict = strictGoogleSend(args.fromBundle);
   try {
-    const session = await openOnboarding(database, args.familyId);
+    const session = await openOnboarding(
+      database,
+      args.familyId,
+      strict ? args.parentUserId : null,
+    );
     if (!session) return;
     const progress = session.firstTouch?.coldStart;
     const given = session.firstTouch?.given ?? null;
@@ -583,31 +698,49 @@ async function askAfterCalendarReceipt(
     const coparentOpen = given?.coparentGroup == null;
     const step = scheduleOpen ? 'schedule' : coparentOpen ? 'coparent' : null;
     if (!step) {
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     // One ask per session off this receipt. A reconnect does not ask again;
     // the walk continues from the parent's next text.
     const templateKey = step === 'schedule' ? 'onboarding:schedule_ask' : 'onboarding:coparent_ask';
-    const [claimed] = await database
-      .insert(schema.channelMessages)
-      .values({
+    let strictClaim: GoogleSendClaim | null = null;
+    if (strict) {
+      const held = await claimGoogleSend(database, {
         familyId: args.familyId,
         parentUserId: args.parentUserId,
         channel: args.chatId ? 'imessage' : 'sms',
-        direction: 'out',
         category: 'reply',
         templateKey,
         dedupeKey: `${templateKey}:receipt:${session.id}`,
         providerChatId: args.chatId,
-        status: acceptedStatus(args.chatId ? 'imessage' : 'sms'),
-        sentAt: args.now,
-      })
-      .onConflictDoNothing()
-      .returning({ id: schema.channelMessages.id });
+        now: args.now,
+      });
+      if (held.kind === 'try') strictClaim = held.claim;
+    }
+    const [claimed] = strict
+      ? strictClaim
+        ? [{ id: strictClaim.id }]
+        : []
+      : await database
+          .insert(schema.channelMessages)
+          .values({
+            familyId: args.familyId,
+            parentUserId: args.parentUserId,
+            channel: args.chatId ? 'imessage' : 'sms',
+            direction: 'out',
+            category: 'reply',
+            templateKey,
+            dedupeKey: `${templateKey}:receipt:${session.id}`,
+            providerChatId: args.chatId,
+            status: acceptedStatus(args.chatId ? 'imessage' : 'sms'),
+            sentAt: args.now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: schema.channelMessages.id });
     if (!claimed) {
       console.info({ familyId: args.familyId, step }, 'connector connected: ask already went out');
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     const language = await familyReceiptLanguage(database, args.familyId, args.parentUserId);
@@ -618,7 +751,7 @@ async function askAfterCalendarReceipt(
         ...receiptVoiceBase(
           language,
           session,
-          'gcal',
+          landed,
           await parentNameStored(database, args.parentUserId),
         ),
         step,
@@ -631,13 +764,51 @@ async function askAfterCalendarReceipt(
       { page: pageOncePerDay(new PostgresRateLimiter(database), args.familyId) },
     );
     if (spoken.source === 'unsent' || !spoken.body.trim()) {
-      await database
-        .delete(schema.channelMessages)
-        .where(eq(schema.channelMessages.id, claimed.id));
-      await rememberConnected(database, session, { provider: 'gcal', now: args.now });
+      if (strictClaim) await releaseGoogleClaim(database, strictClaim, 'voice_unsent');
+      else {
+        await database
+          .delete(schema.channelMessages)
+          .where(eq(schema.channelMessages.id, claimed.id));
+      }
+      await rememberConnected(database, session, { ...remember, now: args.now });
       return;
     }
     const phone = args.phone || (await resolveSendablePhone(database, args.parentUserId)) || '';
+    if (strictClaim) {
+      const outcome = await sendClaimedGoogleText(
+        database,
+        strictClaim,
+        {
+          familyId: args.familyId,
+          parentUserId: args.parentUserId,
+          now: args.now,
+          channel: args.chatId ? 'imessage' : 'sms',
+          chatId: args.chatId,
+          surface: 'ask',
+        },
+        (sendKey) =>
+          receiptTransport(args, ports).send({
+            to: phone || 'unaddressed',
+            body: spoken.body,
+            sendKey,
+          }),
+      );
+      if (outcome.status !== 'accepted') {
+        await rememberConnected(database, session, { ...remember, now: args.now });
+        return;
+      }
+      await ports.threadMessage(database, {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        body: spoken.body,
+      });
+      await rememberConnected(database, session, {
+        ...remember,
+        now: args.now,
+        said: spoken.body,
+      });
+      return;
+    }
     const sent = await receiptTransport(args, ports).send({
       to: phone || 'unaddressed',
       body: spoken.body,
@@ -658,7 +829,7 @@ async function askAfterCalendarReceipt(
       body: spoken.body,
     });
     await rememberConnected(database, session, {
-      provider: 'gcal',
+      ...remember,
       now: args.now,
       said: spoken.body,
     });
@@ -670,10 +841,24 @@ async function askAfterCalendarReceipt(
   }
 }
 
-/** The onboarding session still open for this family, when the cold start is on it. */
-async function openOnboarding(database: Database, familyId: string): Promise<IntakeSession | null> {
+/**
+ * The onboarding session still open for this family, when the cold start is on it. With
+ * `owner` (VIL-721), only that parent's own: one parent's connect never answers, or writes
+ * into, the other parent's onboarding.
+ */
+async function openOnboarding(
+  database: Database,
+  familyId: string,
+  owner: string | null = null,
+): Promise<IntakeSession | null> {
   const session = await loadOpenSessionByFamily(database, familyId);
-  return session?.firstTouch?.coldStart ? session : null;
+  if (!session?.firstTouch?.coldStart) return null;
+  return owner !== null && session.userId !== owner ? null : session;
+}
+
+/** VIL-721. Sent on Linq's word: the one link's texts, and every receipt while it is lit. */
+function strictGoogleSend(fromBundle: boolean | undefined): boolean {
+  return fromBundle === true || threadOnboardingV2Enabled();
 }
 
 /** The parent's name is on their row: the receipt asks are not the name ask. */
@@ -685,7 +870,7 @@ async function parentNameStored(database: Database, userId: string | null): Prom
 function receiptVoiceBase(
   language: ReplyLanguage,
   session: IntakeSession | null,
-  connected: TextConnectProvider | null = null,
+  connected: TextConnectProvider | GoogleBundleLink | null = null,
   nameStored = false,
 ) {
   const given = session?.firstTouch?.given ?? null;
@@ -728,7 +913,10 @@ async function rememberConnected(
   database: Database,
   session: IntakeSession | null,
   patch: {
-    provider: 'gcal' | 'gmail';
+    /** What landed. `google` is both, from VIL-721's one link. */
+    provider: 'gcal' | 'gmail' | 'google';
+    /** VIL-721: it came from the one link, so the one Google item is answered. */
+    bundle?: boolean;
     now: Date;
     calendarOffered?: boolean;
     said?: string | null;
@@ -742,6 +930,9 @@ async function rememberConnected(
     connectGmail: null,
   };
   const coldStart = session.firstTouch.coldStart;
+  const bundle = patch.bundle === true || patch.provider === 'google';
+  const gmailIn = patch.provider === 'gmail' || patch.provider === 'google';
+  const calendarIn = patch.provider === 'gcal' || patch.provider === 'google';
   const transcript = patch.said
     ? [
         ...session.transcript,
@@ -762,23 +953,20 @@ async function rememberConnected(
         ...session.firstTouch,
         given: {
           ...given,
-          connectGmail: patch.provider === 'gmail' ? true : given.connectGmail,
-          connectCalendar: patch.provider === 'gcal' ? true : given.connectCalendar,
+          connectGmail: gmailIn ? true : given.connectGmail,
+          connectCalendar: calendarIn ? true : given.connectCalendar,
+          ...(bundle ? { connectGoogle: true } : {}),
         },
         ...(coldStart
           ? {
               coldStart: {
                 ...coldStart,
-                emailAsked: patch.provider === 'gmail' ? true : coldStart.emailAsked,
-                emailOffered: patch.provider === 'gmail' ? true : coldStart.emailOffered,
-                calendarAsked:
-                  patch.provider === 'gcal' || patch.calendarOffered
-                    ? true
-                    : coldStart.calendarAsked,
+                emailAsked: gmailIn ? true : coldStart.emailAsked,
+                emailOffered: gmailIn ? true : coldStart.emailOffered,
+                calendarAsked: calendarIn || patch.calendarOffered ? true : coldStart.calendarAsked,
                 calendarOffered:
-                  patch.provider === 'gcal' || patch.calendarOffered
-                    ? true
-                    : coldStart.calendarOffered,
+                  calendarIn || patch.calendarOffered ? true : coldStart.calendarOffered,
+                ...(bundle ? { googleOffered: true } : {}),
               },
             }
           : {}),
