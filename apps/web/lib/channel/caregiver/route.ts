@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { type ConsentReader, readConsent } from '~/lib/channel/consent-reply';
@@ -51,15 +50,12 @@ import {
   type CoParentInvite,
   type CoParentRefusal,
   acceptInvite,
-  coParentInviteSendKey,
-  coParentYesCameFrom,
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
   recordInviteRefusal,
   recordLapsedInviteAnswered,
   recordParentAssent,
-  settleCoParentInviteAfterFailedSend,
   startCaregiverInvite,
   startCoParentInvite,
 } from './invites';
@@ -276,24 +272,6 @@ async function record(
   return id;
 }
 
-async function recordedInboundId(database: Database, providerId: string): Promise<string | null> {
-  const rows = await database
-    .select({
-      id: schema.channelMessages.id,
-      providerMessageId: schema.channelMessages.providerMessageId,
-      direction: schema.channelMessages.direction,
-    })
-    .from(schema.channelMessages)
-    .where(
-      and(
-        eq(schema.channelMessages.providerMessageId, providerId),
-        eq(schema.channelMessages.direction, 'in'),
-      ),
-    );
-  const row = rows.find((r) => r.providerMessageId === providerId && r.direction === 'in');
-  return row ? row.id : null;
-}
-
 /**
  * Send one message to a THIRD PARTY and ledger it against the parent who authorised it.
  *
@@ -313,10 +291,6 @@ async function reply(
     parentUserId: string;
     lane: Lane;
     now: Date;
-    /** Linq's idempotency key, for a text that may already have landed once. */
-    sendKey?: string;
-    /** Runs when the send itself fails, and not when a ledger write after it does. */
-    onSendFailed?: () => Promise<void>;
   },
 ): Promise<void> {
   if (!input.body) {
@@ -326,17 +300,7 @@ async function reply(
     );
     return;
   }
-  let providerMessageId: string;
-  try {
-    ({ providerMessageId } = await deps.transport.send({
-      to: input.to,
-      body: input.body,
-      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
-    }));
-  } catch (err) {
-    await input.onSendFailed?.();
-    throw err;
-  }
+  const { providerMessageId } = await deps.transport.send({ to: input.to, body: input.body });
   await record(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -848,25 +812,17 @@ async function sendCoParentInvite(
   deps: CaregiverDeps,
 ): Promise<CoParentOutcome> {
   const { pending, owner, inbound, now } = args;
-  const policyOn = askPolicyTiersEnabled(owner.familyId);
   // The family's stored language. The authorising sentence is not classified.
   const language = await familySpeechLanguage(database, owner.familyId);
-  // VIL-719 · a failed send puts the invite back, so Linq's redelivery of this yes runs again.
-  const alreadyRecorded = policyOn ? await recordedInboundId(database, inbound.providerId) : null;
-  if (alreadyRecorded && !(await coParentYesCameFrom(database, pending, alreadyRecorded))) {
-    return { status: 'co_parent_assent_already_claimed' };
-  }
-  const channelMessageId =
-    alreadyRecorded ??
-    (await record(database, {
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      lane: 'co_parent',
-      direction: 'in',
-      providerId: inbound.providerId,
-      body: inbound.body,
-      now,
-    }));
+  const channelMessageId = await record(database, {
+    familyId: owner.familyId,
+    parentUserId: owner.userId,
+    lane: 'co_parent',
+    direction: 'in',
+    providerId: inbound.providerId,
+    body: inbound.body,
+    now,
+  });
 
   // THE FLAG IS RE-READ AT THE SEND, not only at the ask (D21). An invite lives for 72
   // hours, so a gate on the start command alone leaves every invite opened before a flip
@@ -917,12 +873,6 @@ async function sendCoParentInvite(
     parentUserId: owner.userId,
     lane: 'co_parent',
     now,
-    ...(policyOn
-      ? {
-          sendKey: coParentInviteSendKey(pending),
-          onSendFailed: () => settleCoParentInviteAfterFailedSend(database, pending, now),
-        }
-      : {}),
   });
   await replyToParent(database, deps, {
     to: args.parentPhoneE164,

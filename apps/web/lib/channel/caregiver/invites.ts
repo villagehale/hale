@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
-import { and, eq, gte, inArray, isNull, ne } from 'drizzle-orm';
+import { and, eq, gte, isNull } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
@@ -9,7 +8,6 @@ import type { ReplyLanguage } from '~/lib/channel/language';
 import { CO_PARENT_GRANT_SCOPE, type CaregiverRole, isParentRole } from '~/lib/channel/role-scope';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
-import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { ROLE_LABEL } from './copy';
@@ -327,140 +325,6 @@ export type StartInviteResult =
   | { status: 'ask_unwritten' };
 
 /**
- * VIL-719 · with the ask policy on, this parent's co-parent row went back to waiting on them
- * after a failed send, so Hale has no text to this number it can vouch for and must not say
- * it has.
- */
-async function isOwnFailedCoParentAsk(
-  database: Database,
-  row: InviteRow,
-  invitedByUserId: string,
-): Promise<boolean> {
-  return (
-    askPolicyTiersEnabled(row.familyId) &&
-    row.role === 'co_parent' &&
-    row.invitedByUserId === invitedByUserId &&
-    row.state === 'awaiting_parent_assent' &&
-    (await coParentYesOnRecord(database, row))
-  );
-}
-
-/**
- * VIL-719 · whether the parent's yes to this invite is already on record, which means a text
- * under it was tried and may be on their phone. The audit row is the record: it is written
- * with the claim and never edited.
- */
-export async function coParentYesOnRecord(
-  database: Database,
-  invite: { id: string; familyId: string },
-): Promise<boolean> {
-  const rows = await database
-    .select({
-      actionTaken: schema.auditLog.actionTaken,
-      targetId: schema.auditLog.targetId,
-    })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.familyId, invite.familyId),
-        eq(schema.auditLog.actionTaken, 'co_parent_access_granted'),
-        eq(schema.auditLog.targetId, invite.id),
-      ),
-    );
-  return rows.some(
-    (row) => row.actionTaken === 'co_parent_access_granted' && row.targetId === invite.id,
-  );
-}
-
-/**
- * VIL-719 · the invites whose recorded yes is this inbound message. A provider redelivers a
- * message after the parent may have moved on, so a turn with a grant behind it is a re-drive
- * and may act only for the invite that grant names. A grant written with the policy off
- * names none, so its entry matches no invite.
- */
-export async function coParentInvitesAnsweredBy(
-  database: Database,
-  parent: { familyId: string; invitedByUserId: string },
-  channelMessageId: string,
-): Promise<unknown[]> {
-  const grants = await database
-    .select({ evidence: schema.consentRecords.evidence })
-    .from(schema.consentRecords)
-    .where(
-      and(
-        eq(schema.consentRecords.familyId, parent.familyId),
-        eq(schema.consentRecords.userId, parent.invitedByUserId),
-        eq(schema.consentRecords.consentType, 'co_parent_access_grant'),
-        eq(schema.consentRecords.granted, true),
-      ),
-    );
-  return grants
-    .filter(({ evidence }) => evidence?.channelMessageId === channelMessageId)
-    .map(({ evidence }) => evidence?.inviteId);
-}
-
-/** VIL-719 · whether this inbound message is the yes recorded for this invite. */
-export async function coParentYesCameFrom(
-  database: Database,
-  invite: { id: string; familyId: string; invitedByUserId: string },
-  channelMessageId: string,
-): Promise<boolean> {
-  const answered = await coParentInvitesAnsweredBy(database, invite, channelMessageId);
-  return answered.includes(invite.id);
-}
-
-/**
- * VIL-719 · whether one of these invites is live on this number with its text accepted by
- * Linq. Only then does a re-drive's start refuse as already invited; a row that has lapsed
- * would be replaced by a new invite under a new key.
- */
-export async function coParentTextLeftUnder(
-  database: Database,
-  inviteIds: readonly unknown[],
-  phoneE164: string,
-  now: Date,
-): Promise<boolean> {
-  const ids = inviteIds.filter((id): id is string => typeof id === 'string');
-  if (ids.length === 0) return false;
-  const hash = phoneBlindIndex(phoneE164);
-  const rows = await database
-    .select({
-      state: schema.caregiverInvites.state,
-      phoneE164Hash: schema.caregiverInvites.phoneE164Hash,
-      closedAt: schema.caregiverInvites.closedAt,
-      expiresAt: schema.caregiverInvites.expiresAt,
-    })
-    .from(schema.caregiverInvites)
-    .where(inArray(schema.caregiverInvites.id, ids));
-  return rows.some(
-    (row) =>
-      row.state === 'awaiting_caregiver_reply' &&
-      row.phoneE164Hash === hash &&
-      row.closedAt === null &&
-      new Date(row.expiresAt).getTime() > now.getTime(),
-  );
-}
-
-/**
- * A parent's new ask replaces the one still waiting on them. A row whose text may have
- * landed closes as `expired_unsent`, not `superseded`, because a stop still has to bind it.
- */
-async function closeSupersededAsk(database: Database, row: InviteRow, now: Date): Promise<void> {
-  const previous = toInvite(row);
-  const mayHaveLanded =
-    previous.role === 'co_parent' &&
-    askPolicyTiersEnabled(previous.familyId) &&
-    (await coParentYesOnRecord(database, previous));
-  await closeInvite(
-    database,
-    previous,
-    mayHaveLanded ? 'expired_unsent' : 'superseded',
-    now,
-    inviteVerb(previous.role, 'superseded'),
-  );
-}
-
-/**
  * Open an invite and state the scope back to the parent. NOTHING is sent to the
  * caregiver here — that is the whole meaning of `awaiting_parent_assent`.
  */
@@ -507,13 +371,7 @@ export async function startCaregiverInvite(
   const open = await openInvites(database);
   // One open invite per number (the partial unique index says so). Asking twice would
   // also be the second unsolicited text this person never agreed to receive.
-  const onThisNumber = open.find((r) => r.phoneE164Hash === hash);
-  if (
-    onThisNumber &&
-    !(await isOwnFailedCoParentAsk(database, onThisNumber, input.invitedByUserId))
-  ) {
-    return { status: 'already_invited' };
-  }
+  if (open.some((r) => r.phoneE164Hash === hash)) return { status: 'already_invited' };
 
   const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
   if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
@@ -533,7 +391,16 @@ export async function startCaregiverInvite(
   const superseded = open.find(
     (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
   );
-  if (superseded) await closeSupersededAsk(database, superseded, now);
+  if (superseded) {
+    const previous = toInvite(superseded);
+    await closeInvite(
+      database,
+      previous,
+      'superseded',
+      now,
+      inviteVerb(previous.role, 'superseded'),
+    );
+  }
 
   const invite = await openInviteRow(database, { ...input, hash });
 
@@ -781,29 +648,8 @@ export async function startCoParentInvite(
   }
 
   const hash = phoneBlindIndex(parsed.phoneE164);
-  // A lapsed row must not read as an ask this parent can answer below.
-  if (askPolicyTiersEnabled(input.familyId)) {
-    await loadOpenInviteByPhone(database, parsed.phoneE164, now);
-  }
   const open = await openInvites(database);
   const openOnThisNumber = open.find((r) => r.phoneE164Hash === hash);
-  if (
-    openOnThisNumber &&
-    !input.notedOnly &&
-    (await isOwnFailedCoParentAsk(database, openOnThisNumber, input.invitedByUserId))
-  ) {
-    const written = await writeConsentAsk(input.ask, {
-      kind: 'coparent_scope',
-      name: parsed.name,
-      language: input.language,
-    });
-    if (!written) return { status: 'ask_unwritten' };
-    return {
-      status: 'started',
-      invite: toInvite(openOnThisNumber) as CoParentInvite,
-      reply: written,
-    };
-  }
   if (openOnThisNumber) {
     return refuse(openOnThisNumber.familyId === input.familyId ? 'already_invited' : 'unavailable');
   }
@@ -823,7 +669,16 @@ export async function startCoParentInvite(
   const superseded = open.find(
     (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
   );
-  if (superseded) await closeSupersededAsk(database, superseded, now);
+  if (superseded) {
+    const previous = toInvite(superseded);
+    await closeInvite(
+      database,
+      previous,
+      'superseded',
+      now,
+      inviteVerb(previous.role, 'superseded'),
+    );
+  }
 
   const invite = await openInviteRow(database, { ...input, hash });
   if (input.notedOnly) {
@@ -972,10 +827,6 @@ export async function recordCoParentAssent(
       )
       .returning({ id: schema.caregiverInvites.id });
     if (advanced.length === 0) return false;
-    // A re-drive after a failed send: this invite's yes is already on the ledger.
-    if (askPolicyTiersEnabled(invite.familyId) && (await coParentYesOnRecord(tx, invite))) {
-      return true;
-    }
 
     await tx.insert(schema.consentRecords).values({
       userId: invite.invitedByUserId,
@@ -992,7 +843,6 @@ export async function recordCoParentAssent(
           `parent authorised texting ${invite.displayName} and seating them as a co-parent, with everything a parent sees`,
         channelMessageId: input.channelMessageId,
         maskedPhone: maskPhoneE164(invite.phoneE164),
-        ...(askPolicyTiersEnabled(invite.familyId) ? { inviteId: invite.id } : {}),
       },
     });
 
@@ -1014,114 +864,6 @@ export type InviteBodyResult =
   | { status: 'ready'; body: string }
   | { status: 'already_claimed' }
   | { status: 'unwritten' };
-
-/**
- * VIL-719 · the parent's yes could not be written, so nobody was texted. Closed so the
- * turn's re-drive opens a clean invite and records the yes then. Only an invite still
- * waiting on the parent closes: a claim another turn won in the meantime stands, and a row
- * with a yes already on record had a text tried, so it stays where a stop can bind it.
- */
-export async function closeCoParentInviteWithoutYes(
-  database: Database,
-  invite: CoParentInvite,
-  now: Date,
-): Promise<void> {
-  if (await coParentYesOnRecord(database, invite)) return;
-  const closed = await database
-    .update(schema.caregiverInvites)
-    .set({ state: 'superseded', closedAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(schema.caregiverInvites.id, invite.id),
-        eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
-        isNull(schema.caregiverInvites.closedAt),
-      ),
-    )
-    .returning({ id: schema.caregiverInvites.id });
-  if (closed.length === 0) return;
-  await database.insert(schema.auditLog).values({
-    familyId: invite.familyId,
-    actor: invite.invitedByUserId,
-    actionTaken: inviteVerb(invite.role, 'superseded'),
-    targetTable: 'caregiver_invites',
-    targetId: invite.id,
-    after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
-  });
-}
-
-/**
- * VIL-719 · Linq's key for this invite's text. One per row, so a re-drive of a text that did
- * land cannot deliver a second.
- */
-export function coParentInviteSendKey(invite: { id: string }): string {
-  return `co_parent_invite:${invite.id}`;
-}
-
-/**
- * VIL-719 · the parent's yes is on record and the text to the person they named failed, so
- * the invite goes back to waiting on the parent. Only `awaiting_caregiver_reply` can seat
- * anyone, so a row this write could not move is one a yes still binds to: #ops hears of it.
- *
- * If the parent opened another ask while the send was in flight, that ask keeps the one
- * waiting slot a bare yes binds to, and this row closes as `expired_unsent` so a stop from
- * a person whose text did land still finds it.
- */
-export async function settleCoParentInviteAfterFailedSend(
-  database: Database,
-  invite: CoParentInvite,
-  now: Date,
-): Promise<void> {
-  try {
-    await database.transaction(async (rawTx) => {
-      const tx = rawTx as unknown as Database;
-      const newerAsk = await tx
-        .select({ id: schema.caregiverInvites.id })
-        .from(schema.caregiverInvites)
-        .where(
-          and(
-            eq(schema.caregiverInvites.invitedByUserId, invite.invitedByUserId),
-            eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
-            isNull(schema.caregiverInvites.closedAt),
-            ne(schema.caregiverInvites.id, invite.id),
-          ),
-        );
-      const settled = await tx
-        .update(schema.caregiverInvites)
-        .set(
-          newerAsk.length > 0
-            ? { state: 'expired_unsent', closedAt: now, updatedAt: now }
-            : { state: 'awaiting_parent_assent', updatedAt: now },
-        )
-        .where(
-          and(
-            eq(schema.caregiverInvites.id, invite.id),
-            eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
-            isNull(schema.caregiverInvites.closedAt),
-          ),
-        )
-        .returning({ id: schema.caregiverInvites.id });
-      if (settled.length === 0) return;
-      await tx.insert(schema.auditLog).values({
-        familyId: invite.familyId,
-        actor: 'system',
-        actionTaken: 'co_parent_invite_send_failed',
-        targetTable: 'caregiver_invites',
-        targetId: invite.id,
-        after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
-      });
-    });
-  } catch (err) {
-    console.error(
-      { familyId: invite.familyId, err: err instanceof Error ? err.name : 'unknown' },
-      'coparent invite: could not put the invite back after a failed send',
-    );
-    await failurePageOpsPager(() => database).page({
-      site: 'co_parent_invite_unsettled',
-      facts: {},
-      ref: invite.id,
-    });
-  }
-}
 
 /**
  * The parent's confirmation: the authorisation row, then the state advance, in one
