@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -919,6 +920,80 @@ describe('a number on the SMS door', () => {
       expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
       expect(await memberRoles(seeded.familyId)).toEqual(['primary_parent']);
       expect(await inviteReplyConsents()).toBe(0);
+    });
+
+    describe('a redelivered number turn is bound to the invite it answered', () => {
+      const timeout = () => new LinqSendError('timeout', 0, false);
+
+      async function failedFirstSend() {
+        vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+        const { seeded, turn } = await seedTurn();
+        const sendSms = vi
+          .fn(async (_sms: { to: string; body: string; sendKey?: string }) => ({
+            providerMessageId: 'SM_redrive',
+          }))
+          .mockRejectedValueOnce(timeout());
+        await expect(
+          deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+        ).rejects.toThrow();
+        const failed = await loadPendingAssent(db.database, seeded.parentUserId, NOW);
+        expect(failed?.phoneE164).toBe(COPARENT_PHONE);
+        return { seeded, turn, sendSms, failedId: failed?.id as string };
+      }
+
+      it('policy on: a caregiver ask opened after the failure stays waiting and nobody is texted', async () => {
+        const { seeded, turn, sendSms } = await failedFirstSend();
+        const nanny = await startCaregiverInvite(db.database, {
+          familyId: seeded.familyId,
+          invitedByUserId: seeded.parentUserId,
+          inviterPhoneE164: PARENT_PHONE,
+          parsed: { ok: true, role: 'nanny', name: 'Robin', phoneE164: NEVER_INVITED_PHONE },
+          now: NOW,
+          ask: askWriter(),
+        });
+        expect(nanny.status).toBe('started');
+
+        const redriven = await deliverCoParentNumberInvite(db.database, { ...turn, sendSms });
+
+        expect(redriven).toEqual({ status: 'already_claimed', reply: null });
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(await grantRows(seeded.familyId)).toBe(1);
+        const pending = await loadPendingAssent(db.database, seeded.parentUserId, NOW);
+        expect(pending?.role).toBe('nanny');
+        expect(pending?.phoneE164).toBe(NEVER_INVITED_PHONE);
+      });
+
+      it('policy on: an invite that lapsed after the failure is not reopened by the redelivery', async () => {
+        const { seeded, turn, sendSms } = await failedFirstSend();
+        const later = new Date(NOW.getTime() + INVITE_SILENCE_MS + 1);
+
+        const redriven = await deliverCoParentNumberInvite(db.database, {
+          ...turn,
+          now: later,
+          sendSms,
+        });
+
+        expect(redriven).toEqual({ status: 'already_claimed', reply: null });
+        expect(sendSms).toHaveBeenCalledTimes(1);
+        expect(await grantRows(seeded.familyId)).toBe(1);
+        expect(await inviteStates()).toHaveLength(1);
+      });
+
+      it('positive control, policy on: the parent texting the number again sends under the same key', async () => {
+        const { seeded, turn, sendSms, failedId } = await failedFirstSend();
+
+        const again = await deliverCoParentNumberInvite(db.database, {
+          ...turn,
+          inboundChannelMessageId: randomUUID(),
+          sendSms,
+        });
+
+        expect(again.status).toBe('sent');
+        expect(sendSms).toHaveBeenCalledTimes(2);
+        expect(sendSms.mock.calls[1]?.[0].sendKey).toBe(`co_parent_invite:${failedId}`);
+        expect(await grantRows(seeded.familyId)).toBe(1);
+        expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+      });
     });
 
     it('policy on: a ledger write that fails after the text left does not text it again', async () => {

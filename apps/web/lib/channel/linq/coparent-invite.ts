@@ -6,6 +6,8 @@ import {
   type InviteBodyResult,
   closeCoParentInviteWithoutYes,
   coParentInviteSendKey,
+  coParentInvitesAnsweredBy,
+  coParentTextLeftUnder,
   coParentYesOnRecord,
   familyHasCoParent,
   loadPendingAssent,
@@ -204,14 +206,33 @@ export async function deliverCoParentNumberInvite(
   // confirm and text someone the parent has not authorised on that door.
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   // VIL-719 · unless it is this same number with the parent's yes already on record: a send
-  // that failed put the row back, and this is its re-drive.
+  // that failed put the row back, and this is its re-drive. A message that already backs a
+  // grant may act only for the invite that grant names.
+  const policyOn = askPolicyTiersEnabled(input.familyId);
+  const answered =
+    policyOn && input.inboundChannelMessageId
+      ? await coParentInvitesAnsweredBy(
+          database,
+          { familyId: input.familyId, invitedByUserId: input.parentUserId },
+          input.inboundChannelMessageId,
+        )
+      : [];
   const redriven =
     pending?.role === 'co_parent' &&
-    askPolicyTiersEnabled(input.familyId) &&
+    policyOn &&
     pending.phoneE164 === parsed.phoneE164 &&
-    (await coParentYesOnRecord(database, pending))
+    (answered.length > 0
+      ? answered.includes(pending.id)
+      : await coParentYesOnRecord(database, pending))
       ? pending
       : null;
+  if (
+    answered.length > 0 &&
+    !redriven &&
+    (pending || !(await coParentTextLeftUnder(database, answered, parsed.phoneE164, input.now)))
+  ) {
+    return { status: 'already_claimed', reply: null };
+  }
   if (pending?.role === 'co_parent' && !redriven) return { status: 'not_pending' };
 
   const held = (reply: string): CoParentNumberOutcome => ({

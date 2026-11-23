@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
-import { and, eq, gte, isNull, ne } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, ne } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
@@ -373,29 +373,71 @@ export async function coParentYesOnRecord(
 }
 
 /**
- * VIL-719 · whether this inbound message is the yes recorded for this invite. A provider
- * redelivers a message after the parent may have moved on, and the invite waiting now is
- * not necessarily the one that message answered.
+ * VIL-719 · the invites whose recorded yes is this inbound message. A provider redelivers a
+ * message after the parent may have moved on, so a turn with a grant behind it is a re-drive
+ * and may act only for the invite that grant names. A grant written with the policy off
+ * names none, so its entry matches no invite.
  */
-export async function coParentYesCameFrom(
+export async function coParentInvitesAnsweredBy(
   database: Database,
-  invite: { id: string; familyId: string; invitedByUserId: string },
+  parent: { familyId: string; invitedByUserId: string },
   channelMessageId: string,
-): Promise<boolean> {
+): Promise<unknown[]> {
   const grants = await database
     .select({ evidence: schema.consentRecords.evidence })
     .from(schema.consentRecords)
     .where(
       and(
-        eq(schema.consentRecords.familyId, invite.familyId),
-        eq(schema.consentRecords.userId, invite.invitedByUserId),
+        eq(schema.consentRecords.familyId, parent.familyId),
+        eq(schema.consentRecords.userId, parent.invitedByUserId),
         eq(schema.consentRecords.consentType, 'co_parent_access_grant'),
         eq(schema.consentRecords.granted, true),
       ),
     );
-  return grants.some(
-    ({ evidence }) =>
-      evidence?.inviteId === invite.id && evidence?.channelMessageId === channelMessageId,
+  return grants
+    .filter(({ evidence }) => evidence?.channelMessageId === channelMessageId)
+    .map(({ evidence }) => evidence?.inviteId);
+}
+
+/** VIL-719 · whether this inbound message is the yes recorded for this invite. */
+export async function coParentYesCameFrom(
+  database: Database,
+  invite: { id: string; familyId: string; invitedByUserId: string },
+  channelMessageId: string,
+): Promise<boolean> {
+  const answered = await coParentInvitesAnsweredBy(database, invite, channelMessageId);
+  return answered.includes(invite.id);
+}
+
+/**
+ * VIL-719 · whether one of these invites is live on this number with its text accepted by
+ * Linq. Only then does a re-drive's start refuse as already invited; a row that has lapsed
+ * would be replaced by a new invite under a new key.
+ */
+export async function coParentTextLeftUnder(
+  database: Database,
+  inviteIds: readonly unknown[],
+  phoneE164: string,
+  now: Date,
+): Promise<boolean> {
+  const ids = inviteIds.filter((id): id is string => typeof id === 'string');
+  if (ids.length === 0) return false;
+  const hash = phoneBlindIndex(phoneE164);
+  const rows = await database
+    .select({
+      state: schema.caregiverInvites.state,
+      phoneE164Hash: schema.caregiverInvites.phoneE164Hash,
+      closedAt: schema.caregiverInvites.closedAt,
+      expiresAt: schema.caregiverInvites.expiresAt,
+    })
+    .from(schema.caregiverInvites)
+    .where(inArray(schema.caregiverInvites.id, ids));
+  return rows.some(
+    (row) =>
+      row.state === 'awaiting_caregiver_reply' &&
+      row.phoneE164Hash === hash &&
+      row.closedAt === null &&
+      new Date(row.expiresAt).getTime() > now.getTime(),
   );
 }
 
