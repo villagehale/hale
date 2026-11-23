@@ -32,12 +32,30 @@ export interface GoogleCalendarPlacementRequest {
   actorUserId: string | null;
 }
 
+export interface GoogleCalendarWriteTargetRequest {
+  familyId: string;
+  op: GoogleCalendarOp;
+  /** The row a move or cancel changes. An add has no row yet. */
+  familyEventId: string | null;
+  actorUserId: string | null;
+}
+
+/** Whose calendar a sync of this request would write to. Read only: nothing is written. */
+export type GoogleCalendarWriteTarget =
+  | { writes: false }
+  /** `ownerUserId` is the parent who connected that calendar, null when the row names none. */
+  | { writes: true; ownerUserId: string | null };
+
 export interface GoogleCalendarPlacement {
   sync(request: GoogleCalendarPlacementRequest): Promise<GoogleCalendarSyncReport>;
+  writeTarget(request: GoogleCalendarWriteTargetRequest): Promise<GoogleCalendarWriteTarget>;
 }
 
 export const unwiredGoogleCalendar: GoogleCalendarPlacement = {
   async sync() {
     return { status: 'skipped', reason: 'not_configured' };
+  },
+  async writeTarget() {
+    return { writes: false };
   },
 };

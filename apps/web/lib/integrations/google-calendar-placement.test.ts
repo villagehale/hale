@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type GcalCandidate,
   type PlacedEventRow,
   applyPlacedGoogleCalendar,
+  resolveGoogleWriteTarget,
   selectGcalConnection,
 } from './google-calendar-placement';
 import { CALENDAR_EVENTS_SCOPE } from './google-write-flag';
@@ -212,5 +214,130 @@ describe('applyPlacedGoogleCalendar', () => {
     );
     expect(report).toEqual({ status: 'skipped', reason: 'scope_missing' });
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveGoogleWriteTarget', () => {
+  const mine: GcalCandidate = { id: 'int-a', userId: 'user-a', scopes: [CALENDAR_EVENTS_SCOPE] };
+  const theirs: GcalCandidate = { id: 'int-b', userId: 'user-b', scopes: [CALENDAR_EVENTS_SCOPE] };
+  const unowned: GcalCandidate = { id: 'int-c', userId: null, scopes: [CALENDAR_EVENTS_SCOPE] };
+  const readonly: GcalCandidate = { id: 'int-d', userId: 'user-a', scopes: [READONLY] };
+  const placedOnTheirs = event({ placedGoogleEventId: 'g-1', placedGoogleIntegrationId: 'int-b' });
+
+  const SCENARIOS = [
+    {
+      name: 'an add with no approver, one scoped calendar: the co-parent owns it',
+      op: 'create' as const,
+      actorUserId: null,
+      connections: [theirs],
+      row: event(),
+      expected: { writes: true, ownerUserId: 'user-b' },
+    },
+    {
+      name: 'an add with no approver, one scoped calendar that names no owner',
+      op: 'create' as const,
+      actorUserId: null,
+      connections: [unowned],
+      row: event(),
+      expected: { writes: true, ownerUserId: null },
+    },
+    {
+      name: 'an add with no approver, two scoped calendars: Hale does not guess',
+      op: 'create' as const,
+      actorUserId: null,
+      connections: [mine, theirs],
+      row: event(),
+      expected: { writes: false },
+    },
+    {
+      name: 'an add with no approver, no write scope',
+      op: 'create' as const,
+      actorUserId: null,
+      connections: [readonly],
+      row: event(),
+      expected: { writes: false },
+    },
+    {
+      name: "an add a parent approved lands on the approver's own calendar",
+      op: 'create' as const,
+      actorUserId: 'user-a',
+      connections: [mine, theirs],
+      row: event(),
+      expected: { writes: true, ownerUserId: 'user-a' },
+    },
+    {
+      name: 'a move follows the calendar that holds the event, not the only other one',
+      op: 'update' as const,
+      actorUserId: null,
+      connections: [mine, theirs],
+      row: placedOnTheirs,
+      expected: { writes: true, ownerUserId: 'user-b' },
+    },
+    {
+      name: 'a cancel follows the calendar that holds the event',
+      op: 'delete' as const,
+      actorUserId: null,
+      connections: [theirs],
+      row: placedOnTheirs,
+      expected: { writes: true, ownerUserId: 'user-b' },
+    },
+    {
+      name: 'a move of an event Hale never placed on Google',
+      op: 'update' as const,
+      actorUserId: null,
+      connections: [theirs],
+      row: event(),
+      expected: { writes: false },
+    },
+  ];
+
+  it.each(SCENARIOS)(
+    '$name: reads the target, and the real sync writes exactly when it said so',
+    async ({ op, actorUserId, connections, row, expected }) => {
+      const write = vi.fn(async () => ({ googleEventId: 'g-new' }));
+      const deps = {
+        flagOn: true,
+        loadEvent: async () => row,
+        listGcal: async () => connections,
+        accessToken: async () => 'token',
+        write,
+        storePlaced: vi.fn(async () => {}),
+        audit: vi.fn(async () => {}),
+      };
+      const target = await resolveGoogleWriteTarget(
+        { familyId: 'fam-1', op, familyEventId: op === 'create' ? null : row.id, actorUserId },
+        deps,
+      );
+      expect(target).toEqual(expected);
+      expect(write).not.toHaveBeenCalled();
+
+      await applyPlacedGoogleCalendar(
+        { familyId: 'fam-1', familyEventId: row.id, op, actorUserId },
+        deps,
+      );
+      expect(write).toHaveBeenCalledTimes(target.writes ? 1 : 0);
+    },
+  );
+
+  it('writes nowhere while the write flag is off for this actor', async () => {
+    const flagOn = vi.fn(() => false);
+    const listGcal = vi.fn(async () => [theirs]);
+    await expect(
+      resolveGoogleWriteTarget(
+        { familyId: 'fam-1', op: 'create', familyEventId: null, actorUserId: null },
+        { flagOn, loadEvent: async () => null, listGcal },
+      ),
+    ).resolves.toEqual({ writes: false });
+    expect(flagOn).toHaveBeenCalledWith(null);
+    expect(listGcal).not.toHaveBeenCalled();
+  });
+
+  it('writes nowhere for a move whose row is gone', async () => {
+    await expect(
+      resolveGoogleWriteTarget(
+        { familyId: 'fam-1', op: 'update', familyEventId: 'gone', actorUserId: null },
+        { flagOn: true, loadEvent: async () => null, listGcal: async () => [theirs] },
+      ),
+    ).resolves.toEqual({ writes: false });
   });
 });
