@@ -523,28 +523,37 @@ async function applyChargeRevoke(
         if (!claimed) return { status: 'duplicate' };
         // A kept dispute is not a refund. billing_refunded is what History reads
         // as "Hale refunded a payment", and a dispute must not be named that way.
-        const dispute = decision.kind === 'dispute';
-        await tx.insert(schema.auditLog).values({
-          familyId,
-          actor: 'system',
-          actionTaken: dispute ? 'billing_revoke_unresolved' : 'billing_refunded',
-          targetTable: 'families',
-          targetId: familyId,
-          after: dispute
-            ? {
-                source: 'stripe',
-                stripeEventId: eventId,
-                reason: 'dispute_needs_review',
-                tierChanged: false,
-              }
-            : {
-                planTier: current.planTier,
-                source: 'stripe',
-                stripeEventId: eventId,
-                reason,
-                tierChanged: false,
-              },
-        });
+        // The two writes stay literal so the audit-verb scan can see both.
+        if (decision.kind === 'dispute') {
+          await tx.insert(schema.auditLog).values({
+            familyId,
+            actor: 'system',
+            actionTaken: 'billing_revoke_unresolved',
+            targetTable: 'families',
+            targetId: familyId,
+            after: {
+              source: 'stripe',
+              stripeEventId: eventId,
+              reason: 'dispute_needs_review',
+              tierChanged: false,
+            },
+          });
+        } else {
+          await tx.insert(schema.auditLog).values({
+            familyId,
+            actor: 'system',
+            actionTaken: 'billing_refunded',
+            targetTable: 'families',
+            targetId: familyId,
+            after: {
+              planTier: current.planTier,
+              source: 'stripe',
+              stripeEventId: eventId,
+              reason,
+              tierChanged: false,
+            },
+          });
+        }
         return { status: 'kept', reason };
       }
 
