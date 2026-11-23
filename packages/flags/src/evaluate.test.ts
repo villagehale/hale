@@ -321,6 +321,17 @@ describe('an env-only flag, read before any family is known', () => {
     // Positive control: a flag PostHog decides is on from that same answer.
     expect(isEnabled('f14', undefined, ON)).toBe(true);
   });
+
+  it('never lights the in-thread onboarding from a PostHog 100% rollout', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('thread-onboarding-v2', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true\n' }),
+    ).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true' }),
+    ).toBe(true);
+  });
 });
 
 describe('catalog', () => {

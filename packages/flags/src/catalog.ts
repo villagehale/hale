@@ -210,7 +210,8 @@ export const FLAGS = [
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
   // VIL-721. Onboarding in the thread: the kids' activities asked after their ages,
   // and ONE Google link that connects Gmail and Calendar together. Exact `true`.
-  exact('thread-onboarding-v2', 'THREAD_ONBOARDING_V2_ENABLED'),
+  // Env-only: read with no family id, so a PostHog 100% rollout would light it (VIL-755).
+  exact('thread-onboarding-v2', 'THREAD_ONBOARDING_V2_ENABLED', { envOnly: true }),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,
   }),
