@@ -4,8 +4,8 @@ import { after } from 'next/server';
 import { familyIsCanary } from './canary-tag';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { captureSafeException } from './exceptions';
-import { posthogWebEnabled } from './flags';
-import { productClient } from './posthog-node';
+import { errorTrackingEnabled, posthogWebEnabled } from './flags';
+import { productClient, projectTracingEnabled } from './posthog-node';
 
 /**
  * Server-side analytics capture for the paths a client hook can't reach.
@@ -292,6 +292,18 @@ export async function captureInboundRouted(
 }
 
 /**
+ * A product event or a flagged exception will leave this process. The canary lookup
+ * is a database read, and the coach awaits this reporter before it rewrites a reply,
+ * so the read runs only when one of those sends will actually happen.
+ */
+function agentReportWillSend(): boolean {
+  return (
+    Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY) ||
+    (errorTrackingEnabled() && projectTracingEnabled())
+  );
+}
+
+/**
  * Report a typed agent failure. Fire-and-forget by construction: it NEVER throws, so a
  * call site sitting inside a `catch` mid-send cannot be made worse by reporting. The
  * outcome is returned rather than swallowed, so a caller (and a test) can see which of
@@ -299,7 +311,8 @@ export async function captureInboundRouted(
  */
 export async function captureAgentError(error: AgentError): Promise<CaptureOutcome> {
   const { event, distinctId, properties } = buildAgentErrorPayload(error);
-  const isCanary = error.familyId ? await familyIsCanary(error.familyId) : false;
+  const isCanary =
+    error.familyId && agentReportWillSend() ? await familyIsCanary(error.familyId) : false;
   const extras = canaryCaptureExtras(isCanary, distinctId);
   // The same failure, also as an $exception in error tracking (dark until
   // POSTHOG_PROJECT_API_KEY is set). Class + lane only — a synthetic error named for the
