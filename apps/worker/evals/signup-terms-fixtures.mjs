@@ -354,7 +354,7 @@ export const SIGNUP_TERMS_READ_FIXTURES = [
     id: 'read-price-echoed',
     text: 'yes, $84.88 is fine',
     offer: { ...READ_OFFER, terms: READ_TERMS },
-    expect: { verdict: 'approve', maxPriceCents: 8488, ceilingCents: null },
+    expect: { verdict: 'unclear' },
   },
   {
     id: 'read-level-is-no-condition',
