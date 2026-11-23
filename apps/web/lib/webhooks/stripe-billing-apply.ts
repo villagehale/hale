@@ -122,6 +122,8 @@ export interface ApplyStripeBillingDeps {
   onPlanUnsettled?: (info: {
     eventId: string;
     reason: string;
+    /** The tier moved in the same step. The subscription may still be live. */
+    planChanged?: boolean;
   }) => Promise<OpsPageOutcome | undefined>;
   /** Test seam for the refused-Stripe and refund-pending pages. */
   pageDeps?: FailurePageDeps;
@@ -277,13 +279,19 @@ async function readLinkedCharge(
 ): Promise<{ done: ApplyStripeBillingResult } | { charge: RefundedCharge; familyId: string }> {
   if (await eventAlreadyClaimed(database, eventId)) return { done: { status: 'duplicate' } };
   const { chargeId } = chargeLinkFromStripeEvent(event);
-  const knownFamily = await familyIdForLinkedCharge(
+  const namedFamily = await familyIdForLinkedCharge(
     {
       familyId: familyIdFromStripeEvent(event),
       customerId: stripeRefsFromStripeEvent(event).customerId,
     },
     database,
   );
+  // Stripe can name a family Hale has erased. audit_log's foreign key would throw,
+  // the claim would roll back, and Stripe would retry with no page.
+  if (namedFamily && !(await familyOnFile(database, namedFamily))) {
+    return { done: await unresolvedRevoke(eventId, 'no_family', null, database, deps, true) };
+  }
+  const knownFamily = namedFamily;
   if (!chargeId) {
     return {
       done: knownFamily
@@ -324,10 +332,20 @@ async function readLinkedCharge(
       { familyId: charge.familyId, customerId: charge.customerId },
       database,
     ));
-  if (!familyId) {
+  if (!familyId || !(await familyOnFile(database, familyId))) {
     return { done: await unresolvedRevoke(eventId, 'no_family', null, database, deps, true) };
   }
   return { charge, familyId };
+}
+
+/** The id is one Hale still has a row for. A missing row cannot take an audit write. */
+async function familyOnFile(database: Database, familyId: string): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return row !== undefined;
 }
 
 async function settleRefund(
