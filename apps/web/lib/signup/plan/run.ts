@@ -6,6 +6,7 @@ import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
   SIGNUP_RUN_MAX_COST_USD,
+  parentTakesOverLiveView,
 } from '../browser-use/engine';
 import { browserUseSignupPaymentEnabled } from '../browser-use/flag';
 import {
@@ -56,6 +57,7 @@ import {
   type ClaimedPlan,
   claimDuePlan,
   claimResumablePlan,
+  freeLapsedParkedPlans,
   loadPlanConsent,
   parkUnlessOpsStopped,
   planFieldsToType,
@@ -231,6 +233,9 @@ export async function runDueSignupPlans(
     console.warn({ skipped: 'not_configured' }, 'signup plans: browser use engine not configured');
     return { skipped: 'not_configured', plans: [] };
   }
+  // Not gated on the takeover flag: a card already out when the flag goes off still closes.
+  const freed = await freeLapsedParkedPlans(database);
+  if (freed > 0) console.info({ freed }, 'signup plans: freed parked plans whose yes lapsed');
   if (registrationPlanAtOpenEnabled()) {
     const released = await releaseUnstartedPlansBeforeOpen(database, { now: input.now });
     for (const row of released) {
@@ -768,6 +773,21 @@ async function runOnePlan(
       if (parked) return parked;
     }
     await pageIfReviewMayHavePlaced(result.charged, result.detail);
+    // The engine kept this browser only for a link that did not go, and a captcha's live view
+    // never goes in a text whatever the outcome reads. Scoped to takeover steps: a checkout
+    // hand-off such as `payment_off` also reads false here and keeps its live view.
+    const keptOnlyForLink =
+      purpose !== null &&
+      result.liveViewUrl !== null &&
+      (purpose === 'captcha' || !parentTakesOverLiveView(result.outcome, result.detail));
+    const ending = keptOnlyForLink
+      ? {
+          ...result,
+          liveViewUrl: null,
+          holdExpiresAt: null,
+          sessionCostUsd: (await letBrowserGo(result)) ?? result.sessionCostUsd,
+        }
+      : result;
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
@@ -777,13 +797,13 @@ async function runOnePlan(
       amountChargedCents: result.amountChargedCents,
       charged: result.charged,
       confirmationNumber: result.confirmationNumber,
-      liveViewUrl: result.liveViewUrl,
-      holdExpiresAt: result.holdExpiresAt,
+      liveViewUrl: ending.liveViewUrl,
+      holdExpiresAt: ending.holdExpiresAt,
       costUsd: result.costUsd,
-      sessionCostUsd: result.sessionCostUsd,
+      sessionCostUsd: ending.sessionCostUsd,
       started: result.sessionId !== null || result.runId !== null,
       openBrowser:
-        result.liveViewUrl === null
+        ending.liveViewUrl === null
           ? null
           : {
               phase: 'signup',
@@ -916,11 +936,12 @@ async function runOnePlan(
     return handBack('no_provider_session', 'needs_login');
   }
   // A saved password is bound into the browser when its run is created, and only a skill
-  // sentence clears it from the page. While the owner check is off nothing proves that login is
-  // this parent's, so that browser is never handed over. A later sweep cannot see what the run
-  // was given, so the first sweep's answer travels on the resume token.
+  // sentence clears it from the page, so that browser is never handed over by link, whoever
+  // owns the login. While the owner check is off nothing proves a saved session is this
+  // parent's either. A later sweep cannot see what the run was given, so the first sweep's
+  // answer travels on the resume token.
   const loginIsTheirs =
-    ownerGate || (!credentials && (!stored || stored.parentUserId === plan.parentUserId));
+    !credentials && (ownerGate || !stored || stored.parentUserId === plan.parentUserId);
   const takeoverBarred =
     lastTakeover === null &&
     (held?.phase === 'signup' ? held.takeoverBarred === true : !loginIsTheirs);

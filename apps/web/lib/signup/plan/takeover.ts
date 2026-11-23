@@ -97,7 +97,9 @@ async function yesGone(
 /**
  * Offers the takeover for one stopped run: the text first (nothing is minted for a text the
  * model could not write), then the card, then the plan parked on it, then the send. The yes
- * is read before the write and again right before the send, because the write can be slow.
+ * is read before the write, after it (minting spends the host's other open cards, so a plan
+ * withdrawn during the slow write must not cost the parent a live card), and right before
+ * the send.
  * Audit row `plan_takeover` when it went (rule #6): the step, the round, the minutes and the
  * host.
  */
@@ -137,6 +139,8 @@ export async function offerTakeover(
     takeover,
     loginCard: { sessionLabel, opensAt: null, takeover: purpose },
   });
+  const goneAfterWrite = await yesGone(database, plan);
+  if (goneAfterWrite) return { status: 'withdrawn', why: goneAfterWrite };
   const bubbles = draft ? asBubbles(draft.bubbles) : null;
   if (!draft || !bubbles) {
     const page = await pageOps(database, {

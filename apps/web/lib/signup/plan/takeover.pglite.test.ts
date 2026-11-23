@@ -18,7 +18,7 @@ import {
 import { PROVIDER_CREDENTIALS_MASTER_KEY_ENV } from '../credentials/kms';
 import { deleteProviderCredentials, saveProviderCredentials } from '../credentials/store';
 import { hashLoginCode } from '../login-link/code';
-import { lookupLoginLink } from '../login-link/store';
+import { lookupLoginLink, mintFreshLoginLink } from '../login-link/store';
 import { recordSignupOffer } from '../store';
 import { TAKEOVER_LINK_ENABLED_ENV } from '../takeover/flag';
 import {
@@ -36,7 +36,12 @@ import {
   type PlanRunDeps,
   runDueSignupPlans,
 } from './run';
-import { approveSignupPlan, cancelSignupPlan, requestStopForRunningPlans } from './store';
+import {
+  approveSignupPlan,
+  cancelSignupPlan,
+  freeLapsedParkedPlans,
+  requestStopForRunningPlans,
+} from './store';
 
 // VIL-718 · the takeover link on the plan lane, over the real DDL. The Browser Use engine is
 // its own tested unit (plan-engine.takeover.test.ts); here a stand-in runner returns the stops
@@ -917,7 +922,7 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     await expectSilentEnd(family, result, swept, released);
   });
 
-  it('a take-back during the model write: the plan is not parked, the minted card is spent, nothing goes', async () => {
+  it('a take-back during the model write: no card is minted, the plan is not parked, nothing goes', async () => {
     const family = await plannedFamily();
     const { runner, released } = runnerReturning(stopAt('needs_human', 'captcha'));
     const door = takeoverDoor({
@@ -927,12 +932,12 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
 
     expect(door.facts).toHaveLength(1);
-    expect(await linkRows(family.familyId)).toHaveLength(1);
+    expect(await linkRows(family.familyId)).toHaveLength(0);
     expect((await offerRow(family.offerId))?.planResume?.phase).toBe('signup');
     await expectSilentEnd(family, result, swept, released);
   });
 
-  it('a lapse during the model write: the card is spent right before delivery, nothing goes', async () => {
+  it('a lapse during the model write: no card is minted, nothing goes', async () => {
     const family = await plannedFamily();
     const { runner, released } = runnerReturning(stopAt('needs_human', 'verification_code'));
     const door = takeoverDoor({
@@ -942,8 +947,55 @@ describe('VIL-718 · an offer never goes to a parent who took the plan back or w
     const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
 
     expect(door.facts).toHaveLength(1);
-    expect(await linkRows(family.familyId)).toHaveLength(1);
+    expect(await linkRows(family.familyId)).toHaveLength(0);
     await expectSilentEnd(family, result, swept, released);
+  });
+
+  it('a plan withdrawn during the write leaves another open card on the same host alive', async () => {
+    const family = await plannedFamily();
+    const other = await mintFreshLoginLink(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      offerId: null,
+      providerHost: HOST,
+      purpose: { kind: 'password_rejected', sessionLabel: null, opensAt: null, card: null },
+      now: NOW,
+    });
+    const otherCode = other.url.split('/l/')[1] ?? '';
+    expect(await lookupLoginLink(db.database, otherCode, NOW)).toMatchObject({ ok: true });
+    const { runner } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const door = takeoverDoor({
+      duringWrite: () => takeBack(family.offerId).then(() => undefined),
+    });
+    await runDueSignupPlans(db.database, { now: NOW }, sweepDeps(runner, door).deps);
+
+    expect(door.facts).toHaveLength(1);
+    expect(await lookupLoginLink(db.database, otherCode, NOW)).toMatchObject({
+      ok: true,
+      id: other.id,
+    });
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+  });
+
+  it('a yes that still stands after the write replaces the host’s open card', async () => {
+    const family = await plannedFamily();
+    const other = await mintFreshLoginLink(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      offerId: null,
+      providerHost: HOST,
+      purpose: { kind: 'password_rejected', sessionLabel: null, opensAt: null, card: null },
+      now: NOW,
+    });
+    const otherCode = other.url.split('/l/')[1] ?? '';
+    const { runner } = runnerReturning(stopAt('needs_human', 'captcha'));
+    await runDueSignupPlans(db.database, { now: NOW }, sweepDeps(runner).deps);
+
+    expect(await lookupLoginLink(db.database, otherCode, NOW)).toEqual({
+      ok: false,
+      reason: 'used',
+    });
+    expect(await linkRows(family.familyId)).toHaveLength(2);
   });
 
   it('a stop with a charge it cannot rule out is still reported, without the live browser', async () => {
@@ -1358,7 +1410,7 @@ describe('VIL-718 · a link never opens a browser that may hold a login this par
     await expectNoCard(family, swept);
   });
 
-  it('with the owner check on, the parent’s own saved login still gets the card', async () => {
+  it('with the owner check on, the parent’s own saved password still bars the card', async () => {
     armSavedLogins();
     vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
     const family = await plannedFamily();
@@ -1366,9 +1418,21 @@ describe('VIL-718 · a link never opens a browser that may hold a login this par
     await dropSavedSession(family.familyId);
     const { runner, inputs } = runnerReturning(stopAt('needs_human', 'captcha'));
     const swept = sweepDeps(runner);
-    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
 
     expect(inputs[0]?.credentials?.password).toBe(SECRET);
+    expect(inputs[0]?.takeover).toBe(false);
+    await expectNoCard(family, swept);
+  });
+
+  it('with the owner check on, the parent’s own captured session and no password gets the card', async () => {
+    vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
+    const family = await plannedFamily();
+    const { runner, inputs } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs[0]?.credentials).toBeNull();
     expect(inputs[0]?.takeover).toBe(true);
     expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
       outcome: 'checkpointed',
@@ -1416,6 +1480,199 @@ describe('VIL-718 · a link never opens a browser that may hold a login this par
   });
 });
 
+describe('VIL-718 · a stop that was not handed over', () => {
+  /** A stop whose browser has too little time left for a card. */
+  const noWindow = (stop: BrowserUsePlanResult): BrowserUsePlanResult => ({
+    ...stop,
+    holdExpiresAt: new Date(NOW.getTime() + 60_000),
+  });
+
+  it.each([
+    ['too little time left', noWindow(stopAt('needs_human', 'captcha'))],
+    ['no session to resume', { ...stopAt('needs_human', 'captcha'), sessionId: null }],
+    ['a passkey with too little time left', noWindow(stopAt('needs_human', 'passkey'))],
+    ['a captcha read as a sign-in stop', noWindow(stopAt('needs_login', 'captcha'))],
+  ] as const)('%s: the browser is let go and no live view reaches the text', async (_w, stop) => {
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning(stop);
+    const swept = sweepDeps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(swept.takeover.parts).toEqual([]);
+    expect(released).toEqual([expect.objectContaining({ runId: 'run-1', browserId: 'browser-1' })]);
+    expect(swept.notices).toHaveLength(1);
+    expect(swept.notices[0]).toMatchObject({
+      detail: stop.detail,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    });
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: stop.outcome,
+      detail: stop.detail,
+    });
+    const finished = (await steps(family.offerId)).find((row) => row.step === 'plan_finished');
+    expect(finished?.sessionCostUsd).toBe('0.150000');
+    expect(finished?.holdExpiresAt).toBeNull();
+  });
+
+  it('a sign-in stop with too little time left keeps today’s live view', async () => {
+    const family = await plannedFamily();
+    const stop = noWindow(stopAt('needs_login', 'login_wall'));
+    const { runner, released } = runnerReturning(stop);
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(released).toEqual([]);
+    expect(swept.notices[0]).toMatchObject({ detail: 'login_wall', liveViewUrl: LIVE });
+  });
+
+  it('a checkout hand-off is no takeover stop and keeps its live view', async () => {
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning({
+      ...stopAt('needs_human', 'payment_off'),
+      choiceIndex: 0,
+      cartTotalCents: 9800,
+    });
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(released).toEqual([]);
+    expect(swept.notices[0]).toMatchObject({ detail: 'payment_off', liveViewUrl: LIVE });
+  });
+});
+
+describe('VIL-718 · a lapse frees a parked browser at the next sweep', () => {
+  const NEXT = new Date(NOW.getTime() + 60_000);
+  const lapses: Array<
+    [string, (family: { familyId: string; parentUserId: string }) => Promise<unknown>]
+  > = [
+    [
+      'the parent left the family',
+      (family) =>
+        db.database
+          .delete(schema.familyMembers)
+          .where(
+            and(
+              eq(schema.familyMembers.familyId, family.familyId),
+              eq(schema.familyMembers.userId, family.parentUserId),
+            ),
+          ),
+    ],
+    [
+      'the family asked to be erased',
+      (family) =>
+        db.database
+          .update(schema.families)
+          .set({ scheduledDeletionAt: NOW })
+          .where(eq(schema.families.id, family.familyId)),
+    ],
+  ];
+
+  it.each(lapses)(
+    '%s: the browser is released and the card spent, with no text',
+    async (_w, lapse) => {
+      const { family, code } = await parkedCaptcha();
+      await lapse(family);
+
+      const { runner, released } = runnerReturning();
+      const door = takeoverDoor();
+      const swept = sweepDeps(runner, door);
+      const result = await runDueSignupPlans(db.database, { now: NEXT }, swept.deps);
+
+      expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+        outcome: 'needs_human',
+        detail: 'takeover_unfinished',
+        notice: 'withheld',
+      });
+      expect(released).toEqual([
+        expect.objectContaining({ phase: 'takeover', browserId: 'browser-1' }),
+      ]);
+      expect(runner.run).not.toHaveBeenCalled();
+      expect(door.parts).toEqual([]);
+      expect(swept.notices).toEqual([]);
+      expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+      const [card] = await linkRows(family.familyId);
+      expect(card?.consumedAt).not.toBeNull();
+      expect(card?.browserHandleCiphertext).toBeNull();
+      expect(await takeoverLiveView(db.database, code, NEXT)).toEqual({
+        ok: false,
+        reason: 'used',
+      });
+    },
+  );
+
+  it('a parked plan whose yes stands keeps its lease and its browser', async () => {
+    const { family, code } = await parkedCaptcha();
+    const before = await offerRow(family.offerId);
+    const resume = before?.planResume as TakeoverToken;
+
+    const { runner, released } = runnerReturning();
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NEXT }, swept.deps);
+
+    expect(released).toEqual([]);
+    expect(runner.run).not.toHaveBeenCalled();
+    const after = await offerRow(family.offerId);
+    expect(after?.status).toBe('submitting');
+    expect(after?.planLeaseUntil?.toISOString()).toBe(new Date(resume.expiresAt).toISOString());
+    expect(await takeoverLiveView(db.database, code, NEXT)).toMatchObject({ ok: true });
+  });
+
+  it('a lease a sweep is driving with is never freed, even after a lapse', async () => {
+    const { family } = await parkedCaptcha();
+    const driven = new Date(NOW.getTime() + 15 * 60_000);
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ planLeaseUntil: driven })
+      .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NOW })
+      .where(eq(schema.families.id, family.familyId));
+
+    expect(await freeLapsedParkedPlans(db.database)).toBe(0);
+    expect((await offerRow(family.offerId))?.planLeaseUntil?.toISOString()).toBe(
+      driven.toISOString(),
+    );
+  });
+
+  it('a lapse read that throws frees nothing for that plan and still frees the next one', async () => {
+    const first = await parkedCaptcha();
+    const second = await parkedCaptcha();
+    for (const family of [first.family, second.family]) {
+      await db.database
+        .update(schema.families)
+        .set({ scheduledDeletionAt: NOW })
+        .where(eq(schema.families.id, family.familyId));
+    }
+    let selects = 0;
+    const flaky = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop !== 'select') return Reflect.get(target, prop, receiver);
+        return (...args: Parameters<typeof target.select>) => {
+          selects += 1;
+          if (selects === 2) throw new Error('read failed');
+          return target.select(...args);
+        };
+      },
+    });
+
+    expect(await freeLapsedParkedPlans(flaky)).toBe(1);
+
+    const leases = await Promise.all(
+      [first.family, second.family].map(async (family) => {
+        const row = await offerRow(family.offerId);
+        return row?.planLeaseUntil ?? null;
+      }),
+    );
+    expect(leases.filter((lease) => lease === null)).toHaveLength(1);
+    expect(leases.filter((lease) => lease !== null)).toHaveLength(1);
+  });
+});
+
 describe('VIL-718 · with the takeover link off', () => {
   it('ends a sign-in wall exactly as before: the live view in the notice, no card, no park', async () => {
     vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, 'true\n');
@@ -1440,6 +1697,29 @@ describe('VIL-718 · with the takeover link off', () => {
     expect(await linkRows(family.familyId)).toEqual([]);
     expect(released).toEqual([]);
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+
+  it('a card already out still frees its browser at the next sweep once the yes lapses', async () => {
+    const { family } = await parkedCaptcha();
+    vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, undefined);
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: NOW })
+      .where(eq(schema.families.id, family.familyId));
+    const { runner, released } = runnerReturning();
+    const door = takeoverDoor();
+    const result = await runDueSignupPlans(
+      db.database,
+      { now: new Date(NOW.getTime() + 60_000) },
+      sweepDeps(runner, door).deps,
+    );
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      detail: 'takeover_unfinished',
+      notice: 'withheld',
+    });
+    expect(released).toHaveLength(1);
+    expect(door.parts).toEqual([]);
   });
 
   it('a takeover already in flight still finishes: its lapse is told, and new cards stop', async () => {

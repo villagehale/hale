@@ -474,14 +474,53 @@ export async function planLapse(
 
 /**
  * A plan parked on its takeover card holds the lease to the card's end with no sweep driving
- * it: a stop frees it so the next sweep lets the browser go. A lease a sweep took since then
- * stays its own.
+ * it: a stop or a lapsed yes frees it so the next sweep lets the browser go. A lease a sweep
+ * took since then stays its own.
  */
 const leaseFreedFromParkedCard = sql`case
   when ${schema.authorizedSignupOffers.planResume}->>'phase' = 'takeover'
     and ${schema.authorizedSignupOffers.planResume}->>'doneAt' is null
     and ${schema.authorizedSignupOffers.planLeaseUntil} = (${schema.authorizedSignupOffers.planResume}->>'expiresAt')::timestamptz
   then null else ${schema.authorizedSignupOffers.planLeaseUntil} end`;
+
+/**
+ * Frees each plan parked on its takeover card whose parent's yes no longer stands, so this
+ * sweep's claim ends it and lets the browser go instead of leaving it open until the card runs
+ * out. A read that throws frees nothing for that plan and never stops the sweep; the next one
+ * reads it again. Returns how many were freed.
+ */
+export async function freeLapsedParkedPlans(database: Database): Promise<number> {
+  const offers = schema.authorizedSignupOffers;
+  const parkedOnCard = and(
+    eq(offers.status, 'submitting'),
+    sql`${offers.planResume}->>'phase' = 'takeover'`,
+    sql`${offers.planResume}->>'doneAt' is null`,
+    sql`${offers.planResume}->>'lapsedAt' is null`,
+    sql`${offers.planLeaseUntil} = (${offers.planResume}->>'expiresAt')::timestamptz`,
+  );
+  const parked = await database
+    .select({ id: offers.id, familyId: offers.familyId, parentUserId: offers.parentUserId })
+    .from(offers)
+    .where(parkedOnCard);
+  let freed = 0;
+  for (const plan of parked) {
+    const lapse = await planLapse(database, plan).catch((err: unknown) => {
+      console.warn(
+        { offerId: plan.id, error: err instanceof Error ? err.name : 'unknown' },
+        'signup plans: could not read a parked plan’s yes',
+      );
+      return null;
+    });
+    if (!lapse) continue;
+    const rows = await database
+      .update(offers)
+      .set({ planLeaseUntil: leaseFreedFromParkedCard })
+      .where(and(eq(offers.id, plan.id), eq(offers.familyId, plan.familyId), parkedOnCard))
+      .returning({ id: offers.id });
+    freed += rows.length;
+  }
+  return freed;
+}
 
 /**
  * A parent of the family takes back a plan, with one audit row either way.
