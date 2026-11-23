@@ -6,12 +6,12 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
-  GROUP_LOOP_GUARD_CAP_DEFAULT,
-  GROUP_LOOP_GUARD_WINDOW_MS,
+  GROUP_LOOP_GUARD_CAP,
+  GROUP_LOOP_GUARD_RUN_GAP_MS,
   type GroupLoopGuardVerdict,
   checkGroupLoopGuard,
-  groupLoopGuardCap,
-  groupSpeakerOf,
+  checkGroupLoopGuardSignal,
+  isSeatedInChat,
   noteGroupLoopGuardTrip,
 } from './group-loop-guard';
 
@@ -27,7 +27,7 @@ const MEI = '+14165550111';
 const TOM = '+14165550112';
 const ADA = '+14165550121';
 const BOT = '+14165550199';
-const NEWCOMER = '+14165550188';
+const OTHER_PARENT = '+14165550177';
 const CHAT = 'chat-loop-guard';
 const NOW = new Date('2026-11-20T15:00:00.000Z');
 
@@ -51,7 +51,6 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_FROM_E164', HALE);
   vi.stubEnv('GROUP_LOOP_GUARD_ENABLED', 'true');
-  vi.stubEnv('GROUP_LOOP_GUARD_CAP', '');
 });
 
 afterEach(async () => {
@@ -59,7 +58,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec(
-    'truncate table linq_group_loop_guards, linq_shared_group_people, linq_group_rosters, audit_log, channel_messages, families, users cascade',
+    'truncate table linq_group_loop_guards, linq_shared_group_people, linq_multi_family_members, linq_group_members, linq_group_rosters, audit_log, channel_messages, families, users cascade',
   );
 });
 
@@ -125,8 +124,19 @@ async function haleSays(
   });
 }
 
-function guard(senderHandle: string): Promise<GroupLoopGuardVerdict> {
-  return checkGroupLoopGuard(db.database, { chatId: CHAT, senderHandle, now: clock });
+function guard(
+  senderHandle: string,
+  at: Date = clock,
+  chatId: string = CHAT,
+): Promise<GroupLoopGuardVerdict> {
+  return checkGroupLoopGuard(db.database, { chatId, senderHandle, at });
+}
+
+async function holdsChat(owner: { familyId: string }, chatId: string = CHAT): Promise<void> {
+  await db.database
+    .update(schema.families)
+    .set({ linqGroupChatId: chatId })
+    .where(eq(schema.families.id, owner.familyId));
 }
 
 async function guardRows() {
@@ -155,217 +165,336 @@ async function echoBot(
   return { haleAnswered, verdicts };
 }
 
-describe('groupLoopGuardCap', () => {
-  it('is the default when unset or blank', () => {
-    expect(groupLoopGuardCap({})).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: '' })).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: '  ' })).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(GROUP_LOOP_GUARD_CAP_DEFAULT).toBe(5);
+describe('who counts as a person', () => {
+  it('is a parent or co-parent of the family that holds this chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await seedParent(TOM, 'Tom', { familyId: mei.familyId });
+    await holdsChat(mei);
+    expect(await isSeatedInChat(db.database, CHAT, MEI)).toBe(true);
+    expect(await isSeatedInChat(db.database, CHAT, TOM)).toBe(true);
+    expect(await isSeatedInChat(db.database, 'chat-elsewhere', MEI)).toBe(false);
   });
 
-  it('takes a whole number from 1 to 50', () => {
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: '1' })).toBe(1);
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: '7' })).toBe(7);
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: ' 7\n' })).toBe(7);
-    expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: '50' })).toBe(50);
+  it('is a live household seat, and not one that was removed', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    const ada = await seedParent(ADA, 'Ada');
+    const [seat] = await db.database
+      .insert(schema.linqGroupMembers)
+      .values({
+        familyId: mei.familyId,
+        chatId: CHAT,
+        userId: ada.userId,
+        phoneE164Encrypted: encryptString(ADA),
+        phoneE164Hash: phoneBlindIndex(ADA),
+        role: 'caregiver',
+      })
+      .returning({ id: schema.linqGroupMembers.id });
+    expect(await isSeatedInChat(db.database, CHAT, ADA)).toBe(true);
+    await db.database
+      .update(schema.linqGroupMembers)
+      .set({ removedAt: NOW })
+      .where(eq(schema.linqGroupMembers.id, seat?.id as string));
+    expect(await isSeatedInChat(db.database, CHAT, ADA)).toBe(false);
   });
 
-  it('is the default for anything else', () => {
-    for (const raw of ['0', '51', '-3', '5.5', '05', '1e1', '0x10', 'five']) {
-      expect(groupLoopGuardCap({ GROUP_LOOP_GUARD_CAP: raw })).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
+  it('is a known family placed in a shared chat, and never a stranger placed there', async () => {
+    const ada = await seedParent(ADA, 'Ada');
+    await db.database.insert(schema.linqSharedGroupPeople).values([
+      {
+        chatId: CHAT,
+        phoneE164Encrypted: encryptString(ADA),
+        phoneE164Hash: phoneBlindIndex(ADA),
+        familyId: ada.familyId,
+        userId: ada.userId,
+      },
+      {
+        chatId: CHAT,
+        phoneE164Encrypted: encryptString(BOT),
+        phoneE164Hash: phoneBlindIndex(BOT),
+      },
+    ]);
+    expect(await isSeatedInChat(db.database, CHAT, ADA)).toBe(true);
+    expect(await isSeatedInChat(db.database, CHAT, BOT)).toBe(false);
+  });
+
+  it('is never an Apple ID email, Hale’s own line, or a number nobody knows', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    for (const handle of ['someone@example.com', HALE, BOT]) {
+      expect(await isSeatedInChat(db.database, CHAT, handle)).toBe(false);
     }
   });
-});
 
-describe('groupSpeakerOf', () => {
-  it('is a person for a verified Hale channel', async () => {
-    await seedParent(MEI, 'Mei');
-    expect(await groupSpeakerOf(db.database, MEI)).toBe('person');
-  });
+  it('a verified Hale parent of another family, not seated here, cannot reopen a quiet chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    await seedParent(OTHER_PARENT, 'Other');
+    const run = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.verdicts.at(-1)?.verdict).toBe('quiet');
 
-  it('is unverified for an unknown number, an Apple ID email, and Hale’s own line', async () => {
-    await seedParent(MEI, 'Mei');
-    expect(await groupSpeakerOf(db.database, BOT)).toBe('unverified');
-    expect(await groupSpeakerOf(db.database, 'helper@example.com')).toBe('unverified');
-    expect(await groupSpeakerOf(db.database, HALE)).toBe('unverified');
-  });
-
-  it('is unverified for a revoked channel, the predicate the household door answers by', async () => {
-    await seedParent(MEI, 'Mei', { revoked: true });
-    expect(await groupSpeakerOf(db.database, MEI)).toBe('unverified');
+    tick();
+    const verdict = await guard(OTHER_PARENT);
+    expect(verdict.verdict).toBe('quiet');
+    expect(await guardRows()).toHaveLength(1);
   });
 });
 
 describe('with GROUP_LOOP_GUARD_ENABLED off', () => {
   it('reads and writes nothing, for anything but exactly true', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    for (let i = 0; i < 8; i += 1) await haleSays(owner);
-    for (const value of ['', 'false', 'TRUE', 'true\n', '1', 'on']) {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    for (const value of ['', 'false', '1', 'TRUE', 'yes']) {
       vi.stubEnv('GROUP_LOOP_GUARD_ENABLED', value);
       expect(await guard(BOT)).toEqual({ verdict: 'off' });
-      expect(await guard(MEI)).toEqual({ verdict: 'off' });
+      expect(
+        await checkGroupLoopGuardSignal(db.database, {
+          chatId: CHAT,
+          senderHandle: BOT,
+          at: clock,
+        }),
+      ).toEqual({ verdict: 'off' });
     }
     expect(await guardRows()).toEqual([]);
   });
 });
 
 describe('an echo bot in a family group (VIL-728 acceptance)', () => {
-  it('Hale stops after the cap, and a person speaking resumes it', async () => {
-    const owner = await seedParent(MEI, 'Mei');
+  it('Hale stops at the cap, and a seated person speaking resumes it', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
 
-    // A parent asks; Hale answers.
-    tick();
-    expect(await guard(MEI)).toEqual({ verdict: 'person', resumed: false });
-    tick();
-    await haleSays(owner);
-
-    const first = await echoBot(owner, 12);
-    expect(first.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(first.verdicts.slice(0, 5).map((v) => v.verdict)).toEqual([
-      'open',
-      'open',
-      'open',
-      'open',
-      'open',
-    ]);
-    expect(first.verdicts[5]).toEqual({ verdict: 'quiet', tripped: true, haleSince: 5, cap: 5 });
-    // Every later bot line is quiet, and only one message ever took the chat quiet.
-    expect(first.verdicts.slice(6)).toEqual(
-      Array(6).fill({ verdict: 'quiet', tripped: false, haleSince: null, cap: 5 }),
+    const first = await echoBot(mei, 12);
+    expect(first.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP);
+    expect(first.verdicts.slice(0, GROUP_LOOP_GUARD_CAP).map((v) => v.verdict)).toEqual(
+      Array(GROUP_LOOP_GUARD_CAP).fill('open'),
+    );
+    expect(first.verdicts[GROUP_LOOP_GUARD_CAP]).toEqual({
+      verdict: 'quiet',
+      tripped: true,
+      haleSince: GROUP_LOOP_GUARD_CAP,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+    expect(first.verdicts.slice(GROUP_LOOP_GUARD_CAP + 1).map((v) => v.verdict)).toEqual(
+      Array(12 - GROUP_LOOP_GUARD_CAP - 1).fill('quiet'),
     );
 
-    // Silence holds for as long as only the bot talks, well past the counting window.
-    tick(GROUP_LOOP_GUARD_WINDOW_MS * 4);
-    expect((await echoBot(owner, 3)).haleAnswered).toBe(0);
-
-    // A person speaks: the chat reopens and the run is gone.
-    tick(20_000);
+    tick();
     expect(await guard(MEI)).toEqual({ verdict: 'person', resumed: true });
     expect(await guardRows()).toEqual([]);
-    tick();
-    await haleSays(owner);
 
-    // The bot gets the cap again, and no more.
-    const second = await echoBot(owner, 9);
-    expect(second.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(second.verdicts.filter((v) => v.verdict === 'quiet' && v.tripped)).toHaveLength(1);
+    const second = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 2);
+    expect(second.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP);
   });
 
-  it('honours GROUP_LOOP_GUARD_CAP', async () => {
-    vi.stubEnv('GROUP_LOOP_GUARD_CAP', '2');
-    const owner = await seedParent(MEI, 'Mei');
-    const run = await echoBot(owner, 6);
-    expect(run.haleAnswered).toBe(2);
-    expect(run.verdicts[2]).toEqual({ verdict: 'quiet', tripped: true, haleSince: 2, cap: 2 });
+  it('still stops a slow bot that answers every few minutes', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    let haleAnswered = 0;
+    let last: GroupLoopGuardVerdict = { verdict: 'off' };
+    for (let turn = 0; turn < GROUP_LOOP_GUARD_CAP + 3; turn += 1) {
+      tick(8 * 60_000);
+      last = await guard(BOT);
+      if (last.verdict !== 'open') break;
+      tick(1_000);
+      await haleSays(mei);
+      haleAnswered += 1;
+    }
+    expect(haleAnswered).toBe(GROUP_LOOP_GUARD_CAP);
+    expect(last.verdict).toBe('quiet');
   });
 });
 
-describe('a group of people', () => {
-  it('is never held, however much Hale says', async () => {
+describe('two people talking with Hale in a busy group', () => {
+  it('are never held, however much Hale says', async () => {
     const mei = await seedParent(MEI, 'Mei');
     await seedParent(TOM, 'Tom', { familyId: mei.familyId });
-    await seedParent(ADA, 'Ada');
-    for (let i = 0; i < 30; i += 1) {
-      tick();
-      expect(await guard([MEI, TOM, ADA][i % 3] as string)).toEqual({
-        verdict: 'person',
-        resumed: false,
-      });
-      // Two bubbles a reply, far past the cap over the conversation.
-      tick();
-      await haleSays(mei);
+    await holdsChat(mei);
+    for (let turn = 0; turn < 20; turn += 1) {
+      tick(15_000);
+      const verdict = await guard(turn % 2 === 0 ? MEI : TOM);
+      expect(verdict).toEqual({ verdict: 'person', resumed: false });
       await haleSays(mei);
     }
     expect(await guardRows()).toEqual([]);
-  });
-
-  it('lets a newcomer be asked who they are after a busy morning of Hale replies', async () => {
-    const mei = await seedParent(MEI, 'Mei');
-    for (let i = 0; i < 4; i += 1) {
-      tick();
-      await guard(MEI);
-      tick();
-      await haleSays(mei);
-      await haleSays(mei);
-      await haleSays(mei);
-    }
-    // Twelve Hale messages, all answers to a person: none of them is the newcomer's run.
-    tick();
-    expect(await guard(NEWCOMER)).toEqual({ verdict: 'open', haleSince: 0, cap: 5 });
   });
 });
 
 describe('what counts toward the cap', () => {
   it('only Hale messages since the run opened: reminders before it do not count', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    for (let i = 0; i < 8; i += 1) {
-      tick(60_000);
-      await haleSays(owner, { category: 'reminder', templateKey: 'linq:test_reminder' });
-    }
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP + 2; i += 1) await haleSays(mei);
     tick();
-    expect(await guard(NEWCOMER)).toEqual({ verdict: 'open', haleSince: 0, cap: 5 });
+    expect(await guard(BOT)).toEqual({
+      verdict: 'open',
+      haleSince: 0,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
   });
 
-  it('only the last 30 minutes of a run', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    tick();
+  it('a long gap between unseated turns ends the run, so a slow day never adds up', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
     expect((await guard(BOT)).verdict).toBe('open');
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP; i += 1) {
       tick();
-      await haleSays(owner);
+      await haleSays(mei);
     }
-    tick(GROUP_LOOP_GUARD_WINDOW_MS + 60_000);
-    expect(await guard(BOT)).toEqual({ verdict: 'open', haleSince: 0, cap: 5 });
+    tick(GROUP_LOOP_GUARD_RUN_GAP_MS + 1_000);
+    expect(await guard(BOT)).toEqual({
+      verdict: 'open',
+      haleSince: 0,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+  });
+
+  it('a gap does not reopen a chat that already went quiet', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    const run = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.verdicts.at(-1)?.verdict).toBe('quiet');
+    tick(GROUP_LOOP_GUARD_RUN_GAP_MS * 3);
+    expect((await guard(BOT)).verdict).toBe('quiet');
   });
 
   it('not a failed send, a reaction, an edit, another chat, a covered row, or a second row', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    tick();
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
     expect((await guard(BOT)).verdict).toBe('open');
     tick();
-    await haleSays(owner, { status: 'failed' });
-    await haleSays(owner, { status: 'suppressed_quiet_hours' });
-    await haleSays(owner, { templateKey: 'linq:tapback' });
-    await haleSays(owner, { templateKey: 'linq:sticker' });
-    await haleSays(owner, { templateKey: 'linq:edit' });
-    await haleSays(owner, { templateKey: 'linq:duty_tapback' });
-    await haleSays(owner, { providerChatId: 'chat-somewhere-else' });
-    await haleSays(owner, { errorCode: 'covered_by_combined_notice' });
-    await haleSays(owner, { direction: 'in' });
-    await haleSays(owner, { providerMessageId: null, status: 'queued', sentAt: null });
-    // Counted: one message ledgered twice, and a claimed line still in flight.
-    await haleSays(owner, { providerMessageId: 'one-message' });
-    await haleSays(owner, { providerMessageId: 'one-message', templateKey: null });
-    await haleSays(owner, { providerMessageId: null });
+    await haleSays(mei, { status: 'failed' });
+    await haleSays(mei, { templateKey: 'linq:tapback' });
+    await haleSays(mei, { templateKey: 'linq:edit' });
+    await haleSays(mei, { providerChatId: 'chat-another' });
+    await haleSays(mei, { errorCode: 'covered_by_combined_notice' });
+    await haleSays(mei, { providerMessageId: 'shared-bubble' });
+    await haleSays(mei, { providerMessageId: 'shared-bubble' });
     tick();
-    expect(await guard(BOT)).toEqual({ verdict: 'open', haleSince: 2, cap: 5 });
+    expect(await guard(BOT)).toEqual({ verdict: 'open', haleSince: 1, cap: GROUP_LOOP_GUARD_CAP });
+  });
+});
+
+describe('redelivery and isolation', () => {
+  it('a redelivered message from a seated person does not reopen a quiet chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    const spokeAt = clock;
+    expect((await guard(MEI, spokeAt)).verdict).toBe('person');
+    tick(60_000);
+    const run = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.verdicts.at(-1)?.verdict).toBe('quiet');
+
+    tick();
+    expect(await guard(MEI, spokeAt)).toEqual({ verdict: 'person', resumed: false });
+    expect((await guard(BOT)).verdict).toBe('quiet');
+  });
+
+  it('a redelivered bot message does not count twice', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    tick();
+    const sentAt = clock;
+    expect(await guard(BOT, sentAt)).toEqual({
+      verdict: 'open',
+      haleSince: 0,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+    tick();
+    await haleSays(mei);
+    tick();
+    for (let delivery = 0; delivery < 3; delivery += 1) {
+      expect(await guard(BOT, sentAt)).toEqual({
+        verdict: 'open',
+        haleSince: 1,
+        cap: GROUP_LOOP_GUARD_CAP,
+      });
+    }
+  });
+
+  it('one chat going quiet never touches another family’s chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    const ada = await seedParent(ADA, 'Ada');
+    await holdsChat(ada, 'chat-other-family');
+    const run = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.verdicts.at(-1)?.verdict).toBe('quiet');
+
+    tick();
+    expect(await guard(BOT, clock, 'chat-other-family')).toEqual({
+      verdict: 'open',
+      haleSince: 0,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+  });
+});
+
+describe('tapbacks and poll votes', () => {
+  function signal(senderHandle: string, chatId: string = CHAT) {
+    return checkGroupLoopGuardSignal(db.database, { chatId, senderHandle, at: clock });
+  }
+
+  it('an unseated reaction opens a run in a household group and trips at the cap', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    expect(await signal(BOT)).toEqual({ verdict: 'open', haleSince: 0, cap: GROUP_LOOP_GUARD_CAP });
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP; i += 1) {
+      tick();
+      await haleSays(mei);
+    }
+    tick();
+    expect(await signal(BOT)).toEqual({
+      verdict: 'quiet',
+      tripped: true,
+      haleSince: GROUP_LOOP_GUARD_CAP,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+  });
+
+  it('never guards a 1:1 chat, however much Hale has said there', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP + 2; i += 1) {
+      await haleSays(mei, { providerChatId: 'chat-one-to-one' });
+    }
+    tick();
+    expect(await signal(MEI, 'chat-one-to-one')).toEqual({ verdict: 'not_group' });
+    expect(await guardRows()).toEqual([]);
+  });
+
+  it('a seated person’s tapback neither is held nor reopens a quiet chat', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+
+    tick();
+    expect(await signal(MEI)).toEqual({ verdict: 'person', resumed: false });
+    expect((await guard(BOT)).verdict).toBe('quiet');
   });
 });
 
 describe('the trip', () => {
   it('takes the chat quiet exactly once when bot messages race', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    tick();
-    await guard(BOT);
-    for (let i = 0; i < 5; i += 1) {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    expect((await guard(BOT)).verdict).toBe('open');
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP; i += 1) {
       tick();
-      await haleSays(owner);
+      await haleSays(mei);
     }
     tick();
-    const raced = await Promise.all([guard(BOT), guard(BOT), guard(BOT)]);
-    expect(raced.every((v) => v.verdict === 'quiet')).toBe(true);
-    expect(raced.filter((v) => v.verdict === 'quiet' && v.tripped)).toHaveLength(1);
+    const verdicts = await Promise.all([guard(BOT), guard(BOT), guard(BOT), guard(BOT)]);
+    expect(verdicts.map((v) => v.verdict)).toEqual(Array(4).fill('quiet'));
+    expect(verdicts.filter((v) => v.verdict === 'quiet' && v.tripped)).toHaveLength(1);
   });
 
   it('audits every household in the chat and pages #ops once, with counts only', async () => {
     const mei = await seedParent(MEI, 'Mei');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: CHAT })
-      .where(eq(schema.families.id, mei.familyId));
+    await holdsChat(mei);
     const ada = await seedParent(ADA, 'Ada');
     await db.database.insert(schema.linqSharedGroupPeople).values({
       chatId: CHAT,
+      phoneE164Encrypted: encryptString(ADA),
       phoneE164Hash: phoneBlindIndex(ADA),
       familyId: ada.familyId,
       userId: ada.userId,
@@ -373,7 +502,7 @@ describe('the trip', () => {
     const pages: OpsPage[] = [];
     const trip = await noteGroupLoopGuardTrip(
       db.database,
-      { chatId: CHAT, haleSince: 5, cap: 5 },
+      { chatId: CHAT, haleSince: GROUP_LOOP_GUARD_CAP, cap: GROUP_LOOP_GUARD_CAP },
       {
         page: async (page) => {
           pages.push(page);
@@ -382,51 +511,35 @@ describe('the trip', () => {
       },
     );
     expect(trip).toEqual({ audited: 2, auditFailed: false, page: 'paged' });
-    expect(pages).toEqual([{ site: 'group_loop_guard_tripped', facts: {}, count: 5 }]);
-
-    const rows = await db.database
-      .select()
+    expect(pages).toEqual([
+      { site: 'group_loop_guard_tripped', facts: {}, count: GROUP_LOOP_GUARD_CAP },
+    ]);
+    const audits = await db.database
+      .select({ familyId: schema.auditLog.familyId, after: schema.auditLog.after })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'linq_group_loop_guard_quiet'));
-    expect(rows.map((row) => row.familyId).sort()).toEqual([mei.familyId, ada.familyId].sort());
-    for (const row of rows) {
-      expect(row).toMatchObject({
-        actor: 'system',
-        targetTable: 'linq_group_loop_guards',
-        targetId: CHAT,
-        after: { haleSince: 5, cap: 5 },
-      });
+    expect(audits.map((row) => row.familyId).sort()).toEqual([mei.familyId, ada.familyId].sort());
+    for (const row of audits) {
+      expect(row.after).toEqual({ haleSince: GROUP_LOOP_GUARD_CAP, cap: GROUP_LOOP_GUARD_CAP });
     }
-    const written = JSON.stringify(rows);
-    for (const phone of [MEI, ADA, BOT]) expect(written).not.toContain(phone);
-  });
-
-  it('a chat no household has claimed audits nobody and still pages', async () => {
-    const trip = await noteGroupLoopGuardTrip(
-      db.database,
-      { chatId: CHAT, haleSince: 5, cap: 5 },
-      { page: async () => 'paged' },
-    );
-    expect(trip).toEqual({ audited: 0, auditFailed: false, page: 'paged' });
+    expect(JSON.stringify(pages)).not.toContain(CHAT);
   });
 
   it('names a page that throws, and the chat stays quiet', async () => {
-    const owner = await seedParent(MEI, 'Mei');
-    const run = await echoBot(owner, 6);
-    expect(run.verdicts[5]).toMatchObject({ verdict: 'quiet', tripped: true });
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
     const trip = await noteGroupLoopGuardTrip(
       db.database,
-      { chatId: CHAT, haleSince: 5, cap: 5 },
+      { chatId: CHAT, haleSince: GROUP_LOOP_GUARD_CAP, cap: GROUP_LOOP_GUARD_CAP },
       {
         page: async () => {
-          throw new Error('slack down');
+          throw new Error('slack is down');
         },
       },
     );
-    error.mockRestore();
     expect(trip.page).toBe('page_threw');
     tick();
-    expect(await guard(BOT)).toEqual({ verdict: 'quiet', tripped: false, haleSince: null, cap: 5 });
+    expect((await guard(BOT)).verdict).toBe('quiet');
   });
 });

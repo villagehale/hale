@@ -1,7 +1,9 @@
+import type { PlanTier } from '@hale/types';
 import { ChevronRight, Mail, MessageCircle, Phone, Shield, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { signOutAction } from '~/lib/auth-actions';
+import { PLAN_TIER_LABEL } from '~/lib/billing/price-display';
 import { AppearanceCard } from './appearance';
 import { DisabledRow } from './disabled-row';
 import { PortalHeading } from './heading';
@@ -15,6 +17,7 @@ export function SettingsIndex({
   calendarOn,
   name,
   maskedPhone,
+  planTier,
   canSignOut,
   basePath = '',
   signOutTo,
@@ -23,6 +26,7 @@ export function SettingsIndex({
   calendarOn: boolean;
   name: string | null;
   maskedPhone: string | null;
+  planTier: PlanTier;
   canSignOut: boolean;
   basePath?: string;
   /** Demo sign-out target. The real portal uses the session action instead. */
@@ -49,7 +53,11 @@ export function SettingsIndex({
             title="Texts from Hale"
             meta="What Hale sends and when"
           />
-          <DisabledRow icon={<Sparkles aria-hidden="true" />} title="Plan" meta="Founding family" />
+          <DisabledRow
+            icon={<Sparkles aria-hidden="true" />}
+            title="Plan"
+            meta={PLAN_TIER_LABEL[planTier]}
+          />
           <Row
             basePath={basePath}
             href="/settings/privacy"

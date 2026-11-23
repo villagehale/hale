@@ -1,4 +1,20 @@
 {
+  "ack-eta-judge.md": {
+    "file": "ack-eta-judge.md",
+    "sha256": "e9b9a506ea400a929cf4d7b3fbe6755683d5d4159b7972b2a5e9fec24c98f64a"
+  },
+  "ack-eta-miss.md": {
+    "file": "ack-eta-miss.md",
+    "sha256": "29363a197e0096ed4f4d01a9339027d7a9f193ef0c9eb92eaa9b6065d67392b8"
+  },
+  "ack-eta-read.md": {
+    "file": "ack-eta-read.md",
+    "sha256": "3b874fb7c1034fc50471fe7c04273237d16954af629f66204296da2ca55493a1"
+  },
+  "ack-eta.md": {
+    "file": "ack-eta.md",
+    "sha256": "702674db6941985480a3763785d37a290f63abd7d486ff469369069346b7bcc7"
+  },
   "activity-deep.md": {
     "file": "activity-deep.md",
     "sha256": "96f7e289daac854476c384093fc07ffea749e7391cf691273f6e5dde981f79d4"
@@ -39,9 +55,21 @@
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
   },
+  "billing-notice-check.md": {
+    "file": "billing-notice-check.md",
+    "sha256": "0291d52f8458e2444ca83c4f076daf54b3628c1afabf20d2f070b40a0aff4d1e"
+  },
+  "billing-notice.md": {
+    "file": "billing-notice.md",
+    "sha256": "dcc48ca50a67d85bdda79c00641649d613ff2a0e184ab9e07a40929db0b6a415"
+  },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
     "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
+  },
+  "browser-use-cart-read.md": {
+    "file": "browser-use-cart-read.md",
+    "sha256": "b4e5771ab1acd70e88a44f53ba3296a1c8fd539da446a0d3775c213f24c7ed9f"
   },
   "browser-use-checkout-review.md": {
     "file": "browser-use-checkout-review.md",
@@ -51,6 +79,14 @@
     "file": "browser-use-confirmation.md",
     "sha256": "346a0f5250505a31aa9c5327a35e7699ef84c30319583eea044f80ecdb12cce8"
   },
+  "browser-use-free-checkout.md": {
+    "file": "browser-use-free-checkout.md",
+    "sha256": "fed11542f442ebef904bb030107f0be256a5ae8c125941a5f5808e7f8db5f580"
+  },
+  "browser-use-free-review.md": {
+    "file": "browser-use-free-review.md",
+    "sha256": "4ee314bee183a09e1b7d387367a1d9762dc435470ff86793a7caed19bfcaf0b4"
+  },
   "browser-use-payment.md": {
     "file": "browser-use-payment.md",
     "sha256": "0cb09e88dc63291023bd687064cb8de927e8b24f2d1308fccbd0411c94cbd0a3"
@@ -58,6 +94,10 @@
   "browser-use-plan-signup.md": {
     "file": "browser-use-plan-signup.md",
     "sha256": "4e7d24c03a383e5e686a4f037b727e2770ad7df59dfac12b2b35cb1f485048d2"
+  },
+  "browser-use-price-unstated.md": {
+    "file": "browser-use-price-unstated.md",
+    "sha256": "cee9955e936f8b1623d6c53d9557d04cbf0fa86156e6430380678703c8a6b4c9"
   },
   "browser-use-saved-card-payment.md": {
     "file": "browser-use-saved-card-payment.md",
@@ -167,6 +207,10 @@
     "file": "coach-no-group-relay.md",
     "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
   },
+  "coach-no-stop-keyword.md": {
+    "file": "coach-no-stop-keyword.md",
+    "sha256": "339c6245f99f89fe37107926bd2afc34cd74dee9a2c4913f3a2bc4520a2855eb"
+  },
   "coach-photo-facts.md": {
     "file": "coach-photo-facts.md",
     "sha256": "50cb3d0323f8852c0397103a7dafbe2bc604c543b1d9f2387a625b541095e0a9"
@@ -183,9 +227,17 @@
     "file": "coach-reaction.md",
     "sha256": "d930e28031ffdf2c495d61eeff1384d24e9f05984d5b5e7e8aaf462944a2fdcf"
   },
+  "coach-signup-group.md": {
+    "file": "coach-signup-group.md",
+    "sha256": "0f72a893ebfbf34b7fd33c068d5d3d9c3544c2d4ad2664fd0f2c9067ade47b55"
+  },
   "coach-signup-offer.md": {
     "file": "coach-signup-offer.md",
     "sha256": "0ff9df0dfc13a6f5c19c3f346d7aecbc4c39df6ed78c6e570b278ed9af199dd4"
+  },
+  "coach-signup-terms.md": {
+    "file": "coach-signup-terms.md",
+    "sha256": "a0afd36df1ff2abf139951e069aefc1d33f6049d6629d4a9c91375841a0c97e3"
   },
   "coach-voice-memo.md": {
     "file": "coach-voice-memo.md",
@@ -322,6 +374,10 @@
   "group-mention-read.md": {
     "file": "group-mention-read.md",
     "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
+  "group-onboarding-no-keyword.md": {
+    "file": "group-onboarding-no-keyword.md",
+    "sha256": "fdb278cd3227ec885bdc622d3482f3cc1201c0bc20e4a7dd7dfcd8b1881b671a"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -551,6 +607,10 @@
     "file": "party-extraction.md",
     "sha256": "7fe117e97be8e781456314c33596dd2d778a84ce5c367bdbeedd1f45258da539"
   },
+  "party-guest-line.md": {
+    "file": "party-guest-line.md",
+    "sha256": "239bbe828d49ee8734de5c7da3f0f6e44f20bdedeff28e5b2e555fb4ee13d6d9"
+  },
   "proactive-decider.md": {
     "file": "proactive-decider.md",
     "sha256": "a1c011c3f0e5c4e906f731b36930516a18b60670f06026f465cad28ad98fbeab"
@@ -679,6 +739,10 @@
     "file": "signup-consent.md",
     "sha256": "76678bac92e640e4df07fdf1b6b526573c83a89c5a0e1d7e299ec690c50079a7"
   },
+  "signup-dob-read.md": {
+    "file": "signup-dob-read.md",
+    "sha256": "79a6a0205fed1fa9dad84918d0164e56456765ea4d9ddcc42e6c95954ea86146"
+  },
   "signup-mismatch-read.md": {
     "file": "signup-mismatch-read.md",
     "sha256": "df74523aaa7f24c3004a763ac825bd95ade672dec18c9257455def1883d99ba5"
@@ -695,6 +759,14 @@
     "file": "signup-outcome-reply.md",
     "sha256": "135d79dfbf9d957c67dfc98155296b19d1cb4ab2df538a6428ba22b0a716306e"
   },
+  "signup-page-words.md": {
+    "file": "signup-page-words.md",
+    "sha256": "f84620b4f2150c9e71c19da0c43c9a8c4a4505ee02a7eee09b0be3f97996b064"
+  },
+  "signup-plan-read-terms.md": {
+    "file": "signup-plan-read-terms.md",
+    "sha256": "0b08905caf37f60aee5bcb91aa76918f661268eb14e08b0ec2072218741a39ff"
+  },
   "signup-plan-read.md": {
     "file": "signup-plan-read.md",
     "sha256": "f04a08ab47adffd78406d4d9e9d6964427c05c07d5755963f5c145134722bc85"
@@ -702,6 +774,14 @@
   "signup-plan-reply.md": {
     "file": "signup-plan-reply.md",
     "sha256": "f4b4c4137b58106180f0a6d90646acb846949ca3b99ec3e59b3d6150c256eff3"
+  },
+  "signup-plan-terms.md": {
+    "file": "signup-plan-terms.md",
+    "sha256": "d27c19f0f752f01ed397edf5a82615ed0aae5b95f064d2cca563a55089f8d511"
+  },
+  "signup-preflight-read.md": {
+    "file": "signup-preflight-read.md",
+    "sha256": "b8d34caece5c02eda0cd42c306179a9fca0f31030863ee9358c4d5d788c96449"
   },
   "signup-provider-notice.md": {
     "file": "signup-provider-notice.md",

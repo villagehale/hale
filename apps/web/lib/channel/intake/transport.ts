@@ -101,7 +101,14 @@ export interface OutboundMessage {
    * to `to`, unthreaded. Text only. A transport with no threads (Preview capture) sends
    * to `to`, which for a 1:1 is the same chat, unthreaded.
    */
-  replyIn?: { chatId: string; messageId: string };
+  replyIn?: {
+    chatId: string;
+    messageId: string;
+    /** See `sendLinqChatMessage`: an unclear answer to the threaded try is not resent plain. */
+    plainResendOnlyIfRefused?: boolean;
+  };
+  /** The caller's identity for this one send (Linq's idempotency key, see `linqSendKey`). */
+  sendKey?: string;
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */
@@ -127,6 +134,16 @@ export interface ChannelTransport {
    * Absent on SMS. A refusal is named; callers must not pretend the card left.
    */
   requestLocation?(input: { chatId: string }): Promise<LocationRequestResult>;
+  /**
+   * VIL-715 · one private image into this number's existing 1:1, after the text it follows.
+   * The bytes never get a public URL (see `OutboundMessage.mediaUrls`). A transport without
+   * it cannot carry one, and the caller names that absence (rule #11).
+   */
+  sendImage?(input: { to: string; png: Uint8Array; filename: string }): Promise<{
+    providerMessageId: string;
+    transport?: 'imessage';
+    chatId?: string | null;
+  }>;
 }
 
 /**

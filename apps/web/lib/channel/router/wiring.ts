@@ -10,6 +10,7 @@ import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/
 import { recordSchoolBreak } from '~/lib/care/school-break/facts';
 import { createSchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { recordWeekdayCare } from '~/lib/care/weekday';
+import { ackEtaRouterPorts } from '~/lib/channel/ack-eta/production';
 import {
   defaultActivityPromisePorts,
   loadOpenActivityPromise,
@@ -141,6 +142,7 @@ import {
   TURN_FOLDED_ACTION,
   TURN_LEDGER_LOOKBACK_MS,
   TURN_LEDGER_TARGET,
+  TURN_NOTHING_SENT,
 } from './turn-ledger';
 
 /**
@@ -658,6 +660,7 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             actionTaken: TURN_ANSWERED_ACTION,
             targetTable: TURN_LEDGER_TARGET,
             targetId: input.channelMessageId,
+            ...(input.nothingSent ? { after: TURN_NOTHING_SENT } : {}),
           },
           // A folded text is answered by this same reply. Its claim is the fold's, so
           // only the anchor's claim above arbitrates; `into` names the turn that answered.
@@ -667,7 +670,10 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
             actionTaken: TURN_ANSWERED_ACTION,
             targetTable: TURN_LEDGER_TARGET,
             targetId: memberId,
-            after: { into: input.channelMessageId },
+            after: {
+              into: input.channelMessageId,
+              ...(input.nothingSent ? TURN_NOTHING_SENT : {}),
+            },
           })),
         ]);
         return 'claimed';
@@ -874,6 +880,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
     holdingTapback: createHoldingTapback(screenClient),
+    // VIL-717 · the ack a slow 1:1 ask gets, and its promise. Dark unless ACK_ETA_ENABLED is
+    // exactly `true`; the same lazy client, built only when an ack is due.
+    ackEta: ackEtaRouterPorts(screenClient),
     sendParentReaction: reactToParentMessage,
     floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
@@ -1050,7 +1059,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
       // stopped being answerable — and listing one would let a YES two days later text a
-      // family "thank you for being one of our first" about a week they have already had.
+      // family the welcome note about a week they have already had.
       founderWelcomeOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'founder_welcome_offer');
         if (!offer || offer.dueAt.getTime() < now.getTime()) return null;

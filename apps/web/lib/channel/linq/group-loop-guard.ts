@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { and, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, notInArray, or, sql } from 'drizzle-orm';
 import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPage, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { realHumanPhone } from './group-coparent';
 import { presentHouseholds } from './multi-family';
@@ -12,74 +14,126 @@ import { presentHouseholds } from './multi-family';
  *
  * Decided by behaviour in code, never by reading a word of the message:
  *
- * - WHO spoke. A sender is a person when their number resolves to a verified Hale channel:
- *   a parent, a co-parent, or a member the roster seated on their own reply (seating
- *   verifies the number). It is the same predicate the household door answers family by.
- *   Anyone else (an unknown number, an Apple ID email, Hale's own line) is unverified.
- * - HOW MUCH Hale said since. A run opens at the first unverified-sender message after the
- *   last person spoke. Hale's own group sends since then, within the last
- *   {@link GROUP_LOOP_GUARD_WINDOW_MS}, are counted from the outbound ledger.
- * - At the cap, the chat goes quiet: Hale answers no unverified sender there, sends nothing
- *   and announces nothing, until a person speaks. The trip is audited and pages #ops once.
+ * - WHO spoke. A person is someone seated in this chat ({@link isSeatedInChat}). Anyone
+ *   else (an unknown number, an Apple ID email, a Hale customer who is not in this
+ *   family's group) cannot end a run, so a bot cannot unlock the guard by speaking.
+ * - HOW MUCH Hale said since. A run opens at the first unseated message after the last
+ *   seated person spoke. Hale's own group sends since then are counted from the outbound
+ *   ledger. A gap of {@link GROUP_LOOP_GUARD_RUN_GAP_MS} between unseated turns ends the
+ *   run: that is too slow to be a loop, and it keeps a slow week from adding up.
+ * - At {@link GROUP_LOOP_GUARD_CAP}, the chat goes quiet: Hale answers nobody unseated
+ *   there, sends nothing and announces nothing, until a seated person speaks. The trip is
+ *   audited and pages #ops once.
  *
- * A person is never held by this guard, so a group of people talking to each other and to
- * Hale is untouched. The cap is a setting ({@link groupLoopGuardCap}), not a phrase anyone
- * reads. Behind `GROUP_LOOP_GUARD_ENABLED`, exactly `true`; off, nothing here runs.
+ * A seated person is never held, so a group of people talking to each other and to Hale is
+ * untouched. Behind `GROUP_LOOP_GUARD_ENABLED`, exactly `true`; off, nothing here runs.
  */
 
 export function groupLoopGuardEnabled(): boolean {
   return isEnabled('group-loop-guard');
 }
 
-/** Env name of the cap. Config, not a flag: the flag turns the guard on, this tunes it. */
-export const GROUP_LOOP_GUARD_CAP_ENV = 'GROUP_LOOP_GUARD_CAP';
+/** Hale group messages, with no seated person speaking, before the chat goes quiet. */
+export const GROUP_LOOP_GUARD_CAP = 5;
 
-/** Hale group messages, with no person speaking, before the chat goes quiet. */
-export const GROUP_LOOP_GUARD_CAP_DEFAULT = 5;
+/** The longest gap between unseated turns that still counts as one back-and-forth. */
+export const GROUP_LOOP_GUARD_RUN_GAP_MS = 6 * 60 * 60 * 1000;
 
-/** The largest cap the setting accepts. Above it the guard would not be a guard. */
-export const GROUP_LOOP_GUARD_CAP_MAX = 50;
-
-/**
- * Only Hale's sends this recent count toward the cap. A bot loop is a rapid back-and-forth
- * (seconds a turn), so this is far wider than any loop, and it keeps a slow day of replies
- * to people Hale has not verified, or reminders sent into a quiet run, from adding up.
- */
-export const GROUP_LOOP_GUARD_WINDOW_MS = 30 * 60 * 1000;
-
-/**
- * The cap. Unset is the default. Anything but a whole number from 1 to
- * {@link GROUP_LOOP_GUARD_CAP_MAX}, written plainly, is the default and is logged.
- */
-export function groupLoopGuardCap(env: Record<string, string | undefined> = process.env): number {
-  const raw = env[GROUP_LOOP_GUARD_CAP_ENV];
-  if (raw === undefined || raw.trim() === '') return GROUP_LOOP_GUARD_CAP_DEFAULT;
-  const value = Number(raw.trim());
-  if (
-    !Number.isInteger(value) ||
-    String(value) !== raw.trim() ||
-    value < 1 ||
-    value > GROUP_LOOP_GUARD_CAP_MAX
-  ) {
-    console.warn(
-      { outcome: 'group_loop_guard_cap_invalid', default: GROUP_LOOP_GUARD_CAP_DEFAULT },
-      'group loop guard: GROUP_LOOP_GUARD_CAP is not a whole number from 1 to 50; using the default',
+/** Every household this chat belongs to: the claimed group, its roster, a shared chat's
+ * joined and present families. */
+async function householdsInChat(database: Database, chatId: string): Promise<string[]> {
+  const claimed = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId));
+  const rostered = await database
+    .select({ familyId: schema.linqGroupRosters.familyId })
+    .from(schema.linqGroupRosters)
+    .where(eq(schema.linqGroupRosters.chatId, chatId));
+  const joined = await database
+    .select({ familyId: schema.linqMultiFamilyJoins.familyId })
+    .from(schema.linqMultiFamilyJoins)
+    .where(
+      and(
+        eq(schema.linqMultiFamilyJoins.chatId, chatId),
+        isNull(schema.linqMultiFamilyJoins.leftAt),
+      ),
     );
-    return GROUP_LOOP_GUARD_CAP_DEFAULT;
-  }
-  return value;
+  const shared = await presentHouseholds(database, chatId, {
+    includeStopped: true,
+    includeLeft: false,
+  });
+  return [
+    ...new Set([
+      ...claimed.map((row) => row.id),
+      ...rostered.flatMap((row) => (row.familyId ? [row.familyId] : [])),
+      ...joined.map((row) => row.familyId),
+      ...shared,
+    ]),
+  ];
 }
 
-export type GroupSpeaker = 'person' | 'unverified';
-
-/** Whether the sender's number is a verified Hale channel. Never reads the message. */
-export async function groupSpeakerOf(
+/**
+ * Whether this sender is seated in this chat: a live household or shared-group seat, a
+ * known Hale family placed in the chat, or a parent of a family that holds it. A row with
+ * no family is a number Hale only saw here, which is what a bot looks like. Never reads
+ * the message.
+ */
+export async function isSeatedInChat(
   database: Database,
+  chatId: string,
   senderHandle: string,
-): Promise<GroupSpeaker> {
+): Promise<boolean> {
   const phone = realHumanPhone(senderHandle);
-  if (!phone) return 'unverified';
-  return (await resolveVerifiedChannelByPhone(database, phone)) ? 'person' : 'unverified';
+  if (!phone) return false;
+  const hash = phoneBlindIndex(phone);
+
+  const household = schema.linqGroupMembers;
+  const [householdSeat] = await database
+    .select({ id: household.id })
+    .from(household)
+    .where(
+      and(
+        eq(household.chatId, chatId),
+        eq(household.phoneE164Hash, hash),
+        isNull(household.removedAt),
+      ),
+    )
+    .limit(1);
+  if (householdSeat) return true;
+
+  const shared = schema.linqMultiFamilyMembers;
+  const [sharedSeat] = await database
+    .select({ id: shared.id })
+    .from(shared)
+    .where(and(eq(shared.chatId, chatId), eq(shared.phoneE164Hash, hash), isNull(shared.removedAt)))
+    .limit(1);
+  if (sharedSeat) return true;
+
+  const people = schema.linqSharedGroupPeople;
+  const [knownPerson] = await database
+    .select({ id: people.id })
+    .from(people)
+    .where(
+      and(eq(people.chatId, chatId), eq(people.phoneE164Hash, hash), isNotNull(people.familyId)),
+    )
+    .limit(1);
+  if (knownPerson) return true;
+
+  const channel = await resolveVerifiedChannelByPhone(database, phone);
+  if (!channel) return false;
+  const [member] = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, channel.familyId),
+        eq(schema.familyMembers.userId, channel.userId),
+      ),
+    )
+    .limit(1);
+  if (!member || !isParentRole(member.role)) return false;
+  return (await householdsInChat(database, chatId)).includes(channel.familyId);
 }
 
 /**
@@ -89,10 +143,11 @@ export async function groupSpeakerOf(
 const NOT_A_NEW_MESSAGE = ['linq:tapback', 'linq:sticker', 'linq:edit', 'linq:duty_tapback'];
 
 /**
- * Hale's messages into this chat that left at or after `since`, from the outbound ledger
- * every group send writes (provider chat id, direction out, its send time). Most group
- * lines claim their row before the send, so a message still in flight already counts.
- * Rows that share one provider id are one message; a failed or covered row never left.
+ * Hale's messages into this chat recorded at or after `since`, from the outbound ledger
+ * every group send writes (provider chat id, direction out). `send_recorded_at` is the
+ * database's own clock at the send, the same clock `since` was taken on. Most group lines
+ * claim their row before the send, so a message still in flight already counts. Rows that
+ * share one provider id are one message; a failed or covered row never left.
  */
 export async function countHaleGroupSends(
   database: Database,
@@ -111,8 +166,7 @@ export async function countHaleGroupSends(
         eq(m.direction, 'out'),
         inArray(m.status, [...SENT_STATUSES]),
         isRealSendRow(),
-        isNotNull(m.sentAt),
-        gte(m.sentAt, since),
+        gte(m.sendRecordedAt, since),
         or(isNull(m.templateKey), notInArray(m.templateKey, NOT_A_NEW_MESSAGE)),
       ),
     );
@@ -122,63 +176,99 @@ export async function countHaleGroupSends(
 export type GroupLoopGuardVerdict =
   /** The flag is off. Nothing was read or written. */
   | { verdict: 'off' }
-  /** A person spoke. Any open run is closed; `resumed` when the chat had been quiet. */
+  /** A tapback or vote in a chat no household holds: a 1:1, which this guard never touches. */
+  | { verdict: 'not_group' }
+  /** A seated person. `resumed` when their message reopened a quiet chat. */
   | { verdict: 'person'; resumed: boolean }
-  /** Not a person, under the cap. The turn runs as it would without the guard. */
+  /** Not seated, under the cap. The turn runs as it would without the guard. */
   | { verdict: 'open'; haleSince: number; cap: number }
   /**
-   * Not a person, and the chat is quiet: Hale sends nothing for this message. `tripped` is
+   * Not seated, and the chat is quiet: Hale sends nothing for this message. `tripped` is
    * true for exactly one message, the one that took the chat quiet; `haleSince` is the count
    * that did it, and null on every later quiet message (nothing was counted).
    */
   | { verdict: 'quiet'; tripped: boolean; haleSince: number | null; cap: number };
 
-/**
- * One group message, before any group path may answer it. Writes the run state; sends
- * nothing. Throws only when the database does, and the door runs the turn unguarded then.
- */
-export async function checkGroupLoopGuard(
+async function unseatedTurn(
   database: Database,
-  input: { chatId: string; senderHandle: string; now: Date },
-  env: Record<string, string | undefined> = process.env,
+  input: { chatId: string; at: Date },
 ): Promise<GroupLoopGuardVerdict> {
-  if (!groupLoopGuardEnabled()) return { verdict: 'off' };
   const guards = schema.linqGroupLoopGuards;
-
-  if ((await groupSpeakerOf(database, input.senderHandle)) === 'person') {
-    const closed = await database
-      .delete(guards)
-      .where(eq(guards.chatId, input.chatId))
-      .returning({ quietSince: guards.quietSince });
-    return { verdict: 'person', resumed: closed.some((row) => row.quietSince !== null) };
+  const at = input.at.toISOString();
+  const runEndedBefore = new Date(input.at.getTime() - GROUP_LOOP_GUARD_RUN_GAP_MS).toISOString();
+  const runEnded = sql`${guards.quietSince} is null and ${guards.lastTurnAt} < ${runEndedBefore}::timestamptz`;
+  const [run] = await database
+    .insert(guards)
+    .values({ chatId: input.chatId, runStartedAt: input.at, lastTurnAt: input.at })
+    .onConflictDoUpdate({
+      target: guards.chatId,
+      set: {
+        runStartedAt: sql`case when ${runEnded} then ${at}::timestamptz else ${guards.runStartedAt} end`,
+        countedFrom: sql`case when ${runEnded} then now() else ${guards.countedFrom} end`,
+        lastTurnAt: sql`greatest(${guards.lastTurnAt}, ${at}::timestamptz)`,
+      },
+    })
+    .returning({ countedFrom: guards.countedFrom, quietSince: guards.quietSince });
+  if (!run) throw new Error('group loop guard: upsert returned no row');
+  if (run.quietSince) {
+    return { verdict: 'quiet', tripped: false, haleSince: null, cap: GROUP_LOOP_GUARD_CAP };
   }
 
-  const cap = groupLoopGuardCap(env);
-  await database
-    .insert(guards)
-    .values({ chatId: input.chatId, runStartedAt: input.now, updatedAt: input.now })
-    .onConflictDoNothing({ target: guards.chatId });
-  const [run] = await database
-    .select({ runStartedAt: guards.runStartedAt, quietSince: guards.quietSince })
-    .from(guards)
-    .where(eq(guards.chatId, input.chatId));
-  // A person spoke between the insert and this read and closed the run: nothing to count.
-  if (!run) return { verdict: 'open', haleSince: 0, cap };
-  if (run.quietSince) return { verdict: 'quiet', tripped: false, haleSince: null, cap };
-
-  const windowStart = new Date(input.now.getTime() - GROUP_LOOP_GUARD_WINDOW_MS);
-  const since = run.runStartedAt > windowStart ? run.runStartedAt : windowStart;
-  const haleSince = await countHaleGroupSends(database, input.chatId, since);
-  if (haleSince < cap) return { verdict: 'open', haleSince, cap };
+  const haleSince = await countHaleGroupSends(database, input.chatId, run.countedFrom);
+  if (haleSince < GROUP_LOOP_GUARD_CAP) {
+    return { verdict: 'open', haleSince, cap: GROUP_LOOP_GUARD_CAP };
+  }
 
   // Only one message takes the chat quiet, however many arrive at once: that one audits
   // and pages, and the rest are ordinary quiet messages.
   const took = await database
     .update(guards)
-    .set({ quietSince: input.now, updatedAt: input.now })
+    .set({ quietSince: input.at })
     .where(and(eq(guards.chatId, input.chatId), isNull(guards.quietSince)))
     .returning({ chatId: guards.chatId });
-  return { verdict: 'quiet', tripped: took.length > 0, haleSince, cap };
+  return { verdict: 'quiet', tripped: took.length > 0, haleSince, cap: GROUP_LOOP_GUARD_CAP };
+}
+
+/**
+ * One group text, before any group path may answer it. `at` is the message's own time
+ * (Linq's sent_at), so a redelivered message from a seated person cannot end a run that
+ * started after they spoke. Writes the run state; sends nothing. Throws only when the
+ * database does, and the door runs the turn as it would without the guard then.
+ */
+export async function checkGroupLoopGuard(
+  database: Database,
+  input: { chatId: string; senderHandle: string; at: Date },
+): Promise<GroupLoopGuardVerdict> {
+  if (!groupLoopGuardEnabled()) return { verdict: 'off' };
+  if (await isSeatedInChat(database, input.chatId, input.senderHandle)) {
+    const guards = schema.linqGroupLoopGuards;
+    const closed = await database
+      .delete(guards)
+      .where(and(eq(guards.chatId, input.chatId), lte(guards.runStartedAt, input.at)))
+      .returning({ quietSince: guards.quietSince });
+    return { verdict: 'person', resumed: closed.some((row) => row.quietSince !== null) };
+  }
+  return unseatedTurn(database, input);
+}
+
+/**
+ * A tapback or poll vote. These webhooks do not say whether the chat is a group, so one
+ * counts only in a chat a household holds. A seated person's is never held and does not
+ * end a run: a tapback is not someone speaking, and it carries no time of its own to tell
+ * a fresh one from a redelivery.
+ */
+export async function checkGroupLoopGuardSignal(
+  database: Database,
+  input: { chatId: string; senderHandle: string; at: Date },
+): Promise<GroupLoopGuardVerdict> {
+  if (!groupLoopGuardEnabled()) return { verdict: 'off' };
+  if (await isSeatedInChat(database, input.chatId, input.senderHandle)) {
+    return { verdict: 'person', resumed: false };
+  }
+  if ((await householdsInChat(database, input.chatId)).length === 0) {
+    return { verdict: 'not_group' };
+  }
+  return unseatedTurn(database, input);
 }
 
 export interface GroupLoopGuardPorts {
@@ -194,27 +284,21 @@ export interface GroupLoopGuardTrip {
   page: OpsPagerOutcome | 'page_threw';
 }
 
-/** Every household this chat belongs to: the claimed group, its roster, a shared chat's. */
-async function familiesInChat(database: Database, chatId: string): Promise<string[]> {
-  const claimed = await database
-    .select({ id: schema.families.id })
-    .from(schema.families)
-    .where(eq(schema.families.linqGroupChatId, chatId));
-  const rostered = await database
-    .select({ familyId: schema.linqGroupRosters.familyId })
-    .from(schema.linqGroupRosters)
-    .where(eq(schema.linqGroupRosters.chatId, chatId));
-  const shared = await presentHouseholds(database, chatId, {
-    includeStopped: true,
-    includeLeft: false,
-  });
-  return [
-    ...new Set([
-      ...claimed.map((row) => row.id),
-      ...rostered.flatMap((row) => (row.familyId ? [row.familyId] : [])),
-      ...shared,
-    ]),
-  ];
+async function pageGuard(
+  database: Database,
+  opsPage: OpsPage,
+  ports: GroupLoopGuardPorts,
+): Promise<OpsPagerOutcome | 'page_threw'> {
+  const page = ports.page ?? ((p: OpsPage) => pageOps(database, p));
+  try {
+    return await page(opsPage);
+  } catch (err) {
+    console.error(
+      { outcome: 'group_loop_guard_page_threw', err: err instanceof Error ? err.name : 'unknown' },
+      'group loop guard: the page call threw',
+    );
+    return 'page_threw';
+  }
 }
 
 /**
@@ -230,7 +314,7 @@ export async function noteGroupLoopGuardTrip(
   let audited = 0;
   let auditFailed = false;
   try {
-    const families = await familiesInChat(database, input.chatId);
+    const families = await householdsInChat(database, input.chatId);
     if (families.length > 0) {
       await database.insert(schema.auditLog).values(
         families.map((familyId) => ({
@@ -254,16 +338,18 @@ export async function noteGroupLoopGuardTrip(
       'group loop guard: the chat is quiet but the audit row was not written',
     );
   }
-  const page = ports.page ?? ((opsPage: OpsPage) => pageOps(database, opsPage));
-  let paged: GroupLoopGuardTrip['page'];
-  try {
-    paged = await page({ site: 'group_loop_guard_tripped', facts: {}, count: input.haleSince });
-  } catch (err) {
-    paged = 'page_threw';
-    console.error(
-      { outcome: 'group_loop_guard_page_threw', err: err instanceof Error ? err.name : 'unknown' },
-      'group loop guard: the chat is quiet but #ops was not paged',
-    );
-  }
-  return { audited, auditFailed, page: paged };
+  const page = await pageGuard(
+    database,
+    { site: 'group_loop_guard_tripped', facts: {}, count: input.haleSince },
+    ports,
+  );
+  return { audited, auditFailed, page };
+}
+
+/** The guard could not read, so the turn ran unguarded. Never throws. */
+export function noteGroupLoopGuardUnread(
+  database: Database,
+  ports: GroupLoopGuardPorts = {},
+): Promise<OpsPagerOutcome | 'page_threw'> {
+  return pageGuard(database, { site: 'group_loop_guard_unread', facts: {} }, ports);
 }

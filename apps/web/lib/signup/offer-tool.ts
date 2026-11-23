@@ -18,6 +18,8 @@ import { foldWords, quotesParent, quotesParentWords } from './parent-quote';
 import { registrationPlanRunEnabled } from './plan/flag';
 import { untrustedActivityLabel } from './plan/reader';
 import type { PlanReplyWriter } from './plan/writer';
+import { registrationPreflightEnabled } from './terms/flag';
+import type { ProgramTermsDeps } from './terms/read-page';
 import {
   type SignupSupersedeReader,
   type SupersedeAsk,
@@ -68,6 +70,8 @@ export interface SignupOfferToolPorts {
   parentWords: string;
   /** The door could not read this turn's text as a stop or not (`ChannelTurn.optOutUnread`). */
   optOutUnread: boolean;
+  /** VIL-715 · where this turn is. With pre-flight on, a group turn records no ask. */
+  audience: 'group' | 'direct';
   /** Pages a search or extract put in front of the parent this turn. */
   linksThisTurn: () => readonly { title: string; url: string }[];
   writer?: SignupOfferWriter;
@@ -75,6 +79,8 @@ export interface SignupOfferToolPorts {
   planWriter?: PlanReplyWriter;
   /** Reads whether this ask replaces an earlier one. Undefined uses the reply model. */
   supersedeReader?: SignupSupersedeReader;
+  /** VIL-715 · the page read before the ask. Undefined uses the live fetcher and model. */
+  termsDeps?: ProgramTermsDeps;
   /**
    * Handed every offer this turn recorded. The router stamps it as asked once the reply that
    * carries its text went out, so an offer whose text never reached the parent never takes
@@ -188,6 +194,10 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
       if (ctx.familyId !== ports.familyId) {
         throw new Error("That family is not this turn's family.");
       }
+      // Registration terms are the asker's to hear, and everyone in a group reads every line.
+      if (ports.audience === 'group' && registrationPreflightEnabled(ports.familyId)) {
+        return { recorded: false as const, reason: 'terms_in_private' };
+      }
       if (ports.optOutUnread || (await isParentHeld(ports.database, ports.parentUserId))) {
         console.warn(
           { outcome: 'signup_opt_out_unread', thisText: ports.optOutUnread },
@@ -282,9 +292,15 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
             language: null,
           },
         },
-        { writer: ports.writer, planWriter: ports.planWriter },
+        { writer: ports.writer, planWriter: ports.planWriter, terms: ports.termsDeps },
       );
-      if (!result.ok) return { recorded: false as const, reason: result.reason };
+      if (!result.ok) {
+        return {
+          recorded: false as const,
+          reason: result.reason,
+          ...(result.reason === 'age_outside_band' ? { ageBand: result.ageBand ?? null } : {}),
+        };
+      }
       ports.onRecorded({ offerId: result.offerId, text: result.text });
       return {
         recorded: true as const,

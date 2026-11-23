@@ -10,6 +10,7 @@ import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import type { Asked } from '~/lib/channel/router/open-questions';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   type AskPlace,
   SIGNUP_ASK_BACK_QUESTION,
@@ -84,6 +85,8 @@ import {
   recordBrowserUseCost,
   reserveBrowserUseAllowance,
 } from './store';
+import { registrationPreflightEnabled } from './terms/flag';
+import { someOfferHasTerms } from './terms/store';
 import type { SignupBrowser, SignupIdentity, SignupPage, SignupStopReason } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -114,6 +117,7 @@ export interface SignupRunDeps {
   planReader?: PlanTurnDeps['planReader'];
   planWriter?: PlanTurnDeps['planWriter'];
   mismatchReader?: PlanTurnDeps['mismatchReader'];
+  dobReader?: PlanTurnDeps['dobReader'];
   sendProviderEmail?: PlanTurnDeps['sendProviderEmail'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
@@ -223,6 +227,7 @@ export async function runAuthorizedSignup(
     planReader: deps.planReader,
     planWriter: deps.planWriter,
     mismatchReader: deps.mismatchReader,
+    dobReader: deps.dobReader,
     declineSeat: deps.declineSeat,
     sendProviderEmail:
       deps.sendProviderEmail ??
@@ -260,6 +265,21 @@ export async function runAuthorizedSignup(
       'signup asks: a text of theirs may be an unread stop - no ask moves',
     );
     return { ...UNCLAIMED, outcome: 'opt_out_unread' };
+  }
+  // VIL-715: a registration's terms are the asker's alone, so a yes counts only in their own
+  // thread. In a group no ask is read and none moves; the coach takes the turn. That holds for
+  // any ask with terms, after the flag goes off too.
+  if (
+    asks.length > 0 &&
+    (registrationPreflightEnabled(input.familyId) ||
+      (await someOfferHasTerms(database, {
+        familyId: input.familyId,
+        offerIds: asks.map((ask) => ask.offerId),
+      }))) &&
+    (await yesThread(database, input)) !== 'private'
+  ) {
+    console.info({ outcome: 'asks_held_for_private' }, 'signup asks: not in their own thread');
+    return { ...UNCLAIMED, outcome: 'asks_held_for_private' };
   }
   for (const ask of asks) {
     const turn =
@@ -372,6 +392,32 @@ async function runOneShotAsk(
       prefilled: [],
       host,
     });
+  }
+
+  // VIL-715: with pre-flight on nothing runs inside a text turn, and an ask carried no terms
+  // to bind. An ask that has terms is never a one-shot either, after the flag goes off too.
+  // It goes back with the link, and a new ask is the way to try again.
+  if (
+    registrationPreflightEnabled(input.familyId) ||
+    (await someOfferHasTerms(database, { familyId: input.familyId, offerIds: [offer.id] }))
+  ) {
+    await markFromPending(database, input, offer.id, null);
+    const handedBack = await replyFor(database, input, reportDeps, door, {
+      offerId: offer.id,
+      outcome: 'error',
+      reason: null,
+      link: offer.registrationUrl,
+      prefilled: [],
+      host,
+    });
+    if (handedBack.unsent === 'reply_unwritten') {
+      await pageOps(database, {
+        site: 'registration_text_unwritten',
+        facts: { moment: 'reply' },
+        ref: offer.id,
+      });
+    }
+    return handedBack;
   }
 
   const decision = authorizeSignup({

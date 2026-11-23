@@ -62,7 +62,7 @@ export function RedesignAbout({
 </section><section className="hs hs-wash-c">
  <div className="hs-wrap">
   <div className="hs-head"><h2 className="hs-h2">{t("Who uses Hale")}</h2></div>
-  <p className="hs-lede">{t("Hale is for parents and caregivers in the US and Canada with kids from newborn to 18: the parent who keeps the family calendar, co-parents who share the load, and groups of parents planning together. We’re just getting started.")}</p>
+  <p className="hs-lede">{t("Hale is for parents and caregivers in the US and Canada with kids from newborn to 18: the parent who keeps the family calendar, co-parents who share the load, and groups of parents planning together.")}</p>
  </div>
 </section><section className="hs hs-wash-a">
  <div className="hs-wrap">
@@ -71,7 +71,7 @@ export function RedesignAbout({
  </div>
 </section><section className="hs hs-wash-c">
  <div className="hs-wrap hs-grid">
-  <div className="sp-split-l"><div className="hs-head"><p className="hs-eyebrow">{t("The team behind Hale")}</p><h2 className="hs-h2">{t("Parent-built in Georgetown, Ontario.")}</h2><p className="hs-lede">{t("Hale is made by Village Hale Technologies Inc. We’re small and early, and a real person reads every note.")}</p></div></div>
+  <div className="sp-split-l"><div className="hs-head"><p className="hs-eyebrow">{t("The team behind Hale")}</p><h2 className="hs-h2">{t("Parent-built in Georgetown, Ontario.")}</h2><p className="hs-lede">{t("Hale is made by Village Hale Technologies Inc. in Georgetown, Ontario. A real person reads every note.")}</p></div></div>
   <div className="sp-split-r"><div className="sp-cards two" style={{ marginTop: 0 }}><div className="hs-card sp-card"><div className="sp-person"><span className="sp-avatar">BD</span><div><h3 className="hs-h3">Barton Dong</h3><p className="hs-p">{t("CEO ·")} <a className="hs-link" href="https://linkedin.com/in/anzhe-dong">LinkedIn</a></p></div></div></div><div className="hs-card sp-card"><div className="sp-person"><span className="sp-avatar">ES</span><div><h3 className="hs-h3">Eugene Song</h3><p className="hs-p">{t("CTO ·")} <a className="hs-link" href="https://www.linkedin.com/in/yuhang-eugene-song-53b692172">LinkedIn</a></p></div></div></div><div className="hs-card sp-card" style={{ gridColumn: "1/-1" }}><div className="sp-person"><img src={logoSrc} alt="" style={{ width: "56px", height: "56px", borderRadius: "30%" }} /><div><h3 className="hs-h3">{t("Why “Hale”")}</h3><p className="hs-p">Hale <code style={{ fontFamily: "var(--font-mono)", fontSize: "14px" }}>/HAH-leh/</code> {t("is Hawaiian for home. The mark is a honu, a sea turtle.")}</p></div></div></div>
   </div></div>
  </div>

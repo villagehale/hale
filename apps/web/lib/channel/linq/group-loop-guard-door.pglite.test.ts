@@ -6,7 +6,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { OpsPage } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { GROUP_LOOP_GUARD_CAP_DEFAULT } from './group-loop-guard';
+import { GROUP_LOOP_GUARD_CAP } from './group-loop-guard';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import type { GroupTurnReader, GroupTurnReading } from './group-turn-reader';
 import { handleLinqInboundRequest } from './inbound';
@@ -56,7 +56,6 @@ beforeEach(() => {
   vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
   vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', 'true');
   vi.stubEnv('GROUP_LOOP_GUARD_ENABLED', 'true');
-  vi.stubEnv('GROUP_LOOP_GUARD_CAP', '');
   // Paths that would read the same message first, or call a model this file does not
   // script. Set off explicitly: the all-flags-on CI job turns every default-off flag on.
   for (const name of [
@@ -176,6 +175,22 @@ function groupText(sender: string, text: string, chatId = CHAT) {
   };
 }
 
+function groupReaction(sender: string, chatId = CHAT) {
+  return {
+    api_version: 'v3',
+    webhook_version: '2026-02-03',
+    event_type: 'reaction.added',
+    event_id: `evt_loop_react_${delivery + 1}`,
+    created_at: clock.toISOString(),
+    data: {
+      chat_id: chatId,
+      message_id: `out-react-${delivery + 1}`,
+      reaction_type: 'love',
+      sender_handle: { handle: sender, is_me: false },
+    },
+  };
+}
+
 function door(present: readonly string[] = [MEI, ADA, BOT]) {
   const sends: string[] = [];
   const reads: string[] = [];
@@ -284,12 +299,12 @@ describe('an echo bot in a shared group, at the door (VIL-728 acceptance)', () =
     expect(wire.sends).toEqual(['Hale line 1']);
 
     const first = await echo(wire, 10);
-    expect(first.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
+    expect(first.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP);
     expect(first.outcomes.slice(0, 5)).toEqual(Array(5).fill('shared_reply'));
     expect(first.outcomes.slice(5)).toEqual(Array(5).fill('group_loop_guard_quiet'));
     // Quiet means quiet: no line about it, and no model read of what the bot said.
-    expect(wire.sends).toHaveLength(1 + GROUP_LOOP_GUARD_CAP_DEFAULT);
-    expect(wire.reads).toHaveLength(1 + GROUP_LOOP_GUARD_CAP_DEFAULT);
+    expect(wire.sends).toHaveLength(1 + GROUP_LOOP_GUARD_CAP);
+    expect(wire.reads).toHaveLength(1 + GROUP_LOOP_GUARD_CAP);
     expect(wire.outcomes.filter((o) => o === 'rate_limited')).toHaveLength(5);
 
     // The ops event, once: an internal audit row per household and one page, counts only.
@@ -305,7 +320,7 @@ describe('an echo bot in a shared group, at the door (VIL-728 acceptance)', () =
     tick(30_000);
     expect(await post(wire.deps, ADA, 'Hale, what time does it start?')).toBe('shared_reply');
     const second = await echo(wire, 8);
-    expect(second.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP_DEFAULT);
+    expect(second.haleAnswered).toBe(GROUP_LOOP_GUARD_CAP);
     expect(second.outcomes.at(-1)).toBe('group_loop_guard_quiet');
     expect(wire.pages).toHaveLength(2);
   });
@@ -370,7 +385,7 @@ describe('a quiet household group', () => {
       .where(eq(schema.families.id, home.familyId));
     await db.database
       .insert(schema.linqGroupLoopGuards)
-      .values({ chatId: HOME_CHAT, runStartedAt: NOW, quietSince: NOW, updatedAt: NOW });
+      .values({ chatId: HOME_CHAT, runStartedAt: NOW, lastTurnAt: NOW, quietSince: NOW });
     return home;
   }
 
@@ -411,5 +426,94 @@ describe('a quiet household group', () => {
     );
     expect(wire.turnReads).toEqual(['see you at pickup']);
     expect(await db.database.select().from(schema.linqGroupLoopGuards)).toEqual([]);
+  });
+});
+
+describe('the guard cannot read', () => {
+  async function withGuardTableGone(run: () => Promise<void>): Promise<void> {
+    await db.exec('alter table linq_group_loop_guards rename to linq_group_loop_guards_gone');
+    try {
+      await run();
+    } finally {
+      await db.exec('alter table linq_group_loop_guards_gone rename to linq_group_loop_guards');
+    }
+  }
+
+  it('a parent’s real question is still answered, and #ops is paged', async () => {
+    await seedSharedChat();
+    const wire = door();
+    await withGuardTableGone(async () => {
+      tick();
+      expect(await post(wire.deps, MEI, 'Hale, what time is practice?')).toBe('shared_reply');
+    });
+    expect(wire.sends).toEqual(['Hale line 1']);
+    expect(wire.pages).toEqual([{ site: 'group_loop_guard_unread', facts: {} }]);
+  });
+});
+
+describe('a bot tapback', () => {
+  it('is answered with the flag off (the control), and held once the chat is quiet', async () => {
+    await seedSharedChat();
+    const wire = door();
+    tick();
+    await post(wire.deps, MEI, 'Hale, who is bringing snacks on Saturday?');
+    await post(wire.deps, ADA, 'Hale, and drinks?');
+
+    vi.stubEnv('GROUP_LOOP_GUARD_ENABLED', '');
+    tick();
+    const before = wire.reads.length;
+    const open = await handleLinqInboundRequest(signed(groupReaction(BOT)), wire.deps);
+    expect(open.status).toBe(200);
+    expect(wire.reads.length).toBe(before + 1);
+
+    vi.stubEnv('GROUP_LOOP_GUARD_ENABLED', 'true');
+    const run = await echo(wire, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.outcomes.at(-1)).toBe('group_loop_guard_quiet');
+    const sendsBefore = wire.sends.length;
+    const readsBefore = wire.reads.length;
+
+    tick();
+    const held = await handleLinqInboundRequest(signed(groupReaction(BOT)), wire.deps);
+    expect(held.status).toBe(200);
+    expect(((await held.json()) as { outcome: string }).outcome).toBe('group_loop_guard_quiet');
+
+    tick();
+    const vote = await handleLinqInboundRequest(
+      signed({
+        ...groupReaction(BOT),
+        event_type: 'poll.vote.added',
+        data: {
+          chat_id: CHAT,
+          message_id: 'out-poll-1',
+          option_id: 'option-1',
+          sender_handle: { handle: BOT, is_me: false },
+        },
+      }),
+      wire.deps,
+    );
+    expect(((await vote.json()) as { outcome: string }).outcome).toBe('group_loop_guard_quiet');
+    expect(wire.sends).toHaveLength(sendsBefore);
+    expect(wire.reads).toHaveLength(readsBefore);
+  });
+});
+
+describe('a held turn', () => {
+  it('records nothing as sent and leaves nothing to retry', async () => {
+    await seedSharedChat();
+    const wire = door();
+    tick();
+    await post(wire.deps, MEI, 'Hale, who is bringing snacks on Saturday?');
+    const run = await echo(wire, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.outcomes.at(-1)).toBe('group_loop_guard_quiet');
+    const rowsBefore = await db.database.select().from(schema.channelMessages);
+
+    tick();
+    expect(await post(wire.deps, BOT, 'Hale line again')).toBe('group_loop_guard_quiet');
+
+    const rowsAfter = await db.database.select().from(schema.channelMessages);
+    expect(rowsAfter).toHaveLength(rowsBefore.length);
+    expect(rowsAfter.filter((row) => row.direction === 'in' && row.handedOffAt === null)).toEqual(
+      [],
+    );
   });
 });

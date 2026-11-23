@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { SiteChoice } from '../site-choices';
+import { SITE_CHOICE_LABEL_MAX_CHARS, type SiteChoice } from '../site-choices';
+import { SIGNUP_PAGE_WORDS_SKILL, markedSiteChoice, untrustedPageWords } from '../terms/page-words';
 
 export const SIGNUP_MISMATCH_READ_SKILL = 'signup-mismatch-read';
 export const SIGNUP_MISMATCH_READ_TOOL = 'signup_mismatch_read';
@@ -23,6 +24,8 @@ export interface MismatchReader {
     text: string;
     askedStart: string | null;
     choices: readonly SiteChoice[];
+    /** The offer has a terms row: the options reach the reader marked. */
+    labelsFromPage?: boolean;
   }): Promise<MismatchReading | null>;
 }
 
@@ -66,11 +69,42 @@ export function toMismatchReading(
   return { verdict: 'unclear', question };
 }
 
+/** A page can write an option's own id, so on a marked ask the reader picks by position. */
+function positionId(index: number): string {
+  return `option_${index + 1}`;
+}
+
+/** The model's pick, as an id Hale holds. On a marked ask the model picked by position. */
+export function mismatchReadingFrom(
+  raw: z.infer<typeof signupMismatchReadSchema>,
+  input: { choices: readonly SiteChoice[]; labelsFromPage?: boolean },
+): MismatchReading | null {
+  if (!input.labelsFromPage) return toMismatchReading(raw, input.choices);
+  const reading = toMismatchReading(
+    raw,
+    input.choices.map((choice, index) => ({ ...choice, id: positionId(index) })),
+  );
+  if (reading?.verdict !== 'option') return reading;
+  const picked = input.choices.find((_, index) => positionId(index) === reading.choiceId);
+  return picked ? { verdict: 'option', choiceId: picked.id } : null;
+}
+
 export function signupMismatchReadUserMessage(input: {
   text: string;
   askedStart: string | null;
   choices: readonly SiteChoice[];
+  labelsFromPage?: boolean;
 }): string {
+  if (input.labelsFromPage) {
+    return JSON.stringify({
+      untrusted_asked_start: untrustedPageWords(input.askedStart, SITE_CHOICE_LABEL_MAX_CHARS),
+      choices: input.choices.map((choice, index) => ({
+        id: positionId(index),
+        ...markedSiteChoice(choice),
+      })),
+      text: input.text.slice(0, 1600),
+    });
+  }
   return JSON.stringify({
     askedStart: input.askedStart,
     choices: input.choices.map((choice) => ({
@@ -96,8 +130,12 @@ export function createMismatchReader(
       }
       if (!resolved) return null;
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_MISMATCH_READ_SKILL);
+        system = input.labelsFromPage
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PAGE_WORDS_SKILL)).instructions}`
+          : skill.instructions;
       } catch {
         return null;
       }
@@ -105,7 +143,7 @@ export function createMismatchReader(
         const { value } = await forceToolJson({
           client: resolved,
           lane: pickLane(skill.meta.task),
-          system: skill.instructions,
+          system,
           userMessage: signupMismatchReadUserMessage(input),
           toolName: SIGNUP_MISMATCH_READ_TOOL,
           toolDescription: 'Decide which site option the parent picked, if any.',
@@ -113,7 +151,7 @@ export function createMismatchReader(
           schema: signupMismatchReadSchema,
           maxTokens: SIGNUP_MISMATCH_READ_MAX_TOKENS,
         });
-        return toMismatchReading(value, input.choices);
+        return mismatchReadingFrom(value, input);
       } catch {
         return null;
       }

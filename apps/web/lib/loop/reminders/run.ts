@@ -61,6 +61,9 @@ import {
   REMINDER_OFFSETS,
   type ReminderOffset,
   type ReminderStatus,
+  SEND_FAILED_HELD,
+  SEND_PENDING,
+  SEND_PENDING_LEASE_MS,
   type SuppressReason,
   batchReminders,
   classifyReminder,
@@ -90,6 +93,10 @@ import {
  * Compose-not-send: the whole SEND stays dark behind LOOP_SEND_ENABLED (mirroring
  * send.ts). When off, the run still converges + classifies (exercising the pipeline)
  * but enqueues nothing and marks nothing 'sent' — the due rows stay 'scheduled'.
+ *
+ * VIL-730 · an enqueued row is NOT 'sent'. It stays 'scheduled' under the SEND_PENDING
+ * mark until the drain settles it from the dispatch (held-at-send.ts): 'sent' only on a
+ * ledger row Linq accepted, back to the run under a bounded backoff on any refusal.
  *
  * Caps are A2's job (per-parent/category/channel), enforced at dispatch. recentInteraction
  * is the C3 reply↔event link, not yet wired — the default returns false; the classify
@@ -254,6 +261,12 @@ export interface ReminderRunDeps {
     reminderId: string,
     hold: { attempts: number; nextTryAt: Date },
   ) => Promise<void>;
+  /** VIL-730 · leaves the row 'scheduled' under SEND_PENDING, not to be offered again
+   * before `leaseUntil`. Written BEFORE the enqueue, so the drain can never settle a job
+   * whose rows are not yet marked. Only held-at-send.ts moves a row off this mark. */
+  markSendPending: (db: Database, reminderId: string, leaseUntil: Date) => Promise<void>;
+  /** VIL-730 · undoes markSendPending for a job that never reached the queue. */
+  clearSendPending: (db: Database, reminderId: string) => Promise<void>;
   /** The audit row for a due reminder the fire path dropped (rule #6). */
   auditSuppressed: (
     db: Database,
@@ -293,7 +306,7 @@ function sqlExcluded(column: string) {
 async function selectDueReminders(
   db: Database,
   now: Date,
-  held: typeof COMPOSE_HELD | null,
+  held: readonly (typeof COMPOSE_HELD | typeof SEND_FAILED_HELD)[] | null,
 ): Promise<DueReminder[]> {
   const rows = await db
     .select({
@@ -339,7 +352,7 @@ async function selectDueReminders(
           isNull(schema.eventReminders.composeNextTryAt),
           lte(schema.eventReminders.composeNextTryAt, now),
         ),
-        held ? eq(schema.eventReminders.suppressReason, held) : undefined,
+        held ? inArray(schema.eventReminders.suppressReason, [...held]) : undefined,
       ),
     );
   return rows.map(({ channelId, ...r }) => ({
@@ -521,6 +534,28 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           updatedAt: new Date(),
         })
         .where(eq(schema.eventReminders.id, reminderId));
+    },
+    markSendPending: async (db, reminderId, leaseUntil) => {
+      await db
+        .update(schema.eventReminders)
+        .set({
+          status: 'scheduled',
+          suppressReason: SEND_PENDING,
+          composeNextTryAt: leaseUntil,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.eventReminders.id, reminderId));
+    },
+    clearSendPending: async (db, reminderId) => {
+      await db
+        .update(schema.eventReminders)
+        .set({ suppressReason: null, composeNextTryAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.eventReminders.id, reminderId),
+            eq(schema.eventReminders.suppressReason, SEND_PENDING),
+          ),
+        );
     },
     auditSuppressed: async (db, row) => {
       await db.insert(schema.auditLog).values({
@@ -1140,6 +1175,23 @@ async function fireDueReminders(
           }
           continue;
         }
+        // VIL-730 · an empty or whitespace-only text is never a written reminder, whatever
+        // the writer reported (compose.ts refuses it too; this is the run's own floor).
+        if (
+          composed.draft.texts.length === 0 ||
+          composed.draft.texts.some((text) => text.trim() === '')
+        ) {
+          console.error(
+            { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
+            'reminder: written draft holds an empty text, nothing sent',
+          );
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (!r) continue;
+            await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'unwritten');
+          }
+          continue;
+        }
         texts = composed.draft.texts;
         bold = composed.draft.bold;
       }
@@ -1193,11 +1245,21 @@ async function fireDueReminders(
         dedupeKey: `reminder:${batch.offset}:${group.familyId}:${parentUserId}:${batchKey}`,
       };
 
-      await deps.enqueue(job);
-      for (const ref of batch.eventRefs) {
+      // VIL-730 · NOT 'sent': nothing has left yet. The rows wait under SEND_PENDING and
+      // the drain settles them from what the dispatch did (held-at-send.ts).
+      const leaseUntil = new Date(now.getTime() + SEND_PENDING_LEASE_MS);
+      const batchRows = batch.eventRefs.flatMap((ref) => {
         const r = rowByRef.get(ref);
-        if (!r) continue;
-        await deps.markStatus(db, r.reminderId, 'sent', null);
+        return r ? [r] : [];
+      });
+      for (const r of batchRows) await deps.markSendPending(db, r.reminderId, leaseUntil);
+      try {
+        await deps.enqueue(job);
+      } catch (err) {
+        for (const r of batchRows) await deps.clearSendPending(db, r.reminderId);
+        throw err;
+      }
+      for (const r of batchRows) {
         if (isLateFire(r.fireAt, now)) firedLate += 1;
       }
       noteTaskCompleted({ familyId: group.familyId, type: 'reminder', source: 'cron' });
@@ -1239,7 +1301,9 @@ export interface HeldReminderRecheckDeps extends ReminderRunDeps {
 export function defaultHeldReminderRecheckDeps(): HeldReminderRecheckDeps {
   return {
     ...defaultReminderRunDeps(),
-    loadHeldReminders: (db, now) => selectDueReminders(db, now, COMPOSE_HELD),
+    // VIL-730 · a T-1h whose send was refused is asked again by the drain too, for the
+    // same reason a writer outage is: the next hourly slot would only find it started.
+    loadHeldReminders: (db, now) => selectDueReminders(db, now, [COMPOSE_HELD, SEND_FAILED_HELD]),
     probe: probeProviderHealth,
   };
 }

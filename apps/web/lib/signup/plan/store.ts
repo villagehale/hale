@@ -1,5 +1,5 @@
 import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -18,11 +18,19 @@ import {
   loadPendingOffer,
   loadSignupIdentity,
 } from '../store';
+import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
+import { hasUnstatedPrice } from '../terms/cart';
+import { registrationPreflightEnabled } from '../terms/flag';
+import { loadSignupTerms } from '../terms/store';
+import type { SignupTermsApproved } from '../terms/types';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;
+
+/** The terms row could not take this approval: the move to `planned` is undone with it. */
+class TermsNotBound extends Error {}
 
 export type ApprovePlanRefusal =
   | 'no_offer'
@@ -66,6 +74,8 @@ export async function approveSignupPlan(
     now: Date;
     /** Program is already open: a yes now is a register-now, not a day-before. */
     alreadyOpen?: boolean;
+    /** VIL-715 · what this yes bound, written in the same transaction as the move. */
+    terms?: { approved: SignupTermsApproved };
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   // The named ask, not the newest: a family can hold several, and a yes may name an older one.
@@ -84,9 +94,17 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'choices' };
   }
+  // A class bound as free has a $0 maximum, and so does a pick with no stated price, which
+  // holds at checkout. Nothing else may.
+  const boundSessions = input.terms?.approved.sessions;
+  const zeroAllowed =
+    input.maxPriceCents === 0 &&
+    boundSessions !== undefined &&
+    (hasUnstatedPrice(boundSessions) ||
+      boundSessions.every((session) => session.amount.kind === 'free'));
   if (
     !Number.isInteger(input.maxPriceCents) ||
-    input.maxPriceCents <= 0 ||
+    (input.maxPriceCents <= 0 && !zeroAllowed) ||
     input.maxPriceCents > LINK_SPEND_CEILING_CENTS
   ) {
     return { ok: false, reason: 'max_price' };
@@ -113,28 +131,62 @@ export async function approveSignupPlan(
     now: input.now,
   });
   if (!consent.ok) return { ok: false, reason: consent.reason };
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set({
-      status: 'planned',
-      planChoiceIds: ids,
-      planMaxPriceCents: input.maxPriceCents,
-      planOpensAt: input.opensAt,
-      planWaiverAccepted: input.waiverAccepted,
-      planApprovedAt: input.now,
-      authorizingMessageId: input.messageId,
-      planAlreadyOpen: input.alreadyOpen === true,
-      updatedAt: input.now,
-    })
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, offer.id),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, 'pending'),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  if (rows.length === 0) return { ok: false, reason: 'not_stored' };
+  const moveToPlanned = (tx: Database) =>
+    tx
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'planned',
+        planChoiceIds: ids,
+        planMaxPriceCents: input.maxPriceCents,
+        planOpensAt: input.opensAt,
+        planWaiverAccepted: input.waiverAccepted,
+        planApprovedAt: input.now,
+        authorizingMessageId: input.messageId,
+        planAlreadyOpen: input.alreadyOpen === true,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, offer.id),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, 'pending'),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+  const bound = input.terms;
+  const moved = bound
+    ? await database
+        .transaction(async (rawTx) => {
+          const tx = rawTx as unknown as Database;
+          const rows = await moveToPlanned(tx);
+          if (rows.length === 0) return rows;
+          const terms = schema.authorizedSignupTerms;
+          const written = await tx
+            .update(terms)
+            .set({
+              approved: bound.approved,
+              approvingMessageId: input.messageId,
+              approvedAt: input.now,
+            })
+            .where(
+              and(
+                eq(terms.offerId, offer.id),
+                eq(terms.familyId, input.familyId),
+                isNull(terms.approvedAt),
+                isNotNull(terms.askedMessageId),
+              ),
+            )
+            .returning({ id: terms.id });
+          // Rolls the move back: a plan may not exist without the approval it runs on.
+          if (written.length === 0) throw new TermsNotBound();
+          return rows;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof TermsNotBound) return [];
+          throw err;
+        })
+    : await moveToPlanned(database);
+  if (moved.length === 0) return { ok: false, reason: 'not_stored' };
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
@@ -146,6 +198,7 @@ export async function approveSignupPlan(
       opensAt: input.opensAt.toISOString(),
       waiverAccepted: input.waiverAccepted,
       host: new URL(allowed.href).hostname,
+      ...(bound ? { bound: true, hold: bound.approved.hold } : {}),
     },
   });
   return { ok: true };
@@ -291,6 +344,20 @@ export async function claimDuePlan(
   return row ? claimedPlan(row, null) : null;
 }
 
+/** The audit step of an ops stop, written once per plan in the transaction that marks it. */
+const PLAN_OPS_STOP_STEP = 'plan_ops_stop';
+/**
+ * An ops stop is on this plan. A parent's take-back sets the same column, so this row is what
+ * tells them apart. Audit rows are immutable, so an ops stop is never undone.
+ */
+const hasOpsStop = sql`exists (
+  select 1 from ${schema.auditLog} ops
+  where ops.family_id = ${schema.authorizedSignupOffers.familyId}
+    and ops.target_id = ${schema.authorizedSignupOffers.id}::text
+    and ops.action_taken = 'authorized_signup_step'
+    and ops.after->>'step' = ${PLAN_OPS_STOP_STEP}
+)`;
+
 /**
  * Puts an unstarted plan back to `planned` while registration is still ahead.
  * A provider run, or a payment that may exist, stays where it is.
@@ -298,7 +365,8 @@ export async function claimDuePlan(
  * Without `offerId` this recovers abandoned claims only: a live lease belongs to
  * a sweep that may already be driving the plan, and a clock captured before
  * prep must not clear it. With `offerId` the sweep is letting go of the claim
- * it holds.
+ * it holds. A plan with an ops stop stays out of `planned`, where the parent could still set
+ * it: the sweep lets it go instead.
  */
 export async function releaseUnstartedPlansBeforeOpen(
   database: Database,
@@ -320,6 +388,7 @@ export async function releaseUnstartedPlansBeforeOpen(
         eq(offers.status, 'submitting'),
         gt(offers.planOpensAt, input.now),
         or(isNull(offers.planAlreadyOpen), eq(offers.planAlreadyOpen, false)),
+        not(hasOpsStop),
         sql`(
           ${offers.planResume} is null
           or (
@@ -478,7 +547,7 @@ export async function cancelSignupPlan(
     .update(offers)
     .set({ status: 'handed_back', planCancelRequestedAt: input.now, updatedAt: input.now })
     .where(and(ours, eq(offers.status, 'planned')))
-    .returning({ id: offers.id });
+    .returning({ id: offers.id, availability: offers.planAvailability });
   if (rows.length > 0) {
     await writePlanAudit(database, {
       familyId: input.familyId,
@@ -486,6 +555,8 @@ export async function cancelSignupPlan(
       offerId: input.offerId,
       after: { step: 'plan_cancelled' },
     });
+    // A parked plan's run reached the provider, so its sign-up stays spent.
+    if (rows[0]?.availability === null) await giveBackSeasonSlot(database, input);
     return 'cancelled';
   }
   const [running] = await database
@@ -507,6 +578,155 @@ export async function cancelSignupPlan(
   return phase === 'paying' ? 'paying' : 'cancel_requested';
 }
 
+/** The season sign-up a yes took, back to the family: no run of this plan reached a provider. */
+async function giveBackSeasonSlot(
+  database: Database,
+  input: { offerId: string; familyId: string; now: Date },
+): Promise<void> {
+  if (!signupHelpSlotReleaseEnabled()) return;
+  const read = await loadSignupTerms(database, {
+    offerId: input.offerId,
+    familyId: input.familyId,
+  });
+  const seasonKey = read.status === 'read' ? read.row.approved?.seasonKey : null;
+  if (!seasonKey) return;
+  await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey,
+    now: input.now,
+  });
+}
+
+/** Plans by run phase: all an ops stop reports, so it cannot print a family, offer or host. */
+export interface PlanPhaseCounts {
+  signup: number;
+  paying: number;
+}
+
+/** A one-shot signup is `submitting` too, but only a plan has a resume token. */
+const isRunningPlan = and(
+  eq(schema.authorizedSignupOffers.status, 'submitting'),
+  isNotNull(schema.authorizedSignupOffers.planResume),
+);
+const resumePhase = sql<
+  AuthorizedSignupPlanResume['phase']
+>`${schema.authorizedSignupOffers.planResume}->>'phase'`;
+
+function countByPhase(
+  rows: ReadonlyArray<{ phase: AuthorizedSignupPlanResume['phase'] }>,
+): PlanPhaseCounts {
+  const paying = rows.filter((row) => row.phase === 'paying').length;
+  return { signup: rows.length - paying, paying };
+}
+
+/**
+ * {@link cancelSignupPlan}'s mark on every running plan at once: an incident stop that needs
+ * no redeploy. A plan not yet past its paying checkpoint can no longer start a payment
+ * ({@link savePlanResume}), and a later sweep lets each run go without a text, unless a charge
+ * may exist: a plan in `paying` is marked too, its payment may still run, and the sweep reads
+ * what it did and tells the parent. A plan the parent already took back keeps their time.
+ * Each mark and its one audit row land together. Returns the plans marked by this call.
+ */
+export async function requestStopForRunningPlans(
+  database: Database,
+  input: { now: Date },
+): Promise<PlanPhaseCounts> {
+  const offers = schema.authorizedSignupOffers;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    // Two stops at once would each read "no stop yet" and write a second audit row.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${PLAN_OPS_STOP_STEP}))`);
+    const stopped = await tx
+      .update(offers)
+      .set({
+        planCancelRequestedAt: sql`coalesce(${offers.planCancelRequestedAt}, ${input.now.toISOString()}::timestamptz)`,
+        updatedAt: input.now,
+      })
+      .where(and(isRunningPlan, not(hasOpsStop)))
+      .returning({ id: offers.id, familyId: offers.familyId, phase: resumePhase });
+    for (const row of stopped) {
+      await writePlanAudit(tx, {
+        familyId: row.familyId,
+        actor: 'system',
+        offerId: row.id,
+        after: { step: PLAN_OPS_STOP_STEP, phase: row.phase },
+      });
+    }
+    return countByPhase(stopped);
+  });
+}
+
+/** Every running plan by phase, and those with no ops stop on them yet. Reads only. */
+export async function countRunningPlans(
+  database: Database,
+): Promise<{ running: PlanPhaseCounts; notStopped: PlanPhaseCounts }> {
+  const offers = schema.authorizedSignupOffers;
+  const running = await database.select({ phase: resumePhase }).from(offers).where(isRunningPlan);
+  const notStopped = await database
+    .select({ phase: resumePhase })
+    .from(offers)
+    .where(and(isRunningPlan, not(hasOpsStop)));
+  return { running: countByPhase(running), notStopped: countByPhase(notStopped) };
+}
+
+export type PlanStopReport =
+  | { mode: 'dry_run'; wouldStop: PlanPhaseCounts; stillRunning: PlanPhaseCounts }
+  | { mode: 'apply'; stopped: PlanPhaseCounts; stillRunning: PlanPhaseCounts };
+
+/** The ops command. Its report is counts by phase, so it cannot name a family. */
+export async function runPlanStop(
+  database: Database,
+  input: { apply: boolean; now: Date },
+): Promise<PlanStopReport> {
+  if (!input.apply) {
+    const { running, notStopped } = await countRunningPlans(database);
+    return { mode: 'dry_run', wouldStop: notStopped, stillRunning: running };
+  }
+  const stopped = await requestStopForRunningPlans(database, { now: input.now });
+  const { running } = await countRunningPlans(database);
+  return { mode: 'apply', stopped, stillRunning: running };
+}
+
+/**
+ * An ops stop is on this plan, as opposed to only its parent's own take-back. Not gated on
+ * the flag: only `--apply` writes a stop, so a row means someone ran it.
+ */
+export async function planOpsStopped(
+  database: Database,
+  input: { offerId: string; familyId: string },
+): Promise<boolean> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select({ id: offers.id })
+    .from(offers)
+    .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId), hasOpsStop))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * {@link parkSignupPlan} for a run's own ending, unless an ops stop is on the plan. The row
+ * lock orders the two: a stop either committed before this read or waits and finds the plan
+ * no longer running, so a stopped plan is never parked for the parent to answer.
+ */
+export async function parkUnlessOpsStopped(
+  database: Database,
+  input: Parameters<typeof parkSignupPlan>[1],
+): Promise<'parked' | 'ops_stopped'> {
+  const offers = schema.authorizedSignupOffers;
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx
+      .select({ id: offers.id })
+      .from(offers)
+      .where(and(eq(offers.id, input.offerId), eq(offers.familyId, input.familyId)))
+      .for('update');
+    if (await planOpsStopped(tx, input)) return 'ops_stopped';
+    await parkSignupPlan(tx, input);
+    return 'parked';
+  });
+}
+
 /**
  * A family's offer the day-before conversation can still act on: before its open, or
  * `running` while its run is going and the parent has not taken it back yet.
@@ -514,6 +734,7 @@ export async function cancelSignupPlan(
 export interface ConversablePlan extends AskOrder {
   offerId: string;
   childId: string;
+  activityKey: string;
   /** The parent Hale asked: only their words may set the plan or take it back. */
   parentUserId: string;
   status: 'pending' | 'planned' | 'running';
@@ -554,6 +775,10 @@ export async function loadConversablePlans(
               gt(offers.planOpensAt, input.now),
               eq(offers.planAlreadyOpen, true),
               sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
+              // VIL-715: an ask with terms stays a plan past its open, never a one-shot.
+              registrationPreflightEnabled(input.familyId)
+                ? sql`${offers.status} = 'pending' and exists (select 1 from ${schema.authorizedSignupTerms} where ${schema.authorizedSignupTerms.offerId} = ${offers.id})`
+                : undefined,
             ),
           ),
           and(
@@ -586,6 +811,7 @@ export async function loadConversablePlans(
       {
         offerId: row.id,
         childId: row.childId,
+        activityKey: row.activityKey,
         parentUserId: row.parentUserId,
         lastAskedSeq: row.lastAskedSeq,
         createdAt: row.createdAt,
@@ -637,7 +863,7 @@ export async function loadPlanConsent(
 
 /** One immutable audit row (rule #6). Ids, codes, counts and a host; never a person. */
 export async function writePlanAudit(
-  database: Database,
+  database: Pick<Database, 'insert'>,
   input: { familyId: string; actor: string; offerId: string; after: Record<string, unknown> },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({

@@ -1,5 +1,6 @@
-import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
+import { type RegisteredTool, type Skill, defineTool, presentUntrusted } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { gmailSourceIsPrivate } from '~/lib/coach/conversation';
@@ -207,6 +208,10 @@ export const READS_AFTER_EMAIL: ReadonlySet<string> = new Set([
  *
  * VIL-628 · `emailTexts` is what those reads returned, held for this turn only, so the
  * reply can be checked for a number, code or host that only the email gave.
+ *
+ * VIL-560 · the model gets the marked text and the check keeps the text as written. The
+ * mark's `&lt;` puts letters between digits, so a code the email split with `<` would stop
+ * reading as a code and the check would let the reply repeat it.
  */
 export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
   tools: RegisteredTool[];
@@ -220,8 +225,17 @@ export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
         ...tool,
         handler: async (input, ctx) => {
           const result = (await tool.handler(input, ctx)) as ReadEmailResult;
-          if (result.read) texts.push(result.body);
-          return result;
+          if (!result.read) return result;
+          texts.push(result.body);
+          return {
+            ...result,
+            body: presentUntrusted(
+              isEnabled('untrusted-field-marking'),
+              'email',
+              'body',
+              result.body,
+            ),
+          };
         },
       };
     }

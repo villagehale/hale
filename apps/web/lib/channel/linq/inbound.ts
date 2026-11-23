@@ -11,7 +11,11 @@ import {
   routeInboundText,
 } from '~/lib/channel/inbound-route';
 import { firstTouchLadderEnabled } from '~/lib/channel/intake/first-touch-flag';
-import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
+import {
+  optOutIntentOf,
+  readIntentOnce,
+  sharedOptOutReader,
+} from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import { markLinqChatRead, outboundLineFrom } from '~/lib/channel/outbound-transport';
 import {
@@ -93,7 +97,9 @@ import {
   type GroupLoopGuardPorts,
   type GroupLoopGuardVerdict,
   checkGroupLoopGuard,
+  checkGroupLoopGuardSignal,
   noteGroupLoopGuardTrip,
+  noteGroupLoopGuardUnread,
 } from './group-loop-guard';
 import {
   type GroupCoparentPorts,
@@ -376,7 +382,7 @@ export async function handleLinqInboundRequest(
   if (parsed.kind === 'signal') return handleLinqSignal(deps, parsed.signal);
   if (parsed.kind === 'line_health') return handleLinqLineHealth(deps, parsed.line);
   if (parsed.kind === 'location') return handleLinqLocation(deps, parsed.location);
-  if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message);
+  if (parsed.kind === 'group') return handleLinqGroup(deps, parsed.message, answerBy);
 
   const message = parsed.message;
   // Read receipt first, overlapping the turn. Linq's mark-as-read is what puts
@@ -847,40 +853,43 @@ async function tryGroupPollCardVote(
 
 /**
  * VIL-728 — the loop guard (group-loop-guard.ts), with `GROUP_LOOP_GUARD_ENABLED` exactly
- * `true`. A verified person always goes on, and reopens a quiet chat. Anyone else goes on
- * until Hale has sent the cap with no person speaking; then this answers 200 with
- * `group_loop_guard_quiet`: no turn runs, nothing is recorded and nothing is sent. The only
- * read is the opt-out read the group paths of this door already make, and a stop or a
- * start goes on. A guard that cannot read is logged and the turn runs as with the flag off.
+ * `true`. A seated person always goes on, and their message reopens a quiet chat. Anyone
+ * else goes on until Hale has sent the cap with no seated person speaking; then this answers
+ * 200 with `group_loop_guard_quiet`: no turn runs, nothing is recorded and nothing is sent,
+ * so nothing is left to retry. The only read is the opt-out read the group paths of this
+ * door already make: a stop or a start goes on, and so does a text that read could not read,
+ * because it may be a stop. A guard that cannot read pages #ops and the turn runs as with
+ * the flag off, so a failed read never silences a parent's real question.
  */
 async function groupLoopGuardDoor(
   deps: LinqDoorDeps,
-  message: LinqInboundText,
+  turn: {
+    chatId: string;
+    providerMessageId: string | null;
+    text: string;
+    check: () => Promise<GroupLoopGuardVerdict>;
+  },
 ): Promise<Response | null> {
   let guard: GroupLoopGuardVerdict;
   try {
-    guard = await checkGroupLoopGuard(deps.database, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      now: deps.now?.() ?? new Date(),
-    });
+    guard = await turn.check();
   } catch (err) {
     deps.log.error(
       {
         outcome: 'group_loop_guard_unread',
         err: err instanceof Error ? err.name : 'unknown',
-        providerMessageId: message.messageId,
+        providerMessageId: turn.providerMessageId,
       },
       'linq inbound: group loop guard could not read, the turn runs unguarded',
     );
+    await noteGroupLoopGuardUnread(deps.database, { page: deps.groupLoopGuardPage });
     return null;
   }
-  if (guard.verdict === 'off' || guard.verdict === 'open') return null;
-  if (guard.verdict === 'person') {
-    if (guard.resumed) {
+  if (guard.verdict !== 'quiet') {
+    if (guard.verdict === 'person' && guard.resumed) {
       deps.log.info(
-        { outcome: 'group_loop_guard_resumed', providerMessageId: message.messageId },
-        'linq inbound: a person spoke, the group loop guard reopened the chat',
+        { outcome: 'group_loop_guard_resumed', providerMessageId: turn.providerMessageId },
+        'linq inbound: a seated person spoke, the group loop guard reopened the chat',
       );
     }
     return null;
@@ -888,7 +897,7 @@ async function groupLoopGuardDoor(
   if (guard.tripped && guard.haleSince !== null) {
     const trip = await noteGroupLoopGuardTrip(
       deps.database,
-      { chatId: message.chatId, haleSince: guard.haleSince, cap: guard.cap },
+      { chatId: turn.chatId, haleSince: guard.haleSince, cap: guard.cap },
       { page: deps.groupLoopGuardPage },
     );
     deps.log.warn(
@@ -899,26 +908,34 @@ async function groupLoopGuardDoor(
         audited: trip.audited,
         auditFailed: trip.auditFailed,
         page: trip.page,
-        providerMessageId: message.messageId,
+        providerMessageId: turn.providerMessageId,
       },
-      'linq inbound: group loop guard tripped, Hale is quiet here until a person speaks',
+      'linq inbound: group loop guard tripped, Hale is quiet here until a seated person speaks',
     );
   }
-  // One cached read per text (readIntentOnce), and none at all for a media-only message.
-  const optOut = await optOutIntentOf(message.text);
-  if (optOut) {
-    deps.log.info(
-      { outcome: 'group_loop_guard_opt_out', optOut, providerMessageId: message.messageId },
-      'linq inbound: an opt-out goes on through a quiet group',
-    );
-    return null;
+  if (turn.text.trim()) {
+    const reading = await readIntentOnce(sharedOptOutReader(), {
+      text: turn.text,
+      language: null,
+    });
+    if (!reading || reading.intent === 'stop' || reading.intent === 'start') {
+      deps.log.info(
+        {
+          outcome: 'group_loop_guard_opt_out',
+          read: reading ? reading.intent : 'unread',
+          providerMessageId: turn.providerMessageId,
+        },
+        'linq inbound: a possible opt-out goes on through a quiet group',
+      );
+      return null;
+    }
   }
   deps.log.info(
     {
       outcome: 'group_loop_guard_quiet',
       tripped: guard.tripped,
       cap: guard.cap,
-      providerMessageId: message.messageId,
+      providerMessageId: turn.providerMessageId,
     },
     'linq inbound: group turn',
   );
@@ -940,9 +957,23 @@ export function handleLinqGroupMessage(
   return handleLinqGroup(deps, message);
 }
 
-async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+async function handleLinqGroup(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  answerBy?: Date,
+): Promise<Response> {
   // VIL-728: before any group path can answer, so a bot loop is cut on every one of them.
-  const quiet = await groupLoopGuardDoor(deps, message);
+  const quiet = await groupLoopGuardDoor(deps, {
+    chatId: message.chatId,
+    providerMessageId: message.messageId,
+    text: message.text,
+    check: () =>
+      checkGroupLoopGuard(deps.database, {
+        chatId: message.chatId,
+        senderHandle: message.senderHandle,
+        at: message.receivedAt,
+      }),
+  });
   if (quiet) return quiet;
   // VIL-686: while this chat's Secret Santa is collecting, "I'm in" and "count me out" are
   // its words, so the RSVP door waits until the shared-group turn has read them. A row,
@@ -1032,7 +1063,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return claimGroupFromTrigger(deps, message, coparent);
   }
   if (coparent.type === 'route_member') {
-    return routeClaimedGroup(deps, message);
+    return routeClaimedGroup(deps, message, answerBy);
   }
   if (coparent.type === 'done') {
     deps.log.info({ outcome: coparent.outcome }, 'linq inbound: group coparent');
@@ -1097,7 +1128,7 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome, hold: held });
   }
 
-  if (optOut) return routeClaimedGroup(deps, message);
+  if (optOut) return routeClaimedGroup(deps, message, answerBy);
 
   const trigger = matchLinqGroupTrigger(message.text);
   if (trigger) return claimGroupFromTrigger(deps, message, mapped);
@@ -1112,10 +1143,14 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
     return json({ outcome: 'group_unclaimed' });
   }
 
-  return routeClaimedGroup(deps, message);
+  return routeClaimedGroup(deps, message, answerBy);
 }
 
-async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+async function routeClaimedGroup(
+  deps: LinqDoorDeps,
+  message: LinqInboundText,
+  answerBy?: Date,
+): Promise<Response> {
   const stopping = (await optOutIntentOf(message.text)) === 'stop';
   if (!stopping && !linqGroupOnboardingV2Enabled()) {
     const welcome = await retryMemberWelcome(deps.database, {
@@ -1170,6 +1205,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           inboundChatId: message.chatId,
           inboundMessageId: message.messageId,
           surface: 'group',
+          answerBy,
         });
       } catch (err) {
         deps.log.warn(
@@ -1713,6 +1749,29 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   if (signal.isFromMe) {
     await deps.countOutcome('ignored');
     return json({ outcome: 'signal_from_me' });
+  }
+  // VIL-728: a tapback or poll vote can draw a group line too, so it passes the same guard.
+  const signalSender = signal.senderHandle ?? signal.actorHandle;
+  if (
+    signal.chatId &&
+    signalSender &&
+    (signal.event === 'reaction.added' ||
+      signal.event === 'poll.vote.added' ||
+      signal.event === 'poll.vote.removed')
+  ) {
+    const chatId = signal.chatId;
+    const quiet = await groupLoopGuardDoor(deps, {
+      chatId,
+      providerMessageId: signal.messageId,
+      text: '',
+      check: () =>
+        checkGroupLoopGuardSignal(deps.database, {
+          chatId,
+          senderHandle: signalSender,
+          at: deps.now?.() ?? new Date(),
+        }),
+    });
+    if (quiet) return quiet;
   }
   if (
     (signal.event === 'poll.vote.added' || signal.event === 'poll.vote.removed') &&

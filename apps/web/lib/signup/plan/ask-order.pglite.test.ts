@@ -46,6 +46,7 @@ import { createPlanNotifier, createPlanPrepDeliver } from './notice';
 import { type PlanPrepDeps, recordPlanNotice, runDueSignupPlanPrep } from './prep';
 import { type PlanReader, type PlanReading, toPlanReading } from './reader';
 import type { PlanReplyWriter } from './writer';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 // Which of a parent's sign-up asks a bare yes, no or stop answers, end to end: the coach turn
 // that texts an offer, the router that delivers each reply, the minute sweep that texts
@@ -99,6 +100,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
   vi.stubEnv(AUTHORIZED_SIGNUP_ENABLED_ENV, 'on');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
@@ -243,6 +245,7 @@ function deps(
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    ackEta: quietAckEtaPorts(),
     sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
     recordPlanOffer: async () => ({ status: 'recorded' }),

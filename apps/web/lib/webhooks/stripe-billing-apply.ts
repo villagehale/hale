@@ -1,18 +1,36 @@
 import { type Database, schema } from '@hale/db';
 import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
-import { stripeBillingRevokeEnabled } from '~/lib/billing/flags';
+import {
+  stripeBillingRevokeEnabled,
+  stripeRefundEndsSubscriptionEnabled,
+} from '~/lib/billing/flags';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
 import {
+  type RefundedCharge,
   type StripeChargeLookup,
   stripeChargeLookupFromEnv,
 } from '~/lib/billing/stripe-charge-context';
 import { db as defaultDb } from '~/lib/db';
 import { alertDisallowedCheckoutPrice } from '~/lib/monitoring/billing-disallowed-price';
 import { alertUnresolvedBillingRevoke } from '~/lib/monitoring/billing-tier-alert';
+import type { FailurePageDeps } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import {
+  type PlanHoldReason,
+  type PlanRetry,
+  type PlanSignal,
+  claimEvent,
+  eventAlreadyClaimed,
+  planReaderFor,
+  retryFromFailure,
+  settleFamilyPlan,
+  writeHeldRow,
+} from './settle-family-plan.js';
+import {
   type ChargeRevokeDecision,
+  LIVE_SUBSCRIPTION,
+  type PaidTier,
   type PriceTierMap,
   type StripeTierOptions,
   chargeLinkFromStripeEvent,
@@ -39,7 +57,8 @@ import {
  * to write. Every applied transition writes an immutable audit_log row (rule #6).
  *
  * Every outcome is TERMINAL — the caller returns 200 so Stripe stops retrying — EXCEPT
- * a thrown DB error (a genuine transient failure), which the route lets 500 so Stripe
+ * `retry` (the route answers 503: Stripe has not given a final answer, nothing is claimed)
+ * and a thrown DB error (a genuine transient failure), which the route lets 500 so Stripe
  * retries. `unknown_family` (the event names a family that isn't in our DB) is terminal
  * too: the ledger still claims the event, we log, and we acknowledge rather than loop.
  * `refund_ready` is terminal as well: a paid session used a disallowed price (list
@@ -58,12 +77,23 @@ export type ApplyStripeBillingResult =
   | { status: 'ignored' }
   | { status: 'refund_ready'; opsAlert: OpsPageOutcome }
   | { status: 'blocked' }
-  | { status: 'kept'; reason: 'partial_refund' | 'active_subscription' }
+  | {
+      status: 'kept';
+      reason:
+        | 'partial_refund'
+        | 'active_subscription'
+        | 'plan_unchanged'
+        | 'older_invoice'
+        | 'not_entitled';
+    }
   | {
       status: 'unresolved';
-      reason: 'no_family' | 'subscription_unresolved';
+      reason: 'no_family' | 'dispute_needs_review' | PlanHoldReason;
       opsAlert: OpsPageOutcome;
-    };
+    }
+  | PlanRetry;
+
+type UnresolvedRevokeReason = 'no_family' | 'subscription_unresolved' | 'dispute_needs_review';
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -84,8 +114,19 @@ export interface ApplyStripeBillingDeps {
   /** Test seam for the unresolved #ops page. */
   onUnresolvedRevoke?: (info: {
     eventId: string;
-    reason: 'no_family' | 'subscription_unresolved';
+    reason: UnresolvedRevokeReason;
   }) => Promise<OpsPageOutcome | undefined>;
+  /** The Stripe transport for the flag-on reads and the cancel. */
+  stripeFetch?: typeof fetch;
+  /** Test seam for the page when a plan is held. */
+  onPlanUnsettled?: (info: {
+    eventId: string;
+    reason: string;
+    /** The tier moved in the same step. The subscription may still be live. */
+    planChanged?: boolean;
+  }) => Promise<OpsPageOutcome | undefined>;
+  /** Test seam for the refused-Stripe and refund-pending pages. */
+  pageDeps?: FailurePageDeps;
 }
 
 export async function applyStripeBillingEvent(
@@ -103,11 +144,17 @@ export async function applyStripeBillingEvent(
   const env = deps.env ?? process.env;
   const priceDecision = decidePaidSessionGrant(event, now, env);
   if (priceDecision.status === 'disallowed') {
-    return markRefundReady(event, eventId, priceDecision, database, deps);
+    return markRefundReady(event, eventId, priceDecision, database, priceTierMap, deps);
   }
   if (stripeBillingRevokeEnabled(env)) {
     const revoke = chargeRevokeDecision(event);
     if (revoke.action !== 'ignore') {
+      if (stripeRefundEndsSubscriptionEnabled(env) && isFullRefund(revoke)) {
+        return settleRefund(event, eventId, database, priceTierMap, deps);
+      }
+      if (stripeRefundEndsSubscriptionEnabled(env) && revoke.kind === 'dispute') {
+        return settleDispute(event, eventId, database, deps);
+      }
       return applyChargeRevoke(event, eventId, revoke, database, deps);
     }
   }
@@ -126,6 +173,15 @@ export async function applyStripeBillingEvent(
     (await isSubscriptionBlocked(database, familyId, refs.subscriptionId, deps))
   ) {
     return claimBlockedGrant(eventId, familyId, refs.subscriptionId, database);
+  }
+  if (stripeBillingRevokeEnabled(env) && stripeRefundEndsSubscriptionEnabled(env)) {
+    return settleFamilyPlan(
+      familyId,
+      lifecycleSignal(event, eventId, refs, tier === 'free' ? null : tier),
+      database,
+      priceTierMap,
+      deps,
+    );
   }
 
   return database.transaction(async (tx) => {
@@ -182,7 +238,168 @@ export async function applyStripeBillingEvent(
   });
 }
 
-const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due']);
+function isFullRefund(decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>): boolean {
+  return (
+    decision.kind === 'refund' &&
+    !(decision.action === 'keep' && decision.reason === 'partial_refund')
+  );
+}
+
+function eventCreatedSeconds(event: unknown): number | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const created = (event as { created?: unknown }).created;
+  return typeof created === 'number' ? created : null;
+}
+
+function lifecycleSignal(
+  event: unknown,
+  eventId: string,
+  refs: { customerId: string | null; subscriptionId: string | null },
+  eventTier: PaidTier | null,
+): PlanSignal {
+  const type = (event as { type?: unknown }).type;
+  return {
+    kind: 'lifecycle',
+    eventId,
+    eventCreated: eventCreatedSeconds(event),
+    customerId: refs.customerId,
+    subscriptionId: refs.subscriptionId,
+    eventTier,
+    paidEvent: type !== 'customer.subscription.deleted',
+  };
+}
+
+/** Links the charge through the pinned read. `done` is an outcome to return as it stands. */
+async function readLinkedCharge(
+  event: unknown,
+  eventId: string,
+  refund: boolean,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<{ done: ApplyStripeBillingResult } | { charge: RefundedCharge; familyId: string }> {
+  if (await eventAlreadyClaimed(database, eventId)) return { done: { status: 'duplicate' } };
+  const { chargeId } = chargeLinkFromStripeEvent(event);
+  const namedFamily = await familyIdForLinkedCharge(
+    {
+      familyId: familyIdFromStripeEvent(event),
+      customerId: stripeRefsFromStripeEvent(event).customerId,
+    },
+    database,
+  );
+  // Stripe can name a family Hale has erased. audit_log's foreign key would throw,
+  // the claim would roll back, and Stripe would retry with no page.
+  if (namedFamily && !(await familyOnFile(database, namedFamily))) {
+    return { done: await unresolvedRevoke(eventId, 'no_family', null, database, deps, true) };
+  }
+  const knownFamily = namedFamily;
+  if (!chargeId) {
+    return {
+      done: knownFamily
+        ? await unresolvedRevoke(
+            eventId,
+            refund ? 'subscription_unresolved' : 'dispute_needs_review',
+            knownFamily,
+            database,
+            deps,
+            true,
+          )
+        : await unresolvedRevoke(eventId, 'no_family', null, database, deps, true),
+    };
+  }
+  let charge: RefundedCharge;
+  try {
+    charge = await planReaderFor(deps).refundedCharge(chargeId);
+  } catch (err) {
+    const retry = await retryFromFailure(
+      err,
+      {
+        eventId,
+        familyId: knownFamily,
+        eventCreated: eventCreatedSeconds(event),
+        refund,
+        subscriptionId: null,
+        periodEnd: null,
+      },
+      database,
+      deps,
+    );
+    if (retry) return { done: retry };
+    throw err;
+  }
+  const familyId =
+    knownFamily ??
+    (await familyIdForLinkedCharge(
+      { familyId: charge.familyId, customerId: charge.customerId },
+      database,
+    ));
+  if (!familyId || !(await familyOnFile(database, familyId))) {
+    return { done: await unresolvedRevoke(eventId, 'no_family', null, database, deps, true) };
+  }
+  return { charge, familyId };
+}
+
+/** The id is one Hale still has a row for. A missing row cannot take an audit write. */
+async function familyOnFile(database: Database, familyId: string): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return row !== undefined;
+}
+
+async function settleRefund(
+  event: unknown,
+  eventId: string,
+  database: Database,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, true, database, deps);
+  if ('done' in read) return read.done;
+  const { charge, familyId } = read;
+  if (!charge.subscriptionId || !charge.invoice) {
+    return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps, true);
+  }
+  return settleFamilyPlan(
+    familyId,
+    {
+      kind: 'refund',
+      eventId,
+      eventCreated: eventCreatedSeconds(event),
+      customerId: charge.customerId,
+      subscriptionId: charge.subscriptionId,
+      invoice: charge.invoice,
+      chargeId: charge.chargeId,
+      chargeAmountCaptured: charge.amountCaptured,
+    },
+    database,
+    priceTierMap,
+    deps,
+  );
+}
+
+/**
+ * A dispute never changes the plan and never cancels: a person decides. Stripe can still
+ * name a family Hale has erased, and audit_log's foreign key would refuse that row.
+ */
+async function settleDispute(
+  event: unknown,
+  eventId: string,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, false, database, deps);
+  if ('done' in read) return read.done;
+  const [family] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.id, read.familyId))
+    .limit(1);
+  return family
+    ? unresolvedRevoke(eventId, 'dispute_needs_review', family.id, database, deps, true)
+    : unresolvedRevoke(eventId, 'no_family', null, database, deps, true);
+}
 
 interface LinkedCharge {
   familyId: string | null;
@@ -200,7 +417,10 @@ async function applyChargeRevoke(
 ): Promise<ApplyStripeBillingResult> {
   const linked = await linkCharge(event, deps);
   const familyId = await familyIdForLinkedCharge(linked, database);
-  if (!familyId) return unresolvedRevoke(eventId, 'no_family', null, database, deps);
+  const claimUnresolved = isFullRefund(decision);
+  if (!familyId) {
+    return unresolvedRevoke(eventId, 'no_family', null, database, deps, claimUnresolved);
+  }
 
   type ChargeTxResult =
     | Exclude<ApplyStripeBillingResult, { status: 'unresolved' }>
@@ -288,7 +508,14 @@ async function applyChargeRevoke(
     })
     .then(async (result): Promise<ApplyStripeBillingResult> => {
       if (result.status === 'leave_unresolved') {
-        return unresolvedRevoke(eventId, 'subscription_unresolved', familyId, database, deps);
+        return unresolvedRevoke(
+          eventId,
+          'subscription_unresolved',
+          familyId,
+          database,
+          deps,
+          claimUnresolved,
+        );
       }
       return result;
     });
@@ -319,7 +546,7 @@ async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise
 }
 
 async function familyIdForLinkedCharge(
-  linked: LinkedCharge,
+  linked: Pick<LinkedCharge, 'familyId' | 'customerId'>,
   database: Database,
 ): Promise<string | null> {
   if (linked.familyId) return linked.familyId;
@@ -333,7 +560,7 @@ async function familyIdForLinkedCharge(
 }
 
 async function unresolvedAlreadyRecorded(
-  database: Database,
+  database: Pick<Database, 'select'>,
   familyId: string,
   eventId: string,
 ): Promise<boolean> {
@@ -352,41 +579,40 @@ async function unresolvedAlreadyRecorded(
 
 async function unresolvedRevoke(
   eventId: string,
-  reason: 'no_family' | 'subscription_unresolved',
+  reason: UnresolvedRevokeReason,
   familyId: string | null,
   database: Database,
   deps: ApplyStripeBillingDeps,
+  claim: boolean,
 ): Promise<ApplyStripeBillingResult> {
-  if (familyId && (await unresolvedAlreadyRecorded(database, familyId, eventId))) {
-    return { status: 'duplicate' };
-  }
-  if (familyId) {
-    await database.insert(schema.auditLog).values({
-      familyId,
-      actor: 'system',
-      actionTaken: 'billing_revoke_unresolved',
-      targetTable: 'families',
-      targetId: familyId,
-      after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
+  const row = (id: string) => ({
+    familyId: id,
+    actor: 'system',
+    actionTaken: 'billing_revoke_unresolved',
+    targetTable: 'families',
+    targetId: id,
+    after: { source: 'stripe', stripeEventId: eventId, reason, tierChanged: false },
+  });
+  if (claim) {
+    const claimed = await database.transaction(async (tx) => {
+      if (!(await claimEvent(tx, eventId))) return false;
+      if (!familyId) return true;
+      if (await unresolvedAlreadyRecorded(tx, familyId, eventId)) return false;
+      await tx.insert(schema.auditLog).values(row(familyId));
+      return true;
     });
+    if (!claimed) return { status: 'duplicate' };
+  } else {
+    if (familyId && (await unresolvedAlreadyRecorded(database, familyId, eventId))) {
+      return { status: 'duplicate' };
+    }
+    if (familyId) await database.insert(schema.auditLog).values(row(familyId));
   }
   const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
   const posted = await alert({ eventId, reason });
   const opsAlert = posted ?? 'sent';
   console.warn('stripe billing: revoke unresolved', { eventId, reason, opsAlert });
   return { status: 'unresolved', reason, opsAlert };
-}
-
-async function claimEvent(
-  tx: Parameters<Parameters<Database['transaction']>[0]>[0],
-  eventId: string,
-): Promise<boolean> {
-  const claim = await tx
-    .insert(schema.stripeBillingEvents)
-    .values({ eventId })
-    .onConflictDoNothing()
-    .returning({ id: schema.stripeBillingEvents.id });
-  return claim.length > 0;
 }
 
 async function isSubscriptionBlocked(
@@ -459,10 +685,13 @@ async function markRefundReady(
     sessionId: string | null;
   },
   database: Database,
+  priceTierMap: PriceTierMap,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
   const familyId = familyIdFromStripeEvent(event);
   const refs = stripeRefsFromStripeEvent(event);
+  const env = deps.env ?? process.env;
+  const settlesPlan = stripeBillingRevokeEnabled(env) && stripeRefundEndsSubscriptionEnabled(env);
   const claimed = await database.transaction(async (tx) => {
     const claim = await tx
       .insert(schema.stripeBillingEvents)
@@ -493,9 +722,22 @@ async function markRefundReady(
         autoRefund: false,
       },
     });
+    // Moves the row version, so a settle already past its read cannot grant this subscription.
+    if (settlesPlan) {
+      await tx
+        .update(schema.families)
+        .set({ updatedAt: new Date() })
+        .where(eq(schema.families.id, familyId));
+    }
     return true;
   });
-  if (!claimed) return { status: 'duplicate' };
+  if (!claimed) {
+    // A crash right after the marker is corrected here, on the redelivery.
+    if (settlesPlan && familyId) {
+      await resettleAfterMarker(event, eventId, familyId, refs, database, priceTierMap, deps);
+    }
+    return { status: 'duplicate' };
+  }
   const alert = deps.onDisallowedPrice ?? alertDisallowedCheckoutPrice;
   const posted = await alert({
     eventId,
@@ -509,7 +751,39 @@ async function markRefundReady(
     sessionId: decision.sessionId,
     opsAlert,
   });
+  if (settlesPlan && familyId) {
+    await resettleAfterMarker(event, eventId, familyId, refs, database, priceTierMap, deps);
+  }
   return { status: 'refund_ready', opsAlert };
+}
+
+async function resettleAfterMarker(
+  event: unknown,
+  eventId: string,
+  familyId: string,
+  refs: { customerId: string | null; subscriptionId: string | null },
+  database: Database,
+  priceTierMap: PriceTierMap,
+  deps: ApplyStripeBillingDeps,
+): Promise<void> {
+  const claimKey = `${eventId}:refund_ready`;
+  const settled = await settleFamilyPlan(
+    familyId,
+    lifecycleSignal(event, claimKey, refs, null),
+    database,
+    priceTierMap,
+    deps,
+  );
+  if (settled.status === 'retry') {
+    await writeHeldRow(
+      familyId,
+      claimKey,
+      'resettle_failed',
+      { subscriptionId: refs.subscriptionId, periodEnd: null, clearsOn: 'decision' },
+      database,
+      deps,
+    );
+  }
 }
 
 function auditSubscriptionId(after: unknown): string | null {

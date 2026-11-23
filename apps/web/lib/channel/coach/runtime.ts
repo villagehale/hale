@@ -9,9 +9,11 @@ import {
   agentRunCostUsd,
   pickModel,
   runAgent,
+  withoutMarkEscape,
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { type FamilyCountry, type PlanTier, familyCountryOf } from '@hale/types';
 import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
@@ -72,6 +74,7 @@ import {
   undoGroupListWrites,
 } from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
+import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
 import { readHealthPlace } from '~/lib/channel/off-domain/place';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -112,6 +115,7 @@ import {
   offeredSubject,
   readSubjectVerdicts,
 } from '~/lib/reviews/aggregate';
+import { loadLiveAsks } from '~/lib/signup/asks';
 import {
   type ProviderWatchContext,
   loadProviderWatchContext,
@@ -124,6 +128,7 @@ import {
   signupAtOpenEnabled,
   signupOfferToolEnabled,
 } from '~/lib/signup/offer-tool';
+import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -287,6 +292,11 @@ export interface ChannelCoachPorts {
    * `healthLineFacts` of it, so 811 reaches only a family placed where 811 is a health
    * line. Required: a coach that cannot place a family must say so with null. */
   loadHealthPlace(familyId: string): Promise<HealthPlace | null>;
+  /**
+   * VIL-715 — this group turn's sender has a registration ask waiting in their own thread.
+   * Absent or false: the group prompt keeps the bytes it had.
+   */
+  privateSignupAskWaiting?(turn: ChannelTurn): Promise<boolean>;
   /** What Hale's Browser Use watch last read on this family's providers (schedules,
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
@@ -550,10 +560,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Postal town is home. A separate file so the standing coach-channel recordings,
       // keyed on sms + nearby-find, stay put until they are re-recorded.
       const homePlace = await loadCronSkill('coach-home-place');
-      const baseSkill = {
-        ...groupedSkill,
-        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
-      };
+      // VIL-744: overrides the way out in "When they doubt you", on every turn. Dark, the
+      // skill text and its recordings are unchanged.
+      const baseSkill = appendNoStopKeywordSkill(
+        {
+          ...groupedSkill,
+          instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}\n\n${homePlace.instructions}`,
+        },
+        noStopKeywordCopyEnabled() ? await loadCronSkill('coach-no-stop-keyword') : null,
+      );
       // coach-nearby-find itself stays byte-identical, so coach-channel and
       // group-privacy recordings stay keyed on the prompt they already have.
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
@@ -647,10 +662,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
       // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
       // Dark and 1:1 turns keep the skill bytes they already had.
-      const coachSkill =
+      const withGroupLists =
         turn.audience === 'group' && groupSharedListsEnabled()
           ? await appendGroupListsReply(withNoRelay)
           : withNoRelay;
+      // VIL-715: a registration is answered in the asker's own thread, never in a group.
+      const askInPrivate =
+        turn.audience === 'group' && (await ports.privateSignupAskWaiting?.(turn)) === true
+          ? await loadCronSkill('coach-signup-group')
+          : null;
+      const coachSkill = askInPrivate
+        ? {
+            ...withGroupLists,
+            instructions: `${withGroupLists.instructions}\n\n${askInPrivate.instructions}`,
+          }
+        : withGroupLists;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -1018,8 +1044,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // VIL-628: after read_email, a phone, code or host only the email gave is cut
               // before the judge reads the draft, so the judge sees what is sent.
               const emails = emailTexts();
-              const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
+              // The model read the email through the mark, so it can hand a code back as
+              // `48&lt;29`, and the email may have written it with a look-alike of `<`. The
+              // gate compares in one spelling; the parent gets the model's own characters
+              // with only the entity undone.
+              const marked = emails.length > 0 && isEnabled('untrusted-field-marking');
+              const asWritten = withoutMarkEscape(marked, drafted);
+              const { text: spoken, dropped } = dropEmailOnlyTokens(asWritten, {
                 emails,
+                readThroughMark: marked,
                 trusted:
                   emails.length > 0
                     ? [
@@ -1128,6 +1161,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
   };
 }
 
+function appendNoStopKeywordSkill(skill: Skill, addendum: Skill | null): Skill {
+  if (addendum === null) return skill;
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
+}
+
 /** Null returns the same skill object. A turn without a .vcf does not grow the prompt. */
 function augmentCoachSkillForContactCard(skill: Skill, addendum: Skill | null): Skill {
   if (addendum === null) return skill;
@@ -1167,6 +1205,14 @@ async function loadParentStatedFactValues(
   return rows
     .filter((row) => row.memorySource === 'parent_message')
     .map((row) => JSON.stringify({ factKey: row.factKey, factValue: row.factValue }));
+}
+
+/** The at-open addendum and, with pre-flight on for this family, what its refusals mean. */
+async function coachSignupAtOpen(preflight: boolean): Promise<Skill> {
+  const atOpen = await loadCronSkill('coach-signup-offer');
+  if (!preflight) return atOpen;
+  const terms = await loadCronSkill('coach-signup-terms');
+  return { ...atOpen, instructions: `${atOpen.instructions}\n\n${terms.instructions}` };
 }
 
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
@@ -1232,7 +1278,9 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             browserUseWatchEnabled(),
           ),
           signupOfferToolEnabled(),
-          signupAtOpenEnabled() ? await loadCronSkill('coach-signup-offer') : null,
+          signupAtOpenEnabled()
+            ? await coachSignupAtOpen(registrationPreflightEnabled(familyId))
+            : null,
         ),
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
@@ -1244,6 +1292,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     loadHealthPlace: (familyId) => readHealthPlace(database, familyId),
+    privateSignupAskWaiting: async (turn) =>
+      registrationPreflightEnabled(turn.familyId) &&
+      (
+        await loadLiveAsks(database, {
+          familyId: turn.familyId,
+          parentUserId: turn.parentUserId,
+          now: turn.now,
+          openQuestions: [],
+        })
+      ).length > 0,
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
     loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
@@ -1422,6 +1480,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               now: turn.now,
               parentWords: turn.body,
               optOutUnread: turn.optOutUnread === true,
+              audience: turn.audience,
               linksThisTurn: () => [
                 ...searchLinks(),
                 ...photoFactSignupLinks(turn.photoFacts, turn.body),

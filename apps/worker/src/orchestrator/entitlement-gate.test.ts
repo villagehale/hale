@@ -43,7 +43,7 @@ const runClassifier = vi.fn(async () => ({
 vi.mock('../agents/classifier.js', () => ({ runClassifier: () => runClassifier() }));
 vi.mock('../agents/dedup.js', () => ({ dedupHashFor: () => 'fixed-hash' }));
 
-const runDrafter = vi.fn(async () => ({
+const runDrafter = vi.fn(async (_input: { source: string }) => ({
   draft: {
     id: 'action-1',
     eventId: 'evt-1',
@@ -74,7 +74,9 @@ const runReviewer = vi.fn(async () => ({
 }));
 
 const runExecutor = vi.fn(async () => ({ ok: true, detail: {} }));
-vi.mock('../agents/drafter.js', () => ({ runDrafter: () => runDrafter() }));
+vi.mock('../agents/drafter.js', () => ({
+  runDrafter: (input: { source: string }) => runDrafter(input),
+}));
 vi.mock('../agents/reviewer.js', () => ({ runReviewer: () => runReviewer() }));
 vi.mock('../services/executor.js', () => ({ runExecutor: () => runExecutor() }));
 
@@ -161,6 +163,15 @@ describe('runOrchestrator — no plan gate; the execute lane is the only added b
       expect.objectContaining({ actionId: 'action-1', ok: true }),
     );
     expect(markEventStage).toHaveBeenCalledWith('fam-1', 'evt-1', 'approved_pending_execute');
+  });
+
+  it('hands the drafter the inbound origin, not the classified event type', async () => {
+    vi.stubEnv(LANE, 'true');
+    runDrafter.mockClear();
+
+    await runOrchestrator({ ...job, source: 'gcal' });
+
+    expect(runDrafter).toHaveBeenCalledWith(expect.objectContaining({ source: 'gcal' }));
   });
 
   it('positive control: family created now → observation_window gate, executor not called', async () => {
