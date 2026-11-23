@@ -161,7 +161,10 @@ describe('senders no-op without flags or env', () => {
     expect(body.data[0]?.user_data.client_user_agent).toBe('Mozilla/5.0 HaleTest');
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain('Sam@Example.com');
-    expect(serialized).not.toContain('416');
+    // The area code alone also appears inside event_time, so the check is the
+    // unhashed phone, which a hash and a unix second cannot contain.
+    expect(serialized).not.toContain('(416)');
+    expect(serialized).not.toContain('555-0100');
     expect(serialized).not.toContain('child');
     expect(body).not.toHaveProperty('test_event_code');
   });
