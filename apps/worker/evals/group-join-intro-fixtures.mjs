@@ -19,7 +19,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      "The four household claims, in Hale's own words: reads this chat, email is never shown here, speaks when called, anyone can remove Hale. Says nothing about private texts. Says Hale is here for Maya's family. Ends with one question asking each person who they are in this family; no list of roles. No STOP or HELP.",
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. The four household claims, in Hale's own words: reads this chat, email is never shown here, speaks when called, anyone can remove Hale. Says nothing about private texts or a 1:1. Says Hale is here for Maya's family. Ends with one question asking each person who they are in this family; no list of roles. No STOP or HELP.",
   },
   {
     id: 'en-household-known-trio',
@@ -32,7 +32,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'A group of three where everyone is known: no question at all. Nothing about removing Hale, leaving, or opting out, because nobody in a group this small can remove a member. Nothing about private texts. No STOP or HELP.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. A group of three where everyone is known: no question at all. Nothing about removing Hale, leaving, or opting out, because nobody in a group this small can remove a member. Nothing about private texts or a 1:1. No STOP or HELP.",
   },
   {
     id: 'fr-household-asks',
@@ -45,7 +45,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'French, vous throughout (never tu), real accents. The four household claims and nothing about private texts. Says Hale is here for the family of Camille. One question: who each person is in this family. No STOP, HELP, ARRET or AIDE.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. French, vous throughout (never tu), real accents. The four household claims and nothing about private texts or a 1:1. Says Hale is here for the family of Camille. One question: who each person is in this family. No STOP, HELP, ARRET or AIDE.",
   },
   {
     id: 'en-household-reader-dark',
@@ -58,7 +58,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: false,
     mailNoticeLive: true,
     watchFor:
-      'Only two claims: Hale reads this chat, and anyone can remove it. Says nothing about when Hale speaks or stays quiet, nothing about email, nothing about private texts. One question about who each person is.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. Only two claims: Hale reads this chat, and anyone can remove it. Says nothing about when Hale speaks or stays quiet, nothing about email, nothing about private texts or a 1:1. One question about who each person is.",
   },
   {
     id: 'en-household-no-name',
@@ -71,7 +71,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'No parent name is known, so none may be invented: "this family" or similar is right. The four household claims, nothing about private texts, and one question.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. No parent name is known, so none may be invented: \"this family\" or similar is right. The four household claims, nothing about private texts or a 1:1, and one question.",
   },
   {
     id: 'en-shared-adder',
@@ -84,7 +84,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts. One question: who each person is and which kid they are with; no role list and no child named.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. A group several families share. Says Jordan added Hale, and names no household as the one Hale works for. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts or a 1:1. One question: who each person is and which kid they are with; no role list and no child named.",
   },
   {
     id: 'es-shared-no-adder',
@@ -97,7 +97,7 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'Written in Spanish, plural you to the whole group (ustedes). Names nobody as the adder and no household. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts. One question about who they are and which kid they are with.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. Written in Spanish, plural you to the whole group (ustedes). Names nobody as the adder and no household. Reads this chat, email is never shown, speaks when called, anyone can remove Hale. Nothing about private texts or a 1:1. One question about who they are and which kid they are with.",
   },
   {
     id: 'fr-shared-small',
@@ -110,6 +110,6 @@ export const GROUP_JOIN_INTRO_FIXTURES = [
     turnReaderLive: true,
     mailNoticeLive: false,
     watchFor:
-      'French, vous throughout. Says Léa added Hale. Reads this chat, email is never shown, and speaks when called. Nothing about private texts, and nothing about removing Hale or leaving, because a group of three cannot remove a member. One question about who they are and which kid they are with.',
+      "Who Hale is: an AI agent you text for the kids' year, not only a planner. French, vous throughout. Says Léa added Hale. Reads this chat, email is never shown, and speaks when called. Nothing about private texts or a 1:1, and nothing about removing Hale or leaving, because a group of three cannot remove a member. One question about who they are and which kid they are with.",
   },
 ];
