@@ -196,9 +196,11 @@ export async function settleFamilyPlan(
         priceTierMap,
       );
       try {
-        const result = await commit(familyId, family, signal, outcome, subscriptions, database);
-        if (result.status === 'unresolved') return await pageHold(result, signal.eventId, deps);
-        return result;
+        const committed = await commit(familyId, family, signal, outcome, subscriptions, database);
+        if (committed.result.status === 'unresolved') {
+          return await pageHold(committed.result, signal.eventId, deps, committed.planChanged);
+        }
+        return committed.result;
       } catch (err) {
         if (!(err instanceof FamilyChangedDuringSettle)) throw err;
       }
@@ -528,6 +530,8 @@ function planCommit(family: FamilyRead, signal: PlanSignal, outcome: Outcome): P
           subscriptionId: signal.subscriptionId,
           periodEnd: subscription ? currentPeriodEnd(subscription) : null,
           clearsOn: outcome.clearsOn,
+          // The export sentence is chosen from this. Without it the row says the plan stayed.
+          ...(movedTier ? { planTier: movedTier } : {}),
         },
       },
     };
@@ -597,10 +601,10 @@ async function commit(
   outcome: Outcome,
   subscriptions: readonly StripeSubscriptionRead[],
   database: Database,
-): Promise<ApplyStripeBillingResult> {
+): Promise<{ result: ApplyStripeBillingResult; planChanged: boolean }> {
   const planned = planCommit(family, signal, outcome);
   const cleared = clearedEventIds(family, signal, outcome, subscriptions);
-  return database.transaction(async (tx) => {
+  const result = await database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
     if (!(await claimEvent(tx, signal.eventId))) return { status: 'duplicate' };
     const updated = await tx
       .update(schema.families)
@@ -630,17 +634,28 @@ async function commit(
     }
     return planned.result;
   });
+  return { result, planChanged: planned.tier !== null };
 }
 
 async function pageHold(
   result: Extract<ApplyStripeBillingResult, { status: 'unresolved' }>,
   eventId: string,
   deps: ApplyStripeBillingDeps,
+  planChanged: boolean,
 ): Promise<ApplyStripeBillingResult> {
   const alert = deps.onPlanUnsettled ?? alertUnsettledBillingPlan;
-  const posted = await alert({ eventId, reason: result.reason });
+  const posted = await alert({
+    eventId,
+    reason: result.reason,
+    ...(planChanged ? { planChanged: true } : {}),
+  });
   const opsAlert = posted ?? 'sent';
-  console.warn('stripe billing: plan held', { eventId, reason: result.reason, opsAlert });
+  console.warn('stripe billing: plan held', {
+    eventId,
+    reason: result.reason,
+    planChanged,
+    opsAlert,
+  });
   return { ...result, opsAlert };
 }
 

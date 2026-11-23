@@ -2006,8 +2006,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   // Hidden from the trail via INTERNAL_TRAIL_VERBS. The family's export still carries it.
+  // Does not say the plan stayed: a held cancel can move the tier in the same step.
   billing_plan_unsettled: {
-    sentence: 'Hale could not tell which plan your payments cover, so your plan stayed as it was',
+    sentence: 'Hale could not tell which plan your payments cover',
     family: 'note',
   },
   upgrade_ask_sent: { sentence: 'Hale asked about keeping it for the year', family: 'awaiting' },
@@ -2433,6 +2434,29 @@ export function calendarWithdrawnSentence(after: unknown): string | null {
 
 export function calendarWithdrawnSentences(): readonly string[] {
   return Object.values(CALENDAR_WITHDRAW_LINE);
+}
+
+/** The registry sentence says a refund could not be matched. A dispute is not that. */
+export const DISPUTE_NEEDS_REVIEW_SENTENCE =
+  'a card dispute came in, so the plan was left as it is';
+
+/** The registry sentence does not say the plan moved. This row did. */
+export const PLAN_CHANGED_UNSETTLED_SENTENCE =
+  'Hale changed your plan after a refund and could not end the subscription';
+
+export function billingRevokeUnresolvedSentence(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null) return null;
+  return (after as { reason?: unknown }).reason === 'dispute_needs_review'
+    ? DISPUTE_NEEDS_REVIEW_SENTENCE
+    : null;
+}
+
+export function billingPlanUnsettledSentence(after: unknown): string | null {
+  if (typeof after !== 'object' || after === null) return null;
+  const planTier = (after as { planTier?: unknown }).planTier;
+  return typeof planTier === 'string' && planTier.length > 0
+    ? PLAN_CHANGED_UNSETTLED_SENTENCE
+    : null;
 }
 
 /**
