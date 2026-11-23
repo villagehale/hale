@@ -173,7 +173,12 @@ const textSchema = z
   .object({ message: z.string().refine((value) => value.trim().length > 0) })
   .strict();
 
-export type AutonomyNoticeSkip = 'no_client' | 'model_failed' | 'unparsed' | 'invented';
+export type AutonomyNoticeSkip =
+  | 'no_client'
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'unparsed'
+  | 'invented';
 
 export type AutonomyNoticeText = { message: string } | { skipped: AutonomyNoticeSkip };
 

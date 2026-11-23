@@ -294,6 +294,33 @@ export const OPS_PAGE_VOCABULARY = {
     ],
   },
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
+  // VIL-719 · a tell-after text (the text after Hale did a tell-after action) the model
+  // could not write. Nothing was sent; the action stands. Paged only while
+  // ASK_POLICY_TIERS_ENABLED is on for the family. One site per lane, so one lane's hour
+  // does not hide another's.
+  autonomy_acted_unwritten: {
+    reason: ['no_client', 'skill_unavailable', 'model_failed', 'unparsed', 'invented'],
+  },
+  calendar_invite_unwritten: {
+    method: ['REQUEST', 'CANCEL'],
+    reason: [
+      'client_unavailable',
+      'skill_unavailable',
+      'model_failed',
+      'gate_exhausted',
+      'time_unjudged',
+      'summary_too_long',
+      'summary_carries_destination',
+    ],
+  },
+  calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },
+  team_schedule_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  /** A team-schedule change under a grant whose execution failed. The email notice still goes. */
+  team_schedule_not_applied: { change: ['time', 'location', 'both', 'cancel'] },
+  /** Linq took a team-schedule ask and its draft could not join the yes list. */
+  team_schedule_ask_unbound: { change: ['time', 'location', 'both', 'cancel'] },
+  offer_receipt_unwritten: {},
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {
     kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],

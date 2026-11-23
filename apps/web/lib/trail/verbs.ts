@@ -359,6 +359,8 @@ export const AUDIT_VERBS = [
   'team_schedule_driver_unsent',
   // VIL-734 · that text ended on one adult's own stop, consent, missing number or leaving.
   'team_schedule_driver_unreachable',
+  // VIL-719 · a change from an email that did not run under a grant; it left the yes list.
+  'team_schedule_change_not_run',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -474,6 +476,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // Held because the turn-on text has not been delivered yet.
   'action.gated.autonomy_notice_pending',
+  // VIL-719. The ask policy puts this kind in ask first: it runs only on the parent's yes.
+  'action.gated.ask_first',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
   'autonomy_notice_covered',
@@ -1438,6 +1442,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not text you about a schedule change',
     family: 'note',
   },
+  // VIL-719. About one parent's email: their audience, off History and the family export
+  // (rights/export.ts), in their own copy. `after` is the action id and the kind of change.
+  team_schedule_change_not_run: {
+    sentence: 'Hale did not make a schedule change from an email',
+    family: 'note',
+  },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
   // said a connector item is theirs, so Hale stopped tracking it.
   kid_relevance_untracked: {
@@ -1840,6 +1850,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  // VIL-719. Same reused sentence: an ask-first action is a draft brought to the parent.
+  'action.gated.ask_first': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_notice_pending': {
     sentence: 'held until Hale had told you it would handle this on its own',
     family: 'awaiting',
@@ -2550,6 +2562,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'proactive_nudge_unwritten',
   // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
+  // VIL-719. A change from one parent's email that Hale did not make.
+  'team_schedule_change_not_run',
   // VIL-735. About one adult's payment: the other parent never sees it.
   'billing_notice_sent',
   'billing_notice_send_failed',

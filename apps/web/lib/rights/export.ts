@@ -59,6 +59,8 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-734. That one driver stopped Hale, left no number, left the household, or has a text
   // still unread.
   'team_schedule_driver_unreachable',
+  // VIL-719. That an email in one parent's inbox carried a change Hale did not make.
+  'team_schedule_change_not_run',
   // VIL-735. A text about one adult's payment. Their own copy carries the notice itself.
   'billing_notice_sent',
   'billing_notice_send_failed',
@@ -74,6 +76,7 @@ const OWN_ROWS_IN_EXPORT = [
   'ack_eta_deadline',
   'ack_eta_late_note_sent',
   'team_schedule_driver_unreachable',
+  'team_schedule_change_not_run',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {

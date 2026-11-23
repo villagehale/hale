@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, eq, ne } from 'drizzle-orm';
 import { entitlementsForFamily } from '~/lib/billing/max-entitlements';
 import { parentSeasonClock } from '~/lib/channel/family-tz';
@@ -771,6 +772,25 @@ async function runMismatchTurn(
     return reply(database, input, deps, plan, 'clarify', {
       question: 'Hale does not have an email address for this provider on the page.',
       boundBy,
+    });
+  }
+  // VIL-719 · this email reaches someone outside the family from the parent's own Gmail, so
+  // under the ask policy it runs on a recorded yes, anchored to the message that gave it.
+  // Written before the send: a yes that cannot be recorded sends nothing.
+  if (askPolicyTiersEnabled(input.familyId)) {
+    if (!input.inboundChannelMessageId) {
+      return reply(database, input, deps, plan, 'refused', { refusal: 'not_stored', boundBy });
+    }
+    await writePlanAudit(database, {
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      offerId: plan.offerId,
+      after: {
+        step: 'provider_email_yes',
+        messageId: input.inboundChannelMessageId,
+        host: plan.providerHost,
+        boundBy,
+      },
     });
   }
   await deps.sendProviderEmail({

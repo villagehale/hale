@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
@@ -77,6 +78,7 @@ import {
   defaultGoogleDisconnectPorts,
 } from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { ownCityRegistrationContext } from '~/lib/registration/city/context';
 import {
@@ -832,6 +834,12 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  */
 export function emailAlertAddHandler(deps: {
   writeReceipt: OfferReceiptWriter;
+  /**
+   * VIL-719 · tells #ops when the receipt for an event the parent's yes placed (its
+   * tell-after) could not be written. Defaults to the production pager on the turn's own
+   * database; read only while ASK_POLICY_TIERS_ENABLED is on for the family.
+   */
+  pager?: OpsPager;
 }): DeterministicHandler {
   return {
     name: 'email_alert_add',
@@ -856,8 +864,18 @@ export function emailAlertAddHandler(deps: {
       const resolution = outcome.status;
       const reply = await deps.writeReceipt.write(outcome.facts);
       if (reply === null) {
+        // VIL-719 · the event is on the calendar and its receipt could not be written:
+        // nothing is sent, the offer stays open for the redrive, and ops hears of it.
+        const page =
+          resolution === 'added' && askPolicyTiersEnabled(ctx.familyId)
+            ? await (deps.pager ?? failurePageOpsPager(() => database)).page({
+                site: 'offer_receipt_unwritten',
+                facts: {},
+                ref: outcome.offerId,
+              })
+            : null;
         console.info(
-          { status: 'receipt_unsent', outcome: resolution },
+          { status: 'receipt_unsent', outcome: resolution, ...(page ? { page } : {}) },
           'email alert offer: the receipt was not sent',
         );
       }

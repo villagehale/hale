@@ -335,6 +335,18 @@ describe('an env-only flag, read before any family is known', () => {
       isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true' }),
     ).toBe(true);
   });
+
+  it('VIL-719: PostHog at 100% can never light the ask policy, and a sync never creates it', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('ask-policy-tiers', 'family-1', ON)).toBe(false);
+    expect(
+      isEnabled('ask-policy-tiers', 'family-1', { ...ON, ASK_POLICY_TIERS_ENABLED: 'true\n' }),
+    ).toBe(false);
+    expect(
+      isEnabled('ask-policy-tiers', 'family-1', { ...ON, ASK_POLICY_TIERS_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['ask-policy-tiers'].envOnly).toBe(true);
+  });
 });
 
 describe('catalog', () => {

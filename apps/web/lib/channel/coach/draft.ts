@@ -54,6 +54,11 @@ export interface ChannelDraftInput {
    * the teen flag the downstream redaction cap reads (rule #1). Age-derived by the
    * caller from the resolved row, never a stored flag. */
   teenContent: boolean;
+  /**
+   * VIL-719 · written off the yes list, for a caller that promotes the draft once its ask
+   * is confirmed sent. From the first write, so a crash at any later point fails closed.
+   */
+  heldUntilAsked?: boolean;
 }
 
 export interface ChannelDraftResult {
@@ -429,7 +434,7 @@ export async function mintChannelCalendarDraft(
       familyId: input.familyId,
       actionType: input.actionType,
       payload,
-      userVisibleState: 'drafted_for_approval',
+      userVisibleState: input.heldUntilAsked ? 'needs_human' : 'drafted_for_approval',
     })
     .onConflictDoNothing({ target: schema.actions.eventId })
     .returning({ id: schema.actions.id });
