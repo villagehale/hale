@@ -84,6 +84,9 @@ const DOORS: Record<string, Door> = {
   // already-held check before a coach offer row: household events only
   'apps/web/lib/integrations/email-alert-offer.ts': 'household',
   'apps/web/lib/integrations/email-alert.ts': 'household',
+  // VIL-762: this parent's commitments. Household rows plus that parent's own
+  // mirrors (familyEventForParent), never the other parent's calendar.
+  'apps/web/lib/integrations/email-alert-appointment.ts': 'owner',
   // sensitive = true; the mirror writer never sets it
   'apps/web/lib/mcp/read-tools.ts': 'scoped',
   // by id, from a placement or a placement follow-up
