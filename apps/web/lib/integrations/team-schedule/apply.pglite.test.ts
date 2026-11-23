@@ -573,6 +573,7 @@ describe('VIL-719 the driver text after an applied change', () => {
 
   it('policy on: a text the model could not write sends nothing and pages #ops', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'false');
     const { changeId, transport, composeDriver } = await applyWithDriverText(null);
     expect(composeDriver).toHaveBeenCalledTimes(1);
     expect(transport.sent).toEqual([]);
@@ -904,6 +905,7 @@ describe('VIL-719 a driver outside the family’s own parents', () => {
 
   it('policy on: another family’s driver holds the change for the parent’s yes', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'false');
     const other = await seedFamily(db.database, 'Other family');
     const eventId = await seedGame({ dutyOwnerUserId: other.parentUserId });
     const { p, modes, execute, composedFor } = grantPorts(eventId);
@@ -972,6 +974,7 @@ describe('VIL-719 a driver outside the family’s own parents', () => {
 
   it('policy off: another family’s driver is texted under the grant, as today', async () => {
     vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+    vi.stubEnv('TEAM_SCHEDULE_SEND_RECEIPT_ENABLED', 'false');
     const other = await seedFamily(db.database, 'Other family');
     const eventId = await seedGame({ dutyOwnerUserId: other.parentUserId });
     const { p, modes, composedFor } = grantPorts(eventId);
