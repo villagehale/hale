@@ -820,8 +820,8 @@ describe('a number on the SMS door', () => {
       body: string,
       providerId: string,
       intent: 'none' | 'crisis_mental' = 'none',
+      transport = new FakeTransport(),
     ) {
-      const transport = new FakeTransport();
       const outcome = await handleInboundSms(
         db.database,
         transport.inbound(phone, body, { providerId, receivedAt: NOW }),
@@ -1042,6 +1042,161 @@ describe('a number on the SMS door', () => {
         await expect(turn).rejects.toThrow();
         expect(transport.sent.filter((sent) => sent.to === COPARENT_PHONE)).toHaveLength(1);
         expect(await inviteStates()).toEqual(['awaiting_caregiver_reply']);
+      });
+
+      describe('a redelivered yes and a newer invite', () => {
+        const ADD_SAM = 'add Sam 905-555-0182 as my partner';
+        const ADD_ROBIN = 'add Robin 416-555-0133 as my partner';
+        const timeout = () => new LinqSendError('timeout', 0, false);
+
+        async function stateOf(phone: string): Promise<string[]> {
+          const rows = await db.database
+            .select({ state: schema.caregiverInvites.state })
+            .from(schema.caregiverInvites)
+            .where(eq(schema.caregiverInvites.phoneE164Hash, phoneBlindIndex(phone)));
+          return rows.map((row) => row.state);
+        }
+
+        const fromParent = (body: string, providerId: string, transport: FakeTransport) =>
+          answerFrom(PARENT_PHONE, body, providerId, 'none', transport);
+
+        async function samsYesFailed(): Promise<{ familyId: string; parentUserId: string }> {
+          const seeded = await seedHousehold();
+          const failing = new RefusingTransport(timeout);
+          const add = await fromParent(ADD_SAM, 'in-add-sam', failing);
+          expect(add.outcome.status).toBe('co_parent_invite_started');
+          await expect(fromParent('yes', 'in-parent-yes', failing)).rejects.toThrow(
+            'linq send failed',
+          );
+          expect(await stateOf(COPARENT_PHONE)).toEqual(['awaiting_parent_assent']);
+          return seeded;
+        }
+
+        it('policy on: the old yes does not text the person the parent named next', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+          const seeded = await samsYesFailed();
+          const added = await fromParent(ADD_ROBIN, 'in-add-robin', new FakeTransport());
+          expect(added.outcome.status).toBe('co_parent_invite_started');
+
+          const redelivery = new FakeTransport();
+          const { outcome } = await fromParent('yes', 'in-parent-yes', redelivery);
+
+          expect(outcome.status).toBe('co_parent_assent_already_claimed');
+          expect(redelivery.sent).toEqual([]);
+          expect(await stateOf(NEVER_INVITED_PHONE)).toEqual(['awaiting_parent_assent']);
+          expect(await grantRows(seeded.familyId)).toBe(1);
+        });
+
+        it('policy on: the old yes does not re-send a newer invite the parent also approved', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+          const seeded = await samsYesFailed();
+          class RefusesRobin extends FakeTransport {
+            override async send(input: Parameters<FakeTransport['send']>[0]) {
+              if (input.to === NEVER_INVITED_PHONE) throw timeout();
+              return super.send(input);
+            }
+          }
+          const refusing = new RefusesRobin();
+          await fromParent(ADD_ROBIN, 'in-add-robin', refusing);
+          await expect(fromParent('yes', 'in-parent-yes-2', refusing)).rejects.toThrow(
+            'linq send failed',
+          );
+          expect(await grantRows(seeded.familyId)).toBe(2);
+
+          const redelivery = new FakeTransport();
+          const { outcome } = await fromParent('yes', 'in-parent-yes', redelivery);
+
+          expect(outcome.status).toBe('co_parent_assent_already_claimed');
+          expect(redelivery.sent).toEqual([]);
+          expect(await stateOf(NEVER_INVITED_PHONE)).toEqual(['awaiting_parent_assent']);
+          expect(await grantRows(seeded.familyId)).toBe(2);
+        });
+
+        it('positive control, policy on: the same invite’s redelivered yes sends under its key', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+          const seeded = await samsYesFailed();
+
+          const redelivery = new FakeTransport();
+          const { outcome } = await fromParent('yes', 'in-parent-yes', redelivery);
+
+          expect(outcome.status).toBe('co_parent_invite_sent');
+          const [row] = await db.database
+            .select({ id: schema.caregiverInvites.id })
+            .from(schema.caregiverInvites);
+          const toSam = redelivery.sent.filter((sent) => sent.to === COPARENT_PHONE);
+          expect(toSam.map((sent) => sent.sendKey)).toEqual([`co_parent_invite:${row?.id}`]);
+          expect(await stateOf(COPARENT_PHONE)).toEqual(['awaiting_caregiver_reply']);
+          expect(await grantRows(seeded.familyId)).toBe(1);
+        });
+
+        it('policy on: a yes whose grant was never written is not re-run, and a new yes sends', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+          const seeded = await seedHousehold();
+          await fromParent(ADD_SAM, 'in-add-sam', new FakeTransport());
+          await failInserts('consent_records');
+          await expect(fromParent('yes', 'in-parent-yes', new FakeTransport())).rejects.toThrow();
+          await restoreInserts('consent_records');
+          expect(await stateOf(COPARENT_PHONE)).toEqual(['awaiting_parent_assent']);
+
+          const redelivery = new FakeTransport();
+          const redelivered = await fromParent('yes', 'in-parent-yes', redelivery);
+          expect(redelivered.outcome.status).toBe('co_parent_assent_already_claimed');
+          expect(redelivery.sent).toEqual([]);
+          expect(await grantRows(seeded.familyId)).toBe(0);
+
+          const again = new FakeTransport();
+          const answered = await fromParent('yes', 'in-parent-yes-again', again);
+          expect(answered.outcome.status).toBe('co_parent_invite_sent');
+          expect(again.sent.filter((sent) => sent.to === COPARENT_PHONE)).toHaveLength(1);
+          expect(await grantRows(seeded.familyId)).toBe(1);
+        });
+
+        it('policy off: the old yes throws on the inbound row and texts no one, as on main', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+          const seeded = await seedHousehold();
+          const failing = new RefusingTransport(timeout);
+          await fromParent(ADD_SAM, 'in-add-sam', failing);
+          await expect(fromParent('yes', 'in-parent-yes', failing)).rejects.toThrow(
+            'linq send failed',
+          );
+          await fromParent(ADD_ROBIN, 'in-add-robin', new FakeTransport());
+
+          const redelivery = new FakeTransport();
+          await expect(fromParent('yes', 'in-parent-yes', redelivery)).rejects.toThrow();
+
+          expect(redelivery.sent).toEqual([]);
+          expect(await stateOf(NEVER_INVITED_PHONE)).toEqual(['awaiting_parent_assent']);
+          expect(await grantRows(seeded.familyId)).toBe(1);
+        });
+
+        it('policy on: a second ask opened during the send stays the only one waiting', async () => {
+          vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+          const seeded = await seedHousehold();
+          class AddsRobinMidSend extends FakeTransport {
+            override async send(input: Parameters<FakeTransport['send']>[0]) {
+              if (input.to !== COPARENT_PHONE) return super.send(input);
+              const added = await fromParent(
+                'add Robin 416-555-0133 as grandparent',
+                'in-add-robin',
+                new FakeTransport(),
+              );
+              expect(added.outcome.status).toBe('caregiver_invite_started');
+              throw timeout();
+            }
+          }
+          const transport = new AddsRobinMidSend();
+          await fromParent(ADD_SAM, 'in-add-sam', transport);
+          await expect(fromParent('yes', 'in-parent-yes', transport)).rejects.toThrow(
+            'linq send failed',
+          );
+
+          expect(await stateOf(COPARENT_PHONE)).toEqual(['expired_unsent']);
+          expect(await stateOf(NEVER_INVITED_PHONE)).toEqual(['awaiting_parent_assent']);
+          const pending = await loadPendingAssent(db.database, seeded.parentUserId, NOW);
+          expect(pending?.phoneE164).toBe(NEVER_INVITED_PHONE);
+          expect(await declineOpenInviteOnStop(db.database, COPARENT_PHONE, NOW)).toBe(true);
+          expect(await stateOf(COPARENT_PHONE)).toEqual(['declined']);
+        });
       });
 
       it('policy off: a failed send leaves the row where main leaves it', async () => {

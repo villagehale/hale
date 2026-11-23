@@ -52,6 +52,7 @@ import {
   type CoParentRefusal,
   acceptInvite,
   coParentInviteSendKey,
+  coParentYesCameFrom,
   declineInvite,
   loadPendingAssent,
   recordCoParentAssent,
@@ -852,6 +853,9 @@ async function sendCoParentInvite(
   const language = await familySpeechLanguage(database, owner.familyId);
   // VIL-719 · a failed send puts the invite back, so Linq's redelivery of this yes runs again.
   const alreadyRecorded = policyOn ? await recordedInboundId(database, inbound.providerId) : null;
+  if (alreadyRecorded && !(await coParentYesCameFrom(database, pending, alreadyRecorded))) {
+    return { status: 'co_parent_assent_already_claimed' };
+  }
   const channelMessageId =
     alreadyRecorded ??
     (await record(database, {

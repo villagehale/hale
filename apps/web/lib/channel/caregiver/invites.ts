@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, eq, gte, isNull, ne } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { inviterNameIsAffordable } from '~/lib/channel/coparent/copy';
@@ -369,6 +369,33 @@ export async function coParentYesOnRecord(
     );
   return rows.some(
     (row) => row.actionTaken === 'co_parent_access_granted' && row.targetId === invite.id,
+  );
+}
+
+/**
+ * VIL-719 · whether this inbound message is the yes recorded for this invite. A provider
+ * redelivers a message after the parent may have moved on, and the invite waiting now is
+ * not necessarily the one that message answered.
+ */
+export async function coParentYesCameFrom(
+  database: Database,
+  invite: { id: string; familyId: string; invitedByUserId: string },
+  channelMessageId: string,
+): Promise<boolean> {
+  const grants = await database
+    .select({ evidence: schema.consentRecords.evidence })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, invite.familyId),
+        eq(schema.consentRecords.userId, invite.invitedByUserId),
+        eq(schema.consentRecords.consentType, 'co_parent_access_grant'),
+        eq(schema.consentRecords.granted, true),
+      ),
+    );
+  return grants.some(
+    ({ evidence }) =>
+      evidence?.inviteId === invite.id && evidence?.channelMessageId === channelMessageId,
   );
 }
 
@@ -923,6 +950,7 @@ export async function recordCoParentAssent(
           `parent authorised texting ${invite.displayName} and seating them as a co-parent, with everything a parent sees`,
         channelMessageId: input.channelMessageId,
         maskedPhone: maskPhoneE164(invite.phoneE164),
+        ...(askPolicyTiersEnabled(invite.familyId) ? { inviteId: invite.id } : {}),
       },
     });
 
@@ -991,6 +1019,10 @@ export function coParentInviteSendKey(invite: { id: string }): string {
  * VIL-719 · the parent's yes is on record and the text to the person they named failed, so
  * the invite goes back to waiting on the parent. Only `awaiting_caregiver_reply` can seat
  * anyone, so a row this write could not move is one a yes still binds to: #ops hears of it.
+ *
+ * If the parent opened another ask while the send was in flight, that ask keeps the one
+ * waiting slot a bare yes binds to, and this row closes as `expired_unsent` so a stop from
+ * a person whose text did land still finds it.
  */
 export async function settleCoParentInviteAfterFailedSend(
   database: Database,
@@ -1000,9 +1032,24 @@ export async function settleCoParentInviteAfterFailedSend(
   try {
     await database.transaction(async (rawTx) => {
       const tx = rawTx as unknown as Database;
+      const newerAsk = await tx
+        .select({ id: schema.caregiverInvites.id })
+        .from(schema.caregiverInvites)
+        .where(
+          and(
+            eq(schema.caregiverInvites.invitedByUserId, invite.invitedByUserId),
+            eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+            isNull(schema.caregiverInvites.closedAt),
+            ne(schema.caregiverInvites.id, invite.id),
+          ),
+        );
       const settled = await tx
         .update(schema.caregiverInvites)
-        .set({ state: 'awaiting_parent_assent', updatedAt: now })
+        .set(
+          newerAsk.length > 0
+            ? { state: 'expired_unsent', closedAt: now, updatedAt: now }
+            : { state: 'awaiting_parent_assent', updatedAt: now },
+        )
         .where(
           and(
             eq(schema.caregiverInvites.id, invite.id),
