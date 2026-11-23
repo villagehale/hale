@@ -864,7 +864,6 @@ async function tryGroupPollCardVote(
 async function groupLoopGuardDoor(
   deps: LinqDoorDeps,
   turn: {
-    chatId: string;
     providerMessageId: string | null;
     text: string;
     check: () => Promise<GroupLoopGuardVerdict>;
@@ -895,9 +894,9 @@ async function groupLoopGuardDoor(
     return null;
   }
   if (guard.tripped && guard.haleSince !== null) {
-    const trip = await noteGroupLoopGuardTrip(
+    const page = await noteGroupLoopGuardTrip(
       deps.database,
-      { chatId: turn.chatId, haleSince: guard.haleSince, cap: guard.cap },
+      { haleSince: guard.haleSince },
       { page: deps.groupLoopGuardPage },
     );
     deps.log.warn(
@@ -905,9 +904,7 @@ async function groupLoopGuardDoor(
         outcome: 'group_loop_guard_tripped',
         haleSince: guard.haleSince,
         cap: guard.cap,
-        audited: trip.audited,
-        auditFailed: trip.auditFailed,
-        page: trip.page,
+        page,
         providerMessageId: turn.providerMessageId,
       },
       'linq inbound: group loop guard tripped, Hale is quiet here until a seated person speaks',
@@ -964,7 +961,6 @@ async function handleLinqGroup(
 ): Promise<Response> {
   // VIL-728: before any group path can answer, so a bot loop is cut on every one of them.
   const quiet = await groupLoopGuardDoor(deps, {
-    chatId: message.chatId,
     providerMessageId: message.messageId,
     text: message.text,
     check: () =>
@@ -1761,7 +1757,6 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   ) {
     const chatId = signal.chatId;
     const quiet = await groupLoopGuardDoor(deps, {
-      chatId,
       providerMessageId: signal.messageId,
       text: '',
       check: () =>

@@ -219,14 +219,32 @@ async function unseatedTurn(
     return { verdict: 'open', haleSince, cap: GROUP_LOOP_GUARD_CAP };
   }
 
-  // Only one message takes the chat quiet, however many arrive at once: that one audits
-  // and pages, and the rest are ordinary quiet messages.
-  const took = await database
-    .update(guards)
-    .set({ quietSince: input.at })
-    .where(and(eq(guards.chatId, input.chatId), isNull(guards.quietSince)))
-    .returning({ chatId: guards.chatId });
-  return { verdict: 'quiet', tripped: took.length > 0, haleSince, cap: GROUP_LOOP_GUARD_CAP };
+  // Only one message takes the chat quiet, however many arrive at once. The quiet and its
+  // audit rows commit together, so a chat is never muted without its receipt: a failed
+  // audit write throws, the door runs the turn, and the next message tries the trip again.
+  const families = await householdsInChat(database, input.chatId);
+  const tripped = await database.transaction(async (tx) => {
+    const took = await tx
+      .update(guards)
+      .set({ quietSince: input.at })
+      .where(and(eq(guards.chatId, input.chatId), isNull(guards.quietSince)))
+      .returning({ chatId: guards.chatId });
+    if (took.length === 0) return false;
+    if (families.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        families.map((familyId) => ({
+          familyId,
+          actor: 'system',
+          actionTaken: 'linq_group_loop_guard_quiet',
+          targetTable: 'linq_group_loop_guards',
+          targetId: input.chatId,
+          after: { haleSince, cap: GROUP_LOOP_GUARD_CAP },
+        })),
+      );
+    }
+    return true;
+  });
+  return { verdict: 'quiet', tripped, haleSince, cap: GROUP_LOOP_GUARD_CAP };
 }
 
 /**
@@ -276,14 +294,6 @@ export interface GroupLoopGuardPorts {
   page?: (page: OpsPage) => Promise<OpsPagerOutcome>;
 }
 
-export interface GroupLoopGuardTrip {
-  /** Families that got the internal audit row: every household in the chat. */
-  audited: number;
-  /** A failed audit write is named here and in the log, never folded into `audited`. */
-  auditFailed: boolean;
-  page: OpsPagerOutcome | 'page_threw';
-}
-
 async function pageGuard(
   database: Database,
   opsPage: OpsPage,
@@ -301,49 +311,17 @@ async function pageGuard(
   }
 }
 
-/**
- * The ops event for the one message that took a chat quiet: an internal audit row for each
- * household in the chat (the counts only, no handle, no words) and one #ops page. Never
- * throws: a failure here does not undo the quiet, it is named in the result and logged.
- */
-export async function noteGroupLoopGuardTrip(
+/** The #ops page for the one message that took a chat quiet: a count, no ids. Never throws. */
+export function noteGroupLoopGuardTrip(
   database: Database,
-  input: { chatId: string; haleSince: number; cap: number },
+  input: { haleSince: number },
   ports: GroupLoopGuardPorts = {},
-): Promise<GroupLoopGuardTrip> {
-  let audited = 0;
-  let auditFailed = false;
-  try {
-    const families = await householdsInChat(database, input.chatId);
-    if (families.length > 0) {
-      await database.insert(schema.auditLog).values(
-        families.map((familyId) => ({
-          familyId,
-          actor: 'system',
-          actionTaken: 'linq_group_loop_guard_quiet',
-          targetTable: 'linq_group_loop_guards',
-          targetId: input.chatId,
-          after: { haleSince: input.haleSince, cap: input.cap },
-        })),
-      );
-      audited = families.length;
-    }
-  } catch (err) {
-    auditFailed = true;
-    console.error(
-      {
-        outcome: 'group_loop_guard_audit_failed',
-        err: err instanceof Error ? err.name : 'unknown',
-      },
-      'group loop guard: the chat is quiet but the audit row was not written',
-    );
-  }
-  const page = await pageGuard(
+): Promise<OpsPagerOutcome | 'page_threw'> {
+  return pageGuard(
     database,
     { site: 'group_loop_guard_tripped', facts: {}, count: input.haleSince },
     ports,
   );
-  return { audited, auditFailed, page };
 }
 
 /** The guard could not read, so the turn ran unguarded. Never throws. */

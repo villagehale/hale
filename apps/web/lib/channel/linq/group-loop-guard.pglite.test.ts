@@ -488,6 +488,50 @@ describe('the trip', () => {
     expect(verdicts.filter((v) => v.verdict === 'quiet' && v.tripped)).toHaveLength(1);
   });
 
+  it('a failed audit write leaves the chat open, and the next message trips with its receipt', async () => {
+    const mei = await seedParent(MEI, 'Mei');
+    await holdsChat(mei);
+    expect((await guard(BOT)).verdict).toBe('open');
+    for (let i = 0; i < GROUP_LOOP_GUARD_CAP; i += 1) {
+      tick();
+      await haleSays(mei);
+    }
+    await db.exec(`
+      create function refuse_guard_audit() returns trigger language plpgsql as $$
+      begin
+        if new.action_taken = 'linq_group_loop_guard_quiet' then
+          raise exception 'audit down';
+        end if;
+        return new;
+      end $$;
+      create trigger refuse_guard_audit before insert on audit_log
+        for each row execute function refuse_guard_audit();
+    `);
+    try {
+      tick();
+      await expect(guard(BOT)).rejects.toThrow();
+      expect((await guardRows())[0]?.quietSince).toBeNull();
+    } finally {
+      await db.exec(`
+        drop trigger refuse_guard_audit on audit_log;
+        drop function refuse_guard_audit();
+      `);
+    }
+
+    tick();
+    expect(await guard(BOT)).toEqual({
+      verdict: 'quiet',
+      tripped: true,
+      haleSince: GROUP_LOOP_GUARD_CAP,
+      cap: GROUP_LOOP_GUARD_CAP,
+    });
+    const audits = await db.database
+      .select({ familyId: schema.auditLog.familyId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_loop_guard_quiet'));
+    expect(audits).toEqual([{ familyId: mei.familyId }]);
+  });
+
   it('audits every household in the chat and pages #ops once, with counts only', async () => {
     const mei = await seedParent(MEI, 'Mei');
     await holdsChat(mei);
@@ -499,10 +543,13 @@ describe('the trip', () => {
       familyId: ada.familyId,
       userId: ada.userId,
     });
+    const run = await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
+    expect(run.verdicts.at(-1)).toMatchObject({ verdict: 'quiet', tripped: true });
+
     const pages: OpsPage[] = [];
-    const trip = await noteGroupLoopGuardTrip(
+    const paged = await noteGroupLoopGuardTrip(
       db.database,
-      { chatId: CHAT, haleSince: GROUP_LOOP_GUARD_CAP, cap: GROUP_LOOP_GUARD_CAP },
+      { haleSince: GROUP_LOOP_GUARD_CAP },
       {
         page: async (page) => {
           pages.push(page);
@@ -510,7 +557,7 @@ describe('the trip', () => {
         },
       },
     );
-    expect(trip).toEqual({ audited: 2, auditFailed: false, page: 'paged' });
+    expect(paged).toBe('paged');
     expect(pages).toEqual([
       { site: 'group_loop_guard_tripped', facts: {}, count: GROUP_LOOP_GUARD_CAP },
     ]);
@@ -529,16 +576,16 @@ describe('the trip', () => {
     const mei = await seedParent(MEI, 'Mei');
     await holdsChat(mei);
     await echoBot(mei, GROUP_LOOP_GUARD_CAP + 1);
-    const trip = await noteGroupLoopGuardTrip(
+    const paged = await noteGroupLoopGuardTrip(
       db.database,
-      { chatId: CHAT, haleSince: GROUP_LOOP_GUARD_CAP, cap: GROUP_LOOP_GUARD_CAP },
+      { haleSince: GROUP_LOOP_GUARD_CAP },
       {
         page: async () => {
           throw new Error('slack is down');
         },
       },
     );
-    expect(trip.page).toBe('page_threw');
+    expect(paged).toBe('page_threw');
     tick();
     expect((await guard(BOT)).verdict).toBe('quiet');
   });
