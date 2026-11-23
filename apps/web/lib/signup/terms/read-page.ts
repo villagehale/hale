@@ -150,11 +150,19 @@ export function createPreflightReader(
 }
 
 function ratesFromRead(read: SignupPreflightRead, pageText: string): TermsRates {
-  const kept = read.prices.filter(
-    (row) =>
-      keepPageQuote(row.quote, pageText) !== null &&
-      (row.cents === 0 || moneyCentsWritten(row.quote).includes(row.cents)),
+  const readCents = new Set(read.prices.map((row) => row.cents));
+  // A $0 row stands only on a page that prints no amount the read left out: "$0 due today"
+  // can sit beside the balance owed.
+  const pageHasNoOtherPrice = moneyCentsWritten(pageText).every(
+    (cents) => cents === 0 || readCents.has(cents),
   );
+  const kept = read.prices.filter((row) => {
+    if (keepPageQuote(row.quote, pageText) === null) return false;
+    const written = moneyCentsWritten(row.quote);
+    return row.cents === 0
+      ? pageHasNoOtherPrice && written.every((cents) => cents === 0)
+      : written.includes(row.cents);
+  });
   // Every row the model named has to hold, or the price table is one Hale did not read.
   if (kept.length !== read.prices.length || kept.length === 0) return [];
   const [first] = kept;

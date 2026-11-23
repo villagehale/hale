@@ -152,6 +152,53 @@ describe('readProgramTerms', () => {
       expect(got.rates).toEqual([]);
     });
 
+    const readRates = async (body: string, prices: SignupPreflightRead['prices']) =>
+      (
+        await readProgramTerms(
+          { ...input, registrationUrl: url },
+          {
+            fetchBody: fetched(`<html><body><p>${body}</p></body></html>`),
+            reader: scripted({ ...blank, prices }),
+          },
+        )
+      ).rates;
+
+    it('a $0 read of a quote that states a price binds no rate', async () => {
+      expect(
+        await readRates('Registration fee: $120.00', [
+          { quote: 'Registration fee: $120.00', rate: 'flat', cents: 0 },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('$0 due today beside a balance owed is not a free class', async () => {
+      expect(
+        await readRates('$0.00 due today. Balance of $120.00 due at the first class.', [
+          { quote: '$0.00 due today.', rate: 'flat', cents: 0 },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('a class the page calls free binds $0', async () => {
+      expect(
+        await readRates('Storytime is free for all families.', [
+          { quote: 'Storytime is free', rate: 'flat', cents: 0 },
+        ]),
+      ).toEqual([{ rate: 'flat', cents: 0 }]);
+    });
+
+    it('free for residents beside a stated non-resident price keeps both', async () => {
+      expect(
+        await readRates('Residents: free. Non-residents: $40.00.', [
+          { quote: 'Residents: free.', rate: 'resident', cents: 0 },
+          { quote: 'Non-residents: $40.00.', rate: 'non_resident', cents: 4000 },
+        ]),
+      ).toEqual([
+        { rate: 'resident', cents: 0 },
+        { rate: 'non_resident', cents: 4000 },
+      ]);
+    });
+
     it('a page that names no prerequisite reads unknown, never no', async () => {
       const got = await readProgramTerms(
         { ...input, registrationUrl: url },
