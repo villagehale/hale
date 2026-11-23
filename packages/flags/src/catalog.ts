@@ -281,6 +281,9 @@ export const FLAGS = [
   }),
   trimmed('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED'),
   trimmed('school-break', 'SCHOOL_BREAK_ENABLED'),
+  // VIL-763. Intake stores a child name only when the parent gave one. Exact `true`
+  // only; anything else keeps the previous stand-in write.
+  exact('stated-child-name', 'STATED_CHILD_NAME_ENABLED', { envOnly: true }),
   exact('linq-group-coparent', 'LINQ_GROUP_COPARENT', {
     parser: 'trimmed-not-off',
     default: true,
@@ -303,6 +306,9 @@ export const FLAGS = [
     offVariant: 'off',
   },
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
+  // VIL-763. When a proactive text would mean the same thing as one Hale already
+  // sent this parent, the writer sends nothing. Exact `true` only.
+  exact('proactive-no-repeat', 'PROACTIVE_NO_REPEAT_ENABLED', { envOnly: true }),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),

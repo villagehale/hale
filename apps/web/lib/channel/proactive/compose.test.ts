@@ -48,6 +48,8 @@ describe('readWriterText', () => {
       skipped: 'invented',
     });
     expect(readWriterText({ message: '   ' }, [ITEM])).toEqual({ skipped: 'unparsed' });
+    expect(readWriterText({ message: null }, [ITEM], true)).toEqual({ skipped: 'repeat' });
+    expect(readWriterText({ message: null }, [ITEM])).toEqual({ skipped: 'unparsed' });
     expect(readWriterText({ message: 'ok', extra: true }, [ITEM])).toEqual({
       skipped: 'unparsed',
     });
@@ -104,6 +106,15 @@ describe('composeProactiveBatch', () => {
 });
 
 describe('writerContext', () => {
+  it('hands the writer recent texts only when there are some', () => {
+    expect(JSON.parse(writerContext([ITEM], null))).not.toHaveProperty('recentTexts');
+    const parsed = JSON.parse(
+      writerContext([ITEM], null, null, ['how did today go', `later\n${'z'.repeat(400)}`]),
+    );
+    expect(parsed.recentTexts[0]).toBe('how did today go');
+    expect(parsed.recentTexts[1]).toBe(`later ${'z'.repeat(400)}`.slice(0, LINE_CHARS));
+  });
+
   it('cuts the cadence note to one bounded line before the writer sees it', () => {
     const note = `less, please\n${'y'.repeat(400)}`;
     expect(JSON.parse(writerContext([ITEM], note)).note).toBe(

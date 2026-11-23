@@ -130,12 +130,12 @@ export function resolveChildNameLevel(
 /** The identifier string for an already-resolved name level. Never emits the
  * first name under 'generic' — that is the property the template tests assert. */
 export function renderChildName(
-  child: { name: string; gender: string },
+  child: { name: string | null; gender: string },
   level: ChildNameLevel,
 ): string {
   switch (level) {
     case 'first_name':
-      return child.name;
+      return child.name?.trim() || CHILD_NAME_GENERIC;
     case 'relation':
       if (child.gender === 'boy') return CHILD_NAME_RELATION.boy;
       if (child.gender === 'girl') return CHILD_NAME_RELATION.girl;
@@ -151,7 +151,7 @@ export function renderChildName(
  * parent's preference.
  */
 export function loopChildName(
-  child: { name: string; gender: string; dateOfBirth: string | Date },
+  child: { name: string | null; gender: string; dateOfBirth: string | Date },
   prefLevel: ChildNameLevel,
   now: Date = new Date(),
 ): string {

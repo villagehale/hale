@@ -18,13 +18,13 @@ import { foldWords, quotesParent, quotesParentWords } from './parent-quote';
 import { registrationPlanRunEnabled } from './plan/flag';
 import { untrustedActivityLabel } from './plan/reader';
 import type { PlanReplyWriter } from './plan/writer';
-import { registrationPreflightEnabled } from './terms/flag';
-import type { ProgramTermsDeps } from './terms/read-page';
 import {
   type SignupSupersedeReader,
   type SupersedeAsk,
   createSignupSupersedeReader,
 } from './supersede-reader';
+import { registrationPreflightEnabled } from './terms/flag';
+import type { ProgramTermsDeps } from './terms/read-page';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -232,7 +232,9 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         .select({ id: schema.children.id, name: schema.children.name })
         .from(schema.children)
         .where(eq(schema.children.familyId, ports.familyId));
-      const matches = children.filter((child) => foldWords(child.name) === wanted);
+      const matches = children.filter(
+        (child) => child.name !== null && foldWords(child.name) === wanted,
+      );
       if (matches.length !== 1 || !matches[0]) {
         return { recorded: false as const, reason: 'child_missing' };
       }

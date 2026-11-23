@@ -62,7 +62,7 @@ async function seedFamily(input: {
   coParentTz?: string;
   stage?: 'sms_active' | 'pending_invite';
   scheduledDeletionAt?: Date;
-  children?: Array<{ name: string; dateOfBirth: string }>;
+  children?: Array<{ name: string | null; dateOfBirth: string }>;
 }) {
   const [family] = await db.database
     .insert(schema.families)
@@ -100,7 +100,7 @@ async function seedFamily(input: {
       .insert(schema.children)
       .values({ familyId, ...child })
       .returning({ id: schema.children.id });
-    childIds[child.name] = row?.id as string;
+    childIds[child.name ?? ''] = row?.id as string;
   }
   return { familyId, primaryUserId, childIds };
 }
@@ -316,7 +316,7 @@ describe('what the evening question may name', () => {
   }
 
   /** A household that has been asked before, so tonight is a pooled question. */
-  async function seedAskedBefore(children: Array<{ name: string; dateOfBirth: string }>) {
+  async function seedAskedBefore(children: Array<{ name: string | null; dateOfBirth: string }>) {
     const seeded = await seedFamily({ primaryTz: 'America/Toronto', children });
     await db.database.insert(schema.familyCheckInPrefs).values({
       familyId: seeded.familyId,
@@ -325,6 +325,12 @@ describe('what the evening question may name', () => {
     process.env[CHECK_IN_ANCHOR_ENABLED_ENV] = 'true';
     return seeded;
   }
+
+  it('does not invent a name for a child the parent did not name', async () => {
+    await seedAskedBefore([{ name: null, dateOfBirth: '2022-03-10' }]);
+    const { what } = await anchorCounts();
+    expect(what).toBe('how the day went');
+  });
 
   it("names an under-13's own activity from earlier today, and files it as the standing question", async () => {
     const seeded = await seedAskedBefore([{ name: 'Mia', dateOfBirth: '2022-03-10' }]);
