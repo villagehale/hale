@@ -38,6 +38,7 @@ import {
   emptyEmailAlertCounts,
   gmailAlertSweepInput,
 } from '~/lib/integrations/email-alert';
+import { composeAppointmentJudgment } from '~/lib/integrations/email-alert-appointment';
 import { composeEmailAlertNotice } from '~/lib/integrations/email-alert-notice';
 import {
   type EventNotesReader,
@@ -565,6 +566,8 @@ export function emailAlertPorts(
     readAlertBody: (messageId) => fetchGmailMessageBody(messageId, accessToken, googleGetFetch),
     writeNotice: (facts, family, body) =>
       composeEmailAlertNotice(pipelineClient(), facts, family, body),
+    judgeAppointment: (facts, family) =>
+      composeAppointmentJudgment(pipelineClient(), facts, family, facts.email.kind),
     rereadEnvelope: (messageId) => readGmailAlertEnvelope(googleGetFetch, accessToken, messageId),
   };
 }

@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { type SQL, sql } from 'drizzle-orm';
+import { type SQL, eq, sql } from 'drizzle-orm';
 import { isSyntheticProbeNumber } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -69,6 +69,21 @@ export interface CanaryHousehold {
 export async function canaryChannel(database: Database): Promise<CanaryHousehold | null> {
   const owner = await resolveVerifiedChannelByPhone(database, CANARY_PHONE_E164);
   return owner ? { familyId: owner.familyId, parentUserId: owner.userId } : null;
+}
+
+/**
+ * Every family that holds the configured probe number, revoked rows included.
+ *
+ * The identity is the number's blind index — the same join `notCanaryTraffic`
+ * uses. Message text is not an argument: a parent who texts the probe's word
+ * is not this household, and a probe turn that says something else still is.
+ */
+export async function canaryFamilyIds(database: Database): Promise<string[]> {
+  const rows = await database
+    .select({ familyId: schema.parentChannels.familyId })
+    .from(schema.parentChannels)
+    .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(CANARY_PHONE_E164)));
+  return [...new Set(rows.map((row) => row.familyId))];
 }
 
 /**

@@ -51,8 +51,13 @@ export function scriptedNoticeWriter(
   };
 }
 
-/** A stand-in written text: names the occasion and asks only when there is an offer row. */
+/** A stand-in written text: names the occasion and asks only when there is an offer row.
+ * A clash the read handed over is named too, so a test can see it on the wire. */
 export function scriptedText(facts: EmailAlertNoticeFacts): string {
   const ask = facts.offer === null ? '' : ' Want me to add it?';
-  return `Heads up about ${facts.email.title}.${ask}`;
+  const clash =
+    facts.clashes !== undefined && facts.clashes.length > 0
+      ? ` It overlaps ${facts.clashes.map((item) => item.title).join(', ')}.`
+      : '';
+  return `Heads up about ${facts.email.title}.${clash}${ask}`;
 }

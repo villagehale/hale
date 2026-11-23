@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "reminder for same haircut at same time and place; child named only in email",
+    "same_as": "rami-haircut",
+    "clashes_with": []
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Hi, this is the family planner assistant. Ana asked me to keep your family's week straight. If you're good with it, you'll see the whole week and can text me anytime, and you can tell me in your own words whenever you'd rather not hear from me."
+  },
+  "latencyMs": 1957,
+  "usage": {
+    "input_tokens": 204,
+    "output_tokens": 84,
+    "cache_read_input_tokens": 1303,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "kids' haircut booking names the child, clear event and time, overlaps another haircut entry",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Cookie Cutters emailed this morning that Sam's booked for a haircut today at 3:30 PM at Cookie Cutters. That overlaps the Kids haircut you've got at RAMI's Lounge at 3:45 PM today, so he can't make both. Want me to add the Cookie Cutters one to your calendar?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

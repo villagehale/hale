@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "email names the child, age-appropriate swim class, new event with date, time and place given",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Sam's got a parent and tot swim tomorrow, Thursday, at 10 AM at the community pool. The pool emailed about it this morning. Want me to put it on your week?",
+    "asks_to_add": true
+  },
+  "stopReason": "tool_use"
+}

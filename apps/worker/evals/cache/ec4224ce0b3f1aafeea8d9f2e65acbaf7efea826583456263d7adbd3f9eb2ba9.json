@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for reaching out! I only send reminders for the things you're helping with, so that's not something I can handle for you here. Best to check with the family directly on that one."
+  },
+  "latencyMs": 1218,
+  "usage": {
+    "input_tokens": 1231,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

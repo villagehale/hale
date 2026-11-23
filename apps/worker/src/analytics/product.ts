@@ -1,4 +1,6 @@
+import { canaryCaptureExtras } from '@hale/agent';
 import type { PostHog } from 'posthog-node';
+import { familyIsCanary } from './canary-family.js';
 import { captureSafeException } from './exceptions.js';
 import { errorTrackingEnabled, productEventsEnabled } from './flags.js';
 import { hashTelemetryId, posthogIdSalt } from './identity.js';
@@ -74,13 +76,18 @@ async function send(
   distinctId: string,
   properties: Record<string, unknown>,
   groups: Record<string, string>,
+  isCanary: boolean,
 ): Promise<CaptureOutcome> {
-  const safe = sanitize(properties);
+  const extras = canaryCaptureExtras(isCanary, distinctId);
+  const safe = sanitize({ ...properties, ...extras.event });
+  const stamped: Record<string, unknown> = { ...safe };
+  if (extras.set) stamped.$set = extras.set;
+  if (Object.keys(groups).length > 0) stamped.$groups = groups;
   try {
     client.capture({
       distinctId,
       event,
-      properties: Object.keys(groups).length > 0 ? { ...safe, $groups: groups } : safe,
+      properties: stamped,
       ...(Object.keys(groups).length > 0 ? { groups } : {}),
     });
     await client.flush();
@@ -103,7 +110,15 @@ export async function captureProductEventAsync(input: WorkerEventInput): Promise
   const familyHash = hashTelemetryId(input.familyId);
   if (!familyHash) return 'not_configured';
   const chatHash = input.chatId ? hashTelemetryId(input.chatId) : null;
-  return send(client, input.event, familyHash, input.properties ?? {}, groupsFor(familyHash, chatHash));
+  const isCanary = await familyIsCanary(input.familyId);
+  return send(
+    client,
+    input.event,
+    familyHash,
+    input.properties ?? {},
+    groupsFor(familyHash, chatHash),
+    isCanary,
+  );
 }
 
 export function captureProductEvent(input: WorkerEventInput): void {
@@ -119,19 +134,26 @@ export async function captureErrorEventAsync(input: WorkerEventInput): Promise<C
   const familyHash = hashTelemetryId(input.familyId);
   if (!familyHash) return 'not_configured';
   const chatHash = input.chatId ? hashTelemetryId(input.chatId) : null;
+  const isCanary = await familyIsCanary(input.familyId);
   const outcome = await send(
     client,
     input.event,
     familyHash,
     input.properties ?? {},
     groupsFor(familyHash, chatHash),
+    isCanary,
   );
   const synthetic = new Error('redacted');
   synthetic.name = `Hale_${input.event}`;
-  void captureSafeException(synthetic, familyHash, {
-    hale_surface: 'worker',
-    stage: input.event,
-  });
+  void captureSafeException(
+    synthetic,
+    familyHash,
+    {
+      hale_surface: 'worker',
+      stage: input.event,
+    },
+    { canary: isCanary },
+  );
   return outcome;
 }
 

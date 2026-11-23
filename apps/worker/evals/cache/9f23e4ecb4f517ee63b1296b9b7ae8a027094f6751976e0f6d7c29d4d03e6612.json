@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Bonjour, Ana t'a ajouté(e) comme co-parent sur la semaine de la famille : je m'occupe de garder l'organisation en ordre. Si tu es d'accord, tu verras toute la semaine et tu pourras m'écrire quand tu veux ; et tu peux me dire à tout moment, avec tes mots, que tu préfères ne plus avoir de mes nouvelles."
+  },
+  "latencyMs": 1736,
+  "usage": {
+    "input_tokens": 205,
+    "output_tokens": 144,
+    "cache_read_input_tokens": 1303,
+    "cache_creation_input_tokens": 0
+  }
+}
