@@ -634,6 +634,41 @@ describe('a number on the SMS door', () => {
       expect(again).toMatchObject({ status: 'refused', reason: 'previously_declined' });
     });
 
+    it('policy on: a re-drive whose claim fails leaves the row waiting, so a stop still binds it', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { turn } = await seedTurn();
+      const sendSms = vi.fn(async () => {
+        throw new LinqSendError('timeout', 0, false);
+      });
+      await expect(
+        deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+      ).rejects.toThrow();
+      await db.exec(`
+        create or replace function fail_reclaim_for_test() returns trigger as $$
+        begin
+          raise exception 'reclaim failed for test';
+        end;
+        $$ language plpgsql;
+        create trigger fail_reclaim_for_test before update on caregiver_invites
+          for each row when (new.state = 'awaiting_caregiver_reply')
+          execute function fail_reclaim_for_test();
+      `);
+
+      try {
+        await expect(
+          deliverCoParentNumberInvite(db.database, { ...turn, sendSms }),
+        ).rejects.toThrow('reclaim failed');
+      } finally {
+        await db.exec('drop trigger fail_reclaim_for_test on caregiver_invites;');
+      }
+
+      expect(sendSms).toHaveBeenCalledTimes(1);
+      expect(await inviteStates()).toEqual(['awaiting_parent_assent']);
+      expect(await declineOpenInviteOnStop(db.database, COPARENT_PHONE, NOW)).toBe(true);
+      expect(await inviteStates()).toEqual(['declined']);
+    });
+
     it('policy on: a row that could not be put back pages #ops and the send error still surfaces', async () => {
       vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
       vi.stubEnv('OPS_SLACK_WEBHOOK_URL', 'https://slack.invalid/hook');

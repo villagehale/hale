@@ -948,13 +948,15 @@ export type InviteBodyResult =
 /**
  * VIL-719 · the parent's yes could not be written, so nobody was texted. Closed so the
  * turn's re-drive opens a clean invite and records the yes then. Only an invite still
- * waiting on the parent closes: a claim another turn won in the meantime stands.
+ * waiting on the parent closes: a claim another turn won in the meantime stands, and a row
+ * with a yes already on record had a text tried, so it stays where a stop can bind it.
  */
 export async function closeCoParentInviteWithoutYes(
   database: Database,
   invite: CoParentInvite,
   now: Date,
 ): Promise<void> {
+  if (await coParentYesOnRecord(database, invite)) return;
   const closed = await database
     .update(schema.caregiverInvites)
     .set({ state: 'superseded', closedAt: now, updatedAt: now })

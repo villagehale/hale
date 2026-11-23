@@ -811,7 +811,10 @@ describe('VIL-719 an ask that never reached the parent', () => {
       vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
       const eventId = await seedGame();
       await failLedger();
-      await expect(applyAsk(eventId)).rejects.toThrow('ledger write failed');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result, sent } = await applyAsk(eventId);
+      expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+      expect(sent).toHaveLength(1);
       const rows = await ledgerRows();
       expect(rows).toHaveLength(1);
       expect(rows[0]?.errorCode).toBeNull();

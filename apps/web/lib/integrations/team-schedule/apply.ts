@@ -700,7 +700,13 @@ async function sendParentNotice(
   }
   if (ledgerOutsideSend) {
     await onAccepted?.();
-    await ledgerAccepted();
+    // The parent has the text, so re-running this email would only repeat the change.
+    await ledgerAccepted().catch((err: unknown) =>
+      console.error(
+        { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'team schedule: the ledger write failed after Linq took the text',
+      ),
+    );
   }
 
   const extraction = input.classification.extraction;
