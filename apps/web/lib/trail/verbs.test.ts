@@ -6,6 +6,10 @@ import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
 import {
   AUDIT_VERBS,
+  DISPUTE_NEEDS_REVIEW_SENTENCE,
+  PLAN_CHANGED_UNSETTLED_SENTENCE,
+  billingPlanUnsettledSentence,
+  billingRevokeUnresolvedSentence,
   calendarWithdrawnSentences,
   isInternalTrailVerb,
   targetLink,
@@ -321,6 +325,68 @@ describe('trail sentences stay on the receipts trail', () => {
       }
     }
     expect(hits).toEqual([]);
+  });
+});
+
+describe('billing trail rows a parent can read', () => {
+  const entry = {
+    id: 'log-billing',
+    familyId: 'f1',
+    actor: 'system',
+    actionTaken: 'billing_plan_unsettled',
+    targetTable: 'families',
+    targetId: 'f1',
+    before: null,
+    after: { state: 'held' },
+    occurredAt: new Date('2026-11-20T16:00:00Z'),
+    ip: null,
+    userAgent: null,
+    agentRunId: null,
+  } as AuditLogEntry;
+
+  it('does not say the plan stayed, and names a moved plan from the row', () => {
+    expect(trailVerb('billing_plan_unsettled').sentence).toBe(
+      'Hale could not tell which plan your payments cover',
+    );
+    expect(trailVerb('billing_plan_unsettled').sentence).not.toContain('stayed');
+    expect(billingPlanUnsettledSentence({ state: 'held' })).toBeNull();
+    expect(billingPlanUnsettledSentence({ planTier: 'free' })).toBe(
+      PLAN_CHANGED_UNSETTLED_SENTENCE,
+    );
+    const stayed = toTrailView(entry, false, 'America/Toronto', () => 'hale');
+    const moved = toTrailView(
+      {
+        ...entry,
+        after: { state: 'held', planTier: 'free', reason: 'cancel_would_stop_collection' },
+      },
+      false,
+      'America/Toronto',
+      () => 'hale',
+    );
+    expect(stayed.summary).toBe('Hale could not tell which plan your payments cover');
+    expect(moved.summary).toBe(PLAN_CHANGED_UNSETTLED_SENTENCE);
+    expect(moved.summary).not.toContain('stayed');
+    assertCleanHuman(PLAN_CHANGED_UNSETTLED_SENTENCE, 'billing_plan_unsettled');
+  });
+
+  it('says a dispute is a dispute, and leaves an unmatched refund on the registry sentence', () => {
+    expect(billingRevokeUnresolvedSentence({ reason: 'subscription_unresolved' })).toBeNull();
+    expect(billingRevokeUnresolvedSentence({ reason: 'dispute_needs_review' })).toBe(
+      DISPUTE_NEEDS_REVIEW_SENTENCE,
+    );
+    const view = toTrailView(
+      {
+        ...entry,
+        actionTaken: 'billing_revoke_unresolved',
+        after: { reason: 'dispute_needs_review', tierChanged: false },
+      },
+      false,
+      'America/Toronto',
+      () => 'hale',
+    );
+    expect(view.summary).toBe(DISPUTE_NEEDS_REVIEW_SENTENCE);
+    expect(view.summary).not.toContain('refund');
+    assertCleanHuman(DISPUTE_NEEDS_REVIEW_SENTENCE, 'billing_revoke_unresolved');
   });
 });
 
