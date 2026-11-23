@@ -213,15 +213,51 @@ export async function applyStripeBillingEvent(
       clearDeletedSubscription &&
       refs.subscriptionId !== null &&
       storedSubscriptionId === refs.subscriptionId;
+    // The match is part of the write. A replacement checkout that commits
+    // between this read and the update no longer equals the deleted id, so
+    // the clear does not erase it. A deletion that is not that id also leaves
+    // the stored customer alone: copying the canceled subscription's customer
+    // onto a different stored subscription splits the two references.
+    if (clearingDeleted && refs.subscriptionId) {
+      const cleared = await tx
+        .update(schema.families)
+        .set({ planTier: tier, stripeSubscriptionId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.families.id, familyId),
+            eq(schema.families.stripeSubscriptionId, refs.subscriptionId),
+          ),
+        )
+        .returning({ id: schema.families.id });
+      if (cleared.length > 0) {
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'family_plan_updated',
+          targetTable: 'families',
+          targetId: familyId,
+          before: {
+            planTier: existing[0]?.planTier ?? null,
+            stripeSubscriptionId: storedSubscriptionId,
+          },
+          after: {
+            planTier: tier,
+            source: 'stripe',
+            stripeEventId: eventId,
+            stripeSubscriptionId: null,
+          },
+        });
+        return { status: 'applied', tier };
+      }
+    }
     const patch: {
       planTier: PlanTier;
       updatedAt: Date;
       stripeCustomerId?: string;
       stripeSubscriptionId?: string | null;
     } = { planTier: tier, updatedAt: new Date() };
-    if (refs.customerId) patch.stripeCustomerId = refs.customerId;
-    if (clearingDeleted) patch.stripeSubscriptionId = null;
-    else if (!clearDeletedSubscription && refs.subscriptionId) {
+    if (refs.customerId && !clearDeletedSubscription) patch.stripeCustomerId = refs.customerId;
+    if (!clearDeletedSubscription && refs.subscriptionId) {
       patch.stripeSubscriptionId = refs.subscriptionId;
     }
 
@@ -246,16 +282,8 @@ export async function applyStripeBillingEvent(
       actionTaken: 'family_plan_updated',
       targetTable: 'families',
       targetId: familyId,
-      before: {
-        planTier: existing[0]?.planTier ?? null,
-        ...(clearingDeleted ? { stripeSubscriptionId: storedSubscriptionId } : {}),
-      },
-      after: {
-        planTier: tier,
-        source: 'stripe',
-        stripeEventId: eventId,
-        ...(clearingDeleted ? { stripeSubscriptionId: null } : {}),
-      },
+      before: { planTier: existing[0]?.planTier ?? null },
+      after: { planTier: tier, source: 'stripe', stripeEventId: eventId },
     });
 
     return { status: 'applied', tier };
@@ -493,19 +521,29 @@ async function applyChargeRevoke(
         const reason = partial ? 'partial_refund' : 'active_subscription';
         const claimed = await claimEvent(tx, eventId);
         if (!claimed) return { status: 'duplicate' };
+        // A kept dispute is not a refund. billing_refunded is what History reads
+        // as "Hale refunded a payment", and a dispute must not be named that way.
+        const dispute = decision.kind === 'dispute';
         await tx.insert(schema.auditLog).values({
           familyId,
           actor: 'system',
-          actionTaken: 'billing_refunded',
+          actionTaken: dispute ? 'billing_revoke_unresolved' : 'billing_refunded',
           targetTable: 'families',
           targetId: familyId,
-          after: {
-            planTier: current.planTier,
-            source: 'stripe',
-            stripeEventId: eventId,
-            reason,
-            tierChanged: false,
-          },
+          after: dispute
+            ? {
+                source: 'stripe',
+                stripeEventId: eventId,
+                reason: 'dispute_needs_review',
+                tierChanged: false,
+              }
+            : {
+                planTier: current.planTier,
+                source: 'stripe',
+                stripeEventId: eventId,
+                reason,
+                tierChanged: false,
+              },
         });
         return { status: 'kept', reason };
       }
@@ -546,6 +584,10 @@ async function applyChargeRevoke(
           deps,
           claimUnresolved,
         );
+      }
+      if (result.status === 'kept' && decision.kind === 'dispute') {
+        const alert = deps.onUnresolvedRevoke ?? alertUnresolvedBillingRevoke;
+        await alert({ eventId, reason: 'dispute_needs_review' });
       }
       return result;
     });

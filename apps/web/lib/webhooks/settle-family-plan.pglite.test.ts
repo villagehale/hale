@@ -2302,8 +2302,11 @@ describe('flag off is main plus one claim', () => {
     expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
     expect(await planTier(familyId)).toBe('plus');
     expect(await isClaimed(event.id)).toBe(true);
-    expect(h.unresolved).toEqual([]);
-    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(0);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'dispute_needs_review' }]);
+    expect(await afters(familyId, 'billing_refunded')).toHaveLength(0);
+    expect(await afters(familyId, 'billing_revoke_unresolved')).toEqual([
+      expect.objectContaining({ reason: 'dispute_needs_review', tierChanged: false }),
+    ]);
     assertPinnedLookupWithoutCancel(h.fake);
   });
 
@@ -2322,6 +2325,8 @@ describe('flag off is main plus one claim', () => {
 
     expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
     expect(await planTier(familyId)).toBe('plus');
+    expect(await afters(familyId, 'billing_refunded')).toHaveLength(0);
+    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'dispute_needs_review' }]);
     assertPinnedLookupWithoutCancel(h.fake);
   });
 });
