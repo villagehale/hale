@@ -9,6 +9,7 @@ import {
   OTP_RESEND_COOLDOWN_MS,
   OTP_TTL_MS,
   generateOtpCode,
+  hashBoundOtpCode,
   hashOtpCode,
   isOtpExpired,
   isOtpLockedOut,
@@ -64,7 +65,12 @@ export type RequestOtpResult =
  */
 export async function requestPhoneOtp(
   database: Database,
-  input: { userId: string; phoneRaw: string },
+  input: {
+    userId: string;
+    phoneRaw: string;
+    /** Stores the code so it verifies only with this value (a texted link's token id). */
+    codeBinding?: string;
+  },
   deps: SmsRequestDeps,
 ): Promise<RequestOtpResult> {
   const now = deps.now ?? new Date();
@@ -113,7 +119,7 @@ export async function requestPhoneOtp(
     await tx.insert(schema.phoneVerifications).values({
       userId: input.userId,
       phoneE164Encrypted: encryptString(phoneE164),
-      codeHash: hashOtpCode(code),
+      codeHash: input.codeBinding ? hashBoundOtpCode(code, input.codeBinding) : hashOtpCode(code),
       expiresAt: new Date(now.getTime() + OTP_TTL_MS),
       lastSentAt: now,
     });
