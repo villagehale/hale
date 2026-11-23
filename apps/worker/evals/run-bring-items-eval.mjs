@@ -14,7 +14,7 @@
 //
 //   node evals/run-bring-items-eval.mjs --dry           # $0, no API: worst-case $ projection
 //   node evals/run-bring-items-eval.mjs --broken        # calibration, $0: every case must FAIL
-//   node evals/run-bring-items-eval.mjs --cached-only   # replay only, $0 (a miss fails)
+//   node evals/run-bring-items-eval.mjs --cached-only   # replay; pending projects and exits 0
 //   node --env-file=../../.env evals/run-bring-items-eval.mjs --live   # PAID: needs Barton's yes
 // Exactly one mode. Any other flag, none, or two exits 2 before the spend cap or a client
 // exists (lib/eval-flags.mjs).
@@ -97,9 +97,12 @@ function request(read, skill, lane, c) {
   };
 }
 
+// No cache yet. --cached-only projects the cost and exits 0. A miss fails once this is false.
+const RECORDING_PENDING = true;
+
 async function main() {
   const mode = parseEvalFlagsOrExit('bring-items');
-  if (mode === 'dry') return dryRun();
+  if (mode === 'dry' || (mode === 'cached-only' && RECORDING_PENDING)) return dryRun();
   const broken = mode === 'broken';
   const cachedOnly = mode === 'cached-only';
   installEvalSpendCap();

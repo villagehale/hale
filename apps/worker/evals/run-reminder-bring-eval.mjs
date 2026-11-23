@@ -15,7 +15,7 @@
 //   node evals/run-reminder-bring-eval.mjs --dry           # $0, no API: worst-case $
 //   node evals/run-reminder-bring-eval.mjs --broken        # calibration: every case must FAIL
 //                                                          #   (judge draws: cached-only)
-//   node evals/run-reminder-bring-eval.mjs --cached-only   # replay only, $0 (a miss fails)
+//   node evals/run-reminder-bring-eval.mjs --cached-only   # replay; pending projects and exits 0
 //   node --env-file=../../.env evals/run-reminder-bring-eval.mjs --live   # PAID: Barton's yes
 // Exactly one mode (lib/eval-flags.mjs).
 //
@@ -97,9 +97,12 @@ async function load() {
   return { agent, compose, lane, system, cases };
 }
 
+// No cache yet. --cached-only projects the cost and exits 0. A miss fails once this is false.
+const RECORDING_PENDING = true;
+
 async function main() {
   const mode = parseEvalFlagsOrExit('reminder-bring');
-  if (mode === 'dry') return dryRun();
+  if (mode === 'dry' || (mode === 'cached-only' && RECORDING_PENDING)) return dryRun();
   const broken = mode === 'broken';
   const cachedOnly = mode !== 'live';
   installEvalSpendCap();
