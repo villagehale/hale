@@ -70,10 +70,12 @@ function holdFor(
 ): SignupTermsHold | null {
   if (input.shown.priorChargeUnknown) return 'prior_charge_unknown';
   if (picked.some((session) => session.source === 'site_option')) return 'site_option';
+  const { required } = input.shown.prerequisite;
   // Hale never decides a child has met this. The parent, who knows, finishes at checkout.
-  if (input.shown.prerequisite.required === 'yes') return 'prerequisite_unconfirmed';
+  if (required === 'yes') return 'prerequisite_unconfirmed';
   if (input.ageFit === 'unknown') return 'age_unconfirmed';
-  return hasUnstatedPrice(sessions) ? 'price_unstated' : null;
+  if (hasUnstatedPrice(sessions)) return 'price_unstated';
+  return required === 'no' ? null : 'prerequisite_unconfirmed';
 }
 
 export function bindApproval(input: BindInput): BindResult {

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { runTurn, turnDeadlineSignal } from '~/lib/channel/router/deadline';
 import type { RegistrationPageFetch } from '~/lib/registration/page';
 import { type PreflightReader, type SignupPreflightRead, readProgramTerms } from './read-page';
 
@@ -91,6 +92,48 @@ describe('readProgramTerms', () => {
     });
     expect(got.read).toBe('course_model');
     expect(got.refund).toBeNull();
+  });
+
+  describe('a course page whose words were not read', () => {
+    const inWords = markham.replace(
+      '</body>',
+      '<p>Prerequisite: must have completed Level 1.</p></body>',
+    );
+    const needs = markham.replace('"PrerequisiteEvents":false', '"PrerequisiteEvents":true');
+
+    it('a failed read does not let the course model say there is no prerequisite', async () => {
+      const got = await readProgramTerms(input, {
+        fetchBody: fetched(inWords),
+        reader: scripted(null),
+      });
+      expect(got.read).toBe('course_model');
+      expect(got.prerequisite).toEqual({ required: 'unknown', quote: null });
+    });
+
+    it('neither does a turn with too little time left to read them', async () => {
+      const reader = scripted(blank);
+      const got = await runTurn(turnDeadlineSignal(5_000), () =>
+        readProgramTerms(input, { fetchBody: fetched(inWords), reader }),
+      );
+      expect(reader.read).not.toHaveBeenCalled();
+      expect(got.prerequisite).toEqual({ required: 'unknown', quote: null });
+    });
+
+    it('a course model that states one still does (control)', async () => {
+      const got = await readProgramTerms(input, {
+        fetchBody: fetched(needs),
+        reader: scripted(null),
+      });
+      expect(got.prerequisite).toEqual({ required: 'yes', quote: null });
+    });
+
+    it('words that were read and name none keep the model\'s no (control)', async () => {
+      const got = await readProgramTerms(input, {
+        fetchBody: fetched(markham),
+        reader: scripted(blank),
+      });
+      expect(got.prerequisite).toEqual({ required: 'no', quote: null });
+    });
   });
 
   describe('on a page with no course model', () => {

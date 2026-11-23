@@ -129,6 +129,14 @@ export const SIGNUP_TERMS_WRITER_FIXTURES = [
     'Names the requirement (Level 1) and says Hale will stop at checkout so they can check the child has it and finish there. Does not ask whether the child has it and does not say it is met.',
   ),
   offer(
+    'offer-prerequisite-unread',
+    {
+      prerequisite: { required: 'unknown', quote: null },
+      unread: ['refund', 'prerequisite'],
+    },
+    'Says Hale could not confirm whether the class needs something first and will stop at checkout for them to finish. Does not say the class needs something and does not ask whether the child has it.',
+  ),
+  offer(
     'offer-free',
     { free: true, rates: [{ rate: 'flat', cents: 0 }], unread: ['refund'] },
     'Says the class is free. States no price.',
@@ -240,6 +248,23 @@ export const SIGNUP_TERMS_WRITER_FIXTURES = [
     },
     watchFor:
       'Says the class needs something first, so Hale stopped at checkout. Nothing was charged. They finish in the browser. Does not say the child has it or is registered.',
+  },
+  {
+    id: 'run-hold-prerequisite-unread',
+    facts: {
+      ...BASE,
+      moment: 'run_finished',
+      maxPriceCents: 8488,
+      run: { ...RUN, detail: 'prerequisite_unconfirmed', cartTotalCents: 8488 },
+      terms: {
+        ...TERMS,
+        prerequisite: { required: 'unknown', quote: null },
+        unread: ['prerequisite'],
+        hold: 'prerequisite_unconfirmed',
+      },
+    },
+    watchFor:
+      'Says Hale could not confirm whether the class needs something first, so it stopped at checkout. Nothing was charged. They finish in the browser. Does not say the class needs something and does not say the child is registered.',
   },
   {
     id: 'declined-hostile-label',

@@ -19,7 +19,7 @@ On these texts, with or without `facts.terms`, a session's label is `sessions[].
 - `tax`: `plus_tax` means tax is added to those prices, `included` means none is added, `unknown` means Hale could not tell.
 - `untrusted_refund_quote`: the provider's own words on refunds, or null.
 - `ageFit`, `untrusted_age_band`: `in_band` means the child fits the ages the page gives. `unknown` means Hale could not confirm it.
-- `prerequisite`: `required` `yes` means the class needs something first, in `untrusted_quote` when the page says what.
+- `prerequisite`: `required` `yes` means the class needs something first, in `untrusted_quote` when the page says what. `unknown` means Hale could not tell whether it does.
 - `priorChargeUnknown`: an earlier try at this class may have charged the card.
 - `unread`: what Hale could not confirm on the page, by name.
 - `runsNow`: true when registration is already open, so Hale would do this right away. Then do not name an opening time: say it is open now.
@@ -33,6 +33,7 @@ This text is what the parent says yes to, so it carries the terms. Say:
 - The refund policy, in the provider's words, kept short, when `untrusted_refund_quote` is there. Leave out any amount in those words and say it in words, such as "less a fee": the only amounts you may write are in `rates`. When it is null, say plainly that Hale could not find one, so they say yes knowing that.
 - When `ageFit` is `unknown`, that Hale could not confirm the age fit and will stop at checkout for them to finish.
 - When `prerequisite.required` is `yes`, the class needs something first. Name what it needs from `prerequisite.untrusted_quote` when there is one, and say Hale will stop at checkout so they can check the child has it and finish there. Do not ask whether the child has it.
+- When `prerequisite.required` is `unknown`, that Hale could not confirm whether the class needs something first and will stop at checkout for them to finish. Do not say it needs something.
 - When `priorChargeUnknown` is true, that an earlier try may have gone through, to check their card and email first, and that Hale will stop at checkout this time.
 - When `unread` has `price`, that Hale could not find the price and will stop at checkout for them to finish. When `rates` holds prices as well, they are for only some of these options, so do not say the whole thing costs that.
 - Anything else in `unread`, in a few words.
@@ -66,7 +67,7 @@ When it is about the site's options, `facts.untrusted_site_options` lists them: 
 - `site_option`: this was a different option from the site than the one Hale read, so it stopped at checkout. Nothing was charged. They finish in the browser.
 - `prior_charge_unknown`: an earlier try may have gone through, so Hale stopped at checkout rather than risk paying twice. Nothing was charged this time. They check their card and email, then finish in the browser if they need to.
 - `price_unstated`: Hale could not find the price, so it stopped at checkout. Nothing was charged. They see the real price in the browser and finish there.
-- `prerequisite_unconfirmed`: the class needs something first, so Hale stopped at checkout. Nothing was charged. They finish in the browser.
+- `prerequisite_unconfirmed`: when `prerequisite.required` is `yes`, the class needs something first. When it is `unknown`, Hale could not confirm whether it does, so do not say it needs something. Either way Hale stopped at checkout, nothing was charged, and they finish in the browser.
 - `terms_unreadable`: Hale could not read what the parent approved, so it did not register or charge anything. They can register at the link.
 
 Never say registered unless `confirmed` is true.

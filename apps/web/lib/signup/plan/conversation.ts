@@ -26,6 +26,7 @@ import {
   writerTerms,
 } from '../terms/ask';
 import { bindApproval } from '../terms/bind';
+import { boundWallClock } from '../terms/cart';
 import { type DobReader, acceptDobReading, createDobReader } from '../terms/dob-reader';
 import { ageFitFromRule } from '../terms/evaluate';
 import { registrationPreflightEnabled } from '../terms/flag';
@@ -576,7 +577,8 @@ async function approveOnTerms(
  * VIL-715 · with pre-flight on, a pick among the site's options is a new ask, never an edit
  * of the old approval. The parked plan closes, the option becomes an offer holding only
  * what the site listed, and a new yes binds it. Hale never pre-flighted that option, so it
- * always stops at checkout for the parent. An option with no start cannot be a session.
+ * always stops at checkout for the parent. Only a start that reads as a date can be a
+ * session's: anything else is a page's free text, which every later model would see as a time.
  */
 async function pickAsNewAsk(
   database: Database,
@@ -586,7 +588,10 @@ async function pickAsNewAsk(
   choice: SiteChoice | undefined,
   boundBy: PlanBinding,
 ): Promise<SignupRunResult> {
-  if (!choice?.starts_at) {
+  if (
+    !choice?.starts_at ||
+    boundWallClock(choice.starts_at, await termsZone(database, plan, input.parentUserId)) === null
+  ) {
     return reply(database, input, deps, plan, 'refused', { refusal: 'choices', boundBy });
   }
   await markOffer(database, {

@@ -156,11 +156,23 @@ describe('bindApproval', () => {
       expect(holdOf(bindApproval(input({ shown: shown(needs) })))).toBe('prerequisite_unconfirmed');
     });
 
-    it('a page that says nothing about one, or says none, holds nothing', () => {
-      for (const required of ['no', 'unknown'] as const) {
-        const page = shown({ prerequisite: { required, quote: null } });
-        expect(holdOf(bindApproval(input({ shown: page })))).toBeNull();
-      }
+    it('a page that says there is none holds nothing', () => {
+      const page = shown({ prerequisite: { required: 'no', quote: null } });
+      expect(holdOf(bindApproval(input({ shown: page })))).toBeNull();
+    });
+
+    it('a page Hale could not read on this holds, after the age and price holds', () => {
+      const prerequisite = { required: 'unknown' as const, quote: null };
+      const unread = shown({ prerequisite });
+      const unpriced = shown({
+        prerequisite,
+        sessions: [{ sessionId: 's-1', rates: [], tax: 'unknown', source: 'offer' }],
+      });
+      expect(holdOf(bindApproval(input({ shown: unread })))).toBe('prerequisite_unconfirmed');
+      expect(holdOf(bindApproval(input({ shown: unread, ageFit: 'unknown' })))).toBe(
+        'age_unconfirmed',
+      );
+      expect(holdOf(bindApproval(input({ shown: unpriced })))).toBe('price_unstated');
     });
 
     it('comes after an earlier charge and a site option, and before the other holds', () => {

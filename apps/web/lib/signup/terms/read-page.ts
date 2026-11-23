@@ -285,10 +285,17 @@ export async function readProgramTerms(
   const remaining = turnRemainingMs();
   if (remaining !== undefined && remaining < PREFLIGHT_READ_MIN_TURN_MS) {
     console.info({ remaining }, 'signup preflight: too little of the turn left to read the page');
-    return base;
+    return wordsUnread(base);
   }
   const read = await deps.reader.read(pageText);
-  return read ? applyPreflightRead(base, read, pageText) : base;
+  return read ? applyPreflightRead(base, read, pageText) : wordsUnread(base);
+}
+
+/** A course model's "no" speaks only for its own field: the page's words may state one. */
+function wordsUnread(base: ProgramTerms): ProgramTerms {
+  return base.prerequisite.required === 'no'
+    ? { ...base, prerequisite: { required: 'unknown', quote: null } }
+    : base;
 }
 
 export function liveProgramTermsDeps(
