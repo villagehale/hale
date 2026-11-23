@@ -92,7 +92,7 @@ describe('what the in-thread walk keeps', () => {
       .set({ scheduledDeletionAt: NOW })
       .where(eq(schema.families.id, familyId));
 
-    await runDeletionSweep(db.database, LATER, async () => undefined, async () => undefined);
+    await runDeletionSweep(db.database, LATER, async () => undefined);
 
     const left = await db.database
       .select()

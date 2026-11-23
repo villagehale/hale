@@ -50,7 +50,6 @@ describe('buildGoogleBundleAuthUrl', () => {
       buildGoogleBundleAuthUrl({
         state: 'signed.state',
         redirectUri: 'https://app.example.com/api/integrations/callback',
-        userId: 'user-1',
       }),
     );
     expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');

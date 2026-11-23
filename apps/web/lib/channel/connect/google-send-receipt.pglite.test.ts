@@ -379,12 +379,7 @@ describe('the texts the one Google link adds', () => {
           schoolMentioned: false,
         },
       } as unknown as FirstTouchPersisted;
-      await saveSession(
-        db.database,
-        opened,
-        { familyId, userId: parentUserId, firstTouch },
-        NOW,
-      );
+      await saveSession(db.database, opened, { familyId, userId: parentUserId, firstTouch }, NOW);
       const heard: (string | null | undefined)[] = [];
       const transport = new FakeTransport();
 

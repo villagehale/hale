@@ -305,9 +305,9 @@ describe('sync local evaluation', () => {
 describe('an env-only flag, read before any family is known', () => {
   it('is on for the exact value when PostHog answers no for a missing family', () => {
     setFlagEvaluatorForTests(() => false);
-    expect(isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true' })).toBe(
-      true,
-    );
+    expect(
+      isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true' }),
+    ).toBe(true);
     // Positive control: a flag PostHog decides takes that same answer over its env value.
     expect(isEnabled('f14', undefined, { ...ON, F14_ENABLED: 'true' })).toBe(false);
   });
@@ -326,7 +326,10 @@ describe('an env-only flag, read before any family is known', () => {
     setFlagEvaluatorForTests(() => true);
     expect(isEnabled('thread-onboarding-v2', undefined, ON)).toBe(false);
     expect(
-      isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true\n' }),
+      isEnabled('thread-onboarding-v2', undefined, {
+        ...ON,
+        THREAD_ONBOARDING_V2_ENABLED: 'true\n',
+      }),
     ).toBe(false);
     expect(
       isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true' }),

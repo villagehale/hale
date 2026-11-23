@@ -153,7 +153,8 @@ describe('the capture', () => {
 
   it('lit, keeps a long phrase whole: no character cap decides what the parent said', () => {
     lit();
-    const long = 'after-school Mandarin at the community centre with her cousin on Tuesdays and Thursdays until five';
+    const long =
+      'after-school Mandarin at the community centre with her cousin on Tuesdays and Thursdays until five';
     const capture = acceptOnboardingCapture({
       activities: [{ child: 'Maya', activity: long, when: long }],
     });

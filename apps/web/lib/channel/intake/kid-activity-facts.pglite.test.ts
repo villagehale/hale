@@ -248,7 +248,7 @@ describe('keepKidActivities', () => {
   });
 });
 
-describe('a kept activity is the parent\'s', () => {
+describe("a kept activity is the parent's", () => {
   let db: TestDb;
 
   beforeAll(async () => {
