@@ -125,7 +125,7 @@ describe('every door purpose', () => {
     expect(doorLineMisses('Text STOP to leave.', friendVoice)).toEqual(['friend_voice:compliance']);
     expect(
       doorLineMisses(
-        "You're in - I'll text you the week's schedule and pickup reminders, and nothing else.",
+        "You're in - I'll text you the evening before and about an hour before anything you help with, and nothing else.",
         friendVoice,
       ),
     ).toEqual([]);

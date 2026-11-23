@@ -186,8 +186,8 @@ function render(
     case 'caregiver_welcome':
       return pick(
         language,
-        "You're in - I'll text you the week's schedule and pickup reminders, and nothing else.",
-        'Vous y voilà - je vous écris l’horaire de la semaine et les rappels de cueillette, et rien d’autre.',
+        "You're in - I'll text you the evening before and about an hour before anything you help with, and nothing else.",
+        'Vous y voilà - je vous écris la veille au soir et environ une heure avant ce avec quoi vous aidez, et rien d’autre.',
       );
     case 'caregiver_decline_ack':
     case 'coparent_decline_ack':
