@@ -250,6 +250,15 @@ async function planTier(familyId: string): Promise<string | undefined> {
   return row?.planTier;
 }
 
+async function storedSubscription(familyId: string): Promise<string | null> {
+  const [row] = await db.database
+    .select({ stripeSubscriptionId: schema.families.stripeSubscriptionId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return row?.stripeSubscriptionId ?? null;
+}
+
 async function rows(familyId: string, verb: string) {
   return db.database
     .select({ after: schema.auditLog.after })
@@ -988,6 +997,45 @@ describe('lifecycle events follow what is still paid', () => {
       status: 'applied',
       tier: 'free',
     });
+  });
+
+  it('clears the stored subscription id when a deletion drops the plan to free', async () => {
+    const h = harness({ ...FLAG_ON, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' });
+    const familyId = await family('plus', 'cus_clear', 'sub_clear');
+    buy(h.fake, 'clear', familyId);
+
+    expect(await h.apply(deletedEvent(h.fake, 'sub_clear'))).toEqual({
+      status: 'applied',
+      tier: 'free',
+    });
+    expect(await planTier(familyId)).toBe('free');
+    expect(await storedSubscription(familyId)).toBeNull();
+  });
+
+  it('leaves a different stored subscription id when another subscription is deleted', async () => {
+    const h = harness({ ...FLAG_ON, STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED: 'true' });
+    const familyId = await family('plus', 'cus_keepsub', 'sub_keepsub');
+    buy(h.fake, 'keepsub', familyId);
+    buy(h.fake, 'othersub', familyId, { customer: 'cus_keepsub' });
+
+    expect(await h.apply(deletedEvent(h.fake, 'sub_othersub'))).toEqual({
+      status: 'kept',
+      reason: 'not_entitled',
+    });
+    expect(await planTier(familyId)).toBe('plus');
+    expect(await storedSubscription(familyId)).toBe('sub_keepsub');
+  });
+
+  it('keeps the stored subscription id on deletion while the clear flag is off', async () => {
+    const h = harness(FLAG_ON);
+    const familyId = await family('plus', 'cus_stay', 'sub_stay');
+    buy(h.fake, 'stay', familyId);
+
+    expect(await h.apply(deletedEvent(h.fake, 'sub_stay'))).toEqual({
+      status: 'applied',
+      tier: 'free',
+    });
+    expect(await storedSubscription(familyId)).toBe('sub_stay');
   });
 
   it('scenario 6c: unpaid means Free, and paying brings the plan back with no marker', async () => {
@@ -2183,46 +2231,47 @@ describe('flag off is main plus one claim', () => {
     return h;
   }
 
-  function assertNoNewReads(fake: FakeStripe) {
+  function assertPinnedLookupWithoutCancel(fake: FakeStripe) {
     expect(fake.calls.length).toBeGreaterThan(0);
     expect(fake.deletes()).toEqual([]);
     const paths = fake.calls.map((call) => call.path);
-    expect(paths).not.toContain('/v1/invoice_payments');
+    expect(paths).toContain('/v1/invoice_payments');
     expect(paths).not.toContain('/v1/refunds');
-    expect(fake.calls.every((call) => !call.headers.has('stripe-version'))).toBe(true);
+    expect(
+      fake.calls.every((call) => call.headers.get('stripe-version') === '2026-11-18.endive'),
+    ).toBe(true);
   }
 
-  it('a live subscription keeps the plan with main row and page, and the event is claimed', async () => {
+  it('a live subscription is a quiet keep once the charge lookup can see it', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_off', 'sub_off');
     buy(h.fake, 'off', familyId);
     const event = refundEvent(h.fake, 'ch_off');
 
-    expect(await h.apply(event)).toMatchObject({
-      status: 'unresolved',
-      reason: 'subscription_unresolved',
-    });
+    expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
     expect(await planTier(familyId)).toBe('plus');
-    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(1);
-    expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'subscription_unresolved' }]);
+    expect(await afters(familyId, 'billing_refunded')).toHaveLength(1);
+    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(0);
+    expect(h.unresolved).toEqual([]);
     expect(await isClaimed(event.id)).toBe(true);
-    assertNoNewReads(h.fake);
+    assertPinnedLookupWithoutCancel(h.fake);
 
     expect(await h.apply(event)).toEqual({ status: 'duplicate' });
-    expect(h.unresolved).toHaveLength(1);
-    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(1);
+    expect(h.unresolved).toHaveLength(0);
+    expect(await afters(familyId, 'billing_refunded')).toHaveLength(1);
   });
 
-  it('no stored id still drops to Free, as main does', async () => {
+  it('keeps a live subscription that is not the id stored on the family', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_nostore', null);
     buy(h.fake, 'nostore', familyId);
 
     expect(await h.apply(refundEvent(h.fake, 'ch_nostore'))).toEqual({
-      status: 'applied',
-      tier: 'free',
+      status: 'kept',
+      reason: 'active_subscription',
     });
-    assertNoNewReads(h.fake);
+    expect(await planTier(familyId)).toBe('plus');
+    assertPinnedLookupWithoutCancel(h.fake);
   });
 
   it('no family pages once and is claimed', async () => {
@@ -2234,10 +2283,10 @@ describe('flag off is main plus one claim', () => {
     expect(await isClaimed(event.id)).toBe(true);
     expect(await h.apply(event)).toEqual({ status: 'duplicate' });
     expect(h.unresolved).toEqual([{ eventId: event.id, reason: 'no_family' }]);
-    assertNoNewReads(h.fake);
+    assertPinnedLookupWithoutCancel(h.fake);
   });
 
-  it('a dispute reads as on main and is not claimed on the unresolved path', async () => {
+  it('a dispute on a live subscription is a quiet keep and is claimed', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_dis', 'sub_dis');
     buy(h.fake, 'dis', familyId);
@@ -2250,17 +2299,15 @@ describe('flag off is main plus one claim', () => {
       },
     };
 
-    expect(await h.apply(event)).toMatchObject({
-      status: 'unresolved',
-      reason: 'subscription_unresolved',
-    });
+    expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
     expect(await planTier(familyId)).toBe('plus');
-    expect(await isClaimed(event.id)).toBe(false);
-    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(1);
-    assertNoNewReads(h.fake);
+    expect(await isClaimed(event.id)).toBe(true);
+    expect(h.unresolved).toEqual([]);
+    expect(await afters(familyId, 'billing_revoke_unresolved')).toHaveLength(0);
+    assertPinnedLookupWithoutCancel(h.fake);
   });
 
-  it('a dispute with no stored id still drops to Free, the bug the flag fixes', async () => {
+  it('a dispute on a live subscription with no stored id keeps the plan', async () => {
     const h = offHarness();
     const familyId = await family('plus', 'cus_disfree', null);
     buy(h.fake, 'disfree', familyId);
@@ -2273,8 +2320,8 @@ describe('flag off is main plus one claim', () => {
       },
     };
 
-    expect(await h.apply(event)).toEqual({ status: 'applied', tier: 'free' });
-    expect(await planTier(familyId)).toBe('free');
-    assertNoNewReads(h.fake);
+    expect(await h.apply(event)).toEqual({ status: 'kept', reason: 'active_subscription' });
+    expect(await planTier(familyId)).toBe('plus');
+    assertPinnedLookupWithoutCancel(h.fake);
   });
 });

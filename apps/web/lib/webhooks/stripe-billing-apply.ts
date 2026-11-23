@@ -3,6 +3,7 @@ import type { PlanTier } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import {
   stripeBillingRevokeEnabled,
+  stripeClearDeletedSubscriptionEnabled,
   stripeRefundEndsSubscriptionEnabled,
 } from '~/lib/billing/flags';
 import { decidePaidSessionGrant } from '~/lib/billing/session-price-guard';
@@ -168,6 +169,10 @@ export async function applyStripeBillingEvent(
   }
 
   const refs = stripeRefsFromStripeEvent(event);
+  const clearDeletedSubscription =
+    tier === 'free' &&
+    stripeEventType(event) === 'customer.subscription.deleted' &&
+    stripeClearDeletedSubscriptionEnabled(env);
   if (
     refs.subscriptionId &&
     (await isSubscriptionBlocked(database, familyId, refs.subscriptionId, deps))
@@ -195,19 +200,30 @@ export async function applyStripeBillingEvent(
     }
 
     const existing = await tx
-      .select({ planTier: schema.families.planTier })
+      .select({
+        planTier: schema.families.planTier,
+        stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
+    const storedSubscriptionId = existing[0]?.stripeSubscriptionId ?? null;
+    const clearingDeleted =
+      clearDeletedSubscription &&
+      refs.subscriptionId !== null &&
+      storedSubscriptionId === refs.subscriptionId;
     const patch: {
       planTier: PlanTier;
       updatedAt: Date;
       stripeCustomerId?: string;
-      stripeSubscriptionId?: string;
+      stripeSubscriptionId?: string | null;
     } = { planTier: tier, updatedAt: new Date() };
     if (refs.customerId) patch.stripeCustomerId = refs.customerId;
-    if (refs.subscriptionId) patch.stripeSubscriptionId = refs.subscriptionId;
+    if (clearingDeleted) patch.stripeSubscriptionId = null;
+    else if (!clearDeletedSubscription && refs.subscriptionId) {
+      patch.stripeSubscriptionId = refs.subscriptionId;
+    }
 
     const updated = await tx
       .update(schema.families)
@@ -230,12 +246,26 @@ export async function applyStripeBillingEvent(
       actionTaken: 'family_plan_updated',
       targetTable: 'families',
       targetId: familyId,
-      before: { planTier: existing[0]?.planTier ?? null },
-      after: { planTier: tier, source: 'stripe', stripeEventId: eventId },
+      before: {
+        planTier: existing[0]?.planTier ?? null,
+        ...(clearingDeleted ? { stripeSubscriptionId: storedSubscriptionId } : {}),
+      },
+      after: {
+        planTier: tier,
+        source: 'stripe',
+        stripeEventId: eventId,
+        ...(clearingDeleted ? { stripeSubscriptionId: null } : {}),
+      },
     });
 
     return { status: 'applied', tier };
   });
+}
+
+function stripeEventType(event: unknown): string | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const type = (event as { type?: unknown }).type;
+  return typeof type === 'string' && type.length > 0 ? type : null;
 }
 
 function isFullRefund(decision: Exclude<ChargeRevokeDecision, { action: 'ignore' }>): boolean {
@@ -529,7 +559,8 @@ async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise
     subscriptionId: link.subscriptionId,
     subscriptionStatus: link.subscriptionStatus,
   };
-  const needsLookup = !base.subscriptionId || (!base.familyId && !base.customerId);
+  const needsLookup =
+    !base.subscriptionId || !base.subscriptionStatus || (!base.familyId && !base.customerId);
   if (!needsLookup || !link.chargeId) return base;
   const lookup =
     deps.chargeLookup === undefined
@@ -537,11 +568,14 @@ async function linkCharge(event: unknown, deps: ApplyStripeBillingDeps): Promise
       : deps.chargeLookup;
   if (!lookup) return base;
   const found = await lookup.lookupCharge(link.chargeId);
+  const sameSubscription =
+    base.subscriptionId === null || base.subscriptionId === found.subscriptionId;
   return {
     familyId: base.familyId ?? found.familyId,
     customerId: base.customerId ?? found.customerId,
     subscriptionId: base.subscriptionId ?? found.subscriptionId,
-    subscriptionStatus: base.subscriptionStatus ?? found.subscriptionStatus,
+    subscriptionStatus:
+      base.subscriptionStatus ?? (sameSubscription ? found.subscriptionStatus : null),
   };
 }
 

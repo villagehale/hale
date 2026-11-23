@@ -1,9 +1,11 @@
 /**
  * Stripe charge → customer, subscription, and family.
  *
- * A charge.refunded payload carries an invoice id. A dispute payload carries a
- * charge id. Neither includes the subscription object unless Stripe expanded it,
- * so the webhook looks the charge up before it decides whether to drop a tier.
+ * A charge.refunded payload and a retrieved charge often carry no invoice: on the
+ * current Stripe API the invoice is reached from the payment intent through
+ * invoice payments. A dispute payload carries a charge id. Neither includes the
+ * subscription object unless Stripe expanded it, so the webhook looks the charge
+ * up before it decides whether to drop a tier.
  */
 
 import { ENDED_SUBSCRIPTION, type SubscriptionFacts } from '~/lib/webhooks/stripe-billing';
@@ -25,24 +27,17 @@ export function stripeChargeLookupFromEnv(
 ): StripeChargeLookup | null {
   const secret = env.STRIPE_SECRET_KEY?.trim();
   if (!secret) return null;
+  const get: StripeRead = (path) => pinnedGet(secret, path, fetchImpl);
   return {
     async lookupCharge(chargeId) {
-      const charge = await stripeGet(
-        secret,
-        `/v1/charges/${encodeURIComponent(chargeId)}`,
-        fetchImpl,
-      );
-      const invoiceId = readId(charge.invoice);
-      const invoice = invoiceId
-        ? await stripeGet(secret, `/v1/invoices/${encodeURIComponent(invoiceId)}`, fetchImpl)
-        : null;
+      const charge = await get(`/v1/charges/${encodeURIComponent(chargeId)}`);
+      // charge.invoice is null on live charges. The subscription is on the invoice
+      // found from the payment intent, which is also how the refund-ends reader
+      // resolves a charge. An invoice id, when Stripe still sends one, is read first.
+      const invoice = await invoiceForCharge(get, charge);
       const subscriptionId = invoice ? subscriptionIdFromInvoice(invoice) : null;
       const subscription = subscriptionId
-        ? await stripeGet(
-            secret,
-            `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
-            fetchImpl,
-          )
+        ? await get(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`)
         : null;
       const status = readString(subscription?.status)?.toLowerCase() ?? null;
       return {
@@ -57,6 +52,27 @@ export function stripeChargeLookupFromEnv(
       };
     },
   };
+}
+
+/** The invoice a charge paid, or null when Stripe does not name exactly one. */
+async function invoiceForCharge(
+  get: StripeRead,
+  charge: StripeObject,
+): Promise<StripeObject | null> {
+  const directId = readId(charge.invoice);
+  if (directId) return get(`/v1/invoices/${encodeURIComponent(directId)}`);
+  const paymentIntentId = readId(charge.payment_intent);
+  if (!paymentIntentId) return null;
+  const query = new URLSearchParams({
+    'payment[type]': 'payment_intent',
+    'payment[payment_intent]': paymentIntentId,
+    status: 'paid',
+    limit: '2',
+  });
+  const payments = listData(await get(`/v1/invoice_payments?${query}`));
+  const invoiceId = payments.length === 1 ? readId(payments[0]?.invoice) : null;
+  if (!invoiceId) return null;
+  return get(`/v1/invoices/${encodeURIComponent(invoiceId)}`);
 }
 
 export async function stripeGet(
