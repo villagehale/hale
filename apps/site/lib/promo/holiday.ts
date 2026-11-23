@@ -15,9 +15,9 @@ import {
  * Holiday 2026 founding-family promo, as the marketing site shows it.
  *
  * Barton's decisions (Nov 2026), held here so every surface reads one source:
- *  - "Black Friday Sale" until Nov 27, then "Holiday Sale" from Nov 28 00:00
- *    America/Toronto to Dec 31. The phase is picked per request, so the switch
- *    needs no deploy.
+ *  - "Black Friday Sale" before HOLIDAY_SALE_STARTS_AT, then "Holiday Sale"
+ *    through Dec 31. The phase is picked per request from that instant
+ *    (America/Toronto), so the switch needs no deploy.
  *  - Both paid tiers are on sale, billed yearly, locked for as long as the
  *    family stays a member (Barton, Nov 16 1:07 PM ET):
  *      Canada: Plus $59/yr, Max $99/yr. US: Plus $39/yr, Max $79/yr.
