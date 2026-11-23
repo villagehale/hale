@@ -246,6 +246,43 @@ async function promoteAskedDraft(database: Database, actionId: string): Promise<
     );
 }
 
+/**
+ * VIL-719 · the parent has this ask, so a failure here must not skip the send's own records.
+ * The draft stays off the yes list, where their yes finds nothing to approve, so #ops hears.
+ */
+async function bindAskedDraft(
+  database: Database,
+  input: NotRunChange,
+  pager: OpsPager,
+): Promise<void> {
+  try {
+    await promoteAskedDraft(database, input.actionId);
+  } catch (err) {
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'team schedule: the asked draft could not join the yes list',
+    );
+    await auditChangeNotRun(database, input).catch((auditErr: unknown) =>
+      console.error(
+        { familyId: input.familyId, err: auditErr instanceof Error ? auditErr.name : 'unknown' },
+        'team schedule: could not audit an ask the parent cannot approve',
+      ),
+    );
+    await pager
+      .page({
+        site: 'team_schedule_ask_unbound',
+        facts: { change: input.change },
+        ref: input.actionId,
+      })
+      .catch((pageErr: unknown) =>
+        console.error(
+          { familyId: input.familyId, err: pageErr instanceof Error ? pageErr.name : 'unknown' },
+          'team schedule: could not page an ask the parent cannot approve',
+        ),
+      );
+  }
+}
+
 /** VIL-719 · an ask that did not go out. A draft already promoted was asked, so it has no row. */
 async function auditAskNotSent(database: Database, input: NotRunChange): Promise<void> {
   const [row] = await database
@@ -557,7 +594,7 @@ export async function applyTeamScheduleChange(
       input,
       ports,
       text,
-      asking ? () => promoteAskedDraft(database, drafted.actionId) : null,
+      asking ? () => bindAskedDraft(database, notRun, ports.pager) : null,
     );
   } catch (err) {
     if (asking) {
@@ -699,7 +736,6 @@ async function sendParentNotice(
     return { outcome: 'send_failed' };
   }
   if (ledgerOutsideSend) {
-    await onAccepted?.();
     // The parent has the text, so re-running this email would only repeat the change.
     await ledgerAccepted().catch((err: unknown) =>
       console.error(
@@ -707,6 +743,7 @@ async function sendParentNotice(
         'team schedule: the ledger write failed after Linq took the text',
       ),
     );
+    await onAccepted?.();
   }
 
   const extraction = input.classification.extraction;

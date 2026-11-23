@@ -291,6 +291,8 @@ export const OPS_PAGE_VOCABULARY = {
   team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
   /** A team-schedule change under a grant whose execution failed. The email notice still goes. */
   team_schedule_not_applied: { change: ['time', 'location', 'both', 'cancel'] },
+  /** Linq took a team-schedule ask and its draft could not join the yes list. */
+  team_schedule_ask_unbound: { change: ['time', 'location', 'both', 'cancel'] },
   offer_receipt_unwritten: {},
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {

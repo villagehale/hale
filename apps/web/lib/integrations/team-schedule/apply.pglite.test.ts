@@ -836,6 +836,75 @@ describe('VIL-719 an ask that never reached the parent', () => {
     });
   });
 
+  describe('the draft cannot join the yes list after Linq took the ask', () => {
+    const failPromotion = () =>
+      db.exec(`
+        create or replace function fail_promotion_for_test() returns trigger as $$
+        begin
+          raise exception 'promotion failed for test';
+        end;
+        $$ language plpgsql;
+        create trigger fail_promotion_for_test before update on actions
+          for each row when (new.user_visible_state = 'drafted_for_approval')
+          execute function fail_promotion_for_test();
+      `);
+    afterEach(async () => {
+      await db.exec('drop trigger if exists fail_promotion_for_test on actions;');
+    });
+
+    it('policy on: the ledger and thread are written, the draft stays off the yes list, and #ops hears', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const eventId = await seedGame();
+      await failPromotion();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const threaded: string[] = [];
+      const { result, sent } = await applyAsk(eventId, (p) => {
+        p.threadMessage = async (_database, message) => {
+          threaded.push(message.body);
+          return 'conv-1';
+        };
+      });
+
+      expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+      expect(sent).toHaveLength(1);
+      const ledger = await db.database
+        .select({
+          providerMessageId: schema.channelMessages.providerMessageId,
+          status: schema.channelMessages.status,
+        })
+        .from(schema.channelMessages)
+        .where(eq(schema.channelMessages.familyId, family.familyId));
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]?.providerMessageId).toBe('fake-out-1');
+      expect(ledger[0]?.status).not.toBe('failed');
+      expect(threaded).toHaveLength(1);
+      const action = await onlyActionState();
+      expect(action.state).toBe('needs_human');
+      expect(await pending()).toEqual([]);
+      expect(await notRunRows()).toEqual([
+        {
+          audience: family.parentUserId,
+          targetTable: 'users',
+          targetId: family.parentUserId,
+          after: { actionId: action.id, change: 'time' },
+        },
+      ]);
+      expect(pages).toEqual([
+        { site: 'team_schedule_ask_unbound', facts: { change: 'time' }, ref: action.id },
+      ]);
+    });
+
+    it('control, policy on: a promotion that lands pages no one and writes no not-run row', async () => {
+      vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'true');
+      const eventId = await seedGame();
+      const { result } = await applyAsk(eventId);
+      expect(result).toEqual({ handled: true, outcome: 'schedule_change_asked' });
+      expect((await onlyActionState()).state).toBe('drafted_for_approval');
+      expect(await notRunRows()).toEqual([]);
+      expect(pages).toEqual([]);
+    });
+  });
+
   it('the real mint writes a held draft off the yes list from its first row', async () => {
     const failingReviewer = {} as Parameters<typeof mintChannelCalendarDraft>[2];
     const mint = (heldUntilAsked: boolean) =>
