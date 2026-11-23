@@ -194,6 +194,45 @@ describe('VIL-717 · the deadline sweep', () => {
     ]);
   });
 
+  it('writes no promise on a Preview deploy, because Production sweeps the shared table', async () => {
+    const seeded = await seedPromise();
+    const [row] = await db.database
+      .select({ ack: schema.ackPromises.ackChannelMessageId })
+      .from(schema.ackPromises)
+      .where(eq(schema.ackPromises.id, seeded.promiseId));
+    await db.database.delete(schema.ackPromises).where(eq(schema.ackPromises.id, seeded.promiseId));
+    const input = {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      inboundChannelMessageId: seeded.inboundId,
+      ackChannelMessageId: row?.ack ?? '',
+      task: 'find' as const,
+      channel: 'imessage' as const,
+      providerChatId: 'chat-one',
+      replyToMessageId: 'parent-msg-1',
+      language: 'en',
+      askedAt: ASKED_AT,
+      promisedMinutes: PROMISED_MINUTES,
+      now: ACK_AT,
+    };
+    const rows = () =>
+      db.database
+        .select({ id: schema.ackPromises.id })
+        .from(schema.ackPromises)
+        .where(eq(schema.ackPromises.inboundChannelMessageId, seeded.inboundId));
+
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    expect(await recordAckPromise(db.database, input)).toEqual({
+      status: 'not_recorded',
+      reason: 'preview',
+    });
+    expect(await rows()).toEqual([]);
+
+    vi.stubEnv('VERCEL_ENV', 'production');
+    expect(await recordAckPromise(db.database, input)).toMatchObject({ status: 'recorded' });
+    expect(await rows()).toHaveLength(1);
+  });
+
   it('reads nothing before the window closes', async () => {
     await seedPromise();
     const p = ports();
