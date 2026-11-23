@@ -17,6 +17,7 @@ const providerPreflightMock = vi.fn();
 const runGroupReminderTickMock = vi.fn();
 const recoverHeldOptOutReadsMock = vi.fn();
 const recheckHeldRemindersMock = vi.fn();
+const runAckDeadlineSweepMock = vi.fn();
 const retryTeamScheduleDriversMock = vi.fn();
 
 vi.mock('~/lib/cron/drain', async (importActual) => ({
@@ -41,6 +42,11 @@ vi.mock('~/lib/monitoring/provider-health', async (importActual) => ({
 vi.mock('~/lib/loop/reminders/run', () => ({
   recheckHeldReminders: (...args: unknown[]) => recheckHeldRemindersMock(...args),
 }));
+// VIL-717. The sweep and its production ports are the leg's; the route only orders and names.
+vi.mock('~/lib/channel/ack-eta/sweep', () => ({
+  runAckDeadlineSweep: (...args: unknown[]) => runAckDeadlineSweepMock(...args),
+}));
+vi.mock('~/lib/channel/ack-eta/production', () => ({ ackDeadlinePorts: () => ({}) }));
 // The route reads nothing else from it, and the real module's graph is a slow cold import.
 vi.mock('~/lib/integrations/team-schedule', () => ({
   retryTeamScheduleDrivers: (...args: unknown[]) => retryTeamScheduleDriversMock(...args),
@@ -96,6 +102,11 @@ describe('GET /api/cron/drain', () => {
       retrying: 0,
     });
     recheckHeldRemindersMock.mockReset().mockResolvedValue({ held: 0 });
+    runAckDeadlineSweepMock
+      .mockReset()
+      .mockResolvedValue({ due: 0, claimed: 0, settled: {} });
+    // Pinned off: the all-flags-on job sets it before the process starts.
+    vi.stubEnv('ACK_ETA_ENABLED', '');
     retryTeamScheduleDriversMock.mockReset();
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -188,7 +199,65 @@ describe('GET /api/cron/drain', () => {
       billingNotices: { skipped: 'flag_off' },
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
     expect(retryTeamScheduleDriversMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: lit, sweeps the promised times every scheduled minute, before the queues', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
+    const order: string[] = [];
+    const summary = { due: 1, claimed: 1, settled: { answered: 1 } };
+    runAckDeadlineSweepMock.mockImplementation(async () => {
+      order.push('ack_deadlines');
+      return summary;
+    });
+    runDrainCronMock.mockImplementation(async () => {
+      order.push('queues');
+      return { processed: 0, failed: 0, dropped: 0 };
+    });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ ackDeadlines: summary });
+    expect(order).toEqual(['ack_deadlines', 'queues']);
+  });
+
+  it('VIL-717: only exact `true` lights the sweep', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true\n');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).not.toHaveProperty('ackDeadlines');
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: PostHog cannot light the sweep: with the env unset it stays dark', async () => {
+    vi.stubEnv('POSTHOG_FLAGS_ENABLED', 'true');
+    runDrainCronMock.mockResolvedValue({ processed: 0, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).not.toHaveProperty('ackDeadlines');
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-717: names a failed deadline leg and still drains', async () => {
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
+    runAckDeadlineSweepMock.mockRejectedValue(new Error('leg blew up'));
+    runDrainCronMock.mockResolvedValue({ processed: 1, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      processed: 1,
+      ackDeadlines: { skipped: 'tick_failed' },
+    });
   });
 
   it('VIL-734: retries refused driver texts on the scheduled tick when the flag is on', async () => {
@@ -430,6 +499,7 @@ describe('GET /api/cron/drain', () => {
 
   it('skips the opt-out recovery leg on Preview, which shares the prod database', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
+    vi.stubEnv('ACK_ETA_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', '00000000-0000-4000-8000-0000000000aa');
     vi.stubEnv('PREVIEW_CAPTURE_TRANSPORT', 'on');
@@ -441,11 +511,13 @@ describe('GET /api/cron/drain', () => {
     expect(await response.json()).toMatchObject({
       optOutRecovery: { skipped: 'preview' },
       heldReminders: { skipped: 'preview' },
+      ackDeadlines: { skipped: 'preview' },
       teamScheduleDrivers: { skipped: 'preview' },
       anthropicCredit: { skipped: 'preview' },
     });
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();
     expect(recheckHeldRemindersMock).not.toHaveBeenCalled();
+    expect(runAckDeadlineSweepMock).not.toHaveBeenCalled();
   });
 
   it('leaves the first-reply leg out of a kicked run', async () => {

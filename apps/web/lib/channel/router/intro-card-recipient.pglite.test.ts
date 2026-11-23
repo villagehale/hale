@@ -27,6 +27,7 @@ import {
   defaultOpenQuestionReader,
   loadInboundContext,
 } from './wiring';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 /**
  * VIL-302 · an intro ask is answered only by the parent it was texted to.
@@ -270,6 +271,7 @@ function routerDeps(
     apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
     holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
     holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+    ackEta: quietAckEtaPorts(),
     sendParentReaction: async () => ({ status: 'sent' }),
     floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
     recordPlanOffer: async () => ({ status: 'recorded' }),

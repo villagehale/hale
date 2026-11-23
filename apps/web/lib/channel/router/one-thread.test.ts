@@ -16,6 +16,7 @@ import type { ChannelCoachRuntime, ChannelRouterDeps } from './route';
 import { routeChannelMessage } from './route';
 import { darkSideTurn } from './side-turn.fixture';
 import { auditSmokeAlarmClaim, auditTurnLedger, loadInboundContext } from './wiring';
+import { quietAckEtaPorts } from '~/lib/testing/ack-eta-ports';
 
 /**
  * TEXT + IMESSAGE, ONE THREAD, ONE MEMORY — the journey, against a real Postgres.
@@ -115,6 +116,7 @@ describe('one parent, two doors, one conversation', () => {
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
       holdingTapback: { compose: async () => ({ status: 'composed', reaction: { type: 'like' } }) },
+      ackEta: quietAckEtaPorts(),
       sendParentReaction: async () => ({ status: 'sent' }),
       floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),

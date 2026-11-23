@@ -34,6 +34,13 @@ export const CLAIM_READ_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as c
 export const OPT_OUT_RECOVERY_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
 
 /**
+ * Options for the late note on a missed ack (VIL-717): written before the queues, inside
+ * the drain's headroom, so during an outage one note costs one 12s timeout rather than the
+ * hot path's 30s with a retry.
+ */
+export const ACK_NOTE_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
+
+/**
  * Options for the iMessage effect read (VIL-473): a call made after the reply is written
  * and before it goes out, for a flourish the reply does not need. One request gets 12s
  * and no retry, so a slow read cannot eat the turn; a read that runs out sends the reply
