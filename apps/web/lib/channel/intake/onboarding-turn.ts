@@ -267,23 +267,19 @@ export function onboardingMissing(list: OnboardingChecklist): OnboardingItem[] {
   return onboardingOrder().filter((item) => !list[item]);
 }
 
-/** The longest activity or "when" phrase kept. A sentence is not an activity. */
-const MAX_ACTIVITY_CHARS = 80;
 /** The most activities one message may add. A pasted schedule is not an answer. */
 const MAX_ACTIVITIES = 12;
 
 function acceptActivityText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim().replace(/\s+/gu, ' ');
-  if (trimmed.length < 1 || trimmed.length > MAX_ACTIVITY_CHARS) return null;
-  if (!/\p{L}/u.test(trimmed)) return null;
-  return trimmed;
+  return /\p{L}/u.test(trimmed) ? trimmed : null;
 }
 
 /**
- * VIL-721. Keep an activity only when it is the shape of one: a short phrase with a
- * letter in it, an optional kid name, an optional "when". Code does not decide
- * whether the words ARE an activity; the model did.
+ * VIL-721. Keep an activity only when it is the shape of one: words with a letter in
+ * them, an optional kid name, an optional "when". Code does not decide whether the
+ * words ARE an activity, or how long one may be; the model did.
  */
 export function acceptKidActivity(raw: unknown): KidActivity | null {
   if (!raw || typeof raw !== 'object') return null;

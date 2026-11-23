@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ONBOARDING_ORDER,
   type OnboardingChecklist,
@@ -28,6 +28,11 @@ function lit() {
   // The in-thread walk rides the friend walk.
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
 }
+
+// Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+beforeEach(() => {
+  vi.stubEnv(THREAD_ONBOARDING_V2_ENABLED_ENV, 'false');
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -125,13 +130,11 @@ describe('the capture', () => {
 
   it('lit, keeps the activities the model read, shape-checked', () => {
     lit();
-    const long = 'a'.repeat(81);
     const capture = acceptOnboardingCapture({
       activities: [
         { child: 'Maya', activity: '  swim    lessons ', when: ' Saturdays ' },
         { child: 'maya', activity: 'SWIM LESSONS' },
         { child: 'Leo 2', activity: 'soccer' },
-        { child: null, activity: long },
         { child: null, activity: '42' },
         { activity: 'piano' },
         'not an object',
@@ -146,6 +149,15 @@ describe('the capture', () => {
     ]);
     expect(capture.connectGoogle).toBe(false);
     expect(capture.googleLater).toBe(true);
+  });
+
+  it('lit, keeps a long phrase whole: no character cap decides what the parent said', () => {
+    lit();
+    const long = 'after-school Mandarin at the community centre with her cousin on Tuesdays and Thursdays until five';
+    const capture = acceptOnboardingCapture({
+      activities: [{ child: 'Maya', activity: long, when: long }],
+    });
+    expect(capture.activities).toEqual([{ child: 'Maya', activity: long, when: long }]);
   });
 
   it('lit, caps one message at twelve activities', () => {
