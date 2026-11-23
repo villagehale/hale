@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage, namesAny } from '@hale/types';
 import { asc, eq } from 'drizzle-orm';
 import { type FactHeard, writeFact } from '~/lib/memory/facts';
+import { ONBOARDING_ACTIVITY_WRITER } from '~/lib/memory/lexicon';
 import { kidFirstName } from './cold-start/ladder';
 import type { KidActivity } from './onboarding-turn';
 
@@ -36,7 +37,7 @@ import type { KidActivity } from './onboarding-turn';
  * is the parent's, and a memory write that did not land is logged as exactly that.
  */
 
-export const KID_ACTIVITY_INFERRED_BY = 'onboarding_thread_v2';
+export const KID_ACTIVITY_INFERRED_BY = ONBOARDING_ACTIVITY_WRITER;
 /** The model read it from the parent's own words: above the floor, below a record. */
 export const KID_ACTIVITY_CONFIDENCE = 0.9;
 

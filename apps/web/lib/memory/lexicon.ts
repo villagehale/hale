@@ -65,6 +65,13 @@ for (const group of LEXICON_GROUPS) {
 /** Receipt namespaces the control plane reads back. Never forgotten, never briefed. */
 export { RECEIPT_KEY_PREFIXES };
 
+/**
+ * VIL-721. The in-thread walk's writer of a kid's activity, as the parent said it. The
+ * parent can hear it back and take it back; the nightly synthesis neither elects over
+ * it nor retires it (it is not one of SYNTHESIS_WRITERS).
+ */
+export const ONBOARDING_ACTIVITY_WRITER = 'onboarding_thread_v2';
+
 /** Temporary beliefs a digest may retire. Writers opt in by key; messages cannot. */
 export const EPHEMERAL_KEY_PREFIX = 'ephemeral.';
 

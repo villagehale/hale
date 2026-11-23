@@ -2,6 +2,8 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { forgetFamilyFact } from '~/lib/memory/forget';
+import { recallFamilyMemory } from '~/lib/memory/store';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { keepKidActivities, kidActivityFactKey } from './kid-activity-facts';
 
@@ -241,6 +243,44 @@ describe('keepKidActivities', () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe('a kept activity is the parent\'s', () => {
+  let db: TestDb;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('is told back to them when they ask what Hale remembers, and goes when they say forget it', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await seedChild(db.database, familyId, 'Ava', 60, undefined, NOW);
+    await keepKidActivities(db.database, {
+      familyId,
+      parentUserId,
+      sessionId: SESSION,
+      activities: [{ child: 'Ava', activity: 'ballet', when: 'Tuesdays' }],
+      heardIn: 'one_to_one',
+      now: NOW,
+    });
+    const reader = { adult: parentUserId };
+
+    const recalled = await recallFamilyMemory(db.database, { familyId, now: LATER, reader });
+    expect(recalled.map((fact) => fact.factKey)).toEqual(['kid-activity-ballet']);
+
+    const result = await forgetFamilyFact(db.database, {
+      familyId,
+      factId: recalled[0]?.id ?? '',
+      actor: parentUserId,
+      now: LATER,
+    });
+    expect(result).toMatchObject({ forgotten: 1, refusedWriter: 0 });
+    expect(await recallFamilyMemory(db.database, { familyId, now: LATER, reader })).toEqual([]);
   });
 });
 
