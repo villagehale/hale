@@ -108,8 +108,6 @@ export function inviteSendKey(invite: { id: string; role: AddRole }): string {
   return `${invite.role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite:${invite.id}`;
 }
 
-export const INVITE_SEND_FAILED_VERB = 'third_party_invite_send_failed';
-
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
 

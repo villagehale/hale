@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createOutboundTransport, linqRefusedForCertain } from '~/lib/channel/outbound-transport';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
-import { type CaregiverInvite, INVITE_SEND_FAILED_VERB } from './invites';
+import type { CaregiverInvite } from './invites';
 
 /** The transport for a send to anyone but the person whose chat this turn is bound to. */
 export function transportToPerson(transport: ChannelTransport): ChannelTransport {
@@ -47,7 +47,7 @@ export async function settleFailedInviteSend(
     await tx.insert(schema.auditLog).values({
       familyId: invite.familyId,
       actor: invite.invitedByUserId,
-      actionTaken: INVITE_SEND_FAILED_VERB,
+      actionTaken: 'third_party_invite_send_failed',
       targetTable: 'caregiver_invites',
       targetId: invite.id,
       after: { role: invite.role, why, opsPage, closedUnsent: closed.length === 1 },
