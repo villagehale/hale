@@ -11,8 +11,9 @@
 // them, in the right language and register, is the judge's call. The input builder reads
 // no flag, so GROUP_JOIN_INTRO_ENABLED does not matter here.
 //
-// NOT YET RECORDED. This suite has no cached responses and no CI step until one paid run
-// records them (ANTHROPIC_API_KEY_TEST, one run per PR):
+// NOT YET RECORDED. While RECORDING_PENDING is true, --cached-only runs the dry
+// projection and exits 0 (the same gate as the other unrecorded suites). A miss
+// fails once this is set to false after the one paid run (ANTHROPIC_API_KEY_TEST):
 //   HALE_SPEND_LEDGER=/tmp/ledger.json node evals/run-group-join-intro-eval.mjs --dry
 //   HALE_SPEND_LEDGER=... node evals/run-group-join-intro-eval.mjs --live --max-usd 0.50
 //   node evals/run-group-join-intro-eval.mjs --cached-only            # CI: replay only
@@ -68,6 +69,8 @@ const LINE_SCHEMA = {
 /** Words an intro must never teach. Checked on Hale's own output, never on a parent's. */
 const OPT_OUT_WORDS = ['STOP', 'HELP', 'START', 'UNSUBSCRIBE', 'ARRET', 'ARRÊT', 'AIDE'];
 
+const RECORDING_PENDING = true;
+
 const JUDGE_SYSTEM = judgePrompt('group-join-intro');
 
 const BROKEN =
@@ -121,10 +124,16 @@ function requestFor(fixture, groupJoinIntroClaims) {
 async function main() {
   const argv = process.argv.slice(2);
   assertRunFlags(['--broken', '--max-usd'], argv);
-  hasLinkShape = await loadHasLinkShape();
   const broken = argv.includes('--broken');
-  const cachedOnly = argv.includes('--cached-only');
-  installEvalSpendCap();
+  // No cache yet. Project the cost and exit 0, the way the other pending suites do.
+  // --broken still grades the planted bad line.
+  if (argv.includes('--cached-only') && RECORDING_PENDING && !broken) {
+    process.env.HALE_EVAL_DRY = '1';
+  }
+  hasLinkShape = await loadHasLinkShape();
+  const cachedOnly = argv.includes('--cached-only') && !(RECORDING_PENDING && !broken);
+  // The pending projection makes no calls, so it does not need a spend ledger.
+  if (!(argv.includes('--cached-only') && RECORDING_PENDING && !broken)) installEvalSpendCap();
   const getClient = lazyAnthropic('group-join-intro');
   const cost = makeCost();
   const agent = await importTs(AGENT_SRC);
