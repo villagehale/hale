@@ -707,9 +707,8 @@ async function runOnePlan(
       started: true,
     };
     if (offered.status === 'withdrawn') {
-      // A charge is always reported, and an ops stop's ending reads where the run really
-      // stopped. Otherwise nobody is texted.
-      return stop.charged !== 'nothing' || (await planOpsStopped(database, plan))
+      // An ops stop's ending reads where the run really stopped. Otherwise nobody is texted.
+      return (await planOpsStopped(database, plan))
         ? end(stopped)
         : end({ ...stopped, outcome: 'cancelled', detail: 'authorization_lapsed' });
     }
@@ -762,10 +761,12 @@ async function runOnePlan(
       await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
     }
-    const purpose =
-      takeoverOn && !takeoverBarred ? takeoverPurpose(result.outcome, result.detail) : null;
-    if (purpose && isTakeoverStop(result)) {
-      const handed = await handTakeover(result, purpose);
+    const step = takeoverOn ? takeoverPurpose(result.outcome, result.detail) : null;
+    // A stop where a charge may exist is reported as it is. A card would replace the `paying`
+    // checkpoint that keeps a later sweep from creating a second payment run.
+    const mayHandOver = !takeoverBarred && !paymentMayExist && result.charged === 'nothing';
+    if (step && mayHandOver && isTakeoverStop(result)) {
+      const handed = await handTakeover(result, step);
       if (handed) return handed;
     }
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
@@ -777,9 +778,9 @@ async function runOnePlan(
     // never goes in a text whatever the outcome reads. Scoped to takeover steps: a checkout
     // hand-off such as `payment_off` also reads false here and keeps its live view.
     const keptOnlyForLink =
-      purpose !== null &&
+      step !== null &&
       result.liveViewUrl !== null &&
-      (purpose === 'captcha' || !parentTakesOverLiveView(result.outcome, result.detail));
+      (step === 'captcha' || !parentTakesOverLiveView(result.outcome, result.detail));
     const ending = keptOnlyForLink
       ? {
           ...result,

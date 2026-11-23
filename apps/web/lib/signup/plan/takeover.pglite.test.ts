@@ -4,11 +4,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import type {
-  BrowserUsePlanCheckpoint,
-  BrowserUsePlanInput,
-  BrowserUsePlanResult,
-  PlanResumeToken,
+import { browserUseApi } from '../browser-use/client';
+import type { BrowserUseEngineDeps } from '../browser-use/engine';
+import { BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV } from '../browser-use/flag';
+import {
+  type BrowserUsePlanCheckpoint,
+  type BrowserUsePlanInput,
+  type BrowserUsePlanResult,
+  type PlanResumeToken,
+  releasePlanRun,
+  runBrowserUsePlanSignup,
+  settleBrowserUsePlanPayment,
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import {
@@ -315,6 +321,15 @@ async function parkedCaptcha() {
   const result = await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
   const sent = swept.takeover.parts[0] ?? [];
   return { family, result, runner, inputs, released, swept, sent, code: sentCode(sent) };
+}
+
+/** The same, parked on a code the site sent. */
+async function parkedCode() {
+  const family = await plannedFamily();
+  const { runner } = runnerReturning(stopAt('needs_human', 'verification_code'));
+  const swept = sweepDeps(runner);
+  await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+  return { family, code: sentCode(swept.takeover.parts[0] ?? []) };
 }
 
 describe('VIL-718 · a stop only the parent can do, on the plan lane', () => {
@@ -1425,6 +1440,35 @@ describe('VIL-718 · a link never opens a browser that may hold a login this par
     await expectNoCard(family, swept);
   });
 
+  it('a barred run stopped at a captcha with a live view: the browser goes and no text carries it', async () => {
+    const family = await plannedFamily();
+    await giveToCoParent(family);
+    const { runner, inputs, released } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(inputs[0]?.takeover).toBe(false);
+    await expectNoCard(family, swept);
+    expect(released).toEqual([expect.objectContaining({ runId: 'run-1', browserId: 'browser-1' })]);
+    expect(swept.notices[0]).toMatchObject({
+      detail: 'captcha',
+      liveViewUrl: null,
+      holdExpiresAt: null,
+    });
+  });
+
+  it('a barred run stopped at a sign-in wall keeps today’s live view', async () => {
+    const family = await plannedFamily();
+    await giveToCoParent(family);
+    const { runner, released } = runnerReturning(stopAt('needs_login', 'login_wall'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    await expectNoCard(family, swept);
+    expect(released).toEqual([]);
+    expect(swept.notices[0]).toMatchObject({ detail: 'login_wall', liveViewUrl: LIVE });
+  });
+
   it('with the owner check on, the parent’s own captured session and no password gets the card', async () => {
     vi.stubEnv(PLAN_CITY_LOGIN_OWNER_ENABLED_ENV, 'true');
     const family = await plannedFamily();
@@ -1541,6 +1585,275 @@ describe('VIL-718 · a stop that was not handed over', () => {
     expect(await linkRows(family.familyId)).toEqual([]);
     expect(released).toEqual([]);
     expect(swept.notices[0]).toMatchObject({ detail: 'payment_off', liveViewUrl: LIVE });
+  });
+});
+
+describe('VIL-718 · a stop where a payment may exist is never handed over', () => {
+  const PLAN_SKILL = '# skill browser-use-plan-signup';
+  const REVIEW_SKILL = '# skill browser-use-checkout-review';
+  const PAYMENT_SKILL = '# skill browser-use-saved-card-payment';
+  const AT_CHECKOUT = {
+    outcome: 'reached_checkout',
+    detail: 'none',
+    choice_index: 0,
+    checkout_url: `https://${HOST}/Checkout`,
+    cart_total_cents: 9800,
+    cart_currency: 'cad',
+    hold_minutes: 15,
+    saved_card_on_file: true,
+    security_code_required: false,
+    payment_details_entered: false,
+  };
+  const READY_TO_PLACE = {
+    outcome: 'ready_to_place',
+    detail: 'none',
+    total_cents: 9800,
+    currency: 'cad',
+    tax_cents: 0,
+    fees_cents: 0,
+    saved_card_selected: true,
+    order_placed: false,
+  };
+  const BANK_CODE = {
+    outcome: 'needs_human',
+    detail: 'verification_code',
+    confirmation_number: null,
+    amount_charged_cents: null,
+  };
+
+  /** The real engine over a fake Browser Use API. Each run answers as the skill it was given. */
+  function realEngine(answers: Record<string, unknown>) {
+    const created: string[] = [];
+    const skillOf = new Map<string, string>();
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      const parsed = new URL(url);
+      const method = init.method ?? 'GET';
+      const path = `${parsed.pathname.replace('/api/v4', '')}${parsed.search}`;
+      if (method === 'POST' && path === '/runs') {
+        const body = JSON.parse(String(init.body));
+        const skill = String(body.task).split('\n')[0] ?? '';
+        created.push(skill);
+        const id = `run-${created.length}`;
+        skillOf.set(id, skill);
+        return Response.json({ id, sessionId: 'bu-session-1' });
+      }
+      if (method === 'PATCH' && path === '/browsers/browser-1') return Response.json({});
+      if (path === '/sessions/bu-session-1/cost') {
+        return Response.json({ sessionId: 'bu-session-1', totalCostUsd: '0.090000' });
+      }
+      const run = /^\/runs\/(run-\d+)/.exec(path)?.[1];
+      if (!run) throw new Error(`unexpected ${method} ${path}`);
+      if (path.endsWith('/status')) return Response.json({ status: 'completed' });
+      if (path.endsWith('/cancel')) return Response.json({ id: run, status: 'cancelled' });
+      if (path.includes('/events')) {
+        return Response.json({
+          events: [
+            {
+              id: 1,
+              type: 'browser.ready',
+              data: { live_view_url: LIVE, browser_session_id: 'browser-1' },
+            },
+          ],
+          nextAfter: null,
+        });
+      }
+      return Response.json({
+        id: run,
+        status: 'completed',
+        sessionId: 'bu-session-1',
+        output: answers[skillOf.get(run) ?? ''],
+        error: null,
+        totalCostUsd: '0.0400',
+      });
+    });
+    const engine: BrowserUseEngineDeps = {
+      api: browserUseApi({ apiKey: 'test-key', fetch: fetchImpl }),
+      seeder: null,
+      loadTask: async (skill) => `# skill ${skill}`,
+      sleep: async () => undefined,
+      now: () => NOW,
+    };
+    const runner = {
+      run: (input: BrowserUsePlanInput) => runBrowserUsePlanSignup(input, engine),
+      release: (resume: PlanResumeToken) => releasePlanRun(resume, engine),
+      settlePayment: (input: Parameters<typeof settleBrowserUsePlanPayment>[0]) =>
+        settleBrowserUsePlanPayment(input, engine),
+    };
+    return { runner, created };
+  }
+
+  function engineDeps(runner: ReturnType<typeof realEngine>['runner']) {
+    const door = takeoverDoor();
+    const notices: PlanOutcomeNotice[] = [];
+    const deps: PlanRunDeps = {
+      runner,
+      autoHosts: [HOST],
+      notifyParent: async (notice) => {
+        notices.push(notice);
+        return 'sent';
+      },
+      checkSpendingCap: async () => ({ ok: true, reason: 'within' }),
+      takeover: door.deps,
+    };
+    return { deps, door, notices };
+  }
+
+  async function familyWithProfile() {
+    const family = await plannedFamily();
+    await db.database
+      .update(schema.providerSignupSessions)
+      .set({ browserUseProfileId: 'profile-seeded' })
+      .where(eq(schema.providerSignupSessions.familyId, family.familyId));
+    return family;
+  }
+
+  const stoppedAtBankCode = () =>
+    realEngine({
+      [PLAN_SKILL]: AT_CHECKOUT,
+      [REVIEW_SKILL]: READY_TO_PLACE,
+      [PAYMENT_SKILL]: BANK_CODE,
+    });
+
+  it('a payment run stopped on a bank code gets no card, no second payment, and an honest unknown', async () => {
+    vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, 'true');
+    const family = await familyWithProfile();
+    const { runner, created } = stoppedAtBankCode();
+    const { deps, door, notices } = engineDeps(runner);
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(door.parts).toEqual([]);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'verification_code',
+      notice: 'sent',
+    });
+    expect(notices).toEqual([
+      expect.objectContaining({
+        outcome: 'needs_human',
+        detail: 'verification_code',
+        charged: 'unknown',
+      }),
+    ]);
+    const after = await steps(family.offerId);
+    expect(after.some((row) => row.step === 'plan_takeover')).toBe(false);
+    expect(after.find((row) => row.step === 'plan_finished')).toMatchObject({
+      charged: 'unknown',
+    });
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+
+    await runDueSignupPlans(db.database, { now: new Date(NOW.getTime() + 60_000) }, deps);
+    expect(created).toEqual([PLAN_SKILL, REVIEW_SKILL, PAYMENT_SKILL]);
+    expect(notices).toHaveLength(1);
+  });
+
+  it('that ending is the one the flag-off path gives', async () => {
+    const ending = async (flag: 'true' | 'false') => {
+      vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, flag);
+      vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, 'true');
+      await familyWithProfile();
+      const { runner } = stoppedAtBankCode();
+      const { deps, notices } = engineDeps(runner);
+      await runDueSignupPlans(db.database, { now: NOW }, deps);
+      expect(notices).toHaveLength(1);
+      const { offerId: _o, familyId: _f, parentUserId: _p, ...facts } = notices[0] ?? {};
+      return facts;
+    };
+    const off = await ending('false');
+    await db.database
+      .update(schema.authorizedSignupOffers)
+      .set({ status: 'handed_back', browserUseCostUsd: null })
+      .where(inArray(schema.authorizedSignupOffers.status, ['planned', 'submitting']));
+    await db.database.update(schema.authorizedSignupOffers).set({ browserUseCostUsd: null });
+    const on = await ending('true');
+
+    expect(off).toMatchObject({
+      detail: 'verification_code',
+      charged: 'unknown',
+      liveViewUrl: LIVE,
+    });
+    expect(on).toEqual(off);
+  });
+
+  /** A runner whose run stores the `paying` checkpoint, as the engine does, and then stops. */
+  function payingThen(stop: BrowserUsePlanResult) {
+    const made = runnerReturning();
+    made.runner.run = vi.fn(async (input: BrowserUsePlanInput) => {
+      made.inputs.push(input);
+      expect(
+        await input.onCheckpoint({
+          phase: 'paying',
+          runId: 'run-pay',
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 0,
+          cartTotalCents: 9800,
+          holdExpiresAt: null,
+          costUsd: '0.0400',
+        }),
+      ).toBe(true);
+      return stop;
+    });
+    return made;
+  }
+
+  it('a stored paying checkpoint bars the card even on a stop that reads as nothing charged', async () => {
+    const family = await plannedFamily();
+    const { runner } = payingThen(stopAt('needs_human', 'verification_code'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(swept.takeover.parts).toEqual([]);
+    expect(swept.notices).toEqual([expect.objectContaining({ detail: 'verification_code' })]);
+  });
+
+  it('a resumed turn that stops in payment on the same step is reported as unknown, not as unfinished', async () => {
+    const { family, code } = await parkedCode();
+    const tapped = new Date(NOW.getTime() + 2 * 60_000);
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+    const later = new Date(tapped.getTime() + 60_000);
+    const { runner, released } = payingThen({
+      ...stopAt('needs_human', 'verification_code', later, 'run-q1'),
+      choiceIndex: 0,
+      charged: 'unknown',
+    });
+    const door = takeoverDoor();
+    const swept = sweepDeps(runner, door);
+    const result = await runDueSignupPlans(db.database, { now: later }, swept.deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'verification_code',
+      notice: 'sent',
+    });
+    expect(door.facts).toEqual([]);
+    expect(swept.notices).toEqual([
+      expect.objectContaining({ detail: 'verification_code', charged: 'unknown' }),
+    ]);
+    expect(released).toEqual([]);
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+  });
+
+  it('a code stop before checkout, where no payment can exist, still gets the card', async () => {
+    vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, 'true');
+    const family = await familyWithProfile();
+    const { runner, created } = realEngine({
+      [PLAN_SKILL]: { ...AT_CHECKOUT, outcome: 'needs_human', detail: 'verification_code' },
+    });
+    const { deps, door, notices } = engineDeps(runner);
+
+    const result = await runDueSignupPlans(db.database, { now: NOW }, deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'checkpointed',
+      phase: 'takeover',
+    });
+    expect(await linkRows(family.familyId)).toHaveLength(1);
+    expect(door.parts).toHaveLength(1);
+    expect(notices).toEqual([]);
+    expect(created).toEqual([PLAN_SKILL]);
   });
 });
 
@@ -1697,6 +2010,18 @@ describe('VIL-718 · with the takeover link off', () => {
     expect(await linkRows(family.familyId)).toEqual([]);
     expect(released).toEqual([]);
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+
+  it('a captcha stop that carries a live view keeps it, as it does today', async () => {
+    vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, 'false');
+    const family = await plannedFamily();
+    const { runner, released } = runnerReturning(stopAt('needs_human', 'captcha'));
+    const swept = sweepDeps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, swept.deps);
+
+    expect(await linkRows(family.familyId)).toEqual([]);
+    expect(released).toEqual([]);
+    expect(swept.notices[0]).toMatchObject({ detail: 'captcha', liveViewUrl: LIVE });
   });
 
   it('a card already out still frees its browser at the next sweep once the yes lapses', async () => {
