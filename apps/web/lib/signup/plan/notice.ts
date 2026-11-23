@@ -179,7 +179,11 @@ export function createPlanNotifier(
     // The image is its own send, after the text. The text never mentions it, so an image
     // that does not go cannot make the text false.
     if (went === 'sent' && notice.receipt) {
-      await deliverReceipt(database, deps, notice, notice.receipt, { to, now });
+      try {
+        await deliverReceipt(database, deps, notice, notice.receipt, { to, now });
+      } catch (err) {
+        await receiptUnrecorded(database, notice, err);
+      }
     }
     return went;
   };
@@ -187,6 +191,23 @@ export function createPlanNotifier(
 
 /** A confirmation screenshot of a few short lines is far below this. Larger is refused. */
 export const MAX_RECEIPT_IMAGE_BYTES = 1_000_000;
+
+/** A receipt ledger write failed. The text before it already went, so its result stands. */
+async function receiptUnrecorded(
+  database: Database,
+  notice: PlanOutcomeNotice,
+  err: unknown,
+): Promise<void> {
+  const page = await pageOps(database, {
+    site: 'registration_receipt_unrecorded',
+    facts: {},
+    ref: notice.offerId,
+  });
+  console.error(
+    { offerId: notice.offerId, page, error: err instanceof Error ? err.name : 'unknown' },
+    'signup plans: receipt ledger write failed',
+  );
+}
 
 /**
  * VIL-715 · the masked receipt, to the approving parent's own 1:1, never a group. Its ledger
@@ -247,13 +268,25 @@ async function deliverReceipt(
     .onConflictDoNothing()
     .returning({ id: messages.id });
   if (!row) return;
+  let sent: Awaited<ReturnType<NonNullable<ChannelTransport['sendImage']>>>;
   try {
-    const sent = await deps.transport.sendImage({
+    sent = await deps.transport.sendImage({
       to: input.to,
       png: receipt.receipt.png,
       filename: 'registration-receipt.png',
     });
-    const channel = sent.transport ?? 'imessage';
+  } catch (err) {
+    await database
+      .update(messages)
+      .set({
+        status: 'failed',
+        errorCode: (err instanceof Error ? err.constructor.name : 'send_threw').slice(0, 80),
+      })
+      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
+    return unsent('send_failed', 'refused');
+  }
+  const channel = sent.transport ?? 'imessage';
+  try {
     await database
       .update(messages)
       .set({
@@ -265,14 +298,8 @@ async function deliverReceipt(
       })
       .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
   } catch (err) {
-    await database
-      .update(messages)
-      .set({
-        status: 'failed',
-        errorCode: (err instanceof Error ? err.constructor.name : 'send_threw').slice(0, 80),
-      })
-      .where(and(eq(messages.id, row.id), eq(messages.familyId, notice.familyId)));
-    return unsent('send_failed', 'refused');
+    await auditDelivery({ outcome: 'accepted', ledger: 'unrecorded' });
+    return receiptUnrecorded(database, notice, err);
   }
   await auditDelivery({ outcome: 'accepted' });
 }

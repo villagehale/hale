@@ -345,8 +345,11 @@ function yesTakesStatedPrice(
   const stated = terms.sessionPrices
     .filter((session) => ids.includes(session.sessionId))
     .flatMap((session) => session.cents);
+  // A maximum at the lower of two rates would bind a condition the words alone cannot settle.
   return (
-    stated.includes(max) && moneyWritten(text).length === 0 && moneyCentsWritten(text).length === 0
+    max === Math.max(...stated) &&
+    moneyWritten(text).length === 0 &&
+    moneyCentsWritten(text).length === 0
   );
 }
 

@@ -267,6 +267,8 @@ export const OPS_PAGE_VOCABULARY = {
       'send_failed',
     ],
   },
+  /** VIL-760 · a receipt ledger write failed. A text already sent stands. */
+  registration_receipt_unrecorded: {},
   registration_review_placed_order: {},
   registration_review_unread: {},
   /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
@@ -393,6 +395,7 @@ const OPS_PAGE_PER_REF = [
   'registration_text_unwritten',
   'registration_terms_unreadable',
   'registration_receipt_unsent',
+  'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
 ] as const;
