@@ -15,6 +15,7 @@ import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { INTAKE_CALENDAR_CARD_TEMPLATE_KEY, INTAKE_GMAIL_CARD_TEMPLATE_KEY } from './copy';
 import type { ChannelTransport } from './transport';
 
@@ -95,7 +96,13 @@ export type ConnectorOfferOutcome =
   /** VIL-721. A stop, an erasure or a line hold arrived before the send. Nothing went. */
   | { status: 'not_sent'; reason: 'gated' }
   /** VIL-721. The prose reached the parent and its link did not. The offer stays open. */
-  | { status: 'not_sent'; reason: 'link_unsent' };
+  | { status: 'not_sent'; reason: 'link_unsent' }
+  /**
+   * VIL-721. The prose went and the link's send was unclear, so it may have landed. The
+   * offer stands: a retry would need a second URL, because a token is unrecoverable once
+   * minted (hash-only at rest), and a parent who has no link asks for one in the thread.
+   */
+  | { status: 'not_sent'; reason: 'link_unconfirmed' };
 
 type NotSentReason = Extract<ConnectorOfferOutcome, { status: 'not_sent' }>['reason'];
 
@@ -314,10 +321,20 @@ export async function sendGoogleConnectorCard(
       { familyId: args.familyId, reason: minted.status },
       'intake google card: no link to send',
     );
+    if (minted.status === 'mint_failed') {
+      await pageOps(database, {
+        site: 'google_connect_text_unsent',
+        facts: { surface: 'card', failure: 'no_link' },
+      });
+    }
     return minted.status;
   }
   if (prose == null) {
     await releaseGoogleClaim(database, claim, 'voice_unsent');
+    await pageOps(database, {
+      site: 'connector_link_unwritten',
+      facts: { reason: 'write_failed' },
+    });
     return 'voice_unsent';
   }
   const outcome = await sendClaimedGoogleText(
@@ -343,6 +360,7 @@ export async function sendGoogleConnectorCard(
   }
   const carried = outcome.sent.transport === 'imessage' ? 'imessage' : 'sms';
   let linked = false;
+  let unconfirmed = false;
   try {
     // The link is its own send: a stop that landed while Linq took the words stops it.
     if ((await googleSendGate(database, args)) !== 'open') {
@@ -364,9 +382,19 @@ export async function sendGoogleConnectorCard(
       familyId: args.familyId,
       parentUserId: args.parentUserId,
       now: args.now,
+      sendKey: `${claim.id}:link`,
     });
     linked = link.status !== 'not_sent';
-    if (!linked) await freeGoogleSendKey(database, claim.id);
+    if (link.status === 'not_sent') {
+      unconfirmed = link.unconfirmed === true;
+      if (!unconfirmed) await freeGoogleSendKey(database, claim.id);
+      await recordGoogleLinkUnsent(database, {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        claimId: claim.id,
+        failure: unconfirmed ? 'unconfirmed' : 'refused',
+      });
+    }
     await ports.threadMessage(database, {
       familyId: args.familyId,
       parentUserId: args.parentUserId,
@@ -387,7 +415,31 @@ export async function sendGoogleConnectorCard(
     { familyId: args.familyId, provider: 'google' },
     'intake google card: the prose went but the link did not',
   );
-  return 'link_unsent';
+  return unconfirmed ? 'link_unconfirmed' : 'link_unsent';
+}
+
+async function recordGoogleLinkUnsent(
+  database: Database,
+  who: {
+    familyId: string;
+    parentUserId: string;
+    claimId: string;
+    failure: 'refused' | 'unconfirmed';
+  },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: who.familyId,
+    actor: 'system',
+    actionTaken: 'google_connect_text_unsent',
+    targetTable: 'channel_messages',
+    targetId: who.claimId,
+    audience: who.parentUserId,
+    after: { surface: 'card', failure: who.failure },
+  });
+  await pageOps(database, {
+    site: 'google_connect_text_unsent',
+    facts: { surface: 'card', failure: who.failure },
+  });
 }
 
 /** The model's prose with any URL it wrote dropped; the minted one is sent after it. */

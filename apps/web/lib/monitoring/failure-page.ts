@@ -183,7 +183,7 @@ export const OPS_PAGE_VOCABULARY = {
   /** VIL-721 · a text the one Google link adds did not reach the parent. */
   google_connect_text_unsent: {
     surface: ['card', 'fresh_link', 'receipt', 'ask'],
-    failure: ['refused', 'unconfirmed'],
+    failure: ['refused', 'unconfirmed', 'no_link'],
   },
   shared_group_unwritten: {
     kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -265,6 +265,120 @@ describe('the texts the one Google link adds', () => {
         expect(rows.filter((row) => row.errorCode === 'send_in_flight')).toEqual([]);
       },
     );
+  });
+
+  describe('the link half of the card', () => {
+    const isLink = (body: string) => body.includes('/connect?');
+
+    const mintCount = async () =>
+      (
+        await db.database
+          .select({ id: schema.auditLog.id })
+          .from(schema.auditLog)
+          .where(
+            and(
+              eq(schema.auditLog.familyId, familyId),
+              eq(schema.auditLog.actionTaken, 'connector_link_minted'),
+            ),
+          )
+      ).length;
+
+    const previewKey = (key: string) => createHash('sha256').update(key).digest('hex');
+
+    it('sends the link under a key derived from the claim', async () => {
+      const transport = new FakeTransport();
+
+      expect(await card(transport)).toBe('sent');
+
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      const link = transport.sent.find((sent) => isLink(sent.body));
+      expect(link?.sendKey).toBe(`${row?.id}:link`);
+    });
+
+    it('after an unclear link failure, keeps the offer and mints no second URL', async () => {
+      const failing = transportOf(async (input) => {
+        if (isLink(input.body)) throw UNCLEAR();
+        return { providerMessageId: 'linq-prose' };
+      });
+
+      expect(await card(failing)).toBe('link_unconfirmed');
+
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      expect(row?.dedupeKey).not.toBeNull();
+      expect(row?.providerMessageId).toBe('linq-prose');
+      const pages = await db.database
+        .select({ after: schema.auditLog.after, audience: schema.auditLog.audience })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, 'google_connect_text_unsent'),
+          ),
+        );
+      expect(pages).toEqual([
+        { after: { surface: 'card', failure: 'unconfirmed' }, audience: parentUserId },
+      ]);
+
+      const next = new FakeTransport();
+      expect(await card(next, LATER)).toBe('already_sent');
+      expect(next.sent).toEqual([]);
+      expect(await mintCount()).toBe(1);
+    });
+
+    it('after a certain link refusal, the next turn sends one fresh link on a new key', async () => {
+      const failing = transportOf(async (input) => {
+        if (isLink(input.body)) throw REFUSED();
+        return { providerMessageId: 'linq-prose' };
+      });
+      expect(await card(failing)).toBe('link_unsent');
+      const firstKey = failing.calls.find((call) => isLink(call.body))?.sendKey;
+
+      const next = new FakeTransport();
+      expect(await card(next, LATER)).toBe('sent');
+
+      const retried = next.sent.filter((sent) => isLink(sent.body));
+      expect(retried).toHaveLength(1);
+      expect(retried[0]?.sendKey).not.toBe(firstKey);
+      expect(await mintCount()).toBe(2);
+    });
+
+    it('an unclear preview keeps its key on the text, so Linq drops a copy', async () => {
+      const seen: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const sent = JSON.parse(String(init?.body ?? '{}'));
+          if (sent?.message?.idempotency_key) seen.push(sent.message.idempotency_key);
+          throw new TypeError('fetch failed');
+        }),
+      );
+      const transport = transportOf(async () => ({
+        providerMessageId: 'linq-accepted',
+        transport: 'imessage' as const,
+        chatId: 'chat-link',
+      }));
+
+      expect(await card(transport)).toBe('sent');
+
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      expect(seen).toEqual([previewKey(`${row?.id}:link`)]);
+      expect(transport.calls.find((call) => isLink(call.body))?.sendKey).toBe(`${row?.id}:link`);
+    });
+
+    it('a preview refused for certain gives the text its own key', async () => {
+      const transport = transportOf(async () => ({
+        providerMessageId: 'linq-accepted',
+        transport: 'imessage' as const,
+        chatId: 'chat-link',
+      }));
+
+      expect(await card(transport)).toBe('sent');
+
+      const [row] = await rowsOf(CARD_TEMPLATE);
+      expect(transport.calls.find((call) => isLink(call.body))?.sendKey).toBe(
+        `${row?.id}:link:text`,
+      );
+    });
   });
 
   describe('a retry of the card', () => {
