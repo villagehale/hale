@@ -275,9 +275,10 @@ async function record(
   return id;
 }
 
-async function inboundAlreadyRecorded(database: Database, providerId: string): Promise<boolean> {
+async function recordedInboundId(database: Database, providerId: string): Promise<string | null> {
   const rows = await database
     .select({
+      id: schema.channelMessages.id,
       providerMessageId: schema.channelMessages.providerMessageId,
       direction: schema.channelMessages.direction,
     })
@@ -288,7 +289,8 @@ async function inboundAlreadyRecorded(database: Database, providerId: string): P
         eq(schema.channelMessages.direction, 'in'),
       ),
     );
-  return rows.some((row) => row.providerMessageId === providerId && row.direction === 'in');
+  const row = rows.find((r) => r.providerMessageId === providerId && r.direction === 'in');
+  return row ? row.id : null;
 }
 
 /**
@@ -313,7 +315,7 @@ async function reply(
     /** Linq's idempotency key, for a text that may already have landed once. */
     sendKey?: string;
     /** Runs when the send itself fails, and not when a ledger write after it does. */
-    onSendFailed?: (err: unknown) => Promise<void>;
+    onSendFailed?: () => Promise<void>;
   },
 ): Promise<void> {
   if (!input.body) {
@@ -331,7 +333,7 @@ async function reply(
       ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     }));
   } catch (err) {
-    await input.onSendFailed?.(err);
+    await input.onSendFailed?.();
     throw err;
   }
   await record(database, {
@@ -512,29 +514,6 @@ export async function handleLapsedInviteReply(
   });
   await recordLapsedInviteAnswered(database, invite);
   return { status: 'invite_expired_answered', role: invite.role };
-}
-
-/**
- * The person's no to an invite whose text may not have reached them. It closes the invite
- * and is remembered like any refusal, so they are not asked again. Nothing is texted back:
- * to a number that never got the invite, a reply would say that somebody named it.
- */
-export async function handleHeldInviteRefusal(
-  database: Database,
-  args: { invite: CoParentInvite; inbound: InboundMessage; now: Date },
-): Promise<CoParentOutcome> {
-  const { invite, inbound, now } = args;
-  await record(database, {
-    familyId: invite.familyId,
-    parentUserId: invite.invitedByUserId,
-    lane: 'co_parent',
-    direction: 'in',
-    providerId: inbound.providerId,
-    body: null,
-    now,
-  });
-  await declineInvite(database, { invite, by: 'caregiver', now });
-  return { status: 'co_parent_declined' };
 }
 
 async function handleCaregiverInviteReply(
@@ -868,25 +847,22 @@ async function sendCoParentInvite(
   deps: CaregiverDeps,
 ): Promise<CoParentOutcome> {
   const { pending, owner, inbound, now } = args;
-  // VIL-719 · a certain refusal reopens the invite, so Linq's redelivery of this same yes
-  // reaches here again. It is the turn that already ran; only a new yes tries the send again.
-  if (
-    askPolicyTiersEnabled(owner.familyId) &&
-    (await inboundAlreadyRecorded(database, inbound.providerId))
-  ) {
-    return { status: 'co_parent_assent_already_claimed' };
-  }
+  const policyOn = askPolicyTiersEnabled(owner.familyId);
   // The family's stored language. The authorising sentence is not classified.
   const language = await familySpeechLanguage(database, owner.familyId);
-  const channelMessageId = await record(database, {
-    familyId: owner.familyId,
-    parentUserId: owner.userId,
-    lane: 'co_parent',
-    direction: 'in',
-    providerId: inbound.providerId,
-    body: inbound.body,
-    now,
-  });
+  // VIL-719 · a failed send puts the invite back, so Linq's redelivery of this yes runs again.
+  const alreadyRecorded = policyOn ? await recordedInboundId(database, inbound.providerId) : null;
+  const channelMessageId =
+    alreadyRecorded ??
+    (await record(database, {
+      familyId: owner.familyId,
+      parentUserId: owner.userId,
+      lane: 'co_parent',
+      direction: 'in',
+      providerId: inbound.providerId,
+      body: inbound.body,
+      now,
+    }));
 
   // THE FLAG IS RE-READ AT THE SEND, not only at the ask (D21). An invite lives for 72
   // hours, so a gate on the start command alone leaves every invite opened before a flip
@@ -915,9 +891,6 @@ async function sendCoParentInvite(
     );
   }
 
-  const sendKey = askPolicyTiersEnabled(owner.familyId)
-    ? await coParentInviteSendKey(database, pending, now)
-    : undefined;
   const sent = await recordCoParentAssent(database, {
     invite: pending,
     inviterName,
@@ -940,20 +913,10 @@ async function sendCoParentInvite(
     parentUserId: owner.userId,
     lane: 'co_parent',
     now,
-    ...(sendKey
+    ...(policyOn
       ? {
-          sendKey,
-          onSendFailed: (err: unknown) =>
-            settleCoParentInviteAfterFailedSend(database, pending, err, now).catch(
-              (settleErr: unknown) =>
-                console.error(
-                  {
-                    familyId: owner.familyId,
-                    err: settleErr instanceof Error ? settleErr.name : 'unknown',
-                  },
-                  'coparent add command: could not repair the invite after a failed send',
-                ),
-            ),
+          sendKey: coParentInviteSendKey(pending),
+          onSendFailed: () => settleCoParentInviteAfterFailedSend(database, pending, now),
         }
       : {}),
   });

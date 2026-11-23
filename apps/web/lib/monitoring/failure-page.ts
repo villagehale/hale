@@ -291,6 +291,8 @@ export const OPS_PAGE_VOCABULARY = {
   team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
   /** A team-schedule change under a grant whose execution failed. The email notice still goes. */
   team_schedule_not_applied: { change: ['time', 'location', 'both', 'cancel'] },
+  /** VIL-719 · a failed co-parent invite that could not be put back: a yes still binds to it. */
+  co_parent_invite_unsettled: {},
   offer_receipt_unwritten: {},
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {
@@ -351,6 +353,7 @@ const OPS_PAGE_PER_REF = [
   'registration_review_unread',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  'co_parent_invite_unsettled',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

@@ -6,6 +6,7 @@ import {
   type InviteBodyResult,
   closeCoParentInviteWithoutYes,
   coParentInviteSendKey,
+  coParentYesOnRecord,
   familyHasCoParent,
   loadPendingAssent,
   recordCoParentAssent,
@@ -202,7 +203,16 @@ export async function deliverCoParentNumberInvite(
   // The SMS add-command is waiting on YES. A bare number must not skip that
   // confirm and text someone the parent has not authorised on that door.
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
-  if (pending?.role === 'co_parent') return { status: 'not_pending' };
+  // VIL-719 · unless it is this same number with the parent's yes already on record: a send
+  // that failed put the row back, and this is its re-drive.
+  const redriven =
+    pending?.role === 'co_parent' &&
+    askPolicyTiersEnabled(input.familyId) &&
+    pending.phoneE164 === parsed.phoneE164 &&
+    (await coParentYesOnRecord(database, pending))
+      ? pending
+      : null;
+  if (pending?.role === 'co_parent' && !redriven) return { status: 'not_pending' };
 
   const held = (reply: string): CoParentNumberOutcome => ({
     status: 'refused',
@@ -238,21 +248,23 @@ export async function deliverCoParentNumberInvite(
   });
   if (!inviteText) return { status: 'ask_unwritten', reply: null };
 
-  const started = await startCoParentInvite(database, {
-    familyId: input.familyId,
-    invitedByUserId: input.parentUserId,
-    inviterPhoneE164: parentPhone,
-    inviterName: name,
-    parsed: {
-      ok: true,
-      role: 'co_parent',
-      name: label,
-      phoneE164: parsed.phoneE164,
-    },
-    language,
-    now: input.now,
-    ask: input.ask,
-  });
+  const started = redriven
+    ? { status: 'started' as const, invite: redriven }
+    : await startCoParentInvite(database, {
+        familyId: input.familyId,
+        invitedByUserId: input.parentUserId,
+        inviterPhoneE164: parentPhone,
+        inviterName: name,
+        parsed: {
+          ok: true,
+          role: 'co_parent',
+          name: label,
+          phoneE164: parsed.phoneE164,
+        },
+        language,
+        now: input.now,
+        ask: input.ask,
+      });
   if (started.status === 'ask_unwritten') return { status: 'ask_unwritten', reply: null };
   if (started.status === 'refused') {
     const line = await coParentRefusal(started.reason, language);
@@ -307,9 +319,8 @@ export async function deliverCoParentNumberInvite(
  *
  * Each failure leaves the invite where a re-drive of this turn does the right thing:
  *  - the yes could not be written: closed, so the re-drive starts clean and records it;
- *  - Linq certainly refused the text: back to waiting on the parent;
- *  - the send failed any other way, so it may have landed: held as `send_unconfirmed`, which
- *    no plain yes can claim, so the re-drive cannot text them twice;
+ *  - the send failed: back to waiting on the parent, and the re-drive sends under the same
+ *    Linq key, so a text that did land is not delivered twice;
  *  - the ledger write failed after the send: left open, so the re-drive reads it as already
  *    invited and texts no one.
  */
@@ -324,29 +335,30 @@ async function sendOnRecordedYes(
   to: string,
   assent: Parameters<typeof recordCoParentAssent>[1],
 ): Promise<'sent' | 'already_claimed'> {
-  const logUnrepaired = (err: unknown) =>
-    console.error(
-      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
-      'coparent number invite: could not repair the invite after a failure',
-    );
   let recorded: InviteBodyResult;
-  let sendKey: string;
   try {
-    sendKey = await coParentInviteSendKey(database, assent.invite, input.now);
     recorded = await recordCoParentAssent(database, assent);
   } catch (err) {
-    await closeCoParentInviteWithoutYes(database, assent.invite, input.now).catch(logUnrepaired);
+    await closeCoParentInviteWithoutYes(database, assent.invite, input.now).catch(
+      (closeErr: unknown) =>
+        console.error(
+          { familyId: input.familyId, err: closeErr instanceof Error ? closeErr.name : 'unknown' },
+          'coparent number invite: could not close the invite after a failed yes',
+        ),
+    );
     throw err;
   }
   if (recorded.status !== 'ready') return 'already_claimed';
 
   let sms: { providerMessageId: string };
   try {
-    sms = await input.sendSms({ to, body: recorded.body, sendKey });
+    sms = await input.sendSms({
+      to,
+      body: recorded.body,
+      sendKey: coParentInviteSendKey(assent.invite),
+    });
   } catch (err) {
-    await settleCoParentInviteAfterFailedSend(database, assent.invite, err, input.now).catch(
-      logUnrepaired,
-    );
+    await settleCoParentInviteAfterFailedSend(database, assent.invite, input.now);
     throw err;
   }
   await ledgerSmsInvite(database, {
