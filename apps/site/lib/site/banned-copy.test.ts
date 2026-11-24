@@ -31,6 +31,8 @@ const phrases = [
   'You ' + 'text Hale',
   'kids' + "' year",
   'kids' + '\u2019 year',
+  'spot ' + 'watch',
+  'year ' + 'memory',
 ];
 
 const priceWordPattern = new RegExp(`\\b${priceWord}\\b`, 'i');

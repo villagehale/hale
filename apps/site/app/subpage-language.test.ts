@@ -214,7 +214,7 @@ describe('/pricing — the tier cards have anatomy', () => {
       name: 'Plus',
       features: [
         'Knows your family',
-        'Year memory, season to season',
+        'Remembers your family, season to season',
         'Starting Dec 1, signs them up with your ok.',
       ],
     },
@@ -222,7 +222,7 @@ describe('/pricing — the tier cards have anatomy', () => {
       name: 'Max',
       features: [
         'Everything in Plus',
-        'The highest limits on searches and spot watches',
+        'The highest limits on searches',
         'Priority support',
       ],
     },

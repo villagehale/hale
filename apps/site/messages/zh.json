@@ -311,7 +311,6 @@
     "Parenting guides": "育儿指南",
     "Plans on your calendar": "安排进你的日历",
     "Playdate: story time + park": "约玩：故事会 + 公园",
-    "Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and help with sign-ups.": "Plus 是一整年更多事由它来做：记住这一年，你点头后代你报名。Max 是 Hale 能做的最多：Plus 里的全部，搜索和盯名额的额度最高，优先支持，协助报名。",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "如厕训练跟着孩子准备好的信号走，比卡一个年龄更顺。身体和行为上的迹象，以及不施压的做法。",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "家长常搜的那些问题，写成好用的指南。依据可信的育儿健康框架，也说清楚它做不到什么。",
     "Pricing": "价格",
@@ -382,7 +381,6 @@
     "Text Hale. It answers with your child’s age in mind, in a line or two.": "给 Hale 发短信。它会按你孩子的年龄来答，一两句。",
     "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "给这个号码发短信。Hale 问你在哪、孩子几岁，然后给你看这周有什么。别的，以后真需要了才问。没先写过它的号码，它不会先发。",
     "Thanks, that helps. I’ll use it when I pick what to send you next.": "谢谢，有用。我下次挑发给你的内容时会用上。",
-    "The highest limits on searches and spot watches": "搜索和盯名额，额度最高",
     "The most Hale can do.": "Hale 能做的，到这里最多。",
     "The logistics": "接送这些事",
     "The people": "人",
@@ -443,7 +441,6 @@
     "Will Hale tell me if a class is any good?": "Hale 会告诉我一门课好不好吗？",
     "With your co-parent or crew": "和另一位家长，或者你们一伙",
     "Works in your group chats": "在你的群聊里就行",
-    "Year memory, season to season": "一年的记忆，一季一季",
     "Sign-ups done for you, when you say yes": "你点头后代你报名",
     "Help with sign-ups": "协助报名",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "可以。跟 Hale 和一起分担的人建个群：另一位家长、拼车的、班上别的家长。在群里问，Hale 就在群里答。",
@@ -540,7 +537,6 @@
     "Outings, parks and one‑time events, when you need an idea for Saturday.": "出门、公园、一次性的活动，周六不知道去哪的时候。",
     "Say how old the kids are and when you can go. Hale answers with a few good options, not thirty.": "说孩子几岁、你什么时候能去。Hale 回你几个好的，不是三十个。",
     "Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Drop-in play at the community centre, 10 to noon\nWant the links?": "附近三个：\n1. 亲子游泳（2–4 岁），上午 9:15\n2. 图书馆故事会（2–5 岁），上午 10:30\n3. 社区中心随到随玩，上午 10 点到中午\n要链接吗？",
-    "Plus is more done for you, all year: year memory, and, starting Dec 1, signs them up with your ok. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, and priority support.": "Plus 这一年帮你做得更多：记下这一年，并从 12 月 1 日起经你同意帮他们报名。Max 是 Hale 能做的最多：Plus 里的全部、搜索和名额关注的最高额度，以及优先支持。",
     "Plus is $19/mo or $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.": "Plus 是每月 $19 或每年 $159，Max 是每年 $329。不合适可随时全额退款。",
     "Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.": "Plus 是每月 $14 或每年 $119，Max 是每年 $259。不合适可随时全额退款。",
     "4:30 PM": "下午 4:30",
@@ -557,6 +553,9 @@
     "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",
     "Every parent should have someone who knows the family. Across every stage of childhood, from the first months to almost grown.": "每个家长都该有一个了解这个家的人。从最初几个月到快成年，每个阶段都算。",
     "From the first months to almost grown, not one season or one app.": "从出生头几个月到快成年，而不只是某一季或某一个 App。",
-    "Parent-built in Toronto.": "家长做的，来自多伦多。"
+    "Parent-built in Toronto.": "家长做的，来自多伦多。",
+    "Remembers your family, season to season": "一季一季，记得你的家庭。",
+    "The highest limits on searches": "搜索额度最高",
+    "Plus is more done for you, all year: remembers your family, season to season, and, starting Dec 1, signs them up with your ok. Max is the most Hale can do: everything in Plus, the highest limits on searches, and priority support.": "Plus 这一年帮你做得更多：一季一季记得你的家庭，并从 12 月 1 日起经你同意帮他们报名。Max 是 Hale 能做的最多：Plus 里的全部、搜索的最高额度，以及优先支持。"
   }
 }

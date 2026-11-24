@@ -311,7 +311,6 @@
     "Parenting guides": "Guides parentaux",
     "Plans on your calendar": "Les plans dans ton calendrier",
     "Playdate: story time + park": "Rendez-vous de jeu : conte + parc",
-    "Plus is more done for you, all year: year memory, and sign-ups when you say yes. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, priority support, and help with sign-ups.": "Plus, c’est plus de choses faites pour toi, toute l’année : la mémoire de l’année, et les inscriptions faites pour toi quand tu dis oui. Max, c’est le maximum de ce que Hale peut faire : tout Plus, les limites les plus hautes pour les recherches et la surveillance des places, le soutien prioritaire, et de l’aide pour les inscriptions.",
     "Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.": "La propreté marche mieux quand on suit les signes que l’enfant est prêt, pas un âge fixe. Les signes physiques et de comportement, et une approche sans pression.",
     "Practical guides to the questions parents search, grounded in trusted parenting-health frameworks and honest about their limits.": "Des guides concrets pour les questions que les parents cherchent, appuyés sur des cadres reconnus en santé parentale, et honnêtes sur leurs limites.",
     "Pricing": "Tarifs",
@@ -382,7 +381,6 @@
     "Text Hale. It answers with your child’s age in mind, in a line or two.": "Texte Hale. Il répond en pensant à l’âge de ton enfant, en une ligne ou deux.",
     "Text the number. Hale asks where you are and how old the kids are, then shows you what’s on this week. Anything else it asks for later, only when it needs it. Hale never texts a number that hasn’t texted it first.": "Texte le numéro. Hale demande où tu es et l’âge des enfants, puis te montre ce qu’il y a cette semaine. Le reste, il le demande plus tard, seulement quand il en a besoin. Hale ne texte jamais un numéro qui ne lui a pas écrit en premier.",
     "Thanks, that helps. I’ll use it when I pick what to send you next.": "Merci, ça aide. Je m’en sers pour choisir ce que je t’envoie ensuite.",
-    "The highest limits on searches and spot watches": "Les limites les plus hautes pour les recherches et la surveillance des places",
     "The most Hale can do.": "Le maximum de ce que Hale peut faire.",
     "The logistics": "La logistique",
     "The people": "Les gens",
@@ -443,7 +441,6 @@
     "Will Hale tell me if a class is any good?": "Hale va me dire si un cours est bon?",
     "With your co-parent or crew": "Avec l’autre parent ou la gang",
     "Works in your group chats": "Dans tes groupes texto",
-    "Year memory, season to season": "La mémoire de l’année, saison après saison",
     "Sign-ups done for you, when you say yes": "Inscriptions faites pour toi, quand tu dis oui",
     "Help with sign-ups": "De l’aide pour les inscriptions",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "Oui. Pars un groupe avec Hale et ceux qui partagent la charge : l’autre parent, le covoiturage, d’autres parents du cours. Demande dans le groupe et Hale répond là.",
@@ -540,7 +537,6 @@
     "Outings, parks and one‑time events, when you need an idea for Saturday.": "Des sorties, des parcs et des activités ponctuelles, quand tu cherches une idée pour samedi.",
     "Say how old the kids are and when you can go. Hale answers with a few good options, not thirty.": "Dis l’âge des enfants et quand tu peux y aller. Hale répond avec quelques bonnes options, pas trente.",
     "Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Drop-in play at the community centre, 10 to noon\nWant the links?": "Trois pas loin :\n1. Bain parent-enfant (2–4 ans), 9 h 15\n2. Heure du conte (2–5 ans), 10 h 30\n3. Jeu libre au centre communautaire, de 10 h à midi\nTu veux les liens?",
-    "Plus is more done for you, all year: year memory, and, starting Dec 1, signs them up with your ok. Max is the most Hale can do: everything in Plus, the highest limits on searches and spot watches, and priority support.": "Plus en fait plus pour toi, toute l’année : la mémoire de l’année et, à partir du 1er décembre, les inscriptions avec ton accord. Max, c’est le plus que Hale peut faire : tout ce qu’il y a dans Plus, les limites les plus hautes sur les recherches et les suivis de places, et le soutien prioritaire.",
     "Plus is $19/mo or $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.": "Plus coûte 19 $/mois ou 159 $/an, et Max coûte 329 $/an. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.": "Plus coûte 14 $/mois ou 119 $/an, et Max coûte 259 $/an. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "4:30 PM": "16 h 30",
@@ -557,6 +553,9 @@
     "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
     "Every parent should have someone who knows the family. Across every stage of childhood, from the first months to almost grown.": "Chaque parent devrait avoir quelqu’un qui connaît la famille. À chaque étape de l’enfance, des premiers mois à presque adulte.",
     "From the first months to almost grown, not one season or one app.": "Des premiers mois jusqu’à presque adultes, pas une seule saison ni une seule appli.",
-    "Parent-built in Toronto.": "Fait par des parents, à Toronto."
+    "Parent-built in Toronto.": "Fait par des parents, à Toronto.",
+    "Remembers your family, season to season": "Se souvient de ta famille, saison après saison.",
+    "The highest limits on searches": "Les limites les plus hautes pour les recherches",
+    "Plus is more done for you, all year: remembers your family, season to season, and, starting Dec 1, signs them up with your ok. Max is the most Hale can do: everything in Plus, the highest limits on searches, and priority support.": "Plus en fait plus pour toi, toute l’année : se souvient de ta famille, saison après saison, et, à partir du 1er décembre, les inscriptions avec ton accord. Max, c’est le plus que Hale peut faire : tout ce qu’il y a dans Plus, les limites les plus hautes sur les recherches, et le soutien prioritaire."
   }
 }
