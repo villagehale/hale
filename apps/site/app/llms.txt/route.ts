@@ -32,7 +32,7 @@ function buildLlmsTxt(): string {
     '',
     '- What it is: Hale knows your family and finds what fits. No app to download.',
     '- Who it is for: parents and caregivers in the US and Canada with kids from newborn to 18, plus co-parents and other parents they plan with.',
-    '- What it does: knows your family; finds what fits; gets the spot starting Dec 1, with your ok; runs the group chat; reads your Gmail and calendar, asking before it adds or changes anything.',
+    '- What it does: knows your family; finds what fits; gets the spot starting Dec 1, with your ok; runs the group chat; reads your Gmail and calendar.',
     '- Sign-ups and payment: Starting Dec 1, signs them up with your ok. You say yes, and you pay.',
     '- How it works: you text first. Hale asks where you are and how old the kids are, then shows what fits this week. Reply STOP any time.',
     `- Price: In Canada, Plus is ${PLUS_LIST_PRICE_DISPLAY.CAD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.CAD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.CAD.annualLabel}. In the US, Plus is ${PLUS_LIST_PRICE_DISPLAY.USD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.USD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.USD.annualLabel}. The number on the site follows where you are. ${REFUND_LINE}`,

@@ -33,6 +33,9 @@ const phrases = [
   'kids' + '\u2019 year',
   'spot ' + 'watch',
   'year ' + 'memory',
+  'calendar ' + 'invite',
+  'spot ' + 'opened',
+  'Just ' + 'added',
 ];
 
 const priceWordPattern = new RegExp(`\\b${priceWord}\\b`, 'i');

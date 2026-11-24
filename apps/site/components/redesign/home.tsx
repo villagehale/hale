@@ -153,7 +153,7 @@ export function RedesignHome({
     </section>
 
     <div className="visual-col">
-      <div className="visual" data-motion-scene="hero" aria-label={t("Example: a family calendar filled in by Hale, and the text thread that added it")}>
+      <div className="visual" data-motion-scene="hero" aria-label={t("Example: a family calendar and the Saturday group chat.")}>
 
         <article className="cal">
           <div className="cal-head">
@@ -200,7 +200,7 @@ export function RedesignHome({
               <div>
                 <div className="t">{t("Playdate: story time + park")}</div>
                 <div className="m">Maya, Ava, Theo <i /> <span className="mono">{t("10:00 AM")}</span></div>
-                <div className="m who-row" data-motion-step="3.2"><span className="mini-av">J</span>{t("Jen driving")} <span className="tag">{t("Just added")}</span></div>
+                <div className="m who-row" data-motion-step="3.2"><span className="mini-av">J</span>{t("Jen driving")}</div>
               </div>
             </div>
           </div>
@@ -241,7 +241,7 @@ export function RedesignHome({
                 <div className="im-who">Hale</div>
                 <img className="im-pic" src={logoSrc} alt="" />
                 <div className="im-b in">{t("Story time at the library at 10, then the playground next door?")}</div>
-                <div className="im-b in tail">{t("Want me to add it for everyone?")}</div>
+                <div className="im-b in tail">{t("Saturday 10 works for everyone?")}</div>
               </div>
               <div className="im-run group" data-motion-step="0.6">
                 <div className="im-who">Jen</div>
@@ -323,7 +323,7 @@ export function RedesignHome({
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("A spot opened in Swimmer 3, Saturdays 9:30. Starting Dec 1, with your ok.")}</div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Swimmer 3, Saturdays 9:30 has room. Starting Dec 1, with your ok, I can sign Mia up.")}</div></div>
      </div>
     </div></div>
    </div>
@@ -336,10 +336,9 @@ export function RedesignHome({
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From the school email: fall programs, Tuesday at 7:00 a.m.")}</div></div>
+       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6.")}</div></div>
       </div>
      </div>
-     <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Tue")}</i><b>7</b></span><div><div className="hs-rem-t">{t("Fall programs")}</div><div className="hs-wm">{t("Tuesday · 7:00 a.m.")}</div></div></div></div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
@@ -368,7 +367,7 @@ export function RedesignHome({
    <p className="hs-eyebrow">{t("The logistics")}</p>
    <h2 className="hs-h2">{t("Who, when and where, kept straight.")}</h2>
    <ul className="hs-list">
-    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12.5" rx="2.5" /><path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4" /></svg></span><div><h3 className="hs-h3">{t("Plans on your calendar")}</h3><p className="hs-p">{t("Each plan comes as a calendar invite, so it lands in Google or Apple Calendar with one tap.")}</p></div></li>
+    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12.5" rx="2.5" /><path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4" /></svg></span><div><h3 className="hs-h3">{t("One plan, everyone on it")}</h3><p className="hs-p">{t("Hale keeps the plan in the group chat, so every family sees the same who, when and where.")}</p></div></li>
     <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.8" /><path d="M2.5 16.2c.6-2.6 2.6-4.2 5-4.2s4.4 1.6 5 4.2" /><circle cx="14" cy="7.6" r="2.2" /><path d="M13.6 12.1c2 .1 3.4 1.5 3.9 3.6" /></svg></span><div><h3 className="hs-h3">{t("Your co-parent sees the same plan")}</h3><p className="hs-p">{t("Add Hale to the group you already share. Same plan, on their own phone.")}</p></div></li>
     <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 13.5V10l1.7-4.1A2 2 0 0 1 7 4.7h6a2 2 0 0 1 1.8 1.2l1.7 4.1v3.5" /><path d="M2.8 10h14.4v3.5H2.8z" /><circle cx="6.3" cy="15.3" r="1.3" /><circle cx="13.7" cy="15.3" r="1.3" /></svg></span><div><h3 className="hs-h3">{t("Who’s driving, sorted")}</h3><p className="hs-p">{t("Say who’s taking them. Hale keeps the driver straight.")}</p></div></li>
     <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 16.5s-6-3.6-6-8.1A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6 2.1c0 4.5-6 8.1-6 8.1z" /></svg></span><div><h3 className="hs-h3">{t("Knows your family")}</h3><p className="hs-p">{t("Ages, what they love, what’s already on their week. Ask “what do you know” to see it all, or fix it in one text.")}</p></div></li>
