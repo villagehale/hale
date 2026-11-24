@@ -134,8 +134,12 @@ describe('Meta Pixel PageView on both sites', () => {
 
 describe('the privacy policy names the pixel on both hosts', () => {
   it('discloses Meta Pixel PageView and CAPI Purchase, with no child data', () => {
-    expect(privacy).toContain('<strong>Meta</strong>');
-    expect(privacy).toContain(PIXEL_ID);
+    const metaStart = privacy.indexOf('<strong>Meta</strong>');
+    const meta = privacy.slice(metaStart, privacy.indexOf('<strong>Linq</strong>'));
+    expect(metaStart).toBeGreaterThan(-1);
+    expect(meta).toContain('The Meta Pixel records a PageView');
+    expect(meta).not.toContain(PIXEL_ID);
+    expect(meta).toContain('Conversions API');
     expect(privacy).toContain('villagehale.com');
     expect(privacy).toContain('app.villagehale.com');
     expect(privacy).toMatch(/no child/i);
