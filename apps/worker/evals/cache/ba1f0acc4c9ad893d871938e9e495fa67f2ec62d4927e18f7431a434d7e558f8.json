@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLTaqZqDsL5D3sHYqTW7",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAgKEAgUGAI4AUIIdGhpbmtpbmcSDOFVU9dpB0d3GrBp2BoMRMS07x+ZeD1ilThBIjBR83Q/7XyT2JxvDtOOLEbU3RlUPZ/FNIGhF09X5w2v1PkGsjRC7bj/rHmyzJk3TWQqsQeO4HOptZeMgs3TRXNwrtsD3tao5Cw/pDcl4C+6E+h8bPKnBwDsTMAe62Y4fazTvpBzD0vdwZrv3cfCYvd2H3xF9apgImcp4WZL/X4X154R5QL2axOwl80wukZCe8hSN8pIG+5g3Ox6bjsb4xSGPaFXmE7L98iZAp6qFmda8JcVbVE6AVfbR+SHvMBzLSSzhNIMSLpXY1BuzhxGVdw18bMDK6TMgVuopUYUmDxsBoP+2cD5+D0cxNvgwTB7UOHHXU8rDvJdbkGqNbSLj7nxLxtz9Aq4fL7ap17f2eKrlzcDwv5C9sVTSG+wQxxUpy/HRYvpRkHIc3un16na67tVSC2WB7p6h/8ISf9BJvlfKehsOwL3EHk5TuOu8nW9LhzOG7mHYxLnQ/vuZtXZhMlqs8UU5Fo5f5JbcoyD8qEdOPbBd+uh0R7hFq1fvYH7cEdRnxxeRaNy138sota85LrtXcntoZVsNO0yjJGRtOe/h2vZy9oggeBSaO6IrN7UNELOL3Z6ZfrpZAzgfCxYGKUuhk/sOUrdDRJMXhufZpTFojGS6WbvZ+bX9hnGCpYGtEM7xMX7WGWi90/z6NidmT3T9aaQqqaz/pjOLu1PyCvpAjZGFl6VIpeEVpHjZ5j7wjBY6A2Bv3bbLTQI1zBGpmEvpqQ0oaOQ1LvU4sYvChqtELHZ6b/hiYnWnOvj1ePpAkU/2ije2kqF8BZgGkvc+noQDrOOdAj8gr1lJEhko4FAa9jv0KsoFTyDLqG1MzyjQMd5rh8mnbMhfSfrMAOu6k8cStS7Mq3QDoaHbrpiVG84mPXlECUnH45usGcYPs0YoD5hQvV8PuFdRy4PtZFJK54X9Adi4CCA3DztSk0TBS4y82BF2ceqo91XWLyUE59lKcBg1mfx7Zrybkz52j+jqeVl3bLM8jnE4VHkE3SUmpVJZ3tELYJXrOv5B5/f7gOl+g0UQlNJUKw1q6fQtDN/P9FQxB5cR/iHL3v6/FFUC5QxhjPXOTMsDSPd6+Gw6WkcA9khDzWOziiI0aeJm4PC+h56fVcnUNrsYMANA4MQ4X5r40NNheYuutp0yx2lfAy99R6bc6I+j88asyskLjKyvst52NRybA/froQfGv0drYKHvAxWDL0lnpVZ+QREopV2IcuTrTFh5KiA9ErOLQCXDevcxQKr27uGDnfrIVgXXOrIvQq3DQDryYNpOlO1LHh8HAmmonS02hhudr5krgzybjO2wRb+gYrorx23QWqk3ZjKFx94S0QYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Today's Thanksgiving, so places may be closed or on holiday hours. Both of these are regular Monday programs, so check before you head out. Toddler story time at Willow Branch Library is Mondays at 10:30 a.m., free, and fits 18 months to 3 years, per their events page. [link-ce743d] Little Movers drop-in at Riverbend Community Centre is Mondays 9:30 to 11:30 a.m., free, for ages 1 to 4, per their program page. [link-c6988f]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 276,
+      "cache_read_input_tokens": 22590,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 276,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 304,
+      "output_tokens_details": {
+        "thinking_tokens": 134
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

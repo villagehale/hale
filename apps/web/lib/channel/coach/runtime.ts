@@ -122,13 +122,9 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
-import {
-  type RecordedSignupOffer,
-  augmentCoachSkillForSignupOffer,
-  signupAtOpenEnabled,
-  signupOfferToolEnabled,
-} from '~/lib/signup/offer-tool';
+import { type RecordedSignupOffer, augmentCoachSkillForSignupOffer } from '~/lib/signup/offer-tool';
 import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
+import { signupWithOkFact, signupWithOkLiveNow } from '~/lib/signup/with-ok';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
@@ -718,6 +714,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // first, each saying whether Hale's ladder is already on it. Empty for a family
         // outside the covered set — and then the skill has nothing to claim.
         registrationWindows,
+        // VIL-766. The only start date the model may name for signup, and whether
+        // that signup is live on this turn. Always present, flags off and on.
+        signupWithOk: signupWithOkFact(now),
         // The only help lines the reply may name (VIL-589), chosen for where the family is.
         // 811 is Ontario's nurse line and the call-before-you-dig line in the US.
         helpLines: healthLineFacts(healthPlace).facts,
@@ -1277,8 +1276,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             ),
             browserUseWatchEnabled(),
           ),
-          signupOfferToolEnabled(),
-          signupAtOpenEnabled()
+          signupWithOkLiveNow(),
+          signupWithOkLiveNow()
             ? await coachSignupAtOpen(registrationPreflightEnabled(familyId))
             : null,
         ),
@@ -1472,7 +1471,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               linksThisTurn: watchLinks,
             }
           : null,
-        signupOffer: signupOfferToolEnabled()
+        signupOffer: signupWithOkLiveNow()
           ? {
               database,
               familyId: turn.familyId,

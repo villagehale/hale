@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "اتصلوا بـ 911 الآن وابقوا على الخط. موظف الطوارئ سيخبركم بالضبط ما يجب فعله، حتى الإنعاش إذا لزم الأمر. لا تنتظروا."
+  },
+  "latencyMs": 1998,
+  "usage": {
+    "input_tokens": 158,
+    "output_tokens": 90,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

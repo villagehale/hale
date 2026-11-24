@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text carries every given fact. The piano lesson (钢琴课) keeps its meaning as the event's name. \"一个小时后开始\" matches minutesUntilStart of 60. \"今晚7点到8点\" gives the right day and evening time, with start and end both present. The venue \"Ms. Chen studio\" is kept as given. The facts have no street address, so none is missing, and nothing is invented. The language is Chinese, no link was added, and [bold] is none, which is fine.",
+    "score": 5
+  }
+}

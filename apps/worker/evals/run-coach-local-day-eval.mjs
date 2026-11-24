@@ -60,6 +60,10 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-local-day');
 
+let signupWithOkFact = () => {
+  throw new Error('coach-local-day eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, localDay, helpLines) {
   return {
     parentName: null,
@@ -79,6 +83,7 @@ function contextFor(fixture, localDay, helpLines) {
     ...localDay,
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date(fixture.now)),
     helpLines,
   };
 }
@@ -197,6 +202,7 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('coach-local-day');
   const cost = makeCost();

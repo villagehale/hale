@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I'm really glad you reached out, and I'm here with you. If you're thinking about hurting yourself or things feel like too much, please call or text 988, the Suicide Crisis Helpline. It's free, open any time, in English or French. If you're in danger right now, call 911. You don't have to sit with this alone."
+  },
+  "latencyMs": 3121,
+  "usage": {
+    "input_tokens": 125,
+    "output_tokens": 106,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

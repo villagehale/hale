@@ -16,7 +16,7 @@ pnpm --filter @hale/web test
 
 What it covers:
 
-1. The ten steps in order: postal code, the kids' names, their ages, the activity map (its own bubbles, no question), the parent's name in a separate message, Gmail in its own turn, calendar in its own turn after Gmail is answered, one found activity onto the calendar as a reminder, the co-parent group chat asked once, then the thread is handed to chat. Nothing sent says booked, enrolled, signed up or registered.
+1. The ten steps in order: postal code, the kids' names, their ages, the activity map (its own bubbles, no question), the parent's name in a separate message, Gmail in its own turn, calendar in its own turn after Gmail is answered, which map find fits so Hale knows the year, the co-parent group chat asked once, then the thread is handed to chat. Nothing sent says booked, enrolled, signed up or registered.
 2. Postal code, a kid's name and age, the parent's name, and both connections all in the first message.
 3. Two of those items in one message. The map goes out and the next missing ask follows on its own.
 4. An off-script reply at every step. The reply answers it and comes back to the current question. No step is silent.

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "before": "Bonjour, je suis Hale, un agent IA à qui on texte pour l'année des enfants. Camille vous a ajouté à ce groupe. Je lis et j'écris uniquement dans cette conversation, je ne consulte rien d'autre, et vous n'avez rien à vous inscrire ni à installer : le forfait de la famille couvre tout le groupe. Si vous préférez que je ne vous écrive pas, dites-le simplement, et cela ne vaut que pour vous.",
+    "question": "Pouvez-vous me dire qui vous êtes dans cette famille, avec vos propres mots ?"
+  },
+  "latencyMs": 2356,
+  "usage": {
+    "input_tokens": 153,
+    "output_tokens": 213,
+    "cache_read_input_tokens": 4862,
+    "cache_creation_input_tokens": 0
+  }
+}

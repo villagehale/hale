@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both pickups, the day and time, and that Barton has both; it asks Sam by name to take Maya's swim pickup, which matches suggested.takes. Poll is posted with its question asking who takes it, options Barton and Sam from input.poll.choices plus a neutral last option in English, and it is one ask. Facts, one ask, and tone all check out; minor register is casual enough.",
+    "score": 5
+  }
+}

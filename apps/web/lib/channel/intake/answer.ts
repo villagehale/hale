@@ -12,6 +12,7 @@ import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { CityOpeningFacts } from '~/lib/registration/city/context';
+import { signupWithOkFact } from '~/lib/signup/with-ok';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
 import { groundUserMessage } from './ground-message';
@@ -230,11 +231,12 @@ const answerJsonSchema = {
  * children the parent named minutes ago — no family id, no postal code, no transcript,
  * no session state (rule #1: the model sees only what the message may contain).
  */
-export function intakeAnswerContext(input: IntakeAnswerInput): unknown {
+export function intakeAnswerContext(input: IntakeAnswerInput, now: Date = new Date()): unknown {
   return {
     parentWords: input.parentWords,
     pendingAsk: input.pendingAsk,
     children: input.children.map((child) => ({ name: child.name, ageMonths: child.ageMonths })),
+    signupWithOk: signupWithOkFact(now),
   };
 }
 

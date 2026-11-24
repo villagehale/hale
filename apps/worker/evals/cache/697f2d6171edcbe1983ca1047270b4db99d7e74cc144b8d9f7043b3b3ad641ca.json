@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLSTqczFkkPCq1fT6ELr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0QoKEAgUGAI4AUIIdGhpbmtpbmcSDJDZ5vumpN0PffjBjRoMkpsmszRsaJf3BAZjIjAQ+KSrrwY4In60lUsa4Wd5fkN1HQJSdJn/U4/DLewP3TfBSLKvFJ+e1wAfT2c7zb4q7gllHROEsEjCJmbKduIdY50Bx24ctDiAwSmIWDL6bwmKKwnV0adpkPrG78L2h3AIVEodQNlWbAfoL6tixFFl9I7toUfyysVV+02WNqwb4Kk9NM/lN+EwwsYNVUcSg0Pf604bbbs36wrriyqXQZphtG3XmtGVeg+bkU8PNbNzeyDsE1+JW2jJaYKLKuF0+15xHNpcA4Ixm8HgC6uk23kTOONnvB7vCBtyw9QGn7FXR2/6Q3wP/QW8+o0Yxhz4p886OYLD11dIPrS77j6vH5GWHLtF4QieSxBPpaMxMjqIwSyGj+TZ9lberxYXx9yjXj4AVapVrS1g4K2Dc/p3D0NEw+CtF+6r51f8ulW1No/qxhcHLjwrI6TLcIi+22J1H5wFl1MiOCAUErvOZ1n3g6wTk2+mFJx9KQL0Px7G1QJZi03fp8pgG3MxQfRyNO6/pFVv359EUbQh+hgdXgHi1oN1EgQCOVD3kaZVzyv1cJK+KuPGOfjXspFfiYVihKZJOQqGntAvJxcKJtn4pfwaF7zHovkBH5zdQ9dhKYSa1LbQt4lMs8TN5zMWmhCFDlgSuSoR1Sa+oWqGDWXQ1uXlEDdiZmlelai9mVSNGBNxxVVqHnm8XpCK918MfYBRG4uqVTiik08oJbcDTGomIePzQXC8HkV7OpWE4Pq8sr8tV6MV6pcJqyqyb3kJ8K+U7jkeimfS+OTcgFe5CWPWR2in6Lh2cEMBqgjCPV1n09W4DObcN+P/5YiP+IuzrXFMrRYt96lX135GIO/ZohbYBbpUF0ViY2oxeZoySr9GZGJwCO2OszO0Vcm7ygH4JAS1XmfJrjhgvA3dUCPl2BC0a0kHoeHExKG8+TW2kLJ4MqU24zAtErGfw6QaKGBO7PEaJA4UFhokMHJec3q/QMIiIsjP98xZB7FRtmVEnb1IvLpADQFgls+HVxu54z3WCYuwF+Ii/dFdYHNP/FcLK0lOX2qGrOGsl0cNpINBQCRrTjXXcsGCb9VCaIsXlUuuf7jj7u91Ax1zAwc4NVADOzeOa4cC0eRQQwY70TbuqF6TBDiz6XjQNRbFeWOVRnMWkRYc75MijED/zLWvJ/ODjbKVI6fq0xgJr9HShf2JQdyaMJdrDQrqJIM87mBzDr2YB9kfC9b2Bjp1LKVj2Wcf64yfIreqxAcgblNs3jD4QXPgNX0jEJiKN2KZv9ru4ZNhcykqbC/F1SadothZLhC2jqyhHBdooxwMzDjCxqs/vk9lpLWxCABRLRBX2FKpb3CNpByHEiY0R+Gf6Qz8zppYiD2JkHYO1CSUz9fL5aVy7tRPpF934xwlTErYWJmTDEmNeKYmdzg1yFwXMVvz4k0jZq2qaZ9Ul4iSn1mejDHugxkmRZ2OSxNwvlL5iEIkzmEr6mq+Y3GGmTOahVUqLXRRqH1+Id+auDYJwSKak/r8+Qa10B2nE3rzuEpFG/iHo/A8Rl6gXvc3ye6KW2f9fxWKYYp7JGR5t2KIa2WJD00aAsi5OQR/QVQFP6oLZlVU0aFkDBfPTSrXM+FJN487fP7f+Orjl+x1+eCeep+SY60aGCSe1ejKMiJubYe5ubfj3OL3YF1FBjTi/GhTVwYNY4Yi7qT3G23WoD4NAkuaBqpZErCGfvDAv6R2Hy8R9zglvCNnXrxxGZNnkfQH9SJA8bPwqMWxOVsLwyWOjRgB"
+      },
+      {
+        "type": "text",
+        "text": "Calling the pool is past me, so that one's a call for you to make."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1689,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18481,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 290,
+      "output_tokens_details": {
+        "thinking_tokens": 267
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

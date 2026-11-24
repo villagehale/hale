@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "我正在处理您的问题，答案会发到这里。"
+  },
+  "latencyMs": 1497,
+  "usage": {
+    "input_tokens": 61,
+    "output_tokens": 27,
+    "cache_read_input_tokens": 2924,
+    "cache_creation_input_tokens": 0
+  }
+}

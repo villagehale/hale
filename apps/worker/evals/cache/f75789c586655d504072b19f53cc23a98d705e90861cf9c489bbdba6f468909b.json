@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "There's a kid around Ravi's age in another Hale household not far from you. If you'd like, I can make the intro. Neither of you hears anything from me about the other until you both say yes."
+  },
+  "latencyMs": 1377,
+  "usage": {
+    "input_tokens": 61,
+    "output_tokens": 65,
+    "cache_read_input_tokens": 4587,
+    "cache_creation_input_tokens": 0
+  }
+}

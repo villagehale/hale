@@ -213,6 +213,10 @@ const GROUP_LISTS_REFERENCE_TEXTS = [
 
 const LOCATION = { city: 'Springfield', province: 'IL', country: 'US' };
 
+let signupWithOkFact = () => {
+  throw new Error('group-lists eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, helpLines) {
   return {
     parentName: fixture.sender.split(' ')[0],
@@ -246,6 +250,7 @@ function contextFor(fixture, helpLines) {
     standingQuestions: [],
     audience: 'group',
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(NOW),
     helpLines,
   };
 }
@@ -424,6 +429,7 @@ async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const only = onlyIds();
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('group-lists');
   const cost = makeCost();

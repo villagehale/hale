@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both items, the day and time, and Barton as the conflict, and gives Sam taking Maya's swim pickup as the single ask. A poll goes, its question matches the ask, and its options match input.poll.choices plus a neutral last option in English. Minor concern: the message says 'can't be in two places at once' which is a reasonable plain restatement, and it does not invent details. Tone is casual and fits.",
+    "score": 5
+  }
+}

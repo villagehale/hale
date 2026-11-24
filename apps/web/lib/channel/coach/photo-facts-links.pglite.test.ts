@@ -57,6 +57,7 @@ afterEach(() => {
 async function toolsFor(body: string, photoFacts: TurnPhotoFacts) {
   vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
   vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+  vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
   vi.stubEnv('BROWSER_USE_WATCH_ENABLED', 'true');
   vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
   vi.stubEnv('F14_ENABLED', 'true');

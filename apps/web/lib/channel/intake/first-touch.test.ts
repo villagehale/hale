@@ -476,12 +476,12 @@ describe('friend voice onboarding', () => {
     expect(calendar).toContain('to=gcal');
     expect(calendar).not.toMatch(/email/i);
 
-    // Step 9: one activity, a sensible default, a reminder — not a registration.
+    // Step 9: one activity they kept for the year — not a registration.
     await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
     expect(transport.bodies().at(-1)).toContain('Tap it when');
     await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
     const schedule = transport.bodies().at(-1) ?? '';
-    expect(schedule).toContain('Want the first one on your calendar as a weekly reminder?');
+    expect(schedule).toContain('Want the first one kept for the year?');
     expect(schedule).not.toContain('/connect?t=');
 
     await handleInboundSms(fake.db, inbound(transport, 'yes'), timed);
@@ -498,7 +498,7 @@ describe('friend voice onboarding', () => {
     ).toBe(true);
 
     // The add is confirmed with no question; the next reply closes the schedule.
-    expect(transport.bodies().at(-1)).toBe('Done, a weekly reminder for the first one.');
+    expect(transport.bodies().at(-1)).toBe("Done, I'll keep the first one for the year.");
     await handleInboundSms(fake.db, inbound(transport, 'sounds good'), timed);
 
     // Step 10: the co-parent, asked once, after the schedule — not combined with it.
@@ -1246,9 +1246,7 @@ describe('friend voice onboarding', () => {
     expect(lastCard(transport)).toMatch(/calendar/i);
     expect(lastCard(transport)).not.toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
-    expect(transport.bodies().at(-1)).toBe(
-      'Want the first one on your calendar as a weekly reminder?',
-    );
+    expect(transport.bodies().at(-1)).toBe('Want the first one kept for the year?');
     expect(transport.bodies().filter((body) => /email/i.test(body))).toHaveLength(1);
     expect(
       fake.writes.some(

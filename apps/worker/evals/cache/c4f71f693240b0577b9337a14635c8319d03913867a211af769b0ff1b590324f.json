@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011ChLWRQtNME5mCuNegmWNc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Nothing for art is on this Friday, Aug 7. The only thing I have is the Harbour Art Studio email from Jul 28, which said Ada's art class is Fridays at 4:30. I can't tell whether it's still running, so it's worth checking with them. Want me to add this Friday's 4:30 to the calendar anyway?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1411,
+      "cache_read_input_tokens": 24257,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1411,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 111,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1373
+}

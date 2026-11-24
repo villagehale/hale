@@ -22,9 +22,12 @@ import type { AgentClient } from '@hale/agent';
  * fails telling you to re-record. A recording can never drift into answering a question it
  * was not asked.
  *
- * RECORDING. Run the test with `HALE_RECORD=1` and a live key:
+ * RECORDING. Run the test with `HALE_RECORD=1`, a live key, and a spend ceiling.
+ * Record mode refuses the live call unless both `HALE_MAX_USD` and
+ * `HALE_SPEND_LEDGER` are set:
  *
- *   HALE_RECORD=1 npx vitest run lib/__journey__/activity-answered.test.ts
+ *   HALE_RECORD=1 HALE_MAX_USD=5 HALE_SPEND_LEDGER=/tmp/hale-record-ledger.json \
+ *     npx vitest run lib/__journey__/activity-answered.test.ts
  *
  * then commit the JSON. Without the flag a miss is a hard failure and no request is ever
  * made, so CI can neither spend nor silently pass.
@@ -155,7 +158,7 @@ export function recordedModel(path: string, live: () => AgentClient): RecordedMo
           `recorded-model: no recording for key ${key} in ${path}.`,
           'The request changed (a projection, a skill, or a model tier), so the old',
           'answer is an answer to a different question and will not be replayed.',
-          'Re-record with HALE_RECORD=1 and a live ANTHROPIC_API_KEY, then commit it.',
+          'Re-record with HALE_RECORD=1, HALE_MAX_USD, HALE_SPEND_LEDGER, and a live ANTHROPIC_API_KEY, then commit it.',
           `--- request ---\n${userMessage}`,
         ].join('\n'),
       );

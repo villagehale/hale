@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011ChLSTVrrDo4qNHMfCZe4d",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAYKEAgUGAI4AUIIdGhpbmtpbmcSDO9DyvfekoOAGWyGuRoMuupYg+VmX7YK+4vIIjDqgYTx+dlLWdgbjXVWSOGo6ipXDvvec8wT9/sCykihVnu3O0VrMTAWfpXY3mY5sGkqsQUzSfmO07W+ai0IlC2UvZoVf3NAI/evwfQLD9gEtt9KEkX7EpfVbEa5d8TyZfOtEF/2frEDGz7Om/RYkHpYuw794WhKFjw3fFsl+Eh/F3XhKxqHzKl0dFBheOg8CqyFt60cKMGRdCdDbv+3GTaOjmFI4IaI3SqZa+h4OOMBFUohevu0Mr8SyQgwPqcVIhuIiFZBdlTFwBiYw9qct4B5WIfl91287K//dIaLA05OdcgqyJiVxjmtXK8kowyIHJYIvF3QSzkeZ/0tBfu2CTruj2F7aJSbOgx3Jik/P3Nwkg0toYqtQbUUMdjEt6skQE7Y+2lm7Z/AfyI4oweUi9mFRrXtObAMHhXmaPqmmAgXjE2uzXG6eV1A/fK5zE0COObX2iZr7mxGCX4f73rO6uj33CfdadTqH+PnzsBr3JD5wModA84aiDeiCy9YPrP1ytRewfZuyEjARByRgrUsIOl6/HCIKJuvzN28UnCewPxXnDA6EmpgWG/PoURv62n7DtujHPqnpRuxvA1/45gxz3zj0w3PH2YDuaSYWtY8JtP/Pw3//dtVhSVbP1bBpf4mpeLTtvCf62Q0c6NGZIfLVaMTWAV0JdBCBuW/89qYhLzxekGcjGP3lDn/WR3nixd3wDJm3uc7W2sY2i5GnuNNj91Gy2ouXjW6H/PB2XwAvXrd0p83i0YhtPE1PFOWymrdESeSvmEC3jra5dWEdYCeJNgQM7dCDfr7phN3Vhcl/rLN/s2nJ/PsNUkiVdMH0CeK7F4trcJQnENUrEXX8Y12NIJ2UUISxFpnRxD0L4b2r2DcqTFp8VY3s5debqVQuecM8S8nl7AKqs0vjthfvtQmbKnCsf558hI16b36RXxEYVqnK2QIguuU/oKvTfKS/J0NK6hnSmfaHqCD/1Z8SC29IlBeVUYZRxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JtBtBHtezHWhRPmXn8svYw",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1655,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18481,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 79,
+      "output_tokens_details": {
+        "thinking_tokens": 50
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

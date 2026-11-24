@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the event 'Swim class' as given, says it is today (matches now Monday 7:00 AM and event date), gives the start 10:00 and end 11:00 with 'in the morning' (correct AM). No location or address was given, so none is missing or invented. No invented logistics, no wrong link, no overlaps claimed, no change claimed, and bold is none, which is fine.",
+    "score": 5
+  }
+}

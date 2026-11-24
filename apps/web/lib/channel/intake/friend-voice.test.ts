@@ -77,6 +77,38 @@ describe('friend voice brief', () => {
     );
   });
 
+  it('hands signupWithOk with the offer lane off and on (VIL-766)', () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', '');
+    const now = new Date('2026-11-23T18:00:00.000Z');
+    const facts = (input: FriendVoiceInput) =>
+      (friendVoiceContext(input) as { facts: { signupWithOk: unknown } }).facts;
+    const place = (at: Date) => blank({ step: 'place', now: at, timeZone: 'America/Toronto' });
+    expect(facts(place(now)).signupWithOk).toEqual({
+      startsOn: '2026-12-01',
+      liveNow: false,
+      startsInFuture: true,
+    });
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
+    vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+    expect(facts(place(now)).signupWithOk).toEqual({
+      startsOn: '2026-12-01',
+      liveNow: false,
+      startsInFuture: true,
+    });
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    expect((facts(place(now)).signupWithOk as { liveNow: boolean }).liveNow).toBe(true);
+    expect(
+      (
+        facts(place(new Date('2026-12-01T05:00:00.000Z'))).signupWithOk as {
+          startsInFuture: boolean;
+        }
+      ).startsInFuture,
+    ).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
   it('appends the household-group skill only when the fact rides; other turns keep their bytes (VIL-566)', async () => {
     const base = (await loadOnboardingFriendSkill()).instructions;
     const group = (await loadCronSkill('household-group')).instructions;
@@ -476,7 +508,14 @@ describe('onboarding friend fixtures', () => {
     expect(ruleWords.length).toBeLessThan(20);
     expect(skill.instructions).toContain('## Facts');
     expect(skill.instructions).toContain('## Output');
-    expect(skill.instructions).toContain('reminders, not registrations');
+    expect(skill.instructions).toContain('`askedInstead`');
+    const tool = onboardingReplyToolSchema();
+    expect(tool.properties).toHaveProperty('askedInstead');
+    expect(tool.properties).not.toHaveProperty('parentQuestion');
+    expect(tool.required).toContain('askedInstead');
+    expect(skill.instructions).toContain('Not a reminder, and not a registration');
+    expect(skill.instructions).not.toContain('remind the evening before');
+    expect(skill.instructions).not.toContain('would like reminders for');
     expect(skill.instructions).toContain('Propose a default per item');
     // The trust lines are true for a full-read Google scope: no "never sees your mail".
     expect(skill.instructions).not.toMatch(/never sees? your (personal|work) (mail|email)/i);
@@ -849,7 +888,7 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply('Ton Gmail est connecté.', gmail)).toEqual({ ok: true });
   });
 
-  it('refuses every way of claiming a registration Hale did not make, and keeps the reminder wording', () => {
+  it('refuses a completed registration, and allows the signupWithOk promise', () => {
     const schedule = blank({
       step: 'schedule',
       parentWords: 'yes',
@@ -871,10 +910,44 @@ describe('friend-voice judge', () => {
     }
     expect(
       judgeFriendReply(
-        "Swim is on your calendar as a reminder for Saturdays at 11:00; I'll flag it when registration opens. Anything else?",
+        "Swim is on your calendar for Saturdays at 11:00; I'll flag it when registration opens. Anything else?",
         schedule,
       ),
     ).toEqual({ ok: true });
+    const ahead = blank({
+      step: 'kids_names',
+      parentWords: 'can you sign her up?',
+      now: new Date('2026-11-23T18:00:00.000Z'),
+      timeZone: EASTERN,
+    });
+    expect(
+      judgeFriendReply(
+        'I can get them signed up starting Dec 1, with your ok. Who are the kids?',
+        ahead,
+      ),
+    ).toEqual({ ok: true });
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    expect(
+      judgeFriendReply(
+        'I can get them signed up starting Dec 1, with your ok. Who are the kids?',
+        ahead,
+      ),
+    ).toEqual({ ok: false, reason: 'registration_claim' });
+    expect(
+      judgeFriendReply('I can get them registered, with your ok. Who are the kids?', ahead),
+    ).toEqual({ ok: true });
+    vi.unstubAllEnvs();
+    const past = blank({
+      ...ahead,
+      now: new Date('2026-12-02T15:00:00.000Z'),
+    });
+    expect(
+      judgeFriendReply(
+        'I can get them signed up starting Dec 1, with your ok. Who are the kids?',
+        past,
+      ),
+    ).toEqual({ ok: false, reason: 'registration_claim' });
   });
 
   it('answers who-is-this in the model voice, but only when the company is named', () => {
@@ -2299,15 +2372,23 @@ describe('a garbled parentQuestion', () => {
   it('writes the reply on the retry when the first draw is garbled, and keeps no Gmail yes', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const seen: Array<FriendVoiceInput['retry']> = [];
+    const inner = composerReplying(
+      { ...fields, connectGmail: true, parentQuestion: GARBLED },
+      { ...fields, parentQuestion: true },
+    );
     try {
       const retried = await speakFriend(
-        composerReplying(
-          { ...fields, connectGmail: true, parentQuestion: GARBLED },
-          { ...fields, parentQuestion: true },
-        ),
+        {
+          compose(input, options) {
+            seen.push(input.retry);
+            return inner.compose(input, options);
+          },
+        },
         gmailAsk,
         { page: async () => undefined, linkFollows: true },
       );
+      expect(seen[1]?.problem).toMatch(/tool-call tags/);
       expect(retried.source).toBe('retry');
       expect(retried.body).toBe(fields.reply);
       expect(retried.capture.connectGmail).not.toBe(true);

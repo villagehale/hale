@@ -1,0 +1,14 @@
+{
+  "value": {
+    "texts": [
+      "Toddler gym starts at 10:30 this morning, so about 18 minutes from now. It runs till 11:15 at Birchwood Rec Centre, 14 Alder Ave."
+    ]
+  },
+  "latencyMs": 1725,
+  "usage": {
+    "input_tokens": 173,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

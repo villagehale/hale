@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly takes the yes as agreement to the follow-up from the last message, and that follow-up is registered in promises. But it adds a timing ('tomorrow') and a commitment to text 'even if it's still not up' that nothing backs, and it changes what was promised. The opening 'Done.' also reads as if something has already happened.",
+    "score": 3
+  }
+}

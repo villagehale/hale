@@ -1,0 +1,16 @@
+{
+  "value": {
+    "texts": [
+      "Tomorrow's got three things. Theo has swim 9:00 to 9:45 in the morning at Mold-Masters SportsPlex, 221 Guelph St.",
+      "Then Léa's at the dentist at 11:00 in the morning, Bright Smiles Dental on 12 Main St.",
+      "And Léa has piano at 5:00 in the afternoon, wrapping up at 5:30, over at Halton Music, 5 Queen St."
+    ]
+  },
+  "latencyMs": 2457,
+  "usage": {
+    "input_tokens": 381,
+    "output_tokens": 154,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

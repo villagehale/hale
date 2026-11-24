@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011ChLVdvwrcizvSXdUsLjfN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Waking now and then is common at 8, but every night is worth working on. Summer schedule drift and worries that surface in the dark are the usual causes. Tonight, keep bedtime and wake-up times steady. If Ada does wake at 2, walk them back to bed calmly with few words, no screens and no snacks. Making the middle of the night boring is what usually helps it fade."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 318,
+      "cache_read_input_tokens": 25347,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 318,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 122,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1793
+}

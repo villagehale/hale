@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "There's a toddler in another Hale household nearby, around Maya's age, and I think the two families would get on. I can make the intro if you'd like, and nothing goes to them until you both say yes."
+  },
+  "latencyMs": 1709,
+  "usage": {
+    "input_tokens": 61,
+    "output_tokens": 68,
+    "cache_read_input_tokens": 4587,
+    "cache_creation_input_tokens": 0
+  }
+}

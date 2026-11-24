@@ -1,0 +1,45 @@
+{
+  "response": {
+    "id": "msg_011ChLW4z4p6RUSnB1ZQFwuM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmAoKEAgUGAI4AUIIdGhpbmtpbmcSDDQZYoy3Ms1/0KB8TRoMfAPvZykmgcODs8JLIjCkWOStGyg1YrN+r8+B9SAqqcH3XmSUxD0wM2kY9xCuRjwZddfdhEh8sEa3sp1ZF5kqtQlIq0z8LsvCjt8rjPEgEdDRMspDR9nYxybEBzXCP/5htc37S0dPwKga4BlyCriwEAyn/9O5NQm79OptezQpcDIPlzQnJ//JDKklR5EIKP3k+ZTr/Ha77YQxG+wKuoczuyN3hWIJIb2lxTjaxims/yEyi+EW4IbwjzUlTVEq+y4c0tUv7zyLshLyHwTkkoTiDFNbk1aZBXTQ8eVu0zqFVtVVU+8eElj9XD2178lY80eep+S+llz6VVJZFX03W236KkOrWpKt+Yat2NUFZBvzByhGeT0Js8t2FqrJ7Nr+9rsUie8JJkvDULrGNeagLfTidOnt6wQsDC+3isSbWpPvq3yW81yYEMOnrs7BcjT7Z4Mm9ELDhorCqr/rzWGCRBXXLDg2cbkDgIm7Vj+LZ47UyBCUTmbFnNUyuPP7bGDy9FwgdcJYkI7MBkGAdh+2vefzCv4oRSqtl5Rs7YgAjk1UeHmlNLNwzpVuyybFDxN8L1gpH9G8u+ujAX52NopnCuJ2tkuZZJsUH4L8EVxq2CK7hsRaT9jnSQZu7Rk6XXYA+XcP6L+ToDOyfPHih3GCWCd7gsNuaCzD+WotjZRstakH48sRBND9pVUBo2gACqY/byyEWzu8EZvE86g0CNzOURJKolBCpj8SkkwyhCElUq81ozcsvPSH4qO3WqpJ4SYsa4foZZW2dpT443Wa6Gsf8pVJ5A54ugxvcLx+ERq1uhdripc5vabE+YiFYiB97DV9yBTYAX4UQXpjQvp7HrqL9n2HsK5h+SJ8i/fXlNW5R4o7wUSt4VBXd1JUvQMvK2fNRNM3qi5KfgGyLU9xGzLWGg6GB+KvJXTs/iFJpujoA/S43KNDf8fYVSoj+/k9o5RiPB9zCXnj8+rFkXuoZ4462bEULIdAwCc+GvIXotpIdJeq9/rZCMaCu6ff81223JBWSytadGfuA8Gv7O4/9uR34+PX5ylyItU7cVUsGgQ/lkBbt1PtGzeh4BeWlSqipBFBHsuPE70gCxz3AE3QtkGdNjT1c5+o7+Xzxrf+vT0PAF+i/Z/CXhv6CpC1dROkFFC6v/xscmXEo1SCbWEVOusvcUoPCamybN+ZNkIxEc3sBD1tH+Yh/AqAFsbhodNcBty//gAUB5Wd99x5Nyl+VqDG6yVNCQdmGv5TmdnXuQkGGmvKge11CDokNL8coD2dIIpqT/dulX+BdkivASC67hRqk8etxwF3Rn6yBZ1lAOqWyrBYtvOFsmHOSOtVAGG9XN8WT/BC4lOVIJLkA8hilzX+oGO+qfIzm7g5Qkr8LEi1R8Cnje3kkHiHS+4yHhlelAyd97gYlhn4zm2aR11ez+OaUBjaFUs3wGQ+TmgiVIsLzMyOJ2cmzEVbW4Dvl8OHrO8LO4MDwtoTvZcXDWmrk9m99VSEJj6QbXtso3Y3Mtlfh+UFUw9JLYsNM8BkdO8/VK4OQPzF5r+iKV65SBNbtvhgURmXDmzcLmZe7JUebgrjRPwJ3iTNutfDeacMGkmngKIteHRht4xi7i/+B9xaB2OmsRfbC/gp9CnzjMYsmJIn+J1OztuSqE3dZjOUZ2HL44EkTQNYS2FUXwi1m/KAdICpCkhFZc/SGQJmvRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01RmJSbKD7kti9d7r5NnMDYm",
+        "name": "find_activities",
+        "input": {
+          "subject": "park playground"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1644,
+      "cache_read_input_tokens": 24058,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1644,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 248,
+      "output_tokens_details": {
+        "thinking_tokens": 196
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4452
+}

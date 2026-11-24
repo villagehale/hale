@@ -1,0 +1,13 @@
+{
+  "value": {
+    "before": "你好，我是 Hale，一个你可以发消息的 AI 助手，负责孩子们这一年的事情。是婷把我加到这个群里的。我只在这个群里读写消息，不会看你们其他的任何内容。你不需要注册或安装任何东西，这个家庭的套餐已经覆盖整个群的成员。如果你不希望我给你发消息，直接跟我说就行，只对你个人生效。",
+    "question": "你在这个家庭里是什么身份呢？"
+  },
+  "latencyMs": 2761,
+  "usage": {
+    "input_tokens": 152,
+    "output_tokens": 171,
+    "cache_read_input_tokens": 4862,
+    "cache_creation_input_tokens": 0
+  }
+}

@@ -46,6 +46,10 @@ const NOW = '2026-11-12T17:00:00.000Z';
 
 const LOCATION = { city: 'Columbus', province: 'OH', country: 'US' };
 
+let signupWithOkFact = () => {
+  throw new Error('coach-voice-memo eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, helpLines) {
   return {
     parentName: null,
@@ -64,6 +68,7 @@ function contextFor(fixture, helpLines) {
     nowIso: NOW,
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date(NOW)),
     helpLines,
     ...(fixture.arrivedMedia ? { arrivedMedia: fixture.arrivedMedia } : {}),
   };
@@ -146,6 +151,7 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('coach-voice-memo');
   const cost = makeCost();

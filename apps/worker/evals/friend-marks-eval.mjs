@@ -2,10 +2,10 @@
 //
 // SUBJECT: packages/agent/skills/onboarding-friend.md, called with the same
 // tool, schema and lane as createFriendVoiceComposer. friend-voice.ts reads
-// `asks`, `parentQuestion`, `connectorsOffered` and `joinPointer` instead of
+// `asks`, `askedInstead`, `connectorsOffered` and `joinPointer` instead of
 // matching '?' or English/French words. This checks the model returns them on
 // the turns where the send depends on them, with the right value: a Chinese
-// question is `parentQuestion` and no question is kept as a yes, a calendar
+// question is `askedInstead` and no question is kept as a yes, a calendar
 // reply that offers Gmail lists it, a co-parent yes points `below`, a receipt
 // does not ask.
 //

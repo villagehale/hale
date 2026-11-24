@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Got it. I can't text Nana first, so you'll need to add her to the family group chat with me in it, or she can text me directly and I'll take it from there."
+  },
+  "latencyMs": 1043,
+  "usage": {
+    "input_tokens": 61,
+    "output_tokens": 56,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

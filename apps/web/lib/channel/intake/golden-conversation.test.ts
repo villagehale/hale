@@ -180,9 +180,9 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
       groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
     };
   }
-  // Reminders just recorded: confirm them, ask nothing.
+  // A find they kept: confirm it, ask nothing.
   if (capture.scheduleAdds.length > 0) {
-    return { reply: 'Done, a weekly reminder for the swim.', capture };
+    return { reply: "Done, I'll keep the swim for the year.", capture };
   }
   // The test double is the model. Production does not read these phrases.
   if (input.step === 'coparent' && /\bnew group\b/i.test(words)) {
@@ -231,7 +231,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
   } else if (!calendarKnown) {
     ask = who ? `${who}, want me to check your calendar?` : 'Want me to check your calendar?';
   } else if (!scheduleKnown && input.findLines.length > 0) {
-    ask = 'Want the swim one on your calendar as a weekly reminder?';
+    ask = 'Want the swim kept for the year?';
   } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
   else ask = "I'll take it from here.";
 
@@ -463,19 +463,19 @@ describe('golden onboarding conversation', () => {
     expect(calendarBody).toContain('to=gcal');
     assertTypingUntilSend(calendar.marks);
 
-    // Step 9: one found activity onto the calendar as a reminder. A yes to
+    // Step 9: one found activity kept for the year. A yes to
     // the calendar is its receipt first; the next text brings the schedule.
     const calendarYes = await talk.say('yes');
     expect(calendarYes.bodies.join('\n')).toContain('Tap it when');
     expect(calendarYes.bodies.join('\n')).not.toContain('?');
     const schedule = await talk.say('ok');
-    expect(schedule.bodies.join('\n')).toMatch(/weekly reminder\?$/);
+    expect(schedule.bodies.join('\n')).toMatch(/kept for the year\?$/);
     expect(schedule.bodies.join('\n')).not.toMatch(/https:\/\//);
     assertTypingUntilSend(schedule.marks);
 
     // The add is confirmed with no question; the next reply closes the schedule.
     const added = await talk.say('yes');
-    expect(added.bodies.join('\n')).toBe('Done, a weekly reminder for the swim.');
+    expect(added.bodies.join('\n')).toBe("Done, I'll keep the swim for the year.");
 
     // Step 10: the co-parent, asked once and on its own, with nothing under it.
     const coparent = await talk.say('sounds good');
@@ -685,7 +685,7 @@ describe('golden onboarding conversation', () => {
     await talk.say('yes');
     const schedule = await talk.say('ok');
     expect(schedule.bodies.join('\n')).toContain('Got it.');
-    expect(schedule.bodies.join('\n')).toMatch(/reminder\?$/);
+    expect(schedule.bodies.join('\n')).toMatch(/kept for the year\?$/);
 
     await talk.say('yes');
     const coparent = await talk.say("What's next");
@@ -839,7 +839,7 @@ describe('golden onboarding conversation', () => {
           if (!chosen) return { reply: 'Your calendar is connected.', ahaMention: null };
           const clash = partner ? ` It overlaps ${partner}.` : '';
           return {
-            reply: `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`,
+            reply: `${chosen.title} is on your calendar ${when}.${clash} I'll flag the overlap.`,
             ahaMention: chosen.title,
           };
         },

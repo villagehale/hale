@@ -35,8 +35,8 @@
 //     no tools has no price.
 
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { tsImport } from 'tsx/esm/api';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register, tsImport } from 'tsx/esm/api';
 import { loadHasLinkShape } from './lib/has-link-shape.mjs';
 import { healthRoutingFailures } from './health-line-gates.mjs';
 import { INTAKE_ANSWER_FIXTURES, WATCH_OFFER_ASK } from './intake-answer-fixtures.mjs';
@@ -62,6 +62,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'intake-answer.md');
+const WITH_OK_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'signup', 'with-ok.ts');
+
+register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
+
+/** Suite clock. Before 2026-12-01 in Toronto, so startsInFuture does not follow the wall clock. */
+const INTAKE_ANSWER_NOW = new Date('2026-11-23T18:00:00.000Z');
+
+let signupWithOkFact = () => {
+  throw new Error('intake-answer eval: signupWithOkFact was not loaded');
+};
 
 // ── the composer's request shape, replicated from answer.ts ─────────────────
 
@@ -91,7 +101,7 @@ const ANSWER_TOOL_SCHEMA = {
   required: ['askKind', 'answer', 'returnLine'],
 };
 
-/** Mirrors `intakeAnswerContext`. */
+/** Same fields as `intakeAnswerContext`, on the suite clock rather than the wall clock. */
 function intakeAnswerUserMessage(fixture) {
   return JSON.stringify({
     parentWords: fixture.parentWords,
@@ -100,6 +110,7 @@ function intakeAnswerUserMessage(fixture) {
       name: child.name,
       ageMonths: child.ageMonths,
     })),
+    signupWithOk: signupWithOkFact(INTAKE_ANSWER_NOW),
   });
 }
 
@@ -200,6 +211,7 @@ const MIN_DISTINCT_RETURN_LINES = 5;
 const MIN_DISTINCT_RETURN_OPENERS = 3;
 
 async function main() {
+  ({ signupWithOkFact } = await import(pathToFileURL(WITH_OK_SRC).href));
   hasLinkShape = await loadHasLinkShape();
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -287,6 +299,7 @@ async function main() {
     const verdict = await judge(fixture.id, {
       parentWords: fixture.parentWords,
       pendingAsk: fixture.pendingAsk ?? WATCH_OFFER_ASK,
+      signupWithOk: signupWithOkFact(INTAKE_ANSWER_NOW),
       answer,
       returnLine,
       watchFor: fixture.watchFor ?? 'none',

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Heads up, Friday 9/25 at 3:00 Maya has both her dentist appointment and swim pickup, and she can't be in two places at once. Barton, which one is she going to?"
+  },
+  "latencyMs": 3577,
+  "usage": {
+    "input_tokens": 180,
+    "output_tokens": 68,
+    "cache_read_input_tokens": 1323,
+    "cache_creation_input_tokens": 0
+  }
+}

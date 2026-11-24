@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with the correct day (tomorrow, Monday). Theo's swim has start 9:00 and end 9:45 AM with the venue name and address; Léa's dentist is at 11:00 AM with the venue and address, and no end was invented; Léa's piano has start 5:00 PM, end 5:30, venue and address. AM/PM are correct throughout. No events have overlaps, and the text doesn't hint at any clash. No invented logistics, no link, and the language is English. [bold] is none, which is fine.",
+    "score": 5
+  }
+}

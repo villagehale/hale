@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "Ready for Reading (Ages 3-6) is on Saturday near you, and there's a preschooler nearby around Leo's age whose family could go too. I can make an intro if you'd like one?"
+  },
+  "latencyMs": 1735,
+  "usage": {
+    "input_tokens": 82,
+    "output_tokens": 71,
+    "cache_read_input_tokens": 4587,
+    "cache_creation_input_tokens": 0
+  }
+}

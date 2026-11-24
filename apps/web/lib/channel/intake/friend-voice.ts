@@ -26,6 +26,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { type SignupWithOkFact, signupWithOkFact } from '~/lib/signup/with-ok';
 import { ageFitCorrectionEnabled } from './age-fit-correction';
 import { friendVoiceModelFieldsEnabled } from './friend-voice-model-fields';
 import type { HouseholdGroupFact } from './household-group';
@@ -631,7 +632,11 @@ const replyFields = z.object({
   asks: z.boolean().optional().default(false).catch(false),
   // Read with the rest of the turn below: whether a missing value is a question
   // depends on whether the turn holds a yes.
-  parentQuestion: z.unknown(),
+  // The wire name is askedInstead. parentQuestion stays readable so a test that
+  // still hands the old key parses. A name starting with `par` is what the model
+  // wrote call tags into.
+  askedInstead: z.unknown().optional(),
+  parentQuestion: z.unknown().optional(),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -668,10 +673,13 @@ const replyFields = z.object({
   handOff: z.string().nullable().optional().catch(undefined),
 });
 
-const replySchema = replyFields.transform((value) => ({
-  ...value,
-  parentQuestion: readParentQuestion(value),
-}));
+const replySchema = replyFields.transform((value) => {
+  const marked = {
+    ...value,
+    parentQuestion: value.askedInstead !== undefined ? value.askedInstead : value.parentQuestion,
+  };
+  return { ...marked, parentQuestion: readParentQuestion(marked) };
+});
 
 /**
  * Fails closed: a value that is there but not a boolean may hide a question, and a
@@ -761,7 +769,8 @@ const replyJsonSchema = {
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
     asks: { type: 'boolean' },
-    parentQuestion: { type: 'boolean' },
+    // Not `parentQuestion`: a field whose name starts with `par` came back as call tags.
+    askedInstead: { type: 'boolean' },
     connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
     joinPointer: {
       type: ['string', 'null'],
@@ -772,7 +781,7 @@ const replyJsonSchema = {
     claimsSaved: { type: 'boolean' },
   },
   // Code reads these instead of the reply's words, so the model always says.
-  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
+  required: ['reply', 'asks', 'askedInstead', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
 /**
@@ -882,9 +891,53 @@ const BANNED_PHRASE =
 const COMPLIANCE =
   /unsubscribe|d[ée]sabonner|reply stop|r[ée]pondez arret|r[ée]pondez stop|\bSTOP\b/;
 
-/** Adding to the calendar is a reminder. These words claim a registration Hale did not make. */
+/** These words claim a registration. A future promise that names signupWithOk is the exception. */
 const REGISTRATION_CLAIM =
   /\b(booked|enrolled|signed[- ]up|signed (?:you|them|her|him|\w+) up|registered|registration (?:is )?done|inscrit[es]?\b|réservé)\b/i;
+
+/** A completed signup, or a word that is never the Dec 1 promise. */
+const COMPLETED_SIGNUP =
+  /\b(?:already|i(?:'ve| have)? signed|she(?:'s| is)|he(?:'s| is)|they(?:'re| are)|you(?:'re| are)|we(?:'re| are)|is|are|was|were|got)\s+(?:signed[- ]up|registered)\b|\bsigned (?:you|them|her|him|\w+) up\b|\b(booked|enrolled|inscrit[es]?\b|réservé|registration (?:is )?done)\b/i;
+
+/**
+ * Signed up or registered is allowed only as the signupWithOk meaning.
+ * Booked, enrolled, and a signup already done stay refused.
+ */
+export function signupWordsAllowed(text: string, fact: SignupWithOkFact): boolean {
+  if (!REGISTRATION_CLAIM.test(text)) return true;
+  if (COMPLETED_SIGNUP.test(text)) return false;
+  if (fact.liveNow) {
+    if (namesSignupStart(text, fact.startsOn) && /\bstart(?:ing|s)?\b/i.test(text)) return false;
+    return true;
+  }
+  if (!fact.startsInFuture) return false;
+  return namesSignupStart(text, fact.startsOn);
+}
+
+function signupDateSlots(startsOn: string): string[] {
+  const [year, month, day] = startsOn.split('-').map((part) => Number(part));
+  if (!year || !month || !day) return [startsOn];
+  const instant = new Date(Date.UTC(year, month - 1, day, 12));
+  const slots = [startsOn];
+  for (const options of [
+    { month: 'long', day: 'numeric' },
+    { month: 'short', day: 'numeric' },
+  ] as const) {
+    slots.push(new Intl.DateTimeFormat('en-CA', { ...options, timeZone: 'UTC' }).format(instant));
+  }
+  return slots;
+}
+
+function namesSignupStart(text: string, startsOn: string): boolean {
+  if (text.includes(startsOn)) return true;
+  const [year, month, day] = startsOn.split('-');
+  if (month !== '12' || day !== '01' || !year) return false;
+  if (!/\b(?:dec|december)\.?\s+1(?:st)?\b|\b1(?:st)?\s+(?:dec|december)\b/i.test(text)) {
+    return false;
+  }
+  const years = text.match(/\b20\d{2}\b/g) ?? [];
+  return years.every((found) => found === year);
+}
 
 const ACTIVITY_WORD =
   /\b(swims?|swimming|soccer|gym|gymnastics|librar(?:y|ies)|zoo|museum|hockey|dance|ballet|music|storytime|story time|camps?|daycare|earlyon|farm|natation|scouts?|beavers)\b/gi;
@@ -1142,6 +1195,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       ...(input.photo ? { photo: photoForModel(input.photo) } : {}),
       // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
       ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
+      signupWithOk: signupWithOkFact(now ?? new Date()),
       // Who runs Hale is for when they ask; otherwise the founder's name is
       // one more name the model could take for the parent's.
       identity: input.introduce || input.identityAsked ? HALE_IDENTITY : null,
@@ -1448,6 +1502,7 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
     for (const day of upcomingDays(input.now, zone, 'fr')) slots.push(day.label);
   }
   for (const slot of syncedFactSlots(input)) slots.push(slot);
+  slots.push(...signupDateSlots(signupWithOkFact(input.now ?? new Date()).startsOn));
   slots.push(
     HALE_IDENTITY.company,
     HALE_IDENTITY.site,
@@ -2007,7 +2062,10 @@ export function judgeFriendReply(
     return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
   const contextFree = friendVoiceContextFreeRefusal(trimmed);
-  if (contextFree) return { ok: false, reason: contextFree };
+  if (contextFree === 'registration_claim') {
+    const fact = signupWithOkFact(input.now ?? new Date());
+    if (!signupWordsAllowed(trimmed, fact)) return { ok: false, reason: 'registration_claim' };
+  } else if (contextFree) return { ok: false, reason: contextFree };
   // Who is behind this number is a disclosure: when they asked, the company is named.
   if (input.identityAsked && !NAMES_HALE_COMPANY.test(trimmed)) {
     return { ok: false, reason: 'identity' };
@@ -2765,7 +2823,22 @@ export async function speakFriend(
         },
         'compose',
       );
-      return { fail: 'model_failed', capture: empty };
+      const markup = err instanceof StructuredOutputError && err.outcome === 'tool_markup';
+      return {
+        fail: 'model_failed',
+        capture: empty,
+        // A markup refusal has no parsed draft. The retry still writes the reply,
+        // told that tags are what was wrong, so the parent is not left with nothing.
+        ...(markup
+          ? {
+              retry: {
+                draft: '',
+                problem:
+                  'The call wrote tool-call tags inside a field, so nothing was sent. Fill each field with its value and write the reply again.',
+              },
+            }
+          : {}),
+      };
     }
   };
 
@@ -2935,7 +3008,7 @@ export function askInWords(
     case 'google':
       return "ask whether they want to connect Gmail and Google Calendar with the one link (one trust line from facts.access and a word about Google's screen from facts.googleLink first)";
     case 'schedule':
-      return 'ask which of the map activities they want reminders for (suggest one per kid first)';
+      return 'ask which finds fit each kid, by name';
     case 'coparent':
       return 'ask whether a group chat with the other parent would help';
     case 'names':

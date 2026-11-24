@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "我正在整理您的回答，很快就会发给您。"
+  },
+  "latencyMs": 962,
+  "usage": {
+    "input_tokens": 27,
+    "output_tokens": 27,
+    "cache_read_input_tokens": 2924,
+    "cache_creation_input_tokens": 0
+  }
+}

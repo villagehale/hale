@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLSB13oxPwogwjUBhbhn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvQYKEAgUGAI4AUIIdGhpbmtpbmcSDDyF6FjISy05+aNrMhoMoDZ0oXvPDfhDIzAmIjB5T1S0ZNAxq4SalmbbdSogCkvBSegqiQNykEC3Sj39otk4XueY7ypzkvRTGEpKsHYq2gUvjC0I6+tekhLcKhkwi28PGONACk8Of2rKzdg/zDIC9gI9chujhaLmlee0DMX8LDpOqHYKpMu/nh676/Qw4nH+errNHxLbLOOodmx+2yz2wPRcGc/KZxm9MZT51Jov+SLPhSZuwbDessTuHPuFFIcdmybpEx0YD1EqQI8fwsOHZ934TwKcObFrsk6NYRindCx2dY7kPkukDN454vkraesvEBMUr4+1Ce5AQtoIER/oNHZc7P9V9rpJDDE5pbBmAHQpvbLVcbiyzkShTYcsnXGydZr9ETjtF3ikHmxpmcnggJOpsIDQG3cN7l5phXto2YcvyfYlJ0xoUcEelDj5EYjQ862EOvkiI/c+QzHKp2CL2NUsQSLXgOGMOK2Z3N5H+msmqkCg/BzSX0VOEr2H7AWpDqVvcXPIfJek/9ct9FoiCWx4UmcISF74adwbII+nZ+Ftmh7vT5wDxrcp6R9oHAJPBlZh2oLpIc+549Xm6lf0Aoofnhd/32inZoJ/EM9pgFPhisxh14FM2JpwSmEZRqZ1vSzHRC1ShgyQJ7niOKEQKkmW88K8IlHI2W1Ti6c+gw7ukADiCMyOVH1jKYVJt+LWUll++n6DrRXc74EBRqSFUdlAxpeTsyQAGA8u5oX+g0Ql3yAFXPN0srdk3PR/bo8Vfbiu1Ujzk0lvHFT+LLz1DnXvcqCNFo/19DbCzIZkLgWmF1xSAtHdcYKKGH1UcLXiHsDmRCjfQJ3253yKfWERBMsPtMOchhHQtdC+3QWgUYeXJ//Y1rD8cB0C9uVbWYLQzN5HKXfMygYLdHBIamW+WCMTkgMUYwlr9Qivb118JNUIQSOFkeWOOrOok9knj0zeKfYDfdAqWGVQa81tfWyz4ukFLlF/HMumKvKPwDJuCiwooWs9kr6ZsDGxA/WSJEOWt51f6GKvynWUT3UNmm729MbE0bTJfm7R/8b6kxm3oX9GQJguRzq5raLSGAE="
+      },
+      {
+        "type": "text",
+        "text": "Swim lesson is Saturday at 10:00 to 10:45am at the community pool."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 513,
+      "cache_read_input_tokens": 19498,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 513,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 121,
+      "output_tokens_details": {
+        "thinking_tokens": 90
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

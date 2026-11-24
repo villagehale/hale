@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011ChLSAMGhRCywRaaAHR7Ar",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSkAcKEAgUGAI4AUIIdGhpbmtpbmcSDMl0W0Cqjr0qQ9AtuxoMAVPIh68TFAy7wXaXIjCoBtLhlfBK2IzhbfyMAd3SIcOpUowhMrvfLhsSmDljAtmFGJPoD/DP3AIsv++ePO8qrQZQpLjMyPw120M08jvpZb+fVarKEkPSjBeA967Mvc17C69TYah39aQMdpK8Ldkr/heQOFRNbdzgK7Lk4gpXGC1Gd4tNDYn6whPxjpcouU911LgSlQXwFb/O2voxeEvNxwA4ZnyqR6qT+pMg7g1UxfDzBodF9v1wBrvsHVNjA3bat88hS28nlLlLkZljS3F9cFS+2AZiyjnX2ZKwVx/s0c5wynIDlfbQBVAamKULFD0+H+7r3j4n/1e1C7Ud7sxa0CAWRs1W/CFo3IEQ00IJwCap6mfOElpZQFdWF6xoSNY9G1d+UTtOAoen/PWbXR2tFlH1ZjbKBeqAoM2qAh7EeFayYHJW48b8jlKZ2oPzr5k4KLY/CcHSC171sketdKQwqil0e9uSWi/MyOLNudemPo07/iQ4sxt8j2HvCx4++wyVpKOwCb3p1H0meIyV9Re7x4tnKtGxuNj0AB+l22uHmZBEs7LKqDolfnpGFZ0agvt3d/Kk9f3FdUDPLAdycfiYikj1Emq3msu/4klR7ABIv1WTZQxM+BaizK+uVsJnCxiIJN8S2sg61+Cik0PsdN7QCtpD3I/xo6fKBVyiakJwFISU0olDU14AYaWeR/i9J3ucdz+xwhpgQy6wGCRL2FHM9cTJ/9bwXUwrXyJYwf2bETbAoR2Xn7IwXGFy/nglxxNQ4m9ghJlipO5Shq4bXJbVndUBPoxtCnPx5tIqux2NRekSZxdKbrBAlwvtr0265lgSVVBGlvT0m0NpsLLIQ8/VyAjxhmDIPVQ4vt3v158ENA3cnKsrrB/x/kvtaaHS9ld9iuQxKujyVMik3qUqohaSqshPTMth31kZQjeBKZqU/627vHshMa1aMVhv6gMMOXmzMWtAz48LNh3bVI4NOaoynEfRjAPoLmmAvMZr/YTB8fCPlxFRTZiKw/sTFmVbpxWi+7kS/x3s1Z4VOECMBWmUNTqs8hqM9mLoQ/m+fwMRCX5Zu6Bh3vpbjwxljrL+Q8gwWJoyDITFhkjsC6Hnbbft0dJ8Q0aVmCTOvdpAlxLUMLI2Tu/2rMCH+j1xDVu+vT0DTfL4EpILuEQyvuU6NzEYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AkDWE5EAdicr55LyQa958p",
+        "name": "find_activities",
+        "input": {
+          "query": "toddler activities this weekend Columbus OH"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 746,
+      "cache_read_input_tokens": 19498,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 746,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 148,
+      "output_tokens_details": {
+        "thinking_tokens": 85
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

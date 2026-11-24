@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Je n'ajoute personne moi-même et je n'envoie rien à qui que ce soit. La personne peut m'écrire directement par SMS pour commencer."
+  },
+  "latencyMs": 1536,
+  "usage": {
+    "input_tokens": 56,
+    "output_tokens": 62,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

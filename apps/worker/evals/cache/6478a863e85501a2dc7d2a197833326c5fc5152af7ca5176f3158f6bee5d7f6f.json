@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with correct day (tomorrow, Monday), start times with correct AM/PM, ends where given (swim 9:45, piano 5:30), venue names and street addresses, and the right child for each. The dentist has no end and none was invented. No overlaps were in the facts and none are claimed. No invented logistics, no extra link, language is English, and the bold is none, which is fine.",
+    "score": 5
+  }
+}

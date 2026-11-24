@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, that Hale stop sending emails without asking first. turnedOffThisTurn lists send_email and reply_to_email, so Hale really did turn email sending off, and saying so is true. The reply answers in the parent's language, confirms the exact change, and stops. \"Listo, Sam\" opens with an acknowledgment plus the parent's name, which is fine.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply groups every offerable find by day, as asked. Each title, place, date and URL traces to `offerable`, and the weather note matches the forecast. It ends with one ordinary question and has no greeting or sign-off. One small blemish: the weather comparison is a bit of padding beyond the grouped list the parent asked for.",
+    "score": 4
+  }
+}

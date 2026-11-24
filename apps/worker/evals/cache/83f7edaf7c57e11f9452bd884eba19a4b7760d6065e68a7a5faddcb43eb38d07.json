@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "How did Saturday Storytime at Riverdale Library go? No pressure to reply, even a word is fine."
+  },
+  "latencyMs": 1141,
+  "usage": {
+    "input_tokens": 37,
+    "output_tokens": 44,
+    "cache_read_input_tokens": 4403,
+    "cache_creation_input_tokens": 0
+  }
+}

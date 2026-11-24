@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011ChLVumodBVYkG93g8aKpx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSngkKEAgUGAI4AUIIdGhpbmtpbmcSDLhNh5NPyMTQ6e/U+RoMXQPoFK4bABgZ2XAoIjDAycw+QSJw5h/O5F9GHh216Y4lLja6XpHouz3gHeVah4c/CzJdwtamnICi6dzHUNsquwjAcT6OFeTm7mJ5DbAbWC86N0Lp9oLpadr8qY1BIr+Dip15GCUUVnjDNcUDfzPTQgJFllkT4Yhvn94IK3yXbo7xel0NzTH3TWW+HxPtcNZWEzBUR7Xg+qXJj/L/9ah9QecrknS6kXrMOPs+qtiORv/wO53uveuiYf0eVWBarCvqBWAw0H0VTVKMlXc3AHPZQfW1DbIOSAHeMUHbJUSJOcVmZX9oMy00yl8PJrkGQCajv7X5TSTTDFPRNc4S7feL83hqiMtYN2/x7LSB7oeT9PsKA3bNcjGOtZp0cgE8vqOkEcz9HsW1X2SKNH1W5xMbI+nNsOdzjwrjFwdhTpreWVF15dWN5AAxmgcJvFgmzUFc56Io5AqgbnEYsy2Y8H2R34yJjHBhuldgrHBbQtwdKWxcos5apeSgRBfrtvjQy60n7MitiLHHjXKi/Iea9CLipjV+3+WtcnbKtkyOyMCqGk3lyR5w5RwdcO4xF12DusuzfOl/Ms05w8rlmUiv1D15GAkVN3ehY6gcoBBRQdZWNmNa44r5fDPoeQGBZm5qg0LHYJ/9pW6TCgt9qfsHgXy40WrGD/MtvbKmwNqB6S4KEZS6/ooLNLtl0A4496qKS4R/s05ktbHkh+S7W27yO77cGmY2BLhwM1XpuAgID/nVBN1ehgV5YfcFJ5dOM69NqERIsMXdnkzRRkATSh1iclrab0+YTLtGqdC5lG/XJuNwmGkmgth+sV28YS+A7UDNrjdNwcuuJo1HLeEc/Ondqwtcovw6QGcR4syBbYmjEEJPfrZAyyWM+PFIZ/cNp39GVS9e8AxUyGqkgYvzAO0qO/ku+xWDYAweT7INNdr6olnEpHF98vkv68CXM6fndV6icr378toa/NjKD8Ql1hlB6hbjKEReJCrPOhpx7fw4qeY1sl92nYN6rn3HpJ5OlipH5iojdOHWLVj+PnrIse+140Url/R7L5qBjpiez/0ysNjfdb+LaePosAE2xuoDzF/ig9LzBs53FZ0Q0qoKGD4TQAsZ+S0eitnM4yfGWg3uyAU3DkuSJDrAnRAS3uyu7Or7NTtJvtW39g3i1rxGmn9EyNK/Jpi7p/FUmK8l+lO5E+ttQk4N8lFrs3TCsIVKOr1t3YKDyPGNmAXfnVhlAu2M4Y61YFnF9DI60eoshBbSYX2dwraqJnhL3dOUH1f2YO8utJtHld+WpAdHVlvRI2EWOV6RQen58wVT+gaPoWK03ESib05MIDt4Ueipb3P/KjzAmDURYw0hVRcT1X4lZVP6VNcDvobHQHQB8b87cQT5Q/Hfz+xTLLZpxLREWC7MVhF2M1zh652xNOAlhi1byXArY8f/OfSfbzuTgkJ1UP/OFp45KIladlUVKwt7a89wIWysBucDcJZafBV1Yg4oXRAnBKxIL0YH5GNNBFKiFAcswZLdsV/FxKgv1XAhHxZ0RCIYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym, since it's for under 3.5s and a parent stays with them. Mini Gym is for going solo once they turn 3.5, which is still a bit under two years away."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1776,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 24058,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 295,
+      "output_tokens_details": {
+        "thinking_tokens": 229
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3593
+}

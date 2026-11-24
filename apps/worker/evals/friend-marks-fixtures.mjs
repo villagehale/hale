@@ -1,6 +1,6 @@
 /**
  * The model fields friend-voice.ts reads instead of a text match:
- * `asks`, `parentQuestion`, `connectorsOffered`, `joinPointer`, `claimsSaved`. These strings are
+ * `asks`, `askedInstead`, `connectorsOffered`, `joinPointer`, `claimsSaved`. These strings are
  * the cases, not a matcher: code does not decide intent from them.
  *
  * `emits` lists the fields the model must return on that turn, with a value of
@@ -10,7 +10,7 @@
  * whether `connectorsOffered` holds the connector this step is not: code
  * refuses that reply under this step's link. `noYesIn` names the
  * connector a question must not turn into a yes: code clears that yes only
- * when `parentQuestion` is set, so a yes without it is a miss. `offersNone` is a
+ * when `askedInstead` is set, so a yes without it is a miss. `offersNone` is a
  * turn whose reply must offer no connector at all. `sendable` is a reply that
  * must pass the code judge for its step, so code would send it. `throughCode` is a
  * turn graded on what speakFriend sends, after its refusal and its one rewrite.
@@ -197,8 +197,8 @@ export const FRIEND_MARKS_FIXTURES = [
     },
     // No offersOther: the email ask sometimes also offers the calendar. The
     // field then lists it and code refuses that draft, which is the gate working.
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: false },
   },
   {
     id: 'email-question-zh',
@@ -209,8 +209,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -223,8 +223,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -237,8 +237,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -250,8 +250,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: true },
     offersOther: false,
     noYesIn: 'connectGmail',
   },
@@ -268,8 +268,8 @@ export const FRIEND_MARKS_FIXTURES = [
       ],
       checklist: { ...NOTHING_YET, postal: true, kids: true },
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: true },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: true },
     offersNone: true,
     printReply: true,
   },
@@ -376,8 +376,8 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: { ...DONE_THROUGH_NAME, gmail: true },
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
+    expect: { askedInstead: false },
     offersOther: false,
   },
   {
@@ -388,7 +388,7 @@ export const FRIEND_MARKS_FIXTURES = [
       parentName: 'Dana',
       checklist: DONE_THROUGH_NAME,
     },
-    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
+    emits: ['asks', 'askedInstead', 'connectorsOffered'],
     expect: {},
     offersOther: true,
     noYesIn: 'connectCalendar',
@@ -402,8 +402,8 @@ export const FRIEND_MARKS_FIXTURES = [
       coparentJoin: { line: '(555) 555-0142', phrase: 'Hale group' },
       checklist: DONE_THROUGH_SCHEDULE,
     },
-    emits: ['asks', 'parentQuestion', 'joinPointer'],
-    expect: { parentQuestion: false, joinPointer: 'below' },
+    emits: ['asks', 'askedInstead', 'joinPointer'],
+    expect: { askedInstead: false, joinPointer: 'below' },
   },
   {
     id: 'coparent-no',
@@ -414,8 +414,8 @@ export const FRIEND_MARKS_FIXTURES = [
       coparentJoin: { line: '(555) 555-0142', phrase: 'Hale group' },
       checklist: DONE_THROUGH_SCHEDULE,
     },
-    emits: ['asks', 'parentQuestion'],
-    expect: { parentQuestion: false },
+    emits: ['asks', 'askedInstead'],
+    expect: { askedInstead: false },
   },
   // VIL-538: the Preview turn. An English parent, on the co-parent step, asks to
   // save something that is not a map line, with a "tomorrow Saturday" that is a
@@ -521,7 +521,7 @@ const OTHER_CONNECTOR = { email: 'calendar', calendar: 'gmail' };
 
 const FIELD_TYPE = {
   asks: (v) => typeof v === 'boolean',
-  parentQuestion: (v) => typeof v === 'boolean',
+  askedInstead: (v) => typeof v === 'boolean',
   connectorsOffered: (v) =>
     Array.isArray(v) && v.every((item) => item === 'gmail' || item === 'calendar'),
   claimsSaved: (v) => typeof v === 'boolean',
@@ -581,7 +581,7 @@ export function friendMarksMisses(
   if (fixture.sendable && judged?.ok !== true) {
     misses.push(`reply:unsendable:${judged?.reason ?? 'not_judged'}`);
   }
-  if (fixture.noYesIn && value?.[fixture.noYesIn] === true && value?.parentQuestion !== true) {
+  if (fixture.noYesIn && value?.[fixture.noYesIn] === true && value?.askedInstead !== true) {
     misses.push(`${fixture.noYesIn}:yes_kept`);
   }
   // An English parent gets an English reply: no accented letters in it.

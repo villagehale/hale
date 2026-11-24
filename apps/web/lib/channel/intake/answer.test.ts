@@ -617,11 +617,48 @@ describe('intake answer · the emergency tripwire', () => {
 });
 
 describe('intake answer · what the model is shown', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('sees the words, the ask and the children — never the session or the postal code', () => {
-    const context = intakeAnswerContext(INPUT) as Record<string, unknown>;
-    expect(Object.keys(context).sort()).toEqual(['children', 'parentWords', 'pendingAsk']);
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', '');
+    const context = intakeAnswerContext(INPUT, new Date('2026-11-23T18:00:00.000Z')) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(context).sort()).toEqual([
+      'children',
+      'parentWords',
+      'pendingAsk',
+      'signupWithOk',
+    ]);
     expect(context.children).toEqual([{ name: 'Sebastian', ageMonths: 48 }]);
+    expect(context.signupWithOk).toEqual({
+      startsOn: '2026-12-01',
+      liveNow: false,
+      startsInFuture: true,
+    });
     // The consent ask goes in WITHOUT the privacy URL that rides with it in the message.
     expect(JSON.stringify(context)).not.toContain('http');
+  });
+
+  it('marks signup live only when the offer lane is on, and not from the browser flags', () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', '');
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', '');
+    const now = new Date('2026-11-23T18:00:00.000Z');
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', 'true');
+    vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+    expect(
+      (intakeAnswerContext(INPUT, now) as { signupWithOk: { liveNow: boolean } }).signupWithOk
+        .liveNow,
+    ).toBe(false);
+    vi.stubEnv('REGISTRATION_PLAN_RUN_ENABLED', 'true');
+    expect(
+      (intakeAnswerContext(INPUT, now) as { signupWithOk: { liveNow: boolean } }).signupWithOk
+        .liveNow,
+    ).toBe(true);
   });
 });

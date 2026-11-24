@@ -1,0 +1,15 @@
+{
+  "value": {
+    "texts": [
+      "Heads up, Léa's swim tomorrow moved to 4:30 PM, it was 5:00. It runs till 5:15 PM at Mold-Masters SportsPlex, 221 Guelph St."
+    ],
+    "bold": "4:30 PM"
+  },
+  "latencyMs": 1793,
+  "usage": {
+    "input_tokens": 195,
+    "output_tokens": 90,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

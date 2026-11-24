@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I'm really glad you reached out, and I'm here with you. You don't have to carry this alone. You can call or text 988, the Suicide & Crisis Lifeline, any time, and if you're in immediate danger, call 911 right now."
+  },
+  "latencyMs": 3135,
+  "usage": {
+    "input_tokens": 117,
+    "output_tokens": 82,
+    "cache_read_input_tokens": 3695,
+    "cache_creation_input_tokens": 0
+  }
+}

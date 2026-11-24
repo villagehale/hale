@@ -1,6 +1,6 @@
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { watchedSpotsEnabled } from '~/lib/channel/spots/flag';
-import { authorizedSignupEnabled } from '~/lib/signup/flag';
+import { signupWithOkLiveNow } from '~/lib/signup/with-ok';
 
 /**
  * VIL-303 · the capabilities Hale may say no to today and yes to later.
@@ -18,8 +18,8 @@ export const DEFERRED_CAPABILITIES = ['sign_up', 'spot_watch'] as const;
 export type DeferredCapability = (typeof DEFERRED_CAPABILITIES)[number];
 
 const LIT: Record<DeferredCapability, (familyId: string) => boolean> = {
-  // The offer_signup verb and the consent flow behind it (signup/offer-tool.ts).
-  sign_up: () => authorizedSignupEnabled(),
+  // Same live check as signupWithOk.liveNow and the offer_signup listing.
+  sign_up: () => signupWithOkLiveNow(),
   // The watch_for_opening dark gate, exactly (spots/tool.ts).
   spot_watch: (familyId) => watchedSpotsEnabled() && f14EnabledFor(familyId),
 };

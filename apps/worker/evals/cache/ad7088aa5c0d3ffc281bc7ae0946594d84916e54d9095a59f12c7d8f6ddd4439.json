@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Says the answer is on its way but gives no time, and stays in conversation.",
+    "promises_a_time": "no",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1450,
+  "usage": {
+    "input_tokens": 32,
+    "output_tokens": 54,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

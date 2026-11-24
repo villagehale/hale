@@ -252,7 +252,7 @@
   "judges/intake-answer": {
     "name": "judges/intake-answer",
     "version": null,
-    "sha256": "17386d8de026d76fe7d8730e95081a081976a4b960d872ef85239a9d80055800"
+    "sha256": "b163a23a33accbbb15ffb1f80c514c361d170209e238adeeb96c9e9319971039"
   },
   "judges/intro-group-voice": {
     "name": "judges/intro-group-voice",
@@ -367,7 +367,7 @@
   "judges/registration-note": {
     "name": "judges/registration-note",
     "version": null,
-    "sha256": "bb8a43b144cafc255f315f2975dc2bedf28dcb9d40df4ce9f0856dfcc48d0b74"
+    "sha256": "20408e5f75d7dc063a52d84becb73c41d6f5f9fc5fe96fd7edab16a1616ca9dd"
   },
   "judges/reminder": {
     "name": "judges/reminder",

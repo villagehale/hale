@@ -92,6 +92,7 @@ function contextFor(fixture, helpLines) {
     nowIso: '2026-11-09T15:00:00.000Z',
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date('2026-11-09T15:00:00.000Z')),
     helpLines,
     ...(fixture.owed.length > 0 ? { capabilityCorrections: fixture.owed } : {}),
   };
@@ -316,7 +317,14 @@ function callFailures(fixture, calls) {
   return failures;
 }
 
+let signupWithOkFact = () => {
+  throw new Error('coach-capability-correction eval: signupWithOkFact was not loaded');
+};
+
 async function main() {
+  ({ signupWithOkFact } = await importTs(
+    join(REPO_ROOT, 'apps/web/lib/signup/with-ok.ts'),
+  ));
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -489,6 +497,7 @@ async function main() {
         alsoPossible: fixture.judgeCan,
         earlierAsk: fixture.signup?.earlier?.said,
         offerSignupReturned: fixture.signup ? signupResults : undefined,
+        signupWithOk: signupWithOkFact(new Date('2026-11-09T15:00:00.000Z')),
       },
       rubric: fixture.rubric,
       reply,

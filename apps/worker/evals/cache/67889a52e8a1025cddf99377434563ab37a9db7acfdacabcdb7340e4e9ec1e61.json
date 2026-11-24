@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale correctly declined the call in words and sent no tapback, which is appropriate since the parent's request needs a clear answer that Hale cannot make the call.",
+    "score": 5
+  }
+}

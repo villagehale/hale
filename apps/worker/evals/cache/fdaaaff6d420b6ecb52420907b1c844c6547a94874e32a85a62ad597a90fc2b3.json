@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Je ne peux pas ajouter Jo moi-même, je ne lui écris pas en premier. Tu peux l'ajouter au groupe de famille avec moi dedans, ou Jo peut m'écrire directement."
+  },
+  "latencyMs": 1137,
+  "usage": {
+    "input_tokens": 62,
+    "output_tokens": 82,
+    "cache_read_input_tokens": 4841,
+    "cache_creation_input_tokens": 0
+  }
+}

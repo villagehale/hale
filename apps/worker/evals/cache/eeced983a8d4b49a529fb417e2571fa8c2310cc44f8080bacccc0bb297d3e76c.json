@@ -1,0 +1,15 @@
+{
+  "value": {
+    "texts": [
+      "Demain c'est « Jour de congé », toute la journée.",
+      "Et Léa a natation demain matin, de 10 h à 11 h, à la Piscine Main, 120 Main St."
+    ]
+  },
+  "latencyMs": 2022,
+  "usage": {
+    "input_tokens": 249,
+    "output_tokens": 70,
+    "cache_read_input_tokens": 3893,
+    "cache_creation_input_tokens": 0
+  }
+}

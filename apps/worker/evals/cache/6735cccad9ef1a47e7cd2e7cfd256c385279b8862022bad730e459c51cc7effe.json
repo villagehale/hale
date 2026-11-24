@@ -1,0 +1,12 @@
+{
+  "value": {
+    "line": "我正在处理，答案正在路上。"
+  },
+  "latencyMs": 1007,
+  "usage": {
+    "input_tokens": 69,
+    "output_tokens": 22,
+    "cache_read_input_tokens": 2924,
+    "cache_creation_input_tokens": 0
+  }
+}

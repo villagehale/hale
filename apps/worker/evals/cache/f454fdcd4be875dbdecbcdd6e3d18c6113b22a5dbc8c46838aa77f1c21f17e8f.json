@@ -1,0 +1,12 @@
+{
+  "value": {
+    "ask": "How did Swim class go? No pressure to reply, even a word is fine."
+  },
+  "latencyMs": 2998,
+  "usage": {
+    "input_tokens": 25,
+    "output_tokens": 32,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4403
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011ChLUkjJCaN8r8k9wdVvKR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjQYKEAgUGAI4AUIIdGhpbmtpbmcSDO08ZHKAnh7FB7GUGhoMroIHZ8WBx5pU7BtmIjBqGOgoDCnlKAVx0zVaQwuztVpVZZEcL/BeuqieAXU4fbZSM85/BeHJz9T1zNF9UFIqqgWtHSBuzI8h4H0b2hq6L1BPSQIG5bwV7UyPhfssHk9fgX0z7R3dV2019iemBR80+DB5suBAANnBJ1q51T+qlpXpzzP49ql9Bk63zkxEw6WwnSrJTgMsmeq1HgERqb5aV/lL+fMSpkPvT8acuVE0wkdDtl8tRNwdSTbmndxgPOpeQa87p0jeK7OvhAh/Qg18Oehvegrbeei1/dGPB43zZtgF8Y8xr9eztM3B5Mj4SKK1nWOmOcdeW7guSeaH2sfTXTP179AWrbr1HXhPY+JiJlQYXyF0mliAKhYR87gVGcIYMndC9YjVneHXglLGUX6zpEzUUE568T9Q9hpMmm7fglJEIMNfdsc8AIoW9n8Lcbj4eblVNZHFEhrFv6F5XnPIp2oek1lc5+lcltQa6t1uoDtaw8gRVWaP/o0xb1JUF3mLBhEkU+sC3/PUI7g9LrXfUxLr1uvsXOcJUt0YPIaGlqGcyZm6oWWpo2ETUORa86StZbDVKP/5GywBeMDGQgxKGcPZjBc9L2EMcFqu1fRO/4sPxY3p9nLD6nrsK+LWsmbwOV5w6l8smn6VdPNeeHcg1N9ZPpsg/DX9SiNh+bj+BtWFxxTazk1Pf4SG6TBh4UHa1Y3A2FJEKEFN+ERKku+0Soup0oNRMEW+UmLwD1JGSgmQo/Wv+2Q6kUm4y6T30zfQArChO3W361eUanP/3DRT79iAWB+zF8Y6An4yxyea6D1KTXwdDgY35MCjhBzJPZQUe+uJW6RlRGFw9W2jyZZMwyF5zg935UKM2olX7JfV4rxfZTM72FTSJFq9lA/UHRXhs7M29Dl0ge2ajUKIuS7FvUxBI7KnCkG4MqUu1Cce8G2LTSiAtps6BL5YN7ta/VjF1RPX4rvkE9KdIJBWRIH8et7Dq0QT2FoECMxPGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QNSVmam5fYLdCXY9qDpc7q",
+        "name": "find_activities",
+        "input": {
+          "subject": "activities for kids ages 5 and 8",
+          "window": "Saturday"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 330,
+      "cache_read_input_tokens": 25052,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 330,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 118,
+      "output_tokens_details": {
+        "thinking_tokens": 32
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2065
+}

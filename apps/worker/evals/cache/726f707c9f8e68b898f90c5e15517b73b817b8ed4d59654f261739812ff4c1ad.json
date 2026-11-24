@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Call 911 right now and stay on the line. The dispatcher will tell you exactly what to do, including CPR if it's needed. Please call now."
+  },
+  "latencyMs": 2992,
+  "usage": {
+    "input_tokens": 155,
+    "output_tokens": 53,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 3695
+  }
+}

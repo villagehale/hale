@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011ChLWWVquNsG9hkBCE1f6m",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjwYKEAgUGAI4AUIIdGhpbmtpbmcSDOeOKOdHbd9Yd2fH9hoMm1yhcQ4Fanf8P7ZcIjB3RvE6fiB3sbjoTnEFTkWHRE7s/IUDm+moL+l+Ad5K7fmlF9OurBfH+zv6PeTdnYQqrAV3x/BfmMPulDsAfXEZzpyEUkT8ypOhV/yv5GdyRn7sox1vZa3vIqOFpQBb3sPpmzR5yHJS9ZLOLQ3oY7OXTNzU3FmGxfwlDjNpi/wp7lbD8e1iD5ht+W7wT6l0rfcZZg0/bNS6IjkEvLciwynP2oXyBUHg/5TdwZRc8Yluv7jvsRlVsEDnjevecTgDu87TZXDMqSPDgQe2Y7l52nIsCzoSTgwoS2o0OeVAPIdpqdWL/P4N6PBpJy+gVejZQ7ejOTTwIAXiySO8foitci54cZB+HM8/UgFk38IvXSo7pMBc+HtRyHe4dvd4/AIAeVyOyQuS2bLgqQukGQhO523K9+dTXFlujJd1+2Uk5G2rP//PQU8BVG6lVuhHraZzFc9+oGwdvla5z/QkoIYC62VJ0LjXk1pfXcHbhPlR6zTwPo7z12Tdb5iVZGN4Mx+C/uaIYHZeHSJ62xLPJqNiWO8DTla/XMLLjexPlkG7ALa5ePsr/bJD3rs92lmDrjlswz1BgIT8AhVE5oyKImrlP++ARFWeRqys4F3wdCZaUjDvOR7ZQqgWY2tWFjsIDv9qgbt/EMTOyiZGg75fb07eMFtxAnmSIpg9RrFctL2pRe/5wQl91jHO9rvf3njABvLDu9KINmgqj1MUoOvWnmMq1dNHm502QfcJ1dqkw2pF88IpCyPvfShZehu0YLCdLNwJCk3gIojOGPLx+otEbUqqd2zNq55FD3yFAHzX6fe+uDvnk0AKWIXHijuRwbae2hKfssBHh+PU2zrUVLZUTD1VmTdWpxHOLYNRPU/sxBbb8jMbTV+CWshqJ7rBKI9aFAPESO+eg5i/kbsox4FwMVchkDVioW9Sty3+29buht1pcaoJQrNSVxnI6/rtxwP8eEbr9msT75AK8Ngahv43cSRrp3UYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_015zFZrXtxWHfuCe4Ufvo2no",
+        "name": "share_experience_card",
+        "input": {
+          "ref": "link-7ca715",
+          "title": "Harbour Art Studio kids classes, ages 6 to 12"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 182,
+      "cache_read_input_tokens": 25934,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 182,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 130,
+      "output_tokens_details": {
+        "thinking_tokens": 31
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1436
+}

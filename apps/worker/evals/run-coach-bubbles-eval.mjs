@@ -87,6 +87,10 @@ const MAX_TOKENS = 2000;
 
 const JUDGE_SYSTEM = judgePrompt('coach-bubbles');
 
+let signupWithOkFact = () => {
+  throw new Error('coach-bubbles eval: signupWithOkFact was not loaded');
+};
+
 function contextFor(fixture, helpLines) {
   const transcript = [...(fixture.transcript ?? []), { role: 'user', content: fixture.text }];
   return {
@@ -106,6 +110,7 @@ function contextFor(fixture, helpLines) {
     nowIso: COACH_BUBBLES_NOW,
     standingQuestions: [],
     registrationWindows: [],
+    signupWithOk: signupWithOkFact(new Date(COACH_BUBBLES_NOW)),
     helpLines,
   };
 }
@@ -282,6 +287,7 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
+  ({ signupWithOkFact } = await importTs(join(WEB_ROOT, 'lib', 'signup', 'with-ok.ts')));
   installEvalSpendCap();
   const getClient = lazyAnthropic('coach-bubbles');
   const cost = makeCost();

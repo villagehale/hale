@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. Story time: tomorrow morning (上午) 11:00 to 11:45, Georgetown library, 9 Church St (Church St 9号). Soccer: tomorrow afternoon (下午) 5:30 to 6:30, Riverside Field, 22 Park Rd. AM/PM is correct, there is no invented detail, no link is included (which is allowed), the language is Chinese, and bold is none, which is fine. No overlaps were given and none are claimed. Titles keep their meaning (图书馆故事会 for Library story time, 踢足球 for Soccer).",
+    "score": 5
+  }
+}

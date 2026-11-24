@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with correct day (tomorrow), start times with correct AM/PM, ends where given (swim 9:45, piano 5:30), and no end invented for the dentist. Venue names and street addresses are all there, and each child is correctly attributed (Theo swim, Léa dentist and piano). No invented logistics, no overlaps claimed, no link used, English throughout. Bold is none, which is fine.",
+    "score": 5
+  }
+}

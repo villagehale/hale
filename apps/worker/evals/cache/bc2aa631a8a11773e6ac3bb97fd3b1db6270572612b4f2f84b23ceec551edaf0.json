@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLTh9JqVToVrw1rgUztb",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuAgKEAgUGAI4AUIIdGhpbmtpbmcSDB1isMaH/aHJO4Q4FxoMIJ7SfAwoVOJhhBkdIjCBi+/2NpHvjQRHRG+NGn5MyOHzm1IBsYrofUrGmgRxC2v5Jfpz4nRZAHyS1JDezNsq1Qf7uTG8BjPtcTF5Q9AglRZ/y22Qx7+7ct44gQOOgUpOAl315XvRbpADtXt7WZGAs8sIsfyyfqQdwDgUg1lH64BG5FOaPHFSstBLyGoEvbTcbSZPfqFkmI2f7eIJjYSZkCukU+IW6CzzpP6gjPLrMJqJpOedaSGpSQZ3a1dCEcQDh7cthJAcGA90GYyVXHqNMMWmfc5iJ81TDD7J9zzFtowljvrMR9kccpAIkV6ZyRN1xzHdYK26j1vVCuBtTdHAjRuZJ8oeRoliRHNzSEiOg8el/p4ddVqPpwi2L8Ycrn37NeqP9IBHL0c6b79AWIfPatzPGRTXdZyJRTzvO7K9VlM9WvwelP/lf3Z6g42C49lH5IYm0XF41+YZWqkdvlnZhKyF/kQjSyL33RKodaoWU1ZzBKRKEcWxNuoigNqSqVlO+DycM/b3qJgVN3AqoGsASuF9oxm1klZtltpVMBbCUeNxFIbSHTN/TZLCl/fgQeBYU/mjuWNvKD8vmC7u2ZqrH2ub4PsZjM+XSAFfuoWEPs3T3NUUUOEy5TeZ2F+9OxQ4Md/thqJ4qCoHXLly+IjChEkjCScNQGnFeM2tZFoaFMAhA3h9fONBmpf69rycnvUa0E5oyJwpR7/54sYFQugJ0/lKt0IKHVd2HHx9dGIg/06x3P78KlMdM+agj06W39U1IBHhe8N1MkSO7b1dwGrnaJMPg0E0Sh+yKPvttjxq1KPEgpb1DwsWVAuwoQs5SXMeMuzqPqZi6UsA3AFlXJTcCsQQNhSC1mEsWEEXLgDuUFI1zuGYcfwPrtHfF8OccvAnAoi54sGUrRYCsV5/G82kFAf/0arDtUrelPF10kWjdhfjTNYF/xIwTuizuHt98O5TCv8HJMkc9iVpxlYBJcf6w0aAdD6WToSLa2cj0CEABzgOl3obqfEspWdW37UdZtRBqNOhlhL32Q1JgYw84rta73b7eFkQUoEEPgjy9z+JxchwtezMsqJxuM+YcpUfTAF7X62+14HyJMFx8c2JeT69KRyS2wYxPPmyCAtQq0xpi4Kpx2ptU6LY1xrulLg2siEZkL1fB6pL+dxz0+WanSx/mFX1qGO7X8Ya1ZF76KcqFx8wOIABx99CC+LT42V+r1+7TGQNjCTHFqGZ4j99KLAsKoOnfvaDwPPnHpuvTyT5yrDf+F/R8qOppnf4H8MLqMTwrs3P+jSf4wm6cnz8i0eX8eII3q6ep+3tshqokUOVoTcon5vzIJvqI+uX6QR0D6vjLblzF0tDqR2tDpLfbiyqQ/Y6OUoLo6h70fVs8qpBLwc4evO0J3oYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Riverbend Community Centre has an indoor open play gym today, 9 a.m. to noon, $6 per child, and it fits a 26-month-old. Their page says so. [link-187000] It's a nice day too (22 and dry), so Cedar Park Conservancy's toddler nature walk is an option, free on the park trail. It's listed for Saturdays at 10, so it may be underway already. [link-0b6114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 293,
+      "cache_read_input_tokens": 22818,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 293,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 270,
+      "output_tokens_details": {
+        "thinking_tokens": 131
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

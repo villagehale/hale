@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLSVys9NqZJQzN5kHALr",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSywkKEAgUGAI4AUIIdGhpbmtpbmcSDK92fh4HdpdON/16UBoMttWnB25Mu9mzHrMYIjAxTQWFwXeigupgGe2uacNUt+HhSsMOe/VD/C2fcghr7OWBeZfhXa/Jm7Q3/jAH/mkq6AhSLmoCBsbVvaPlTRUpsDcx2baC14VJXYehnpYypayx7ZIW1r48slgZJ+06w7ZuOLgQJU9la0uxk3lQ2xAdvB4qu7UUEjQEkUno3X/2qjLMqbepQHPsDkEC70YbRUmxN9cR7AXAb9Jp7QIz7GO4fhrcGWHCkopFae9dNlBIa/TBJoOTCjksWtbzrGX8w7TfcS2cpxpXSbxBoFoFbqWVUUKjy3+K1L2NNHnl1xQJAdoa9v503CEAkD0Hc3+VEIFormeBozSPoisfPEn0yo7CBvEai/6Jm+bBURFu5TidA1t5ILIo10so90p110QK/qLTo0TEW7yvPXeWmgt7nY5BriB0m+N9xNAOg6iCLgegtrWuc71+xTxvwxthFQGfcAU8/XYluxH9fYDLeWy4hGiXA6UJxfApGFNHkrPguW93e1k73t0p8YSppidKUMrtZJoBAu/uys2xngeGBD3RPpsFzfX8pfS/An0raDsj5tzhQ/KBnXNI/gKxy7gK+mI5UFSwOwywMXOMGGcPq/dksK1gVBWM0M3qFt3Q7i4phlH9wXvrwfBuSp5SNcnJof2Hsyi3u3Uved///q6nPPWsepQcGSUyWoFQZRnuaMA4Wj9iB1tFO8z2af+k7BHDpyyoyghD6oZgKrB4kO/aWJ8i30UtD5e0fYvpsiz/AopDut5FpsWYLrXDcsec3qwG4pY1UG6reNl6LjCRwTlL+jcuc4dOdaYFVZxCcWBTrh1eepnkYoeE8rgC3U2T5QsNI64UNtfpBioZSBz/X9MFM13J3RFp6X3vNAhNYKWwG3jBqTANdYeqoHuYuShwUXp0TR8I5EGOYQIfae0zHp36QrIDuA7YU61shX2ZVAkiJjpWt2P0qS8gDSLPQ9BGdSWZavRbb7wXcTdm3ZvsSi1NzVsMSg0fVwMPnz5SqOi+qFEzuICDRPRV+jrlyMAVtVLG69WNVGgQyHresCfb9ZmKiU6P82NWqvFNtXVS1FvafVLs4mj4vuLdl1LCxWJOxxcuf0c4XwXsYOl/UK3c2PfjJ1I6KDc1piXYxhIsfG/zsoWIJP7ZgFyWgONDC0DjWZEk3RZVSCL1jPQxJ7aXtrCyGZ5tdm3Sy47Lmidr0rzVevqD+cyp+9Fwl+axrvr2+PYKSV4s+iRiDCYQq4IdDH1u4pcZGrcmomOFgDFPpZo2hxueppOK5JWgE+ENCfGcrfqE2XLZnFqlmbd1YLJo5LafciQE+R6cfe/kzoxB2lgfeZedEo7sLpppRe7mhBE04acT1zL5ed6TwdaQ97uwL9EwnuJ8sFWW+yDJfBpqg2FS4hGzkV3r8EC5bEWKGEIu3+wWd5XHfkjvLEBIRFiAs0KVEZqsxdPdhtK1DWkyPuNk1rkNFiUOwUBp52EyZkulREXP6yTpLSLdm31fxsJYei9mMJhYzIZn3DW2ObF6UmbxxSwFFKa5abwwsZbCd4x5a++kAGud46uEh4kt3IRZjsS9UhlSNQX4HnxFBO5qlYR+ijsYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "That's one for a nurse, not me. Call Health 811 any time, and 911 if it's an emergency. I hope she settles fast."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1627,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18481,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 273,
+      "output_tokens_details": {
+        "thinking_tokens": 228
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

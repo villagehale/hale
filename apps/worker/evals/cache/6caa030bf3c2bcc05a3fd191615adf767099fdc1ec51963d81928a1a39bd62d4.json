@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reason": "Says the answer is being prepared and will be sent soon, which promises a rough time frame.",
+    "promises_a_time": "yes",
+    "points_at_an_app": "no"
+  },
+  "latencyMs": 1042,
+  "usage": {
+    "input_tokens": 31,
+    "output_tokens": 60,
+    "cache_read_input_tokens": 812,
+    "cache_creation_input_tokens": 0
+  }
+}

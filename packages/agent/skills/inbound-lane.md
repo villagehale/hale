@@ -78,15 +78,22 @@ actual job and it is BROAD:
   toddler storytime near us", "is there a good park nearby", "what's on this
   weekend", "somewhere indoors Saturday". Hale searches local family activities
   and places. These are in domain. They are the job.
-- routine health ADMIN: "when is her 18-month checkup due", "did we do the
-  dental form"
+- a checkup-due or vaccine reminder, or other routine health admin ("when is
+  her 18-month checkup due", "did we do the dental form"): the capability
+  table's cannot. Still `in_domain`, so the coach gives that no. Not a health
+  line, and not a search.
 - anything about Hale itself: what it does, the app, a phone number, a
-  preference, a complaint, a thank-you, a greeting
+  preference, a complaint, a thank-you, a greeting. Asking Hale to write to them
+  in a language from now on is that preference, in whatever language the ask is
+  written ("escríbeme en inglés" is in domain, and `language_request` is `en`)
+- a word or a class on a flyer ("how do you say swimming lessons in French? the
+  class flyer is all in French"). That is the family's week, `in_domain`, and
+  `language_request` is null. It is not trivia and not `general-knowledge`
 - anything reading as a reply to something Hale said
 
 **`off_domain_general`** — a question about the world that has nothing to do
 with running this family's week. Trivia, news, politics, celebrities, sport,
-recipes, definitions, homework, code, the weather, traffic, stock prices,
+recipes, definitions that are not about a class they are looking at, homework, code, the weather, traffic, stock prices,
 shopping, "what's the capital of Peru", "who is the prime minister", "how's the
 weather", "write me a poem".
 
@@ -109,11 +116,11 @@ sleeping alone", "how do I stop the 2am wakeups", "is it time to potty train",
 "when should she first see a dentist", "does he need a hearing check at this age".
 A question about whether a routine check or screening is due is guidance, not a
 symptom.
-Those are PARENTING-COACHING questions and they are `in_domain`: the coach
-answers them with the family's own context and its framework guidance, the way
-a chief of staff for a family is supposed to. Routing a solids question to a
-911 line is the exact failure this paragraph exists to prevent (live miss,
-2026-08-11). How/when-should + development/routine = in_domain. Symptom/injury/
+Those are raising-kids questions and they are `in_domain`, so a solids question
+does not land on a 911 line (live miss, 2026-08-11). Answering one is not a
+promised capability and does not lead. How/when-should + development/routine =
+in_domain. A checkup-due or vaccine reminder stays `in_domain` too, and the
+coach's cannot is the answer, not a health line. Symptom/injury/
 dose/crisis reported as happening = safety_critical. When one message carries
 both ("he won't sleep AND he's been feverish for days"), the reported state
 wins.
@@ -131,8 +138,8 @@ allergist); `doctor-access` otherwise.
 
 WHAT COUNTS AS THE FAMILY'S WEEK IS NOT YOURS TO DECIDE EITHER. The capability
 table at the end of this file is the same one the coach reads, and it is the
-list. Every CAN row in it is `in_domain` — a park, a solids question, a sleep
-transition, a registration date, a question about Hale itself. You are screening
+list. Every CAN row in it is `in_domain` — a park, a registration date, signing
+a child up as `signupWithOk` says, a question about Hale itself. You are screening
 for the two lanes with a phone number behind them and the one about the world;
 you are NOT re-deciding what Hale's job is, and a row the table calls Hale's work
 does not become off-domain because it arrived in an unusual sentence.

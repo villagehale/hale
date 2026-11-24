@@ -1325,6 +1325,8 @@ function channelContext(fixture, compact, severed, helpLines) {
     // them over. Empty for every fixture that is not about one, which is also the
     // production shape for a family outside the covered set.
     registrationWindows: fixture.registrationWindows ?? [],
+    // VIL-766. The same fact channel/coach/runtime.ts puts on every turn.
+    signupWithOk: signupWithOkFact(fixture.now ? new Date(fixture.now) : NOW),
     // The only help lines a reply may name, chosen for where the family is (VIL-589).
     helpLines,
     // VIL-679: texts the parent sent back to back, answered as one turn — the runtime adds
@@ -2046,8 +2048,13 @@ const BROKEN_CALLS = [
   { tool: 'propose_calendar_add', actionType: 'calendar_add', eventId: null },
 ];
 
+let signupWithOkFact = () => {
+  throw new Error('coach-channel eval: signupWithOkFact was not loaded');
+};
+
 async function main() {
   if (process.argv.includes('--estimate')) process.env.HALE_EVAL_DRY = '1';
+  ({ signupWithOkFact } = await importTs(join(REPO_ROOT, 'apps/web/lib/signup/with-ok.ts')));
   assertRunFlags([
     '--broken',
     '--show',
@@ -2515,6 +2522,8 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The signup promise the model was handed (VIL-766). December 1 is recall.
+              signupWithOk: turnContext.signupWithOk,
               // The help lines the model was handed for where this family is (VIL-589).
               helpLines: turnContext.helpLines,
               // The family facts the model was handed, `seenIn` included. `undefined`

@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Riverton's portal shows the waitlist for Tuesday toddler swim has room again, though the class itself is still full. It's Tuesdays at 9:30 a.m., so if you want a spot on the list, it's worth getting on it now."
+  },
+  "latencyMs": 1119,
+  "usage": {
+    "input_tokens": 80,
+    "output_tokens": 84,
+    "cache_read_input_tokens": 2601,
+    "cache_creation_input_tokens": 0
+  }
+}

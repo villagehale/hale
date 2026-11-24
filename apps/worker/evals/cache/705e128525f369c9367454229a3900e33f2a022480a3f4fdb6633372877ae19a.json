@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011ChLSUmZSMT6tnFnwmWdRp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2AcKEAgUGAI4AUIIdGhpbmtpbmcSDOb9kXxS11WA1dTCSRoMZ2U+9335Eco4lP/aIjA66FT/rf4nbvnfp0uxrhC31OpnRctuTc1dB7oHw+JxP8NUyU2f2mZiDjEvNazrhzsq9QY0x8Qsw7droKVgJV2yVhwrNH0WFpUiCxT1w4qjNz4r2bv9hfQv4biaDTTGVd3V3kKBOj+QS6rATpoMVx3y31uMn9+aJqm5O7KVqLvTp1shWR3U9lx0nq/ejrx+07xLalZ3QJ40VxWnGtjHh5/lP01AJ4DOtP7idc6i7xgaueVlBk5IR7TiaZt77y5R1nwPb26SG02noupZDa0BpavSeJLahoBEHWKeZZ9F6sSgUAx+/nizzVnLYBBdZRGgqlMccapwL0fmVLeiXb93zbDy8O75roa5S2Oq/4+QBYJcst8ueKX+PGnZuSaksXtAqa38GpVzTzWA1GqQEcjBtjSJOHRaJvXvleKUg7jmRyU9kBzvuWcpQIlMom+o7AYFUAZZe+kwkLY28RiQJDYrETXsNowCh8HCxxkkaLAS9bgqBNdphZwaw7He0OgRZZ43h1q5XGN86Ky79YfwvmVvktqU1pidQ9sTylIemaBz2gKF7gIs8DOersR6s7ZYs/m13fcq2qL8uUOVg0GgQtit85XiwEq1ubvNSDl9tfnyLecj+TtU3MV7Eu5HK9h1tN+dK9aZpi8f0iAuPWnLDmIRz/U76g+W2LN4O9QMR2puGpDn5EgS2Edl0snsPLOTw+Ngw4NZAZl4FAQMjAJ2KLTO9vkEHGiNqqoQtxq/OnpJ5HYjUk3Kxno8+BAGECosEJLLPBZ1CsxVu6EmyvumlWtHQq0rg5kUlIq9+WAZlBzUeJcT9ukfDTICtTjzYjC5aup20vFRq9LnbQGo2JYgMcRy2PMAEI0BVc6GSiGz4+JwA/dEcy/b0z0UrNtJrOa0cODMaUoyY7s1toS8RuTtJWOyhnjAOSD2qbIQ/vGPF4Fnmz2oDCnkSJ2A0FmUSvDEPlWe5T2jQCQxRvGl8vr8DjKg78rnp5Ju3nua2BNnfrTieonHjyzuKodc1Gw6tsMdf5uLgOgLjm3xIjIUK0l4cU+DWCVcPekwo76urnMbOXqwL9dyOgQgP/amMjAEblZWQTDIXO8DsaHuBpwfaPLRUxY127STtMnHU9Iw0iOG/O/lLALvdL8tZzQfcEY4bG1zDgWVSEPjvCVxtF5vmu4In4takeHLT8bAIxeFUwS6akAQGbNKTvO/1+I93+NJ7RkOHvZz4UvvTzUCqoDbFpsH5yYlzA5TNvVjFsCAFGIYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Swim is the only thing I see on this week. Which other thing do you mean?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1906,
+      "cache_read_input_tokens": 18481,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1906,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 129,
+      "output_tokens_details": {
+        "thinking_tokens": 103
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
