@@ -10,7 +10,7 @@ import {
 import { offerConnectorLinks, offerGoogleBundleLink } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
+import { type LinkOnceOutcome, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -103,6 +103,12 @@ export type ConnectorOfferOutcome =
    * minted (hash-only at rest), and a parent who has no link asks for one in the thread.
    */
   | { status: 'not_sent'; reason: 'link_unconfirmed' }
+  /**
+   * VIL-721. Another try holds this card's key and nothing proves its text went: one still
+   * running, or a crash. Not `already_sent`, so no reply says the link is in the thread.
+   * A crashed try is taken over once it is stale, on the same provider key.
+   */
+  | { status: 'not_sent'; reason: 'in_flight' }
   /** VIL-721. The turn is in a group chat. The link signs its holder in, so it never goes
    * there: no token is minted, and the family's one offer is not spent. */
   | { status: 'not_sent'; reason: 'group_thread' };
@@ -317,12 +323,19 @@ export async function sendGoogleConnectorCard(
     providerChatId: null,
     now: args.now,
   });
+  if (claimed.kind === 'in_flight') {
+    console.info({ familyId: args.familyId }, 'intake google card: another try holds the card');
+    return 'in_flight';
+  }
   if (claimed.kind !== 'try') return 'already_sent';
   const { claim } = claimed;
   const minted = await offerGoogleBundleLink(database, {
     familyId: args.familyId,
     parentUserId: args.parentUserId,
     now: args.now,
+    // A retaken claim's link may already be in the parent's thread, and Linq drops this
+    // one on the same key, so the token that went must keep working.
+    ...(claim.prior === null ? {} : { invalidatePrior: false }),
   });
   if (minted.status !== 'minted') {
     await releaseGoogleClaim(database, claim, minted.status);
@@ -346,6 +359,73 @@ export async function sendGoogleConnectorCard(
     });
     return 'voice_unsent';
   }
+  let linked = false;
+  let unconfirmed = false;
+  let gatedBeforeLink = false;
+  // The link is its own send, and the preview and its text are separate tries. A stop,
+  // erasure, or hold that lands after the words are accepted stops whichever try is next.
+  // It runs before the card's row says it was sent, so a crash before the link settles is
+  // a claim a later try retakes, and never a card the next turn reads as out.
+  const sendLink = async (sent: { transport?: string; chatId?: string | null }) => {
+    try {
+      const link = await sendLinkOnce({
+        transport: ports.transport,
+        to: args.phoneE164,
+        channel: sent.transport === 'imessage' ? 'imessage' : 'sms',
+        chatId: sent.chatId ?? null,
+        url: minted.url,
+        database,
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        now: args.now,
+        sendKey: `${claim.id}:link`,
+        maySend: async () => (await googleSendGate(database, args)) === 'open',
+      }).catch(
+        // It can throw after Linq took the link, so a throw is not proof the link stayed home.
+        (): LinkOnceOutcome => ({
+          status: 'not_sent',
+          why: 'refused',
+          code: 'unexpected',
+          unconfirmed: true,
+        }),
+      );
+      if (link.status === 'not_sent' && link.code === 'gated' && !link.unconfirmed) {
+        gatedBeforeLink = true;
+        await freeGoogleSendKey(database, claim.id);
+        await ports.threadMessage(database, {
+          familyId: args.familyId,
+          parentUserId: args.parentUserId,
+          body: prose,
+        });
+        return;
+      }
+      linked = link.status !== 'not_sent';
+      if (link.status === 'not_sent') {
+        unconfirmed = link.unconfirmed === true;
+        if (!unconfirmed) await freeGoogleSendKey(database, claim.id);
+        await recordGoogleLinkUnsent(database, {
+          familyId: args.familyId,
+          parentUserId: args.parentUserId,
+          claimId: claim.id,
+          failure: unconfirmed ? 'unconfirmed' : 'refused',
+        });
+      }
+      await ports.threadMessage(database, {
+        familyId: args.familyId,
+        parentUserId: args.parentUserId,
+        body: linked ? `${prose}\n${minted.url}` : prose,
+      });
+    } catch (err) {
+      console.error(
+        {
+          familyId: args.familyId,
+          provider: 'google',
+          err: err instanceof Error ? err.constructor.name : 'unknown',
+        },
+        'intake google card: the path after the accepted prose threw',
+      );
+    }
+  };
   const outcome = await sendClaimedGoogleText(
     database,
     claim,
@@ -358,6 +438,7 @@ export async function sendGoogleConnectorCard(
       surface: 'card',
     },
     (sendKey) => ports.transport.send({ to: args.phoneE164, body: prose, sendKey }),
+    sendLink,
   );
   if (outcome.status === 'gated') return 'gated';
   if (outcome.status !== 'accepted') {
@@ -367,60 +448,7 @@ export async function sendGoogleConnectorCard(
     );
     return 'send_failed';
   }
-  const carried = outcome.sent.transport === 'imessage' ? 'imessage' : 'sms';
-  let linked = false;
-  let unconfirmed = false;
-  try {
-    // The link is its own send, and the preview and its text are separate tries. A stop,
-    // erasure, or hold that lands after the words are accepted stops whichever try is next.
-    const link = await sendLinkOnce({
-      transport: ports.transport,
-      to: args.phoneE164,
-      channel: carried,
-      chatId: outcome.sent.chatId ?? null,
-      url: minted.url,
-      database,
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      now: args.now,
-      sendKey: `${claim.id}:link`,
-      maySend: async () => (await googleSendGate(database, args)) === 'open',
-    });
-    if (link.status === 'not_sent' && link.code === 'gated') {
-      await freeGoogleSendKey(database, claim.id);
-      await ports.threadMessage(database, {
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        body: prose,
-      });
-      return 'gated';
-    }
-    linked = link.status !== 'not_sent';
-    if (link.status === 'not_sent') {
-      unconfirmed = link.unconfirmed === true;
-      if (!unconfirmed) await freeGoogleSendKey(database, claim.id);
-      await recordGoogleLinkUnsent(database, {
-        familyId: args.familyId,
-        parentUserId: args.parentUserId,
-        claimId: claim.id,
-        failure: unconfirmed ? 'unconfirmed' : 'refused',
-      });
-    }
-    await ports.threadMessage(database, {
-      familyId: args.familyId,
-      parentUserId: args.parentUserId,
-      body: linked ? `${prose}\n${minted.url}` : prose,
-    });
-  } catch (err) {
-    console.error(
-      {
-        familyId: args.familyId,
-        provider: 'google',
-        err: err instanceof Error ? err.constructor.name : 'unknown',
-      },
-      'intake google card: the path after the accepted prose threw',
-    );
-  }
+  if (gatedBeforeLink) return 'gated';
   if (linked) return 'sent';
   console.error(
     { familyId: args.familyId, provider: 'google' },

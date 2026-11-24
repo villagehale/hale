@@ -1,10 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
+import { connectLinkPrefix } from '~/lib/channel/connect/connect-link';
 import type { GoogleBundleLink, TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 
 /**
  * The connector handoff's mint: a verified parent's plain "connect my calendar"
@@ -32,7 +32,7 @@ export type ConnectorOfferOutcome =
  * straight into this provider's Google consent — no Settings, no Connect button to
  * find. Always the app host (appBaseUrl), never the marketing site: this is an app door. */
 function connectUrl(token: string, provider: TextConnectProvider | GoogleBundleLink): string {
-  return `${appBaseUrl()}/connect?t=${token}&to=${provider}`;
+  return `${connectLinkPrefix()}t=${token}&to=${provider}`;
 }
 
 /** At least one provider, as a tuple, so the URLs come back one-per-provider in the
