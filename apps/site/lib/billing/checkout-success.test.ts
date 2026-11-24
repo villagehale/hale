@@ -109,6 +109,25 @@ describe('conversions flag and send_to', () => {
     expect(metaPixelIdFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766' })).toBe(
       '1460101092968766',
     );
+    expect(
+      metaPurchaseFromPaidSession({
+        facts: PAID,
+        conversionsEnabled: true,
+        pixelId: '1460101092968766, 2041301346827688, nope',
+      }),
+    ).toEqual({
+      pixelId: '1460101092968766,2041301346827688',
+      value: 79,
+      currency: 'CAD',
+      transactionId: 'cs_test_1',
+    });
+    expect(
+      metaPurchaseFromPaidSession({
+        facts: PAID,
+        conversionsEnabled: true,
+        pixelId: 'nope, ',
+      }),
+    ).toBeNull();
   });
 });
 

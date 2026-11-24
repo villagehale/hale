@@ -6,6 +6,7 @@ import {
   denyGoogleAds,
   installGoogleAds,
 } from '~/lib/analytics/google-ads-client';
+import { parseMetaPixelIds } from '~/lib/analytics/meta-pixel';
 import {
   clearMetaClickCookies,
   denyMetaPixel,
@@ -28,11 +29,10 @@ function ConsentSentence({ text }: { text: string }): ReactNode {
   );
 }
 
-function pixelIdFromPropsOrEnv(pixelId: string | null | undefined): string | null {
-  if (pixelId) return pixelId;
-  if (process.env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true') return null;
-  const id = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
-  return id ? id : null;
+function pixelIdsFromPropsOrEnv(pixelId: string | null | undefined): readonly string[] {
+  if (pixelId) return parseMetaPixelIds(pixelId);
+  if (process.env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true') return [];
+  return parseMetaPixelIds(process.env.NEXT_PUBLIC_META_PIXEL_ID);
 }
 
 export function ConsentBanner({
@@ -56,10 +56,10 @@ export function ConsentBanner({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const id = pixelIdFromPropsOrEnv(pixelId);
+    const ids = pixelIdsFromPropsOrEnv(pixelId);
     if (readConsent() === 'granted') {
       installGoogleAds();
-      if (id) installMetaPixel(id);
+      if (ids.length > 0) installMetaPixel(ids);
     }
     const onOpen = () => setOpen(true);
     window.addEventListener(CONSENT_OPEN_EVENT, onOpen);
@@ -72,8 +72,8 @@ export function ConsentBanner({
     setOpen(false);
     if (previous !== 'granted') {
       installGoogleAds();
-      const id = pixelIdFromPropsOrEnv(pixelId);
-      if (id) installMetaPixel(id);
+      const ids = pixelIdsFromPropsOrEnv(pixelId);
+      if (ids.length > 0) installMetaPixel(ids);
     }
   }
 

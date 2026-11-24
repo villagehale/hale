@@ -9,8 +9,9 @@
 // --tier plus|max|family (default plus). --currency CAD|USD (default CAD).
 // Values match the holiday promo yearly amounts.
 //
-// Needs NEXT_PUBLIC_META_PIXEL_ID, META_CAPI_ACCESS_TOKEN, and
-// META_CAPI_TEST_EVENT_CODE.
+// Needs NEXT_PUBLIC_META_PIXEL_ID (the first id, when that value is a list),
+// META_CAPI_ACCESS_TOKEN, and META_CAPI_TEST_EVENT_CODE.
+// A later dataset in the list has no CAPI token yet; this posts to the first id.
 
 import { sendMetaTestPurchase } from '../lib/billing/conversions';
 
