@@ -5,12 +5,16 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadIcsFeed, mintIcsToken } from '~/lib/loop/ics-feed';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
+  considerCalendarTapback,
   considerPrivateCalendarReply,
+  settleCalendarsAfterLockedStart,
   settleGroupExperienceCalendar,
 } from '../group-plan-rsvp/inbound';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
 import { fakeGroupPlanRsvpComposer } from '../group-plan-rsvp/voice-fake';
 import { considerGroupExperience } from './inbound';
+import { createPostgresGroupExperienceStore } from './store';
+import { takeGroupExperienceTurn } from './turn';
 import { fakeGroupExperienceComposer } from './voice-fake';
 
 /**
@@ -269,10 +273,13 @@ describe('a yes writes one calendar event, and only after that household agrees'
     ]);
   });
 
-  it('with the flag off, a yes still places the family_events copy and asks nobody', async () => {
+  it('with the flag off, a completing yes writes no family_events row for either family', async () => {
     vi.stubEnv('VERCEL_ENV', 'production');
     vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
     const priya = await parent({ name: 'Priya', phone: PRIYA_PHONE, chat: CHAT });
+    const sam = await parent({ name: 'Sam', phone: SAM_PHONE });
+    await seat({ familyId: sam.familyId, userId: sam.userId, phone: SAM_PHONE });
     const store = createPostgresGroupPlanRsvpStore(db.database);
     await store.createPlan({
       chatId: CHAT,
@@ -286,43 +293,200 @@ describe('a yes writes one calendar event, and only after that household agrees'
       now: NOW,
     });
     const asked: string[] = [];
-    const result = await considerGroupExperience(
+    const sayYes = (userId: string, phone: string, at: Date) =>
+      considerGroupExperience(
+        {
+          database: db.database,
+          now: at,
+          send: async () => ({ providerMessageId: 'group-1' }),
+          reader: {
+            read: async () => ({
+              kind: 'rsvp_vote' as const,
+              title: null,
+              response: 'yes' as const,
+              optionKey: null,
+              options: [],
+              confidence: 'high' as const,
+            }),
+          },
+          composer: fakeGroupExperienceComposer(),
+          calendarAfterAnswer: async (answer) => {
+            asked.push(answer.response);
+          },
+        },
+        {
+          chatId: CHAT,
+          senderHandle: phone,
+          senderUserId: userId,
+          coveringFamilyId: priya.familyId,
+          text: 'we are in',
+        },
+      );
+    expect(
+      (await sayYes(priya.userId, PRIYA_PHONE, NOW)).handled &&
+        (await sayYes(sam.userId, SAM_PHONE, new Date(NOW.getTime() + 60_000))).handled,
+    ).toBe(true);
+    expect(asked).toEqual([]);
+    expect(
+      await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents),
+    ).toEqual([]);
+  });
+
+  it('a locked new start moves an accepted copy and a tap on the old ask writes nothing', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const priya = await parent({ name: 'Priya', phone: PRIYA_PHONE, chat: CHAT });
+    const sam = await parent({ name: 'Sam', phone: SAM_PHONE });
+    await seat({ familyId: sam.familyId, userId: sam.userId, phone: SAM_PHONE });
+    const plans = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await plans.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-14T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    const privateLines: { to: string; body: string; id: string }[] = [];
+    let n = 0;
+    const oneToOne = {
+      text: async (input: { to: string; body: string }) => {
+        n += 1;
+        const id = `priv-${n}`;
+        privateLines.push({ to: input.to, body: input.body, id });
+        return { providerMessageId: id, chatId: null };
+      },
+      link: async () => ({ providerMessageId: 'link' }),
+    };
+    const calendarVoice = fakeGroupPlanRsvpComposer();
+    const settle = {
+      database: db.database,
+      now: NOW,
+      composer: calendarVoice,
+      oneToOne,
+    };
+    const sayYes = (userId: string, phone: string, at: Date) =>
+      considerGroupExperience(
+        {
+          ...settle,
+          now: at,
+          send: async () => ({ providerMessageId: `group-${n}` }),
+          reader: {
+            read: async () => ({
+              kind: 'rsvp_vote' as const,
+              title: null,
+              response: 'yes' as const,
+              optionKey: null,
+              options: [],
+              confidence: 'high' as const,
+            }),
+          },
+          composer: fakeGroupExperienceComposer(),
+          calendarAfterAnswer: (answer) =>
+            settleGroupExperienceCalendar({ ...settle, now: answer.now }, answer),
+        },
+        {
+          chatId: CHAT,
+          senderHandle: phone,
+          senderUserId: userId,
+          coveringFamilyId: priya.familyId,
+          text: 'we are in',
+        },
+      );
+    await sayYes(priya.userId, PRIYA_PHONE, NOW);
+    await sayYes(sam.userId, SAM_PHONE, new Date(NOW.getTime() + 60_000));
+    const agreed = await considerPrivateCalendarReply(
+      {
+        ...settle,
+        now: new Date(NOW.getTime() + 120_000),
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+      },
+      {
+        senderUserId: priya.userId,
+        senderName: 'Priya',
+        chatId: 'priya-1to1',
+        text: 'yes put it on our calendar',
+      },
+    );
+    expect(agreed.handled).toBe(true);
+    const samAsk = privateLines.find((line) => line.to === SAM_PHONE);
+    expect(samAsk?.body.startsWith('calendar_ask')).toBe(true);
+
+    const locked = new Date('2026-11-30T17:00:00.000Z');
+    const experience = createPostgresGroupExperienceStore(db.database);
+    await experience.upsertLive({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      kind: 'time_poll',
+      subjectKey: plan.id,
+      payload: {
+        planId: plan.id,
+        options: [{ key: 'a', text: locked.toISOString() }],
+        votes: { [PRIYA_PHONE]: 'a', [SAM_PHONE]: 'a' },
+      },
+      now: new Date(NOW.getTime() + 180_000),
+    });
+    const lock = await takeGroupExperienceTurn(
+      {
+        chatId: CHAT,
+        familyId: priya.familyId,
+        senderHandle: PRIYA_PHONE,
+        senderUserId: priya.userId,
+        senderName: 'Priya',
+        senderFamilyId: priya.familyId,
+        text: 'lock it',
+        language: 'en',
+        now: new Date(NOW.getTime() + 180_000),
+      },
       {
         database: db.database,
-        now: NOW,
-        send: async () => ({ providerMessageId: 'group-1' }),
+        store: experience,
+        plans,
         reader: {
           read: async () => ({
-            kind: 'rsvp_vote',
+            kind: 'time_lock',
             title: null,
-            response: 'yes',
+            response: null,
             optionKey: null,
             options: [],
             confidence: 'high',
           }),
         },
         composer: fakeGroupExperienceComposer(),
-        calendarAfterAnswer: async (answer) => {
-          asked.push(answer.response);
-        },
-      },
-      {
-        chatId: CHAT,
-        senderHandle: PRIYA_PHONE,
-        senderUserId: priya.userId,
-        coveringFamilyId: priya.familyId,
-        text: 'we are in',
+        send: async () => ({ providerMessageId: 'lock-line' }),
+        households: async () => [priya.familyId, sam.familyId],
+        calendarAfterStartChange: (change) =>
+          settleCalendarsAfterLockedStart({ ...settle, now: change.now }, change),
       },
     );
-    expect(result.handled).toBe(true);
-    expect(asked).toEqual([]);
+    expect(lock).toMatchObject({ handled: true, outcome: 'group_experience_spoken' });
+
+    const oldTap = await considerCalendarTapback(
+      { ...settle, now: new Date(NOW.getTime() + 240_000) },
+      {
+        senderUserId: sam.userId,
+        senderName: 'Sam',
+        messageId: samAsk?.id ?? '',
+        tapback: 'like',
+      },
+    );
+    expect(oldTap.handled).toBe(false);
+
     const events = await db.database
-      .select({ familyId: schema.familyEvents.familyId, title: schema.familyEvents.title })
+      .select({
+        familyId: schema.familyEvents.familyId,
+        startsAt: schema.familyEvents.startsAt,
+      })
       .from(schema.familyEvents);
-    expect(events).toEqual([{ familyId: priya.familyId, title: 'Saturday picnic' }]);
-    const consents = await db.database
-      .select({ id: schema.linqGroupPlanCalendarConsents.id })
-      .from(schema.linqGroupPlanCalendarConsents);
-    expect(consents).toEqual([]);
+    expect(events).toEqual([{ familyId: priya.familyId, startsAt: locked }]);
+    expect(privateLines.filter((line) => line.to === SAM_PHONE).map((line) => line.body)).toEqual([
+      'calendar_ask Saturday picnic Sam Sat, Nov 14 at 11:00 AM?',
+      'calendar_ask Saturday picnic Sam Mon, Nov 30 at 12:00 PM?',
+    ]);
   });
 });

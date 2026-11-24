@@ -295,6 +295,86 @@ export async function settleGroupExperienceCalendar(
   );
 }
 
+/**
+ * A group locked a new start. A copy the household already accepted moves to
+ * that start. An open ask is withdrawn, so a tap on the old ask cannot write
+ * the new time, and Hale asks again. A household that has not agreed gets no row.
+ */
+export async function settleCalendarsAfterLockedStart(
+  ports: Pick<
+    GroupPlanRsvpInboundPorts,
+    'database' | 'now' | 'composer' | 'consentReader' | 'oneToOne'
+  >,
+  input: { chatId: string; planId: string; now: Date },
+): Promise<void> {
+  if (!linqGroupPlanRsvpCalendarEnabled()) return;
+  if (!linqGroupPlanRsvpEnabled()) {
+    console.warn({ outcome: 'flag_off' }, 'group plan calendar: plan rsvp flag is off');
+    return;
+  }
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const plan = await store.loadLivePlan(input.chatId);
+  if (!plan || plan.id !== input.planId || !plan.startsAt) return;
+  const yeses = await store.listYesRsvps(plan.id);
+  const { rows } = await store.loadTally(plan.id);
+  const homes = postgresGroupPlanHouseholds(ports.database);
+  const calendar = postgresGroupPlanCalendarWriter(ports.database);
+  const seen = new Set<string>();
+  for (const yes of yeses) {
+    if (!yes.userId) continue;
+    const home = await homes.resolve({ chatId: input.chatId, userId: yes.userId });
+    if (home.status !== 'one' || seen.has(home.familyId)) continue;
+    seen.add(home.familyId);
+    const consent = await store.loadCalendarConsent(plan.id, home.familyId);
+    if (consent?.status === 'written') {
+      const moved = await calendar.write({
+        planId: plan.id,
+        chatId: input.chatId,
+        familyId: home.familyId,
+        title: plan.title,
+        startsAt: plan.startsAt,
+        location: plan.location,
+      });
+      if (moved.status === 'failed') {
+        console.warn(
+          { outcome: 'write_failed' },
+          'group plan calendar: locked start did not move the copy',
+        );
+      }
+      continue;
+    }
+    if (consent?.status === 'declined') continue;
+    if (consent?.status === 'asked') {
+      await store.releaseCalendarAsk(plan.id, home.familyId, yes.userId, 'plan_changed');
+    }
+    const person = rows.find((row) => row.memberKey === yes.memberKey && row.response === 'yes');
+    await settleCalendarAfterAnswer(
+      {
+        chatId: input.chatId,
+        plan,
+        userId: yes.userId,
+        memberKey: yes.memberKey,
+        displayName: person?.displayName || consent?.displayName || 'someone',
+        householdLabel: person?.householdLabel ?? consent?.householdLabel ?? null,
+        response: 'yes',
+        language: await calendarHouseholdLanguage(ports.database, input.chatId, yes.userId),
+        parentWords: null,
+        now: input.now,
+      },
+      {
+        store,
+        ...calendarPorts({
+          database: ports.database,
+          now: input.now,
+          composer: ports.composer,
+          consentReader: ports.consentReader,
+          oneToOne: ports.oneToOne,
+        }),
+      },
+    );
+  }
+}
+
 function calendarPorts(ports: GroupPlanRsvpInboundPorts) {
   return {
     households: postgresGroupPlanHouseholds(ports.database),

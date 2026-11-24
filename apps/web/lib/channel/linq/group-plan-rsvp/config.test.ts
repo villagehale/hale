@@ -48,7 +48,7 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'false');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });
 });

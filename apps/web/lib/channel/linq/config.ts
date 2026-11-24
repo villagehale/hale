@@ -190,10 +190,9 @@ export function linqGroupPlanRsvpEnabled(): boolean {
  * writing that household's calendar. Trimmed `true`, through `@hale/flags`
  * (`linq-group-plan-rsvp-calendar`). Unset, empty, `on`, and `false` stay dark
  * in every environment, including production. Dark leaves the RSVP tally as it
- * was: no ask, and this path writes no calendar copy. The plan RSVP flag still
- * has to be on for a plan to exist. While this is on, the group-experience
- * yes-copy does not write; this path is the only writer, and only after that
- * household agrees.
+ * was: no ask, and no calendar copy. The plan RSVP flag still has to be on
+ * for a plan to exist. A group yes never writes `family_events` by itself.
+ * The only write is this path, after that household's 1:1 OK.
  */
 export function linqGroupPlanRsvpCalendarEnabled(): boolean {
   return isEnabled('linq-group-plan-rsvp-calendar');

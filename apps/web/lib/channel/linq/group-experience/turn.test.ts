@@ -328,7 +328,6 @@ describe('takeGroupExperienceTurn', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'production');
     const asked: string[] = [];
-    const placed: string[] = [];
     const result = await takeGroupExperienceTurn(
       {
         chatId: CHAT,
@@ -376,13 +375,6 @@ describe('takeGroupExperienceTurn', () => {
             expected: [],
           }),
         } as never,
-        copies: {
-          upsertCopy: async (_plan, familyId) => {
-            placed.push(familyId);
-            return { status: 'written', familyEventId: familyId };
-          },
-          cancelCopy: async () => null,
-        },
         calendarAfterAnswer: async (answer) => {
           asked.push(answer.response);
         },
@@ -392,12 +384,12 @@ describe('takeGroupExperienceTurn', () => {
     );
     expect(result).toMatchObject({ handled: true, outcome: 'group_experience_recorded' });
     expect(asked).toEqual(['yes']);
-    expect(placed).toEqual([]);
   });
 
   it('does not ask when the consent calendar flag is off', async () => {
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 4).toString('base64'));
     vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
     vi.stubEnv('VERCEL_ENV', 'production');
     const asked: string[] = [];
     const result = await takeGroupExperienceTurn(

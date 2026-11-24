@@ -116,6 +116,7 @@ import {
   considerGroupPlanRsvp,
   considerGroupPollCardVote,
   considerPrivateCalendarReply,
+  settleCalendarsAfterLockedStart,
   settleGroupExperienceCalendar,
 } from './group-plan-rsvp/inbound';
 import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
@@ -647,6 +648,20 @@ function calendarConsentFrom(deps: LinqDoorDeps) {
     );
 }
 
+function calendarStartChangeFrom(deps: LinqDoorDeps) {
+  return (input: { chatId: string; planId: string; now: Date }) =>
+    settleCalendarsAfterLockedStart(
+      {
+        database: deps.database,
+        now: input.now,
+        composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
+      },
+      input,
+    );
+}
+
 /**
  * VIL-399 — RSVP/time polls, a posted link, or a private question, behind the
  * new default-off flags. Chatter and a missed read stay quiet and leave the
@@ -719,6 +734,7 @@ async function tryGroupExperienceTurn(
       reader: deps.groupExperienceReader,
       composer: deps.groupExperienceComposer,
       calendarAfterAnswer: calendarConsentFrom(deps),
+      calendarAfterStartChange: calendarStartChangeFrom(deps),
     },
     {
       chatId: input.chatId,

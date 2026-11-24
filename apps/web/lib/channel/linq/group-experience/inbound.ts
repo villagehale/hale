@@ -26,6 +26,7 @@ export interface GroupExperienceInboundPorts {
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
   calendarAfterAnswer?: GroupExperienceTurnPorts['calendarAfterAnswer'];
+  calendarAfterStartChange?: GroupExperienceTurnPorts['calendarAfterStartChange'];
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -84,6 +85,7 @@ export async function considerGroupExperience(
       composer: ports.composer,
       send: ports.send,
       calendarAfterAnswer: ports.calendarAfterAnswer,
+      calendarAfterStartChange: ports.calendarAfterStartChange,
       pollCard: postgresExperiencePollCard(ports.database),
       sendOneToOne: ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now),
       privateSlices: async (familyIds) => {
