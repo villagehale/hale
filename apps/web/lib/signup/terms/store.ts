@@ -221,6 +221,25 @@ export async function someOfferHasTerms(
   }
 }
 
+/** Which of these offers carry a terms row, whatever the flag says now. */
+export async function offersWithTerms(
+  database: Database,
+  input: { familyId: string; offerIds: readonly string[] },
+): Promise<ReadonlySet<string>> {
+  if (input.offerIds.length === 0) return new Set();
+  const terms = schema.authorizedSignupTerms;
+  try {
+    const rows = await database
+      .select({ offerId: terms.offerId })
+      .from(terms)
+      .where(and(eq(terms.familyId, input.familyId), inArray(terms.offerId, [...input.offerIds])));
+    return new Set(rows.map((row) => row.offerId));
+  } catch (err) {
+    if (isMissingTable(err)) return new Set();
+    throw err;
+  }
+}
+
 /**
  * True when any earlier run on this class for this child may have charged. Any such row
  * counts, not the latest: a held attempt ends `nothing` and must not clear the doubt. An

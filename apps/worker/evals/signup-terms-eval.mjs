@@ -6,8 +6,8 @@
 //   - the plan reader with the signup-plan-read-terms addendum, through `toPlanReading`;
 //   - the page read (signup-preflight-read), through `applyPreflightRead`;
 //   - the birth-date read (signup-dob-read), through `acceptDobReading`;
-//   - the provider notice and the mismatch read with the signup-page-words addendum, on a
-//     site option that carries an instruction.
+//   - the provider notice, the mismatch read and the supersede read with the signup-page-words
+//     addendum, on a site option that carries an instruction.
 //
 // No `run-` prefix until its recordings exist, so CI does not replay an empty cache.
 //
@@ -38,6 +38,7 @@ import {
   SIGNUP_TERMS_NOTICE_FIXTURES,
   SIGNUP_TERMS_PREFLIGHT_FIXTURES,
   SIGNUP_TERMS_READ_FIXTURES,
+  SIGNUP_TERMS_SUPERSEDE_FIXTURES,
   SIGNUP_TERMS_WRITER_FIXTURES,
 } from './signup-terms-fixtures.mjs';
 
@@ -61,6 +62,7 @@ async function main() {
   const notice = await importTs(web('plan', 'notice-writer.ts'));
   const mismatch = await importTs(web('plan', 'mismatch-reader.ts'));
   const pageWords = await importTs(web('terms', 'page-words.ts'));
+  const supersede = await importTs(web('supersede-reader.ts'));
   const skill = async (name) => agent.loadSkill(join(SKILLS, `${name}.md`));
   const replySkill = await skill(writer.SIGNUP_PLAN_REPLY_SKILL);
   const termsSkill = await skill(writer.SIGNUP_PLAN_TERMS_SKILL);
@@ -71,6 +73,7 @@ async function main() {
   const noticeSkill = await skill(notice.SIGNUP_PROVIDER_NOTICE_SKILL);
   const mismatchSkill = await skill(mismatch.SIGNUP_MISMATCH_READ_SKILL);
   const pageWordsSkill = await skill(pageWords.SIGNUP_PAGE_WORDS_SKILL);
+  const supersedeSkill = await skill(supersede.SIGNUP_SUPERSEDE_READ_SKILL);
   const judgeModel = await readJudgeModel();
 
   installEvalSpendCap();
@@ -104,7 +107,9 @@ async function main() {
         ...common,
         tag: `signup-terms:write:${fixture.id}${violation ? ':retry' : ''}`,
         lane: agent.pickLane(replySkill.meta.task),
-        system: `${replySkill.instructions}\n\n${termsSkill.instructions}`,
+        system: writer.planReplyUsesTermsSkill(fixture.facts)
+          ? `${replySkill.instructions}\n\n${termsSkill.instructions}`
+          : replySkill.instructions,
         userMessage: writer.planReplyUserMessage(fixture.facts, violation),
         toolName: writer.SIGNUP_PLAN_REPLY_TOOL,
         toolDescription: writer.SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION,
@@ -282,6 +287,28 @@ async function main() {
       reading?.[key] === want ? [] : [`${key}: wanted ${want}, got ${reading?.[key]}`],
     );
     record(fixture.id, failures, JSON.stringify(reading));
+  }
+
+  for (const fixture of SIGNUP_TERMS_SUPERSEDE_FIXTURES) {
+    const call = await cachedToolCall({
+      ...common,
+      tag: `signup-terms:supersede:${fixture.id}`,
+      lane: agent.pickLane(supersedeSkill.meta.task),
+      system: `${supersedeSkill.instructions}\n\n${pageWordsSkill.instructions}`,
+      userMessage: supersede.signupSupersedeReadUserMessage(fixture.input),
+      toolName: supersede.SIGNUP_SUPERSEDE_READ_TOOL,
+      toolDescription: supersede.SIGNUP_SUPERSEDE_READ_TOOL_DESCRIPTION,
+      toolSchema: supersede.SIGNUP_SUPERSEDE_READ_TOOL_SCHEMA,
+      maxTokens: supersede.SIGNUP_SUPERSEDE_READ_MAX_TOKENS,
+    });
+    if (dry) continue;
+    const parsed = supersede.signupSupersedeReadSchema.safeParse(call.value);
+    const reading = parsed.success
+      ? supersede.toSupersedeReading(parsed.data, fixture.input.earlier, fixture.input.text)
+      : null;
+    const got = JSON.stringify(reading?.replaced ?? null);
+    const want = JSON.stringify(fixture.expectReplaced);
+    record(fixture.id, got === want ? [] : [`replaced: wanted ${want}, got ${got}`], got);
   }
 
   if (dry) {

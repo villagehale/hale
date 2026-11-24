@@ -24,7 +24,9 @@ import {
   createSignupSupersedeReader,
 } from './supersede-reader';
 import { registrationPreflightEnabled } from './terms/flag';
+import { MAX_PAGE_QUOTE_CHARS, untrustedPageWords } from './terms/page-words';
 import type { ProgramTermsDeps } from './terms/read-page';
+import { offersWithTerms } from './terms/store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -158,11 +160,16 @@ async function ownPendingAsks(
       ),
     )
     .orderBy(desc(offers.createdAt));
+  const onTerms = await offersWithTerms(database, {
+    familyId: input.familyId,
+    offerIds: rows.map((row) => row.id),
+  });
   return rows.map((row) => ({
     offerId: row.id,
     activity: row.activityLabel,
     host: row.providerHost,
     sessionLabels: row.sessions.map((session) => session.label),
+    ...(onTerms.has(row.id) ? { labelsFromPage: true } : {}),
   }));
 }
 
@@ -300,10 +307,21 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         return {
           recorded: false as const,
           reason: result.reason,
-          ...(result.reason === 'age_outside_band' ? { ageBand: result.ageBand ?? null } : {}),
+          ...(result.reason === 'age_outside_band'
+            ? {
+                untrusted_age_band: untrustedPageWords(
+                  result.ageBand ?? null,
+                  MAX_PAGE_QUOTE_CHARS,
+                ),
+              }
+            : {}),
         };
       }
       ports.onRecorded({ offerId: result.offerId, text: result.text });
+      // A page wrote the session labels on an ask with terms: the coach gets no words of them.
+      const fromPage = new Set(
+        earlier.filter((prior) => prior.labelsFromPage).map((prior) => prior.offerId),
+      );
       return {
         recorded: true as const,
         offerId: result.offerId,
@@ -311,7 +329,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         replaced: result.replaced.map((prior) => ({
           activity: prior.activityLabel,
           host: prior.providerHost,
-          sessions: prior.sessionLabels,
+          ...(fromPage.has(prior.offerId) ? {} : { sessions: prior.sessionLabels }),
         })),
         // Only when one was: an empty list beside `replaced` gives the coach nothing to say.
         ...(keptOpen.length > 0
@@ -319,7 +337,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
               keptOpen: keptOpen.map((prior) => ({
                 activity: prior.activity,
                 host: prior.host,
-                sessions: prior.sessionLabels,
+                ...(fromPage.has(prior.offerId) ? {} : { sessions: prior.sessionLabels }),
               })),
             }
           : {}),
