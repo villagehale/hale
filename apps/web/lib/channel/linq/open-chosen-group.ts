@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { addCommandNoColdTextEnabled } from '~/lib/channel/caregiver/add-them-yourself';
 import { startCoParentInvite } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
@@ -47,7 +48,16 @@ export async function openChosenHouseholdGroup(
   if (!linqGroupOnboardingV2Enabled()) return { status: 'flag_off' };
   if (args.mode !== 'new') return { status: 'not_new' };
 
-  const confirmed = await confirmedCoParentPhone(database, args.familyId, args.parentPhoneE164);
+  // ADD_COMMAND_NO_COLD_TEXT_ENABLED on: a group opens only with a co-parent who is
+  // already seated, and a number in this message starts no invite. Neither texts a
+  // number that never texted Hale.
+  const noColdText = addCommandNoColdTextEnabled();
+  const confirmed = await confirmedCoParentPhone(
+    database,
+    args.familyId,
+    args.parentPhoneE164,
+    noColdText,
+  );
   if (confirmed) {
     return openHouseholdLinqGroup(database, {
       familyId: args.familyId,
@@ -59,7 +69,7 @@ export async function openChosenHouseholdGroup(
     });
   }
 
-  const named = args.namedPhone ?? null;
+  const named = noColdText ? null : (args.namedPhone ?? null);
   if (named && named.phoneE164 !== args.parentPhoneE164) {
     return startInviteForUnconfirmed(database, args, named);
   }
@@ -83,6 +93,7 @@ async function confirmedCoParentPhone(
   database: Database,
   familyId: string,
   parentPhone: string,
+  seatedOnly: boolean,
 ): Promise<string | null> {
   const members = await database
     .select({
@@ -96,6 +107,7 @@ async function confirmedCoParentPhone(
     const phone = await resolveSendablePhone(database, seated.userId);
     if (phone && phone !== parentPhone) return phone;
   }
+  if (seatedOnly) return null;
 
   const invites = await database
     .select({

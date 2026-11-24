@@ -1,6 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
+  type AddThemYourselfUnwritten,
+  type AddThemYourselfVoice,
+  addCommandNoColdTextEnabled,
+  writeAddThemYourself,
+} from '~/lib/channel/caregiver/add-them-yourself';
+import {
   familyHasCoParent,
   loadPendingAssent,
   recordCoParentAssent,
@@ -23,6 +29,7 @@ import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { type OpsPagerOutcome, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { openChosenHouseholdGroup } from './open-chosen-group';
 /**
@@ -81,6 +88,9 @@ export interface CoParentNumberDeps {
   sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
   /** Writes the invite. Absence is named and nobody is texted. */
   ask?: ConsentAskWriter;
+  /** VIL-759 · the reply with ADD_COMMAND_NO_COLD_TEXT_ENABLED on. Absence is named
+   * (`voice_absent`), pages #ops and sends nothing. */
+  addThemYourself?: AddThemYourselfVoice;
 }
 
 export type CoParentNumberOutcome =
@@ -105,7 +115,17 @@ export type CoParentNumberOutcome =
       lineHeld: DoorLineHold | null;
     }
   /** The invite text could not be written. Nobody was texted. */
-  | { status: 'ask_unwritten'; reply: null };
+  | { status: 'ask_unwritten'; reply: null }
+  /** ADD_COMMAND_NO_COLD_TEXT_ENABLED on: the parent is told how the person gets in, and
+   * nobody else is texted. */
+  | { status: 'told_add_themselves'; reply: string }
+  /** The same reply, unwritten. Nothing was sent and #ops was paged. */
+  | {
+      status: 'add_them_yourself_unwritten';
+      reply: null;
+      reason: AddThemYourselfUnwritten;
+      opsPage: OpsPagerOutcome;
+    };
 
 /**
  * iMessage, flag on, and the stored choice is a new group. A confirmed phone
@@ -164,12 +184,16 @@ export async function deliverCoParentNumberInvite(
     inboundChannelMessageId: string | null;
     sendSms: CoParentNumberDeps['sendSms'];
     ask?: ConsentAskWriter;
+    addThemYourself?: AddThemYourselfVoice;
   },
 ): Promise<CoParentNumberOutcome> {
   const parsed = parseCoParentNumberReply(input.body);
   if (!parsed) return { status: 'not_pending' };
 
   const door = await resolveMessagingDoor(database, input.parentUserId);
+  if (addCommandNoColdTextEnabled()) {
+    return tellThemHowToGetIn(database, input, parsed, door.channel);
+  }
   // Sloane, 2026-09-25. A number on iMessage is not an invite and not a note.
   // The co-parent ask already told them how to start the group.
   if (door.channel === 'imessage') return answerNewGroupChoice(database, input, parsed);
@@ -292,6 +316,46 @@ export async function deliverCoParentNumberInvite(
     reply: await coParentInviteSentAck(label, language),
     templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
   };
+}
+
+/**
+ * ADD_COMMAND_NO_COLD_TEXT_ENABLED on, on either door. The number is the answer to the
+ * co-parent ask, and Hale never texts a number first: the reply says how that person
+ * gets in. Nothing about the number is looked up, so the reply cannot say whether it has
+ * an account or an open invite anywhere.
+ */
+async function tellThemHowToGetIn(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    addThemYourself?: AddThemYourselfVoice;
+  },
+  parsed: { name: string | null },
+  channel: 'imessage' | 'sms',
+): Promise<CoParentNumberOutcome> {
+  if (await familyHasCoParent(database, input.familyId)) return { status: 'not_pending' };
+  if (!(await askWasDelivered(database, input))) return { status: 'not_pending' };
+  const written = await writeAddThemYourself(
+    input.addThemYourself,
+    failurePageOpsPager(() => database),
+    'number_door',
+    {
+      language: await familySpeechLanguage(database, input.familyId),
+      name: parsed.name,
+      role: 'co_parent',
+      channel,
+    },
+  );
+  if (written.status === 'unwritten') {
+    return {
+      status: 'add_them_yourself_unwritten',
+      reply: null,
+      reason: written.reason,
+      opsPage: written.opsPage,
+    };
+  }
+  return { status: 'told_add_themselves', reply: written.body };
 }
 
 async function askWasDelivered(

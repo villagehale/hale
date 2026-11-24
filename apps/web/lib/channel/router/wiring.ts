@@ -20,6 +20,10 @@ import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/acti
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
 import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
+import {
+  type AddThemYourselfVoice,
+  createAddThemYourselfVoice,
+} from '~/lib/channel/caregiver/add-them-yourself';
 import { loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
@@ -473,6 +477,8 @@ export interface DefaultHandlerPorts {
   ask?: ConsentAskWriter;
   /** Writes the model's lines (an intro yes acknowledgement). Tests inject one. */
   saidLine?: SaidLineWriter;
+  /** Writes the add-them-yourself reply. Production uses the screen. Tests inject one. */
+  addThemYourself?: AddThemYourselfVoice;
 }
 
 export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicHandler[] {
@@ -506,6 +512,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
         return { providerMessageId: sent.providerMessageId };
       },
       ask,
+      addThemYourself: ports.addThemYourself ?? createAddThemYourselfVoice(screenClient),
     }),
     // Beside it, and for the same reason: it claims nothing, so its POSITION in this
     // chain is free rather than load-bearing. Said out loud so a reader does not have to
