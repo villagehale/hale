@@ -113,10 +113,10 @@ describe('conversions flag and send_to', () => {
       metaPurchaseFromPaidSession({
         facts: PAID,
         conversionsEnabled: true,
-        pixelId: '1460101092968766, 2041301346827688, nope',
+        pixelId: '1111111111111111, 2222222222222222, nope',
       }),
     ).toEqual({
-      pixelId: '1460101092968766,2041301346827688',
+      pixelId: '1111111111111111,2222222222222222',
       value: 79,
       currency: 'CAD',
       transactionId: 'cs_test_1',

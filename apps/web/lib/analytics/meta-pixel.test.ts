@@ -6,8 +6,8 @@ import {
   metaPixelIdsWhenConversionsEnabled,
 } from './meta-pixel.js';
 
-const OLD_ID = '1460101092968766';
-const NEW_ID = '2041301346827688';
+const OLD_ID = '1111111111111111';
+const NEW_ID = '2222222222222222';
 
 describe('NEXT_PUBLIC_META_PIXEL_ID list', () => {
   it('keeps a single id', () => {

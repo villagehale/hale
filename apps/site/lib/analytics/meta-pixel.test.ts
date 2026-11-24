@@ -10,6 +10,8 @@ import {
 } from './meta-pixel.js';
 
 const PIXEL_ID = '1460101092968766';
+const FIRST_ID = '1111111111111111';
+const NEW_PIXEL_ID = '2222222222222222';
 
 const layout = readFileSync(
   fileURLToPath(new URL('../../app/[locale]/layout.tsx', import.meta.url)),
@@ -41,53 +43,51 @@ const privacy = readFileSync(
   'utf8',
 );
 
-const NEW_PIXEL_ID = '2041301346827688';
-
 describe('NEXT_PUBLIC_META_PIXEL_ID list', () => {
   it('keeps a single id, and trims it', () => {
-    expect(metaPixelIdsFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: PIXEL_ID })).toEqual([PIXEL_ID]);
-    expect(metaPixelIdFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: `  ${PIXEL_ID}  ` })).toBe(PIXEL_ID);
-    expect(metaPixelIdsFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: `  ${PIXEL_ID}  ` })).toEqual([
-      PIXEL_ID,
+    expect(metaPixelIdsFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: FIRST_ID })).toEqual([FIRST_ID]);
+    expect(metaPixelIdFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: `  ${FIRST_ID}  ` })).toBe(FIRST_ID);
+    expect(metaPixelIdsFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: `  ${FIRST_ID}  ` })).toEqual([
+      FIRST_ID,
     ]);
   });
 
   it('reads two ids, drops junk and empties, and dedupes', () => {
     expect(
       metaPixelIdsFromEnv({
-        NEXT_PUBLIC_META_PIXEL_ID: `${PIXEL_ID}, ${NEW_PIXEL_ID}`,
+        NEXT_PUBLIC_META_PIXEL_ID: `${FIRST_ID}, ${NEW_PIXEL_ID}`,
       }),
-    ).toEqual([PIXEL_ID, NEW_PIXEL_ID]);
+    ).toEqual([FIRST_ID, NEW_PIXEL_ID]);
     expect(
       metaPixelIdsFromEnv({
-        NEXT_PUBLIC_META_PIXEL_ID: ` ${PIXEL_ID} , nope, , 12a, ${PIXEL_ID}, ${NEW_PIXEL_ID} `,
+        NEXT_PUBLIC_META_PIXEL_ID: ` ${FIRST_ID} , nope, , 12a, ${FIRST_ID}, ${NEW_PIXEL_ID} `,
       }),
-    ).toEqual([PIXEL_ID, NEW_PIXEL_ID]);
+    ).toEqual([FIRST_ID, NEW_PIXEL_ID]);
     expect(metaPixelIdsFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: ' , abc, ' })).toEqual([]);
     expect(metaPixelIdFromEnv({ NEXT_PUBLIC_META_PIXEL_ID: ' , abc, ' })).toBeNull();
     expect(
       metaPixelIdFromEnv({
-        NEXT_PUBLIC_META_PIXEL_ID: `nope, ${PIXEL_ID}, ${NEW_PIXEL_ID}`,
+        NEXT_PUBLIC_META_PIXEL_ID: `nope, ${FIRST_ID}, ${NEW_PIXEL_ID}`,
       }),
-    ).toBe(PIXEL_ID);
+    ).toBe(FIRST_ID);
   });
 
   it('still returns one id from the conversions gate, and the full list beside it', () => {
     expect(
       metaPixelIdWhenConversionsEnabled({
         NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'true',
-        NEXT_PUBLIC_META_PIXEL_ID: `${PIXEL_ID}, ${NEW_PIXEL_ID}`,
+        NEXT_PUBLIC_META_PIXEL_ID: `${FIRST_ID}, ${NEW_PIXEL_ID}`,
       }),
-    ).toBe(PIXEL_ID);
+    ).toBe(FIRST_ID);
     expect(
       metaPixelIdsWhenConversionsEnabled({
         NEXT_PUBLIC_CONVERSIONS_API_ENABLED: 'true',
-        NEXT_PUBLIC_META_PIXEL_ID: `${PIXEL_ID}, ${NEW_PIXEL_ID}`,
+        NEXT_PUBLIC_META_PIXEL_ID: `${FIRST_ID}, ${NEW_PIXEL_ID}`,
       }),
-    ).toEqual([PIXEL_ID, NEW_PIXEL_ID]);
+    ).toEqual([FIRST_ID, NEW_PIXEL_ID]);
     expect(
       metaPixelIdsWhenConversionsEnabled({
-        NEXT_PUBLIC_META_PIXEL_ID: `${PIXEL_ID},${NEW_PIXEL_ID}`,
+        NEXT_PUBLIC_META_PIXEL_ID: `${FIRST_ID},${NEW_PIXEL_ID}`,
       }),
     ).toEqual([]);
   });

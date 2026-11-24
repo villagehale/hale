@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
+import { writeConsent } from '~/lib/site/consent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -84,7 +85,7 @@ describe('purchase conversions across the pending state', () => {
       root.render(
         createElement(MetaPurchaseConversion, {
           ...BASE,
-          pixelId: '1460101092968766, 2041301346827688',
+          pixelId: '1111111111111111, 2222222222222222',
           transactionId: 'cs_test_two',
         }),
       );
@@ -92,8 +93,8 @@ describe('purchase conversions across the pending state', () => {
     const fbq = (window as Window & { fbq?: { queue?: unknown[][] } }).fbq;
     const queued = fbq?.queue ?? [];
     expect(queued.filter(([method]) => method === 'init')).toEqual([
-      ['init', '1460101092968766'],
-      ['init', '2041301346827688'],
+      ['init', '1111111111111111'],
+      ['init', '2222222222222222'],
     ]);
     expect(
       queued.filter(([method, name]) => method === 'track' && name === 'PageView'),
@@ -114,13 +115,48 @@ describe('purchase conversions across the pending state', () => {
       root.render(
         createElement(MetaPurchaseConversion, {
           ...BASE,
-          pixelId: '1460101092968766,2041301346827688',
+          pixelId: '1111111111111111,2222222222222222',
           transactionId: 'cs_test_denied',
         }),
       );
     });
     expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
     expect(sessionStorage.getItem('hale.meta_purchase.cs_test_denied')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('fires Purchase for every pixel when Accept happens after the receipt mounts', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111,2222222222222222',
+          transactionId: 'cs_test_late',
+        }),
+      );
+    });
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_late')).toBeNull();
+    await act(async () => {
+      writeConsent('granted');
+    });
+    const fbq = (window as Window & { fbq?: { queue?: unknown[][] } }).fbq;
+    const queued = fbq?.queue ?? [];
+    expect(queued.filter(([method]) => method === 'init')).toEqual([
+      ['init', '1111111111111111'],
+      ['init', '2222222222222222'],
+    ]);
+    expect(queued.filter(([method, name]) => method === 'track' && name === 'Purchase')).toEqual([
+      ['track', 'Purchase', { value: 59, currency: 'CAD' }, { eventID: 'cs_test_late' }],
+    ]);
+    await act(async () => {
+      writeConsent('granted');
+    });
+    expect(
+      queued.filter(([method, name]) => method === 'track' && name === 'Purchase'),
+    ).toHaveLength(1);
     await act(async () => root.unmount());
   });
 });

@@ -127,7 +127,7 @@ describe('senders no-op without flags or env', () => {
       purchase,
       {
         META_CAPI_ENABLED: 'true',
-        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766, 2041301346827688',
+        NEXT_PUBLIC_META_PIXEL_ID: '1111111111111111, 2222222222222222',
         META_CAPI_ACCESS_TOKEN: 'token-1',
       },
       fetchImpl,
@@ -135,8 +135,8 @@ describe('senders no-op without flags or env', () => {
     expect(result).toEqual({ status: 'sent' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/1460101092968766/events?access_token=token-1');
-    expect(url).not.toContain('2041301346827688');
+    expect(url).toContain('/1111111111111111/events?access_token=token-1');
+    expect(url).not.toContain('2222222222222222');
   });
 
   it('sends Meta CAPI with the Checkout Session event_id, hashed PII, and matching cookies', async () => {
@@ -325,7 +325,7 @@ describe('Meta Test Events ops probe', () => {
       .mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
     const result = await sendMetaTestPurchase(
       {
-        NEXT_PUBLIC_META_PIXEL_ID: '1460101092968766, 2041301346827688',
+        NEXT_PUBLIC_META_PIXEL_ID: '1111111111111111, 2222222222222222',
         META_CAPI_ACCESS_TOKEN: 'token-1',
         META_CAPI_TEST_EVENT_CODE: 'TEST12345',
       },
@@ -334,8 +334,8 @@ describe('Meta Test Events ops probe', () => {
     expect(result).toEqual({ status: 200, events_received: 1 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/1460101092968766/events?access_token=token-1');
-    expect(url).not.toContain('2041301346827688');
+    expect(url).toContain('/1111111111111111/events?access_token=token-1');
+    expect(url).not.toContain('2222222222222222');
   });
 
   it('sends Max USD when the ops probe asks for that tier and currency', async () => {
