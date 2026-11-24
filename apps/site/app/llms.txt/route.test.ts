@@ -40,7 +40,7 @@ describe('llms.txt', () => {
   it('describes what Hale is and that the content is cited, not medical advice', async () => {
     const text = await body();
     expect(text).toMatch(/^# Hale/);
-    expect(text.toLowerCase()).toContain('planner for your kids');
+    expect(text.toLowerCase()).toContain('ai agent you text');
     expect(text.toLowerCase()).not.toContain('family ai');
     expect(text.toLowerCase()).toContain('0–18');
     expect(text.toLowerCase()).toContain('not medical advice');

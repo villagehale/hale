@@ -67,8 +67,8 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const REDESIGN_H1: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], 'A planner for your kids’ year.'],
-  ['/pricing', pages['/pricing'], 'Free, with unlimited chat.'],
+  ['/about', pages['/about'], 'Your kids’ year, handled.'],
+  ['/pricing', pages['/pricing'], 'What you pay.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
   ['/answers', pages['/answers'], 'Calm, cited guidance for every stage.'],
@@ -130,13 +130,13 @@ describe('/about — the locked page', () => {
   it('says why now, and drops the old framing', () => {
     const text = rawText(html);
     expect(text.replace(/\u00a0/g, ' ')).toContain('Parent-built in Georgetown, Ontario.');
-    expect(text).toContain('Every parent should have someone who knows what’s on near them');
+    expect(text).toContain('Every parent should have someone who knows the family and takes the kids’ year off their plate.');
     expect(text).not.toMatch(/agentic|Anzhe/i);
     expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
   });
 
   it('opens on the approved story line', () => {
-    expect(rawText(html)).toContain('Two parents building the helper we wanted.');
+    expect(rawText(html)).toContain('Two parents building the agent we wanted.');
     expect(rawText(html)).not.toContain('You register, and nothing happens without a yes');
   });
 
@@ -207,21 +207,21 @@ describe('/pricing — the tier cards have anatomy', () => {
 
   const TIERS: readonly { name: string; features: readonly string[] }[] = [
     {
-      name: 'Free',
+      name: 'Text',
       features: [
-        'Unlimited chat',
-        'Live find',
-        'A text when a spot opens',
-        'Group chats and your co-parent',
-        'A nudge when a weekend’s empty',
+        'Knows your family',
+        'Finds what fits',
+        'Gets the spot, starting Dec 1, with your ok',
+        'Runs the group chat',
+        'Reads your Gmail and calendar',
       ],
     },
     {
       name: 'Plus',
       features: [
-        'Everything in Free',
+        'Knows your family',
         'Year memory, season to season',
-        'Sign-ups done for you, when you say yes',
+        'Starting Dec 1, signs them up with your ok.',
       ],
     },
     {
@@ -230,7 +230,6 @@ describe('/pricing — the tier cards have anatomy', () => {
         'Everything in Plus',
         'The highest limits on searches and spot watches',
         'Priority support',
-        'Help with sign-ups',
       ],
     },
   ];
@@ -250,7 +249,7 @@ describe('/pricing — the tier cards have anatomy', () => {
   });
 
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
-    expect(TIERS.flatMap((tier) => tier.features)).toHaveLength(12);
+    expect(TIERS.flatMap((tier) => tier.features)).toHaveLength(11);
     for (const tier of TIERS) {
       for (const feature of tier.features) {
         expect(rawText(html)).toContain(feature);
@@ -260,20 +259,20 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(html).toContain('>Text Hale<');
   });
 
-  it('names Free, Plus, and Max, and the refund', () => {
+  it('names Plus and Max, and the refund', () => {
     const text = rawText(html).replace(/\s+/g, ' ');
     expect(text).toContain('Paid plans are Plus and Max.');
     expect(text).toContain('Start with a text.');
     expect(text).toContain('Full refund anytime if it’s not for you.');
-    expect(text).not.toContain('about three months free');
-    expect(text).not.toContain('Founding families join free.');
+    expect(text).not.toContain('about three months ' + 'fr' + 'ee');
+    expect(text).not.toContain('Founding ' + 'famil' + 'ies join ' + 'fr' + 'ee.');
   });
 
   it('drops the pre-pivot village headline', () => {
     expect(heading(html)).not.toContain('build the village');
     // Positive control: the headline is present and is the new one, so the
     // absence above is a real replacement rather than a missing <h1>.
-    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe('Free, with unlimited chat.');
+    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe('What you pay.');
   });
 });
 

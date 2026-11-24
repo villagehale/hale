@@ -180,7 +180,7 @@ export function RedesignActivities({
                   <h3 className="hs-h3">{t('This weekend')}</h3>
                   <p className="hs-p">
                     {t(
-                      'Free outings, parks and one‑time events, when you need an idea for Saturday.',
+                      'Outings, parks and one‑time events, when you need an idea for Saturday.',
                     )}
                   </p>
                 </div>
@@ -195,7 +195,7 @@ export function RedesignActivities({
                   <h2 className="hs-h2">{t('Ask the way you’d ask a friend.')}</h2>
                   <p className="hs-lede">
                     {t(
-                      'Say how old the kids are and when you’re free. Hale answers with a few good options, not thirty.',
+                      'Say how old the kids are and when you can go. Hale answers with a few good options, not thirty.',
                     )}
                   </p>
                 </div>
@@ -215,7 +215,7 @@ export function RedesignActivities({
                       <TypingBubble />
                       <div className="im-b in tail">
                         {t(
-                          'Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Free drop-in play at the community centre, 10 to noon\nWant the links?',
+                          'Three nearby:\n1. Parent & tot swim (ages 2–4), 9:15 a.m.\n2. Library story time (ages 2–5), 10:30 a.m.\n3. Drop-in play at the community centre, 10 to noon\nWant the links?',
                         )}
                       </div>
                     </div>
@@ -289,7 +289,7 @@ export function RedesignActivities({
                   </div>
                   <p className="hs-close-terms">
                     {t(
-                      'Free. You text first; standard message rates apply, reply STOP any time.',
+                      'You text first. Standard message rates apply, reply STOP any time.',
                     )}
                   </p>
                 </div>

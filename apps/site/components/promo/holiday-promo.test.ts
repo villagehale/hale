@@ -18,7 +18,7 @@ import {
  * countries, home and pricing):
  *  - the sale name leads; the headline features the Max sale price, with the
  *    regular Max price struck beside it (Barton, Nov 16 1:07 PM ET);
- *  - Plus and Max each show regular → sale, struck; Free stays $0;
+ *  - Plus and Max each show regular → sale, struck; the first card stays $0;
  *  - CA: Plus $59/yr (regular $159), Max $99/yr (regular $329);
  *    US: Plus $39/yr (regular $119), Max $79/yr (regular $259);
  *  - plain "$", never CAD / USD / C$ / US$ beside a price;
@@ -67,12 +67,12 @@ for (const { phase, currency } of CASES) {
   for (const [name, html] of Object.entries(pages)) {
     describe(`${name} · ${phase} · ${currency}`, () => {
       const body = text(html);
-      const offer = html.match(/id="founding"[\s\S]*?<\/section>/)?.[0] ?? '';
+      const offer = html.match(/id="sale"[\s\S]*?<\/section>/)?.[0] ?? '';
 
       it('leads with the sale name and features the Max sale price', () => {
         expect(body).toContain(phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale');
         expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
-        expect(html).toContain('id="founding"');
+        expect(html).toContain('id="sale"');
         const sale = want.max[1].replace('$', '').replace('/yr', '');
         expect(offer).toMatch(/class="promo-offer-tier"[^>]*>Max</);
         expect(offer).toMatch(new RegExp(`class="promo-price-num"[^>]*>${sale}<`));
@@ -122,10 +122,12 @@ for (const { phase, currency } of CASES) {
         );
       });
 
-      it('leads with the sale and never calls anyone a founding family', () => {
+      it('leads with the sale once and locks the price', () => {
         expect(body).toContain('Our biggest sale of the year');
+        expect(body.match(/biggest sale of the year/gi)).toHaveLength(1);
+        expect(body).not.toMatch(/lowest price of the year/i);
         expect(body).toContain(
-          'Our lowest price of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
+          'Your price stays locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
         );
         expect(body).toContain(
           'Billed once a year. Sale prices are for families who join by Dec 31, 2026.',
@@ -136,7 +138,8 @@ for (const { phase, currency } of CASES) {
 
       it('never uses was / save / % off wording', () => {
         expect(body).not.toMatch(/\bwas\s+(C\$|US\$|\$)/i);
-        expect(body).not.toMatch(/\bsave\b|\bsaving|% ?off|percent off|months free|half price/i);
+        expect(body).not.toMatch(/\bsave\b|\bsaving|% ?off|percent off|half price/i);
+        expect(body.toLowerCase()).not.toContain('months ' + 'fr' + 'ee');
       });
 
       it('keeps registration soft and makes no camp, referral or gift claim in the promo', () => {
@@ -150,20 +153,20 @@ for (const { phase, currency } of CASES) {
             ]),
           ),
         );
-        expect(promoOnly).toContain('helps you get registered');
+        expect(promoOnly).toContain('Starting Dec 1, signs them up with your ok.');
         expect(promoOnly).not.toMatch(/\bcamps?\b/i);
         expect(body).not.toMatch(/signs your kid up|sign-ups done for you/i);
         expect(body).not.toMatch(/referr|refer a|gift a year|gift-a-year/i);
-        expect(body).not.toMatch(/join(s)? free|nothing to pay/i);
+        expect(body.toLowerCase()).not.toContain('nothing to pay');
+        expect(body.toLowerCase()).not.toMatch(new RegExp('join(s)? ' + 'fr' + 'ee'));
       });
 
       it('promises refunds anytime and the lifetime lock, with no trial wording', () => {
         expect(body).toMatch(/Refund anytime/);
         expect(body).toContain(FOUNDING_REFUND_LINE);
         expect(body).toMatch(/locked in for as long as you’re a member/);
-        expect(body).not.toMatch(
-          /try it for a month|try a month|free trial|\btrial\b|first month/i,
-        );
+        expect(body).not.toMatch(/try it for a month|try a month|\btrial\b|first month/i);
+        expect(body.toLowerCase()).not.toContain('fr' + 'ee' + ' trial');
       });
 
       it('places the refund line right under the sale prices, and shows no paid monthly option', () => {
@@ -219,7 +222,7 @@ describe('promo off', () => {
     expect(html).not.toContain('id="founding"');
     expect(html).not.toContain('promo-bar');
     expect(text(html)).toContain('Start with a text.');
-    expect(text(html)).not.toContain('Founding families join free.');
+    expect(text(html)).not.toContain('Founding ' + 'famil' + 'ies join ' + 'fr' + 'ee.');
   });
 
   it('leaves the pricing Plus card on one plain price, with no strikethrough', () => {

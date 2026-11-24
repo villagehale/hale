@@ -4,7 +4,7 @@ import { sitePriceSurface } from './site-price-surface.js';
 const ON = { HOLIDAY_PROMO_ENABLED: 'true' };
 
 describe('sitePriceSurface', () => {
-  it('stays on the free claims unless the holiday flag is exact true', () => {
+  it('stays on the legacy claims unless the holiday flag is exact true', () => {
     expect(sitePriceSurface(new Date('2026-11-16T12:00:00-05:00'), {})).toBe('legacy');
     expect(
       sitePriceSurface(new Date('2027-01-02T00:00:00-05:00'), {

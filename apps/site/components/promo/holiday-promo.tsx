@@ -1,4 +1,5 @@
 import type { Locale } from '~/i18n/routing';
+import { ONE_LINER, PILLARS, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 import { type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
@@ -7,7 +8,7 @@ import { PROMO_IMAGES, type PromoImage } from './promo-images';
 import { PromoStickyReveal } from './promo-sticky';
 
 /**
- * Holiday founding-family promo surfaces (Design, Nov 2026).
+ * Holiday promo surfaces (Design, Nov 2026), copy aligned to the 11-23 narrative.
  *
  * Copy rules this file is held to (holiday-promo.test.ts):
  *  - the sale name leads, with the Max sale price as the big numeral under it
@@ -17,8 +18,9 @@ import { PromoStickyReveal } from './promo-sticky';
  *  - plain "$" in both countries and no CAD / USD beside any price: the
  *    numbers themselves change with the visitor's country;
  *  - yearly only, no monthly option and no trial wording;
- *  - registration stays "helps you get registered"; no camp-finding, no child
- *    names, no referral or gift offer.
+ *  - signup stays "Starting Dec 1, signs them up with your ok"; the biggest
+ *    sale of the year is said once; no camp-finding, no child names, no
+ *    referral or gift offer.
  *
  * Look (Barton, Nov 16): each phase has its own theme, keyed on
  * data-promo-phase in promo.css. Black Friday is retail night: near-black,
@@ -91,7 +93,7 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
           <span className="promo-bar-long">, Plus {promo.plus.saleLabel}</span>, locked in
           <span className="promo-bar-long">. Join by Dec 31</span>.
         </span>
-        <a className="promo-bar-link" href="#founding">
+        <a className="promo-bar-link" href="#sale">
           See<span className="promo-bar-long"> the</span> offer
           <Arrow />
         </a>
@@ -165,15 +167,15 @@ function PromoMedia({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-const CHIPS = ['Watches the dates', 'Reads flyers', 'Plans winter break', 'Lives in your texts'];
+const CHIPS = PILLARS.map((pillar) => pillar.title);
 
-/** The founding-family offer. `id="founding"` is what the banner and sticky bar jump to. */
+/** The sale offer. `id="sale"` is what the banner and sticky bar jump to. */
 export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
   return (
     <section
       className="hs promo-sec"
-      id="founding"
-      aria-labelledby="founding-h"
+      id="sale"
+      aria-labelledby="sale-h"
       data-promo-phase={promo.phase}
       data-promo-currency={promo.currency}
     >
@@ -181,15 +183,14 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
         <div className="promo-card">
           <div className="promo-main">
             <p className="promo-kicker">Our biggest sale of the year</p>
-            <h2 className="promo-sale" id="founding-h">
+            <h2 className="promo-sale" id="sale-h">
               <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
               <span className="promo-sale-word">Sale</span>
             </h2>
             <PriceLockup promo={promo} />
             <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
-              Our lowest price of the year, locked in for as long as you’re a member. Join by Dec
-              31. Refund anytime.
+              Your price stays locked in for as long as you’re a member. Join by Dec 31. Refund anytime.
             </p>
             <ul className="promo-chips">
               {CHIPS.map((chip) => (
@@ -250,9 +251,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               <div>
                 <h3>What Hale does</h3>
                 <p>
-                  Hale is a planner for your kids’ year, by text. Send it a flyer or a screenshot
-                  and it keeps the dates. It watches when sign-ups open, gets everything ready and
-                  helps you get registered, then asks how it went.
+                  {ONE_LINER} {PLUS_SIGNUP_LINE}
                 </p>
               </div>
             </li>
@@ -280,9 +279,7 @@ export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
         Yes, any time. Email {REFUND_EMAIL} and we’ll refund you and end the membership.
       </FaqItem>
       <FaqItem id="what-does-hale-do" question="What does Hale do?">
-        Hale is a planner for your kids’ year, and it lives in your texts. Send it a flyer or a
-        screenshot and it keeps the dates. It watches when sign-ups open, gets everything ready and
-        helps you get registered, and it plans winter break with you. No app to download.
+        {ONE_LINER} {PLUS_SIGNUP_LINE} No app to download.
       </FaqItem>
       <FaqItem id="why-this-currency" question="Why do I see this currency?">
         Prices follow where you are: Canadian dollars in Canada, US dollars in the US. Checkout

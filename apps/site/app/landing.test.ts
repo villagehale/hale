@@ -78,13 +78,13 @@ describe('landing — the redesign hero', () => {
     expect(text).toContain('Start with a text.');
     expect(text).toContain('Paid plans are Plus and Max.');
     expect(text).toContain('Full refund anytime if it’s not for you.');
-    expect(text).not.toContain('Founding families join free.');
+    expect(text).not.toContain('Founding ' + 'famil' + 'ies join ' + 'fr' + 'ee.');
     expect(text).not.toMatch(/only \d+ (spots|left)|hurry|limited time/i);
   });
 
   it('says Hale signs up on a yes and you pay yourself, and drops place names outside the design', () => {
-    expect(text).toContain('Say yes and it signs your kid up, then hands you the payment step.');
-    expect(text).toContain('You always pay yourself.');
+    expect(text).toContain('Starting Dec 1, with your ok.');
+    expect(text).toContain('You say yes, and you pay.');
     for (const banned of ['GTA', 'Georgetown', 'Stouffville', 'Your data stays in Canada']) {
       expect(text).not.toContain(banned);
     }

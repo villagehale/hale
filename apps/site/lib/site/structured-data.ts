@@ -7,7 +7,7 @@ import { APP_URL, SITE_URL } from '~/lib/app-url';
  * The site-identity JSON-LD for the homepage: the three nodes an answer engine or
  * Google needs to treat Hale as a real, accountable entity rather than an anonymous
  * page — the Organization (who publishes), the WebSite (the canonical property), and
- * the SoftwareApplication (the product itself, with its free tier).
+ * the SoftwareApplication (the product itself, with a zero-price Offer).
  * Emitted as one `@graph` so a single script tag carries all three, cross-linked by
  * `@id`. Pure + exported so the shape is unit-tested against these constants rather
  * than eyeballed in the browser. No user input ever reaches it (hard rule #1). The
@@ -49,8 +49,8 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
     description: t('appDescription'),
-    // The free tier. A concrete Offer node is the signal an answer
-    // engine reads when a parent asks whether Hale costs anything.
+    // A concrete Offer node. Whether a zero-price tier stays is an open
+    // product decision (VIL-769); the node is the price the page still shows.
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },
   };
 

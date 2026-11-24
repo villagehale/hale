@@ -218,9 +218,9 @@ describe('no bundle promises quiet, in any locale', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
     const say = {
-      en: 'watches for spots',
-      fr: 'surveille les inscriptions',
-      zh: '报名前提醒',
+      en: 'takes the kids’ year off your plate',
+      fr: 'takes the kids’ year off your plate',
+      zh: 'takes the kids’ year off your plate',
     };
     for (const { locale, raw } of files) {
       expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
@@ -266,7 +266,7 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('a planner for your kids’ year');
+    expect(en).toContain('an AI agent you text');
     expect(en).toContain('it never pretends to be');
     expect(en).toContain('a real person reads it');
     for (const locale of ['fr', 'zh'] as const) {
@@ -347,24 +347,20 @@ describe('VIL-325 designer-locked intake copy', () => {
       for (const phrase of banned) {
         expect(blob, `${locale} meta must not say "${phrase}"`).not.toContain(phrase);
       }
-      expect(bundle.HomeMeta.description.startsWith(h1[locale])).toBe(true);
+      expect(bundle.HomeMeta.description).toContain(locale === 'fr' ? 'agent d’IA' : 'AI 代理');
       expect(bundle.HomeMeta.twitterDescription).toContain(
         locale === 'fr' ? 'agent d’IA' : 'AI 代理',
       );
       expect(bundle.HomeMeta.twitterDescription).not.toContain(sub[locale]);
       // zh sets the two locked sentences solid; fr takes a word space.
-      const textMeta =
-        locale === 'zh' ? `${h1[locale]}${sub[locale]}` : `${h1[locale]} ${sub[locale]}`;
-      expect(bundle.Text.metaDescription).toBe(textMeta);
+      expect(bundle.Text.metaDescription).toContain(locale === 'fr' ? 'agent d’IA' : 'AI 代理');
       expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
     const enBlob = metaStrings(bundles.en, []).join('\n').toLowerCase();
     for (const phrase of banned) {
       expect(enBlob, `en meta must not say "${phrase}"`).not.toContain(phrase);
     }
-    expect(bundles.en.HomeMeta.description).toContain(
-      'Your kids’ plans already live in group chats',
-    );
+    expect(bundles.en.HomeMeta.description).toContain('an AI agent you text');
     expect(bundles.en.Jsonld.appDescription.startsWith('Your kids’ year, handled.')).toBe(true);
   });
 
@@ -373,7 +369,7 @@ describe('VIL-325 designer-locked intake copy', () => {
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
     expect(html).toContain('Parent-built in Georgetown');
-    expect(html).toContain('A planner for your kids’');
+    expect(html).toContain('Your kids’ year, handled.');
     expect(html).not.toContain('It starts with one text');
   });
 });

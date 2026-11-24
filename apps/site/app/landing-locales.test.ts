@@ -23,10 +23,6 @@ function rd(html: string): string {
   return found?.[0] ?? '';
 }
 
-function plain(html: string): string {
-  return html.replace(/<[^>]+>/g, '');
-}
-
 describe('every locale renders the redesign', () => {
   it.each(routing.locales)('%s has no homepage question chips and no v4 loop', (locale) => {
     const html = HTML[locale];
@@ -63,26 +59,23 @@ describe('every locale renders the redesign', () => {
 
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
-    expect(fr).toContain('aide tout le monde à s’entendre');
-    expect(fr).toContain('Inscriptions faites pour toi, quand tu dis oui');
-    expect(plain(fr)).toContain('De l’aide pour les inscriptions');
+    expect(fr).toContain('agent d’IA que tu textes');
+    expect(fr).toContain('À partir du 1er décembre, il les inscrit avec ton accord.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
-    expect(fr).toContain('C’est toujours toi qui paies.');
-    expect(fr).toContain('Demande comment ça s’est passé');
+    expect(fr).toContain('Tu dis oui, et tu paies.');
     expect(fr).toContain('Texte Hale');
     expect(rd(HTML.en)).toContain('More done for you, all year.');
     expect(rd(HTML.en)).toContain('The most Hale can do.');
     expect(rd(HTML.en)).not.toContain('Every kid, caregivers included');
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
-    expect(zh).toContain('它帮你找活动、让大家定下来');
-    expect(zh).toContain('你点头后代你报名');
-    expect(plain(zh)).toContain('协助报名');
+    expect(zh).toContain('AI 代理');
+    expect(zh).toContain('从 12 月 1 日起，经你同意帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');
     expect(zh).not.toContain('每个孩子，照顾的人也算上');
-    expect(zh).toContain('钱总是你自己付。');
+    expect(zh).toContain('你说可以，然后你来付款。');
     expect(zh).not.toContain('已报名');
   });
 });

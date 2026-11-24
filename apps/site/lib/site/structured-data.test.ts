@@ -26,13 +26,13 @@ describe('siteJsonLd', () => {
     expect(json).not.toContain('Country');
   });
 
-  it('declares the free tier as a concrete CAD Offer (the "is it free" AEO signal)', () => {
+  it('declares a zero-price CAD Offer', () => {
     const offer = byType('SoftwareApplication')?.offers as { price: string; priceCurrency: string };
     expect(offer.price).toBe('0');
     expect(offer.priceCurrency).toBe('CAD');
   });
 
-  it.each(routing.locales)('%s describes a kids-year planner, find first', (locale) => {
+  it.each(routing.locales)('%s describes the agent, H1 first', (locale) => {
     const nodes = siteJsonLd(locale)['@graph'] as Array<Record<string, unknown>>;
     const org = nodes.find((n) => n['@type'] === 'Organization');
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
@@ -41,14 +41,14 @@ describe('siteJsonLd', () => {
       fr: 'L’année de tes enfants, sans casse-tête.',
       zh: '孩子这一年，交给 Hale。',
     }[locale];
-    const planner = {
-      en: 'planner for your kids’ year',
-      fr: 'planificateur pour l’année de tes enfants',
-      zh: '孩子这一年的规划',
+    const agent = {
+      en: 'AI agent you text',
+      fr: 'agent d’IA',
+      zh: 'AI 代理',
     }[locale];
     expect(String(app?.description).startsWith(h1)).toBe(true);
-    expect(org?.description).toContain(planner);
-    expect(app?.description).toContain(planner);
+    expect(org?.description).toContain(agent);
+    expect(app?.description).toContain(agent);
     const blob = `${org?.description} ${app?.description}`.toLowerCase();
     for (const banned of [
       'village your family lost',

@@ -138,8 +138,8 @@ export default async function PrivacyPage({
       lastUpdatedIso="2026-11-21"
       intro={
         <p>
-          Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
-          family group chats and parenting questions, so it handles information about children. We
+          Hale is an AI agent you text. It knows your family, finds what fits, and runs group
+          chats you add it to, so it handles information about children. We
           treat that responsibility as the centre of the product, not an afterthought. This policy
           explains, in plain language, what we collect, why, who it is ever shared with, and the
           control you keep over it. Village Hale Technologies Inc. is a Canadian company, and this
@@ -152,12 +152,12 @@ export default async function PrivacyPage({
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is a family assistant you reach by iMessage or text message. It finds activities for
-          your kids, reminds you before registration opens, watches for open spots, can join a
-          family group chat, and answers parenting questions. Today Hale does not book or register
-          on your behalf. If we later offer a feature that acts on your instruction (for example,
-          completing a sign-up), it will only act after you confirm that specific action, and we
-          will update this policy first. You (a parent or legal guardian) text the number and tell
+          Hale is an AI agent you reach by iMessage or text message. It knows your family, finds
+          what fits, can join a group chat you already have, and reads Gmail and calendar when you
+          connect them. Starting Dec 1, with your ok, it may sign them up. Today Hale does not book
+          or register on your behalf. If we later offer a feature that acts on your instruction (for
+          example, completing a sign-up), it will only act after you confirm that specific action,
+          and we will update this policy first. You (a parent or legal guardian) text the number and tell
           Hale about your children. There is no account you must create, though you may sign in to
           the web app, and you may optionally connect tools you already use. Hale is operated by
           Village Hale Technologies Inc., a corporation incorporated in Ontario, Canada (corporation

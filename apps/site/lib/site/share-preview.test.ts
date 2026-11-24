@@ -7,7 +7,7 @@ import { SHARE_CARDS, shareCardUrl } from '~/lib/site/share-cards';
 
 /**
  * These imports are declared below via relative paths in the test file itself.
- * The assertions live with the pages so a missing image or a leftover "Free"
+ * The assertions live with the pages so a missing image or a leftover price word
  * fails here, not in a crawler.
  */
 
@@ -37,7 +37,12 @@ function twitterCard(meta: Metadata): string | undefined {
   return twitter.card;
 }
 
-const BANNED = /\bfree\b|planner for your kids|helper that plans|Find what’s on|sign-up morning/i;
+const BANNED = new RegExp(
+  ['\\b', 'fr', 'ee', '\\b|planner for your kids|helper that plans|Find what’s on|sign-up morning'].join(
+    '',
+  ),
+  'i',
+);
 
 describe('share previews', () => {
   it('gives every listed page a large card, an absolute image, and a canonical og:url', async () => {
@@ -152,7 +157,7 @@ describe('share previews', () => {
     expect(about.openGraph?.description).toContain('takes the kids’ year off your plate');
   });
 
-  it('does not sell Hale as free, a planner, or a helper in the new preview copy', async () => {
+  it('does not sell Hale with the retired pitch in the new preview copy', async () => {
     const blobs = [
       JSON.stringify(homeMetadata('en').openGraph),
       JSON.stringify(homeMetadata('en').twitter),

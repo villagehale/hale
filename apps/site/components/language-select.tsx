@@ -10,7 +10,7 @@ import { type Locale, routing } from '~/i18n/routing';
  * `window.location` at change time and re-prefixed for the chosen language, so
  * `/fr/pricing` → `/pricing` (English) or `/zh/pricing`.
  *
- * Deliberately provider-free — it reads no next-intl client context and no router
+ * Deliberately without a provider — it reads no next-intl client context and no router
  * hook, so it renders in a bare `renderToStaticMarkup` (the chrome tests) as
  * plainly as in the app. The full reload matches the site's other links, which
  * are all plain `<a>`.
