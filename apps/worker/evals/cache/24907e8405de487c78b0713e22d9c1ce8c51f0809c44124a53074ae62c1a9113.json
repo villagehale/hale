@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "I've got the Preschool Sports and Games class for Maya, Wednesdays at 10:30 AM, ages 3 to 5. It's $280.60 for residents, $290.60 for non-residents, course code 00028147. Residents can register starting Tuesday, September 8, and the public opens Tuesday, September 15 at 10:30 a.m. The page lists a registration form I can't see, so leave some time for that. Earlier I had Monday, September 14 at 10:30 a.m., but the page shows September 15, so I'm going by the page. Nothing is booked yet."
+  },
+  "latencyMs": 1457,
+  "usage": {
+    "input_tokens": 279,
+    "output_tokens": 195,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

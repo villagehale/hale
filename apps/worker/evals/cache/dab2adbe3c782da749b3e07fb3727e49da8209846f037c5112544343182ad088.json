@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly acknowledges that the family is waitlisted in Riverton. It honestly notes the number is unknown, since position is null. It says the town publishes no response window, so there is no deadline, which is right when responseHours and deadline are null. Telling the parent to watch email for an offer is allowed. It is in French, asks nothing, names no child and invents nothing. The tone is a little formal but still friendly.",
+    "score": 5
+  }
+}

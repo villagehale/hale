@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has the right window, children, date (Tuesday, September 15, correctly placed three days after Saturday the 12th), time and portal. It names all four checklist items and is in natural English. However, \"I'll mark you ready\" promises a record-keeping action the facts do not state. The close is also an instruction (\"let me know\") rather than a single question asking whether Hale should know.",
+    "score": 3
+  }
+}

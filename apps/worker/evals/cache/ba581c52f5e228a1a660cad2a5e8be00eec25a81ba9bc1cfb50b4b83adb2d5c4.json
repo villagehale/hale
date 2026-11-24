@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for letting me know. Springfield has you at spot 12 on the waitlist. They give you 36 hours to respond to an offer, so the clock runs until Wednesday, September 16 at 11:00 p.m. I'll remind you before it runs out. Keep an eye on your email too, since that's where an offer would come."
+  },
+  "latencyMs": 1418,
+  "usage": {
+    "input_tokens": 157,
+    "output_tokens": 112,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

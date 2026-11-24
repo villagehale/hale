@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_link_refused with page_unreadable asks. It explains plainly that the course page could not be read and that nothing was saved, and it asks once for the same link again. It includes no link, invents no facts and names no child. It is in natural French with acceptable vous, and saying Hale will try again when the link is resent follows directly from asking for it.",
+    "score": 5
+  }
+}

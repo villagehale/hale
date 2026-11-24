@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Got the course page, thanks. It replaces the one you sent before. I couldn't read the course name, day, or time from it, and there's no age range listed, so I can't say whether it fits your teen. Registration opens Tuesday, September 15 at 7:00 a.m. on the residents date. This course has a prerequisite, so leave some time to meet it before then."
+  },
+  "latencyMs": 1598,
+  "usage": {
+    "input_tokens": 208,
+    "output_tokens": 121,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

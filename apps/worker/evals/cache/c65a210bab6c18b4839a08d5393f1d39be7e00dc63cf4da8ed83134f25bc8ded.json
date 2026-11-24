@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Sorry you missed it. I'll flag the next Springfield registration window early so you have time to get ready."
+  },
+  "latencyMs": 820,
+  "usage": {
+    "input_tokens": 65,
+    "output_tokens": 40,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

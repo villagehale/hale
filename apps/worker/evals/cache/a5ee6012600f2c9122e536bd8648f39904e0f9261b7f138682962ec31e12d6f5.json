@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Je n'ai pas pu lire la page du cours à l'instant, donc rien n'a changé de mon côté. Pouvez-vous renvoyer le même lien ? Je réessaierai aussitôt."
+  },
+  "latencyMs": 887,
+  "usage": {
+    "input_tokens": 107,
+    "output_tokens": 77,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

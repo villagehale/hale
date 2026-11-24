@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused with reason wrong_municipality. It says plainly that the link is from another town's portal, so Hale did not take it. It says nothing was saved, carries no link, and asks once for the course page from Springfield's portal, as this reason requires. The phrase \"the registration morning I'm holding for you is Springfield's\" is a mild flourish: \"holding\" could suggest something reserved. Read in context, it means the morning Hale is tracking, which follows from town Springfield, so it is not a claim of a held place. The tone is natural, friendly English and no child is named.",
+    "score": 5
+  }
+}

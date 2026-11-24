@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused with page_unreadable. It says plainly that the page could not be read, carries no link, and confirms nothing was saved. It asks once for the same link, in natural French using vous. Saying Hale will try again right away simply follows from asking for the link again, so it is not an invented promise. There are no invented facts, dates or children.",
+    "score": 5
+  }
+}

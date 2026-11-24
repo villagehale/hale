@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Merci de me dire que vous êtes sur liste d'attente à Riverton. Je ne connais pas votre numéro sur la liste. La ville ne publie pas de délai de réponse, donc il n'y a pas d'échéance à surveiller : gardez simplement un œil sur vos courriels pour une offre de place."
+  },
+  "latencyMs": 1068,
+  "usage": {
+    "input_tokens": 100,
+    "output_tokens": 114,
+    "cache_read_input_tokens": 5107,
+    "cache_creation_input_tokens": 0
+  }
+}

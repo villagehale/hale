@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This correctly handles a 'no' answer. It names the four things (the account, Max and your teen added with birthdays, the address, a saved card), says Hale will check in again the evening before, and asks nothing now. It is in English, sounds friendly, and names only the handed children. One small issue: 'Before the morning' implies a morning opening time that the facts do not give, which is a slight unhanded detail.",
+    "score": 4
+  }
+}

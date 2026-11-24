@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does everything an approval_card asks. It keeps the handed date (Tuesday, September 15) and time (7:00 a.m.) without shifting them, and correctly states the handed residents-first fact that the general public opens 7 days later. Max is placed in band and Mia just outside it. Each listed text appears with its correct timing, and the message says plainly that Hale never registers for them. It includes the handed link, gives the course-link tip because courseLinkTip is true, and invites approval without asking a question. It names no unhanded child, makes no invented claim, and reads in natural English.",
+    "score": 5
+  }
+}
