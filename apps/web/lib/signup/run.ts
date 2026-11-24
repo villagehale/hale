@@ -315,18 +315,17 @@ async function runTakeBackOnly(
   thread: Exclude<YesThread, 'private'>,
 ): Promise<SignupRunResult> {
   for (const ask of asks) {
+    // Words that name another of their asks are not this one's take-back, and words that
+    // name two of them say which neither is: nothing moves, and the coach takes the turn.
+    if (asks.some((other) => other !== ask && wordsNameAsk(input.body, other))) {
+      if (wordsNameAsk(input.body, ask)) break;
+      continue;
+    }
     const place = thread === 'group' ? { ...ask.place, newest: false } : ask.place;
     const turn =
       ask.lane === 'plan'
         ? await runPlanTakeBack(database, input, planDeps, ask.plan, place)
-        : await declineOneShot(
-            database,
-            input,
-            deps,
-            ask.offer,
-            place,
-            asks.some((other) => other !== ask && wordsNameAsk(input.body, other)),
-          );
+        : await declineOneShot(database, input, deps, ask.offer, place);
     if (turn === 'held') break;
     if (turn !== 'unrelated') return turn;
   }
@@ -341,7 +340,6 @@ async function declineOneShot(
   deps: SignupRunDeps,
   offer: PendingSignupOffer,
   place: AskPlace,
-  namesAnother: boolean,
 ): Promise<SignupRunResult | 'unrelated' | 'held'> {
   const reader = deps.consentReader ?? defaultConsentReader();
   const reading = await reader.read({ text: input.body, offer });
@@ -353,7 +351,6 @@ async function declineOneShot(
     host: offer.providerHost,
   });
   // No question back can go here, so words that name this ask are enough to decline it.
-  if (namesAnother && !named) return 'unrelated';
   if (!place.newest && !named) return 'held';
   await markFromPending(database, input, offer.id, null);
   return replyFor(database, input, deps, await reportDoor(database, input), {

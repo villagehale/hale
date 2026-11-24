@@ -399,8 +399,8 @@ function sweepDeps(result: BrowserUsePlanResult = CONFIRMED) {
 
 const sweep = (deps: PlanRunDeps) => runDueSignupPlans(db.database, { now: AFTER_OPEN }, deps);
 
-async function approvedPlan(f: Household, page = PAGE) {
-  const offerId = await askedAndSent(f, { page, planOpensAt: OPEN_NOW });
+async function approvedPlan(f: Household, page = PAGE, label?: string) {
+  const offerId = await askedAndSent(f, { page, planOpensAt: OPEN_NOW, label });
   const approved = await turn(f, YES);
   expect(approved.result.outcome).toBe('plan_approved');
   return offerId;
@@ -922,6 +922,52 @@ describe('a take-back typed outside the private thread', () => {
       expect(held.result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
       expect((await offerRow(ids.older)).status).toBe('pending');
       expect((await offerRow(ids.newer)).status).toBe('pending');
+    });
+  });
+
+  describe('with two of their plans approved', () => {
+    const plansNamed =
+      (...activities: string[]): PlanReader => ({
+        read: vi.fn(async ({ offer }) => ({
+          verdict: 'take_back' as const,
+          named: activities.includes(offer.activity) ? ('tokens' as const) : null,
+        })),
+      });
+
+    it('words that name both move neither', async () => {
+      const f = await household();
+      const level2 = await approvedPlan(f, PAGE, 'Swim Kids Level 2');
+      const level3 = await approvedPlan(f, PAGE, 'Swim Kids Level 3');
+
+      const held = await turn(f, TAKE_BACK, {
+        body: 'cancel swim kids level 3',
+        inGroup: true,
+        takeBackReader: plansNamed('Swim Kids Level 2', 'Swim Kids Level 3'),
+      });
+
+      expect(held.result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
+      expect(held.written).toEqual([]);
+      for (const offerId of [level2, level3]) {
+        const row = await offerRow(offerId);
+        expect(row.status).toBe('planned');
+        expect(row.planCancelRequestedAt).toBeNull();
+      }
+    });
+
+    it('words that name one cancel that one, after the newer (control)', async () => {
+      const f = await household();
+      const speaking = await approvedPlan(f, PAGE, 'Get Ready Public Speaking');
+      const swim = await approvedPlan(f, PAGE, 'Swim Kids');
+
+      const taken = await turn(f, TAKE_BACK, {
+        body: 'cancel public speaking',
+        inGroup: true,
+        takeBackReader: plansNamed('Get Ready Public Speaking'),
+      });
+
+      expect(taken.result).toMatchObject({ claimed: true, outcome: 'plan_cancelled' });
+      expect((await offerRow(speaking)).status).toBe('handed_back');
+      expect((await offerRow(swim)).status).toBe('planned');
     });
   });
 
