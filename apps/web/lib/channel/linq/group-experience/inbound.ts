@@ -13,6 +13,7 @@ import { createPostgresGroupExperienceStore } from './store';
 import {
   type GroupExperienceTurnOutcome,
   type GroupExperienceTurnPorts,
+  deliverCalendarConsentAsk,
   takeGroupExperienceTurn,
 } from './turn';
 import type { GroupExperienceComposer } from './voice';
@@ -24,6 +25,7 @@ export interface GroupExperienceInboundPorts {
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
+  calendarAfterAnswer?: GroupExperienceTurnPorts['calendarAfterAnswer'];
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -81,6 +83,7 @@ export async function considerGroupExperience(
       reader: ports.reader,
       composer: ports.composer,
       send: ports.send,
+      calendarAfterAnswer: ports.calendarAfterAnswer,
       pollCard: postgresExperiencePollCard(ports.database),
       sendOneToOne: ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now),
       privateSlices: async (familyIds) => {
@@ -145,6 +148,17 @@ export async function considerGroupExperiencePollVote(
       source: 'text',
       coversKeys: [],
       verbatim: option.text,
+      now: ports.now,
+    });
+    await deliverCalendarConsentAsk(ports, {
+      chatId: input.chatId,
+      planId: option.subjectKey,
+      userId: senderUserId,
+      memberKey,
+      displayName: senderName || 'someone',
+      householdLabel: null,
+      response,
+      parentWords: option.text,
       now: ports.now,
     });
     return { handled: true, outcome: 'group_experience_recorded', count: 'intake' };

@@ -4,6 +4,7 @@ import {
   groupLinkCardsEnabled,
   groupPollsEnabled,
   groupPrivateQuestionEnabled,
+  linqGroupPlanRsvpCalendarEnabled,
   linqPollsEnabled,
 } from '../config';
 import type { GroupPlanCopyStore } from '../group-plan-invites';
@@ -68,6 +69,19 @@ export interface GroupExperienceTurnInput {
   now: Date;
 }
 
+/** A yes, no, or maybe the consent calendar path should settle. It does not write. */
+export interface CalendarAfterAnswer {
+  chatId: string;
+  planId: string;
+  userId: string | null;
+  memberKey: string;
+  displayName: string;
+  householdLabel: string | null;
+  response: 'yes' | 'no' | 'maybe';
+  parentWords: string | null;
+  now: Date;
+}
+
 export interface GroupExperienceTurnPorts {
   database: Database;
   store?: GroupExperienceStore;
@@ -76,6 +90,11 @@ export interface GroupExperienceTurnPorts {
   composer?: GroupExperienceComposer;
   pollCard?: ExperiencePollCardPort;
   copies?: GroupPlanCopyStore;
+  /**
+   * When the consent calendar flag is on, a yes asks in that household's 1:1
+   * instead of writing. Absent is named `not_configured` and nothing is written.
+   */
+  calendarAfterAnswer?: (answer: CalendarAfterAnswer) => Promise<void>;
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
   sendOneToOne?: (input: {
     familyId: string;
@@ -126,6 +145,60 @@ function allowedKind(kind: GroupExperienceKind): boolean {
   if (kind === 'link_facts') return groupLinkCardsEnabled();
   if (kind === 'private_question') return groupPrivateQuestionEnabled();
   return false;
+}
+
+export async function deliverCalendarConsentAsk(
+  ports: Pick<GroupExperienceTurnPorts, 'calendarAfterAnswer'>,
+  answer: CalendarAfterAnswer,
+): Promise<void> {
+  if (!linqGroupPlanRsvpCalendarEnabled()) return;
+  if (!ports.calendarAfterAnswer) {
+    console.warn(
+      { outcome: 'not_configured' },
+      'group experience: calendar consent ask has no sender',
+    );
+    return;
+  }
+  await ports.calendarAfterAnswer(answer);
+}
+
+/**
+ * The consent flag owns the calendar write. On, Hale asks and does not copy.
+ * Off, a yes still places one family_events row, as the group-experience scene did.
+ */
+async function landYesCalendars(
+  input: GroupExperienceTurnInput,
+  ports: GroupExperienceTurnPorts,
+  plans: GroupPlanRsvpStore,
+  planId: string,
+): Promise<void> {
+  if (linqGroupPlanRsvpCalendarEnabled()) {
+    const { rows } = await plans.loadTally(planId);
+    const yeses = await plans.listYesRsvps(planId);
+    for (const yes of yeses) {
+      const row = rows.find((item) => item.memberKey === yes.memberKey && item.response === 'yes');
+      await deliverCalendarConsentAsk(ports, {
+        chatId: input.chatId,
+        planId,
+        userId: yes.userId,
+        memberKey: yes.memberKey,
+        displayName: row?.displayName || 'someone',
+        householdLabel: row?.householdLabel ?? null,
+        response: 'yes',
+        parentWords: null,
+        now: input.now,
+      });
+    }
+    return;
+  }
+  const groupPlan = await planAsGroupPlan(ports.database, planId, input.chatId);
+  if (!groupPlan) return;
+  const yesIds = await yesFamilyIdsForPlan(ports.database, planId);
+  await placeYesFamilyCalendars(
+    ports.copies ?? postgresYesCalendarCopies(ports.database),
+    groupPlan,
+    yesIds,
+  );
 }
 
 async function speak(
@@ -367,6 +440,17 @@ async function voteRsvp(
     verbatim: input.text,
     now: input.now,
   });
+  await deliverCalendarConsentAsk(ports, {
+    chatId: input.chatId,
+    planId: plan.id,
+    userId: input.senderUserId,
+    memberKey,
+    displayName: input.senderName || 'someone',
+    householdLabel: null,
+    response,
+    parentWords: input.text,
+    now: input.now,
+  });
   const loaded = await plans.loadTally(plan.id);
   if (loaded.tally.toGo === 0) {
     return tallyRsvp(input, ports, plans, deny, store);
@@ -420,15 +504,7 @@ async function tallyRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
-  const groupPlan = await planAsGroupPlan(ports.database, plan.id, input.chatId);
-  if (groupPlan) {
-    const yesIds = await yesFamilyIdsForPlan(ports.database, plan.id);
-    await placeYesFamilyCalendars(
-      ports.copies ?? postgresYesCalendarCopies(ports.database),
-      groupPlan,
-      yesIds,
-    );
-  }
+  await landYesCalendars(input, ports, plans, plan.id);
   if (store) {
     const live = await store.loadLive(input.chatId, 'rsvp_poll');
     if (live && tally.toGo === 0) await store.close(live.id, input.now);
@@ -597,15 +673,8 @@ async function lockTime(
         .update(schema.linqGroupPlans)
         .set({ startsAt: new Date(startsAt) })
         .where(eq(schema.linqGroupPlans.id, planId));
-      const groupPlan = await planAsGroupPlan(ports.database, planId, input.chatId);
-      if (groupPlan) {
-        const yesIds = await yesFamilyIdsForPlan(ports.database, planId);
-        await placeYesFamilyCalendars(
-          ports.copies ?? postgresYesCalendarCopies(ports.database),
-          groupPlan,
-          yesIds,
-        );
-      }
+      const plans = ports.plans ?? createPostgresGroupPlanRsvpStore(ports.database);
+      await landYesCalendars(input, ports, plans, planId);
     }
   }
   await store.close(live.id, input.now);

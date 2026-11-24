@@ -15,12 +15,12 @@ import type { LinqTapback } from '../transport';
 import {
   type CalendarConsentReader,
   type CalendarConsentReading,
+  hostFamilyIdForPlan,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
-  hostFamilyIdForPlan,
   sharedCalendarConsentReader,
 } from './calendar';
-import { answerPendingCalendarAsk } from './calendar-turn';
+import { answerPendingCalendarAsk, settleCalendarAfterAnswer } from './calendar-turn';
 import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
@@ -39,7 +39,7 @@ import {
   sendGroupPlanRsvpLine,
 } from './send';
 import { createPostgresGroupPlanRsvpStore } from './store';
-import type { PlanTally } from './tally';
+import type { PlanRsvpResponse, PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
 
@@ -236,6 +236,61 @@ export async function considerGroupPlanRsvp(
       calendar: postgresGroupPlanCalendarWriter(ports.database),
       consentReader: ports.consentReader ?? sharedCalendarConsentReader(),
       privateSend: privateCalendarSend(ports),
+    },
+  );
+}
+
+/**
+ * The group-experience door recorded a yes, no, or maybe. Ask, withdraw, or
+ * remove through the same consent path. A bare yes does not write.
+ */
+export async function settleGroupExperienceCalendar(
+  ports: Pick<
+    GroupPlanRsvpInboundPorts,
+    'database' | 'now' | 'composer' | 'consentReader' | 'oneToOne'
+  >,
+  input: {
+    chatId: string;
+    planId: string;
+    userId: string | null;
+    memberKey: string;
+    displayName: string;
+    householdLabel: string | null;
+    response: PlanRsvpResponse;
+    parentWords: string | null;
+    now: Date;
+  },
+): Promise<void> {
+  if (!linqGroupPlanRsvpCalendarEnabled()) return;
+  if (!linqGroupPlanRsvpEnabled()) {
+    console.warn({ outcome: 'flag_off' }, 'group plan calendar: plan rsvp flag is off');
+    return;
+  }
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const plan = await store.loadLivePlan(input.chatId);
+  if (!plan || plan.id !== input.planId) return;
+  await settleCalendarAfterAnswer(
+    {
+      chatId: input.chatId,
+      plan,
+      userId: input.userId,
+      memberKey: input.memberKey,
+      displayName: input.displayName,
+      householdLabel: input.householdLabel,
+      response: input.response,
+      language: await calendarHouseholdLanguage(ports.database, input.chatId, input.userId),
+      parentWords: input.parentWords,
+      now: input.now,
+    },
+    {
+      store,
+      ...calendarPorts({
+        database: ports.database,
+        now: input.now,
+        composer: ports.composer,
+        consentReader: ports.consentReader,
+        oneToOne: ports.oneToOne,
+      }),
     },
   );
 }

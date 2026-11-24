@@ -187,17 +187,16 @@ export function linqGroupPlanRsvpEnabled(): boolean {
 
 /**
  * VIL-503 — after a household says yes to a tracked plan, Hale may ask before
- * writing that household's calendar. Exactly `true`, and only on a Vercel
- * Preview deploy. Unset, empty, `on`, `false`, and every production deploy
- * stay dark, so copying the env var cannot turn it on in Prod. Dark leaves
- * the RSVP tally as it was: no ask, no calendar copy. The plan RSVP flag
- * still has to be on for a plan to exist.
+ * writing that household's calendar. Trimmed `true`, through `@hale/flags`
+ * (`linq-group-plan-rsvp-calendar`). Unset, empty, `on`, and `false` stay dark
+ * in every environment, including production. Dark leaves the RSVP tally as it
+ * was: no ask, and this path writes no calendar copy. The plan RSVP flag still
+ * has to be on for a plan to exist. While this is on, the group-experience
+ * yes-copy does not write; this path is the only writer, and only after that
+ * household agrees.
  */
 export function linqGroupPlanRsvpCalendarEnabled(): boolean {
-  return (
-    process.env.VERCEL_ENV === 'preview' &&
-    trimmed('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED') === 'true'
-  );
+  return isEnabled('linq-group-plan-rsvp-calendar');
 }
 
 /**

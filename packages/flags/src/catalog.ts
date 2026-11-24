@@ -260,6 +260,13 @@ export const FLAGS = [
   trimmed('linq-group-mentions', 'LINQ_GROUP_MENTIONS_ENABLED'),
   trimmed('linq-group-onboarding-v2', 'LINQ_GROUP_ONBOARDING_V2_ENABLED'),
   trimmed('linq-group-plan-rsvp', 'LINQ_GROUP_PLAN_RSVP_ENABLED'),
+  // VIL-503. A household yes may be asked, in that household's 1:1, before Hale
+  // writes their calendar. Trimmed `true`. Env-only: a PostHog rollout must not
+  // start the ask or the write. Unset stays off in every environment, including
+  // production. The plan RSVP flag still has to be on for a plan to exist.
+  trimmed('linq-group-plan-rsvp-calendar', 'LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', {
+    envOnly: true,
+  }),
   trimmed('linq-group-polls', 'LINQ_GROUP_POLLS_ENABLED'),
   trimmed('linq-group-reminders', 'LINQ_GROUP_REMINDERS_ENABLED'),
   trimmed('linq-group-turn-ai', 'LINQ_GROUP_TURN_AI_ENABLED'),
