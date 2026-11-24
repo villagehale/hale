@@ -127,8 +127,8 @@ for (const { phase, currency } of CASES) {
       });
 
       it('leads with the sale once and locks the price', () => {
-        expect(body).toContain('Our biggest sale of the year');
-        expect(body.match(/biggest sale of the year/gi)).toHaveLength(1);
+        expect(body).not.toContain('Our biggest sale of the year');
+        expect(body).not.toMatch(/\bbiggest\b/i);
         expect(body).not.toMatch(/lowest price of the year/i);
         expect(body).toContain(
           'Your price stays locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',

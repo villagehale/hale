@@ -182,7 +182,6 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
       <div className="hs-wrap">
         <div className="promo-card">
           <div className="promo-main">
-            <p className="promo-kicker">Our biggest sale of the year</p>
             <h2 className="promo-sale" id={`${PROMO_OFFER_ID}-h`}>
               <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
               <span className="promo-sale-word">Sale</span>
