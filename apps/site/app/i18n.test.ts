@@ -8,6 +8,7 @@ import { buildAlternates } from '~/i18n/metadata.js';
 import { LOCALE_NAMES, localeHref, stripLocalePrefix } from '~/i18n/navigation.js';
 import { routing } from '~/i18n/routing.js';
 import { FAQ } from '~/lib/faq/index.js';
+import { H1, ONE_LINER } from '~/lib/site/narrative.js';
 import AboutPage from './[locale]/about/page.js';
 import { generateMetadata as aboutMetadata } from './[locale]/about/page.js';
 
@@ -217,13 +218,8 @@ describe('no bundle promises quiet, in any locale', () => {
   it('positive control: every bundle still says what Hale DOES send', () => {
     // The subtraction must leave the cadence described, not the page silent about
     // it — otherwise these absences would also pass on an empty bundle.
-    const say = {
-      en: 'takes the kids’ year off your plate',
-      fr: 'takes the kids’ year off your plate',
-      zh: 'takes the kids’ year off your plate',
-    };
-    for (const { locale, raw } of files) {
-      expect(raw.toLowerCase()).toContain(say[locale].toLowerCase());
+    for (const { raw } of files) {
+      expect(raw).toContain(ONE_LINER);
     }
   });
 });
@@ -244,9 +240,9 @@ describe('the positioning noun is gone from every bundle', () => {
    * comes back and asks how it went — with no "assistant" in them. The site was
    * behind its own machine, not ahead of it.
    *
-   * The ban is on the POSITIONING PHRASE. The anti-scam line now says Hale is a
-   * planner for the kids' year and never pretends to be a person — it does not
-   * sell an AI assistant. A phrase-level ban is what lets one gate hold both facts.
+   * The ban is on the POSITIONING PHRASE. The anti-scam line now says Hale
+   * never pretends to be a person — it does not sell an AI assistant. A
+   * phrase-level ban is what lets one gate hold both facts.
    */
   const BANNED: Record<string, string[]> = {
     en: ['family assistant', 'ai assistant', 'a number you text'],
@@ -266,7 +262,7 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('takes the kids’ year off your plate');
+    expect(en).toContain(ONE_LINER);
     expect(en).toContain('it never pretends to be');
     expect(en).toContain('a real person reads it');
     for (const locale of ['fr', 'zh'] as const) {
@@ -293,16 +289,16 @@ describe('VIL-325 designer-locked intake copy', () => {
     }
   });
 
-  it('keeps HomeMeta, page meta, and Jsonld on the kids-year lines', () => {
-    const h1 = {
-      en: 'Find what’s on. Hear how it went.',
-      fr: 'L’année de tes enfants, sans casse-tête.',
-      zh: '孩子这一年，交给 Hale。',
+  it('keeps HomeMeta, page meta, and Jsonld on the one-liner', () => {
+    const oneLiner = {
+      en: ONE_LINER,
+      fr: "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+      zh: 'Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。',
     } as const;
-    const sub = {
-      en: 'What’s worth doing with the kids.',
-      fr: 'Ce qui vaut la peine avec les enfants.',
-      zh: '值得和孩子一起做的事。',
+    const title = {
+      en: `Hale: ${H1}`,
+      fr: 'Hale: De « on devrait » à « on y va ».',
+      zh: 'Hale: 从“改天吧”到“就这么定了”。',
     } as const;
     const banned = [
       'village your family lost',
@@ -347,29 +343,30 @@ describe('VIL-325 designer-locked intake copy', () => {
       for (const phrase of banned) {
         expect(blob, `${locale} meta must not say "${phrase}"`).not.toContain(phrase);
       }
-      expect(bundle.HomeMeta.description).toContain(locale === 'fr' ? 'connaît ta famille' : '了解你的家庭');
-      expect(bundle.HomeMeta.twitterDescription).toContain(
-        locale === 'fr' ? 'connaît ta famille' : '了解你的家庭',
+      expect(bundle.HomeMeta.description).toBe(oneLiner[locale]);
+      expect(bundle.HomeMeta.twitterDescription).toBe(oneLiner[locale]);
+      expect(bundle.Text.metaDescription).toBe(oneLiner[locale]);
+      expect(bundle.Jsonld.appDescription).toBe(oneLiner[locale]);
+      expect((bundles[locale] as { HomeMeta: { title: string } }).HomeMeta.title).toBe(
+        title[locale],
       );
-      expect(bundle.HomeMeta.twitterDescription).not.toContain(sub[locale]);
-      // zh sets the two locked sentences solid; fr takes a word space.
-      expect(bundle.Text.metaDescription).toContain(locale === 'fr' ? 'connaît ta famille' : '了解你的家庭');
-      expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
     const enBlob = metaStrings(bundles.en, []).join('\n').toLowerCase();
     for (const phrase of banned) {
       expect(enBlob, `en meta must not say "${phrase}"`).not.toContain(phrase);
     }
-    expect(bundles.en.HomeMeta.description).toContain('takes the kids’ year off your plate');
-    expect(bundles.en.Jsonld.appDescription.startsWith('Your kids’ year, handled.')).toBe(true);
+    expect(bundles.en.HomeMeta.description).toBe(ONE_LINER);
+    expect(bundles.en.HomeMeta.title).toBe(`Hale: ${H1}`);
+    expect(bundles.en.Jsonld.appDescription).toBe(ONE_LINER);
+    expect(bundles.en.Jsonld.orgDescription).toBe(ONE_LINER);
   });
 
   it('renders the cleared About page in English', async () => {
     const html = renderToStaticMarkup(
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
-    expect(html).toContain('Parent-built in Georgetown');
-    expect(html).toContain('Your kids’ year, handled.');
+    expect(html).toContain('Parent-built in Toronto');
+    expect(html).toContain('From &quot;we should&quot; to &quot;we&#x27;re in.&quot;');
     expect(html).not.toContain('It starts with one text');
   });
 });

@@ -9,7 +9,8 @@ import {
   plusPriceStartSentence,
 } from '~/lib/billing/plain-price';
 import {
-  ONE_LINER,
+  H1,
+  HERO_SUB,
   PILLARS,
   PLUS_SIGNUP_LINE,
   SIGNUP_ANSWER,
@@ -130,8 +131,8 @@ export function RedesignHome({
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 2.5c2.5 0 4.5 1.6 4.5 3.6S9 9.7 6.5 9.7c-.45 0-.9-.05-1.3-.15L2.8 10.6l.65-1.75C2.55 8.2 2 7.2 2 6.1 2 4.1 4 2.5 6.5 2.5Z" /><path d="M12.2 6.2c1.1.6 1.8 1.6 1.8 2.7 0 .9-.45 1.7-1.2 2.3l.5 1.5-1.9-.85c-.4.1-.8.15-1.2.15-1.3 0-2.45-.45-3.25-1.2" /></svg>
         {t("Works in your group chats")}
       </span>
-      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t("Your kids’ year,")}<br />{t("handled.")}</h1>
-      <p className="sub">{t(ONE_LINER)}</p>
+      <h1 className={locale === "en" ? undefined : "h1-fr"}>{t(H1)}</h1>
+      <p className="sub">{t(HERO_SUB)}</p>
       <div className="cta-row">
         <TextDoor className="btn btn-hero" placement="hero" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>
           <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.75c4.28 0 7.75 2.86 7.75 6.38 0 3.53-3.47 6.38-7.75 6.38-.86 0-1.69-.11-2.46-.33L3.6 16.9a.4.4 0 0 1-.56-.46l.83-2.97C2.88 12.36 2.25 10.8 2.25 9.13c0-3.52 3.47-6.38 7.75-6.38Z" /></svg>
@@ -298,7 +299,6 @@ export function RedesignHome({
  <span className="hs-shore-scrim" aria-hidden="true" />
  <div className="hs-wrap">
   <div className="hs-head hs-glow">
-   <p className="hs-eyebrow">{t("Across the kids’ year")}</p>
    <h2 className="hs-h2">{t("It finds it, signs them up, and sorts it out.")}</h2>
    <p className="hs-lede">{t("The same job, in the thread you already have.")}</p>
   </div>

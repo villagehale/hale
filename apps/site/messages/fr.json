@@ -6,10 +6,10 @@
     "notFoundTitle": "Page introuvable · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · L’année de tes enfants, sans casse-tête.",
-    "description": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
-    "ogDescription": "Hale connaît ta famille. Il trouve ce qui convient, les inscrit avec ton accord et tient le groupe.",
-    "twitterDescription": "Hale connaît ta famille. Il trouve ce qui convient, les inscrit avec ton accord et tient le groupe."
+    "title": "Hale: De « on devrait » à « on y va ».",
+    "description": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    "ogDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    "twitterDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -18,7 +18,7 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Hale connaît ta famille et t’enlève l’année des enfants.",
+    "blurb": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants. Pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
+    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui. Pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "Aucun montant n’a été débité.",
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants. La plus grande vente de l’année, inscris-toi d’ici le 31 décembre."
+    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui. La plus grande vente de l’année, inscris-toi d’ici le 31 décembre."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -136,11 +136,11 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants."
+    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
   },
   "Jsonld": {
-    "orgDescription": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
-    "appDescription": "L’année de tes enfants, sans casse-tête. Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles."
+    "orgDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    "appDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
   },
   "Rd": {
     "0–11 months": "0–11 mois",
@@ -161,14 +161,12 @@
     "Previous group chat": "Groupe texto précédent",
     "Swipe or use arrow keys to change the group chat example": "Glisse, ou utilise les flèches, pour changer l’exemple de groupe texto",
     "Today": "Aujourd’hui",
-    "A planner for your kids’ year.": "Un planificateur pour l’année de tes enfants.",
     "A question about your own child?": "Une question sur ton enfant?",
     "A spot just opened": "Une place vient de se libérer",
     "A text when a spot opens": "Un texto quand une place se libère",
     "About Hale": "À propos de Hale",
     "About pricing": "À propos des tarifs",
     "Access, correction or deletion requests, and anything about how we handle your family’s data.": "Demandes d’accès, de correction ou de suppression, et tout ce qui touche aux données de ta famille.",
-    "Across the kids’ year": "Toute l’année des enfants",
     "Activities": "Activités",
     "After the first class": "Après le premier cours",
     "Ages, what they love, what’s already on their week. Ask “what do you know” to see it all, or fix it in one text.": "Les âges, ce qu’ils aiment, ce qui est déjà dans la semaine. Demande « qu’est-ce que tu sais » pour tout voir, ou corrige en un texto.",
@@ -310,7 +308,6 @@
     "Or just text Hale.": "Ou texte simplement Hale.",
     "Our mission": "Notre mission",
     "Parent and tot, learn-to-swim levels, and when the next session opens.": "Parent-enfant, les niveaux de natation, et quand la prochaine session ouvre.",
-    "Parent-built in Georgetown, Ontario.": "Fait par des parents, à Georgetown, en Ontario.",
     "Parenting guides": "Guides parentaux",
     "Plans on your calendar": "Les plans dans ton calendrier",
     "Playdate: story time + park": "Rendez-vous de jeu : conte + parc",
@@ -323,7 +320,6 @@
     "Privacy and your data": "Confidentialité et tes données",
     "Priya, Jen, Hale": "Priya, Jen, Hale",
     "Questions": "Questions",
-    "Questions about your kids’ year get an answer the same minute.": "Les questions sur l’année de tes enfants ont une réponse dans la minute.",
     "Questions, feedback, a class other families should know about. We read every note.": "Questions, commentaires, un cours que d’autres familles devraient connaître. On lit chaque message.",
     "Read the guide": "Lire le guide",
     "Rec programs": "Loisirs",
@@ -455,7 +451,6 @@
     "Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details.": "Les données de ta famille ne sont jamais vendues ni utilisées pour des pubs. Rien de ta boîte ou de ton calendrier personnel n’apparaît dans un groupe texto, et STOP arrête tout quand tu veux. Notre politique de confidentialité a les détails.",
     "Your first message is already written. You send it, and Hale replies the same minute.": "Ton premier message est déjà écrit. Tu l’envoies, et Hale répond dans la minute.",
     "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.": "Les plans de tes enfants sont déjà dans les groupes texto. Ajoute Hale : il trouve quoi faire, aide tout le monde à s’entendre, et le met au calendrier.",
-    "Your kids’ year,": "L’année de tes enfants,",
     "aloha@villagehale.com": "aloha@villagehale.com",
     "handled.": "sans casse-tête.",
     "in Swimmer 3, Saturdays 9:30. Here’s the": " en Swimmer 3, le samedi à 9 h 30. Voici la ",
@@ -473,7 +468,6 @@
     "It lives in your texts. No app, no new account to learn.": "Elle vit dans tes textos. Pas d’appli, pas de nouveau compte à apprendre.",
     "It searches live and shows its source. Every date comes with the page it came from, and if they disagree, the source page wins.": "Elle cherche en direct et montre sa source. Chaque date vient avec sa page d’origine, et en cas de désaccord, la page source a raison.",
     "It asks before it acts. Say yes and Hale signs your kid up, then hands you the payment step. You always pay yourself.": "Elle demande avant d’agir. Dis oui et Hale inscrit ton enfant, puis te laisse l’étape du paiement. C’est toujours toi qui paies.",
-    "It covers the whole kids’ year, from the first months to almost grown, not one season or one app.": "Elle couvre toute l’année des enfants, des premiers mois jusqu’à presque adultes, pas une seule saison ni une seule appli.",
     "Who uses Hale": "Qui utilise Hale",
     "Hale is for parents and caregivers in the US and Canada with kids from newborn to 18: the parent who keeps the family calendar, co-parents who share the load, and groups of parents planning together.": "Hale s’adresse aux parents et aux proches aidants aux États-Unis et au Canada qui ont des enfants de la naissance à 18 ans : le parent qui tient le calendrier familial, les coparents qui partagent la charge et les groupes de parents qui planifient ensemble.",
     "How Hale works": "Comment fonctionne Hale",
@@ -532,9 +526,7 @@
     "Gets families to a time that works, tracks who’s in, and keeps the driver straight. Otherwise it stays quiet.": "Trouve une heure qui marche pour les familles, retient qui vient, et garde le conducteur au clair. Le reste du temps, il n’écrit pas.",
     "Does my co-parent see the same plan?": "L’autre parent voit-il le même plan?",
     "Yes. Same plan, on their own phone.": "Oui. Le même plan, sur son propre téléphone.",
-    "Your kids’ year, handled.": "L’année de tes enfants, sans casse-tête.",
     "Two parents building the agent we wanted.": "Deux parents qui bâtissent l’agent qu’on voulait.",
-    "Every parent should have someone who knows the family and takes the kids’ year off their plate. Across every stage of childhood, from the first months to almost grown.": "Chaque parent devrait avoir quelqu’un qui connaît la famille et enlève l’année des enfants de son assiette. À chaque étape de l’enfance, des premiers mois à presque adulte.",
     "No app to download.": "Aucune appli à télécharger.",
     "Knows your family.": "Connaît ta famille.",
     "Finds what fits, each find with the page it came from.": "Trouve ce qui convient, chaque trouvaille avec la page d’où elle vient.",
@@ -553,13 +545,18 @@
     "Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.": "Plus coûte 14 $/mois ou 119 $/an, et Max coûte 259 $/an. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "4:30 PM": "16 h 30",
     "It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.": "Il trouve ce qui convient à cet enfant cette semaine : natation, camps et activités libres, là où ça se passe.",
-    "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
     "Knows your family’s week": "Connaît la semaine de ta famille",
     "Jen’s driving.": "C’est Jen qui conduit.",
     "From the school email: fall programs, Tuesday at 7:00 a.m.": "Du courriel de l’école : programmes d’automne, mardi à 7 h.",
     "Gets every family to a yes": "Amène chaque famille à un oui",
     "Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+).": "Deux places pas loin prennent des groupes de 8 le samedi : le gym d’escalade (3–7 ans) ou l’atelier de poterie (4 ans et +).",
     "On iMessage, add Hale’s number to the group you already have, then say hi. An MMS or Android group cannot add this number, so start a new group with Hale there. Hale answers in the group, for everyone.": "Sur iMessage, ajoute le numéro de Hale au groupe que tu as déjà, puis dis bonjour. Un groupe MMS ou Android ne peut pas ajouter ce numéro, alors pars un nouveau groupe avec Hale. Hale répond dans le groupe, pour tout le monde.",
-    "Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.": "Oui, sur iMessage. Ajoute Hale à un groupe que tu as déjà : l’autre parent, le covoiturage, d’autres parents du cours. Un groupe MMS ou Android ne peut pas ajouter ce numéro, alors pars un nouveau groupe avec Hale. Demande dans le groupe et Hale répond là."
+    "Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.": "Oui, sur iMessage. Ajoute Hale à un groupe que tu as déjà : l’autre parent, le covoiturage, d’autres parents du cours. Un groupe MMS ou Android ne peut pas ajouter ce numéro, alors pars un nouveau groupe avec Hale. Demande dans le groupe et Hale répond là.",
+    "From \"we should\" to \"we're in.\"": "De « on devrait » à « on y va ».",
+    "Hale joins the parent group chat, finds real classes and plans near you for your kids' ages, and gets every family to a yes.": "Hale rejoint le groupe de parents, trouve de vraies activités près de chez vous pour l'âge de vos enfants et amène chaque famille à un oui.",
+    "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    "Every parent should have someone who knows the family. Across every stage of childhood, from the first months to almost grown.": "Chaque parent devrait avoir quelqu’un qui connaît la famille. À chaque étape de l’enfance, des premiers mois à presque adulte.",
+    "From the first months to almost grown, not one season or one app.": "Des premiers mois jusqu’à presque adultes, pas une seule saison ni une seule appli.",
+    "Parent-built in Toronto.": "Fait par des parents, à Toronto."
   }
 }

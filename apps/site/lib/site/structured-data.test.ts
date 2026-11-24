@@ -31,23 +31,17 @@ describe('siteJsonLd', () => {
     expect(JSON.stringify(siteJsonLd())).not.toContain('"price":"0"');
   });
 
-  it.each(routing.locales)('%s describes the agent, H1 first', (locale) => {
+  it.each(routing.locales)('%s describes the org and the app with the one-liner', (locale) => {
     const nodes = siteJsonLd(locale)['@graph'] as Array<Record<string, unknown>>;
     const org = nodes.find((n) => n['@type'] === 'Organization');
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
-    const h1 = {
-      en: 'Your kids’ year, handled.',
-      fr: 'L’année de tes enfants, sans casse-tête.',
-      zh: '孩子这一年，交给 Hale。',
+    const oneLiner = {
+      en: "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+      fr: "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+      zh: 'Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。',
     }[locale];
-    const agent = {
-      en: 'knows your family',
-      fr: 'connaît ta famille',
-      zh: '了解你的家庭',
-    }[locale];
-    expect(String(app?.description).startsWith(h1)).toBe(true);
-    expect(org?.description).toContain(agent);
-    expect(app?.description).toContain(agent);
+    expect(org?.description).toBe(oneLiner);
+    expect(app?.description).toBe(oneLiner);
     const blob = `${org?.description} ${app?.description}`.toLowerCase();
     for (const banned of [
       'village your family lost',

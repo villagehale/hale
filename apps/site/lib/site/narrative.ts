@@ -1,21 +1,33 @@
 /**
- * Approved site copy from the Hale narrative 2026-11-23 (VIL-769).
- * Pillar titles and the one-liner are verbatim. Chip sub-lines are the
- * shipped variant; the PR lists the other two for Sloane.
+ * Approved site copy. The 11-23 one-liner and H1 were retired by Sloane:
+ * the homepage headline, the line under it, and the one-liner are three
+ * different sentences. Pillar titles stay the 11-23 names.
  */
 
+export const H1 = 'From "we should" to "we\'re in."';
+
+export const PAGE_TITLE = `Hale: ${H1}`;
+
+/** The line under the homepage H1. Longer than the one-liner, and not a meta description. */
+export const HERO_SUB =
+  "Hale joins the parent group chat, finds real classes and plans near you for your kids' ages, and gets every family to a yes.";
+
 export const ONE_LINER =
-  'Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.';
+  "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.";
+
+/** Mission quote with the retired plate clause removed. The age span stays. */
+export const MISSION =
+  'Every parent should have someone who knows the family. Across every stage of childhood, from the first months to almost grown.';
+
+/** About bullet with the retired year clause removed. */
+export const AGE_SPAN = 'From the first months to almost grown, not one season or one app.';
 
 /** Until signup is live, the third pillar carries this dated promise. */
 export const GETS_THE_SPOT_UNTIL = 'starting Dec 1, with your ok';
 
 export const PLUS_SIGNUP_LINE = 'Starting Dec 1, signs them up with your ok.';
 
-/**
- * Shipped chip sub-lines (variant A). Titles are the approved pillar names.
- * Sub-lines only restate the one-liner and the pillar names.
- */
+/** Pillar titles are the approved names. Sub-lines are the shipped lines. */
 export const PILLARS = [
   { title: 'Knows your family', sub: 'Your family' },
   { title: 'Finds what fits', sub: 'It finds it' },

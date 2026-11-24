@@ -1,4 +1,5 @@
 import { SITE_URL } from '~/lib/app-url';
+import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
 
 /**
  * Words painted on the 1200×630 share cards. English on every locale: the
@@ -16,21 +17,19 @@ export interface ShareCardSpec {
 
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
-const HANDLED = 'Your kids’ year, handled.';
-
 export const SHARE_CARDS = {
   home: {
     id: 'home',
-    alt: 'Hale. Your kids’ year, handled.',
-    headline: HANDLED,
-    subline: 'Hale knows your family.',
+    alt: PAGE_TITLE,
+    headline: PAGE_TITLE,
+    subline: ONE_LINER,
     chat: true,
   },
   pricing: {
     id: 'pricing',
-    alt: 'Hale pricing. Your kids’ year, handled. Biggest sale of the year, join by Dec 31.',
+    alt: `Hale pricing. ${PAGE_TITLE} Biggest sale of the year, join by Dec 31.`,
     eyebrow: 'BIGGEST SALE OF THE YEAR',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
     subline: 'Lowest price of the year, locked in. Join by Dec 31.',
     chat: true,
   },
@@ -46,7 +45,7 @@ export const SHARE_CARDS = {
     alt: 'About Hale. Built by a dad with an invisible list.',
     eyebrow: 'ABOUT',
     headline: 'Built by a dad with an invisible list.',
-    subline: 'Hale takes the kids’ year off your plate.',
+    subline: ONE_LINER,
   },
   activities: {
     id: 'activities',
@@ -63,33 +62,33 @@ export const SHARE_CARDS = {
   },
   contact: {
     id: 'contact',
-    alt: 'Contact Hale. Your kids’ year, handled.',
+    alt: `Contact Hale. ${PAGE_TITLE}`,
     eyebrow: 'CONTACT',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
   },
   privacy: {
     id: 'privacy',
-    alt: 'Hale privacy policy. Your kids’ year, handled.',
+    alt: `Hale privacy policy. ${PAGE_TITLE}`,
     eyebrow: 'PRIVACY',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
   },
   terms: {
     id: 'terms',
-    alt: 'Hale terms of service. Your kids’ year, handled.',
+    alt: `Hale terms of service. ${PAGE_TITLE}`,
     eyebrow: 'TERMS',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
   },
   'not-found': {
     id: 'not-found',
-    alt: 'Page not found. Your kids’ year, handled.',
+    alt: `Page not found. ${PAGE_TITLE}`,
     eyebrow: 'NOT FOUND',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
   },
   text: {
     id: 'text',
-    alt: 'Text Hale. Your kids’ year, handled.',
+    alt: `Text Hale. ${PAGE_TITLE}`,
     eyebrow: 'TEXT',
-    headline: HANDLED,
+    headline: PAGE_TITLE,
   },
 } as const satisfies Record<string, ShareCardSpec>;
 

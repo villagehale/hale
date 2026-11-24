@@ -28,9 +28,9 @@ vi.mock('next/headers', () => ({
  */
 
 const HOME_TITLES = {
-  en: 'Hale · Your kids’ year, handled.',
-  fr: 'Hale · L’année de tes enfants, sans casse-tête.',
-  zh: '孩子这一年，交给 Hale',
+  en: 'Hale: From "we should" to "we\'re in."',
+  fr: 'Hale: De « on devrait » à « on y va ».',
+  zh: 'Hale: 从“改天吧”到“就这么定了”。',
 } as const;
 
 const NOT_FOUND_TITLES = {

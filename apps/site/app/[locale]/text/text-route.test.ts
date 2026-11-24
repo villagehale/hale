@@ -17,7 +17,8 @@ const meta = () => generateMetadata({ params: Promise.resolve({ locale: 'en' as 
 
 /** Locked Hale #1, the old SMS hello. The live page must not render it. */
 const LOCKED_PREVIEW_EN =
-  'Hi — I’m Hale. I help plan your kids’ year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
+  'Hi — I’m Hale. I help plan your kids' +
+  '\u2019 year — what’s on near them, sign-up mornings, and how it went. Names, ages, and postal code and I’ll look up what’s coming.';
 
 /**
  * /text is the chooser (F14): the QR cards' destination AND the header pill's —

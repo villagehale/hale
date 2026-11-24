@@ -6,10 +6,10 @@
     "notFoundTitle": "Page not found · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · Your kids’ year, handled.",
-    "description": "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
-    "ogDescription": "Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat.",
-    "twitterDescription": "Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat."
+    "title": "Hale: From \"we should\" to \"we're in.\"",
+    "description": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "ogDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "twitterDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -18,7 +18,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale knows your family and takes the kids’ year off your plate.",
+    "blurb": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale knows your family and takes the kids’ year off your plate, for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes. For parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Hale knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes. Biggest sale of the year, join by Dec 31."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -105,7 +105,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Hale knows your family and takes the kids’ year off your plate."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   },
   "CheckoutSuccess": {
     "plan": "You’re on {plan}.",
@@ -139,7 +139,7 @@
     "emailUs": "Email us"
   },
   "Jsonld": {
-    "orgDescription": "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
-    "appDescription": "Your kids’ year, handled. Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families."
+    "orgDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "appDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   }
 }

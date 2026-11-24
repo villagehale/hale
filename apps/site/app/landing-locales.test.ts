@@ -35,22 +35,28 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('Your kids’ year,');
-    expect(HTML.en).toContain('handled.');
+    expect(HTML.en).toContain('From &quot;we should&quot; to &quot;we&#x27;re in.&quot;');
+    expect(HTML.en).toContain('Hale joins the parent group chat');
     expect(HTML.en).toContain('Library playgroup');
-    expect(rd(HTML.fr)).toContain('L’année de tes enfants,');
-    expect(rd(HTML.fr)).toContain('sans casse-tête.');
-    expect(rd(HTML.fr)).not.toContain('Your kids’ year,');
-    expect(rd(HTML.zh)).toContain('孩子这一年，');
-    expect(rd(HTML.zh)).toContain('交给 Hale。');
-    expect(rd(HTML.zh)).not.toContain('Your kids’ year,');
+    expect(rd(HTML.fr)).toContain('De « on devrait » à « on y va ».');
+    expect(rd(HTML.fr)).toContain('Hale rejoint le groupe de parents');
+    expect(rd(HTML.fr)).not.toContain('From "we should"');
+    expect(rd(HTML.zh)).toContain('从“改天吧”到“就这么定了”');
+    expect(rd(HTML.zh)).toContain('Hale 加入家长群');
+    expect(rd(HTML.zh)).not.toContain('From "we should"');
     expect(rd(HTML.zh)).not.toContain('已报名');
   });
 
   it('uses tu inside the French redesign', () => {
     const body = rd(HTML.fr);
     // « Rendez-vous » is the playdate noun, not the vous pronoun.
-    const prose = body.replace(/rendez-vous/gi, '');
+    // Sloane's hero sub and one-liner are the approved vous/vos sentences.
+    const approved = [
+      "Hale rejoint le groupe de parents, trouve de vraies activités près de chez vous pour l'âge de vos enfants et amène chaque famille à un oui.",
+      "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    ];
+    let prose = body.replace(/rendez-vous/gi, '').replace(/&#x27;/g, "'");
+    for (const line of approved) prose = prose.split(line).join('');
     expect(prose).not.toMatch(/\bvous\b/i);
     expect(prose).not.toMatch(/\bvos\b/i);
     expect(prose).not.toMatch(/\bvotre\b/i);
@@ -59,7 +65,7 @@ describe('every locale renders the redesign', () => {
 
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
-    expect(fr).toContain('Hale connaît ta famille');
+    expect(fr).toContain('Hale rejoint le groupe de parents');
     expect(fr).toContain('À partir du 1er décembre, il les inscrit avec ton accord.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
@@ -70,7 +76,7 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('Every kid, caregivers included');
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
-    expect(zh).toContain('Hale 了解你的家庭');
+    expect(zh).toContain('Hale 加入家长群');
     expect(zh).toContain('从 12 月 1 日起，经你同意帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');

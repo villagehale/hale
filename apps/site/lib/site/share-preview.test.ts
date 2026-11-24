@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from '~/lib/app-url';
 import { homeMetadata } from '~/lib/site/home-meta';
+import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
 import { SHARE_CARDS, shareCardUrl } from '~/lib/site/share-cards';
 
@@ -38,9 +39,12 @@ function twitterCard(meta: Metadata): string | undefined {
 }
 
 const BANNED = new RegExp(
-  ['\\b', 'fr', 'ee', '\\b|planner for your kids|helper that plans|Find what’s on|sign-up morning'].join(
-    '',
-  ),
+  [
+    '\\b',
+    'fr',
+    'ee',
+    '\\b|planner for your kids|helper that plans|Find what’s on|sign-up morning',
+  ].join(''),
   'i',
 );
 
@@ -126,15 +130,12 @@ describe('share previews', () => {
 
   it('uses the approved home, pricing, faq, and about preview copy', async () => {
     const home = homeMetadata('en');
-    expect(home.openGraph?.description).toBe(
-      SHARE_CARDS.home &&
-        'Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat.',
-    );
+    expect(home.openGraph?.description).toBe(SHARE_CARDS.home && ONE_LINER);
     expect(home.twitter && 'description' in home.twitter ? home.twitter.description : '').toBe(
       home.openGraph?.description,
     );
-    expect(SHARE_CARDS.home.alt).toBe('Hale. Your kids’ year, handled.');
-    expect(SHARE_CARDS.home.headline).toBe('Your kids’ year, handled.');
+    expect(SHARE_CARDS.home.alt).toBe(PAGE_TITLE);
+    expect(SHARE_CARDS.home.headline).toBe(PAGE_TITLE);
     expect(SHARE_CARDS.pricing.eyebrow).toBe('BIGGEST SALE OF THE YEAR');
     expect(SHARE_CARDS.pricing.subline).toBe(
       'Lowest price of the year, locked in. Join by Dec 31.',
@@ -143,7 +144,7 @@ describe('share previews', () => {
     const pricing = await pricingMetadata({ params: Promise.resolve(en) });
     expect(pricing.title).toBe('Pricing · Hale');
     expect(pricing.openGraph?.description).toBe(
-      'Hale knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31.',
+      `${ONE_LINER} Biggest sale of the year, join by Dec 31.`,
     );
 
     const faq = await faqMetadata({ params: Promise.resolve(en) });
@@ -154,7 +155,7 @@ describe('share previews', () => {
 
     const about = await aboutPageMetadata({ params: Promise.resolve(en) });
     expect(about.openGraph?.description).toContain('Barton Dong');
-    expect(about.openGraph?.description).toContain('takes the kids’ year off your plate');
+    expect(about.openGraph?.description).toContain('gets the group chat to a yes');
   });
 
   it('does not sell Hale with the retired pitch in the new preview copy', async () => {

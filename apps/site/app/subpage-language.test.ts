@@ -67,7 +67,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const REDESIGN_H1: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], 'Your kids’ year, handled.'],
+  ['/about', pages['/about'], 'From "we should" to "we\'re in."'],
   ['/pricing', pages['/pricing'], 'What you pay.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
@@ -77,7 +77,11 @@ const REDESIGN_H1: [name: string, html: string, headline: string][] = [
 
 describe('the redesign headlines', () => {
   it.each(REDESIGN_H1)('reads as its whole sentence on %s', (_name, html, headline) => {
-    expect(rawText(heading(html)).replace(/\u00a0/g, ' ')).toBe(headline);
+    const sentence = rawText(heading(html))
+      .replace(/&quot;/g, '"')
+      .replace(/&#x27;/g, "'")
+      .replace(/\u00a0/g, ' ');
+    expect(sentence).toBe(headline);
     expect(html).toContain('sp-h1');
     expect(html).not.toContain('pull-word');
   });
@@ -129,8 +133,8 @@ describe('/about — the locked page', () => {
 
   it('says why now, and drops the old framing', () => {
     const text = rawText(html);
-    expect(text.replace(/\u00a0/g, ' ')).toContain('Parent-built in Georgetown, Ontario.');
-    expect(text).toContain('Every parent should have someone who knows the family and takes the kids’ year off their plate.');
+    expect(text.replace(/\u00a0/g, ' ')).toContain('Parent-built in Toronto.');
+    expect(text).toContain('Every parent should have someone who knows the family.');
     expect(text).not.toMatch(/agentic|Anzhe/i);
     expect(text).not.toMatch(/equity|ownership|cap table|cap-table/i);
   });
