@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { presentChannelSigninToken } from '~/lib/auth/channel-signin';
 import { withoutConnectTokens } from '~/lib/channel/connect/connect-link';
 import { connectOfferTarget } from '~/lib/channel/connect/detect';
 import type { DisconnectReader } from '~/lib/channel/connect/disconnect-read';
@@ -418,6 +419,98 @@ describe('the in-thread walk, before its flag goes on', () => {
       expect(linksIn(later.bodies)).toHaveLength(1);
       expect(linksIn(later.bodies)[0]).toContain('to=google');
       expect(await googleOffered()).toBe(true);
+    });
+
+    /**
+     * Linq as the card meets it: a key it already took drops the copy, and the first link send
+     * never returns, standing in for a function that died after Linq took the words.
+     */
+    const linqWhoseFirstLinkHangs = (
+      talk: ReturnType<typeof conversation>,
+      hungLinkLanded: boolean,
+    ) => {
+      const real = talk.transport.send.bind(talk.transport);
+      const taken = new Map<string, string>();
+      const landed: string[] = [];
+      const linkKeys: string[] = [];
+      let hung = false;
+      let reachedHang: () => void = () => undefined;
+      const hangReached = new Promise<void>((resolve) => {
+        reachedHang = resolve;
+      });
+      vi.spyOn(talk.transport, 'send').mockImplementation(async (input) => {
+        const key = input.sendKey;
+        if (key?.endsWith(':link')) linkKeys.push(key);
+        const already = key ? taken.get(key) : undefined;
+        if (already) return { providerMessageId: already };
+        if (key?.endsWith(':link') && !hung) {
+          hung = true;
+          if (hungLinkLanded) {
+            taken.set(key, 'linq-hung-link');
+            landed.push(input.body);
+          }
+          reachedHang();
+          return new Promise<never>(() => undefined);
+        }
+        const sent = await real(input);
+        if (key) taken.set(key, sent.providerMessageId);
+        landed.push(input.body);
+        return sent;
+      });
+      return { landed, linkKeys, hangReached };
+    };
+
+    it('a card whose words went but whose link never did is not a sent link', async () => {
+      const talk = conversation(db.database);
+      for (const words of UP_TO_NAME) await talk.say(words);
+      const linq = linqWhoseFirstLinkHangs(talk, false);
+
+      void talk.say('Dana');
+      await linq.hangReached;
+      const [crashed] = await cardRows();
+      expect(crashed?.providerMessageId).toBeNull();
+      expect(linksIn(linq.landed)).toEqual([]);
+
+      const next = await talk.say('yes');
+      expect(next.bodies.filter((body) => /link is right there/i.test(body))).toEqual([]);
+      expect(await googleOffered()).toBe(false);
+      const after = await talk.say('ok');
+      expect(after.bodies.filter((body) => /link is right there/i.test(body))).toEqual([]);
+      expect(linksIn(linq.landed)).toEqual([]);
+      expect(await googleOffered()).toBe(false);
+
+      talk.advance(SIX_MINUTES);
+      await talk.say('hello?');
+
+      expect(linksIn(linq.landed)).toHaveLength(1);
+      expect(linksIn(linq.landed)[0]).toContain('to=google');
+      expect(linq.linkKeys).toHaveLength(2);
+      expect(linq.linkKeys[1]).toBe(linq.linkKeys[0]);
+      expect(await googleOffered()).toBe(true);
+      const [card] = await cardRows();
+      expect(card?.providerMessageId).not.toBeNull();
+    });
+
+    it('retries a link that may have landed on its own key, so Linq drops the copy', async () => {
+      const talk = conversation(db.database);
+      for (const words of UP_TO_NAME) await talk.say(words);
+      const linq = linqWhoseFirstLinkHangs(talk, true);
+
+      void talk.say('Dana');
+      await linq.hangReached;
+      talk.advance(SIX_MINUTES);
+      await talk.say('hello?');
+
+      expect(linq.linkKeys).toHaveLength(2);
+      expect(linq.linkKeys[1]).toBe(linq.linkKeys[0]);
+      expect(linksIn(linq.landed)).toHaveLength(1);
+      expect(await googleOffered()).toBe(true);
+      // The parent holds the link that landed, so the retry's fresh token must not kill it.
+      const held = new URL(linksIn(linq.landed)[0] ?? '').searchParams.get('t');
+      if (!held) throw new Error('the landed link carries no token');
+      expect((await presentChannelSigninToken(held, db.database, { now: talk.now() })).ok).toBe(
+        true,
+      );
     });
 
     it('still reads a card Linq accepted as sent', async () => {

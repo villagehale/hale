@@ -180,6 +180,12 @@ export async function sendClaimedGoogleText<
     surface: GoogleSendSurface;
   },
   send: (sendKey: string) => Promise<R>,
+  /**
+   * The rest of a text that is more than one send (the card's link). It runs after Linq took
+   * this text and before the row says so, so a crash inside it leaves the claim, and the try
+   * that retakes it sends every part again on the same keys, where Linq drops what landed.
+   */
+  thenBeforeRecording?: (sent: R) => Promise<void>,
 ): Promise<GoogleSendOutcome<R>> {
   const gate = await googleSendGate(database, who);
   if (gate !== 'open') {
@@ -197,7 +203,30 @@ export async function sendClaimedGoogleText<
   } catch (err) {
     return settleFailure(database, claim, who, err);
   }
+  try {
+    await thenBeforeRecording?.(sent);
+  } finally {
+    await recordAccepted(database, claim, who, sent);
+  }
+  return { status: 'accepted', sent };
+}
 
+async function recordAccepted(
+  database: Database,
+  claim: GoogleSendClaim,
+  who: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    channel: 'sms' | 'imessage';
+    chatId: string | null;
+  },
+  sent: {
+    providerMessageId: string;
+    transport?: 'sms' | 'whatsapp' | 'imessage';
+    chatId?: string | null;
+  },
+): Promise<void> {
   const carried = sent.transport === 'imessage' ? 'imessage' : who.channel;
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
@@ -221,7 +250,6 @@ export async function sendClaimedGoogleText<
       audience: who.parentUserId,
     });
   });
-  return { status: 'accepted', sent };
 }
 
 async function settleFailure(
