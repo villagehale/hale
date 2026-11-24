@@ -1,7 +1,12 @@
 'use client';
 
 import { useActionState } from 'react';
-import { FallbackCard, LandingCard, StatusCard } from '~/components/hale/connect/connect-cards';
+import {
+  ConnectCodeCard,
+  FallbackCard,
+  LandingCard,
+  StatusCard,
+} from '~/components/hale/connect/connect-cards';
 import {
   type ChannelLinkRedeemState,
   redeemChannelLinkAction,
@@ -32,6 +37,10 @@ export function ChannelLinkRedeem({
   const [state, formAction, pending] = useActionState<ChannelLinkRedeemState, FormData>(action, {
     status: 'idle',
   });
+
+  if (state.status === 'code') {
+    return <ConnectCodeCard message={state.message} formAction={formAction} pending={pending} />;
+  }
 
   if (state.status === 'error') {
     const copy = redeemErrorStatus(state.message, provider);

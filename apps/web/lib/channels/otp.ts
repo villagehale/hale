@@ -31,7 +31,26 @@ export function verifyOtpCode(candidate: string, storedHash: string): boolean {
   // A real code is 6 chars — reject implausibly long input in O(1) before hashing,
   // so an authed caller can't drive per-request SHA work with a huge payload.
   if (candidate.length > 12) return false;
-  const candidateHash = Buffer.from(hashOtpCode(candidate), 'hex');
+  return hashesEqual(hashOtpCode(candidate), storedHash);
+}
+
+/** The stored hash of a code that works only with the one sign-in link it was sent for. */
+export function hashBoundOtpCode(code: string, binding: string): string {
+  return hashOtpCode(`${binding}:${code}`);
+}
+
+/** {@link verifyOtpCode} for a code stored with {@link hashBoundOtpCode}. */
+export function verifyBoundOtpCode(
+  candidate: string,
+  binding: string,
+  storedHash: string,
+): boolean {
+  if (candidate.length > 12) return false;
+  return hashesEqual(hashBoundOtpCode(candidate, binding), storedHash);
+}
+
+function hashesEqual(candidateHex: string, storedHash: string): boolean {
+  const candidateHash = Buffer.from(candidateHex, 'hex');
   let stored: Buffer;
   try {
     stored = Buffer.from(storedHash, 'hex');
