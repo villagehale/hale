@@ -82,12 +82,16 @@ for (const { phase, currency } of CASES) {
       });
 
       it('shows only this country’s numbers, with a plain "$" and no currency code', () => {
-        expect(body).not.toMatch(/C\$|US\$/);
-        expect(body).not.toMatch(/\$\d[\d.]*(\/(yr|mo))? ?(CAD|USD)\b/);
-        expect(body).not.toMatch(/\b(CAD|USD)\b/);
+        const both =
+          'In Canada, Plus is $59/yr and Max is $99/yr. In the US, Plus is $39/yr and Max is $79/yr. Through Dec 31.';
+        const priced = name === 'pricing' ? body.replace(both, '') : body;
+        if (name === 'pricing') expect(body).toContain(both);
+        expect(priced).not.toMatch(/C\$|US\$/);
+        expect(priced).not.toMatch(/\$\d[\d.]*(\/(yr|mo))? ?(CAD|USD)\b/);
+        expect(priced).not.toMatch(/\b(CAD|USD)\b/);
         for (const label of [...other.plus, ...other.max]) {
           if (![...want.plus, ...want.max].includes(label as never)) {
-            expect(body).not.toContain(label);
+            expect(priced).not.toContain(label);
           }
         }
       });

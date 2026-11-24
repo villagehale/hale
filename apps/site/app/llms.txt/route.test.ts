@@ -40,15 +40,21 @@ describe('llms.txt', () => {
   it('describes what Hale is and that the content is cited, not medical advice', async () => {
     const text = await body();
     expect(text).toMatch(/^# Hale/);
-    expect(text.toLowerCase()).toContain('knows your family');
+    expect(text).toContain(
+      'Hale finds real classes and plans near you for your kids\' ages, and gets the group chat to a yes.',
+    );
+    expect(text).toContain('Starting Dec 1, signs them up with your ok.');
     expect(text.toLowerCase()).not.toContain('family ai');
     expect(text.toLowerCase()).toContain('0–18');
     expect(text.toLowerCase()).toContain('not medical advice');
     expect(text).not.toContain('/for-centres');
-    expect(text).toContain(
-      'In Canada, Plus is $19/mo or $159/yr, and Max is $329/yr.',
-    );
-    expect(text).toContain('In the US, Plus is $14/mo or $119/yr, and Max is $259/yr.');
+    expect(text).toContain('Toronto');
+    expect(text).toContain('In Canada, Plus is $59/yr and Max is $99/yr.');
+    expect(text).toContain('In the US, Plus is $39/yr and Max is $79/yr. Through Dec 31.');
+    expect(text).not.toContain('$159');
+    expect(text).not.toContain('$329');
+    expect(text).not.toContain('$119');
+    expect(text).not.toContain('$259');
     expect(text).not.toContain('Paid plans are Plus and Max.');
     expect(text).toContain('Full refund anytime if it’s not for you.');
     expect(text).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);

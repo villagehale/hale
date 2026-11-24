@@ -27,10 +27,10 @@ export const SHARE_CARDS = {
   },
   pricing: {
     id: 'pricing',
-    alt: `Hale pricing. ${PAGE_TITLE} Biggest sale of the year, join by Dec 31.`,
-    eyebrow: 'BIGGEST SALE OF THE YEAR',
+    alt: `Hale pricing. ${ONE_LINER}`,
+    eyebrow: 'PRICING',
     headline: PAGE_TITLE,
-    subline: 'Lowest price of the year, locked in. Join by Dec 31.',
+    subline: ONE_LINER,
     chat: true,
   },
   faq: {

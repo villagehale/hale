@@ -1,4 +1,4 @@
-import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE } from '@hale/types';
+import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE, PROMO_PRICE_DISPLAY } from '@hale/types';
 import {
   PAID_PLANS_LINE,
   maxAnnualLabel,
@@ -111,6 +111,7 @@ export function RedesignPricing({
    </li>
   </ol>
   <p className="hs-meta hs-foot-note">{promo ? "Plus and Max are billed yearly. Sale prices are for families who join by Dec 31 and stay locked in while you’re a member." : list ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
+  <p className="hs-meta hs-foot-note">{`In Canada, Plus is ${PROMO_PRICE_DISPLAY.plus.CAD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.CAD.perYear}. In the US, Plus is ${PROMO_PRICE_DISPLAY.plus.USD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.USD.perYear}. Through Dec 31.`}</p>
  </div>
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">

@@ -136,16 +136,12 @@ describe('share previews', () => {
     );
     expect(SHARE_CARDS.home.alt).toBe(PAGE_TITLE);
     expect(SHARE_CARDS.home.headline).toBe(PAGE_TITLE);
-    expect(SHARE_CARDS.pricing.eyebrow).toBe('BIGGEST SALE OF THE YEAR');
-    expect(SHARE_CARDS.pricing.subline).toBe(
-      'Lowest price of the year, locked in. Join by Dec 31.',
-    );
+    expect(SHARE_CARDS.pricing.eyebrow).toBe('PRICING');
+    expect(SHARE_CARDS.pricing.subline).toBe(ONE_LINER);
 
     const pricing = await pricingMetadata({ params: Promise.resolve(en) });
     expect(pricing.title).toBe('Pricing · Hale');
-    expect(pricing.openGraph?.description).toBe(
-      `${ONE_LINER} Biggest sale of the year, join by Dec 31.`,
-    );
+    expect(pricing.openGraph?.description).toBe(ONE_LINER);
 
     const faq = await faqMetadata({ params: Promise.resolve(en) });
     expect(faq.title).toBe('Questions about Hale · Hale');

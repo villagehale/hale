@@ -26,8 +26,14 @@ describe('siteJsonLd', () => {
     expect(json).not.toContain('Country');
   });
 
-  it('does not declare a zero-price offer', () => {
-    expect(byType('SoftwareApplication')).not.toHaveProperty('offers');
+  it('declares the Canada and US sale offers through Dec 31', () => {
+    const offers = byType('SoftwareApplication')?.offers as Array<Record<string, string>>;
+    expect(offers).toEqual([
+      expect.objectContaining({ name: 'Plus', price: '59', priceCurrency: 'CAD', priceValidUntil: '2026-12-31' }),
+      expect.objectContaining({ name: 'Max', price: '99', priceCurrency: 'CAD', priceValidUntil: '2026-12-31' }),
+      expect.objectContaining({ name: 'Plus', price: '39', priceCurrency: 'USD', priceValidUntil: '2026-12-31' }),
+      expect.objectContaining({ name: 'Max', price: '79', priceCurrency: 'USD', priceValidUntil: '2026-12-31' }),
+    ]);
     expect(JSON.stringify(siteJsonLd())).not.toContain('"price":"0"');
   });
 
