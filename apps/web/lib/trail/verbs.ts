@@ -529,6 +529,7 @@ export const AUDIT_VERBS = [
   // ── connectors, settings, billing ───────────────────────────────────────
   'connector_link_minted',
   'connector_link_signed_in',
+  'connector_link_code_sent',
   'integration_connected',
   'integration_revoked',
   'integration_ended_for_erasure',
@@ -1983,6 +1984,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you signed in with a link texted to your phone',
     family: 'done',
   },
+  connector_link_code_sent: {
+    sentence: 'Hale texted a sign-in code to your phone for a link you were sent',
+    family: 'note',
+  },
   // Custody, in the sentence a parent reads on their own trail. "Never hands them to
   // another service" is exactly true and no more: the token goes to the provider that
   // issued it and to nobody else - no broker holds it (the connector audit row carries
@@ -2590,6 +2595,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'billing_notice_dropped',
   // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
   'billing_plan_unsettled',
+  // VIL-758. That a sign-in code went to one adult's number.
+  'connector_link_code_sent',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

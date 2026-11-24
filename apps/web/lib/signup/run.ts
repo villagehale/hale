@@ -13,6 +13,7 @@ import type { Asked } from '~/lib/channel/router/open-questions';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import {
   type AskPlace,
+  type LiveAsk,
   SIGNUP_ASK_BACK_QUESTION,
   loadLiveAsks,
   stoppedTurn,
@@ -63,7 +64,7 @@ import {
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
 import { namesFacts } from './parent-quote';
-import { type PlanTurnDeps, runPlanAsk } from './plan/conversation';
+import { type PlanTurnDeps, runPlanAsk, runPlanTakeBack } from './plan/conversation';
 import { untrustedActivityLabel } from './plan/reader';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
@@ -115,6 +116,7 @@ export interface SignupRunDeps {
   outcomeWriter?: SignupOutcomeWriter;
   /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
   planReader?: PlanTurnDeps['planReader'];
+  takeBackReader?: PlanTurnDeps['takeBackReader'];
   planWriter?: PlanTurnDeps['planWriter'];
   mismatchReader?: PlanTurnDeps['mismatchReader'];
   dobReader?: PlanTurnDeps['dobReader'];
@@ -225,6 +227,7 @@ export async function runAuthorizedSignup(
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
   const planDeps: PlanTurnDeps = {
     planReader: deps.planReader,
+    takeBackReader: deps.takeBackReader,
     planWriter: deps.planWriter,
     mismatchReader: deps.mismatchReader,
     dobReader: deps.dobReader,
@@ -267,19 +270,18 @@ export async function runAuthorizedSignup(
     return { ...UNCLAIMED, outcome: 'opt_out_unread' };
   }
   // VIL-715: a registration's terms are the asker's alone, so a yes counts only in their own
-  // thread. In a group no ask is read and none moves; the coach takes the turn. That holds for
-  // any ask with terms, after the flag goes off too.
+  // thread. Elsewhere only a take-back moves an ask (VIL-760); the coach takes any other turn.
+  // That holds for any ask with terms, after the flag goes off too.
   if (
     asks.length > 0 &&
     (registrationPreflightEnabled(input.familyId) ||
       (await someOfferHasTerms(database, {
         familyId: input.familyId,
         offerIds: asks.map((ask) => ask.offerId),
-      }))) &&
-    (await yesThread(database, input)) !== 'private'
+      })))
   ) {
-    console.info({ outcome: 'asks_held_for_private' }, 'signup asks: not in their own thread');
-    return { ...UNCLAIMED, outcome: 'asks_held_for_private' };
+    const thread = await yesThread(database, input);
+    if (thread !== 'private') return runTakeBackOnly(database, input, deps, planDeps, asks, thread);
   }
   for (const ask of asks) {
     const turn =
@@ -296,6 +298,71 @@ export async function runAuthorizedSignup(
     if (turn !== 'unrelated') return turn;
   }
   return UNCLAIMED;
+}
+
+/**
+ * Outside the asker's own thread: a take-back moves its ask, and anything else is held. A
+ * group turn answers none of the 1:1 asks (the router gives it no open questions), so a bare
+ * "no" there may answer anyone: in a group only words that name an ask take it back. A
+ * thread Hale cannot place leans toward cancelling, so its bare take-back still binds.
+ */
+async function runTakeBackOnly(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  planDeps: PlanTurnDeps,
+  asks: readonly LiveAsk[],
+  thread: Exclude<YesThread, 'private'>,
+): Promise<SignupRunResult> {
+  for (const ask of asks) {
+    // Words that name another of their asks are not this one's take-back, and words that
+    // name two of them say which neither is: nothing moves, and the coach takes the turn.
+    if (asks.some((other) => other !== ask && wordsNameAsk(input.body, other))) {
+      if (wordsNameAsk(input.body, ask)) break;
+      continue;
+    }
+    const place = thread === 'group' ? { ...ask.place, newest: false } : ask.place;
+    const turn =
+      ask.lane === 'plan'
+        ? await runPlanTakeBack(database, input, planDeps, ask.plan, place)
+        : await declineOneShot(database, input, deps, ask.offer, place);
+    if (turn === 'held') break;
+    if (turn !== 'unrelated') return turn;
+  }
+  console.info({ outcome: 'asks_held_for_private' }, 'signup asks: not in their own thread');
+  return { ...UNCLAIMED, outcome: 'asks_held_for_private' };
+}
+
+/** {@link runPlanTakeBack} for a one-shot ask: a decline acts, and its reply names nothing. */
+async function declineOneShot(
+  database: Database,
+  input: SignupRunInput,
+  deps: SignupRunDeps,
+  offer: PendingSignupOffer,
+  place: AskPlace,
+): Promise<SignupRunResult | 'unrelated' | 'held'> {
+  const reader = deps.consentReader ?? defaultConsentReader();
+  const reading = await reader.read({ text: input.body, offer });
+  if (!reading) return 'held';
+  if (reading.verdict === 'unrelated') return 'unrelated';
+  if (reading.verdict !== 'decline') return 'held';
+  const named = namesFacts(input.body, {
+    activity: untrustedActivityLabel(offer.activityLabel),
+    host: offer.providerHost,
+  });
+  // No question back can go here, so words that name this ask are enough to decline it.
+  if (!place.newest && !named) return 'held';
+  await markFromPending(database, input, offer.id, null);
+  return replyFor(database, input, deps, await reportDoor(database, input), {
+    offerId: offer.id,
+    outcome: 'declined',
+    reason: null,
+    link: '',
+    prefilled: [],
+    host: offer.providerHost,
+    inGroup: true,
+    leavesAskOrder: true,
+  });
 }
 
 /**
@@ -1262,6 +1329,8 @@ interface ReplyFacts {
   confirmation?: SignupConfirmation;
   /** The consent read's clarifying question, for `clarify`. */
   question?: string;
+  /** Not a text about an open ask: the parent's next bare yes still answers the one before. */
+  leavesAskOrder?: boolean;
 }
 
 /**
@@ -1482,6 +1551,13 @@ async function replyFor(
     ...(facts.rush ? { rushSignal: facts.rush.signal, rushOpensAt: facts.rush.opensAt } : {}),
   });
   const rush = facts.rush ? { rush: facts.rush } : {};
+  const stamp = facts.leavesAskOrder
+    ? undefined
+    : askStamp(database, {
+        familyId: input.familyId,
+        parentUserId: input.parentUserId,
+        offerIds: [facts.offerId],
+      });
   if (door.kind === 'held') {
     return { ...rush, claimed: true, outcome: facts.outcome, reply: null, deliverOnThread: false };
   }
@@ -1507,11 +1583,7 @@ async function replyFor(
       body: line,
       dedupeKey: `authorized_signup:${facts.offerId}:${facts.outcome}`,
       now: input.now,
-      stamp: askStamp(database, {
-        familyId: input.familyId,
-        parentUserId: input.parentUserId,
-        offerIds: [facts.offerId],
-      }),
+      stamp,
     });
     if (status === 'sent' || status === 'already_sent') {
       return {
@@ -1542,11 +1614,7 @@ async function replyFor(
     outcome: facts.outcome,
     reply: line,
     deliverOnThread: true,
-    stamp: askStamp(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      offerIds: [facts.offerId],
-    }),
+    ...(stamp ? { stamp } : {}),
   };
 }
 

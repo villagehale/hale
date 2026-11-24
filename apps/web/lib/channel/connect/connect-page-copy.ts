@@ -466,6 +466,16 @@ export const REDEEM_FRESH_SENT =
   'This link is invalid or has expired. A fresh one is in your texts.';
 export const REDEEM_TRY_AGAIN = 'This link did not open. Tap it again in a moment.';
 export const REDEEM_UNAVAILABLE = 'Sign-in is not available right now.';
+export const REDEEM_NO_NUMBER =
+  "Hale can't send a code for this link. Text Hale and ask for a new one.";
+// The pending code may belong to a sibling link and not open this one.
+export const REDEEM_CODE_JUST_SENT =
+  "A code just went out. If it doesn't work, send a new one in a minute.";
+
+export const CODE_HEADING = 'Enter your code';
+export const CODE_LEDE = 'Hale texted a 6-digit code to the number on this account.';
+export const CODE_LABEL = '6-digit code';
+export const CODE_RESEND = 'Send a new code';
 
 export function redeemErrorStatus(
   message: string,

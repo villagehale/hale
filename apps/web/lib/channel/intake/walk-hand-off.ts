@@ -52,6 +52,38 @@ export async function walkHandOffOf(
 }
 
 /**
+ * Whether an earlier delivery of this text already left the walk. Its hand-off row is the
+ * proof, so a redelivery is not read by the model a second time.
+ */
+export async function walkTurnHandedOff(
+  database: Database,
+  providerMessageId: string,
+): Promise<boolean> {
+  const [inbound] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerMessageId, providerMessageId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    )
+    .limit(1);
+  if (!inbound) return false;
+  const [handedOff] = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, 'onboarding_walk_handed_off'),
+        eq(schema.auditLog.targetId, inbound.id),
+      ),
+    )
+    .limit(1);
+  return handedOff !== undefined;
+}
+
+/**
  * Which connector a disconnect read names, in the order to try. A named one is the only one
  * tried, so a Calendar-only parent who asks to remove Gmail keeps their Calendar.
  */

@@ -243,6 +243,10 @@ export const FLAGS = [
   // and ONE Google link that connects Gmail and Calendar together. Exact `true`.
   // Env-only: read with no family id, so a PostHog 100% rollout would light it (VIL-755).
   exact('thread-onboarding-v2', 'THREAD_ONBOARDING_V2_ENABLED', { envOnly: true }),
+  // VIL-758. A texted /connect link signs nobody in by itself: it takes a code texted to
+  // the number held for the parent it names. Exact `true`. Env-only: read before any family
+  // is known, so a PostHog 100% rollout must never be able to light it.
+  exact('connect-link-code', 'CONNECT_LINK_CODE_ENABLED', { envOnly: true }),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,
   }),

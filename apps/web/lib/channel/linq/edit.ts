@@ -4,6 +4,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, eq, gte } from 'drizzle-orm';
 import { z } from 'zod';
+import { withoutConnectTokens } from '~/lib/channel/connect/connect-link';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { editLinqMessage } from '~/lib/channel/outbound-transport';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -387,7 +388,12 @@ export async function listEditableLinqSends(
   return candidates.slice(0, 5);
 }
 
-type Rewrite = 'updated' | 'unchanged' | 'missing';
+/**
+ * `token_only`: the edit differs from the stored text only by a sign-in token the thread
+ * does not keep. Nothing is rewritten, and its time still has to count as applied, or an
+ * older callback arriving next would overwrite the newer words.
+ */
+type Rewrite = 'updated' | 'token_only' | 'unchanged' | 'missing';
 
 async function rewriteAssistantBubble(
   database: Database,
@@ -414,10 +420,11 @@ async function rewriteAssistantBubble(
   if (matches.length !== 1) return 'missing';
   const match = matches[0];
   if (!match) return 'missing';
-  if (match.content === text) return 'unchanged';
+  const stored = withoutConnectTokens(text);
+  if (match.content === stored) return stored === text ? 'unchanged' : 'token_only';
   await database
     .update(schema.messages)
-    .set({ content: text })
+    .set({ content: stored })
     .where(eq(schema.messages.id, match.id as string));
   return 'updated';
 }
@@ -542,7 +549,7 @@ export async function applyLinqEdit(input: {
       candidate.messageId,
       decision.edit.text,
     );
-    if (wrote === 'updated') {
+    if (wrote === 'updated' || wrote === 'token_only') {
       await auditEdit(input.database, {
         familyId: input.familyId,
         parentUserId: input.parentUserId,
@@ -632,7 +639,9 @@ export async function recordLinqEditWebhook(
       console.info({ reason: 'no_coach_turn' }, 'linq edit webhook: not applied');
       return 'unchanged';
     }
-    if (wrote === 'unchanged') return 'unchanged';
+    if (wrote === 'unchanged' || (wrote === 'token_only' && edit.editedAt === null)) {
+      return 'unchanged';
+    }
     await auditEdit(database, {
       familyId: inbound.familyId,
       parentUserId: inbound.parentUserId,
@@ -649,7 +658,9 @@ export async function recordLinqEditWebhook(
   }
   const wrote = await rewriteAssistantBubble(database, edit.messageId, edit.text);
   if (wrote === 'missing') return original ? 'unchanged' : 'unknown_message';
-  if (wrote === 'unchanged') return 'unchanged';
+  if (wrote === 'unchanged' || (wrote === 'token_only' && edit.editedAt === null)) {
+    return 'unchanged';
+  }
   if (original) {
     await auditEdit(database, {
       familyId: original.familyId,
@@ -682,10 +693,11 @@ async function rewriteParentTurn(
     (row) => row.providerMessageId === providerMessageId && row.role === 'user' && !row.deletedAt,
   );
   if (match.length !== 1 || !match[0]) return 'missing';
-  if (match[0].content === text) return 'unchanged';
+  const stored = withoutConnectTokens(text);
+  if (match[0].content === stored) return stored === text ? 'unchanged' : 'token_only';
   await database
     .update(schema.messages)
-    .set({ content: text })
+    .set({ content: stored })
     .where(eq(schema.messages.id, match[0].id));
   return 'updated';
 }

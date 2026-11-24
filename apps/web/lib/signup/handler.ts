@@ -14,7 +14,10 @@ import { loadLastAsked } from './store';
 import type { SignupBrowser } from './types';
 
 export interface AuthorizedSignupHandlerDeps
-  extends Pick<SignupRunDeps, 'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter'> {
+  extends Pick<
+    SignupRunDeps,
+    'consentReader' | 'outcomeWriter' | 'planReader' | 'planWriter' | 'takeBackReader'
+  > {
   browser?: SignupBrowser | null;
   deliverGroup?: (input: GroupSignupDelivery) => Promise<'sent' | 'failed' | 'already_sent'>;
 }

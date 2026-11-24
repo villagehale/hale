@@ -218,9 +218,14 @@ import {
   resolveStatedPlace,
 } from './stated-place';
 import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
-import { type WalkHandOff, walkHandOffFrom } from './walk-hand-off';
+import { type WalkHandOff, walkHandOffFrom, walkTurnHandedOff } from './walk-hand-off';
 import type { ChannelTransport } from './transport';
-import { claimIntakeTurn, completeIntakeTurn, intakeTurnClaimed } from './turn-claim';
+import {
+  claimIntakeTurn,
+  completeIntakeTurn,
+  intakeTurnClaimed,
+  releaseIntakeTurn,
+} from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
 
 /**
@@ -902,6 +907,12 @@ async function claimedTurn(
     return { status: 'duplicate' };
   }
   const outcome = await run();
+  // The router's record of a hand-off is written after this returns, so a claim kept here
+  // would answer the resend of a failed write `duplicate`, and nothing would re-drive it.
+  if (outcome.status === 'ignored' && outcome.walkHandOff) {
+    await releaseIntakeTurn(database, inbound.providerId);
+    return outcome;
+  }
   // Stamped only on a turn that returned: a claim whose completed_at stays NULL is
   // the named crash residue (rule #11), visible to an operator, never a silence.
   await completeIntakeTurn(database, inbound.providerId, now);
@@ -1625,7 +1636,10 @@ const REASK_CAP = 2;
 
 async function friendSpeak(
   deps: IntakeDeps,
-  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  heard: {
+    transcript: readonly Pick<TranscriptEntry, 'direction' | 'body' | 'inGroup'>[];
+    inGroup: boolean;
+  },
   input: Omit<FriendVoiceInput, 'recentTurns'>,
   options?: Omit<SpeakOptions, 'page'> & {
     /** The family or session a miss is paged for: #ops hears once per kind per day. */
@@ -1645,9 +1659,21 @@ async function friendSpeak(
     );
   return speakFriend(
     deps.friendVoice,
-    { ...input, identityAsked, recentTurns: turnsFromTranscript(transcript) },
+    { ...input, identityAsked, recentTurns: turnsFromTranscript(sayableHere(heard)) },
     pageScope ? { ...speak, page: pageOncePerDay(deps.limiter, pageScope) } : speak,
   );
+}
+
+/**
+ * VIL-721. A group turn is handed only what was said in that group: an entry with no bit
+ * predates it and is not assumed to be. Dark, the transcript goes through untouched.
+ */
+function sayableHere<T extends Pick<TranscriptEntry, 'inGroup'>>(heard: {
+  transcript: readonly T[];
+  inGroup: boolean;
+}): readonly T[] {
+  if (!heard.inGroup || !threadOnboardingV2Enabled()) return heard.transcript;
+  return heard.transcript.filter((entry) => entry.inGroup === true);
 }
 
 /** A judged model reply. Empty means the retries already paged #ops. */
@@ -1832,14 +1858,23 @@ function threadForNext(
   outboundBody: string | null,
   now: Date,
   asked = false,
+  /** Lit only: where this turn was said. Undefined keeps a dark entry's bytes. */
+  inGroup?: boolean,
 ): TranscriptEntry[] {
+  const heard = inGroup === undefined ? {} : { inGroup };
   const last = transcript.at(-1);
   const base =
     last?.direction === 'in' && last.body === inboundBody
       ? transcript
       : [
           ...transcript,
-          { direction: 'in' as const, body: inboundBody, providerId: null, at: inboundAt },
+          {
+            direction: 'in' as const,
+            body: inboundBody,
+            providerId: null,
+            at: inboundAt,
+            ...heard,
+          },
         ];
   if (outboundBody === null) return base;
   return [
@@ -1850,6 +1885,7 @@ function threadForNext(
       providerId: null,
       at: now.toISOString(),
       ...(asked ? { asked: true } : {}),
+      ...heard,
     },
   ];
 }
@@ -2238,7 +2274,7 @@ async function friendOnboardingTurn(
   };
   const spoken = await friendSpeak(
     deps,
-    transcript,
+    { transcript, inGroup: ctx.pipe.isGroup },
     friendFields(
       friendStepForGap(onboardingMissing(checklist)[0], card),
       language,
@@ -2671,6 +2707,10 @@ async function friendColdTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  // A hand-off gave its claim back, so its redelivery arrives here. The router has it.
+  const handedOff = async () =>
+    threadOnboardingV2Enabled() && (await walkTurnHandedOff(database, inbound.providerId));
+  if (await handedOff()) return { status: 'duplicate' };
   const linkIsOut = progress.googleOffered === true;
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
@@ -2693,7 +2733,7 @@ async function friendColdTurn(
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
-      session.transcript,
+      { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
       friendFields('find_show', language, friendAddress(ctx), {
         parentWords: inbound.body,
         placeLabel:
@@ -2721,6 +2761,7 @@ async function friendColdTurn(
     if (owedHandOff) {
       return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: owedHandOff };
     }
+    if (await handedOff()) return { status: 'duplicate' };
     if (owed.source === 'unsent') {
       await recordInbound(database, ctx, inbound, session.transcript);
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -2766,7 +2807,7 @@ async function friendColdTurn(
   });
   const spoken = await friendSpeak(
     deps,
-    session.transcript,
+    { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
@@ -2816,6 +2857,7 @@ async function friendColdTurn(
   if (handOff) {
     return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: handOff };
   }
+  if (!alreadyRecorded && (await handedOff())) return { status: 'duplicate' };
   if (spoken.capture.stopAsking) {
     const recorded =
       alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
@@ -3110,6 +3152,7 @@ async function friendColdTurn(
         voicedOut ? voiced : null,
         now,
         spoken.asks,
+        threadOnboardingV2Enabled() ? ctx.pipe.isGroup : undefined,
       ),
       firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
       ...(complete ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
@@ -3470,6 +3513,7 @@ async function sendPostYearFindLadder(
       transcript: [],
       parentWords: args.inbound.body,
       address: pipe.isGroup ? 'vous' : 'tu',
+      inGroup: pipe.isGroup,
     },
   });
   // No voice, no fixed line: the ask is skipped and the ladder moves on.
@@ -3663,7 +3707,7 @@ async function provision(
       discoveryOn && !empty
         ? friendSpeak(
             deps,
-            thread,
+            { transcript: thread, inGroup: ctx.pipe.isGroup },
             friendFields('find_show', language, friendAddress(ctx), {
               ...common,
               parentWords: inbound.body,
@@ -3675,7 +3719,7 @@ async function provision(
         : Promise.resolve(null),
       friendSpeak(
         deps,
-        thread,
+        { transcript: thread, inGroup: ctx.pipe.isGroup },
         friendFields(step, language, friendAddress(ctx), {
           ...common,
           introduce: !discoveryOn && step === 'names',
@@ -4087,6 +4131,7 @@ async function handleLadder(
         transcript: recorded.transcript,
         parentWords: inbound.body,
         address: friendAddress(ctx),
+        inGroup: ctx.pipe.isGroup,
       },
     });
     next = asked ? 'name_reply' : 'gmail';
@@ -4121,7 +4166,7 @@ async function handleLadder(
     const join = coparentJoinFor(ctx, language);
     const spoken = await friendSpeak(
       deps,
-      recorded.transcript,
+      { transcript: recorded.transcript, inGroup: ctx.pipe.isGroup },
       friendFields('coparent', language, friendAddress(ctx), {
         parentWords: inbound.body,
         coparentJoin: join,
@@ -4195,7 +4240,7 @@ async function sendLadderFriendCard(
     : null;
   const spoken = await friendSpeak(
     deps,
-    args.transcript,
+    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
     friendFields(step, args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
       parentName: held ? safeGivenName(held.googleGivenName) : null,
@@ -4233,7 +4278,7 @@ async function sendLadderFriendCard(
   }
   const retry = await friendSpeak(
     deps,
-    args.transcript,
+    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
     friendFields('link_retry', args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
     }),
@@ -4257,6 +4302,7 @@ async function askParentCallName(
       transcript: TranscriptEntry[];
       parentWords: string;
       address: 'tu' | 'vous';
+      inGroup: boolean;
     };
   },
 ): Promise<boolean> {
@@ -4279,7 +4325,7 @@ async function askParentCallName(
         }
         const spoken = await friendSpeak(
           friend.deps,
-          friend.transcript,
+          { transcript: friend.transcript, inGroup: friend.inGroup },
           friendFields(
             decision.kind === 'confirm' ? 'name_confirm' : 'names',
             args.language,
@@ -4331,7 +4377,7 @@ async function helpBody(
   };
   const spoken = await friendSpeak(
     deps,
-    session?.transcript ?? [],
+    { transcript: session?.transcript ?? [], inGroup },
     friendFields('help', language, 'tu', {
       parentWords,
       placeLabel:

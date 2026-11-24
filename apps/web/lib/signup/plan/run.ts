@@ -681,8 +681,6 @@ async function runOnePlan(
   const onConfirmed =
     approved && registrationPreflightEnabled(plan.familyId)
       ? async (facts: PlanConfirmedFacts) => {
-          const session =
-            facts.choiceIndex === null ? undefined : approved.sessions[facts.choiceIndex];
           receipt = await captureMaskedReceipt(
             { getCdpUrl: facts.getCdpUrl },
             {
@@ -691,7 +689,8 @@ async function runOnePlan(
               waitUntil: facts.waitUntil,
               keep: {
                 confirmationNumber: facts.confirmationNumber,
-                className: session?.program.name ?? null,
+                // A page wrote the class name, and the image goes out as Hale's own.
+                className: null,
                 amount:
                   facts.amountChargedCents === null
                     ? null
@@ -862,7 +861,8 @@ async function runOnePlan(
       binding,
       credentials,
       accountCreate: providerAccountCreateEnabled(),
-      joinWaitlist: pick === 'join_waitlist',
+      // A hold stops at checkout for the parent; a waitlist would finish it without them.
+      joinWaitlist: pick === 'join_waitlist' && !approved?.hold,
       askedStart: askedStartFromAvailability(plan.availability),
       providerSession: stored
         ? {

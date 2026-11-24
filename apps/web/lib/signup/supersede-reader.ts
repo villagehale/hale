@@ -5,6 +5,8 @@ import { withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { namesFacts, quotesParentWords } from './parent-quote';
 import { untrustedActivityLabel } from './plan/reader';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from './site-choices';
+import { SIGNUP_PAGE_WORDS_SKILL, untrustedPageWords } from './terms/page-words';
 
 /**
  * WHETHER A NEW SIGN-UP ASK REPLACES ONE OF THIS PARENT'S EARLIER OPEN ASKS.
@@ -27,6 +29,8 @@ export interface SupersedeAsk {
   activity: string | null;
   host: string;
   sessionLabels: readonly string[];
+  /** The offer has a terms row: a page wrote its session labels. */
+  labelsFromPage?: boolean;
 }
 
 export interface SupersedeReadInput {
@@ -95,7 +99,13 @@ export function signupSupersedeReadUserMessage(input: SupersedeReadInput): strin
       ref: refFor(index),
       untrusted_activity_label: untrustedActivityLabel(ask.activity),
       host: ask.host,
-      sessions: ask.sessionLabels.map((label) => withoutLinks(label)),
+      ...(ask.labelsFromPage
+        ? {
+            untrusted_sessions: ask.sessionLabels.flatMap(
+              (label) => untrustedPageWords(label, SITE_CHOICE_LABEL_MAX_CHARS) ?? [],
+            ),
+          }
+        : { sessions: ask.sessionLabels.map((label) => withoutLinks(label)) }),
     })),
     text: input.text.slice(0, MAX_TEXT_CHARS),
   });
@@ -146,8 +156,12 @@ export function createSignupSupersedeReader(
       }
       if (!resolved) return unreadable('client_unavailable');
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_SUPERSEDE_READ_SKILL);
+        system = input.earlier.some((ask) => ask.labelsFromPage)
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PAGE_WORDS_SKILL)).instructions}`
+          : skill.instructions;
       } catch (err) {
         return unreadable('skill_unavailable', className(err));
       }
@@ -155,7 +169,7 @@ export function createSignupSupersedeReader(
         const { value } = await forceToolJson({
           client: resolved,
           lane: pickLane(skill.meta.task),
-          system: skill.instructions,
+          system,
           userMessage: signupSupersedeReadUserMessage(input),
           toolName: SIGNUP_SUPERSEDE_READ_TOOL,
           toolDescription: SIGNUP_SUPERSEDE_READ_TOOL_DESCRIPTION,
