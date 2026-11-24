@@ -17,7 +17,7 @@ import {
   fetchCheckoutSessionFacts,
   googleAdsConversionSendTo,
   googlePurchaseFromPaidSession,
-  metaPixelIdFromEnv,
+  metaPixelIdsFromEnv,
   metaPurchaseFromPaidSession,
   paidPlanName,
 } from '~/lib/billing/checkout-success';
@@ -80,11 +80,12 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
         sendTo: googleAdsConversionSendTo(),
       })
     : null;
+  const metaPixelIds = metaPixelIdsFromEnv();
   const metaPurchase = facts
     ? metaPurchaseFromPaidSession({
         facts,
         conversionsEnabled,
-        pixelId: metaPixelIdFromEnv(),
+        pixelId: metaPixelIds.length > 0 ? metaPixelIds.join(',') : null,
       })
     : null;
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);

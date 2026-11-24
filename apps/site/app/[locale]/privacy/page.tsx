@@ -563,18 +563,17 @@ export default async function PrivacyPage({
             United States.
           </li>
           <li>
-            <strong>Meta</strong> — advertising measurement. The Meta Pixel (dataset
-            1460101092968766) records a PageView on the marketing site (villagehale.com) after the
-            visitor taps Accept in the cookie banner, and on the product app (app.villagehale.com)
-            when conversions measurement is on. A paid checkout sends a Purchase event to
-            Meta&rsquo;s Conversions API from Hale&rsquo;s servers, using the Stripe Checkout
-            Session id so a matching browser Purchase can be deduplicated. That event may include a
-            hashed email, a hashed phone number, Meta click cookies, and the IP address and browser
-            type saved at checkout. It does not include family data, message content, or
-            children&rsquo;s information. No child data is sent. Hale still shows no advertising. If
-            they choose No thanks on the public website, or make no choice, the Pixel does not load
-            there. Visitors can change that choice at any time with Cookie settings in the site
-            footer. Processed in the United States.
+            <strong>Meta</strong> — advertising measurement. The Meta Pixel records a PageView on
+            the marketing site (villagehale.com) after the visitor taps Accept in the cookie banner,
+            and on the product app (app.villagehale.com) when conversions measurement is on. A paid
+            checkout sends a Purchase event to Meta&rsquo;s Conversions API from Hale&rsquo;s
+            servers, using the Stripe Checkout Session id so a matching browser Purchase can be
+            deduplicated. That event may include a hashed email, a hashed phone number, Meta click
+            cookies, and the IP address and browser type saved at checkout. It does not include
+            family data, message content, or children&rsquo;s information. No child data is sent.
+            Hale still shows no advertising. If they choose No thanks on the public website, or make
+            no choice, the Pixel does not load there. Visitors can change that choice at any time
+            with Cookie settings in the site footer. Processed in the United States.
           </li>
           <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
