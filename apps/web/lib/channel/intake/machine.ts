@@ -6,12 +6,14 @@ import { noteMessage } from '~/lib/analytics/product-hooks';
 import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
+import type { AddThemYourselfVoice } from '~/lib/channel/caregiver/add-them-yourself';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
   loadOpenInviteByPhone,
 } from '~/lib/channel/caregiver/invites';
 import {
+  type AddThemYourselfOutcome,
   type CaregiverDeps,
   type CaregiverOutcome,
   type CoParentOutcome,
@@ -319,6 +321,9 @@ export interface IntakeDeps {
   consent?: import('~/lib/channel/consent-reply').ConsentReader;
   /** Writes a consent ask during intake. Absence is named and sends nothing. */
   consentAsk?: import('~/lib/channel/consent-ask').ConsentAskWriter;
+  /** VIL-759 · the add command's reply with ADD_COMMAND_NO_COLD_TEXT_ENABLED on. Absence
+   * is named (`voice_absent`), pages #ops and sends nothing. */
+  addThemYourself?: AddThemYourselfVoice;
   /** What to call this parent, after a real radar win (PR #689). Intake's consent
    * tail does not call it: a name ask on the assent acknowledgment is the bot voice
    * this turn exists to stop. The dep stays required so a missing composer is a
@@ -484,6 +489,9 @@ export type IntakeOutcome =
   // VIL-355 follow-up · a late answer to an invitation that lapsed. Its own outcome
   // because it is neither lane's: nothing was invited, refused or seated.
   | LapsedInviteOutcome
+  // VIL-759 · the add command's answer with ADD_COMMAND_NO_COLD_TEXT_ENABLED on: one
+  // reply to the parent, nobody else texted.
+  | AddThemYourselfOutcome
   // The co-parent join link's two ends. Kept OUT of `ignored` deliberately: that
   // outcome's `no_open_conversation` reason is what hands the turn to C1
   // (inbound-route.ts), and a redemption has already been answered.
@@ -524,6 +532,7 @@ function caregiverPorts(deps: IntakeDeps): CaregiverDeps {
     openQuestions: deps.openQuestions,
     consent: deps.consent,
     ask: deps.consentAsk,
+    addThemYourself: deps.addThemYourself,
   };
 }
 

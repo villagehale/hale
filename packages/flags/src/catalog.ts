@@ -217,6 +217,10 @@ export const FLAGS = [
   exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
+  // VIL-759. The add command and the co-parent number door text nobody but the parent:
+  // the reply says how that person gets in. Exact `true`. Env-only: a PostHog sync must
+  // never decide who Hale texts first.
+  exact('add-command-no-cold-text', 'ADD_COMMAND_NO_COLD_TEXT_ENABLED', { envOnly: true }),
   // VIL-749 / VIL-753. One send path: a stable family-scoped Linq key, and a row
   // that says sent only after Linq accepts. Env-only: a failure has no family for
   // PostHog, and a synced 100% flag would light this with no env value.

@@ -1,11 +1,21 @@
 import { type AgentClient, pickLane } from '@hale/agent';
+import { isEnabled } from '@hale/flags';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
+import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { AddRole } from './parse';
+
+/**
+ * ADD_COMMAND_NO_COLD_TEXT_ENABLED, exact `true`, env-only. On, the add command and the
+ * co-parent number door answer with this reply and text nobody else.
+ */
+export function addCommandNoColdTextEnabled(): boolean {
+  return isEnabled('add-command-no-cold-text');
+}
 
 /**
  * The reply to a parent who asks Hale to add someone by number ("add grandma
@@ -29,7 +39,7 @@ const CONTACT_CLAIM =
 const GROUP_WORD = /\bgroup|\bgroupe/i;
 
 export interface AddThemYourselfRequest {
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
   /** The name the parent gave, when the command parsed. */
   name: string | null;
   role: AddRole | null;
@@ -162,4 +172,35 @@ export function createAddThemYourselfVoice(client: () => AgentClient): AddThemYo
       return unsent('unusable', rejected.map((r) => r.problems.join('+')).join(' | '));
     },
   };
+}
+
+/** Where the parent asked: the add command, or a number sent after the co-parent ask. */
+export type AddThemYourselfDoor = 'add_command' | 'number_door';
+
+/** `voice_absent`: the turn was built with no composer. Named, never a silent skip. */
+export type AddThemYourselfUnwritten = AddThemYourselfUnsent | 'voice_absent';
+
+export type AddThemYourselfAnswer =
+  | { status: 'composed'; body: string }
+  | { status: 'unwritten'; reason: AddThemYourselfUnwritten; opsPage: OpsPagerOutcome };
+
+/**
+ * The reply, or #ops paged and nothing to send. No fallback line: a reply the model did
+ * not write is a parent who hears nothing, and ops hears why.
+ */
+export async function writeAddThemYourself(
+  voice: AddThemYourselfVoice | undefined,
+  pager: OpsPager,
+  door: AddThemYourselfDoor,
+  request: AddThemYourselfRequest,
+): Promise<AddThemYourselfAnswer> {
+  const composed: AddThemYourselfComposed | { status: 'unsent'; reason: 'voice_absent' } = voice
+    ? await voice.compose(request)
+    : { status: 'unsent', reason: 'voice_absent' };
+  if (composed.status === 'composed') return composed;
+  const opsPage = await pager.page({
+    site: 'add_them_yourself_unwritten',
+    facts: { door, channel: request.channel, reason: composed.reason },
+  });
+  return { status: 'unwritten', reason: composed.reason, opsPage };
 }

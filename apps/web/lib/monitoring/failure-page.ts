@@ -344,6 +344,13 @@ export const OPS_PAGE_VOCABULARY = {
     kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],
     reason: ['no_client', 'skill_load', 'model_failed', 'unusable'],
   },
+  /** VIL-759 · the reply to an add command or a co-parent number the model could not
+   * write. Nothing was sent to anyone. */
+  add_them_yourself_unwritten: {
+    door: ['add_command', 'number_door'],
+    channel: ['imessage', 'sms'],
+    reason: ['voice_absent', 'client_unavailable', 'skill_unavailable', 'model_failed', 'unusable'],
+  },
   inbound_canary_failed: {
     stage: [
       'not_configured',
