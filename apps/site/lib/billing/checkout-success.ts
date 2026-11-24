@@ -1,6 +1,9 @@
 import type { GooglePurchaseEvent } from '~/lib/analytics/google-purchase';
+import { parseMetaPixelIds } from '~/lib/analytics/meta-pixel';
 import type { MetaPurchaseEvent } from '~/lib/analytics/meta-purchase';
 import { APP_URL } from '~/lib/app-url';
+
+export { metaPixelIdFromEnv, metaPixelIdsFromEnv } from '~/lib/analytics/meta-pixel';
 
 /**
  * Success-page helpers. Value and currency are fetched from the app's Stripe
@@ -60,13 +63,6 @@ export function googleAdsConversionSendTo(
   return sendTo ? sendTo : null;
 }
 
-export function metaPixelIdFromEnv(
-  env: Record<string, string | undefined> = process.env,
-): string | null {
-  const id = env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
-  return id ? id : null;
-}
-
 export type PaidPlanName = 'Plus' | 'Max';
 
 /**
@@ -119,10 +115,11 @@ export function metaPurchaseFromPaidSession(input: {
   conversionsEnabled: boolean;
   pixelId: string | null;
 }): MetaPurchaseEvent | null {
-  if (!input.conversionsEnabled || !input.pixelId || !input.facts.paid) return null;
+  const pixelIds = parseMetaPixelIds(input.pixelId);
+  if (!input.conversionsEnabled || pixelIds.length === 0 || !input.facts.paid) return null;
   if (!Number.isFinite(input.facts.value) || input.facts.value <= 0) return null;
   return {
-    pixelId: input.pixelId,
+    pixelId: pixelIds.join(','),
     value: input.facts.value,
     currency: input.facts.currency,
     transactionId: input.facts.transactionId,

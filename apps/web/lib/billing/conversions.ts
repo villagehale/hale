@@ -14,6 +14,8 @@ import { isPromoPreviewFamily } from './promo-preview.js';
  *
  * Meta CAPI is the Purchase source of truth. event_id is the Stripe Checkout
  * Session id so a browser Pixel Purchase with the same eventID dedupes.
+ * The post goes to the first id in NEXT_PUBLIC_META_PIXEL_ID only. A later
+ * dataset has no CAPI access token yet and receives the browser pixel only.
  * Google Ads Purchase fires in the browser on the checkout success page.
  *
  * Each sender no-ops with a named reason when its flag or env is missing (rule #11).
@@ -178,6 +180,7 @@ export async function sendMetaPurchase(
   if (!metaCapiEnabled(env) && !(preview && testEventCode)) {
     return { status: 'skipped', reason: 'flag_off' };
   }
+  // First id only. A later dataset in the list has no CAPI token yet.
   const pixelId = metaPixelIdFromEnv(env);
   const token = env.META_CAPI_ACCESS_TOKEN?.trim();
   if (!pixelId || !token) {
@@ -262,15 +265,18 @@ export type MetaTestPurchaseResult =
   | { status: 'skipped'; reason: 'not_configured' | 'provider_error' };
 
 /**
- * Ops probe: one Test Events Purchase. Needs pixel id, token, and
- * META_CAPI_TEST_EVENT_CODE. Does not consult META_CAPI_ENABLED — lighting the
- * live webhook is a separate step. Prints nothing; the script prints status.
+ * Ops probe: one Test Events Purchase. Needs the first pixel id, token, and
+ * META_CAPI_TEST_EVENT_CODE. A later dataset in NEXT_PUBLIC_META_PIXEL_ID has
+ * no CAPI token yet, so this posts to the first id only. Does not consult
+ * META_CAPI_ENABLED — lighting the live webhook is a separate step. Prints
+ * nothing; the script prints status.
  */
 export async function sendMetaTestPurchase(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
   choice: { tier?: unknown; currency?: unknown } = {},
 ): Promise<MetaTestPurchaseResult> {
+  // Same first-id rule as the live webhook. The newer dataset has no token.
   const pixelId = metaPixelIdFromEnv(env);
   const token = env.META_CAPI_ACCESS_TOKEN?.trim();
   const testEventCode = metaTestEventCodeFromEnv(env);

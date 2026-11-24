@@ -1,8 +1,10 @@
 /**
  * Browser Meta Pixel Purchase on the checkout success page.
  *
- * CAPI is the source of truth. This event uses the Stripe Checkout Session id
- * as eventID so Meta dedupes the two. Value and currency come from Stripe.
+ * CAPI is the source of truth and posts to the first pixel id only. This event
+ * uses the Stripe Checkout Session id as eventID so Meta dedupes the two.
+ * `fbq('track')` sends the Purchase, with that same eventID, to every pixel
+ * already initialized. Value and currency come from Stripe.
  */
 
 export const META_PURCHASE_STORAGE_PREFIX = 'hale.meta_purchase.';
