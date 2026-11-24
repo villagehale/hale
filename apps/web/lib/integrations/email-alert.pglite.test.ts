@@ -2714,4 +2714,191 @@ describe('one alert per real appointment (VIL-762)', () => {
     expect(JSON.stringify(next.judgments[0])).not.toContain('Theo');
     expect(JSON.stringify(next.judgments[0])).not.toContain('clinic');
   });
+
+  describe('what the clash may name', () => {
+    const COOKIE_ENVELOPE = {
+      subject: 'You are booked',
+      from: 'Cookie Cutters <hello@cutters.example>',
+      snippet: 'Wednesday at 3:30',
+      receivedAt: CLASH_AT.toISOString(),
+    };
+
+    function clashWith(title: string) {
+      return (facts: AppointmentFacts): AppointmentRead => {
+        const named = facts.commitments.find((item) => item.title === title);
+        return {
+          status: 'judged',
+          judgment: { sameAs: null, clashes: named === undefined ? [] : [named.id] },
+        };
+      };
+    }
+
+    async function booking(over: {
+      title: string;
+      parentUserId?: string;
+      eventId?: string;
+      location?: string;
+    }): Promise<void> {
+      await db.database.insert(schema.activityBookings).values({
+        familyId: family.familyId,
+        parentUserId: over.parentUserId ?? family.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: `m-${over.title}`,
+        providerHost: 'provider.example',
+        title: over.title,
+        firstSessionAt: new Date(HAIRCUT),
+        location: over.location ?? null,
+        channelMessageId: await channelRow(),
+        ...(over.eventId === undefined ? {} : { eventId: over.eventId }),
+      });
+    }
+
+    async function calendarRow(over: {
+      title: string;
+      childId?: string;
+      sensitive?: boolean;
+      location?: string;
+    }): Promise<string> {
+      const [row] = await db.database
+        .insert(schema.familyEvents)
+        .values({
+          familyId: family.familyId,
+          title: over.title,
+          startsAt: new Date(HAIRCUT),
+          location: over.location ?? null,
+          source: 'parent',
+          sensitive: over.sensitive ?? false,
+          ...(over.childId === undefined ? {} : { childId: over.childId }),
+        })
+        .returning({ id: schema.familyEvents.id });
+      if (!row) throw new Error('family event insert returned no row');
+      return row.id;
+    }
+
+    it('a health event’s title and place never reach the judgment or the text', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const shot = await calendarRow({
+        title: 'Allergy shot',
+        sensitive: true,
+        location: 'the allergy clinic',
+      });
+      await booking({
+        title: 'Allergist follow-up',
+        eventId: shot,
+        location: 'the allergy clinic',
+      });
+      await calendarRow({ title: 'Toddler storytime', location: 'the library' });
+      const next = harness({
+        classification: cookie(),
+        judgment: clashWith('Toddler storytime'),
+      });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual([
+        'Toddler storytime',
+      ]);
+      expect(next.judgments[0]?.commitments[0]?.location).toBe('the library');
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Allerg');
+      expect(told).not.toContain('allergy clinic');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Toddler storytime. Want me to add it?',
+      );
+    });
+
+    it('a teen’s booking is not named, and one with no known child fails closed', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const teenId = await seedChild(db.database, family.familyId, 'Theo', 160);
+      const samId = await seedChild(db.database, family.familyId, 'Sam', 48);
+      const theoRow = await calendarRow({ title: 'Theo practice', childId: teenId });
+      const samRow = await calendarRow({ title: 'Sam lesson', childId: samId });
+      await booking({ title: 'Theo tutoring', eventId: theoRow, location: 'the study hall' });
+      await booking({ title: 'Unattributed class', location: 'the rec centre' });
+      await booking({ title: 'Sam lesson receipt', eventId: samRow, location: 'the pool' });
+      const next = harness({
+        children: [
+          { id: teenId, name: 'Theo', ageInMonths: 160 },
+          { id: samId, name: 'Sam', ageInMonths: 48 },
+        ],
+        classification: cookie(),
+        judgment: clashWith('Sam lesson receipt'),
+      });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(
+        next.judgments[0]?.commitments.map((item) => `${item.title} / ${item.child}`).sort(),
+      ).toEqual(['Sam lesson / Sam', 'Sam lesson receipt / Sam']);
+      expect(JSON.stringify(next.judgments)).not.toContain('Theo');
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Theo tutoring');
+      expect(told).not.toContain('Theo practice');
+      expect(told).not.toContain('study hall');
+      expect(told).not.toContain('Unattributed');
+      expect(told).not.toContain('rec centre');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Sam lesson receipt. Want me to add it?',
+      );
+    });
+
+    it('with no child on record, a booking is not named', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      await booking({ title: 'Unattributed class' });
+      await calendarRow({ title: 'Toddler storytime' });
+      const next = harness({ children: [], classification: cookie() });
+      await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual([
+        'Toddler storytime',
+      ]);
+    });
+
+    it('the other parent’s booking and offer are not named, this parent’s booking is', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const other = await seedFamily(db.database, 'other');
+      await booking({ title: 'Own booking', location: 'the gym' });
+      await booking({
+        title: 'Other parent booking',
+        parentUserId: other.parentUserId,
+        location: 'the far rink',
+      });
+      await db.database.insert(schema.emailAlertOffers).values({
+        familyId: family.familyId,
+        parentUserId: other.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: 'm-other-offer',
+        kind: 'new_event',
+        title: 'Other parent offer',
+        startsAt: new Date(HAIRCUT),
+        location: 'the far studio',
+        channelMessageId: await channelRow(),
+        expiresAt: new Date(HAIRCUT),
+      });
+      const next = harness({ classification: cookie(), judgment: clashWith('Own booking') });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual(['Own booking']);
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Other parent');
+      expect(told).not.toContain('far rink');
+      expect(told).not.toContain('far studio');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Own booking. Want me to add it?',
+      );
+    });
+  });
 });
