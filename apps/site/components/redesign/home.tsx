@@ -9,9 +9,6 @@ import {
   plusPriceStartSentence,
 } from '~/lib/billing/plain-price';
 import {
-  FIRST_TIER_BODY,
-  FIRST_TIER_META,
-  FIRST_TIER_NAME,
   ONE_LINER,
   PILLARS,
   PLUS_SIGNUP_LINE,
@@ -254,7 +251,7 @@ export function RedesignHome({
                 <div className="im-who">Hale</div>
                 <img className="im-pic" src={logoSrc} alt="" />
                 <TypingBubble />
-                <div className="im-b in tail">{t("Done, it’s on everyone’s calendar. Jen’s driving.")}</div>
+                <div className="im-b in tail">{t("Jen’s driving.")}</div>
               </div>
             </div>
             <ImCompose />
@@ -339,7 +336,7 @@ export function RedesignHome({
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From the school email: fall programs, Tuesday at 7:00 a.m. It’s on the calendar.")}</div></div>
+       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From the school email: fall programs, Tuesday at 7:00 a.m.")}</div></div>
       </div>
      </div>
      <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Tue")}</i><b>7</b></span><div><div className="hs-rem-t">{t("Fall programs")}</div><div className="hs-wm">{t("Tuesday · 7:00 a.m.")}</div></div></div></div>
@@ -404,18 +401,8 @@ export function RedesignHome({
    <p className="hs-lede">{list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
   </div>
   <ol className="hs-tiers">
-   <li className="hs-tier t-text">
-    <div className="hs-tier-head"><span className="hs-tier-name">{t(FIRST_TIER_NAME)}</span><span className="hs-tier-num">01</span></div>
-    <h3>{t("$0/mo")}</h3>
-    <p className="hs-tier-meta">{t(FIRST_TIER_META)}</p>
-    <p className="hs-tier-body">{t(FIRST_TIER_BODY)}</p>
-    <ul className="hs-checks">{PILLARS.map((pillar) => (
-      <li key={pillar.title}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(pillar.title === 'Gets the spot' ? `${pillar.title}, ${pillar.sub}` : pillar.title)}</span></li>
-    ))}</ul>
-    <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
-   </li>
    <li className="hs-tier t-plus">
-    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">01</span></div>
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
@@ -423,7 +410,7 @@ export function RedesignHome({
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
-    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">02</span></div>
     <h3>{t(maxAnnualLabel(currency))}</h3>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li></ul>

@@ -92,7 +92,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             <TypingBubble />
             <div className="im-b in tail">
               {t(
-                'Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+). Want me to track RSVPs?',
+                'Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+).',
               )}
             </div>
           </div>
@@ -105,7 +105,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
         </>,
         <span className="hs-did" {...step('3')}>
           <Check />
-          {t('6 yes, 2 to go · on everyone’s calendar')}
+          {t('Gets every family to a yes')}
         </span>,
       )}
     </div>,

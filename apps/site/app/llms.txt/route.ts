@@ -25,11 +25,11 @@ function buildLlmsTxt(): string {
   const lines: string[] = [
     '# Hale',
     '',
-    '> Hale is an AI agent you text that knows your family and takes the kids\' year off your plate: it finds it, signs them up, and sorts it out with the other families. For every stage of childhood (0–18). Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family\'s own health provider.',
+    '> Hale knows your family and takes the kids\' year off your plate: it finds it, signs them up, and sorts it out with the other families. For every stage of childhood (0–18). Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family\'s own health provider.',
     '',
     '## About Hale',
     '',
-    '- What it is: an AI agent you text. No app to download.',
+    '- What it is: Hale knows your family and finds what fits. No app to download.',
     '- Who it is for: parents and caregivers in the US and Canada with kids from newborn to 18, plus co-parents and other parents they plan with.',
     '- What it does: knows your family; finds what fits; gets the spot starting Dec 1, with your ok; runs the group chat; reads your Gmail and calendar, asking before it adds or changes anything.',
     '- Sign-ups and payment: Starting Dec 1, signs them up with your ok. You say yes, and you pay.',

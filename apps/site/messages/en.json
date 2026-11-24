@@ -7,9 +7,9 @@
   },
   "HomeMeta": {
     "title": "Hale · Your kids’ year, handled.",
-    "description": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
-    "ogDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat.",
-    "twitterDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat."
+    "description": "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
+    "ogDescription": "Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat.",
+    "twitterDescription": "Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -18,7 +18,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate.",
+    "blurb": "Hale knows your family and takes the kids’ year off your plate.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate, for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
+    "metaDescription": "Hale knows your family and takes the kids’ year off your plate, for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "An AI agent you text that knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31."
+    "metaDescription": "Hale knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -105,7 +105,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate."
+    "metaDescription": "Hale knows your family and takes the kids’ year off your plate."
   },
   "CheckoutSuccess": {
     "plan": "You’re on {plan}.",
@@ -139,7 +139,7 @@
     "emailUs": "Email us"
   },
   "Jsonld": {
-    "orgDescription": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
-    "appDescription": "Your kids’ year, handled. Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families."
+    "orgDescription": "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.",
+    "appDescription": "Your kids’ year, handled. Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families."
   }
 }

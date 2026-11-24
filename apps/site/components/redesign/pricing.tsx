@@ -8,13 +8,7 @@ import {
   plusMonthlyLabel,
   plusPriceSentence,
 } from '~/lib/billing/plain-price';
-import {
-  FIRST_TIER_BODY,
-  FIRST_TIER_META,
-  FIRST_TIER_NAME,
-  PILLARS,
-  PLUS_SIGNUP_LINE,
-} from '~/lib/site/narrative';
+import { PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { FaqDeepLink } from './faq-deeplink';
 import { FaqItem } from './faq-item';
@@ -88,18 +82,8 @@ export function RedesignPricing({
 <section className="hs hs-wash-c" id="pricing">
  <div className="hs-wrap">
   <ol className="hs-tiers">
-   <li className="hs-tier t-text">
-    <div className="hs-tier-head"><span className="hs-tier-name">{t(FIRST_TIER_NAME)}</span><span className="hs-tier-num">01</span></div>
-    <h3>{promo ? "$0" : t("$0/mo")}</h3>
-    <p className="hs-tier-meta">{t(FIRST_TIER_META)}</p>
-    <p className="hs-tier-body">{t(FIRST_TIER_BODY)}</p>
-    <ul className="hs-checks">{PILLARS.map((pillar) => (
-      <li key={pillar.title}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(pillar.title === 'Gets the spot' ? `${pillar.title}, ${pillar.sub}` : pillar.title)}</span></li>
-    ))}</ul>
-    <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
-   </li>
    <li className="hs-tier t-plus">
-    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">01</span></div>
     {promo ? (<>
     <TierSalePrice price={promo.plus} />
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
@@ -113,7 +97,7 @@ export function RedesignPricing({
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary" placement="pricing_plus" phase={promo.phase} currency={promo.currency} plan="plus">Lock in {promo.plus.saleLabel}</FoundingCheckoutLink> : list ? <TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
-    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">02</span></div>
     {promo ? (<>
     <TierSalePrice price={promo.max} />
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>

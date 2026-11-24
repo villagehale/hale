@@ -59,7 +59,7 @@ describe('every locale renders the redesign', () => {
 
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
-    expect(fr).toContain('agent d’IA que tu textes');
+    expect(fr).toContain('Hale connaît ta famille');
     expect(fr).toContain('À partir du 1er décembre, il les inscrit avec ton accord.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
@@ -70,7 +70,7 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('Every kid, caregivers included');
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
-    expect(zh).toContain('AI 代理');
+    expect(zh).toContain('Hale 了解你的家庭');
     expect(zh).toContain('从 12 月 1 日起，经你同意帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');

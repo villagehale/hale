@@ -95,7 +95,7 @@ it('keeps the year-card sentences and leaves HomeMotion as the only player', () 
     'Here’s what’s on near you this week:\\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\\n3. Little movers (ages 2–5), winter times not posted yet',
   );
   expect(home).toContain('A spot opened in Swimmer 3, Saturdays 9:30. Starting Dec 1, with your ok.');
-  expect(home).toContain('From the school email: fall programs, Tuesday at 7:00 a.m. It’s on the calendar.');
+  expect(home).toContain('From the school email: fall programs, Tuesday at 7:00 a.m.');
   expect(home).toContain('Knows your family');
   expect(home).toContain('What do you know about us?');
   expect(home).toContain(

@@ -26,10 +26,9 @@ describe('siteJsonLd', () => {
     expect(json).not.toContain('Country');
   });
 
-  it('declares a zero-price CAD Offer', () => {
-    const offer = byType('SoftwareApplication')?.offers as { price: string; priceCurrency: string };
-    expect(offer.price).toBe('0');
-    expect(offer.priceCurrency).toBe('CAD');
+  it('does not declare a zero-price offer', () => {
+    expect(byType('SoftwareApplication')).not.toHaveProperty('offers');
+    expect(JSON.stringify(siteJsonLd())).not.toContain('"price":"0"');
   });
 
   it.each(routing.locales)('%s describes the agent, H1 first', (locale) => {
@@ -42,9 +41,9 @@ describe('siteJsonLd', () => {
       zh: '孩子这一年，交给 Hale。',
     }[locale];
     const agent = {
-      en: 'AI agent you text',
-      fr: 'agent d’IA',
-      zh: 'AI 代理',
+      en: 'knows your family',
+      fr: 'connaît ta famille',
+      zh: '了解你的家庭',
     }[locale];
     expect(String(app?.description).startsWith(h1)).toBe(true);
     expect(org?.description).toContain(agent);

@@ -1,6 +1,6 @@
 import type { Locale } from '~/i18n/routing';
 import { ONE_LINER, PILLARS, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
-import { type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import { PROMO_OFFER_ID, type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import { FoundingCheckoutLink } from './founding-checkout-link';
@@ -93,7 +93,7 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
           <span className="promo-bar-long">, Plus {promo.plus.saleLabel}</span>, locked in
           <span className="promo-bar-long">. Join by Dec 31</span>.
         </span>
-        <a className="promo-bar-link" href="#sale">
+        <a className="promo-bar-link" href={`#${PROMO_OFFER_ID}`}>
           See<span className="promo-bar-long"> the</span> offer
           <Arrow />
         </a>
@@ -174,8 +174,8 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
   return (
     <section
       className="hs promo-sec"
-      id="sale"
-      aria-labelledby="sale-h"
+      id={PROMO_OFFER_ID}
+      aria-labelledby={`${PROMO_OFFER_ID}-h`}
       data-promo-phase={promo.phase}
       data-promo-currency={promo.currency}
     >
@@ -183,7 +183,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
         <div className="promo-card">
           <div className="promo-main">
             <p className="promo-kicker">Our biggest sale of the year</p>
-            <h2 className="promo-sale" id="sale-h">
+            <h2 className="promo-sale" id={`${PROMO_OFFER_ID}-h`}>
               <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
               <span className="promo-sale-word">Sale</span>
             </h2>

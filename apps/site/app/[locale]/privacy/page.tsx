@@ -138,7 +138,7 @@ export default async function PrivacyPage({
       lastUpdatedIso="2026-11-21"
       intro={
         <p>
-          Hale is an AI agent you text. It knows your family, finds what fits, and runs group
+          Hale knows your family, finds what fits, and runs group
           chats you add it to, so it handles information about children. We
           treat that responsibility as the centre of the product, not an afterthought. This policy
           explains, in plain language, what we collect, why, who it is ever shared with, and the

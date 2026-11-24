@@ -59,7 +59,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'can-hale-join-our-group-chat',
     question: 'Can Hale join our group chat?',
     answer:
-      'Yes. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.',
+      'Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.',
   },
   {
     id: 'what-does-hale-do-in-a-group',

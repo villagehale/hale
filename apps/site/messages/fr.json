@@ -7,9 +7,9 @@
   },
   "HomeMeta": {
     "title": "Hale · L’année de tes enfants, sans casse-tête.",
-    "description": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
-    "ogDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille. Elle trouve ce qui convient, les inscrit avec ton accord et tient le groupe.",
-    "twitterDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille. Elle trouve ce qui convient, les inscrit avec ton accord et tient le groupe."
+    "description": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
+    "ogDescription": "Hale connaît ta famille. Il trouve ce qui convient, les inscrit avec ton accord et tient le groupe.",
+    "twitterDescription": "Hale connaît ta famille. Il trouve ce qui convient, les inscrit avec ton accord et tient le groupe."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -18,7 +18,7 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants.",
+    "blurb": "Hale connaît ta famille et t’enlève l’année des enfants.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants, pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
+    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants. Pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "Aucun montant n’a été débité.",
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants. La plus grande vente de l’année, inscris-toi d’ici le 31 décembre."
+    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants. La plus grande vente de l’année, inscris-toi d’ici le 31 décembre."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -136,11 +136,11 @@
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles."
+    "metaDescription": "Hale connaît ta famille et t’enlève l’année des enfants."
   },
   "Jsonld": {
-    "orgDescription": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
-    "appDescription": "L’année de tes enfants, sans casse-tête. Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles."
+    "orgDescription": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
+    "appDescription": "L’année de tes enfants, sans casse-tête. Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles."
   },
   "Rd": {
     "0–11 months": "0–11 mois",
@@ -486,7 +486,6 @@
     "In the US and Canada. Hale works by iMessage and regular text on a US or Canadian phone number.": "Aux États-Unis et au Canada. Hale fonctionne par iMessage et texto ordinaire avec un numéro de téléphone américain ou canadien.",
     "What do paid plans cost?": "Combien coûtent les forfaits payants ?",
     "$0/mo": "0 $/mois",
-    "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.": "Hale est un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
     "Knows your family": "Connaît ta famille",
     "Your family": "Ta famille",
     "Finds what fits": "Trouve ce qui convient",
@@ -498,8 +497,6 @@
     "Reads your Gmail and calendar": "Lit ton Gmail et ton calendrier",
     "Gmail and calendar": "Gmail et le calendrier",
     "Text": "Texto",
-    "You text Hale": "Tu textes Hale",
-    "An AI agent you text that knows your family and takes the kids’ year off your plate.": "Un agent d’IA que tu textes, qui connaît ta famille et t’enlève l’année des enfants.",
     "Starting Dec 1, signs them up with your ok.": "À partir du 1er décembre, il les inscrit avec ton accord.",
     "Paid plans are Plus and Max. Full refund anytime if it’s not for you.": "Les forfaits payants sont Plus et Max. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "What you pay.": "Ce que tu paies.",
@@ -555,6 +552,14 @@
     "Plus is $19/mo or $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.": "Plus coûte 19 $/mois ou 159 $/an, et Max coûte 329 $/an. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.": "Plus coûte 14 $/mois ou 119 $/an, et Max coûte 259 $/an. Remboursement complet en tout temps si ce n’est pas pour toi.",
     "4:30 PM": "16 h 30",
-    "It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.": "Il trouve ce qui convient à cet enfant cette semaine : natation, camps et activités libres, là où ça se passe."
+    "It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.": "Il trouve ce qui convient à cet enfant cette semaine : natation, camps et activités libres, là où ça se passe.",
+    "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.": "Hale connaît ta famille et t’enlève l’année des enfants : il le trouve, les inscrit, et s’arrange avec les autres familles.",
+    "Knows your family’s week": "Connaît la semaine de ta famille",
+    "Jen’s driving.": "C’est Jen qui conduit.",
+    "From the school email: fall programs, Tuesday at 7:00 a.m.": "Du courriel de l’école : programmes d’automne, mardi à 7 h.",
+    "Gets every family to a yes": "Amène chaque famille à un oui",
+    "Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+).": "Deux places pas loin prennent des groupes de 8 le samedi : le gym d’escalade (3–7 ans) ou l’atelier de poterie (4 ans et +).",
+    "On iMessage, add Hale’s number to the group you already have, then say hi. An MMS or Android group cannot add this number, so start a new group with Hale there. Hale answers in the group, for everyone.": "Sur iMessage, ajoute le numéro de Hale au groupe que tu as déjà, puis dis bonjour. Un groupe MMS ou Android ne peut pas ajouter ce numéro, alors pars un nouveau groupe avec Hale. Hale répond dans le groupe, pour tout le monde.",
+    "Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.": "Oui, sur iMessage. Ajoute Hale à un groupe que tu as déjà : l’autre parent, le covoiturage, d’autres parents du cours. Un groupe MMS ou Android ne peut pas ajouter ce numéro, alors pars un nouveau groupe avec Hale. Demande dans le groupe et Hale répond là."
   }
 }

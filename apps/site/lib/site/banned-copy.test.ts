@@ -27,6 +27,8 @@ const phrases = [
   'night ' + 'before',
   'missed ' + 'sign',
   'I’ll send you each the ' + 'link',
+  'AI agent you ' + 'text',
+  'You ' + 'text Hale',
 ];
 
 const priceWordPattern = new RegExp(`\\b${priceWord}\\b`, 'i');

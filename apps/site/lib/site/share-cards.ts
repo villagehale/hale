@@ -21,9 +21,9 @@ const HANDLED = 'Your kids’ year, handled.';
 export const SHARE_CARDS = {
   home: {
     id: 'home',
-    alt: 'Hale, an AI agent you text for your kids’ year',
+    alt: 'Hale. Your kids’ year, handled.',
     headline: HANDLED,
-    subline: 'An AI agent you text that knows your family.',
+    subline: 'Hale knows your family.',
     chat: true,
   },
   pricing: {

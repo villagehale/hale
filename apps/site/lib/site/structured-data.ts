@@ -49,9 +49,6 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
     description: t('appDescription'),
-    // A concrete Offer node. Whether a zero-price tier stays is an open
-    // product decision (VIL-769); the node is the price the page still shows.
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },
   };
 
   return {

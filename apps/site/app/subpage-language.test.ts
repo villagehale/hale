@@ -207,16 +207,6 @@ describe('/pricing — the tier cards have anatomy', () => {
 
   const TIERS: readonly { name: string; features: readonly string[] }[] = [
     {
-      name: 'Text',
-      features: [
-        'Knows your family',
-        'Finds what fits',
-        'Gets the spot, starting Dec 1, with your ok',
-        'Runs the group chat',
-        'Reads your Gmail and calendar',
-      ],
-    },
-    {
       name: 'Plus',
       features: [
         'Knows your family',
@@ -234,14 +224,14 @@ describe('/pricing — the tier cards have anatomy', () => {
     },
   ];
 
-  it('names the three tiers in ladder order', () => {
+  it('names Plus and Max in ladder order', () => {
     let cursor = 0;
     for (const tier of TIERS) {
-      const at = html.indexOf(tier.name, cursor);
+      const at = html.indexOf(`hs-tier-name">${tier.name}`, cursor);
       expect(at, tier.name).toBeGreaterThan(cursor);
       cursor = at;
     }
-    expect(html).toContain('$0');
+    expect(html).not.toContain('$0');
     expect(html).toContain('$19');
     expect(html).toContain('$329');
     expect(html).not.toContain('CAD/mo');
@@ -249,7 +239,7 @@ describe('/pricing — the tier cards have anatomy', () => {
   });
 
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
-    expect(TIERS.flatMap((tier) => tier.features)).toHaveLength(11);
+    expect(TIERS.flatMap((tier) => tier.features)).toHaveLength(6);
     for (const tier of TIERS) {
       for (const feature of tier.features) {
         expect(rawText(html)).toContain(feature);

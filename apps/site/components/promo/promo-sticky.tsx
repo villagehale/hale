@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useEffect, useState } from 'react';
-import type { PromoPhase } from '~/lib/promo/holiday';
+import { PROMO_OFFER_ID, type PromoPhase } from '~/lib/promo/holiday';
 
 /**
  * Reveals the mobile promo bar after the first screen and hides it while the
@@ -18,7 +18,7 @@ export function PromoStickyReveal({ children, phase }: { children: ReactNode; ph
       pastHero = window.scrollY > window.innerHeight * 0.6;
       update();
     };
-    const targets = [document.getElementById('founding'), document.querySelector('footer')].filter(
+    const targets = [document.getElementById(PROMO_OFFER_ID), document.querySelector('footer')].filter(
       (el): el is HTMLElement => el !== null,
     );
     const io =

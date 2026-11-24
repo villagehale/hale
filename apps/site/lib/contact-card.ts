@@ -27,7 +27,7 @@ const ENCODER = new TextEncoder();
 
 /** The card's one sentence of self-description. No commas, semicolons, or
  * backslashes — those would need escaping under RFC 2426 §4. */
-const NOTE = 'Hale — an AI agent you text for your kids’ year.';
+const NOTE = 'Hale. Your kids’ year, handled.';
 
 /**
  * One logical line as the physical lines a parser reads: the first up to `limit`

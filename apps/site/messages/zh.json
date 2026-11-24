@@ -7,9 +7,9 @@
   },
   "HomeMeta": {
     "title": "孩子这一年，交给 Hale",
-    "description": "Hale 是一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
-    "ogDescription": "Hale 是一个你发短信用的 AI 代理，了解你家。它找到合适的，经你同意帮他们报名，并管家长群。",
-    "twitterDescription": "Hale 是一个你发短信用的 AI 代理，了解你家。它找到合适的，经你同意帮他们报名，并管家长群。"
+    "description": "Hale 了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
+    "ogDescription": "Hale 了解你的家庭。它找到合适的，经你同意帮他们报名，并管家长群。",
+    "twitterDescription": "Hale 了解你的家庭。它找到合适的，经你同意帮他们报名，并管家长群。"
   },
   "Header": {
     "navPricing": "价格",
@@ -18,7 +18,7 @@
     "signIn": "登录"
   },
   "Footer": {
-    "blurb": "一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去。",
+    "blurb": "Hale 了解你的家庭，把孩子这一年从你肩上接过去。",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "——夏威夷语，意为「家」。",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 是一个你发短信用的 AI 代理，了解你家，把孩子这一年从你肩上接过去，给美国和加拿大的家长。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
+    "metaDescription": "Hale 了解你的家庭，把孩子这一年从你肩上接过去，给美国和加拿大的家长。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
   },
   "Pricing": {
     "noCharge": "你没有被扣款。",
     "metaTitle": "价格 · Hale",
-    "metaDescription": "一个你发短信用的 AI 代理，了解你家，把孩子这一年从你肩上接过去。今年最大的优惠，12 月 31 日前加入。"
+    "metaDescription": "Hale 了解你家，把孩子这一年从你肩上接过去。今年最大的优惠，12 月 31 日前加入。"
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
@@ -105,7 +105,7 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发短信",
-    "metaDescription": "Hale 是一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。"
+    "metaDescription": "Hale 了解你的家庭，把孩子这一年从你肩上接过去。"
   },
   "CheckoutSuccess": {
     "plan": "你现在用的是 {plan}。",
@@ -139,8 +139,8 @@
     "emailUs": "发邮件给我们"
   },
   "Jsonld": {
-    "orgDescription": "Hale 是一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
-    "appDescription": "孩子这一年，交给 Hale。Hale 是一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。"
+    "orgDescription": "Hale 了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
+    "appDescription": "孩子这一年，交给 Hale。Hale 了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。"
   },
   "Rd": {
     "0–11 months": "0–11 个月",
@@ -486,7 +486,6 @@
     "In the US and Canada. Hale works by iMessage and regular text on a US or Canadian phone number.": "美国和加拿大。用美国或加拿大的手机号，通过 iMessage 或普通短信就能用。",
     "What do paid plans cost?": "付费套餐多少钱？",
     "$0/mo": "每月 $0",
-    "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.": "Hale 是一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
     "Knows your family": "了解你的家庭",
     "Your family": "你的家庭",
     "Finds what fits": "找到合适的",
@@ -498,8 +497,6 @@
     "Reads your Gmail and calendar": "读你的 Gmail 和日历",
     "Gmail and calendar": "Gmail 和日历",
     "Text": "短信",
-    "You text Hale": "你给 Hale 发短信",
-    "An AI agent you text that knows your family and takes the kids’ year off your plate.": "一个你发短信用的 AI 代理，了解你的家庭，把孩子这一年从你肩上接过去。",
     "Starting Dec 1, signs them up with your ok.": "从 12 月 1 日起，经你同意帮他们报名。",
     "Paid plans are Plus and Max. Full refund anytime if it’s not for you.": "付费方案是 Plus 和 Max。不合适可随时全额退款。",
     "What you pay.": "你付多少。",
@@ -555,6 +552,14 @@
     "Plus is $19/mo or $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.": "Plus 是每月 $19 或每年 $159，Max 是每年 $329。不合适可随时全额退款。",
     "Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.": "Plus 是每月 $14 或每年 $119，Max 是每年 $259。不合适可随时全额退款。",
     "4:30 PM": "下午 4:30",
-    "It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.": "它按这个孩子、这一周找到合适的：游泳、夏令营、随到随玩，都来自主办的地方。"
+    "It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.": "它按这个孩子、这一周找到合适的：游泳、夏令营、随到随玩，都来自主办的地方。",
+    "Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.": "Hale 了解你的家庭，把孩子这一年从你肩上接过去：它去找、帮他们报名，再和其他家庭把事情理顺。",
+    "Knows your family’s week": "知道你家这一周",
+    "Jen’s driving.": "Jen 开车。",
+    "From the school email: fall programs, Tuesday at 7:00 a.m.": "学校邮件：秋季项目，周二早上 7:00。",
+    "Gets every family to a yes": "让每个家庭都说到好",
+    "Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+).": "附近两处周六收 8 人的小组：攀岩馆（3–7 岁）或陶艺咖啡馆（4 岁以上）。",
+    "On iMessage, add Hale’s number to the group you already have, then say hi. An MMS or Android group cannot add this number, so start a new group with Hale there. Hale answers in the group, for everyone.": "在 iMessage 里，把 Hale 的号码加进你已有的群，然后打个招呼。彩信或安卓群加不了这个号码，那就和新群一起加上 Hale。Hale 在群里回复，大家都能看到。",
+    "Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.": "可以，在 iMessage 里。把 Hale 加进你已有的群：另一位家长、拼车、班上的其他家长。彩信或安卓群加不了这个号码，那就和新群一起加上 Hale。在群里问，Hale 就在群里答。"
   }
 }

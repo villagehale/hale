@@ -5,7 +5,7 @@
  */
 
 export const ONE_LINER =
-  'Hale is an AI agent you text that knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.';
+  'Hale knows your family and takes the kids’ year off your plate: it finds it, signs them up, and sorts it out with the other families.';
 
 /** Until signup is live, the third pillar carries this dated promise. */
 export const GETS_THE_SPOT_UNTIL = 'starting Dec 1, with your ok';
@@ -21,17 +21,8 @@ export const PILLARS = [
   { title: 'Finds what fits', sub: 'It finds it' },
   { title: 'Gets the spot', sub: GETS_THE_SPOT_UNTIL },
   { title: 'Runs the group chat', sub: 'With the other families' },
-  { title: 'Reads your Gmail and calendar', sub: 'Gmail and calendar' },
+  { title: 'Reads your Gmail and calendar', sub: 'Knows your family’s week' },
 ] as const;
-
-/**
- * Shipped first-card name and body (variant A). Whether this tier stays,
- * and what it is called, is an open product decision.
- */
-export const FIRST_TIER_NAME = 'Text';
-export const FIRST_TIER_META = 'You text Hale';
-export const FIRST_TIER_BODY =
-  'An AI agent you text that knows your family and takes the kids’ year off your plate.';
 
 export const TEXT_FIRST_TERMS =
   'You text first. Standard message rates apply, reply STOP any time.';

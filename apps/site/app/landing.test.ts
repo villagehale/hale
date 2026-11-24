@@ -63,7 +63,7 @@ describe('landing — the redesign hero', () => {
   it('keeps the homepage doors on the chooser, never a composer', () => {
     expect(html).not.toContain('href="sms:');
     expect(html).toContain('data-cta="cta_message_click"');
-    for (const placement of ['header', 'hero', 'closing', 'home_pricing']) {
+    for (const placement of ['header', 'hero', 'closing']) {
       expect(html).toContain(`data-cta-placement="${placement}"`);
     }
   });

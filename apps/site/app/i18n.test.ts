@@ -266,7 +266,7 @@ describe('the positioning noun is gone from every bundle', () => {
 
   it('positive control: the anti-scam line the ban must not erase is still there', () => {
     const en = files.find((f) => f.locale === 'en')?.raw ?? '';
-    expect(en).toContain('an AI agent you text');
+    expect(en).toContain('takes the kids’ year off your plate');
     expect(en).toContain('it never pretends to be');
     expect(en).toContain('a real person reads it');
     for (const locale of ['fr', 'zh'] as const) {
@@ -347,20 +347,20 @@ describe('VIL-325 designer-locked intake copy', () => {
       for (const phrase of banned) {
         expect(blob, `${locale} meta must not say "${phrase}"`).not.toContain(phrase);
       }
-      expect(bundle.HomeMeta.description).toContain(locale === 'fr' ? 'agent d’IA' : 'AI 代理');
+      expect(bundle.HomeMeta.description).toContain(locale === 'fr' ? 'connaît ta famille' : '了解你的家庭');
       expect(bundle.HomeMeta.twitterDescription).toContain(
-        locale === 'fr' ? 'agent d’IA' : 'AI 代理',
+        locale === 'fr' ? 'connaît ta famille' : '了解你的家庭',
       );
       expect(bundle.HomeMeta.twitterDescription).not.toContain(sub[locale]);
       // zh sets the two locked sentences solid; fr takes a word space.
-      expect(bundle.Text.metaDescription).toContain(locale === 'fr' ? 'agent d’IA' : 'AI 代理');
+      expect(bundle.Text.metaDescription).toContain(locale === 'fr' ? 'connaît ta famille' : '了解你的家庭');
       expect(bundle.Jsonld.appDescription.startsWith(h1[locale])).toBe(true);
     }
     const enBlob = metaStrings(bundles.en, []).join('\n').toLowerCase();
     for (const phrase of banned) {
       expect(enBlob, `en meta must not say "${phrase}"`).not.toContain(phrase);
     }
-    expect(bundles.en.HomeMeta.description).toContain('an AI agent you text');
+    expect(bundles.en.HomeMeta.description).toContain('takes the kids’ year off your plate');
     expect(bundles.en.Jsonld.appDescription.startsWith('Your kids’ year, handled.')).toBe(true);
   });
 

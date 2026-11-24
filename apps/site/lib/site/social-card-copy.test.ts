@@ -12,8 +12,8 @@ describe('homepage share card copy', () => {
   it('sells the kids-year agent', () => {
     const copy = socialCardCopy();
     expect(copy.headline).toBe('Your kids’ year, handled.');
-    expect(copy.subline).toBe('An AI agent you text that knows your family.');
-    expect(copy.alt).toBe('Hale, an AI agent you text for your kids’ year');
+    expect(copy.subline).toBe('Hale knows your family.');
+    expect(copy.alt).toBe('Hale. Your kids’ year, handled.');
     const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
     expect(blob).not.toContain('assistant');
     expect(blob).not.toContain('planner');

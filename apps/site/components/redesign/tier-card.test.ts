@@ -6,7 +6,7 @@ import PricingPage from '../../app/[locale]/pricing/page.js';
 import { PILLARS } from '~/lib/site/narrative';
 
 /**
- * The first card carries the five pillars. The empty-weekend nudge is gone.
+ * The hero carries the five pillars. There is no $0 plan card.
  */
 
 const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], string>> = {
@@ -33,34 +33,32 @@ const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], str
   },
 };
 
-const NUDGE = 'A nudge when a weekend’s empty';
-
-function tierCard(html: string, tier: 't-text' | 't-plus' | 't-max'): string {
-  const start = html.indexOf(`hs-tier ${tier}`);
-  expect(start, tier).toBeGreaterThanOrEqual(0);
-  const rest = html.slice(start);
-  const next = rest.slice(1).search(/hs-tier t-/);
-  return next < 0 ? rest : rest.slice(0, next + 1);
-}
+const GMAIL_SUB: Record<Locale, string> = {
+  en: 'Knows your family’s week',
+  fr: 'Connaît la semaine de ta famille',
+  zh: '知道你家这一周',
+};
 
 const locales = ['en', 'fr', 'zh'] as const;
 
-describe('the first card is the five pillars', () => {
+describe('the hero pillars, with no $0 plan card', () => {
   for (const locale of locales) {
-    it(`puts the ${locale} pillars on the first card of / and /pricing`, async () => {
+    it(`shows the ${locale} pillars and no zero-price card`, async () => {
       const params = Promise.resolve({ locale });
-      const pages = [await LandingPage({ params }), await PricingPage({ params })];
-      for (const page of pages) {
-        const html = renderToStaticMarkup(page);
-        const first = tierCard(html, 't-text');
-        const plus = tierCard(html, 't-plus');
-        expect(html).not.toContain(NUDGE);
-        expect(first.match(/<li><svg/g)).toHaveLength(5);
-        expect(plus.match(/<li><svg/g)).toHaveLength(3);
-        for (const pillar of PILLARS) {
-          expect(first).toContain(PILLAR_TITLE[locale][pillar.title]);
-        }
+      const home = renderToStaticMarkup(await LandingPage({ params }));
+      const pricing = renderToStaticMarkup(await PricingPage({ params }));
+      for (const html of [home, pricing]) {
+        expect(html).not.toContain('t-text');
+        expect(html).not.toContain('$0');
+        expect(html.match(/hs-tier t-plus/g)?.length).toBe(1);
+        expect(html.match(/hs-tier t-max/g)?.length).toBe(1);
       }
+      const loopStart = home.indexOf('class="loop');
+      const loop = home.slice(loopStart, home.indexOf('</ul>', loopStart));
+      for (const pillar of PILLARS) {
+        expect(loop).toContain(PILLAR_TITLE[locale][pillar.title]);
+      }
+      expect(loop).toContain(GMAIL_SUB[locale]);
     });
   }
 });

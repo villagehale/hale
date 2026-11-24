@@ -128,12 +128,12 @@ describe('share previews', () => {
     const home = homeMetadata('en');
     expect(home.openGraph?.description).toBe(
       SHARE_CARDS.home &&
-        'Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat.',
+        'Hale knows your family. It finds what fits, signs them up with your ok, and runs the group chat.',
     );
     expect(home.twitter && 'description' in home.twitter ? home.twitter.description : '').toBe(
       home.openGraph?.description,
     );
-    expect(SHARE_CARDS.home.alt).toBe('Hale, an AI agent you text for your kids’ year');
+    expect(SHARE_CARDS.home.alt).toBe('Hale. Your kids’ year, handled.');
     expect(SHARE_CARDS.home.headline).toBe('Your kids’ year, handled.');
     expect(SHARE_CARDS.pricing.eyebrow).toBe('BIGGEST SALE OF THE YEAR');
     expect(SHARE_CARDS.pricing.subline).toBe(
@@ -143,7 +143,7 @@ describe('share previews', () => {
     const pricing = await pricingMetadata({ params: Promise.resolve(en) });
     expect(pricing.title).toBe('Pricing · Hale');
     expect(pricing.openGraph?.description).toBe(
-      'An AI agent you text that knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31.',
+      'Hale knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31.',
     );
 
     const faq = await faqMetadata({ params: Promise.resolve(en) });
