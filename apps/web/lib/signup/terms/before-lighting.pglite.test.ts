@@ -5,6 +5,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { HandlerContext } from '~/lib/channel/router/route';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
@@ -13,6 +14,7 @@ import { type ReceiptKeep, captureMaskedReceipt } from '../browser-use/receipt';
 import { storeProviderSession } from '../browser-use/vault';
 import type { SignupConsentReader } from '../consent-reader';
 import { AUTHORIZED_SIGNUP_ENABLED_ENV } from '../flag';
+import { authorizedSignupHandler } from '../handler';
 import { offerSignupFromFacts } from '../offer-from-facts';
 import { offerSignupTool } from '../offer-tool';
 import type { SignupOutcomeFacts } from '../outcome-reply';
@@ -660,14 +662,18 @@ describe('a hostile option label on a later ask', () => {
 
 describe('a take-back typed outside the private thread', () => {
   const takesBack = (): PlanReader => ({ read: vi.fn(async () => TAKE_BACK) });
+  // Words that name the ask: a group turn answers no 1:1 question (the router's empty list),
+  // so only the asker's own naming tells Hale which sign-up a group take-back means.
+  const NAMED_TAKE_BACK: PlanReading = { verdict: 'take_back', named: 'tokens' };
+  const takesBackNamed = (): PlanReader => ({ read: vi.fn(async () => NAMED_TAKE_BACK) });
 
   it('a pending ask is declined from a group, and the reply names nothing', async () => {
     const f = await household();
     const offerId = await askedAndSent(f);
-    const reader = takesBack();
+    const reader = takesBackNamed();
 
     const taken = await turn(f, TAKE_BACK, {
-      body: 'cancel it',
+      body: 'cancel public speaking',
       inGroup: true,
       takeBackReader: reader,
     });
@@ -701,9 +707,9 @@ describe('a take-back typed outside the private thread', () => {
     const offerId = await approvedPlan(f);
 
     const taken = await turn(f, TAKE_BACK, {
-      body: 'cancel it',
+      body: 'cancel public speaking',
       inGroup: true,
-      takeBackReader: takesBack(),
+      takeBackReader: takesBackNamed(),
     });
 
     expect(taken.result).toMatchObject({ claimed: true, outcome: 'plan_cancelled' });
@@ -720,9 +726,9 @@ describe('a take-back typed outside the private thread', () => {
     const mismatchReader: MismatchReader = { read: vi.fn(async () => null) };
 
     const taken = await turn(f, TAKE_BACK, {
-      body: 'cancel it',
+      body: 'cancel public speaking',
       inGroup: true,
-      takeBackReader: takesBack(),
+      takeBackReader: takesBackNamed(),
       mismatchReader,
     });
 
@@ -751,9 +757,9 @@ describe('a take-back typed outside the private thread', () => {
     const offerId = await approvedPlan(f);
 
     const taken = await turn(f, TAKE_BACK, {
-      body: 'cancel it',
+      body: 'cancel public speaking',
       inGroup: true,
-      takeBackReader: takesBack(),
+      takeBackReader: takesBackNamed(),
       declineSeat: async () => true,
     });
 
@@ -809,6 +815,71 @@ describe('a take-back typed outside the private thread', () => {
     expect(taken.result.outcome).toBe('plan_declined');
     expect(taken.written.at(-1)).toMatchObject({ moment: 'declined', childFirstName: 'Ada' });
     expect(taken.result.stamp).toBeDefined();
+  });
+
+  describe('a bare take-back in a group', () => {
+    // The router hands a group turn an empty open-question list: it answers none of the 1:1
+    // asks. So a bare "no" there may answer anything, and no sign-up is its by place.
+    const groupTurn = (f: Household, body: string, takeBackReader: PlanReader) => {
+      const { planWriter, written } = writer();
+      const handler = authorizedSignupHandler({
+        planReader: { read: vi.fn(async () => YES) },
+        planWriter,
+        takeBackReader,
+        deliverGroup: async () => 'sent',
+      });
+      return inbound(f, true, body).then(async (inboundChannelMessageId) => ({
+        verdict: await handler.handle(db.database, {
+          familyId: f.familyId,
+          parentUserId: f.parentUserId,
+          body,
+          inboundChannelMessageId,
+          now: NOW,
+          openQuestions: async () => [],
+        } as unknown as HandlerContext),
+        written,
+      }));
+    };
+
+    it('through the router seat, an approved plan stays planned', async () => {
+      const f = await household();
+      const offerId = await approvedPlan(f);
+      const reader = takesBack();
+
+      const held = await groupTurn(f, 'no', reader);
+
+      expect(reader.read).toHaveBeenCalledTimes(1);
+      expect(held.verdict).toEqual({ claimed: false });
+      expect(held.written).toEqual([]);
+      const row = await offerRow(offerId);
+      expect(row.status).toBe('planned');
+      expect(row.planCancelRequestedAt).toBeNull();
+    });
+
+    it('through the router seat, words that name it still cancel it (control)', async () => {
+      const f = await household();
+      const offerId = await approvedPlan(f);
+
+      const taken = await groupTurn(f, 'cancel public speaking', takesBackNamed());
+
+      expect(taken.verdict).toMatchObject({ claimed: true, outcome: 'plan_cancelled' });
+      expect((await offerRow(offerId)).status).toBe('handed_back');
+    });
+
+    it('a pending ask stays pending', async () => {
+      const f = await household();
+      const offerId = await askedAndSent(f);
+
+      const held = await turn(f, TAKE_BACK, {
+        body: 'no',
+        inGroup: true,
+        takeBackReader: takesBack(),
+      });
+
+      expect(held.result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
+      expect(held.written).toEqual([]);
+      expect((await offerRow(offerId)).status).toBe('pending');
+    });
   });
 
   describe('with two asks open', () => {
@@ -902,7 +973,7 @@ describe('a take-back typed outside the private thread', () => {
       };
 
       const taken = await turn(f, TAKE_BACK, {
-        body: 'cancel it',
+        body: 'cancel gymnastics',
         inGroup: true,
         consentReader,
         outcomeWriter,
@@ -917,6 +988,27 @@ describe('a take-back typed outside the private thread', () => {
         link: '',
         prefilled: [],
       });
+    });
+
+    it('a bare decline in a group leaves it open', async () => {
+      facts.length = 0;
+      const f = await household();
+      const offerId = await oneShot(f);
+      const consentReader: SignupConsentReader = {
+        read: vi.fn(async () => ({ verdict: 'decline' as const })),
+      };
+
+      const held = await turn(f, TAKE_BACK, {
+        body: 'no',
+        inGroup: true,
+        consentReader,
+        outcomeWriter,
+      });
+
+      expect(consentReader.read).toHaveBeenCalledTimes(1);
+      expect(held.result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
+      expect(facts).toEqual([]);
+      expect((await offerRow(offerId)).status).toBe('pending');
     });
 
     describe('with a newer ask open', () => {

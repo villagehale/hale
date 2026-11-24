@@ -278,10 +278,10 @@ export async function runAuthorizedSignup(
       (await someOfferHasTerms(database, {
         familyId: input.familyId,
         offerIds: asks.map((ask) => ask.offerId),
-      }))) &&
-    (await yesThread(database, input)) !== 'private'
+      })))
   ) {
-    return runTakeBackOnly(database, input, deps, planDeps, asks);
+    const thread = await yesThread(database, input);
+    if (thread !== 'private') return runTakeBackOnly(database, input, deps, planDeps, asks, thread);
   }
   for (const ask of asks) {
     const turn =
@@ -300,24 +300,31 @@ export async function runAuthorizedSignup(
   return UNCLAIMED;
 }
 
-/** Outside the asker's own thread: a take-back moves its ask, and anything else is held. */
+/**
+ * Outside the asker's own thread: a take-back moves its ask, and anything else is held. A
+ * group turn answers none of the 1:1 asks (the router gives it no open questions), so a bare
+ * "no" there may answer anyone: in a group only words that name an ask take it back. A
+ * thread Hale cannot place leans toward cancelling, so its bare take-back still binds.
+ */
 async function runTakeBackOnly(
   database: Database,
   input: SignupRunInput,
   deps: SignupRunDeps,
   planDeps: PlanTurnDeps,
   asks: readonly LiveAsk[],
+  thread: Exclude<YesThread, 'private'>,
 ): Promise<SignupRunResult> {
   for (const ask of asks) {
+    const place = thread === 'group' ? { ...ask.place, newest: false } : ask.place;
     const turn =
       ask.lane === 'plan'
-        ? await runPlanTakeBack(database, input, planDeps, ask.plan, ask.place)
+        ? await runPlanTakeBack(database, input, planDeps, ask.plan, place)
         : await declineOneShot(
             database,
             input,
             deps,
             ask.offer,
-            ask.place,
+            place,
             asks.some((other) => other !== ask && wordsNameAsk(input.body, other)),
           );
     if (turn === 'held') break;
