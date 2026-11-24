@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { MetaPixel } from '~/components/meta-pixel';
-import { metaPixelIdWhenConversionsEnabled } from '~/lib/analytics/meta-pixel';
+import { metaPixelIdsWhenConversionsEnabled } from '~/lib/analytics/meta-pixel';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { PORTAL_TITLE } from '~/lib/portal/document-title';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
@@ -75,7 +75,7 @@ export const viewport: Viewport = {
 const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';document.documentElement.dataset.themePref=p;var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);if('scrollRestoration' in history){history.scrollRestoration='manual';}}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const metaPixelId = metaPixelIdWhenConversionsEnabled();
+  const metaPixelIds = metaPixelIdsWhenConversionsEnabled();
   return (
     <html lang="en" className={`${figtree.variable} ${fraunces.variable}`} suppressHydrationWarning>
       <head>
@@ -83,7 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
       <body suppressHydrationWarning>
-        {metaPixelId ? <MetaPixel pixelId={metaPixelId} /> : null}
+        {metaPixelIds.length > 0 ? <MetaPixel pixelId={metaPixelIds.join(',')} /> : null}
         <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>

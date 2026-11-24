@@ -1,17 +1,33 @@
 // @vitest-environment happy-dom
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
+import { writeConsent } from '~/lib/site/consent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const BASE = { value: 59, currency: 'CAD' };
 
+beforeEach(() => {
+  const happy = (
+    window as Window & {
+      happyDOM?: { settings: { handleDisabledFileLoadingAsSuccess: boolean } };
+    }
+  ).happyDOM;
+  if (happy) happy.settings.handleDisabledFileLoadingAsSuccess = true;
+});
+
 afterEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
+  for (const node of document.head.querySelectorAll('script')) node.remove();
   document.body.replaceChildren();
+  const w = window as Window & { fbq?: unknown; _fbq?: unknown; __haleMetaPixel?: boolean };
+  w.fbq = undefined;
+  w._fbq = undefined;
+  w.__haleMetaPixel = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -58,5 +74,89 @@ describe('purchase conversions across the pending state', () => {
       'cs_test_once',
       'cs_test_other',
     ]);
+  });
+
+  it('inits every pixel id and tracks Purchase once when consent was granted', async () => {
+    localStorage.setItem('hale-site-consent', 'granted');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111, 2222222222222222',
+          transactionId: 'cs_test_two',
+        }),
+      );
+    });
+    const fbq = (window as Window & { fbq?: { queue?: unknown[][] } }).fbq;
+    const queued = fbq?.queue ?? [];
+    expect(queued.filter(([method]) => method === 'init')).toEqual([
+      ['init', '1111111111111111'],
+      ['init', '2222222222222222'],
+    ]);
+    expect(
+      queued.filter(([method, name]) => method === 'track' && name === 'PageView'),
+    ).toHaveLength(1);
+    expect(queued.filter(([method, name]) => method === 'track' && name === 'Purchase')).toEqual([
+      ['track', 'Purchase', { value: 59, currency: 'CAD' }, { eventID: 'cs_test_two' }],
+    ]);
+    expect(queued.some(([method]) => method === 'trackSingle')).toBe(false);
+    await act(async () => root.unmount());
+  });
+
+  it('does not init a pixel when consent is denied', async () => {
+    localStorage.setItem('hale-site-consent', 'denied');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111,2222222222222222',
+          transactionId: 'cs_test_denied',
+        }),
+      );
+    });
+    expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_denied')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('fires Purchase for every pixel when Accept happens after the receipt mounts', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111,2222222222222222',
+          transactionId: 'cs_test_late',
+        }),
+      );
+    });
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_late')).toBeNull();
+    await act(async () => {
+      writeConsent('granted');
+    });
+    const fbq = (window as Window & { fbq?: { queue?: unknown[][] } }).fbq;
+    const queued = fbq?.queue ?? [];
+    expect(queued.filter(([method]) => method === 'init')).toEqual([
+      ['init', '1111111111111111'],
+      ['init', '2222222222222222'],
+    ]);
+    expect(queued.filter(([method, name]) => method === 'track' && name === 'Purchase')).toEqual([
+      ['track', 'Purchase', { value: 59, currency: 'CAD' }, { eventID: 'cs_test_late' }],
+    ]);
+    await act(async () => {
+      writeConsent('granted');
+    });
+    expect(
+      queued.filter(([method, name]) => method === 'track' && name === 'Purchase'),
+    ).toHaveLength(1);
+    await act(async () => root.unmount());
   });
 });

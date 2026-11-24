@@ -3,6 +3,10 @@ import {
   BACK_TO_TEXTS,
   BUBBLE_LABEL,
   CHANGED_TAG,
+  CODE_HEADING,
+  CODE_LABEL,
+  CODE_LEDE,
+  CODE_RESEND,
   CONTINUE_LABEL,
   type CopyPart,
   FALLBACK_HEADING,
@@ -191,6 +195,57 @@ export function FallbackCard({
         <form className={styles.form} action={formAction}>
           <button type="submit" className={styles.btn} disabled={pending || !formAction}>
             {pending ? SIGNING_IN : CONTINUE_LABEL}
+          </button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+export function ConnectCodeCard({
+  message,
+  pending = false,
+  formAction,
+}: {
+  message: string | null;
+  pending?: boolean;
+  formAction: FormAction;
+}) {
+  return (
+    <section className={styles.card} aria-label={CODE_HEADING}>
+      <div className={styles.act}>
+        <Tile icon="link" />
+        <h1 className={styles.h1}>{CODE_HEADING}</h1>
+        <p className={styles.lede}>{CODE_LEDE}</p>
+        <form className={styles.form} action={formAction}>
+          <label className={styles.codeLabel} htmlFor="connect-code">
+            {CODE_LABEL}
+          </label>
+          <input
+            id="connect-code"
+            name="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            required
+            className={`${styles.codeInput} ph-mask ph-no-capture`}
+            data-hale-mask-input=""
+            data-hale-pii=""
+          />
+          {message ? (
+            <p className={styles.note} role="alert">
+              <InfoIcon />
+              <span>{message}</span>
+            </p>
+          ) : null}
+          <button type="submit" className={styles.btn} disabled={pending}>
+            {pending ? SIGNING_IN : CONTINUE_LABEL}
+          </button>
+        </form>
+        <form className={styles.form} action={formAction}>
+          <button type="submit" className={styles.secondary} disabled={pending}>
+            {CODE_RESEND}
           </button>
         </form>
       </div>

@@ -1,3 +1,5 @@
+import { parseMetaPixelIds } from './meta-pixel';
+
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
 type Fbq = ((...args: unknown[]) => void) & {
@@ -20,12 +22,16 @@ function pixelWindow(): PixelWindow | null {
 }
 
 /**
- * Meta Pixel base snippet (init + PageView). A second call does not add a
- * second loader. Purchase is not fired here — CAPI owns Purchase.
+ * Meta Pixel base snippet. Inits every dataset id, then tracks PageView once.
+ * `fbq('track')` sends that event to each initialized pixel, so one track is
+ * one PageView per pixel. A second track, or `trackSingle` beside it, would
+ * count the event twice. A second call does not add a second loader.
+ * Purchase is not fired here — CAPI owns Purchase.
  */
-export function installMetaPixel(pixelId: string): void {
+export function installMetaPixel(pixelId: string | readonly string[]): void {
+  const ids = parseMetaPixelIds(pixelId);
   const w = pixelWindow();
-  if (!w || !pixelId || w.__haleMetaPixel) return;
+  if (!w || ids.length === 0 || w.__haleMetaPixel) return;
   w.__haleMetaPixel = true;
   const fbq = ((...args: unknown[]) => {
     if (fbq.callMethod) {
@@ -41,7 +47,7 @@ export function installMetaPixel(pixelId: string): void {
   fbq.queue = [];
   w.fbq = fbq;
   w._fbq = fbq;
-  fbq('init', pixelId);
+  for (const id of ids) fbq('init', id);
   fbq('track', 'PageView');
   const script = document.createElement('script');
   script.async = true;
