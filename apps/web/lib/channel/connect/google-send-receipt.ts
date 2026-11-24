@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
-import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import { acceptedStatus } from '~/lib/channel/ledger';
 import { linqRefusedForCertain, readSendRefusal } from '~/lib/channel/outbound-transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { pageOps } from '~/lib/monitoring/failure-page';
@@ -48,7 +48,9 @@ export interface GoogleSendClaim {
 
 export type GoogleClaimResult =
   | { kind: 'try'; claim: GoogleSendClaim }
+  /** The row holds a provider id: Linq accepted this text. Nothing else proves a send. */
   | { kind: 'already_sent' }
+  /** Another try holds the key and nothing proves its text went. */
   | { kind: 'in_flight' };
 
 export type GoogleSendOutcome<R> =
@@ -114,14 +116,13 @@ export async function claimGoogleSend(
     .limit(1);
   if (!held) return { kind: 'in_flight' };
   if (held.providerMessageId !== null) return { kind: 'already_sent' };
-  if ((SENT_STATUSES as readonly string[]).includes(held.status)) return { kind: 'already_sent' };
   const code = held.errorCode;
   const running =
     code === GOOGLE_SEND_IN_FLIGHT &&
     row.now.getTime() - held.createdAt.getTime() <= IN_FLIGHT_STALE_MS;
   if (running) return { kind: 'in_flight' };
   if (code !== GOOGLE_SEND_IN_FLIGHT && !code?.startsWith(MAY_HAVE_LANDED_PREFIX)) {
-    return { kind: 'already_sent' };
+    return { kind: 'in_flight' };
   }
   const [retaken] = await database
     .update(schema.channelMessages)
@@ -179,6 +180,12 @@ export async function sendClaimedGoogleText<
     surface: GoogleSendSurface;
   },
   send: (sendKey: string) => Promise<R>,
+  /**
+   * The rest of a text that is more than one send (the card's link). It runs after Linq took
+   * this text and before the row says so, so a crash inside it leaves the claim, and the try
+   * that retakes it sends every part again on the same keys, where Linq drops what landed.
+   */
+  thenBeforeRecording?: (sent: R) => Promise<void>,
 ): Promise<GoogleSendOutcome<R>> {
   const gate = await googleSendGate(database, who);
   if (gate !== 'open') {
@@ -196,7 +203,30 @@ export async function sendClaimedGoogleText<
   } catch (err) {
     return settleFailure(database, claim, who, err);
   }
+  try {
+    await thenBeforeRecording?.(sent);
+  } finally {
+    await recordAccepted(database, claim, who, sent);
+  }
+  return { status: 'accepted', sent };
+}
 
+async function recordAccepted(
+  database: Database,
+  claim: GoogleSendClaim,
+  who: {
+    familyId: string;
+    parentUserId: string;
+    now: Date;
+    channel: 'sms' | 'imessage';
+    chatId: string | null;
+  },
+  sent: {
+    providerMessageId: string;
+    transport?: 'sms' | 'whatsapp' | 'imessage';
+    chatId?: string | null;
+  },
+): Promise<void> {
   const carried = sent.transport === 'imessage' ? 'imessage' : who.channel;
   await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
@@ -220,7 +250,6 @@ export async function sendClaimedGoogleText<
       audience: who.parentUserId,
     });
   });
-  return { status: 'accepted', sent };
 }
 
 async function settleFailure(
