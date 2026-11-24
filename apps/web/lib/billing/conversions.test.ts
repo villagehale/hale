@@ -121,6 +121,24 @@ describe('senders no-op without flags or env', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('posts CAPI only to the first pixel id when the public env lists several', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    const result = await sendMetaPurchase(
+      purchase,
+      {
+        META_CAPI_ENABLED: 'true',
+        NEXT_PUBLIC_META_PIXEL_ID: '1111111111111111, 2222222222222222',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+      },
+      fetchImpl,
+    );
+    expect(result).toEqual({ status: 'sent' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/1111111111111111/events?access_token=token-1');
+    expect(url).not.toContain('2222222222222222');
+  });
+
   it('sends Meta CAPI with the Checkout Session event_id, hashed PII, and matching cookies', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     const result = await sendMetaPurchase(
@@ -283,7 +301,7 @@ describe('Meta Test Events ops probe', () => {
       fetchImpl,
     );
     expect(result).toEqual({ status: 200, events_received: 1 });
-    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as {
       test_event_code?: string;
       data: Array<{
@@ -298,6 +316,26 @@ describe('Meta Test Events ops probe', () => {
     expect(body.data[0]?.user_data.em).toEqual([hashEmailForAds('capi.test@example.com')]);
     expect(JSON.stringify(body)).not.toContain('capi.test@example.com');
     expect(JSON.stringify(body)).not.toContain('+1 555 010 0100');
+    expect(url).toContain('/1460101092968766/events');
+  });
+
+  it('probes only the first pixel id when the public env lists several', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ events_received: 1 }), { status: 200 }));
+    const result = await sendMetaTestPurchase(
+      {
+        NEXT_PUBLIC_META_PIXEL_ID: '1111111111111111, 2222222222222222',
+        META_CAPI_ACCESS_TOKEN: 'token-1',
+        META_CAPI_TEST_EVENT_CODE: 'TEST12345',
+      },
+      fetchImpl,
+    );
+    expect(result).toEqual({ status: 200, events_received: 1 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/1111111111111111/events?access_token=token-1');
+    expect(url).not.toContain('2222222222222222');
   });
 
   it('sends Max USD when the ops probe asks for that tier and currency', async () => {
