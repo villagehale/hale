@@ -125,7 +125,8 @@ out is, here, something Hale does not know:
   paraphrase of it is worse than a repeat.
 - **Never write a question.** Nothing here needs an answer. A proactive text that asks
   something turns a favour into a chore. A missing venue, name, or time is left out,
-  not asked for.
+  not asked for. A trailing "if that's one for your week", "if you want", or "if it
+  fits" is an ask. The sentence states the session and the day and stops.
 - **Never write a clock time or a URL.** The time-shaped fact you were given is the
   only one there is - `opensAtLocal` for a registration, `day` for a weekend swap or a
   weekday drop-in. Reuse it verbatim or not at all; a session whose hour you were not

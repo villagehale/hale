@@ -133,7 +133,7 @@
   },
   "capability-table.md": {
     "file": "capability-table.md",
-    "sha256": "a2185c406e29162cf6a1311a628794a6e02d96afbbec643bfe90a09c47116d6f"
+    "sha256": "f0bdab7f536bee6b8c7a0617849f5425e3eb0da711e02d5409cc0e6836aa849f"
   },
   "caregiver-reminder.md": {
     "file": "caregiver-reminder.md",
@@ -157,7 +157,7 @@
   },
   "coach-bubbles.md": {
     "file": "coach-bubbles.md",
-    "sha256": "9af6a425e61822caf884063a6aee39c15357326b223c816b65867019ba835ec9"
+    "sha256": "f831b39f50e68ebcfa1cbebee13835e602260bbf69f3b24cb9a666ded43beb77"
   },
   "coach-capability-correction.md": {
     "file": "coach-capability-correction.md",
@@ -173,7 +173,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "51ee57e2811abc7dd05fe57abc615a5f625c5fde3f56ee9c865e899a078cbb31"
+    "sha256": "f79c9500d292ef95a0c5cb1efcf125c1e75b909b2e935319c51de6072dbb6c81"
   },
   "coach-fact-source.md": {
     "file": "coach-fact-source.md",
@@ -193,7 +193,7 @@
   },
   "coach-group-lists.md": {
     "file": "coach-group-lists.md",
-    "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"
+    "sha256": "92659333173c804110d6c39f777c9bdeab69a95c0eea81114fdc64d6c2722d44"
   },
   "coach-home-place.md": {
     "file": "coach-home-place.md",
@@ -501,7 +501,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "04244e083508be148a2a8cb5060b82ebfbe9de5427c17d1f5d5c59c48051c24e"
+    "sha256": "1865a0593270d6688bc188881e05f85b8f95967b155d0de2a49fd1378015cea9"
   },
   "inbound-photo-facts.md": {
     "file": "inbound-photo-facts.md",
@@ -589,7 +589,7 @@
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
-    "sha256": "a25433ead9dd0131f5e213beaff43856df846287d9fc8e18051e6bd3b34d414f"
+    "sha256": "8eb2b53ffcd1058f7259d4a43606b048b333b871f27665c1427a0ab5995f801a"
   },
   "offer-receipt.md": {
     "file": "offer-receipt.md",
@@ -601,7 +601,7 @@
   },
   "onboarding-friend-place.md": {
     "file": "onboarding-friend-place.md",
-    "sha256": "75792b8151d9da5d31d755f76d6b495089a61410af6de2956be52e29bae3850b"
+    "sha256": "d5fd2e64f5a51c4c3033f8b1eedadc5eeb3275dda82334862222e9606ff004aa"
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
@@ -685,7 +685,7 @@
   },
   "registration-note.md": {
     "file": "registration-note.md",
-    "sha256": "cff18881826efd412bbfcf53b1f79956a55abd29297288468ae6e7175bb89117"
+    "sha256": "dcd101df6948c9c7435a35292df927aaec666c4ff1588010eb03cd182cb48543"
   },
   "registration-page-search.md": {
     "file": "registration-page-search.md",
@@ -717,7 +717,7 @@
   },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "539cf2bda26393d4d4542e755e83f4bf4467104e6ac7e8844a805cde80728ac1"
+    "sha256": "04d9fc1430a4d48df27626ce90638eaf677e85d2fb03398c5da89731158471dc"
   },
   "school-break-read.md": {
     "file": "school-break-read.md",

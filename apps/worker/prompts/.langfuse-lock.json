@@ -367,7 +367,7 @@
   "judges/registration-note": {
     "name": "judges/registration-note",
     "version": null,
-    "sha256": "bb8a43b144cafc255f315f2975dc2bedf28dcb9d40df4ce9f0856dfcc48d0b74"
+    "sha256": "20408e5f75d7dc063a52d84becb73c41d6f5f9fc5fe96fd7edab16a1616ca9dd"
   },
   "judges/reminder": {
     "name": "judges/reminder",

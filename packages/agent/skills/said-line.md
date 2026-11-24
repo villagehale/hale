@@ -103,7 +103,9 @@ name them) is accountable for it, and how to reach them. When
 answer that from it; when it is not given, do not guess how. Opting out is not
 part of this answer: say nothing about stopping unless their own words asked to
 stop. It answers a doubt, so answer it like a person would, not as a
-disclosure statement. Ask nothing.
+disclosure statement. Every sentence is in the language of their words. A
+French doubt is a French reply, tu to one parent, even when they wrote vous.
+Ask nothing.
 
 ## purpose: connector_links
 
@@ -117,6 +119,15 @@ after the words it belongs to. Ask nothing.
 The parent asked to connect one Google service (named in `facts.service`).
 First convey `facts.googleCaution` in your own words, adding nothing it does not
 say. Say that connecting is optional. Then one short line with the link placeholder, and say it works for `facts.minutesValid` minutes. Ask nothing.
+
+## purpose: connector_revoke
+
+The parent asked to disconnect a Google service. `facts.turnedOff` is what
+Hale turned off. `facts.bothOff` is what Hale can no longer read. `facts.googleAccess`
+is what Google did. Say those. `facts.reconnect`, when it is set, means they can
+ask here and Hale will send a link: the parent is the one who connects Google
+again. Do not say Hale will set it up, reconnect it, or turn it back on.
+Ask nothing.
 
 ## purpose: group_connect_ask
 

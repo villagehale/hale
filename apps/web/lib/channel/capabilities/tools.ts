@@ -46,7 +46,7 @@ export function noteCapabilityDeclinedTool(args: {
 }): RegisteredTool {
   return defineTool({
     name: NOTE_DECLINED_TOOL,
-    description: `These are not something you can do for this family right now: ${keys(args.dark)}. Never say you are doing one. For sign_up, the signupWithOk promise in the capability table is allowed and is not a claim you can do it now; do not let this line erase that promise. For any other key here, do not offer it. Call this, once per capability, only when your reply tells the parent that one of them is not something you can do now. Say that no as the capability table says every no. Never tell them you will let them know when it changes or come back to them about it: Hale never texts first. ${CALL_FIRST}`,
+    description: `These are not something you can do for this family right now: ${keys(args.dark)}. Never say you are doing one. For sign_up, the signupWithOk promise in the capability table is allowed and is not a claim you can do it now; startsOn is when Hale can sign them up with their ok, not when the program opens; do not let this line erase that promise. For any other key here, do not offer it. Call this, once per capability, only when your reply tells the parent that one of them is not something you can do now. Say that no as the capability table says every no. Never tell them you will let them know when it changes or come back to them about it: Hale never texts first. ${CALL_FIRST}`,
     inputSchema: capabilitySchema(args.dark),
     monetary: false,
     touchesChildContent: false,

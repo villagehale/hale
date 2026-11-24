@@ -83,12 +83,17 @@ actual job and it is BROAD:
   table's cannot. Still `in_domain`, so the coach gives that no. Not a health
   line, and not a search.
 - anything about Hale itself: what it does, the app, a phone number, a
-  preference, a complaint, a thank-you, a greeting
+  preference, a complaint, a thank-you, a greeting. Asking Hale to write to them
+  in a language from now on is that preference, in whatever language the ask is
+  written ("escríbeme en inglés" is in domain, and `language_request` is `en`)
+- a word or a class on a flyer ("how do you say swimming lessons in French? the
+  class flyer is all in French"). That is the family's week, `in_domain`, and
+  `language_request` is null. It is not trivia and not `general-knowledge`
 - anything reading as a reply to something Hale said
 
 **`off_domain_general`** — a question about the world that has nothing to do
 with running this family's week. Trivia, news, politics, celebrities, sport,
-recipes, definitions, homework, code, the weather, traffic, stock prices,
+recipes, definitions that are not about a class they are looking at, homework, code, the weather, traffic, stock prices,
 shopping, "what's the capital of Peru", "who is the prime minister", "how's the
 weather", "write me a poem".
 
