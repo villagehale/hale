@@ -239,7 +239,10 @@ describe('/pricing — the tier cards have anatomy', () => {
     expect(html).toContain('$19');
     expect(html).toContain('$329');
     expect(html).not.toContain('CAD/mo');
-    expect(html).not.toMatch(/\b(CAD|USD)\b/);
+    const visible = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, '');
+    expect(visible).not.toMatch(/\b(CAD|USD)\b/);
+    expect(html).toContain('"priceCurrency":"CAD"');
+    expect(html).toContain('"priceCurrency":"USD"');
   });
 
   it('lists every shipped feature, and marks Plus and Max coming soon', () => {
