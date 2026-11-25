@@ -133,10 +133,10 @@ export function RedesignHome({
             <div className="ev">
               <div className="d"><b>{t("TUE")}</b><span>13</span></div>
               <div>
-                <div className="t">{t("Swim registration opens")}</div>
+                <div className="t">{t("Toddler swim")}</div>
                 <div className="m">
                   <svg className="bell" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M6 1a3.2 3.2 0 0 0-3.2 3.2v1.9L1.9 7.6a.5.5 0 0 0 .43.76h7.34a.5.5 0 0 0 .43-.76L9.2 6.1V4.2A3.2 3.2 0 0 0 6 1Zm-1.3 8.6a1.3 1.3 0 0 0 2.6 0H4.7Z" /></svg>
-                  {t("Reminder")} <i /> <span className="mono">{t("7:00 PM")}</span>
+                  {t("Sat")} <i /> <span className="mono">{t("10:00 AM")}</span>
                 </div>
               </div>
             </div>
