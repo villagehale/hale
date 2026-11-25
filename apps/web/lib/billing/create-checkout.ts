@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import { eq } from 'drizzle-orm';
+import { type FunnelSender, captureFunnelEvent, posthogFunnelSender } from '~/lib/analytics/funnel';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
@@ -69,6 +70,8 @@ export async function createBillingCheckout(input: {
   cancelUrl?: string;
   now?: Date;
   env?: Record<string, string | undefined>;
+  /** checkout_started goes out through this; defaults to PostHog. */
+  funnel?: FunnelSender;
 }): Promise<CreateBillingCheckoutResult> {
   const {
     tier,
@@ -145,6 +148,16 @@ export async function createBillingCheckout(input: {
     targetId: familyId,
     after: { tier, period, sku: sku ?? null, currency: currency ?? null },
   });
+
+  await captureFunnelEvent(
+    {
+      event: 'checkout_started',
+      familyId,
+      attribution: attribution ?? {},
+      properties: { plan: tier, period },
+    },
+    { sender: input.funnel ?? posthogFunnelSender, env },
+  );
 
   return { status: 'created', url };
 }

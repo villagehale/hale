@@ -1,12 +1,19 @@
 import { createHash } from 'node:crypto';
 import type { Attribution, BillingCurrency } from '@hale/types';
 import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import {
+  type FunnelOutcome,
+  type FunnelSender,
+  captureFunnelEvent,
+  posthogFunnelSender,
+} from '~/lib/analytics/funnel';
 import { metaPixelIdFromEnv } from '~/lib/analytics/meta-pixel';
 import { captureServerEvent, hashFamilyId } from '~/lib/analytics/server-capture';
 import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
 import { type AdsCheckoutContext, adsContextFromStripeMetadata } from './ads-context.js';
 import { attributionFromStripeMetadata } from './attribution.js';
 import { metaCapiEnabled } from './flags.js';
+import { CHECKOUT_SKU_PERIOD, type CheckoutSku } from './prices.js';
 import { isPromoPreviewFamily } from './promo-preview.js';
 
 /**
@@ -324,20 +331,54 @@ export async function sendPosthogPurchase(
 export interface PurchaseConversionReport {
   meta: ConversionSendResult;
   posthog: ConversionSendResult;
+  funnel: FunnelOutcome | 'no_family';
+}
+
+function isCheckoutSku(value: string | null): value is CheckoutSku {
+  return value !== null && Object.hasOwn(CHECKOUT_SKU_PERIOD, value);
+}
+
+/**
+ * checkout_completed: the funnel's paid step, read from the session metadata the
+ * checkout wrote (tier, sku, attribution). Never the Stripe customer's contact details.
+ */
+async function sendFunnelCheckoutCompleted(
+  purchase: PurchaseConversion,
+  payload: unknown,
+  env: Record<string, string | undefined>,
+  sender: FunnelSender,
+): Promise<FunnelOutcome | 'no_family'> {
+  if (!purchase.familyId) return 'no_family';
+  const object = isRecord(payload) && isRecord(payload.data) ? payload.data.object : undefined;
+  const metadata = isRecord(object) && isRecord(object.metadata) ? object.metadata : null;
+  const plan = metadata ? readString(metadata.tier) : null;
+  const period = isCheckoutSku(purchase.sku) ? CHECKOUT_SKU_PERIOD[purchase.sku] : null;
+  return captureFunnelEvent(
+    {
+      event: 'checkout_completed',
+      familyId: purchase.familyId,
+      attribution: purchase.attribution,
+      properties: { ...(plan ? { plan } : {}), ...(period ? { period } : {}) },
+      ...(plan ? { set: { plan } } : {}),
+    },
+    { sender, env },
+  );
 }
 
 export async function reportBillingPurchase(
   payload: unknown,
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
+  funnel: FunnelSender = posthogFunnelSender,
 ): Promise<PurchaseConversionReport | { status: 'skipped'; reason: 'not_a_purchase' }> {
   const purchase = purchaseFromStripeEvent(payload);
   if (!purchase) {
     return { status: 'skipped', reason: 'not_a_purchase' };
   }
-  const [meta, posthog] = await Promise.all([
+  const [meta, posthog, funnelOutcome] = await Promise.all([
     sendMetaPurchase(purchase, env, fetchImpl),
     sendPosthogPurchase(purchase),
+    sendFunnelCheckoutCompleted(purchase, payload, env, funnel),
   ]);
-  return { meta, posthog };
+  return { meta, posthog, funnel: funnelOutcome };
 }

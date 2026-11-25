@@ -147,7 +147,12 @@ export type AnalyticsEvent =
   | 'portal_family_edited'
   | 'portal_passport_viewed'
   // Stripe checkout.session.completed, hashed family id, UTMs/gclid/fbclid only.
-  | 'purchase';
+  | 'purchase'
+  // The web funnel's checkout steps (FUNNEL_ATTRIBUTION_ENABLED, lib/analytics/funnel.ts).
+  // Hashed family id; plan, period and the first-touch attribution keys only.
+  // checkout_completed is the same act as `purchase`; the funnel reads this one.
+  | 'checkout_started'
+  | 'checkout_completed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

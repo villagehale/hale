@@ -1,8 +1,13 @@
 /**
  * First-touch acquisition params that survive landing → signup → checkout.
  *
- * These are advertising click and campaign identifiers, not parent or child
- * data. Values are truncated so they fit Stripe metadata (500 chars).
+ * These are advertising click and campaign identifiers plus Hale's own card code,
+ * not parent or child data. Values are truncated so they fit Stripe metadata (500
+ * chars), and a value outside the token alphabet (an email's `@`, a URL, markup) is
+ * dropped rather than carried, because these values reach Stripe and analytics.
+ *
+ * `source_code` is Hale's card code. The site reads it from its own `s` / `src` tag
+ * with its own validator, never from a landing URL under this name.
  */
 
 export const ATTRIBUTION_KEYS = [
@@ -13,6 +18,7 @@ export const ATTRIBUTION_KEYS = [
   'utm_content',
   'gclid',
   'fbclid',
+  'source_code',
 ] as const;
 
 export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
@@ -20,14 +26,22 @@ export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
 export type Attribution = Partial<Record<AttributionKey, string>>;
 
 const MAX_VALUE_LENGTH = 200;
+const TOKEN_VALUE = /^[A-Za-z0-9 ._~+-]+$/;
+/** The site's card-code grammar (apps/site/lib/text-entry.ts SOURCE_CODE_PATTERN). */
+const SOURCE_CODE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SOURCE_CODE_MAX_LENGTH = 48;
 
-function readParam(
-  params: { get(name: string): string | null },
-  key: AttributionKey,
-): string | undefined {
-  const raw = params.get(key)?.trim();
-  if (!raw) return undefined;
-  return raw.slice(0, MAX_VALUE_LENGTH);
+function cleanValue(key: AttributionKey, raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (key === 'source_code') {
+    return trimmed.length <= SOURCE_CODE_MAX_LENGTH && SOURCE_CODE_VALUE.test(trimmed)
+      ? trimmed
+      : undefined;
+  }
+  const bounded = trimmed.slice(0, MAX_VALUE_LENGTH);
+  return TOKEN_VALUE.test(bounded) ? bounded : undefined;
 }
 
 /** Pull the known keys out of a query string, URLSearchParams, or a loose map. */
@@ -44,17 +58,15 @@ export function parseAttribution(
   const out: Attribution = {};
   if (params) {
     for (const key of ATTRIBUTION_KEYS) {
-      const value = readParam(params, key);
+      const value = cleanValue(key, params.get(key));
       if (value) out[key] = value;
     }
     return out;
   }
   const record = source as Record<string, unknown>;
   for (const key of ATTRIBUTION_KEYS) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) {
-      out[key] = value.trim().slice(0, MAX_VALUE_LENGTH);
-    }
+    const value = cleanValue(key, record[key]);
+    if (value) out[key] = value;
   }
   return out;
 }

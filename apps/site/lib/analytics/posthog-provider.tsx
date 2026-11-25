@@ -1,11 +1,13 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import type { PostHog } from 'posthog-js';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from './events';
 import { posthogReplayEnabled, posthogWebEnabled } from './flags';
+import { createFunnelViewTracker } from './funnel-views';
 import { hasAnalyticsOptOut } from './opt-out';
 import { POSTHOG_PROXY_PATH, posthogUiHost } from './posthog-proxy';
 import { readFirstTouchAttribution } from './attribution';
@@ -182,7 +184,12 @@ export function PostHogProvider({
     };
   }, [locale]);
 
-  return <PostHogContext.Provider value={analytics}>{children}</PostHogContext.Provider>;
+  return (
+    <PostHogContext.Provider value={analytics}>
+      <FunnelPageViews />
+      {children}
+    </PostHogContext.Provider>
+  );
 }
 
 /**
@@ -218,4 +225,19 @@ export function useAnalytics(): (
  */
 export function useAnalyticsReady(): boolean {
   return useContext(PostHogContext).client !== null;
+}
+
+/** The site's funnel page views (lib/analytics/funnel-views.ts). Renders nothing. */
+function FunnelPageViews(): null {
+  const pathname = usePathname();
+  const capture = useAnalytics();
+  const ready = useAnalyticsReady();
+  const tracker = useRef(createFunnelViewTracker());
+
+  useEffect(() => {
+    const view = tracker.current.observe(pathname, ready);
+    if (view) capture(view);
+  }, [capture, pathname, ready]);
+
+  return null;
 }

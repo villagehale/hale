@@ -136,6 +136,9 @@ export const FLAGS = [
     allowlistEnv: 'FOLLOWUP_ASKS_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
   }),
+  // Server funnel events and the card code in Stripe metadata. Env-only: checkout and
+  // the Stripe webhook run outside any family-scoped PostHog evaluation.
+  exact('funnel-attribution', 'FUNNEL_ATTRIBUTION_ENABLED', { envOnly: true }),
   exact('going-count', 'GOING_COUNT_ENABLED'),
   exact('google-push-sync', 'GOOGLE_PUSH_SYNC_ENABLED'),
   exact('google-write-scopes', 'GOOGLE_WRITE_SCOPES_ENABLED'),

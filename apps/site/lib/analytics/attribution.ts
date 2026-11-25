@@ -13,12 +13,16 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 90;
 
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
-/** First-touch attribution from this URL plus whatever the tab already stored. */
+/**
+ * First-touch attribution from this URL plus whatever the tab already stored. The card
+ * code is never taken from the URL under its attribution name: source-code.ts reads the
+ * site's own `s` / `src` tag.
+ */
 export function readFirstTouchAttribution(
   search: string,
   storage: StorageLike | null,
 ): Attribution {
-  const fromUrl = parseAttribution(search);
+  const { source_code: _ignored, ...fromUrl } = parseAttribution(search);
   const remembered = storage
     ? parseAttribution(storage.getItem(ATTRIBUTION_STORAGE_KEY) ?? undefined)
     : {};

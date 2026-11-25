@@ -41,6 +41,14 @@ export type CheckoutSku =
   | 'plus_annual'
   | 'max_annual';
 
+export const CHECKOUT_SKU_PERIOD: Readonly<Record<CheckoutSku, BillingPeriod>> = {
+  promo_plus_annual: 'annual',
+  promo_max_annual: 'annual',
+  plus_monthly: 'monthly',
+  plus_annual: 'annual',
+  max_annual: 'annual',
+};
+
 export interface CheckoutPrice {
   readonly priceId: string;
   readonly sku: CheckoutSku;

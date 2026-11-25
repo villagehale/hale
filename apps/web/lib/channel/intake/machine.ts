@@ -4,6 +4,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { noteMessage } from '~/lib/analytics/product-hooks';
 import { captureServerEvent, captureWebEvent, hashFamilyId } from '~/lib/analytics/server-capture';
+import { signupFunnelExtras } from '~/lib/analytics/funnel';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import type { AddThemYourselfVoice } from '~/lib/channel/caregiver/add-them-yourself';
@@ -3972,7 +3973,10 @@ async function provision(
   // Distinct id is the hashed family — the same person IdentifyUser will use —
   // never the phone, never the intake session. Dark until WEB_ENABLED. Not
   // through deps.capture: tests stub that seam for intake_started/completed.
-  void captureWebEvent('signup_completed', hashFamilyId(familyId), { surface: 'sms' }).then(
+  // FUNNEL_ATTRIBUTION_ENABLED adds the card code and the signup date.
+  const signup = signupFunnelExtras({ sourceCode: session.sourceCode, now });
+  const props = { surface: 'sms', ...signup.properties };
+  void captureWebEvent('signup_completed', hashFamilyId(familyId), props, signup.options).then(
     () => undefined,
     (err: unknown) => {
       console.warn('analytics: signup_completed not recorded', {

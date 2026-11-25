@@ -3,6 +3,8 @@
 import { useEffect } from 'react';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 import { attributionCookie, readFirstTouchAttribution } from '~/lib/analytics/attribution';
+import { funnelAttributionForCookie } from '~/lib/analytics/funnel-views';
+import { readFirstTouchSourceCode } from '~/lib/analytics/source-code';
 
 /**
  * Persists first-touch UTMs / gclid / fbclid into sessionStorage (every visit)
@@ -20,7 +22,10 @@ export function AttributionCapture(): null {
       }
       const attribution = readFirstTouchAttribution(window.location.search, storage);
       if (readConsent() !== 'granted') return;
-      const cookie = attributionCookie(attribution, window.location.hostname);
+      const withCode = funnelAttributionForCookie(attribution, () =>
+        readFirstTouchSourceCode(window.location.search, storage),
+      );
+      const cookie = attributionCookie(withCode, window.location.hostname);
       if (cookie) document.cookie = cookie;
     };
     persist();
