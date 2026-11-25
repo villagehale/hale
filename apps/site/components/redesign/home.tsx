@@ -78,7 +78,7 @@ export function RedesignHome({
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 2.5c2.5 0 4.5 1.6 4.5 3.6S9 9.7 6.5 9.7c-.45 0-.9-.05-1.3-.15L2.8 10.6l.65-1.75C2.55 8.2 2 7.2 2 6.1 2 4.1 4 2.5 6.5 2.5Z" /><path d="M12.2 6.2c1.1.6 1.8 1.6 1.8 2.7 0 .9-.45 1.7-1.2 2.3l.5 1.5-1.9-.85c-.4.1-.8.15-1.2.15-1.3 0-2.45-.45-3.25-1.2" /></svg>
         {t("Works in your group chats")}
       </span>
-      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t('From "we should"')}<br />{t('to "we\'re in."')}</h1>
+      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t("From we should")}<br />{t("we're in.")}</h1>
       <p className="sub">{t(HERO_SUB)}</p>
       <div className="cta-row">
         <TextDoor className="btn btn-hero" placement="hero" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>
@@ -100,11 +100,11 @@ export function RedesignHome({
         </li>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2.75a4.75 4.75 0 0 0-4.75 4.75v3L3.75 13h12.5l-1.5-2.5v-3A4.75 4.75 0 0 0 10 2.75Z" /><path d="M8.25 16a1.85 1.85 0 0 0 3.5 0" /></svg>
-          <b>{t("Gets a spot")}</b><small>{t("From Dec 1, your ok")}</small>
+          <b>{t("Gets a spot")}</b><small>{t("By Dec 1, ok")}</small>
         </li>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 3c4.4 0 7.5 2.7 7.5 6s-3.1 6-7.5 6c-.8 0-1.6-.1-2.3-.3L3.5 16.5l1.1-3.1C3.3 12.3 2.5 10.7 2.5 9 2.5 5.7 5.6 3 10 3Z" /><path d="M7.5 10.25c.6.75 1.5 1.15 2.5 1.15s1.9-.4 2.5-1.15" /></svg>
-          <b>{t("Runs group chats")}</b><small>{t("With the families too")}</small>
+          <b>{t("Runs group chats")}</b><small>{t("With families")}</small>
         </li>
       </ul>
     </section>
@@ -266,8 +266,8 @@ export function RedesignHome({
   <div className="hs-beats">
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("Any week")}</p>
-    <h3 className="hs-h3">{t("Finds what fits near you")}</h3>
-    <p className="hs-p">{t("Swim, camps, drop-ins, the library down the street. Picked for their ages, from the places that run them.")}</p>
+    <h3 className="hs-h3">{t("Finds what fits near you now")}</h3>
+    <p className="hs-p">{t("Swim, camps, drop-ins, the library down the street. Picked for their ages, from the places that run them. Near you.")}</p>
     <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
@@ -278,8 +278,8 @@ export function RedesignHome({
    </div>
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("When Dec 1 arrives")}</p>
-    <h3 className="hs-h3">{t("Gets the open spot")}</h3>
-    <p className="hs-p">{t("Starting Dec 1, with your ok, Hale signs them up when you say yes, and you still pay.")}</p>
+    <h3 className="hs-h3">{t("Gets the open spot today")}</h3>
+    <p className="hs-p">{t("Starting Dec 1, with your ok, Hale signs them up when you say yes, and you still pay. Near you.")}</p>
     <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
@@ -290,8 +290,8 @@ export function RedesignHome({
    </div>
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("From your email")}</p>
-    <h3 className="hs-h3">{t("Reads your Gmail calendar")}</h3>
-    <p className="hs-p">{t("It reads school and rec mail, keeps dates that moved, and shows the new time to the family.")}</p>
+    <h3 className="hs-h3">{t("Reads your Gmail and calendar")}</h3>
+    <p className="hs-p">{t("It reads school and rec mail, keeps dates that moved, and shows the new time to the family. Near you.")}</p>
     <div className="hs-art"><div data-motion-scene="chat">
      <div className="im-screen">
       <HaleHead />
@@ -305,8 +305,8 @@ export function RedesignHome({
    </div>
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("For every one of them")}</p>
-    <h3 className="hs-h3">{t("Knows the family")}</h3>
-    <p className="hs-p">{t("Each kid’s age, what they like, and what’s already booked. One text can fix any of it.")}</p>
+    <h3 className="hs-h3">{t("Knows the whole family")}</h3>
+    <p className="hs-p">{t("Each kid’s age, what they like, and what’s already booked. One text can fix any of it. Near you.")}</p>
     <div className="hs-art"><div data-motion-scene="chat">
      <div className="im-screen">
       <HaleHead />
@@ -375,14 +375,14 @@ export function RedesignHome({
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Remembers your family, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(PLUS_SIGNUP_LINE)}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(PLUS_SIGNUP_LINE)}</span></li></ul>
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     <h3>{t(maxAnnualLabel(currency))}</h3>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches, all year long.")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
   </ol>
