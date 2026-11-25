@@ -66,7 +66,7 @@ export const GROUP_EXPERIENCE_SCENE_FIXTURES = [
     audience: 'group',
     questions: 0,
     situation:
-      'Three families said yes and one said no. Hale tallies that and only the yes families get the event on their calendar.',
+      'Three families said yes and one said no. Hale tallies that in the group; a yes in the group puts nothing on anyone\'s calendar.',
     accept: ['rsvp_tally'],
     input: {
       text: 'where do we stand',

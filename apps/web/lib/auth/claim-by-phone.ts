@@ -4,7 +4,13 @@ import { isParentRole } from '~/lib/channel/role-scope';
 import { OTP_MAX_ATTEMPTS, isOtpExpired, isOtpLockedOut, verifyOtpCode } from '~/lib/channels/otp';
 import type { OtpSender } from '~/lib/channels/otp-sender';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { requestPhoneOtp, resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import {
+  codeAttemptsAtomic,
+  codesForDoor,
+  requestPhoneOtp,
+  resolveVerifiedChannelByPhone,
+  spendCodeAttempt,
+} from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 
 /**
@@ -188,6 +194,7 @@ export async function verifyClaimCode(
       and(
         eq(schema.phoneVerifications.userId, claimant.userId),
         isNull(schema.phoneVerifications.consumedAt),
+        codesForDoor('number'),
       ),
     )
     .orderBy(desc(schema.phoneVerifications.createdAt))
@@ -200,7 +207,13 @@ export async function verifyClaimCode(
   if (isOtpLockedOut(pending.attemptCount)) return refuse('locked');
   if (isOtpExpired(pending.expiresAt, now)) return refuse('expired');
 
-  if (!verifyOtpCode(input.code, pending.codeHash)) {
+  if (codeAttemptsAtomic()) {
+    const attemptCount = await spendCodeAttempt(database, pending.id);
+    if (attemptCount === null) return refuse('locked');
+    if (!verifyOtpCode(input.code, pending.codeHash)) {
+      return refuse(isOtpLockedOut(attemptCount) ? 'locked' : 'wrong_code');
+    }
+  } else if (!verifyOtpCode(input.code, pending.codeHash)) {
     const attemptCount = pending.attemptCount + 1;
     await database
       .update(schema.phoneVerifications)
