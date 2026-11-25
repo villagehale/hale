@@ -207,11 +207,6 @@ export const OPS_PAGE_VOCABULARY = {
     why: ['asked_for_reminder', 'host_cancelled'],
     stage: ['skill_load', 'after_retry'],
   },
-  /** VIL-759 · an invite Linq did not accept. `unclear` may still have reached the phone. */
-  third_party_invite_unsent: {
-    lane: ['co_parent', 'caregiver'],
-    why: ['refused', 'unclear'],
-  },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
@@ -351,6 +346,13 @@ export const OPS_PAGE_VOCABULARY = {
     kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],
     reason: ['no_client', 'skill_load', 'model_failed', 'unusable'],
   },
+  /** VIL-759 · the reply to an add command or a co-parent number the model could not
+   * write. Nothing was sent to anyone. */
+  add_them_yourself_unwritten: {
+    door: ['add_command', 'number_door'],
+    channel: ['imessage', 'sms'],
+    reason: ['voice_absent', 'client_unavailable', 'skill_unavailable', 'model_failed', 'unusable'],
+  },
   inbound_canary_failed: {
     stage: [
       'not_configured',
@@ -410,8 +412,6 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
-  // VIL-759: one family's invite each.
-  'third_party_invite_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

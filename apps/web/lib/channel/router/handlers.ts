@@ -1115,6 +1115,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
         inboundChannelMessageId: ctx.inboundChannelMessageId,
         sendSms: deps.sendSms,
         ask: deps.ask,
+        addThemYourself: deps.addThemYourself,
       });
       if (outcome.status === 'not_pending') return { claimed: false };
       return {

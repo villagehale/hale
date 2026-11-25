@@ -3,6 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { type QueueCreateOptions, createQueueWithPolicy } from '@hale/tools-contracts';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
+import { createAddThemYourselfVoice } from '~/lib/channel/caregiver/add-them-yourself';
 import {
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
@@ -110,6 +111,7 @@ export function buildIntakeDeps(
     signupStepReader: createSignupStepReader(() => client),
     consent: createConsentReader(() => client),
     consentAsk: createConsentAskWriter(() => client),
+    addThemYourself: createAddThemYourselfVoice(() => client),
     radar: createRadarComposer({
       database,
       weather: createOpenMeteoWeather(),
