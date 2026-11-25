@@ -26,11 +26,10 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. d1 was the first Style D card. The bytes
- * changed (CAD is C$, and Hale names the Saturday swim), and /og caches
- * for a day, so this is d2.
+ * Cache key for the painted PNG. /og caches for a day, and v=d2 already
+ * holds the swim card with Hale's bubbles first. This Priya-first order is d5.
  */
-export const SHARE_CARD_VERSION = 'd2';
+export const SHARE_CARD_VERSION = 'd5';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -312,13 +311,13 @@ function pageHeadline(
   }
 }
 
-/** Class, time, and place, then Priya, then the yes already on the card. */
+/** Priya, then the class, then the yes already on the card. */
 function thread(locale: Locale): ShareThreadLine[] {
   return [
+    { from: 'priya', name: 'Priya', text: tx(locale, 'we should do something saturday') },
     { from: 'hale', name: 'Hale', text: tx(locale, 'toddler swim') },
     { from: 'hale', name: 'Hale', text: tx(locale, 'saturday, 10am') },
     { from: 'hale', name: 'Hale', text: tx(locale, 'at the community centre') },
-    { from: 'priya', name: 'Priya', text: tx(locale, 'we should do something saturday') },
     { from: 'me', name: '', text: tx(locale, 'we’re in') },
   ];
 }

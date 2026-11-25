@@ -212,7 +212,8 @@ function Thread({ card }: { card: PaintedShareCard }) {
         display: 'flex',
         flexDirection: 'column',
         flexGrow: 1,
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
+        gap: 8,
         padding: '8px 12px 2px 12px',
       }}
     >

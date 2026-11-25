@@ -154,27 +154,27 @@ describe('share card copy', () => {
     );
   });
 
-  it('puts a class above the saturday yes, in each locale', () => {
+  it('puts Priya first, then the class, then the yes, in each locale', () => {
     const en = paintShareCard('home', query({ locale: 'en' })).chat.lines.map((line) => line.text);
     expect(en).toEqual([
+      'we should do something saturday',
       'toddler swim',
       'saturday, 10am',
       'at the community centre',
-      'we should do something saturday',
       'we’re in',
     ]);
     expect(
       paintShareCard('home', query({ locale: 'fr' })).chat.lines.map((line) => line.text),
     ).toEqual([
+      'on devrait faire quelque chose samedi',
       'natation pour les tout-petits',
       'samedi à 10 h',
       'au centre communautaire',
-      'on devrait faire quelque chose samedi',
       'on est partants',
     ]);
     expect(
       paintShareCard('home', query({ locale: 'zh' })).chat.lines.map((line) => line.text),
-    ).toEqual(['幼儿游泳', '周六上午 10 点', '在社区中心', '我们周六应该做点什么', '我们去']);
+    ).toEqual(['我们周六应该做点什么', '幼儿游泳', '周六上午 10 点', '在社区中心', '我们去']);
   });
 
   it('takes the home card’s second clause from the existing “we’re in” line', () => {
