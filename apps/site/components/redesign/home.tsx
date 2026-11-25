@@ -11,7 +11,6 @@ import {
 import {
   H1,
   HERO_SUB,
-  PILLARS,
   PLUS_SIGNUP_LINE,
   SIGNUP_ANSWER,
   TEXTING_COST_QUESTION,
@@ -34,56 +33,6 @@ import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from '~/comp
 import type { HolidayPromo } from '~/lib/promo/holiday';
 import { localeHref } from '~/i18n/navigation';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
-
-function PillarMark({ title }: { title: (typeof PILLARS)[number]['title'] }) {
-  const common = {
-    viewBox: '0 0 20 20',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.6,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  };
-  if (title === 'Knows your family') {
-    return (
-      <svg aria-hidden="true" {...common}>
-        <circle cx="7.5" cy="7" r="2.8" />
-        <path d="M2.5 16.2c.6-2.6 2.6-4.2 5-4.2s4.4 1.6 5 4.2" />
-        <circle cx="14" cy="7.6" r="2.2" />
-        <path d="M13.6 12.1c2 .1 3.4 1.5 3.9 3.6" />
-      </svg>
-    );
-  }
-  if (title === 'Finds what fits') {
-    return (
-      <svg aria-hidden="true" {...common}>
-        <circle cx="8.75" cy="8.75" r="5.25" />
-        <path d="m12.75 12.75 4 4" />
-      </svg>
-    );
-  }
-  if (title === 'Gets the spot') {
-    return (
-      <svg aria-hidden="true" {...common}>
-        <path d="M1.75 10S4.75 4.5 10 4.5 18.25 10 18.25 10 15.25 15.5 10 15.5 1.75 10 1.75 10Z" />
-        <circle cx="10" cy="10" r="2.5" />
-      </svg>
-    );
-  }
-  if (title === 'Runs the group chat') {
-    return (
-      <svg aria-hidden="true" {...common}>
-        <path d="M10 3c4.4 0 7.5 2.7 7.5 6s-3.1 6-7.5 6c-.8 0-1.6-.1-2.3-.3L3.5 16.5l1.1-3.1C3.3 12.3 2.5 10.7 2.5 9 2.5 5.7 5.6 3 10 3Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg aria-hidden="true" {...common}>
-      <rect x="3" y="4.5" width="14" height="12.5" rx="2.5" />
-      <path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4" />
-    </svg>
-  );
-}
 
 export function RedesignHome({
   locale,
@@ -143,12 +92,22 @@ export function RedesignHome({
         </a>
       </div>
       <ul className="loop glass-ring" aria-label={t("What Hale does")}>
-        {PILLARS.map((pillar) => (
-          <li key={pillar.title}>
-            <PillarMark title={pillar.title} />
-            <b>{t(pillar.title)}</b><small>{t(pillar.sub)}</small>
-          </li>
-        ))}
+        <li>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="8.75" cy="8.75" r="5.25" /><path d="m12.75 12.75 4 4" /></svg>
+          <b>{t("Knows your family")}</b><small>{t("Your family")}</small>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.75 10S4.75 4.5 10 4.5 18.25 10 18.25 10 15.25 15.5 10 15.5 1.75 10 1.75 10Z" /><circle cx="10" cy="10" r="2.5" /></svg>
+          <b>{t("Finds what fits")}</b><small>{t("It finds it")}</small>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2.75a4.75 4.75 0 0 0-4.75 4.75v3L3.75 13h12.5l-1.5-2.5v-3A4.75 4.75 0 0 0 10 2.75Z" /><path d="M8.25 16a1.85 1.85 0 0 0 3.5 0" /></svg>
+          <b>{t("Gets the spot")}</b><small>{t("starting Dec 1, with your ok")}</small>
+        </li>
+        <li>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 3c4.4 0 7.5 2.7 7.5 6s-3.1 6-7.5 6c-.8 0-1.6-.1-2.3-.3L3.5 16.5l1.1-3.1C3.3 12.3 2.5 10.7 2.5 9 2.5 5.7 5.6 3 10 3Z" /><path d="M7.5 10.25c.6.75 1.5 1.15 2.5 1.15s1.9-.4 2.5-1.15" /></svg>
+          <b>{t("Runs the group chat")}</b><small>{t("With the other families")}</small>
+        </li>
       </ul>
     </section>
 
@@ -177,8 +136,11 @@ export function RedesignHome({
             <div className="ev">
               <div className="d"><b>{t("TUE")}</b><span>13</span></div>
               <div>
-                <div className="t">{t("Maya’s swim")}</div>
-                <div className="m">Maya <i /> <span className="mono">{t("4:30 PM")}</span></div>
+                <div className="t">{t("Swim registration opens")}</div>
+                <div className="m">
+                  <svg className="bell" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M6 1a3.2 3.2 0 0 0-3.2 3.2v1.9L1.9 7.6a.5.5 0 0 0 .43.76h7.34a.5.5 0 0 0 .43-.76L9.2 6.1V4.2A3.2 3.2 0 0 0 6 1Zm-1.3 8.6a1.3 1.3 0 0 0 2.6 0H4.7Z" /></svg>
+                  {t("Reminder")} <i /> <span className="mono">{t("7:00 PM")}</span>
+                </div>
               </div>
             </div>
             <div className="ev">
@@ -200,7 +162,7 @@ export function RedesignHome({
               <div>
                 <div className="t">{t("Playdate: story time + park")}</div>
                 <div className="m">Maya, Ava, Theo <i /> <span className="mono">{t("10:00 AM")}</span></div>
-                <div className="m who-row" data-motion-step="3.2"><span className="mini-av">J</span>{t("Jen driving")}</div>
+                <div className="m who-row" data-motion-step="3.2"><span className="mini-av">J</span>{t("Jen driving")} <span className="tag">{t("Just added")}</span></div>
               </div>
             </div>
           </div>
@@ -299,6 +261,7 @@ export function RedesignHome({
  <span className="hs-shore-scrim" aria-hidden="true" />
  <div className="hs-wrap">
   <div className="hs-head hs-glow">
+   <p className="hs-eyebrow">{t("In the thread you already have")}</p>
    <h2 className="hs-h2">{t("It finds it, signs them up, and sorts it out.")}</h2>
    <p className="hs-lede">{t("The same job, in the thread you already have.")}</p>
   </div>
@@ -323,7 +286,7 @@ export function RedesignHome({
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Swimmer 3, Saturdays 9:30 has room. Starting Dec 1, with your ok, I can sign Mia up.")}</div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Swimmer 3, Saturdays 9:30 has room.")} <span className="im-link">{t("Starting Dec 1, with your ok, I can sign Mia up.")}</span></div></div>
      </div>
     </div></div>
    </div>
@@ -339,6 +302,7 @@ export function RedesignHome({
        <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6.")}</div></div>
       </div>
      </div>
+     <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Thu")}</i><b>6</b></span><div><div className="hs-rem-t">{t("Winter concert")}</div><div className="hs-wm">{t("Thursday · 6:00 p.m.")}</div></div></div></div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
@@ -400,8 +364,16 @@ export function RedesignHome({
    <p className="hs-lede">{list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
   </div>
   <ol className="hs-tiers">
+   <li className="hs-tier t-free">
+    <div className="hs-tier-head"><span className="hs-tier-name">{t("Text")}</span><span className="hs-tier-num">01</span></div>
+    <h3>{t("$0/mo")}</h3>
+    <p className="hs-tier-meta">{t("No card needed")}</p>
+    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats.")}</p>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Finds what fits")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
+    <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
+   </li>
    <li className="hs-tier t-plus">
-    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">01</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
@@ -409,10 +381,10 @@ export function RedesignHome({
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
-    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">02</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     <h3>{t(maxAnnualLabel(currency))}</h3>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
   </ol>

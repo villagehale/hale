@@ -239,7 +239,7 @@
   font-family: var(--font-ui); font-size: 13.5px; font-weight: 500; color: rgb(23 41 74 / 0.9); /* live .v4-hero-terms ink */
   display: flex; align-items: center; gap: var(--s2);
 }
-/* The five pillars, three across the 588px copy column so the titles can wrap. */
+/* The core loop: four equal columns across the 588px copy column (3 × 24px gutters). */
 /* Small secondary text over the artwork sits on production's own .v4-glass panel
    (the treatment the landing uses for exactly this case), edges on the copy column. */
 .rd .loop {
@@ -252,7 +252,7 @@
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.8), 0 18px 50px -34px rgb(12 26 54 / 0.55);
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--s4); row-gap: var(--s4);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--s4);
 }
 .rd .loop li { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .rd .loop svg { width: 20px; height: 20px; color: var(--navy); }
@@ -384,7 +384,7 @@
   .rd .nav-links { display: none; }
   .rd .btn { padding: 8.8px 22.4px; }
   .rd .hero { padding: var(--s7) 20px; display: block; }
-  /* centred stack: copy, then the visual, then the pillars */
+  /* centred stack: copy, then the visual, then the four items */
   .rd .grid { display: flex; flex-direction: column; align-items: center; text-align: center; }
   .rd .copy { display: contents; }
   .rd .chip, .rd h1, .rd .sub, .rd .cta-row { order: 0; }
@@ -396,7 +396,7 @@
   .rd .cta-row { margin-top: var(--s6); justify-content: center; }
   .rd .visual-col { margin-top: var(--s7); width: 100%; display: flex; justify-content: center; }
   .rd .visual { zoom: calc(342 / 588); }   /* 342px wide, so a 390px screen keeps the art inside the 24px gutters */
-  /* below the artwork the pillars sit on the canvas, so no glass plate is needed */
+  /* below the artwork the four items sit on the canvas, so no glass plate is needed */
   .rd .loop {
     margin-top: var(--s7); width: 100%;
     padding: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
@@ -571,7 +571,7 @@
 .rd .hs-memory-cap img { width: 22px; height: 22px; border-radius: 50%; }
 
 /* ── 4. Pricing: production numbered glass cards ── */
-.rd .hs-tiers { margin-top: var(--s7); list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gutter); }
+.rd .hs-tiers { margin-top: var(--s7); list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); }
 .rd .hs-tier {
   position: relative; backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); display: flex; flex-direction: column; padding: 34.56px;   /* clamp(1.5rem, 2.4vw, 2.25rem) @1440 */
   border-radius: var(--r-lg);
@@ -592,17 +592,17 @@
 .rd .hs-checks svg { flex: none; width: 16px; height: 16px; margin-top: 0.28em; color: var(--sage); }
 .rd .hs-tier-cta { margin-top: auto; padding-top: var(--s6); }
 .rd .hs-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); padding: 14.4px 25.6px; border-radius: var(--r-full); background: var(--navy); color: var(--cream); font-family: var(--font-ui); font-size: 16px; font-weight: 700; line-height: 1.5; }
-/* Plus/Max CTA slot: same size and shape as the first card’s button, muted and inert */
+/* Plus/Max CTA slot: same size and shape as Free's button, muted and inert */
 .rd .hs-btn-soon { display: inline-flex; align-items: center; justify-content: center; padding: 14.4px 25.6px; border: 0; border-radius: var(--r-full); background: transparent; font-family: var(--font-ui); font-size: 16px; font-weight: 700; line-height: 1.5; cursor: default; user-select: none; opacity: 1; }
 
-/* Three colour families from the shore: sea (Text), sand (Plus), night (Max).
+/* Three colour families from the shore: sea (Free), sand (Plus), night (Max).
    Contrast (WCAG): every text pair >= 4.5:1, icons >= 3:1, measured on the flat card colour. */
-.rd .t-text { background: linear-gradient(180deg, rgb(226 242 249) 0%, #ffffff 46%); }
-.rd .t-text .hs-tier-name { color: #1d5a86; }                         /* 6.8:1 on the wash */
-.rd .t-text .hs-tier-head { border-bottom-color: rgb(29 90 134 / 0.16); }
-.rd .t-text .hs-tier-meta { color: rgb(23 41 74 / 0.76); }
-.rd .t-text .hs-checks svg { color: #2a6f9e; }                         /* 5.4:1 */
-.rd .t-text .hs-tier-num, .rd .t-plus .hs-tier-num { color: rgb(23 41 74 / 0.72); }   /* plain meta grey dips under 4.5:1 on the tints */
+.rd .t-free { background: linear-gradient(180deg, rgb(226 242 249) 0%, #ffffff 46%); }
+.rd .t-free .hs-tier-name { color: #1d5a86; }                         /* 6.8:1 on the wash */
+.rd .t-free .hs-tier-head { border-bottom-color: rgb(29 90 134 / 0.16); }
+.rd .t-free .hs-tier-meta { color: rgb(23 41 74 / 0.76); }
+.rd .t-free .hs-checks svg { color: #2a6f9e; }                         /* 5.4:1 */
+.rd .t-free .hs-tier-num, .rd .t-plus .hs-tier-num { color: rgb(23 41 74 / 0.72); }   /* plain meta grey dips under 4.5:1 on the tints */
 
 .rd .t-plus { background: linear-gradient(180deg, #fbe7cc 0%, #f8efe0 46%); box-shadow: inset 0 0 0 1px rgb(138 85 40 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.7), 0 1px 2px rgb(13 27 61 / 0.04); }
 .rd .t-plus .hs-tier-name { color: #8a5528; }                          /* sand-apricot, not amber: 5.4:1 */

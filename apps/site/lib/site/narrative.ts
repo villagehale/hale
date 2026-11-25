@@ -33,11 +33,9 @@ export const PILLARS = [
   { title: 'Finds what fits', sub: 'It finds it' },
   { title: 'Gets the spot', sub: GETS_THE_SPOT_UNTIL },
   { title: 'Runs the group chat', sub: 'With the other families' },
-  { title: 'Reads your Gmail and calendar', sub: 'Knows your family’s week' },
 ] as const;
 
-export const TEXT_FIRST_TERMS =
-  'You text first. Standard message rates apply, reply STOP any time.';
+export const TEXT_FIRST_TERMS = 'You text first. Standard message rates apply.';
 
 export const SIGNUP_ANSWER =
   'Starting Dec 1, with your ok. Hale does not sign them up before that. You say yes, and you pay.';

@@ -63,7 +63,7 @@ describe('redesign dark theme', () => {
     expect(dark).toContain('.shore-drift.sky { opacity: 0.22; }');
     expect(dark).toContain('.shore-drift.sea { opacity: 0.14; }');
     expect(dark).toContain(
-      '.t-text { background: linear-gradient(180deg, #17405c 0%, #132c49 46%); }',
+      '.t-free { background: linear-gradient(180deg, #17405c 0%, #132c49 46%); }',
     );
     expect(dark).toContain(
       '.t-plus { background: linear-gradient(180deg, #3d2f22 0%, #2a241f 46%);',

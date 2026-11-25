@@ -18,7 +18,7 @@ import {
  * countries, home and pricing):
  *  - the sale name leads; the headline features the Max sale price, with the
  *    regular Max price struck beside it (Barton, Nov 16 1:07 PM ET);
- *  - Plus and Max each show regular → sale, struck; there is no $0 plan card;
+ *  - Plus and Max each show regular → sale, struck; the Text card stays $0/mo;
  *  - CA: Plus $59/yr (regular $159), Max $99/yr (regular $329);
  *    US: Plus $39/yr (regular $119), Max $79/yr (regular $259);
  *  - plain "$", never CAD / USD / C$ / US$ beside a price;

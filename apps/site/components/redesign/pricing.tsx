@@ -82,8 +82,16 @@ export function RedesignPricing({
 <section className="hs hs-wash-c" id="pricing">
  <div className="hs-wrap">
   <ol className="hs-tiers">
+   <li className="hs-tier t-free">
+    <div className="hs-tier-head"><span className="hs-tier-name">{t("Text")}</span><span className="hs-tier-num">01</span></div>
+    <h3>{t("$0/mo")}</h3>
+    <p className="hs-tier-meta">{t("No card needed")}</p>
+    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats.")}</p>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Finds what fits")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
+    <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
+   </li>
    <li className="hs-tier t-plus">
-    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">01</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
     {promo ? (<>
     <TierSalePrice price={promo.plus} />
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
@@ -97,7 +105,7 @@ export function RedesignPricing({
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary" placement="pricing_plus" phase={promo.phase} currency={promo.currency} plan="plus">Lock in {promo.plus.saleLabel}</FoundingCheckoutLink> : list ? <TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
-    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">02</span></div>
+    <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     {promo ? (<>
     <TierSalePrice price={promo.max} />
     <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p>
@@ -106,7 +114,7 @@ export function RedesignPricing({
     <h3>{t(maxAnnualLabel(currency))}</h3>
     </>)}
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary promo-max-btn" placement="pricing_max" phase={promo.phase} currency={promo.currency} plan="max">Lock in {promo.max.saleLabel}</FoundingCheckoutLink> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
   </ol>

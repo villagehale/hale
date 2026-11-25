@@ -152,7 +152,7 @@ export default async function PrivacyPage({
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is an AI agent you reach by iMessage or text message. It knows your family, finds
+          Hale is a family assistant you reach by iMessage or text message. It knows your family, finds
           what fits, can join a group chat you already have, and reads Gmail and calendar when you
           connect them. Starting Dec 1, with your ok, it may sign them up. Today Hale does not book
           or register on your behalf. If we later offer a feature that acts on your instruction (for

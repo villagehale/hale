@@ -64,12 +64,13 @@ it('gives each of the five feature cards one gallery chat scene and types Hale b
   expect(steps(watches)).toEqual(['0.6']);
   expect(watches.match(/data-motion-typing/g)).toHaveLength(1);
   expect(watches).toContain('class="im-screen" data-motion-scene="chat"');
+  expect(watches).toContain('class="im-link"');
   expect(watches).toContain('Starting Dec 1, with your ok.');
 
-  expect(steps(reminds)).toEqual(['0.6']);
+  expect(steps(reminds)).toEqual(['0.6', '1.4']);
   expect(reminds.match(/data-motion-typing/g)).toHaveLength(1);
   expect(reminds).toContain('data-motion-scene="chat"');
-  expect(reminds).not.toContain('im-event');
+  expect(reminds).toContain('</div></div><div class="im-event" data-motion-step="1.4">');
   expect(reminds).not.toContain('hs-did');
 
   expect(steps(asks)).toEqual(['0.4', '1.4', '2.4', '3.2']);
@@ -94,9 +95,9 @@ it('keeps the year-card sentences and leaves HomeMotion as the only player', () 
   expect(home).toContain(
     'Here’s what’s on near you this week:\\n1. Parent & tot swim (ages 2–4), Sat 9:15 a.m.\\n2. Library storytime (ages 2–5), Tue 10:30 a.m.\\n3. Little movers (ages 2–5), winter times not posted yet',
   );
-  expect(home).toContain(
-    'Swimmer 3, Saturdays 9:30 has room. Starting Dec 1, with your ok, I can sign Mia up.',
-  );
+  expect(home).toContain('Swimmer 3, Saturdays 9:30 has room.');
+  expect(home).toContain('Starting Dec 1, with your ok, I can sign Mia up.');
+  expect(home).toContain('In the thread you already have');
   expect(home).toContain("From Maya's school email: the winter concert moved to Thursday at 6.");
   expect(home).toContain('Knows your family');
   expect(home).toContain('What do you know about us?');
