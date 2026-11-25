@@ -1,5 +1,5 @@
 import { parseMetaPixelIds } from './meta-pixel';
-import { hasPromoPreviewQuery } from './posthog-provider';
+import { hasSecretQuery } from './posthog-provider';
 
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -22,12 +22,13 @@ interface PixelWindow extends Window {
  * The only app paths the browser pixel loads on: the public pre-signup join page ads
  * land on. Every other app page carries a bearer token in its URL (/l/<code>, the
  * texted connect and sign-in links) or shows a family's data, and must load nothing
- * from Meta (hard rule #1). `/join?preview=` carries a secret, so it is out too.
+ * from Meta (hard rule #1). A join page whose query or hash carries a secret
+ * (`?preview=` or any bearer-token parameter PostHog also refuses) is out too.
  */
 export const META_PIXEL_PATH_PREFIXES = ['/join'] as const;
 
-export function metaPixelAllowedOn(pathname: string | null, search: string): boolean {
-  if (!pathname || hasPromoPreviewQuery(search)) return false;
+export function metaPixelAllowedOn(pathname: string | null, search: string, hash = ''): boolean {
+  if (!pathname || hasSecretQuery(search) || hasSecretQuery(hash)) return false;
   return META_PIXEL_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );

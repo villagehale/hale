@@ -89,6 +89,8 @@ describe('MetaPixel everywhere else in the app', () => {
     ['the provider-login vault (bearer code)', '/l/AbCdEf1234'],
     ['the texted connect link (bearer token)', '/connect?t=tok123'],
     ['the texted sign-in link', '/sign-in?s=tok123'],
+    ['the join page carrying a token in its query', '/join?t=tok123'],
+    ['the join page carrying a token in its hash', '/join#token=tok123'],
     ['the join preview door (secret query)', '/join?preview=tok123'],
     ['signed-in checkout', '/settings/founding'],
     ['settings', '/settings'],

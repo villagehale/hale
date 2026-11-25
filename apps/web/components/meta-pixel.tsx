@@ -11,7 +11,7 @@ import { installMetaPixel, metaPixelAllowedOn } from '~/lib/analytics/meta-pixel
 export function MetaPixel({ pixelId }: { pixelId: string }): null {
   const pathname = usePathname();
   useEffect(() => {
-    if (!metaPixelAllowedOn(pathname, window.location.search)) return;
+    if (!metaPixelAllowedOn(pathname, window.location.search, window.location.hash)) return;
     installMetaPixel(pixelId);
   }, [pixelId, pathname]);
   return null;
