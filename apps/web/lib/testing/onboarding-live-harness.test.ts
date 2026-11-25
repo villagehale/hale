@@ -5,6 +5,7 @@ import type {
   FriendVoiceComposer,
   FriendVoiceInput,
 } from '~/lib/channel/intake/friend-voice';
+import { withModelFields } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -116,24 +117,28 @@ function scripted(input: FriendVoiceInput): FriendComposed {
       reply:
         'I only keep what is about the kids, like school dates, and I never send anything from your account. You can disconnect anytime. Want me to go ahead?',
       capture,
+      connectorsOffered: ['gmail'],
     };
   }
   if (input.step === 'schedule' && (capture.scheduleAdds as unknown[]).length > 0) {
     return {
-      reply:
-        'Both are on as reminders: Swim Kids 3 on Saturdays and the storytime this Thursday. Anything else from the list?',
+      reply: 'Both are on as reminders: Swim Kids 3 on Saturdays and the storytime this Thursday.',
       capture,
     };
   }
 
   let ask: string;
+  let connectorsOffered: ('gmail' | 'calendar')[] = [];
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
   else if (!kidsKnown) ask = "What are your kids' names?";
   else if (!nameKnown) ask = 'What should I call you?';
   else if (!gmailKnown) {
+    connectorsOffered = ['gmail'];
     ask = `${who ?? 'So'}, want me to watch school email for the kids' dates?`;
-  } else if (!calendarKnown) ask = `Want me to check your calendar too, ${who ?? 'friend'}?`;
-  else if (!scheduleKnown && input.findLines.length > 0) {
+  } else if (!calendarKnown) {
+    connectorsOffered = ['calendar'];
+    ask = `Want me to check your calendar too, ${who ?? 'friend'}?`;
+  } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want any of those on your calendar as reminders?';
   } else if (!coparentKnown) ask = 'Want me to set up a group chat with the other parent?';
   else if (capture.coparentGroup === true) {
@@ -148,10 +153,17 @@ function scripted(input: FriendVoiceInput): FriendComposed {
   const aside = input.identityAsked
     ? 'This is Hale, from Village Hale Technologies Inc. (villagehale.com); the plan details are on the site. '
     : '';
-  return { reply: `${aside}${ask}`, capture };
+  return {
+    reply: `${aside}${ask}`,
+    capture,
+    asksName: ask === 'What should I call you?',
+    connectorsOffered,
+  };
 }
 
-const composer: FriendVoiceComposer = { compose: async (input) => scripted(input) };
+const composer: FriendVoiceComposer = {
+  compose: async (input) => withModelFields(input, scripted(input)),
+};
 
 /** Ground truth for the stub source: the two kid subjects and the two kid events. */
 const oracle: KidItemClassifier = {
@@ -178,6 +190,11 @@ describe('live onboarding replay harness (scripted model)', () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_FROM_E164', LIVE_FROM);
+    // The founder script walks today's order, and its co-parent yes is answered with the
+    // number and phrase under it, which only the group flag's dark path places. The
+    // thread-v2 walk and the lit group step have their own suites.
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {

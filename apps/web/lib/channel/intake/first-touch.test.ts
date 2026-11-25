@@ -46,7 +46,7 @@ const MAYA: IntakeCollected = {
   postalCode: 'M5V 2T6',
 };
 
-import { scriptedTurn } from './scripted-friend-voice.fixture';
+import { scriptedTurn, withModelFields } from './scripted-friend-voice.fixture';
 
 /**
  * A connector card as the parent sees it: the prose, then its link once as its own
@@ -171,6 +171,8 @@ function seedSession(
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  // These walk today's order. The thread-v2 walk has its own suites (golden-conversation-v2).
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
 });
 
 afterEach(() => {
@@ -184,6 +186,8 @@ describe('first touch ladder', () => {
   });
 
   it('asks for a postal code on iMessage and records the location card as skipped', async () => {
+    // The card's dark path. Lit, linq/inbound.test.ts sends the location request.
+    vi.stubEnv('FIRST_TOUCH_LOCATION_CARD_ENABLED', '');
     const { fake, transport, deps } = harness({ extractions: [EMPTY, EMPTY, MAYA] });
     const first = await handleInboundSms(
       fake.db,
@@ -561,14 +565,14 @@ describe('friend voice onboarding', () => {
   it('stores a postal code the model extracted even when the words are not a code', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     deps.friendVoice = {
-      async compose() {
-        return {
+      async compose(input) {
+        return withModelFields(input, {
           reply: 'Near the lake, got it. How old are your kids?',
           capture: {
             ...EMPTY_ONBOARDING_CAPTURE,
             postalCode: 'M5V 2T6',
           },
-        };
+        });
       },
     };
     const result = await handleInboundSms(fake.db, inbound(transport, 'the lake one'), deps);
@@ -663,9 +667,10 @@ describe('friend voice onboarding', () => {
   it('stores a named birth date as that calendar day and does not ask the age (VIL-531, VIL-532)', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     deps.friendVoice = {
-      async compose() {
-        return {
+      async compose(input) {
+        return withModelFields(input, {
           reply: 'Got Lin. What should I call you?',
+          asksName: true,
           capture: {
             ...EMPTY_ONBOARDING_CAPTURE,
             postalCode: 'M5V 2T6',
@@ -678,7 +683,7 @@ describe('friend voice onboarding', () => {
               },
             ],
           },
-        };
+        });
       },
     };
     deps.radar = {
@@ -721,8 +726,9 @@ describe('friend voice onboarding', () => {
     deps.friendVoice = {
       async compose(input, options) {
         if (/born May 1|She's 10/i.test(input.parentWords)) {
-          return {
+          return withModelFields(input, {
             reply: 'Got Lin. What should I call you?',
+            asksName: true,
             capture: {
               ...EMPTY_ONBOARDING_CAPTURE,
               postalCode: 'M5V 2T6',
@@ -735,7 +741,7 @@ describe('friend voice onboarding', () => {
                 },
               ],
             },
-          };
+          });
         }
         return scripted.compose(input, options);
       },
@@ -1022,8 +1028,8 @@ describe('friend voice onboarding', () => {
     const { fake, transport, deps } = harness({ voice: true });
     await handleInboundSms(fake.db, inbound(transport, 'M5V 2T6'), deps);
     deps.friendVoice = {
-      async compose() {
-        return {
+      async compose(input) {
+        return withModelFields(input, {
           reply: 'Leo still needs an age. How old is Leo?',
           capture: {
             ...EMPTY_ONBOARDING_CAPTURE,
@@ -1032,7 +1038,7 @@ describe('friend voice onboarding', () => {
               { name: 'Leo', ageMonths: null, agePrecision: null },
             ],
           },
-        };
+        });
       },
     };
     const held = await handleInboundSms(fake.db, inbound(transport, 'Maya is 4 and Leo'), deps);
@@ -1357,7 +1363,7 @@ describe('friend voice onboarding', () => {
       friendVoice: {
         async compose(input) {
           if (!modelUp) throw new Error('model down');
-          return { reply: scriptedTurn(input).reply };
+          return withModelFields(input, { reply: scriptedTurn(input).reply });
         },
       },
     };
@@ -1500,7 +1506,7 @@ describe('friend voice onboarding', () => {
       friendVoice: {
         async compose(input) {
           if (!modelUp) throw new Error('model down');
-          return { reply: scriptedTurn(input).reply };
+          return withModelFields(input, { reply: scriptedTurn(input).reply });
         },
       },
     };
@@ -1539,7 +1545,7 @@ describe('friend voice onboarding', () => {
     const voice: FriendVoiceComposer = {
       async compose(input) {
         if (!modelUp) throw new Error('model down');
-        return { reply: scriptedTurn(input).reply };
+        return withModelFields(input, { reply: scriptedTurn(input).reply });
       },
     };
     await handleInboundSms(fake.db, inbound(transport, 'hi'), { ...deps, friendVoice: voice });
@@ -1617,7 +1623,9 @@ describe('friend voice onboarding', () => {
     const nudgeVoice: FriendVoiceComposer = {
       async compose(input) {
         if (input.step !== 'nudge_find') throw new Error(`unexpected step ${input.step}`);
-        return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+        return withModelFields(input, {
+          reply: 'Still here if one of those looks good. Which of these looks good?',
+        });
       },
     };
 

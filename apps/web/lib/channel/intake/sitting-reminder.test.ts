@@ -4,7 +4,7 @@ import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type FakeDb, makeFakeDb } from './fakes';
-import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
+import { scriptedFriendVoice, withModelFields } from './scripted-friend-voice.fixture';
 import {
   SITTING_REMINDER_HOUR_LOCAL,
   SITTING_REMINDER_STALE_CLAIM_MS,
@@ -129,12 +129,18 @@ function voiceDeps(transport: FakeTransport): SittingReminderDeps {
     transport,
     friendVoice: {
       async compose(input) {
-        if (input.language === 'fr') return { reply: 'Quel âge ont les enfants?' };
-        if (input.step === 'nudge_ages') return { reply: 'How old are your kids?' };
-        if (input.step === 'nudge_find') {
-          return { reply: 'Still here if one of those looks good. Which of these looks good?' };
+        if (input.language === 'fr') {
+          return withModelFields(input, { reply: 'Quel âge ont les enfants?' });
         }
-        return { reply: "Still here. What's your postal code?" };
+        if (input.step === 'nudge_ages') {
+          return withModelFields(input, { reply: 'How old are your kids?' });
+        }
+        if (input.step === 'nudge_find') {
+          return withModelFields(input, {
+            reply: 'Still here if one of those looks good. Which of these looks good?',
+          });
+        }
+        return withModelFields(input, { reply: "Still here. What's your postal code?" });
       },
     },
   };

@@ -16,7 +16,7 @@ import {
   type FriendVoiceInput,
   friendVoiceContext,
 } from './friend-voice';
-import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
+import { scriptedFriendVoice, withModelFields } from './scripted-friend-voice.fixture';
 import { FakeTransport } from './transport';
 
 /**
@@ -415,7 +415,7 @@ describe('runFirstReplyRecoveryCron', () => {
     const voice: FriendVoiceComposer = {
       async compose(input) {
         inputs.push(input);
-        return { reply: "Hey, it's Hale. What's your postal code?" };
+        return withModelFields(input, { reply: "Hey, it's Hale. What's your postal code?" });
       },
     };
     const fake = makeFakeDb();

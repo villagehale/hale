@@ -120,6 +120,9 @@ describe('the first reply says what to do about the find', () => {
 
   it('sends the Saturday drop-in, not the registration morning', async () => {
     vi.stubEnv(FIRST_REPLY_ACTION_LINE_ENV, 'true');
+    // The first reply without the cold-start ladder. Lit, the ladder records the map it
+    // showed as offered (golden-conversation.test.ts walks the lit ladder).
+    vi.stubEnv('COLD_START_LADDER_ENABLED', '');
     const { familyId } = await arrive();
 
     // Fresh picks are not written as a shared discovery catalog.

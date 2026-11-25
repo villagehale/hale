@@ -60,9 +60,18 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
 // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
 beforeEach(() => {
   vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+  vi.stubEnv('INTAKE_STATED_PLACE_ENABLED', undefined);
 });
 
 describe('friend voice brief', () => {
+  it('appends the stated-place skill only when lit, so a dark turn keeps its bytes', async () => {
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
+    vi.stubEnv('INTAKE_STATED_PLACE_ENABLED', 'true');
+    const addendum = (await loadCronSkill('onboarding-stated-place')).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(`${base}\n\n${addendum}`);
+  });
+
   it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {
     const facts = (input: FriendVoiceInput) =>
       (friendVoiceContext(input) as { facts: Record<string, unknown> }).facts;
@@ -1740,6 +1749,7 @@ describe('the co-parent step: their group, or a new one', () => {
   }
 
   it('with the flag off, a yes is not their existing group, even when the words name one', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const spoken = await read('yes add you to our group', {
       coparentGroup: true,
       coparentGroupMode: 'existing',
@@ -1932,6 +1942,9 @@ describe('model fields, not text matches', () => {
   });
 
   it('a co-parent yes points at the number only when joinPointer says so', async () => {
+    // The group flag's dark claim: the number and phrase go under every yes. Lit, see
+    // "does not point at a number below when code puts none there".
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const input = blank({
       step: 'coparent',
       parentWords: 'oui',
@@ -2657,6 +2670,60 @@ describe('VIL-541 model fields', () => {
       expect(lit.required).toContain(name);
       expect(name.startsWith('par')).toBe(false);
     }
+  });
+
+  it('with the group flag on, does not point at a number below when code puts none there', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+    const yes = blank({
+      step: 'coparent',
+      parentWords: 'yes',
+      recentTurns: [{ role: 'hale', body: 'Want a group with the other parent?', asked: true }],
+      coparentJoin: { line: '+1 555-555-0100', phrase: 'this is our year' },
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+    const reply = (mode: 'existing' | null, joinPointer: 'below' | null, text: string) =>
+      speakFriend(
+        composerOf(
+          fields({
+            reply: text,
+            asks: false,
+            asksCount: 0,
+            messageIsYes: true,
+            joinPointer,
+            capture: { coparentGroup: true, coparentGroupMode: mode },
+          }),
+        ),
+        yes,
+        { page: async () => undefined },
+      );
+
+    // Dark, today's send is unchanged.
+    const dark = await reply(null, 'below', 'The number is below whenever you want.');
+    expect(dark.source).toBe('composed');
+
+    // A plain yes: code puts nothing under the reply, so "below" points at nothing.
+    vi.stubEnv(FIELD_ENV, 'true');
+    const plain = await reply(null, 'below', 'The number is below whenever you want.');
+    expect(plain.source).toBe('unsent');
+    expect(plain.body).toBe('');
+
+    // Positive controls: their existing group gets the number below, and a plain yes
+    // that points at nothing below goes out.
+    const existing = await reply('existing', 'below', 'The number is below whenever you want.');
+    expect(existing.source).toBe('composed');
+    expect(existing.body).toBe('The number is below whenever you want.');
+    const unpointed = await reply(null, null, 'Great, I will set that up with them.');
+    expect(unpointed.source).toBe('composed');
+    expect(unpointed.body).toBe('Great, I will set that up with them.');
   });
 
   it('appends the decision skill only when lit, so a dark turn keeps its bytes', async () => {

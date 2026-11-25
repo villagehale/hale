@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import {
   type FakeDb,
@@ -179,12 +179,16 @@ beforeEach(() => {
   // for the wrong reason.
   process.env[F14_ENABLED_ENV] = '';
   process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+  // These cases are the invite flow. With the flag on there is none
+  // (caregiver/add-command-no-cold-text.pglite.test.ts).
+  vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env[F14_ALLOWLIST_ENV] = '';
   process.env[F14_ENABLED_ENV] = '';
   process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
+  vi.unstubAllEnvs();
 });
 
 describe('co-parent invite · the dark gate', () => {

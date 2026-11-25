@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
 import {
   type FakeDb,
@@ -197,6 +197,7 @@ afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   process.env.JOIN_DOOR_MODEL_COPY_ENABLED = '';
   setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+  vi.unstubAllEnvs();
 });
 
 describe('minting the link · "add my partner", no number', () => {
@@ -609,6 +610,9 @@ describe('a live link outranks whatever conversation is already open', () => {
 
 describe('a live link outranks an OPEN CAREGIVER INVITE on the same number', () => {
   it('closes the invite as it seats them, so their next text is an ordinary turn', async () => {
+    // A texted invite exists only with the flag off. With it on there is none
+    // (caregiver/add-command-no-cold-text.pglite.test.ts).
+    vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
     const h = harness();
     await seedFamily(h.fake);
     // The same number is in both flows at once — a household described it as a sitter

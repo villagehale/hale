@@ -151,6 +151,8 @@ function inserts(fake: FakeDb, table: unknown) {
 
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  // Today's walk. The thread-v2 walk has its own suites (golden-conversation-v2).
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
 });
 afterEach(() => {
   vi.unstubAllEnvs();
