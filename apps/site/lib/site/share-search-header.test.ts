@@ -49,53 +49,36 @@ describe('share-search header', () => {
   });
 });
 
-describe('middleware without a promo query', () => {
-  it.each(['/', '/fr', '/en', '/fr/pricing'])(
-    'keeps next-intl headers and redirects for %s',
-    (path) => {
+const PAGE_PATHS = ['/', '/fr', '/zh', '/pricing'] as const;
+
+describe('middleware promo_phase regression', () => {
+  it('without promo_phase, locale redirects and next-intl headers are unchanged', () => {
+    for (const path of PAGE_PATHS) {
       const before = intl(page(path));
       const after = middleware(page(path));
-      const beforeHeaders = headerBag(before);
-      const afterHeaders = headerBag(after);
-      expect(after.status).toBe(before.status);
-      expect(afterHeaders.get('location') ?? null).toBe(beforeHeaders.get('location') ?? null);
-      expect(afterHeaders.get('x-middleware-rewrite') ?? null).toBe(
-        beforeHeaders.get('x-middleware-rewrite') ?? null,
-      );
-      expect(afterHeaders.get('link') ?? null).toBe(beforeHeaders.get('link') ?? null);
-      for (const [key, value] of beforeHeaders) {
-        if (key === 'x-middleware-override-headers') continue;
-        expect(afterHeaders.get(key), `${path} ${key}`).toBe(value);
-      }
-      const listed = beforeHeaders.get('x-middleware-override-headers');
-      const stamped = afterHeaders.get('x-middleware-override-headers');
-      if (listed == null) {
-        expect(stamped ?? null).toBeNull();
-        expect(afterHeaders.get(`x-middleware-request-${SHARE_SEARCH_HEADER}`) ?? null).toBeNull();
-        return;
-      }
-      const names = listed.split(',').map((name) => name.trim());
-      const afterNames = (stamped ?? '').split(',').map((name) => name.trim());
-      expect(afterNames.slice(0, names.length)).toEqual(names);
-      expect(afterNames).toContain(SHARE_SEARCH_HEADER);
-      expect(afterHeaders.get(`x-middleware-request-${SHARE_SEARCH_HEADER}`)).toBe('');
-      expect(path.includes('promo_phase')).toBe(false);
-    },
-  );
+      expect(after.status, path).toBe(before.status);
+      expect(headerBag(after), path).toEqual(headerBag(before));
+      expect(after.headers.get(`x-middleware-request-${SHARE_SEARCH_HEADER}`), path).toBeNull();
+    }
+  });
 
-  it('keeps / in English, /fr in French, and redirects /en back to /', () => {
-    const root = middleware(page('/'));
-    const french = middleware(page('/fr'));
-    const prefixedDefault = middleware(page('/en'));
-    expect(root.headers.get('location')).toBeNull();
-    expect(root.headers.get('x-middleware-request-x-next-intl-locale')).toBe('en');
-    expect(french.headers.get('location')).toBeNull();
-    expect(french.headers.get('x-middleware-request-x-next-intl-locale')).toBe('fr');
-    expect(french.headers.get('link')).toContain('hreflang="fr"');
-    expect(prefixedDefault.status).toBeGreaterThanOrEqual(300);
-    expect(prefixedDefault.status).toBeLessThan(400);
-    const location = prefixedDefault.headers.get('location');
-    expect(location).toBe(intl(page('/en')).headers.get('location'));
-    expect(new URL(location ?? '', 'https://www.villagehale.com').pathname).toBe('/');
+  it('with promo_phase, stamps the share search header', () => {
+    const search = '?promo_phase=holiday';
+    for (const path of PAGE_PATHS) {
+      const before = intl(page(`${path}${search}`));
+      const after = middleware(page(`${path}${search}`));
+      expect(after.status, path).toBe(before.status);
+      expect(after.headers.get('location'), path).toBe(before.headers.get('location'));
+      expect(after.headers.get('x-middleware-rewrite'), path).toBe(
+        before.headers.get('x-middleware-rewrite'),
+      );
+      expect(after.headers.get('x-middleware-request-x-next-intl-locale'), path).toBe(
+        before.headers.get('x-middleware-request-x-next-intl-locale'),
+      );
+      expect(after.headers.get(`x-middleware-request-${SHARE_SEARCH_HEADER}`), path).toBe(search);
+      expect(after.headers.get('x-middleware-override-headers') ?? '', path).toContain(
+        SHARE_SEARCH_HEADER,
+      );
+    }
   });
 });

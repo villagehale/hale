@@ -7,11 +7,10 @@ const handleI18n = createMiddleware(routing);
 
 /**
  * `not-found.tsx` is collected with the layout, so Next never gives it
- * `searchParams`. The sale phase still has to follow `?promo_phase=`, and the
- * only place that sees the raw query on that response is middleware.
- * next-intl already forwards request headers on its rewrite. This appends the
- * query to that list. A request with no `promo_phase` keeps next-intl's own
- * headers and redirects; the stamp is one extra name.
+ * `searchParams`. A `?promo_phase=` review link still has to reach that card.
+ * next-intl already forwards request headers on its rewrite; this appends the
+ * raw query to that list. A request with no `promo_phase` is not stamped, so
+ * its locale redirects and next-intl headers stay exactly as next-intl set them.
  */
 export function stampShareSearch(response: Response, search: string): void {
   const listed = response.headers.get('x-middleware-override-headers');
@@ -30,7 +29,9 @@ export function stampShareSearch(response: Response, search: string): void {
 
 export default function middleware(request: NextRequest) {
   const response = handleI18n(request);
-  stampShareSearch(response, request.nextUrl.search);
+  if (request.nextUrl.searchParams.has('promo_phase')) {
+    stampShareSearch(response, request.nextUrl.search);
+  }
   return response;
 }
 
