@@ -460,9 +460,8 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     // reason, in the same breath.
     expect(privacyHtml).toContain('the subject, the sender, the first line');
     expect(privacyHtml).toContain('an event’s title, its notes, start, end, place');
-    // The one retention rule the code actually keeps, stated because it is kept:
-    // NOTE_RETENTION_DAYS = 30, purged on the delete sweep.
-    expect(privacyHtml).toContain('for thirty days');
+    expect(privacyHtml).not.toContain('How it went');
+    expect(privacyHtml).not.toContain('evening question');
   });
 
   it('names EVERY field the sync really ingests, per source, derived from the sync', () => {
@@ -537,8 +536,7 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     // the Gmail block says what is read and why, and says nothing about how long
     // it is held. (The account-level erasure is stated where it is true, under
     // residency and retention.)
-    // Scoped to the Gmail <li> alone: the two blocks beside it legitimately say
-    // "thirty days", because that IS the rule the code keeps for a day note.
+    // Scoped to the Gmail <li> alone. The evening-question note is not on this page.
     const gmail =
       /<li><strong>Gmail \(optional\)\.<\/strong>([\s\S]*?)<\/li>/.exec(privacyHtml)?.[1] ?? '';
     expect(gmail, 'the Gmail purpose block must render').toContain(
@@ -548,10 +546,9 @@ describe('privacy — the scaffold the template supplies, in PIPEDA vocabulary',
     for (const promise of ['deleted', 'discarded', 'kept', 'retain', 'days', 'as long as']) {
       expect(gmail, `${promise} must not appear in the Gmail block`).not.toContain(promise);
     }
-    // Positive control: a retention promise IS made elsewhere on this page, for
-    // the one thing the code purges — so the absence above is a claim withheld
-    // rather than a page that never mentions retention.
-    expect(privacyHtml).toContain('for thirty days');
+    // Positive control: a retention promise IS made elsewhere on this page, so the
+    // absence above is a claim withheld rather than a page that never mentions retention.
+    expect(privacyHtml).toContain('within 30 days');
   });
 
   it('opens no purpose block for a purpose nothing serves', () => {

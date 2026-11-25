@@ -256,11 +256,6 @@ export default async function PrivacyPage({
             start, end, place, and whether it was cancelled or moved. Why: so a change to your week
             reaches you as a text rather than as a surprise.
           </li>
-          <li>
-            <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
-            evening question, for thirty days, readable only by you and never shown to another
-            family.
-          </li>
         </ul>
         <p>
           By default Hale asks Google for read-only access to Gmail (<code>gmail.readonly</code>)
@@ -391,8 +386,8 @@ export default async function PrivacyPage({
           As children grow, their privacy matters more. For a child aged 13 or older, raw content
           Hale would show a parent on its own surfaces — the actual text of a message or post Hale
           observes — is <strong>redacted from parents by default</strong>. Parents see only a
-          category or short summary. That is the web app, and the texts, email, calendar feeds,
-          exports, and connected tools Hale sends. A group chat is different: messages in a chat
+          category or short summary. That is the web app, the texts Hale sends, and the calendar
+          feeds, exports, and connected tools. A group chat is different: messages in a chat
           Hale is part of, including a child&rsquo;s, are visible to the members of that chat. Hale
           does not hide them from the people already in it. When Hale writes into that chat, it does
           not name a child aged 13 or older, or that child&rsquo;s events.
@@ -704,8 +699,8 @@ export default async function PrivacyPage({
         <p>
           Message content, including messages from other members of a group chat Hale is in and from
           people who are not Hale users, is deleted or redacted 12 months after it was sent, and
-          sooner if you or they ask. Your answer to Hale&rsquo;s evening question is kept for thirty
-          days. Disconnecting Gmail or Calendar stops Hale reading that account. The details already
+          sooner if you or they ask. Disconnecting Gmail or Calendar stops Hale reading that account.
+          The details already
           saved from it are deleted when your account is deleted, and message content within them is
           deleted or redacted on the same 12-month schedule.
         </p>
