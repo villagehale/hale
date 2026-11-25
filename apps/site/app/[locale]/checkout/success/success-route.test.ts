@@ -81,20 +81,18 @@ describe('/checkout/success', () => {
     ] as const) {
       vi.stubGlobal(
         'fetch',
-        vi
-          .fn()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({
-                transactionId: 'cs_test_t',
-                value: 99,
-                currency: 'CAD',
-                paid: true,
-                tier,
-              }),
-              { status: 200 },
-            ),
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              transactionId: 'cs_test_t',
+              value: 99,
+              currency: 'CAD',
+              paid: true,
+              tier,
+            }),
+            { status: 200 },
           ),
+        ),
       );
       const html = renderToStaticMarkup(
         await CheckoutSuccessPage({
@@ -151,6 +149,92 @@ describe('/checkout/success', () => {
     expect(html).toContain('Checkout');
     expect(html).not.toContain('Text Hale');
     expect(html).not.toContain('GooglePurchaseConversion');
+  });
+
+  it('asks for the Linq code before Text Hale on a direct checkout', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16462352164');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: false,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'sent',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_direct',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_direct' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('We sent a code to this number.');
+    expect(main).toContain('+14165550100');
+    expect(main).toContain('Confirm');
+    expect(main).toContain('Send again');
+    expect(main).toContain('Use a different number');
+    expect(main).not.toContain('sms:');
+    expect(main).not.toContain('app.villagehale.com');
+  });
+
+  it('shows Text Hale once that direct checkout is bound', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16462352164');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: true,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'already_bound',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_bound',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_bound' }),
+      }),
+    );
+    expect(html).toContain('You&#x27;re in.');
+    expect(html).toContain('Text Hale');
+    expect(html).toContain('sms:+16462352164');
+    expect(html).not.toContain('We sent a code to this number.');
   });
 
   it('never reads value or currency from the query string', () => {
@@ -271,16 +355,19 @@ describe('with the flag on', () => {
     it.each([
       ['Windows', DESKTOP],
       ['no user agent', null],
-    ])('offers no Text Hale door on %s, where it would open the new-visitor page', async (_name, ua) => {
-      if (ua) withUserAgent(ua);
-      stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
-      const main = mainOf(await renderPage());
-      expect(main).toContain('Keep texting Hale like you do now.');
-      expect(main).toContain('Open Hale');
-      expect(main).not.toContain('Text Hale<');
-      expect(main).not.toContain('checkout_success');
-      expect(main).not.toContain('<svg');
-    });
+    ])(
+      'offers no Text Hale door on %s, where it would open the new-visitor page',
+      async (_name, ua) => {
+        if (ua) withUserAgent(ua);
+        stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+        const main = mainOf(await renderPage());
+        expect(main).toContain('Keep texting Hale like you do now.');
+        expect(main).toContain('Open Hale');
+        expect(main).not.toContain('Text Hale<');
+        expect(main).not.toContain('checkout_success');
+        expect(main).not.toContain('<svg');
+      },
+    );
 
     it.each([
       ['iPhone', IPHONE],

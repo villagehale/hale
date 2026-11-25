@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { CheckoutState } from '~/components/checkout/checkout-state';
+import { PricingCheckoutVerify } from '~/components/checkout/pricing-verify';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
 import { SiteFooter } from '~/components/site-footer';
@@ -22,6 +23,7 @@ import {
   metaPurchaseFromPaidSession,
   paidPlanName,
 } from '~/lib/billing/checkout-success';
+import { openPricingCheckout } from '~/lib/billing/pricing-checkout-open';
 import { type Platform, platformFromUa } from '~/lib/chooser';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
@@ -100,7 +102,9 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
     : null;
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const textHref = smsNumber ? buildSmsHref(smsNumber, null, intakePrefill(locale)) : null;
-  const view = checkoutViewForPage(sessionId, facts);
+  const direct = paid && sessionId ? await openPricingCheckout(sessionId) : null;
+  const verifying = direct?.direct === true && direct.bound === false;
+  const view = verifying ? null : checkoutViewForPage(sessionId, facts);
   const platform = view ? await requestPlatform() : 'unknown';
 
   return (
@@ -108,7 +112,37 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
       <SiteHeader locale={locale} />
       <div className="rd">
         <main id="main" className="sp-hero">
-          {view ? (
+          {direct && !direct.bound && sessionId ? (
+            <PricingCheckoutVerify
+              sessionId={sessionId}
+              initialPhone={direct.phone}
+              initialStatus={direct.status}
+              locale={locale}
+              smsNumber={smsNumber ?? ''}
+              prefill={intakePrefill(locale)}
+              copy={{
+                heading: t('heading'),
+                plan: planName ? t('plan', { plan: planName }) : null,
+                codeSent: t('codeSent'),
+                codeHint: t('codeHint'),
+                phoneLabel: t('phoneLabel'),
+                codeLabel: t('codeLabel'),
+                resend: t('resend'),
+                editNumber: t('editNumber'),
+                saveNumber: t('saveNumber'),
+                wrongCode: t('wrongCode'),
+                expired: t('expired'),
+                locked: t('locked'),
+                limited: t('limited'),
+                cooldown: t('cooldown'),
+                notSent: t('notSent'),
+                phoneInvalid: t('phoneInvalid'),
+                confirm: t('confirm'),
+                lede: t('lede'),
+                textHale: t('textHale'),
+              }}
+            />
+          ) : view ? (
             <div className="sp-grid">
               <div className="sp-copy">
                 <CheckoutState
