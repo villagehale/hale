@@ -74,8 +74,8 @@ export const FAQ: readonly FaqItem[] = [
       'Only what’s said in that chat. Nothing from your own calendar, inbox or 1:1 texts with Hale shows up in a group.',
   },
   {
-    id: 'does-my-co-parent-see-the-plan',
-    question: 'Does my co-parent see the same plan?',
+    id: 'is-my-co-parent-free',
+    question: 'Is my co-parent on it?',
     answer: 'Yes. Same plan, on their own phone.',
   },
   {
@@ -108,8 +108,8 @@ export const FAQ: readonly FaqItem[] = [
       'Not yet.',
   },
   {
-    id: 'what-does-texting-cost',
-    question: 'What does texting Hale cost?',
+    id: 'is-it-free',
+    question: "What's the cost?",
     answer: TEXTING_COST_ANSWER,
   },
   {

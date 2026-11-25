@@ -9,11 +9,9 @@ import {
   plusPriceStartSentence,
 } from '~/lib/billing/plain-price';
 import {
-  H1,
   HERO_SUB,
   PLUS_SIGNUP_LINE,
   SIGNUP_ANSWER,
-  TEXTING_COST_QUESTION,
 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { Phrase, tx } from './tx';
@@ -80,7 +78,7 @@ export function RedesignHome({
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 2.5c2.5 0 4.5 1.6 4.5 3.6S9 9.7 6.5 9.7c-.45 0-.9-.05-1.3-.15L2.8 10.6l.65-1.75C2.55 8.2 2 7.2 2 6.1 2 4.1 4 2.5 6.5 2.5Z" /><path d="M12.2 6.2c1.1.6 1.8 1.6 1.8 2.7 0 .9-.45 1.7-1.2 2.3l.5 1.5-1.9-.85c-.4.1-.8.15-1.2.15-1.3 0-2.45-.45-3.25-1.2" /></svg>
         {t("Works in your group chats")}
       </span>
-      <h1 className={locale === "en" ? undefined : "h1-fr"}>{t(H1)}</h1>
+      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t('From "we should"')}<br />{t('to "we\'re in."')}</h1>
       <p className="sub">{t(HERO_SUB)}</p>
       <div className="cta-row">
         <TextDoor className="btn btn-hero" placement="hero" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>
@@ -94,19 +92,19 @@ export function RedesignHome({
       <ul className="loop glass-ring" aria-label={t("What Hale does")}>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="8.75" cy="8.75" r="5.25" /><path d="m12.75 12.75 4 4" /></svg>
-          <b>{t("Knows your family")}</b><small>{t("Your family")}</small>
+          <b>{t("Knows the family")}</b><small>{t("Their ages, week")}</small>
         </li>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.75 10S4.75 4.5 10 4.5 18.25 10 18.25 10 15.25 15.5 10 15.5 1.75 10 1.75 10Z" /><circle cx="10" cy="10" r="2.5" /></svg>
-          <b>{t("Finds what fits")}</b><small>{t("It finds it")}</small>
+          <b>{t("Finds a good fit")}</b><small>{t("Near them, by age")}</small>
         </li>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2.75a4.75 4.75 0 0 0-4.75 4.75v3L3.75 13h12.5l-1.5-2.5v-3A4.75 4.75 0 0 0 10 2.75Z" /><path d="M8.25 16a1.85 1.85 0 0 0 3.5 0" /></svg>
-          <b>{t("Gets the spot")}</b><small>{t("starting Dec 1, with your ok")}</small>
+          <b>{t("Gets a spot")}</b><small>{t("From Dec 1, your ok")}</small>
         </li>
         <li>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 3c4.4 0 7.5 2.7 7.5 6s-3.1 6-7.5 6c-.8 0-1.6-.1-2.3-.3L3.5 16.5l1.1-3.1C3.3 12.3 2.5 10.7 2.5 9 2.5 5.7 5.6 3 10 3Z" /><path d="M7.5 10.25c.6.75 1.5 1.15 2.5 1.15s1.9-.4 2.5-1.15" /></svg>
-          <b>{t("Runs the group chat")}</b><small>{t("With the other families")}</small>
+          <b>{t("Runs group chats")}</b><small>{t("With the families too")}</small>
         </li>
       </ul>
     </section>
@@ -214,7 +212,7 @@ export function RedesignHome({
                 <div className="im-who">Hale</div>
                 <img className="im-pic" src={logoSrc} alt="" />
                 <TypingBubble />
-                <div className="im-b in tail">{t("Jen’s driving.")}</div>
+                <div className="im-b in tail">{t("Jen’s driving. Saturday is set for everyone.")}</div>
               </div>
             </div>
             <ImCompose />
@@ -250,7 +248,7 @@ export function RedesignHome({
     {groupChatSlides(locale, true)}
   </ChatGallery>
   <div className="hs-solo">
-   <div className="hs-solo-l"><span className="hs-solo-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true"><path d="M10 3.5c3.9 0 7 2.6 7 5.8s-3.1 5.8-7 5.8c-.8 0-1.5-.1-2.2-.3L4.3 16.3l1-2.9C4 12.4 3 10.9 3 9.3 3 6.1 6.1 3.5 10 3.5z" /></svg></span><p className="hs-p"><b>{t("Not in a group?")}</b> {t("Text Hale on your own. It knows your family, just the two of you.")}</p></div>
+   <div className="hs-solo-l"><span className="hs-solo-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true"><path d="M10 3.5c3.9 0 7 2.6 7 5.8s-3.1 5.8-7 5.8c-.8 0-1.5-.1-2.2-.3L4.3 16.3l1-2.9C4 12.4 3 10.9 3 9.3 3 6.1 6.1 3.5 10 3.5z" /></svg></span><p className="hs-p"><b>{t("Not in a group?")}</b> {t("Text Hale on your own. It knows your family, just the two of you now.")}</p></div>
    <TextDoor className="btn btn-hero" placement="home_solo" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor>
   </div>
  </div>
@@ -261,15 +259,15 @@ export function RedesignHome({
  <span className="hs-shore-scrim" aria-hidden="true" />
  <div className="hs-wrap">
   <div className="hs-head hs-glow">
-   <p className="hs-eyebrow">{t("In the thread you already have")}</p>
+   <p className="hs-eyebrow">{t("In the thread already")}</p>
    <h2 className="hs-h2">{t("It finds it, signs them up, and sorts it out.")}</h2>
-   <p className="hs-lede">{t("The same job, in the thread you already have.")}</p>
+   <p className="hs-lede">{t("The same job, all year, in the thread you already have.")}</p>
   </div>
   <div className="hs-beats">
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("Any week")}</p>
-    <h3 className="hs-h3">{t("Finds what fits")}</h3>
-    <p className="hs-p">{t("It finds what fits for this kid this week: swim, camps and drop-ins, from the places that run them.")}</p>
+    <h3 className="hs-h3">{t("Finds what fits near you")}</h3>
+    <p className="hs-p">{t("Swim, camps, drop-ins, the library down the street. Picked for their ages, from the places that run them.")}</p>
     <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
@@ -279,47 +277,47 @@ export function RedesignHome({
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
-    <p className="hs-when">{t("Starting Dec 1")}</p>
-    <h3 className="hs-h3">{t("Gets the spot")}</h3>
-    <p className="hs-p">{t("Starting Dec 1, with your ok.")}</p>
+    <p className="hs-when">{t("When Dec 1 arrives")}</p>
+    <h3 className="hs-h3">{t("Gets the open spot")}</h3>
+    <p className="hs-p">{t("Starting Dec 1, with your ok, Hale signs them up when you say yes, and you still pay.")}</p>
     <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("Swimmer 3, Saturdays 9:30 has room.")} <span className="im-link">{t("Starting Dec 1, with your ok, I can sign Mia up.")}</span></div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("A seat just opened")} {t("in Swimmer 3, Saturdays 9:30. From Dec 1,")} <span className="im-link">{t("your ok now")}</span>.</div></div>
      </div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
     <p className="hs-when">{t("From your email")}</p>
-    <h3 className="hs-h3">{t("Reads your Gmail and calendar")}</h3>
-    <p className="hs-p">{t("Knows what’s booked and picks up dates from school and rec emails.")}</p>
+    <h3 className="hs-h3">{t("Reads your Gmail calendar")}</h3>
+    <p className="hs-p">{t("It reads school and rec mail, keeps dates that moved, and shows the new time to the family.")}</p>
     <div className="hs-art"><div data-motion-scene="chat">
      <div className="im-screen">
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6.")}</div></div>
+       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6. The new time is on the family plan.")}</div></div>
       </div>
      </div>
-     <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Thu")}</i><b>6</b></span><div><div className="hs-rem-t">{t("Winter concert")}</div><div className="hs-wm">{t("Thursday · 6:00 p.m.")}</div></div></div></div>
+     <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Thu")}</i><b>6</b></span><div><div className="hs-rem-t">{t("The winter concert")}</div><div className="hs-wm">{t("Thursday · 6:00 p.m.")}</div></div></div></div>
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
-    <p className="hs-when">{t("Each kid")}</p>
-    <h3 className="hs-h3">{t("Knows your family")}</h3>
-    <p className="hs-p">{t("Each kid’s age, what they like, and what’s already booked.")}</p>
+    <p className="hs-when">{t("For every one of them")}</p>
+    <h3 className="hs-h3">{t("Knows the family")}</h3>
+    <p className="hs-p">{t("Each kid’s age, what they like, and what’s already booked. One text can fix any of it.")}</p>
     <div className="hs-art"><div data-motion-scene="chat">
      <div className="im-screen">
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("Here’s what I know so far.")}</div></div>
+       <div className="im-run" data-motion-step="0.4"><TypingBubble /><div className="im-b in tail">{t("Here’s what I know so far about them.")}</div></div>
        <div className="im-run out" data-motion-step="1.4"><div className="im-b out tail">{t("Mia loves swimming. Theo is 3.")}</div></div>
-       <div className="im-run" data-motion-step="2.4"><TypingBubble /><div className="im-b in tail">{t("Got it. I’ll use that when I find what fits.")}</div></div>
+       <div className="im-run" data-motion-step="2.4"><TypingBubble /><div className="im-b in tail">{t("Got it. I’ll use that when I find what fits, and when I sort the week.")}</div></div>
       </div>
      </div>
-     <div className="im-chips"><span className="hs-did" data-motion-step="3.2"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Knows your family")}</span></div>
+     <div className="im-chips"><span className="hs-did" data-motion-step="3.2"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>{t("Knows the family so far")}</span></div>
     </div></div>
    </div>
   </div>
@@ -332,9 +330,9 @@ export function RedesignHome({
    <h2 className="hs-h2">{t("Who, when and where, kept straight.")}</h2>
    <ul className="hs-list">
     <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12.5" rx="2.5" /><path d="M3 8.5h14M7 2.8v3.4M13 2.8v3.4" /></svg></span><div><h3 className="hs-h3">{t("One plan, everyone on it")}</h3><p className="hs-p">{t("Hale keeps the plan in the group chat, so every family sees the same who, when and where.")}</p></div></li>
-    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.8" /><path d="M2.5 16.2c.6-2.6 2.6-4.2 5-4.2s4.4 1.6 5 4.2" /><circle cx="14" cy="7.6" r="2.2" /><path d="M13.6 12.1c2 .1 3.4 1.5 3.9 3.6" /></svg></span><div><h3 className="hs-h3">{t("Your co-parent sees the same plan")}</h3><p className="hs-p">{t("Add Hale to the group you already share. Same plan, on their own phone.")}</p></div></li>
-    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 13.5V10l1.7-4.1A2 2 0 0 1 7 4.7h6a2 2 0 0 1 1.8 1.2l1.7 4.1v3.5" /><path d="M2.8 10h14.4v3.5H2.8z" /><circle cx="6.3" cy="15.3" r="1.3" /><circle cx="13.7" cy="15.3" r="1.3" /></svg></span><div><h3 className="hs-h3">{t("Who’s driving, sorted")}</h3><p className="hs-p">{t("Say who’s taking them. Hale keeps the driver straight.")}</p></div></li>
-    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 16.5s-6-3.6-6-8.1A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6 2.1c0 4.5-6 8.1-6 8.1z" /></svg></span><div><h3 className="hs-h3">{t("Knows your family")}</h3><p className="hs-p">{t("Ages, what they love, what’s already on their week. Ask “what do you know” to see it all, or fix it in one text.")}</p></div></li>
+    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.8" /><path d="M2.5 16.2c.6-2.6 2.6-4.2 5-4.2s4.4 1.6 5 4.2" /><circle cx="14" cy="7.6" r="2.2" /><path d="M13.6 12.1c2 .1 3.4 1.5 3.9 3.6" /></svg></span><div><h3 className="hs-h3">{t("Your co-parent sees the same plan")}</h3><p className="hs-p">{t("Add Hale to the group you already share. Same plan, same week, on their own phone.")}</p></div></li>
+    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 13.5V10l1.7-4.1A2 2 0 0 1 7 4.7h6a2 2 0 0 1 1.8 1.2l1.7 4.1v3.5" /><path d="M2.8 10h14.4v3.5H2.8z" /><circle cx="6.3" cy="15.3" r="1.3" /><circle cx="13.7" cy="15.3" r="1.3" /></svg></span><div><h3 className="hs-h3">{t("Who’s driving, sorted")}</h3><p className="hs-p">{t("Say who’s taking them. Hale keeps the driver straight, and the week stays in one place.")}</p></div></li>
+    <li><span className="hs-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 16.5s-6-3.6-6-8.1A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6 2.1c0 4.5-6 8.1-6 8.1z" /></svg></span><div><h3 className="hs-h3">{t("Knows each kid's week")}</h3><p className="hs-p">{t("Ages, what they love, what’s already on their week. Ask “what do you know” to see it all, or fix it in one text.")}</p></div></li>
    </ul>
   </div>
   <div className="hs-logi-r">
@@ -367,8 +365,8 @@ export function RedesignHome({
    <li className="hs-tier t-free">
     <div className="hs-tier-head"><span className="hs-tier-name">{t("Text")}</span><span className="hs-tier-num">01</span></div>
     <h3>{t("$0/mo")}</h3>
-    <p className="hs-tier-meta">{t("No card needed")}</p>
-    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats.")}</p>
+    <p className="hs-tier-meta">{t("No card needed at all")}</p>
+    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats. Hale finds what's on near you, and from Dec 1 signs them up with your ok.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Finds what fits")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
     <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
    </li>
@@ -402,7 +400,7 @@ export function RedesignHome({
   <div className="hs-faq-r">
    {promo ? <PromoFaqItems promo={promo} /> : (<>
    <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t(SIGNUP_ANSWER)}</FaqItem>
-   <FaqItem id="what-does-texting-cost" question={list ? t("What does Plus cost?") : t(TEXTING_COST_QUESTION)}>{list ? t(plusPriceStartSentence(currency)) : t(PAID_PLANS_LINE)}</FaqItem>
+   <FaqItem id="is-it-free" question={list ? t("What does Plus cost?") : t("What's the cost?")}>{list ? t(plusPriceStartSentence(currency)) : t(PAID_PLANS_LINE)}</FaqItem>
    </>)}
    <FaqItem id="do-i-need-an-app" question={t("Do I need an app?")}>{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</FaqItem>
    <FaqItem id="what-about-our-privacy" question={t("What about our privacy?")}><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></FaqItem>

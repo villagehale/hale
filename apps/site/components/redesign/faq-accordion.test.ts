@@ -16,7 +16,7 @@ import { RedesignPricing } from './pricing';
 
 const HOME_IDS = [
   'does-hale-book-or-register-for-me',
-  'what-does-texting-cost',
+  'is-it-free',
   'do-i-need-an-app',
   'what-about-our-privacy',
 ] as const;

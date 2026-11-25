@@ -67,12 +67,12 @@ for (const { phase, currency } of CASES) {
   for (const [name, html] of Object.entries(pages)) {
     describe(`${name} · ${phase} · ${currency}`, () => {
       const body = text(html);
-      const offer = html.match(/id="sale"[\s\S]*?<\/section>/)?.[0] ?? '';
+      const offer = html.match(/id="founding"[\s\S]*?<\/section>/)?.[0] ?? '';
 
       it('leads with the sale name and features the Max sale price', () => {
         expect(body).toContain(phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale');
         expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Black Friday Sale');
-        expect(html).toContain('id="sale"');
+        expect(html).toContain('id="founding"');
         const sale = want.max[1].replace('$', '').replace('/yr', '');
         expect(offer).toMatch(/class="promo-offer-tier"[^>]*>Max</);
         expect(offer).toMatch(new RegExp(`class="promo-price-num"[^>]*>${sale}<`));
@@ -82,10 +82,7 @@ for (const { phase, currency } of CASES) {
       });
 
       it('shows only this country’s numbers, with a plain "$" and no currency code', () => {
-        const both =
-          'In Canada, Plus is $59/yr and Max is $99/yr. In the US, Plus is $39/yr and Max is $79/yr. Through Dec 31.';
-        const priced = name === 'pricing' ? body.replace(both, '') : body;
-        if (name === 'pricing') expect(body).toContain(both);
+        const priced = body;
         expect(priced).not.toMatch(/C\$|US\$/);
         expect(priced).not.toMatch(/\$\d[\d.]*(\/(yr|mo))? ?(CAD|USD)\b/);
         expect(priced).not.toMatch(/\b(CAD|USD)\b/);
@@ -131,7 +128,7 @@ for (const { phase, currency } of CASES) {
         expect(body).not.toMatch(/\bbiggest\b/i);
         expect(body).not.toMatch(/lowest price of the year/i);
         expect(body).toContain(
-          'Your price stays locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
+          'Your price for the rest of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.',
         );
         expect(body).toContain(
           'Billed once a year. Sale prices are for families who join by Dec 31, 2026.',

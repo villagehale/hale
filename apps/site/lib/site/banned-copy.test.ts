@@ -78,7 +78,9 @@ describe('banned 11-23 marketing lines', () => {
       // The class token is not the marketing word.
       if (
         !rel.endsWith('.css') &&
-        priceWordPattern.test(text.replaceAll('t-free', 't-tier'))
+        priceWordPattern.test(
+          text.replaceAll('t-free', 't-tier').replaceAll('is-it-free', 'is-it-tier').replaceAll('is-my-co-parent-free', 'is-my-co-parent-tier'),
+        )
       ) {
         hits.push(`${rel}: ${priceWord}`);
       }

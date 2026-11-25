@@ -10,7 +10,7 @@ export const PAGE_TITLE = `Hale: ${H1}`;
 
 /** The line under the homepage H1. Longer than the one-liner, and not a meta description. */
 export const HERO_SUB =
-  "Hale joins the parent group chat, finds real classes and plans near you for your kids' ages, and gets every family to a yes.";
+  "Plans already live in group chats. Add Hale, and it finds what's on, gets everyone to a yes, and keeps that same plan for the week.";
 
 export const ONE_LINER =
   "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.";

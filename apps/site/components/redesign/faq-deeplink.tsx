@@ -17,12 +17,7 @@ export function FaqDeepLink() {
         return;
       }
       if (!id) return;
-      const legacyWord = 'fr' + 'ee';
-      const legacy: Record<string, string> = {
-        [`is-it-${legacyWord}`]: 'what-does-texting-cost',
-        [`is-my-co-parent-${legacyWord}`]: 'does-my-co-parent-see-the-plan',
-      };
-      const el = document.getElementById(legacy[id] ?? id);
+      const el = document.getElementById(id);
       if (!el) return;
       const details = el.closest('details.hs-acc');
       if (!(details instanceof HTMLDetailsElement)) return;

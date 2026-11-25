@@ -39,13 +39,13 @@ describe('product FAQ', () => {
       'can-hale-join-our-group-chat',
       'what-does-hale-do-in-a-group',
       'what-do-other-parents-in-the-group-see',
-      'does-my-co-parent-see-the-plan',
+      'is-my-co-parent-free',
       'does-hale-book-or-register-for-me',
       'what-does-hale-find',
       'can-i-ask-it-other-things',
       'how-often-will-hale-text-me',
       'will-hale-tell-me-if-a-class-is-any-good',
-      'what-does-texting-cost',
+      'is-it-free',
       'what-do-paid-plans-cost',
       'what-happens-to-our-data',
       'is-hale-a-person',
@@ -66,13 +66,13 @@ describe('the FAQ this build serves', () => {
       'Can Hale join our group chat?',
       'What does Hale do in a group?',
       'What do other parents in the group see?',
-      'Does my co-parent see the same plan?',
+      'Is my co-parent on it?',
       'Does Hale book or register for me?',
       'What does Hale find?',
       'Can I ask it other things?',
       'How often will Hale text me?',
       'Will Hale tell me if a class is any good?',
-      'What does texting Hale cost?',
+      "What's the cost?",
       'What do paid plans cost?',
       'What happens to our data?',
       'Is Hale a person?',
@@ -88,7 +88,7 @@ describe('the FAQ this build serves', () => {
   });
 
   it('names Plus and Max without a currency label', () => {
-    const costQuestion = FAQ.find((item) => item.id === 'what-does-texting-cost');
+    const costQuestion = FAQ.find((item) => item.id === 'is-it-free');
     const cost = FAQ.find((item) => item.id === 'what-do-paid-plans-cost');
     expect(costQuestion?.answer).toContain('Paid plans are Plus and Max.');
     expect(costQuestion?.answer).toContain('Full refund anytime if it’s not for you.');

@@ -36,7 +36,7 @@ import {
 
 export type { PromoPhase };
 /** Anchor the banner and the mobile bar both use. */
-export const PROMO_OFFER_ID = 'sale';
+export const PROMO_OFFER_ID = 'founding';
 
 export const PROMO_STARTS_AT = FOUNDING_PROMO_STARTS_AT;
 export const HOLIDAY_PHASE_STARTS_AT = HOLIDAY_SALE_STARTS_AT;

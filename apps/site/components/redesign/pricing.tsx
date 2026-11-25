@@ -1,4 +1,4 @@
-import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE, PROMO_PRICE_DISPLAY } from '@hale/types';
+import { type BillingCurrency, CHECKOUT_REGION_UNSUPPORTED_MESSAGE } from '@hale/types';
 import {
   PAID_PLANS_LINE,
   maxAnnualLabel,
@@ -84,9 +84,9 @@ export function RedesignPricing({
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
     <div className="hs-tier-head"><span className="hs-tier-name">{t("Text")}</span><span className="hs-tier-num">01</span></div>
-    <h3>{t("$0/mo")}</h3>
-    <p className="hs-tier-meta">{t("No card needed")}</p>
-    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats.")}</p>
+    <h3>{promo ? "$0" : t("$0/mo")}</h3>
+    <p className="hs-tier-meta">{t("No card needed at all")}</p>
+    <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats. Hale finds what's on near you, and from Dec 1 signs them up with your ok.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Finds what fits")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
     <div className="hs-tier-cta"><TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor></div>
    </li>
@@ -119,7 +119,6 @@ export function RedesignPricing({
    </li>
   </ol>
   <p className="hs-meta hs-foot-note">{promo ? "Plus and Max are billed yearly. Sale prices are for families who join by Dec 31 and stay locked in while you’re a member." : list ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
-  <p className="hs-meta hs-foot-note">{`In Canada, Plus is ${PROMO_PRICE_DISPLAY.plus.CAD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.CAD.perYear}. In the US, Plus is ${PROMO_PRICE_DISPLAY.plus.USD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.USD.perYear}. Through Dec 31.`}</p>
  </div>
 </section><section className="hs hs-wash-d">
  <div className="hs-wrap hs-grid">

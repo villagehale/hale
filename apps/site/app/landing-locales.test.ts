@@ -35,14 +35,17 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('From &quot;we should&quot; to &quot;we&#x27;re in.&quot;');
-    expect(HTML.en).toContain('Hale joins the parent group chat');
+    expect(HTML.en).toContain('From &quot;we should&quot;');
+    expect(HTML.en).toContain('to &quot;we&#x27;re in.&quot;');
+    expect(HTML.en).toContain('Plans already live in group chats');
     expect(HTML.en).toContain('Library playgroup');
-    expect(rd(HTML.fr)).toContain('De « on devrait » à « on y va ».');
-    expect(rd(HTML.fr)).toContain('Hale rejoint le groupe de parents');
+    expect(rd(HTML.fr)).toContain('Depuis « on devrait »');
+    expect(rd(HTML.fr)).toContain('à « on y va ».');
+    expect(rd(HTML.fr)).toContain('Les plans sont déjà dans les groupes texto');
     expect(rd(HTML.fr)).not.toContain('From "we should"');
-    expect(rd(HTML.zh)).toContain('从“改天吧”到“就这么定了”');
-    expect(rd(HTML.zh)).toContain('Hale 加入家长群');
+    expect(rd(HTML.zh)).toContain('从“改天吧”');
+    expect(rd(HTML.zh)).toContain('到“就定了”。');
+    expect(rd(HTML.zh)).toContain('计划已经在家长群里');
     expect(rd(HTML.zh)).not.toContain('From "we should"');
     expect(rd(HTML.zh)).not.toContain('已报名');
   });
@@ -65,7 +68,7 @@ describe('every locale renders the redesign', () => {
 
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
-    expect(fr).toContain('Hale rejoint le groupe de parents');
+    expect(fr).toContain('Les plans sont déjà dans les groupes texto');
     expect(fr).toContain('À partir du 1er décembre, il les inscrit avec ton accord.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
@@ -76,7 +79,7 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('Every kid, caregivers included');
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
-    expect(zh).toContain('Hale 加入家长群');
+    expect(zh).toContain('计划已经在家长群里');
     expect(zh).toContain('从 12 月 1 日起，经你同意帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');

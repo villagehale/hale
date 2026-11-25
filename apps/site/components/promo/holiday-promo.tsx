@@ -1,5 +1,5 @@
 import type { Locale } from '~/i18n/routing';
-import { ONE_LINER, PILLARS, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
+import { ONE_LINER, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 import { PROMO_OFFER_ID, type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
@@ -167,7 +167,7 @@ function PromoMedia({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-const CHIPS = PILLARS.map((pillar) => pillar.title);
+const CHIPS = ['Knows your family', 'Finds a fit', 'Gets the open spot', 'Runs group chats'];
 
 /** The sale offer. `id="sale"` is what the banner and sticky bar jump to. */
 export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
@@ -182,6 +182,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
       <div className="hs-wrap">
         <div className="promo-card">
           <div className="promo-main">
+            <p className="promo-kicker">Our holiday sale this season</p>
             <h2 className="promo-sale" id={`${PROMO_OFFER_ID}-h`}>
               <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
               <span className="promo-sale-word">Sale</span>
@@ -189,7 +190,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
             <PriceLockup promo={promo} />
             <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
             <p className="promo-lede">
-              Your price stays locked in for as long as you’re a member. Join by Dec 31. Refund anytime.
+              Your price for the rest of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.
             </p>
             <ul className="promo-chips">
               {CHIPS.map((chip) => (
@@ -250,7 +251,9 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
               <div>
                 <h3>What Hale does</h3>
                 <p>
-                  {ONE_LINER} {PLUS_SIGNUP_LINE}
+                  Hale finds real classes and plans near you, by text. Send a flyer or a screenshot
+                  and it keeps the dates. From Dec 1, with your ok, it signs them up, and then the
+                  plan stays with everyone in the chat.
                 </p>
               </div>
             </li>

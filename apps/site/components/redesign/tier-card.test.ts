@@ -12,29 +12,29 @@ import { PILLARS } from '~/lib/site/narrative';
 
 const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], string>> = {
   en: {
-    'Knows your family': 'Knows your family',
-    'Finds what fits': 'Finds what fits',
-    'Gets the spot': 'Gets the spot',
-    'Runs the group chat': 'Runs the group chat',
+    'Knows your family': 'Knows the family',
+    'Finds what fits': 'Finds a good fit',
+    'Gets the spot': 'Gets a spot',
+    'Runs the group chat': 'Runs group chats',
   },
   fr: {
-    'Knows your family': 'Connaît ta famille',
-    'Finds what fits': 'Trouve ce qui convient',
-    'Gets the spot': 'Prend la place',
-    'Runs the group chat': 'Tient le groupe',
+    'Knows your family': 'Connaît la famille',
+    'Finds what fits': 'Trouve un bon choix',
+    'Gets the spot': 'Prend une place',
+    'Runs the group chat': 'Tient les groupes',
   },
   zh: {
-    'Knows your family': '了解你的家庭',
+    'Knows your family': '了解这个家',
     'Finds what fits': '找到合适的',
     'Gets the spot': '拿到名额',
-    'Runs the group chat': '管家长群',
+    'Runs the group chat': '管这些家长群',
   },
 };
 
 const TEXT_CARD: Record<Locale, { name: string; price: string; meta: string }> = {
-  en: { name: 'Text', price: '$0/mo', meta: 'No card needed' },
-  fr: { name: 'Texto', price: '0 $/mois', meta: 'Aucune carte requise.' },
-  zh: { name: '短信', price: '每月 $0', meta: '不需要银行卡。' },
+  en: { name: 'Text', price: '$0/mo', meta: 'No card needed at all' },
+  fr: { name: 'Texto', price: '0 $/mois', meta: 'Aucune carte, vraiment.' },
+  zh: { name: '短信', price: '每月 $0', meta: '完全不需要银行卡。' },
 };
 
 const locales = ['en', 'fr', 'zh'] as const;
