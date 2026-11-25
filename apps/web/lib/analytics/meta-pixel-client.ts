@@ -1,4 +1,5 @@
 import { parseMetaPixelIds } from './meta-pixel';
+import { hasPromoPreviewQuery } from './posthog-provider';
 
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -14,6 +15,21 @@ interface PixelWindow extends Window {
   fbq?: Fbq;
   _fbq?: Fbq;
   __haleMetaPixel?: boolean;
+}
+
+/**
+ * The only app paths the browser pixel loads on: the public pre-signup join page ads
+ * land on. Every other app page carries a bearer token in its URL (/l/<code>, the
+ * texted connect and sign-in links) or shows a family's data, and must load nothing
+ * from Meta (hard rule #1). `/founding?preview=` carries a secret, so it is out too.
+ */
+export const META_PIXEL_PATH_PREFIXES = ['/founding'] as const;
+
+export function metaPixelAllowedOn(pathname: string | null, search: string): boolean {
+  if (!pathname || hasPromoPreviewQuery(search)) return false;
+  return META_PIXEL_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 function pixelWindow(): PixelWindow | null {
