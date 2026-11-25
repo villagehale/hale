@@ -40,7 +40,7 @@ async function renderFounding(
   return renderToStaticMarkup(await FoundingJoinPage({ searchParams: Promise.resolve(search) }));
 }
 
-describe('/founding offer surface', () => {
+describe('/join offer surface', () => {
   afterEach(() => {
     cookieJar.value = undefined;
     sessionBox.userId = null;

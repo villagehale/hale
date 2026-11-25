@@ -115,7 +115,7 @@ export async function POST(req: Request): Promise<Response> {
       client,
       origin,
       marketingOrigin: checkoutMarketingOrigin(MARKETING_SITE_URL, process.env),
-      cancelUrl: `${origin}/founding?checkout=cancelled`,
+      cancelUrl: `${origin}/join?checkout=cancelled`,
     });
     if (result.status === 'not_found') {
       return NextResponse.json({ error: 'no_family' }, { status: 404 });

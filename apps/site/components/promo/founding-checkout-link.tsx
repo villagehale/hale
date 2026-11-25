@@ -9,11 +9,11 @@ import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
 
 /**
  * The app's new-visitor join (phone code, then Stripe). A signed-in family
- * who lands there is sent on to the signed-in checkout. `/founding` does not
+ * who lands there is sent on to the signed-in checkout. `/join` does not
  * read a plan query — after the code the parent chooses Plus or Max — so the
  * chosen tier stays on the analytics event and is not put in the URL.
  */
-export const FOUNDING_CHECKOUT_PATH = '/founding';
+export const FOUNDING_CHECKOUT_PATH = '/join';
 
 export function foundingCheckoutHref(appUrl: string = APP_URL): string {
   return `${appUrl.replace(/\/$/, '')}${FOUNDING_CHECKOUT_PATH}`;
@@ -26,7 +26,7 @@ export function foundingCheckoutTarget(query = '', appUrl: string = APP_URL): st
 }
 
 /**
- * The "lock in the founding price" door. It opens the new-visitor join.
+ * The "lock in the price" door. It opens the new-visitor join.
  * On tap it carries the tab's first-touch UTMs / gclid / fbclid in the query,
  * so attribution survives even when the visitor declined cookies (no cookie
  * is written here).

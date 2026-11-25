@@ -71,7 +71,7 @@ export function settingsFoundingHref(search: FoundingSearch): string {
 /**
  * Ads new-visitor pay path. Dark unless HOLIDAY_PROMO_ENABLED,
  * PROMO_NEW_VISITOR_CHECKOUT_ENABLED, and the founding window are all on —
- * or `/founding?preview=<PROMO_PREVIEW_TOKEN>` while those flags stay off.
+ * or `/join?preview=<PROMO_PREVIEW_TOKEN>` while those flags stay off.
  * Free + Plus/Max annual promo; monthly / list annual never render here.
  * This page does not read `plan`: after the code the parent chooses Plus or Max.
  * A signed-in family is sent to the signed-in checkout so they can still pay.

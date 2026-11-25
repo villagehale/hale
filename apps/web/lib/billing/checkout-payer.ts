@@ -83,7 +83,7 @@ export async function hasOneToOneThread(
 }
 
 /**
- * For the /founding "already on a paid plan" screen, behind the page-state flag. The code
+ * For the /join "already on a paid plan" screen, behind the page-state flag. The code
  * is already spent by the time this runs, so a failed read answers null instead of costing
  * the parent a 500, and the screen then claims neither "keep texting" nor "start".
  */

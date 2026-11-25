@@ -199,28 +199,28 @@ describe('redactLoginLinkCodes', () => {
       uuid: 'u',
       event: '$pageview',
       properties: {
-        $current_url: `https://app.example.test/founding?preview=${SECRET}&checkout=cancelled`,
+        $current_url: `https://app.example.test/join?preview=${SECRET}&checkout=cancelled`,
         next: `%3Fpreview%3D${SECRET}`,
       },
     });
     const text = JSON.stringify(out);
     expect(text).not.toContain(SECRET);
     expect(out?.properties).toEqual({
-      $current_url: 'https://app.example.test/founding?preview=[preview]&checkout=cancelled',
+      $current_url: 'https://app.example.test/join?preview=[preview]&checkout=cancelled',
       next: '%3Fpreview%3D[preview]',
     });
   });
 });
 
-describe('the /founding?preview= secret never reaches PostHog', () => {
+describe('the /join?preview= secret never reaches PostHog', () => {
   const SECRET = 'preview-secret-token';
 
-  it('PostHog does not load on /founding?preview=: no request leaves at all', async () => {
-    await mountProvider(`/founding?preview=${SECRET}`);
+  it('PostHog does not load on /join?preview=: no request leaves at all', async () => {
+    await mountProvider(`/join?preview=${SECRET}`);
     expect(sent).toEqual([]);
     expect(sent.join('\n')).not.toContain(SECRET);
 
-    await mountProvider('/founding?checkout=cancelled');
+    await mountProvider('/join?checkout=cancelled');
     expect(sent.some((r) => r.includes('/flags'))).toBe(true);
   });
 });

@@ -69,7 +69,7 @@ async function renderAlreadyPaidScreen(
   return container;
 }
 
-describe('/founding join copy', () => {
+describe('/join copy', () => {
   it('drops the old promise from the join lede and keeps the prices and the refund line', () => {
     const html = renderToStaticMarkup(createElement(FoundingJoinForm, LABELS));
     expect(html).not.toContain('will not text first');

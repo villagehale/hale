@@ -40,7 +40,7 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
  * `before_send`. Anything that still names one (a client-side visit, the page after it)
  * goes out as `/l/[code]`, raw or URL-encoded, in any string or key.
  *
- * `/founding?preview=` is the same class of secret (it unlocks founding checkout while
+ * `/join?preview=` is the same class of secret (it unlocks founding checkout while
  * the live flags stay off). PostHog does not load when that query is present, and
  * `before_send` still strips `preview=` from any later event.
  */

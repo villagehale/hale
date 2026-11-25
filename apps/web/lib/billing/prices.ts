@@ -340,7 +340,7 @@ export function resolveCheckoutPrice(input: {
   period: BillingPeriod;
   now: Date;
   env?: Record<string, string | undefined>;
-  /** Listed family or /founding?preview= token while the live flags stay off. */
+  /** Listed family or /join?preview= token while the live flags stay off. */
   preview?: boolean;
   /** Paid tier to sell. Defaults to plus. `max` is accepted via paidTierFromUnknown. */
   tier?: PaidTier;

@@ -62,8 +62,9 @@ export async function createBillingCheckout(input: {
   /** When set, skip the session family lookup (the ads new-visitor path). */
   familyId?: string;
   /**
-   * Defaults to the settings billing hash. Founding join cancels back to /founding.
-   * With CHECKOUT_SUCCESS_STATES_ENABLED every checkout cancels to the pricing page instead.
+   * Defaults to the settings billing hash. The public join page passes a cancel
+   * URL back to /join. With CHECKOUT_SUCCESS_STATES_ENABLED every checkout
+   * cancels to the pricing page instead.
    */
   cancelUrl?: string;
   now?: Date;

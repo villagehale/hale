@@ -105,7 +105,7 @@ for (const { phase, currency } of CASES) {
           expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
           expect(c).toContain(FOUNDING_REFUND_LINE);
           expect(text(c)).toContain(`Lock in ${sale}`);
-          expect(c).toContain('href="https://app.villagehale.com/founding"');
+          expect(c).toContain('href="https://app.villagehale.com/join"');
           expect(c).not.toContain('/settings/founding');
           expect(c).not.toContain('plan=');
           expect(c).not.toContain('Coming soon');
@@ -182,7 +182,7 @@ for (const { phase, currency } of CASES) {
 
       it('offers the founding checkout door and a mobile sticky CTA', () => {
         expect(html).toContain('data-cta="promo_cta_click"');
-        expect(html).toContain('https://app.villagehale.com/founding');
+        expect(html).toContain('https://app.villagehale.com/join');
         expect(html).not.toContain('/settings/founding');
         expect(html).not.toContain('plan=');
         expect(html).toContain('promo-sticky');
@@ -192,10 +192,10 @@ for (const { phase, currency } of CASES) {
 }
 
 describe('promo lock-in door', () => {
-  it('opens the new-visitor /founding path and keeps a click id off the plan query', () => {
-    expect(foundingCheckoutTarget()).toBe('https://app.villagehale.com/founding');
+  it('opens the new-visitor /join path and keeps a click id off the plan query', () => {
+    expect(foundingCheckoutTarget()).toBe('https://app.villagehale.com/join');
     expect(foundingCheckoutTarget('utm_source=meta&fbclid=abc')).toBe(
-      'https://app.villagehale.com/founding?utm_source=meta&fbclid=abc',
+      'https://app.villagehale.com/join?utm_source=meta&fbclid=abc',
     );
     expect(foundingCheckoutTarget('gclid=1')).not.toContain('plan=');
     expect(foundingCheckoutTarget('gclid=1')).not.toContain('/settings/founding');
@@ -208,9 +208,9 @@ describe('promo lock-in door', () => {
         const html = renderToStaticMarkup(createElement(Page, { ...door, locale, promo }));
         const hrefs = [...html.matchAll(/href="([^"]+)"/g)]
           .map((match) => match[1] ?? '')
-          .filter((href) => href.includes('villagehale.com') && href.includes('founding'));
+          .filter((href) => href.includes('villagehale.com') && href.includes('/join'));
         expect(hrefs.length).toBeGreaterThan(0);
-        expect(new Set(hrefs)).toEqual(new Set(['https://app.villagehale.com/founding']));
+        expect(new Set(hrefs)).toEqual(new Set(['https://app.villagehale.com/join']));
         expect(html).not.toContain('/settings/founding');
       }
     }

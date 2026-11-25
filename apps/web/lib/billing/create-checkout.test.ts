@@ -134,7 +134,7 @@ describe('createBillingCheckout', () => {
   it.each([
     ['the settings default', {}],
     ['a founding SKU', { sku: 'promo_plus_annual' as const, currency: 'CAD' as const }],
-    ['the /founding join', { cancelUrl: 'https://app.example.com/founding?checkout=cancelled' }],
+    ['the /join page', { cancelUrl: 'https://app.example.com/join?checkout=cancelled' }],
   ])('with the page-state flag on, %s cancels back to pricing', async (_name, over) => {
     resolveFamilyMock.mockResolvedValue('fam-9');
     ensureUserMock.mockResolvedValue('user-9');
@@ -327,13 +327,13 @@ describe('createBillingCheckout', () => {
       client,
       origin: 'https://app.example.com',
       marketingOrigin: 'https://www.villagehale.com',
-      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      cancelUrl: 'https://app.example.com/join?checkout=cancelled',
       familyId: 'fam-9',
     });
 
     expect(calls[0]?.customerId).toBe('cus_existing');
     expect(calls[0]?.customerEmail).toBeNull();
-    expect(calls[0]?.cancelUrl).toBe('https://app.example.com/founding?checkout=cancelled');
+    expect(calls[0]?.cancelUrl).toBe('https://app.example.com/join?checkout=cancelled');
   });
 
   it('refuses a list price while the promo window is open', async () => {

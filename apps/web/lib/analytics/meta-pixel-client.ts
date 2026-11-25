@@ -22,9 +22,9 @@ interface PixelWindow extends Window {
  * The only app paths the browser pixel loads on: the public pre-signup join page ads
  * land on. Every other app page carries a bearer token in its URL (/l/<code>, the
  * texted connect and sign-in links) or shows a family's data, and must load nothing
- * from Meta (hard rule #1). `/founding?preview=` carries a secret, so it is out too.
+ * from Meta (hard rule #1). `/join?preview=` carries a secret, so it is out too.
  */
-export const META_PIXEL_PATH_PREFIXES = ['/founding'] as const;
+export const META_PIXEL_PATH_PREFIXES = ['/join'] as const;
 
 export function metaPixelAllowedOn(pathname: string | null, search: string): boolean {
   if (!pathname || hasPromoPreviewQuery(search)) return false;

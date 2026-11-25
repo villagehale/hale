@@ -42,7 +42,7 @@ export function unpaidPlanSurface(
 }
 
 /**
- * Ads new-visitor /founding + join APIs. Live when both payment flags are on
+ * Ads new-visitor /join page and its join APIs. Live when both payment flags are on
  * in the window. Otherwise only with a matching PROMO_PREVIEW_TOKEN.
  */
 export function newVisitorFoundingAllowed(
