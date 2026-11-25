@@ -145,7 +145,7 @@ function PriceLockup({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-const CHIPS = ['Knows your family', 'Finds a fit', 'Gets the open spot', 'Runs group chats'];
+const CHIPS = ['Knows your family', 'Finds a fit', 'Runs group chats'];
 
 /**
  * The style-D group chat, same order as the share card: Priya, then Hale's
