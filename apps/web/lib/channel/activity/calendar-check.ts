@@ -5,7 +5,7 @@ import { and, asc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
-import { withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import { teenRoster, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { teenChildIds } from '~/lib/channel/role-scope';
 import { type CommitmentCloseOutcome, cancelCommitment } from '~/lib/commitments/ledger';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -199,10 +199,6 @@ export async function loadWatchCalendar(
     .orderBy(asc(schema.familyEvents.startsAt));
 
   const teens = teenChildIds(children, input.now);
-  const childNames = children.flatMap((child) => (child.name ? [child.name] : []));
-  const teenNames = children
-    .filter((child) => teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
   const eligible = rows.filter(
     (row) =>
       !(row.childId !== null && teens.has(row.childId)) &&
@@ -214,8 +210,7 @@ export async function loadWatchCalendar(
   );
   const titled = withoutTeenTitles(
     eligible.map((row) => ({ ...row, kidRelated: true })),
-    childNames,
-    teenNames,
+    teenRoster(children, input.now),
   );
 
   const local = (instant: Date) => familyLocalNow(instant, zone);
