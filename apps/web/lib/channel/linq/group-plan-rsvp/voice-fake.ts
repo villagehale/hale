@@ -11,7 +11,10 @@ export interface FakeGroupPlanRsvpComposer extends GroupPlanRsvpComposer {
 }
 
 function factsLine(input: GroupLineInput): string {
-  if (input.skill === 'group-plan-rsvp-calendar-voice') {
+  if (
+    input.skill === 'group-plan-rsvp-calendar-voice' ||
+    input.skill === 'group-plan-rsvp-calendar-moved-voice'
+  ) {
     const facts = input.facts;
     return `${input.kind} ${facts.title} ${facts.displayName} ${facts.startsAt ?? ''}`;
   }

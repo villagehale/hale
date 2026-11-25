@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { noteTaskCompleted } from '~/lib/analytics/product-hooks';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { readGroupMembership } from '../group-membership';
+import { createFamilyEventsCopyStore } from '../group-plan-invites';
 import { postgresGroupPlanHouseholds } from './calendar';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
@@ -62,6 +63,8 @@ export interface CreatePlanInput {
 export type CalendarConsentStatus = 'asked' | 'declined' | 'written';
 
 export interface CalendarConsentRow {
+  /** The ask's own id. A withdrawn ask and the one asked after it never share it. */
+  id: string;
   planId: string;
   familyId: string;
   memberKey: string;
@@ -87,6 +90,7 @@ export const CALENDAR_WITHDRAW_REASONS = [
   'household_said_no',
   'household_said_maybe',
   'plan_changed',
+  'no_thread',
 ] as const;
 export type CalendarWithdrawReason = (typeof CALENDAR_WITHDRAW_REASONS)[number];
 
@@ -153,20 +157,48 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     familyId: string;
     actorUserId: string | null;
   }): Promise<void>;
+  /**
+   * Moves the household's accepted copy to the plan's new start and audits the move in
+   * one transaction, so a moved copy always has its audit row.
+   */
+  commitCalendarMove(input: {
+    planId: string;
+    chatId: string;
+    familyId: string;
+    title: string;
+    startsAt: Date;
+    location: string | null;
+  }): Promise<CalendarMove>;
   markCalendarDeclined(input: {
     planId: string;
     familyId: string;
     actorUserId: string | null;
     now: Date;
   }): Promise<void>;
-  markCalendarWritten(input: {
+  /**
+   * Writes the household's copy only while this exact ask is still open, in one
+   * transaction with marking it written. An ask a lock withdrew writes nothing.
+   */
+  commitCalendarWrite(input: {
+    consentId: string;
     planId: string;
+    chatId: string;
     familyId: string;
-    familyEventId: string;
     actorUserId: string | null;
     now: Date;
-  }): Promise<void>;
+  }): Promise<CalendarCommit>;
 }
+
+export type CalendarMove =
+  | { status: 'moved'; familyEventId: string }
+  | { status: 'unchanged'; familyEventId: string }
+  | { status: 'failed' };
+
+export type CalendarCommit =
+  | { status: 'written'; familyEventId: string }
+  | { status: 'withdrawn' }
+  | { status: 'no_start' }
+  | { status: 'failed' };
 
 function flag(value: boolean): 'true' | 'false' {
   return value ? 'true' : 'false';
@@ -560,6 +592,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .limit(1);
       if (!row || row.familyId !== familyId) return null;
       return {
+        id: row.id,
         planId: row.planId,
         familyId: row.familyId,
         memberKey: row.memberKey,
@@ -669,6 +702,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           expectedCount: plan.expectedCount,
         },
         consent: {
+          id: row.id,
           planId: row.planId,
           familyId: row.familyId,
           memberKey: row.memberKey,
@@ -724,6 +758,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             expectedCount: plan.expectedCount,
           },
           consent: {
+            id: row.id,
             planId: row.planId,
             familyId: row.familyId,
             memberKey: row.memberKey,
@@ -808,6 +843,41 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       });
     },
 
+    async commitCalendarMove(input) {
+      try {
+        return await database.transaction(async (tx) => {
+          const copy = await createFamilyEventsCopyStore(tx as unknown as Database).upsertCopy(
+            {
+              groupPlanId: input.planId,
+              chatId: input.chatId,
+              title: input.title,
+              startsAt: input.startsAt,
+              endsAt: null,
+              location: input.location,
+              cancelled: false,
+            },
+            input.familyId,
+          );
+          if (copy.status === 'unchanged') return copy;
+          await tx.insert(schema.auditLog).values({
+            familyId: input.familyId,
+            actor: 'system',
+            actionTaken: 'linq_group_plan_calendar_moved',
+            targetTable: 'family_events',
+            targetId: copy.familyEventId,
+            after: { familyId: input.familyId, startsAt: input.startsAt.toISOString() },
+          });
+          return { status: 'moved' as const, familyEventId: copy.familyEventId };
+        });
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'group plan calendar: move failed',
+        );
+        return { status: 'failed' };
+      }
+    },
+
     async markCalendarDeclined(input) {
       await database
         .update(schema.linqGroupPlanCalendarConsents)
@@ -829,31 +899,155 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       });
     },
 
-    async markCalendarWritten(input) {
-      await database
-        .update(schema.linqGroupPlanCalendarConsents)
-        .set({
-          status: 'written',
-          familyEventId: input.familyEventId,
-          decidedAt: input.now,
-          updatedAt: input.now,
-        })
-        .where(
-          and(
-            eq(schema.linqGroupPlanCalendarConsents.planId, input.planId),
-            eq(schema.linqGroupPlanCalendarConsents.familyId, input.familyId),
-          ),
+    async commitCalendarWrite(input) {
+      const c = schema.linqGroupPlanCalendarConsents;
+      try {
+        return await database.transaction(async (tx) => {
+          const [plan] = await tx
+            .select()
+            .from(schema.linqGroupPlans)
+            .where(eq(schema.linqGroupPlans.id, input.planId))
+            .limit(1);
+          if (!plan?.startsAt) return { status: 'no_start' as const };
+          // The ask's row is held from here to commit, so a lock's withdrawal waits for
+          // this write and then moves it, or ran first and left nothing to claim.
+          const [claimed] = await tx
+            .update(c)
+            .set({ status: 'written', decidedAt: input.now, updatedAt: input.now })
+            .where(
+              and(eq(c.id, input.consentId), eq(c.planId, input.planId), eq(c.status, 'asked')),
+            )
+            .returning({ id: c.id });
+          if (!claimed) return { status: 'withdrawn' as const };
+          const copy = await createFamilyEventsCopyStore(tx as unknown as Database).upsertCopy(
+            {
+              groupPlanId: plan.id,
+              chatId: input.chatId,
+              title: plan.title,
+              startsAt: plan.startsAt,
+              endsAt: null,
+              location: plan.location,
+              cancelled: false,
+            },
+            input.familyId,
+          );
+          await tx.update(c).set({ familyEventId: copy.familyEventId }).where(eq(c.id, claimed.id));
+          await tx.insert(schema.auditLog).values({
+            familyId: input.familyId,
+            actor: input.actorUserId ?? 'system',
+            actionTaken: 'linq_group_plan_calendar_written',
+            targetTable: 'family_events',
+            targetId: copy.familyEventId,
+            after: { familyId: input.familyId },
+          });
+          return { status: 'written' as const, familyEventId: copy.familyEventId };
+        });
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'group plan calendar: write failed',
         );
-      await database.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: input.actorUserId ?? 'system',
-        actionTaken: 'linq_group_plan_calendar_written',
-        targetTable: 'family_events',
-        targetId: input.familyEventId,
-        after: { familyId: input.familyId },
-      });
+        return { status: 'failed' };
+      }
     },
   };
+}
+
+function consentFromRow(
+  row: typeof schema.linqGroupPlanCalendarConsents.$inferSelect,
+): CalendarConsentRow {
+  return {
+    id: row.id,
+    planId: row.planId,
+    familyId: row.familyId,
+    memberKey: row.memberKey,
+    displayName: row.displayName,
+    householdLabel: row.householdLabel,
+    status: row.status as CalendarConsentStatus,
+    familyEventId: row.familyEventId,
+    askProviderMessageId: row.askProviderMessageId,
+  };
+}
+
+export interface LockedPlanStart {
+  plan: GroupPlanRecord;
+  previousStartsAt: Date | null;
+  /** Every open ask for the plan, withdrawn by this lock. */
+  withdrawn: CalendarConsentRow[];
+  /** Households whose copy was already written, so it moves to the new start. */
+  written: CalendarConsentRow[];
+}
+
+/**
+ * A group locked a new start. In one transaction: close the time poll (so a retry of
+ * the same webhook finds nothing to lock), move the plan, and withdraw every open ask
+ * for it, found through the plan's consent rows rather than its RSVP rows. Null when the
+ * poll was already closed: another delivery of this lock did the work.
+ */
+export async function lockPlanStart(
+  database: Database,
+  input: { planId: string; pollId: string; startsAt: Date; now: Date },
+): Promise<LockedPlanStart | null> {
+  const c = schema.linqGroupPlanCalendarConsents;
+  return database.transaction(async (tx) => {
+    const [closed] = await tx
+      .update(schema.linqGroupExperience)
+      .set({ closedAt: input.now, updatedAt: input.now })
+      .where(
+        and(
+          eq(schema.linqGroupExperience.id, input.pollId),
+          isNull(schema.linqGroupExperience.closedAt),
+        ),
+      )
+      .returning({ id: schema.linqGroupExperience.id });
+    if (!closed) return null;
+    const [before] = await tx
+      .select({ startsAt: schema.linqGroupPlans.startsAt })
+      .from(schema.linqGroupPlans)
+      .where(eq(schema.linqGroupPlans.id, input.planId))
+      .limit(1);
+    const [plan] = await tx
+      .update(schema.linqGroupPlans)
+      .set({ startsAt: input.startsAt })
+      .where(eq(schema.linqGroupPlans.id, input.planId))
+      .returning();
+    if (!plan) return null;
+    const withdrawn = await tx
+      .delete(c)
+      .where(and(eq(c.planId, input.planId), eq(c.status, 'asked')))
+      .returning();
+    if (withdrawn.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        withdrawn.map((row) => ({
+          familyId: row.familyId,
+          actor: 'system',
+          actionTaken: 'linq_group_plan_calendar_withdrawn',
+          targetTable: 'linq_group_plan_calendar_consents',
+          targetId: input.planId,
+          after: { familyId: row.familyId, reason: 'plan_changed' as const },
+        })),
+      );
+    }
+    const written = await tx
+      .select()
+      .from(c)
+      .where(and(eq(c.planId, input.planId), eq(c.status, 'written')));
+    return {
+      plan: {
+        id: plan.id,
+        chatId: plan.chatId,
+        familyId: plan.familyId,
+        title: plan.title,
+        startsAt: plan.startsAt,
+        location: plan.location,
+        rsvpDeadlineAt: plan.rsvpDeadlineAt,
+        expectedCount: plan.expectedCount,
+      },
+      previousStartsAt: before?.startsAt ?? null,
+      withdrawn: withdrawn.map(consentFromRow),
+      written: written.map(consentFromRow),
+    };
+  });
 }
 
 export { memberKeyFromHandle, memberKeyFromName };

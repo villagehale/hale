@@ -44,7 +44,6 @@ import { considerSocialForward } from '~/lib/social/forward';
 import { considerCarpoolTapback, considerCarpoolTurn } from './carpool';
 import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
-import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
   groupExperienceTurnEnabled,
   groupPollsEnabled,
@@ -271,8 +270,6 @@ export async function handleLinqInboundRequest(
     groupExperienceReader?: GroupExperienceReader;
     /** VIL-399 test seam. Production composes with the model when the flag is on. */
     groupExperienceComposer?: GroupExperienceComposer;
-    /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
-    commonTimePlan?: CommonTimePlanPorts;
     /** VIL-686 test seam. Production reads a Secret Santa turn with the model. */
     secretSantaTurn?: SecretSantaTurnModel;
     /** VIL-686 test seam. Production writes every Secret Santa line with the model. */
@@ -445,7 +442,10 @@ export async function handleLinqInboundRequest(
       }
     } catch (err) {
       deps.log.error(
-        { outcome: 'secret_santa_release_failed', err: err instanceof Error ? err.name : 'unknown' },
+        {
+          outcome: 'secret_santa_release_failed',
+          err: err instanceof Error ? err.name : 'unknown',
+        },
         'linq inbound: held secret santa draws not released',
       );
     }
@@ -689,6 +689,7 @@ async function tryGroupExperienceTurn(
       send: deps.sendGroupText,
       reader: deps.groupExperienceReader,
       composer: deps.groupExperienceComposer,
+      calendar: { composer: deps.groupPlanRsvpComposer, oneToOne: deps.oneToOne },
     },
     {
       chatId: input.chatId,
@@ -751,7 +752,6 @@ async function tryGroupPlanRsvpTurn(
     senderHandle: string;
     text: string;
     tapback: LinqTapback | null;
-    tapbackMessageId?: string | null;
   },
 ): Promise<Response | null> {
   if (!linqGroupPlanRsvpEnabled() && !linqGroupPollsEnabled()) return null;
@@ -776,7 +776,6 @@ async function tryGroupPlanRsvpTurn(
       senderUserId: mappedSender.status === 'same_family' ? mappedSender.userId : null,
       text: input.text,
       tapback: input.tapback,
-      tapbackMessageId: input.tapbackMessageId,
       secretSanta: await secretSantaRunsInChat(deps.database, input.chatId),
     },
   );
@@ -990,15 +989,6 @@ async function handleLinqGroup(
       },
       {
         ...multiFamilyPorts(deps),
-        commonTimePlan:
-          deps.commonTimePlan ??
-          productionCommonTimePlanPorts(
-            deps.database,
-            privateAsideOneToOne(deps.database, {
-              now: deps.now?.() ?? new Date(),
-              send: deps.oneToOne,
-            }),
-          ),
         optOut: async (text) => {
           const intent = await optOutIntentOf(text);
           return intent === 'stop' || intent === 'start' ? intent : 'none';
@@ -2081,7 +2071,6 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       senderHandle: signal.senderHandle,
       text: '',
       tapback: parseLinqTapback(signal.reactionType),
-      tapbackMessageId: signal.messageId,
     });
     if (rsvp) return rsvp;
   }

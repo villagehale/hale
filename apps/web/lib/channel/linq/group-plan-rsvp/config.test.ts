@@ -21,7 +21,7 @@ describe('LINQ_GROUP_PLAN_RSVP_ENABLED', () => {
     expect(linqGroupPlanRsvpEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', '');
     expect(linqGroupPlanRsvpEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', undefined);
     expect(linqGroupPlanRsvpEnabled()).toBe(false);
   });
 });
@@ -31,8 +31,7 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     vi.unstubAllEnvs();
   });
 
-  it('counts only when the flag is exactly true and the deploy is preview', () => {
-    vi.stubEnv('VERCEL_ENV', 'preview');
+  it('is on only when the flag is exactly true after trimming, in every deploy', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true\n');
@@ -45,12 +44,10 @@ describe('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', () => {
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'production');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', 'development');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.stubEnv('VERCEL_ENV', '');
-    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    expect(linqGroupPlanRsvpCalendarEnabled()).toBe(true);
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', undefined);
     expect(linqGroupPlanRsvpCalendarEnabled()).toBe(false);
   });
 });
@@ -70,7 +67,7 @@ describe('LINQ_GROUP_POLLS_ENABLED', () => {
     vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
     vi.stubEnv('LINQ_GROUP_POLLS_ENABLED', 'false');
     expect(linqGroupPollsEnabled()).toBe(false);
-    vi.unstubAllEnvs();
+    vi.stubEnv('LINQ_GROUP_POLLS_ENABLED', undefined);
     expect(linqGroupPollsEnabled()).toBe(false);
   });
 });

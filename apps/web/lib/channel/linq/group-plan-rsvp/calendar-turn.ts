@@ -1,5 +1,6 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { inviteWhenLabel } from '~/lib/loop/templates/calendar-invite/sms';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import type { LinqTapback } from '../transport';
 import {
   type CalendarAskFacts,
@@ -7,6 +8,7 @@ import {
   type CalendarConsentReading,
   type CalendarPrivateKind,
   type CalendarPrivateSender,
+  GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL,
   type GroupPlanCalendarWriter,
   type GroupPlanHouseholdResolver,
   type HouseholdResolution,
@@ -44,6 +46,10 @@ export type CalendarSkipReason =
   | 'unusable'
   | 'not_sent'
   | 'no_parent'
+  | 'no_thread'
+  | 'thread_unread'
+  | 'not_a_parent'
+  | 'withdrawn'
   | 'write_failed'
   | 'remove_failed';
 
@@ -52,6 +58,7 @@ export type CalendarEffect =
   | { status: 'written'; familyId: string; familyEventId: string }
   | { status: 'declined' }
   | { status: 'removed'; familyId: string; familyEventId: string }
+  | { status: 'moved'; familyId: string; familyEventId: string }
   | { status: 'skipped'; reason: CalendarSkipReason };
 
 export interface CalendarTurnPorts {
@@ -150,7 +157,8 @@ async function deliverPrivate(
     language: ReplyLanguage | null;
     /** The parent's own message, or null when this turn has no words. */
     parentWords: string | null;
-    kind: CalendarPrivateKind;
+    kind: Exclude<CalendarPrivateKind, 'calendar_moved'>;
+    sendKey?: string;
   },
 ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: CalendarSkipReason }> {
   const timeZone = await ports.store.householdTimeZone(input.familyId);
@@ -177,6 +185,7 @@ async function deliverPrivate(
     userId: input.userId,
     text: spoken.line,
     kind: input.kind,
+    ...(input.sendKey ? { sendKey: input.sendKey } : {}),
   });
   if (sent.status === 'skipped') return { status: 'skipped', reason: sent.reason };
   if (input.kind === 'calendar_ask' && sent.providerMessageId) {
@@ -285,37 +294,28 @@ export async function answerPendingCalendarAsk(
       effect: { status: 'skipped', reason: 'no_start' },
     };
   }
-  if (!ports.calendar) {
-    console.warn({ outcome: 'not_configured' }, 'group plan calendar: no writer');
-    return {
-      consumed: true,
-      kind: 'unwritten',
-      effect: { status: 'skipped', reason: 'not_configured' },
-    };
-  }
 
-  const written = await ports.calendar.write({
+  const written = await ports.store.commitCalendarWrite({
+    consentId: row.id,
     planId: input.plan.id,
     chatId: input.chatId,
     familyId,
-    title: input.plan.title,
-    startsAt: input.plan.startsAt,
-    location: input.plan.location,
-  });
-  if (written.status === 'failed') {
-    return {
-      consumed: true,
-      kind: 'unwritten',
-      effect: { status: 'skipped', reason: 'write_failed' },
-    };
-  }
-  await ports.store.markCalendarWritten({
-    planId: input.plan.id,
-    familyId,
-    familyEventId: written.familyEventId,
     actorUserId: input.userId,
     now: input.now,
   });
+  if (written.status !== 'written') {
+    const reason =
+      written.status === 'withdrawn'
+        ? 'withdrawn'
+        : written.status === 'no_start'
+          ? 'no_start'
+          : 'write_failed';
+    console.warn(
+      { outcome: 'group_plan_calendar_unwritten', reason },
+      'group plan calendar: no write',
+    );
+    return { consumed: true, kind: 'unwritten', effect: { status: 'skipped', reason } };
+  }
 
   const notice = await deliverPrivate(ports, {
     plan: input.plan,
@@ -486,7 +486,12 @@ export async function settleCalendarAfterAnswer(
     kind: 'calendar_ask',
   });
   if (sent.status === 'skipped') {
-    await ports.store.releaseCalendarAsk(input.plan.id, familyId, input.userId, 'send_failed');
+    await ports.store.releaseCalendarAsk(
+      input.plan.id,
+      familyId,
+      input.userId,
+      sent.reason === 'no_thread' ? 'no_thread' : 'send_failed',
+    );
     console.warn(
       { outcome: 'group_plan_calendar_ask_unsent', reason: sent.reason },
       'group plan calendar: ask not sent',
@@ -546,4 +551,200 @@ async function removeWrittenCopy(
     );
   }
   return { status: 'removed', familyId, familyEventId: removed.familyEventId };
+}
+
+/**
+ * A lock's 1:1 line goes to the adult the old ask went to only while they are still a
+ * parent (primary or co-parent) of that household here. Anyone else gets nothing.
+ */
+async function stillParentOf(
+  ports: CalendarTurnPorts,
+  input: { chatId: string; userId: string; familyId: string; kind: CalendarPrivateKind },
+): Promise<CalendarSkipReason | null> {
+  const home = await resolveHousehold(ports, input.chatId, input.userId);
+  if (home.status === 'skipped') return home.reason;
+  if (home.status === 'one' && home.familyId === input.familyId) return null;
+  console.info(
+    { outcome: 'group_plan_calendar_not_a_parent', kind: input.kind },
+    'group plan calendar: no longer a parent of that household, nothing sent',
+  );
+  return 'not_a_parent';
+}
+
+/** The key a lock's send goes out once under: plan, new start, household. Never a clock. */
+function lockSendKey(plan: GroupPlanRecord, familyId: string): string {
+  return `${plan.id}:${plan.startsAt?.toISOString() ?? 'none'}:${familyId}`;
+}
+
+/**
+ * A lock withdrew this household's open ask. Ask once more, about the new start, the
+ * parent who was asked before. The send is keyed on plan, new start and household.
+ */
+export async function reaskAfterLockedStart(
+  input: {
+    plan: GroupPlanRecord;
+    row: CalendarConsentRow;
+    userId: string;
+    language: ReplyLanguage | null;
+    now: Date;
+  },
+  ports: CalendarTurnPorts,
+): Promise<CalendarEffect> {
+  if (!input.plan.startsAt) return { status: 'skipped', reason: 'no_start' };
+  const { familyId } = input.row;
+  const refused = await stillParentOf(ports, {
+    chatId: input.plan.chatId,
+    userId: input.userId,
+    familyId,
+    kind: 'calendar_ask',
+  });
+  if (refused) return { status: 'skipped', reason: refused };
+  const claimed = await ports.store.claimCalendarAsk({
+    planId: input.plan.id,
+    familyId,
+    memberKey: input.row.memberKey,
+    displayName: input.row.displayName,
+    householdLabel: input.row.householdLabel,
+    now: input.now,
+  });
+  if (!claimed) return { status: 'asked' };
+  const sent = await deliverPrivate(ports, {
+    plan: input.plan,
+    familyId,
+    userId: input.userId,
+    displayName: input.row.displayName,
+    householdLabel: input.row.householdLabel,
+    language: input.language,
+    parentWords: null,
+    kind: 'calendar_ask',
+    sendKey: lockSendKey(input.plan, familyId),
+  });
+  if (sent.status === 'skipped') {
+    await ports.store.releaseCalendarAsk(
+      input.plan.id,
+      familyId,
+      input.userId,
+      sent.reason === 'no_thread' ? 'no_thread' : 'send_failed',
+    );
+    console.warn(
+      { outcome: 'group_plan_calendar_reask_unsent', reason: sent.reason },
+      'group plan calendar: ask after the new start not sent',
+    );
+    return { status: 'skipped', reason: sent.reason };
+  }
+  await ports.store.noteCalendarAsked({
+    planId: input.plan.id,
+    familyId,
+    actorUserId: input.userId,
+  });
+  return { status: 'asked' };
+}
+
+/**
+ * A lock moved the plan. The copy this household accepted moves to the new start with
+ * its audit row in that household, in one transaction, and the parent who agreed hears
+ * it in a line the model writes while they are still a parent there. A failed move pages
+ * #ops and leaves the copy where it was; a line the model cannot write pages #ops and the
+ * copy still moves.
+ */
+export async function moveWrittenCopy(
+  input: {
+    plan: GroupPlanRecord;
+    previousStartsAt: Date | null;
+    row: CalendarConsentRow;
+    userId: string | null;
+    language: ReplyLanguage | null;
+    now: Date;
+  },
+  ports: CalendarTurnPorts & { pager: OpsPager },
+): Promise<CalendarEffect> {
+  const { familyId } = input.row;
+  if (!input.plan.startsAt) return { status: 'skipped', reason: 'no_start' };
+  const moved = await ports.store.commitCalendarMove({
+    planId: input.plan.id,
+    chatId: input.plan.chatId,
+    familyId,
+    title: input.plan.title,
+    startsAt: input.plan.startsAt,
+    location: input.plan.location,
+  });
+  if (moved.status === 'failed') {
+    console.error(
+      { outcome: 'group_plan_calendar_move_failed', ref: input.row.id },
+      'group plan calendar: the accepted copy did not move',
+    );
+    await ports.pager.page({
+      site: 'group_plan_calendar_move',
+      facts: { failure: 'move_failed' },
+      ref: input.row.id,
+    });
+    return { status: 'skipped', reason: 'write_failed' };
+  }
+  const effect: CalendarEffect = { status: 'moved', familyId, familyEventId: moved.familyEventId };
+  if (moved.status === 'unchanged') return effect;
+  if (
+    input.userId &&
+    (await stillParentOf(ports, {
+      chatId: input.plan.chatId,
+      userId: input.userId,
+      familyId,
+      kind: 'calendar_moved',
+    }))
+  ) {
+    return effect;
+  }
+
+  const timeZone = await ports.store.householdTimeZone(familyId);
+  const spoken = await composeGroupPlanRsvpLine(
+    {
+      skill: GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL,
+      kind: 'calendar_moved',
+      language: input.language,
+      parentWords: null,
+      facts: {
+        ...askFacts(input.plan, input.row.displayName, input.row.householdLabel),
+        startsAt: householdWhen(input.plan.startsAt, timeZone),
+        previousStartsAt: householdWhen(input.previousStartsAt, timeZone),
+      },
+      questions: 0,
+    },
+    ports.composer ?? productionGroupPlanRsvpComposer(),
+  );
+  if (spoken.status === 'skipped') {
+    console.error(
+      { outcome: 'group_plan_calendar_moved_unwritten', reason: spoken.reason, ref: input.row.id },
+      'group plan calendar: moved line not written',
+    );
+    await ports.pager.page({
+      site: 'group_plan_calendar_move',
+      facts: { failure: 'line_unwritten' },
+      ref: input.row.id,
+    });
+    return effect;
+  }
+  if (!input.userId || !ports.privateSend) {
+    console.warn(
+      {
+        outcome: 'group_plan_calendar_moved_unsent',
+        reason: input.userId ? 'not_configured' : 'no_parent',
+      },
+      'group plan calendar: moved line not sent',
+    );
+    return effect;
+  }
+  const sent = await ports.privateSend.send({
+    planId: input.plan.id,
+    familyId,
+    userId: input.userId,
+    text: spoken.line,
+    kind: 'calendar_moved',
+    sendKey: lockSendKey(input.plan, familyId),
+  });
+  if (sent.status === 'skipped') {
+    console.warn(
+      { outcome: 'group_plan_calendar_moved_unsent', reason: sent.reason },
+      'group plan calendar: moved line not sent',
+    );
+  }
+  return effect;
 }

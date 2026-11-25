@@ -13,11 +13,7 @@ import {
   type GroupPlanHouseholdResolver,
   hostFamilyIdForPlan,
 } from './calendar';
-import {
-  type CalendarEffect,
-  answerPendingCalendarAsk,
-  settleCalendarAfterAnswer,
-} from './calendar-turn';
+import { type CalendarEffect, settleCalendarAfterAnswer } from './calendar-turn';
 import { groupPlanRsvpLineInput } from './facts';
 import { memberKeyFromName, senderMemberKey } from './member-key';
 import type { GroupPollTally } from './poll-tally';
@@ -106,8 +102,6 @@ export interface GroupPlanRsvpTurnInput {
   senderName: string | null;
   text: string;
   tapback: LinqTapback | null;
-  /** The message a tapback landed on. Absent for a plain text. */
-  tapbackMessageId?: string | null;
   /** Verified Hale user for this handle, when inbound resolved one. */
   senderUserId?: string | null;
   /** Language for the group line. Calendar lines use {@link calendarLanguage}. */
@@ -188,49 +182,6 @@ export async function takeGroupPlanRsvpTurn(
   const senderSeat = seated.find((person) => person.memberKey === senderKey);
   const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
   const calendarUserId = input.senderUserId ?? senderSeat?.userId ?? null;
-
-  if (calendarOn && live) {
-    const answered = await answerPendingCalendarAsk(
-      {
-        chatId: input.chatId,
-        plan: live,
-        userId: calendarUserId,
-        senderName: input.senderName,
-        text: input.text,
-        tapback: input.tapback,
-        tapbackMessageId: input.tapbackMessageId,
-        language: calendarLanguage,
-        now: input.now,
-      },
-      {
-        store: deps.store,
-        households: deps.households,
-        calendar: deps.calendar,
-        consentReader: deps.consentReader,
-        composer: deps.composer,
-        privateSend: deps.privateSend,
-      },
-    );
-    if (answered.consumed) {
-      const tally = (await deps.store.loadTally(live.id)).tally;
-      const outcome =
-        answered.kind === 'written'
-          ? 'group_plan_calendar_written'
-          : answered.kind === 'declined'
-            ? 'group_plan_calendar_declined'
-            : answered.kind === 'asked'
-              ? 'group_plan_calendar_asked'
-              : 'group_plan_calendar_unwritten';
-      return {
-        handled: true,
-        outcome,
-        count: answered.notice === 'sent' ? 'intake' : 'ignored',
-        ...(answered.notice ? { notice: answered.notice } : {}),
-        tally,
-        calendar: answered.effect,
-      };
-    }
-  }
 
   const reading = await reader.read({
     text: input.text,

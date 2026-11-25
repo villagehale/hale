@@ -67,6 +67,8 @@ export interface MemoryGroupPlanWorld {
   /** Household zones Hale knows, keyed by family id. Absent means unknown. */
   householdZones: Map<string, string>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
+  /** Family ids whose calendar copy was written, in write order. */
+  calendarWrites: string[];
 }
 
 export function createMemoryWorld(): MemoryGroupPlanWorld {
@@ -79,6 +81,7 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     consents: new Map(),
     householdZones: new Map(),
     audits: [],
+    calendarWrites: [],
   };
 }
 
@@ -337,6 +340,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       const key = consentKey(input.planId, input.familyId);
       if (world.consents.has(key)) return false;
       const row: CalendarConsentRow = {
+        id: randomUUID(),
         planId: input.planId,
         familyId: input.familyId,
         memberKey: input.memberKey,
@@ -417,6 +421,7 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       const key = consentKey(input.planId, input.familyId);
       if (!world.consents.has(key)) {
         world.consents.set(key, {
+          id: randomUUID(),
           planId: input.planId,
           familyId: input.familyId,
           memberKey: input.memberKey,
@@ -447,6 +452,15 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       });
     },
 
+    async commitCalendarMove(input) {
+      const familyEventId = `evt-${input.familyId}`;
+      world.audits.push({
+        actionTaken: 'linq_group_plan_calendar_moved',
+        after: { familyId: input.familyId, familyEventId },
+      });
+      return { status: 'moved', familyEventId };
+    },
+
     async markCalendarDeclined(input) {
       const row = world.consents.get(consentKey(input.planId, input.familyId));
       if (row?.status === 'asked') row.status = 'declined';
@@ -456,16 +470,21 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       });
     },
 
-    async markCalendarWritten(input) {
+    async commitCalendarWrite(input) {
       const row = world.consents.get(consentKey(input.planId, input.familyId));
-      if (row) {
-        row.status = 'written';
-        row.familyEventId = input.familyEventId;
+      if (!row || row.id !== input.consentId || row.status !== 'asked') {
+        return { status: 'withdrawn' };
       }
+      if (!world.plans.get(input.planId)?.startsAt) return { status: 'no_start' };
+      const familyEventId = `evt-${input.familyId}`;
+      row.status = 'written';
+      row.familyEventId = familyEventId;
+      world.calendarWrites.push(input.familyId);
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_written',
-        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+        after: { familyId: input.familyId, familyEventId },
       });
+      return { status: 'written', familyEventId };
     },
   };
 }

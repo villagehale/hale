@@ -1,9 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { groupExperienceTurnEnabled, groupPollsEnabled } from '../config';
-import { privateAsideOneToOne } from '../connect-link-1to1';
+import { type OneToOneSend, privateAsideOneToOne } from '../connect-link-1to1';
+import { settleCalendarsAfterLock } from '../group-plan-rsvp/inbound';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { createPostgresGroupPlanRsvpStore } from '../group-plan-rsvp/store';
+import type { GroupPlanRsvpComposer } from '../group-plan-rsvp/voice';
 import { readFamilySliceForAudience } from '../multi-family';
 import { lookupLinqPollOption } from '../poll';
 import { isGroupExperiencePollKind } from './kinds';
@@ -24,6 +27,13 @@ export interface GroupExperienceInboundPorts {
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   sendOneToOne?: GroupExperienceTurnPorts['sendOneToOne'];
+  /** The plan calendar's 1:1 lines after a lock. Production uses the household 1:1 door. */
+  calendar?: {
+    composer?: GroupPlanRsvpComposer;
+    oneToOne?: OneToOneSend;
+    findDirectChat?: (phone: string) => Promise<string | null>;
+    pager?: OpsPager;
+  };
 }
 
 async function senderNameOf(database: Database, userId: string | null): Promise<string | null> {
@@ -83,6 +93,11 @@ export async function considerGroupExperience(
       send: ports.send,
       pollCard: postgresExperiencePollCard(ports.database),
       sendOneToOne: ports.sendOneToOne ?? productionOneToOne(ports.database, ports.now),
+      calendarAfterLock: (locked) =>
+        settleCalendarsAfterLock(
+          { database: ports.database, now: ports.now, ...ports.calendar },
+          locked,
+        ),
       privateSlices: async (familyIds) => {
         const out = [];
         for (const familyId of familyIds) {

@@ -336,6 +336,32 @@ describe('an env-only flag, read before any family is known', () => {
     ).toBe(true);
   });
 
+  it('VIL-503: PostHog cannot light the group-plan calendar write', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('linq-group-plan-rsvp-calendar', 'family-1', ON)).toBe(false);
+    expect(
+      isEnabled('linq-group-plan-rsvp-calendar', 'family-1', {
+        ...ON,
+        LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED: 'true\n',
+      }),
+    ).toBe(true);
+    expect(
+      isEnabled('linq-group-plan-rsvp-calendar', 'family-1', {
+        ...ON,
+        VERCEL_ENV: 'production',
+        LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED: 'true',
+      }),
+    ).toBe(true);
+    setFlagEvaluatorForTests(() => false);
+    expect(
+      isEnabled('linq-group-plan-rsvp-calendar', 'family-1', {
+        ...ON,
+        LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED: 'true',
+      }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['linq-group-plan-rsvp-calendar'].envOnly).toBe(true);
+  });
+
   it('VIL-719: PostHog at 100% can never light the ask policy, and a sync never creates it', () => {
     setFlagEvaluatorForTests(() => true);
     expect(isEnabled('ask-policy-tiers', 'family-1', ON)).toBe(false);

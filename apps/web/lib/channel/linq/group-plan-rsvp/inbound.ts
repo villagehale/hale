@@ -1,5 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { payerThreadProof } from '~/lib/billing/notices/thread';
+import { findHaleDirectChat } from '~/lib/channel/outbound-transport';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import {
   linqGroupPlanRsvpCalendarEnabled,
   linqGroupPlanRsvpEnabled,
@@ -15,12 +18,14 @@ import type { LinqTapback } from '../transport';
 import {
   type CalendarConsentReader,
   type CalendarConsentReading,
+  type CalendarPrivateKind,
+  type CalendarPrivateLine,
+  hostFamilyIdForPlan,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
-  hostFamilyIdForPlan,
   sharedCalendarConsentReader,
 } from './calendar';
-import { answerPendingCalendarAsk } from './calendar-turn';
+import { answerPendingCalendarAsk, moveWrittenCopy, reaskAfterLockedStart } from './calendar-turn';
 import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
@@ -32,13 +37,18 @@ import {
 import type { GroupPlanRsvpReader } from './reading';
 import {
   GROUP_PLAN_CALENDAR_ASK_TEMPLATE,
+  GROUP_PLAN_CALENDAR_MOVED_TEMPLATE,
   GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE,
   GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE,
   GROUP_PLAN_RSVP_TEMPLATE,
   GROUP_POLL_TEMPLATE,
   sendGroupPlanRsvpLine,
 } from './send';
-import { createPostgresGroupPlanRsvpStore } from './store';
+import {
+  type CalendarConsentRow,
+  type LockedPlanStart,
+  createPostgresGroupPlanRsvpStore,
+} from './store';
 import type { PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
@@ -53,6 +63,8 @@ export interface GroupPlanRsvpInboundPorts {
   consentReader?: CalendarConsentReader;
   /** Test seam. Production sends through the household 1:1 door. */
   oneToOne?: OneToOneSend;
+  /** Test seam. Production asks Linq for this number's direct chat with Hale. */
+  findDirectChat?: (phone: string) => Promise<string | null>;
 }
 
 /** The household's stored language. A missing tag stays null so the writer follows their words. */
@@ -89,9 +101,10 @@ function groupTemplate(kind: 'plan' | 'poll' | undefined) {
   return kind === 'poll' ? GROUP_POLL_TEMPLATE : GROUP_PLAN_RSVP_TEMPLATE;
 }
 
-function calendarTemplate(kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed'): string {
+function calendarTemplate(kind: CalendarPrivateKind): string {
   if (kind === 'calendar_ask') return GROUP_PLAN_CALENDAR_ASK_TEMPLATE;
   if (kind === 'calendar_written') return GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE;
+  if (kind === 'calendar_moved') return GROUP_PLAN_CALENDAR_MOVED_TEMPLATE;
   return GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE;
 }
 
@@ -107,22 +120,37 @@ function ledgeredSend(ports: GroupPlanRsvpInboundPorts) {
         });
 }
 
-function privateCalendarSend(ports: GroupPlanRsvpInboundPorts) {
+function privateCalendarSend(
+  ports: Pick<GroupPlanRsvpInboundPorts, 'database' | 'now' | 'oneToOne' | 'findDirectChat'>,
+) {
   return {
-    async send(line: {
-      planId: string;
-      familyId: string;
-      userId: string | null;
-      text: string;
-      kind: 'calendar_ask' | 'calendar_written' | 'calendar_removed';
-    }) {
+    async send(line: CalendarPrivateLine) {
+      if (!line.userId) return { status: 'skipped' as const, reason: 'no_parent' as const };
+      // Hale never texts a number first. A written-copy line answers that parent's own
+      // 1:1 OK in the same turn; every other calendar line needs a thread they started.
+      if (line.kind !== 'calendar_written') {
+        const proof = await payerThreadProof(ports.database, line.userId, {
+          before: null,
+          findDirectChat: ports.findDirectChat ?? ((phone) => findHaleDirectChat(phone)),
+        });
+        if (proof !== 'thread') {
+          const reason = proof === 'unread' ? ('thread_unread' as const) : ('no_thread' as const);
+          console.info(
+            { outcome: `group_plan_calendar_${reason}`, kind: line.kind },
+            'group plan calendar: no 1:1 thread, nothing sent',
+          );
+          return { status: 'skipped' as const, reason };
+        }
+      }
       const templateKey = calendarTemplate(line.kind);
       const result = await sendHouseholdPrivateLine(ports.database, {
         familyId: line.familyId,
         userId: line.userId,
         body: line.text,
         templateKey,
-        dedupeKey: `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
+        dedupeKey: line.sendKey
+          ? `${templateKey}:${line.sendKey}`
+          : `${templateKey}:${line.planId}:${line.familyId}:${ports.now.toISOString()}`,
         now: ports.now,
         ...(ports.oneToOne ? { send: ports.oneToOne } : {}),
       });
@@ -191,7 +219,6 @@ export async function considerGroupPlanRsvp(
     senderUserId?: string | null;
     text: string;
     tapback: LinqTapback | null;
-    tapbackMessageId?: string | null;
     /** VIL-686: Secret Santa runs in this chat. */
     secretSanta?: boolean;
   },
@@ -216,7 +243,6 @@ export async function considerGroupPlanRsvp(
       senderUserId: input.senderUserId ?? null,
       text: input.text,
       tapback: input.tapback,
-      tapbackMessageId: input.tapbackMessageId,
       secretSanta: input.secretSanta,
       language: 'en',
       calendarLanguage: await calendarHouseholdLanguage(
@@ -240,7 +266,12 @@ export async function considerGroupPlanRsvp(
   );
 }
 
-function calendarPorts(ports: GroupPlanRsvpInboundPorts) {
+function calendarPorts(
+  ports: Pick<
+    GroupPlanRsvpInboundPorts,
+    'database' | 'now' | 'composer' | 'consentReader' | 'oneToOne' | 'findDirectChat'
+  >,
+) {
   return {
     households: postgresGroupPlanHouseholds(ports.database),
     calendar: postgresGroupPlanCalendarWriter(ports.database),
@@ -348,12 +379,18 @@ export async function considerPrivateCalendarReply(
         chatId: input.chatId,
       })
     : null;
-  const askIsLastLine =
-    lastLine !== null &&
-    listed.some(
-      (item) => item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLine,
-    );
-  const open = listed.filter((item) => item.consent.status === 'declined' || askIsLastLine);
+  // Only the ask that is Hale's last 1:1 line can take this reply. Any other open ask
+  // is not a candidate, so the model never chooses among asks.
+  const lastLineAsk = listed.filter(
+    (item) =>
+      item.consent.status === 'asked' &&
+      lastLine !== null &&
+      item.consent.askProviderMessageId === lastLine,
+  );
+  const open =
+    lastLineAsk.length > 0
+      ? lastLineAsk
+      : listed.filter((item) => item.consent.status === 'declined');
   if (open.length < listed.length) {
     console.info(
       { outcome: 'group_plan_calendar_ask_not_last_line', count: listed.length - open.length },
@@ -416,6 +453,109 @@ export async function considerCalendarTapback(
   if (!answered.consumed) return { handled: false };
   const tally = (await store.loadTally(found.plan.id)).tally;
   return calendarOutcome(answered, tally);
+}
+
+/** The parent a calendar ask went to: the 1:1 ledger row that carried it. */
+async function askedParentOf(
+  database: Database,
+  askProviderMessageId: string | null,
+): Promise<string | null> {
+  if (!askProviderMessageId) return null;
+  const [row] = await database
+    .select({ parentUserId: schema.channelMessages.parentUserId })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.providerMessageId, askProviderMessageId),
+        eq(schema.channelMessages.direction, 'out'),
+      ),
+    )
+    .limit(1);
+  return row?.parentUserId ?? null;
+}
+
+/**
+ * One household's work after a lock. The poll is already closed, so a retry never redoes
+ * it: a throw pages #ops for that household and never stops the next household's work.
+ */
+async function settleOneHousehold(
+  pager: OpsPager,
+  row: CalendarConsentRow,
+  work: () => Promise<unknown>,
+) {
+  try {
+    await work();
+  } catch (err) {
+    console.error(
+      {
+        outcome: 'group_plan_calendar_after_lock_failed',
+        ref: row.id,
+        planId: row.planId,
+        familyId: row.familyId,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      "group plan calendar: one household's work after the lock failed",
+    );
+    await pager.page({
+      site: 'group_plan_calendar_move',
+      facts: { failure: 'follow_up_failed' },
+      ref: row.id,
+    });
+  }
+}
+
+/**
+ * After a group locked a new start ({@link lockPlanStart} already withdrew every open
+ * ask): each household whose ask was withdrawn is asked once more about the new start,
+ * and each household whose copy was written gets it moved and hears so in their 1:1.
+ */
+export async function settleCalendarsAfterLock(
+  ports: Pick<
+    GroupPlanRsvpInboundPorts,
+    'database' | 'now' | 'composer' | 'oneToOne' | 'findDirectChat'
+  > & { pager?: OpsPager },
+  locked: LockedPlanStart,
+): Promise<void> {
+  const store = createPostgresGroupPlanRsvpStore(ports.database);
+  const turnPorts = { store, ...calendarPorts(ports) };
+  const pager = ports.pager ?? failurePageOpsPager(() => ports.database);
+  for (const row of locked.withdrawn) {
+    await settleOneHousehold(pager, row, async () => {
+      const userId = await askedParentOf(ports.database, row.askProviderMessageId);
+      if (!userId) {
+        console.warn(
+          { outcome: 'group_plan_calendar_reask_no_parent' },
+          'group plan calendar: no parent on record for the withdrawn ask',
+        );
+        return;
+      }
+      await reaskAfterLockedStart(
+        {
+          plan: locked.plan,
+          row,
+          userId,
+          language: await householdLanguage(ports.database, row.familyId),
+          now: ports.now,
+        },
+        turnPorts,
+      );
+    });
+  }
+  for (const row of locked.written) {
+    await settleOneHousehold(pager, row, async () =>
+      moveWrittenCopy(
+        {
+          plan: locked.plan,
+          previousStartsAt: locked.previousStartsAt,
+          row,
+          userId: await askedParentOf(ports.database, row.askProviderMessageId),
+          language: await householdLanguage(ports.database, row.familyId),
+          now: ports.now,
+        },
+        { ...turnPorts, pager },
+      ),
+    );
+  }
 }
 
 /**

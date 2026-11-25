@@ -176,6 +176,11 @@ export const OPS_PAGE_ROUTE = 'ops:page';
  */
 export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
+  /**
+   * A locked new start: a household's accepted copy did not move, its 1:1 line was not
+   * written, or that household's work after the lock threw.
+   */
+  group_plan_calendar_move: { failure: ['move_failed', 'line_unwritten', 'follow_up_failed'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
   /** VIL-721 · the one Google link's text: the model could not write it, so it did not go. */
@@ -412,6 +417,8 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  // One household's calendar copy after a group lock; its ref is that household's ask row.
+  'group_plan_calendar_move',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

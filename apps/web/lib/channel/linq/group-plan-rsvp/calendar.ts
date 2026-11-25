@@ -21,6 +21,7 @@ import type { LinqTapback } from '../transport';
 
 export const GROUP_PLAN_RSVP_CALENDAR_READ_SKILL = 'group-plan-rsvp-calendar-read';
 export const GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL = 'group-plan-rsvp-calendar-voice';
+export const GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL = 'group-plan-rsvp-calendar-moved-voice';
 
 const PARENT_ROLES = ['primary_parent', 'co_parent'] as const;
 
@@ -154,7 +155,7 @@ export function sharedCalendarConsentReader(): CalendarConsentReader {
 export type GroupPlanCalendarVoiceKind = 'calendar_ask' | 'calendar_written' | 'calendar_removed';
 
 /** A private line to one parent. There is no group chat id on this send. */
-export type CalendarPrivateKind = GroupPlanCalendarVoiceKind;
+export type CalendarPrivateKind = GroupPlanCalendarVoiceKind | 'calendar_moved';
 
 export interface CalendarPrivateLine {
   planId: string;
@@ -162,6 +163,8 @@ export interface CalendarPrivateLine {
   userId: string | null;
   text: string;
   kind: CalendarPrivateKind;
+  /** Keys a send that must go once per fact (a re-ask per new start), never per clock. */
+  sendKey?: string;
 }
 
 export interface CalendarPrivateSender {
@@ -169,7 +172,7 @@ export interface CalendarPrivateSender {
     line: CalendarPrivateLine,
   ): Promise<
     | { status: 'sent'; providerMessageId: string | null }
-    | { status: 'skipped'; reason: 'not_sent' | 'no_parent' }
+    | { status: 'skipped'; reason: 'not_sent' | 'no_parent' | 'no_thread' | 'thread_unread' }
   >;
 }
 
@@ -182,6 +185,16 @@ export interface GroupPlanCalendarLineInput {
   parentWords: string | null;
   facts: CalendarAskFacts;
   questions: 0 | 1;
+}
+
+/** The copy a household accepted moved to the group's new start. */
+export interface GroupPlanCalendarMovedLineInput {
+  skill: typeof GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL;
+  kind: 'calendar_moved';
+  language: ReplyLanguage | null;
+  parentWords: null;
+  facts: CalendarAskFacts & { previousStartsAt: string | null };
+  questions: 0;
 }
 
 export function groupPlanCalendarLineInput(input: {

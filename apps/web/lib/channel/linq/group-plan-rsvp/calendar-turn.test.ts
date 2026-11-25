@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { CalendarConsentReader, GroupPlanCalendarWriter } from './calendar';
 import { calendarConsentUserMessage } from './calendar';
+import { answerPendingCalendarAsk } from './calendar-turn';
 import { memberKeyFromHandle, senderMemberKey } from './member-key';
 import { createMemoryGroupPlanRsvpStore, createMemoryWorld } from './memory-store';
 import type { GroupPlanRsvpReader, GroupPlanRsvpReading } from './reading';
-import { takeGroupPlanRsvpTurn } from './turn';
+import { type GroupPlanRsvpTurnInput, takeGroupPlanRsvpTurn } from './turn';
 import { fakeGroupPlanRsvpComposer } from './voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
@@ -189,9 +190,57 @@ function calendarDeps(input: {
   };
 }
 
+const ANSWER_OUTCOME = {
+  written: 'group_plan_calendar_written',
+  declined: 'group_plan_calendar_declined',
+  asked: 'group_plan_calendar_asked',
+  unwritten: 'group_plan_calendar_unwritten',
+} as const;
+
+/**
+ * The parent's own 1:1 answer to the calendar ask: the same answerPendingCalendarAsk the
+ * private reply and a tapback on the ask reach, over the memory store. A message in the
+ * group never gets here.
+ */
+async function inOneToOne(
+  input: GroupPlanRsvpTurnInput & { tapbackMessageId?: string | null },
+  deps: ReturnType<typeof calendarDeps>,
+) {
+  const plan = await deps.store.loadLivePlan(input.chatId);
+  if (!plan) return { handled: false as const };
+  const answered = await answerPendingCalendarAsk(
+    {
+      chatId: input.chatId,
+      plan,
+      userId: input.senderUserId ?? null,
+      senderName: input.senderName,
+      text: input.text,
+      tapback: input.tapback,
+      tapbackMessageId: input.tapbackMessageId,
+      language: input.calendarLanguage === undefined ? input.language : input.calendarLanguage,
+      now: input.now,
+    },
+    {
+      store: deps.store,
+      households: deps.households,
+      calendar: deps.calendar,
+      consentReader: deps.consentReader,
+      composer: deps.composer,
+      privateSend: deps.privateSend,
+    },
+  );
+  if (!answered.consumed) return { handled: false as const };
+  return {
+    handled: true as const,
+    outcome: ANSWER_OUTCOME[answered.kind],
+    calendar: answered.effect,
+    ...(answered.notice ? { notice: answered.notice } : {}),
+  };
+}
+
 describe('group plan calendar consent', () => {
   it('stays dark when the calendar flag is off — a yes does not ask or write', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const outcome = await takeGroupPlanRsvpTurn(
       {
@@ -214,14 +263,14 @@ describe('group plan calendar consent', () => {
     );
     expect(outcome).toMatchObject({ handled: true, outcome: 'group_plan_recorded' });
     expect(outcome.handled && outcome.calendar).toBeUndefined();
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     expect(texts).toEqual([]);
     const plan = await store.loadLivePlan(CHAT);
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
   });
 
   it('asks after a yes and writes only that household after the reader says ok', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const consent = consentOf('ok');
     const priv = privateSpy();
@@ -249,14 +298,14 @@ describe('group plan calendar consent', () => {
       handled: true,
       calendar: { status: 'asked' },
     });
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
     expect(priv.lines[0]?.familyId).toBe('fam-priya');
     expect(texts.map((line) => line.kind)).toEqual(['plan']);
     expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
     expect(consent.texts).toEqual([]);
 
-    const written = await takeGroupPlanRsvpTurn(
+    const written = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -282,7 +331,7 @@ describe('group plan calendar consent', () => {
       calendar: { status: 'written', familyId: 'fam-priya', familyEventId: 'evt-fam-priya' },
       notice: 'sent',
     });
-    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(world.calendarWrites).toEqual(['fam-priya']);
     expect(texts.map((line) => line.kind)).toEqual(['plan']);
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask', 'calendar_written']);
     expect(priv.lines.every((line) => line.familyId === 'fam-priya')).toBe(true);
@@ -296,7 +345,7 @@ describe('group plan calendar consent', () => {
   });
 
   it('writes nothing on an ok the reader is not sure of, and keeps the ask open', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     await takeGroupPlanRsvpTurn(
@@ -322,7 +371,7 @@ describe('group plan calendar consent', () => {
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
 
     const unsure = consentOf('ok', 'low');
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -343,14 +392,14 @@ describe('group plan calendar consent', () => {
       }),
     );
     expect(unsure.texts).toEqual(['hmm maybe, let me think']);
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
     const plan = await store.loadLivePlan(CHAT);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
   });
 
   it('does not treat the words yes or ok as consent — the reader decides', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     await takeGroupPlanRsvpTurn(
       {
@@ -372,7 +421,7 @@ describe('group plan calendar consent', () => {
       }),
     );
     const notThis = consentOf('not_this');
-    const stillOpen = await takeGroupPlanRsvpTurn(
+    const stillOpen = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -402,10 +451,10 @@ describe('group plan calendar consent', () => {
         consent: notThis,
       }),
     );
-    expect(stillOpen).toMatchObject({ handled: true, outcome: 'group_plan_chatter' });
-    expect(writer.familyIds).toEqual([]);
+    expect(stillOpen).toEqual({ handled: false });
+    expect(world.calendarWrites).toEqual([]);
 
-    const declined = await takeGroupPlanRsvpTurn(
+    const declined = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -429,7 +478,7 @@ describe('group plan calendar consent', () => {
       outcome: 'group_plan_calendar_declined',
       calendar: { status: 'declined' },
     });
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     const again = await takeGroupPlanRsvpTurn(
       {
         chatId: CHAT,
@@ -452,11 +501,11 @@ describe('group plan calendar consent', () => {
     expect(again).toMatchObject({ handled: true, outcome: 'group_plan_recorded' });
     expect(again.handled && again.calendar).toBeUndefined();
     expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
   });
 
   it('leaves the other household unwritten until that household agrees', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const homes = households({ 'u-priya': 'fam-priya', 'u-sam': 'fam-sam' });
     await takeGroupPlanRsvpTurn(
@@ -479,7 +528,7 @@ describe('group plan calendar consent', () => {
         consent: consentOf('ok'),
       }),
     );
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -519,11 +568,11 @@ describe('group plan calendar consent', () => {
         consent: consentOf('ok'),
       }),
     );
-    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(world.calendarWrites).toEqual(['fam-priya']);
     const plan = await store.loadLivePlan(CHAT);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-sam'))?.status).toBe('asked');
 
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: SAM,
@@ -543,11 +592,11 @@ describe('group plan calendar consent', () => {
         consent: consentOf('ok'),
       }),
     );
-    expect(writer.familyIds).toEqual(['fam-priya', 'fam-sam']);
+    expect(world.calendarWrites).toEqual(['fam-priya', 'fam-sam']);
   });
 
   it('does not ask a household Hale cannot place, or a plan with no start', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const skipped = await takeGroupPlanRsvpTurn(
       {
@@ -569,7 +618,7 @@ describe('group plan calendar consent', () => {
       }),
     );
     expect(skipped).toMatchObject({ calendar: { status: 'skipped', reason: 'no_household' } });
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
 
     const bare = createMemoryWorld();
     bare.families.set(CHAT, { familyId: 'fam-covering', timeZone: 'America/Toronto' });
@@ -605,11 +654,11 @@ describe('group plan calendar consent', () => {
     );
     expect(noStart).toMatchObject({ calendar: { status: 'skipped', reason: 'no_start' } });
     expect(await bareStore.loadCalendarConsent(plan.id, 'fam-priya')).toBeNull();
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
   });
 
   it('sends nothing and keeps no ask when the model cannot write the question', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const outcome = await takeGroupPlanRsvpTurn(
       {
@@ -634,11 +683,11 @@ describe('group plan calendar consent', () => {
     expect(texts).toEqual([]);
     const plan = await store.loadLivePlan(CHAT);
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
   });
 
   it('keeps the calendar row when the confirmation cannot be sent', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     await takeGroupPlanRsvpTurn(
       {
@@ -660,7 +709,7 @@ describe('group plan calendar consent', () => {
       }),
     );
     const composer = fakeGroupPlanRsvpComposer({ fail: true });
-    const outcome = await takeGroupPlanRsvpTurn(
+    const outcome = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -685,11 +734,11 @@ describe('group plan calendar consent', () => {
       calendar: { status: 'written', familyId: 'fam-priya' },
       notice: { skipped: 'model_failed' },
     });
-    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(world.calendarWrites).toEqual(['fam-priya']);
   });
 
   it('drops an unanswered ask when they are no longer coming, and can ask again later', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     await takeGroupPlanRsvpTurn(
       {
@@ -743,11 +792,11 @@ describe('group plan calendar consent', () => {
       }),
     );
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya')).toBeNull();
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
   });
 
   it('reopens a decline only when the reader says they brought the calendar up again', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     await takeGroupPlanRsvpTurn(
@@ -770,7 +819,7 @@ describe('group plan calendar consent', () => {
         consent: consentOf('not_this'),
       }),
     );
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -793,7 +842,7 @@ describe('group plan calendar consent', () => {
     const plan = await store.loadLivePlan(CHAT);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('declined');
 
-    const reopened = await takeGroupPlanRsvpTurn(
+    const reopened = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -821,11 +870,11 @@ describe('group plan calendar consent', () => {
     expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask', 'calendar_ask']);
     expect(priv.lines.every((line) => line.familyId === 'fam-priya')).toBe(true);
     expect(texts.some((line) => line.kind?.startsWith('calendar'))).toBe(false);
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
   });
 
   it('a later no removes only the copy Hale wrote and confirms in private', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     const deps = {
@@ -848,7 +897,7 @@ describe('group plan calendar consent', () => {
       },
       calendarDeps({ ...deps, reader: readerOf(rsvp('yes')) }),
     );
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -893,7 +942,7 @@ describe('group plan calendar consent', () => {
       calendar: { status: 'removed', familyId: 'fam-priya', familyEventId: 'evt-fam-priya' },
     });
     expect(writer.removed).toEqual(['fam-priya']);
-    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(world.calendarWrites).toEqual(['fam-priya']);
     expect(priv.lines.map((line) => line.kind)).toEqual([
       'calendar_ask',
       'calendar_written',
@@ -929,7 +978,7 @@ describe('a removal confirmation the model cannot write', () => {
       },
       calendarDeps({ ...shared, reader: readerOf(rsvp('yes')), consent: consentOf('not_this') }),
     );
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -1033,7 +1082,7 @@ describe('another parent in the same household', () => {
   });
 
   it('ignores a tapback that did not land on the private ask', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     const consent = consentOf('ok');
@@ -1057,7 +1106,7 @@ describe('another parent in the same household', () => {
         consent,
       }),
     );
-    const missed = await takeGroupPlanRsvpTurn(
+    const missed = await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -1079,7 +1128,7 @@ describe('another parent in the same household', () => {
       }),
     );
     expect(missed.handled && missed.outcome).not.toBe('group_plan_calendar_written');
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     expect(consent.texts).toEqual([]);
   });
 
@@ -1093,7 +1142,7 @@ describe('another parent in the same household', () => {
   ] as const)(
     'a %s on the private ask is handled as protocol, not by the model',
     async (tapback, status, modelSays) => {
-      const { store, texts } = await picnic();
+      const { store, texts, world } = await picnic();
       const writer = writerSpy();
       const priv = privateSpy();
       const consent = consentOf(modelSays);
@@ -1118,7 +1167,7 @@ describe('another parent in the same household', () => {
         }),
       );
       consent.texts.length = 0;
-      await takeGroupPlanRsvpTurn(
+      await inOneToOne(
         {
           chatId: CHAT,
           senderHandle: PRIYA,
@@ -1141,13 +1190,13 @@ describe('another parent in the same household', () => {
       );
       const plan = await store.loadLivePlan(CHAT);
       expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe(status);
-      expect(writer.familyIds).toEqual(status === 'written' ? ['fam-priya'] : []);
+      expect(world.calendarWrites).toEqual(status === 'written' ? ['fam-priya'] : []);
       expect(consent.texts).toEqual([]);
     },
   );
 
   it('a tapback in the group never counts', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     const consent = consentOf('ok');
@@ -1180,7 +1229,6 @@ describe('another parent in the same household', () => {
         senderUserId: 'u-priya',
         text: '',
         tapback: 'love',
-        tapbackMessageId: 'group-message',
         language: 'en',
         now: new Date(LATER.getTime() + 60_000),
       },
@@ -1195,12 +1243,12 @@ describe('another parent in the same household', () => {
     );
     const plan = await store.loadLivePlan(CHAT);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
-    expect(writer.familyIds).toEqual([]);
+    expect(world.calendarWrites).toEqual([]);
     expect(consent.texts).toEqual([]);
   });
 
   it('keeps a written entry when a co-parent says no and the other is still a yes', async () => {
-    const { store, texts } = await picnic();
+    const { store, texts, world } = await picnic();
     const writer = writerSpy();
     const priv = privateSpy();
     const homes = households({ 'u-priya': 'fam-priya', 'u-sam': 'fam-priya' });
@@ -1225,7 +1273,7 @@ describe('another parent in the same household', () => {
       },
       calendarDeps({ ...shared, reader: readerOf(rsvp('yes')) }),
     );
-    await takeGroupPlanRsvpTurn(
+    await inOneToOne(
       {
         chatId: CHAT,
         senderHandle: PRIYA,
@@ -1253,7 +1301,7 @@ describe('another parent in the same household', () => {
     );
     const plan = await store.loadLivePlan(CHAT);
     expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('written');
-    expect(writer.familyIds).toEqual(['fam-priya']);
+    expect(world.calendarWrites).toEqual(['fam-priya']);
     expect(writer.removed).toEqual([]);
   });
 });
