@@ -72,6 +72,17 @@ describe('source_code', () => {
     expect(parseAttribution({ source_code: `a-${'b'.repeat(47)}` })).toEqual({});
   });
 
+  it('drops a co-parent join tag and keeps a card whose name starts with join', () => {
+    const join = `join-${'ab'.repeat(16)}`;
+    expect(join).toHaveLength(37);
+    expect(parseAttribution({ source_code: join, utm_source: 'text' })).toEqual({
+      utm_source: 'text',
+    });
+    expect(parseAttribution({ source_code: 'join-earlyon' })).toEqual({
+      source_code: 'join-earlyon',
+    });
+  });
+
   it('is not read from the site landing tag (`s=`), which the site validates itself', () => {
     expect(parseAttribution('s=poster-oakville')).toEqual({});
   });

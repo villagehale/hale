@@ -1,6 +1,6 @@
 import {
-  type Attribution,
   ATTRIBUTION_KEYS,
+  type Attribution,
   attributionIsEmpty,
   mergeFirstTouch,
   parseAttribution,
@@ -42,6 +42,16 @@ export function attributionCookie(attribution: Attribution, hostname: string): s
     `Max-Age=${MAX_AGE_SECONDS}`,
     'SameSite=Lax',
   ];
+  const host = hostname.replace(/\.$/, '').toLowerCase();
+  if (host === 'villagehale.com' || host.endsWith('.villagehale.com')) {
+    parts.push('Domain=.villagehale.com');
+  }
+  return parts.join('; ');
+}
+
+/** Drops the checkout cookie. Same Domain as {@link attributionCookie}, or the browser keeps it. */
+export function clearAttributionCookie(hostname: string): string {
+  const parts = [`${ATTRIBUTION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'SameSite=Lax'];
   const host = hostname.replace(/\.$/, '').toLowerCase();
   if (host === 'villagehale.com' || host.endsWith('.villagehale.com')) {
     parts.push('Domain=.villagehale.com');

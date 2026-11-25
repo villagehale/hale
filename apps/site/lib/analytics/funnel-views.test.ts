@@ -127,6 +127,15 @@ describe('the attribution cookie and the card code', () => {
     expect(reads).toBe(1);
   });
 
+  it('does not copy a co-parent join tag into the cookie', () => {
+    const join = `join-${'ab'.repeat(16)}`;
+    const on = funnelAttributionForCookie({ utm_source: 'text' }, () => join, {
+      NEXT_PUBLIC_POSTHOG_WEB_ENABLED: 'true',
+    });
+    expect(on).toEqual({ utm_source: 'text' });
+    expect(attributionCookie(on, 'www.villagehale.com')).not.toContain(join);
+  });
+
   it('leaves an untagged visit without a card code', () => {
     expect(
       funnelAttributionForCookie({ utm_source: 'google' }, () => null, {

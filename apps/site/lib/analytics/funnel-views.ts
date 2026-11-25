@@ -1,4 +1,4 @@
-import type { Attribution } from '@hale/types';
+import { type Attribution, parseAttribution } from '@hale/types';
 import { routing } from '~/i18n/routing';
 import type { AnalyticsEvent } from './events';
 import { posthogWebEnabled } from './flags';
@@ -49,6 +49,9 @@ export function funnelAttributionForCookie(
   env?: Record<string, string | undefined>,
 ): Attribution {
   if (!posthogWebEnabled(env)) return attribution;
-  const sourceCode = readSourceCode();
+  // parseAttribution drops a join tag (`join-` + 32 hex). That string is a
+  // co-parent capability that also matches the card-code grammar, so it stays
+  // on the text door and out of the 90-day cookie.
+  const sourceCode = parseAttribution({ source_code: readSourceCode() ?? undefined }).source_code;
   return sourceCode ? { ...attribution, source_code: sourceCode } : attribution;
 }

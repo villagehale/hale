@@ -22,9 +22,10 @@ import { primaryTextTarget } from '~/lib/primary-cta';
  * once it opens a composer.
  *
  * THE BODY-TOKEN SEAM (poster attribution): the `(via <code>)` token comes from
- * the remembered first-touch code (the same reader the provider uses), falling
- * back to the server-validated `source` when storage is empty. Without JS the
- * /text link still carries the server's code.
+ * the remembered first-touch code, falling back to the server-validated `source`
+ * when storage is empty. That reader keeps a co-parent join tag (`join-` + 32
+ * hex). Analytics and the checkout cookie drop that tag; this door must not.
+ * Without JS the /text link still carries the server's code.
  */
 export function ChooserLink({
   locale,

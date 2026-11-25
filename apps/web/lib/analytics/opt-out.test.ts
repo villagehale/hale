@@ -5,6 +5,7 @@ import {
   ANALYTICS_OPT_OUT_QUERY,
   ANALYTICS_OPT_OUT_QUERY_VALUE,
   ANALYTICS_OPT_OUT_STORAGE_KEY,
+  cookieHeaderHasAnalyticsOptOut,
   hasAnalyticsOptOut,
 } from './opt-out';
 
@@ -38,5 +39,11 @@ describe('analytics opt-out', () => {
     expect(hasAnalyticsOptOut()).toBe(true);
     expect(window.localStorage.getItem(ANALYTICS_OPT_OUT_STORAGE_KEY)).toBe('1');
     expect(document.cookie).toContain(`${ANALYTICS_OPT_OUT_COOKIE}=1`);
+  });
+
+  it('reads the same cookie from a request header', () => {
+    expect(cookieHeaderHasAnalyticsOptOut(null)).toBe(false);
+    expect(cookieHeaderHasAnalyticsOptOut('theme=dark')).toBe(false);
+    expect(cookieHeaderHasAnalyticsOptOut(`theme=dark; ${ANALYTICS_OPT_OUT_COOKIE}=1`)).toBe(true);
   });
 });

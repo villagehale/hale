@@ -72,6 +72,11 @@ export async function createBillingCheckout(input: {
   env?: Record<string, string | undefined>;
   /** checkout_started goes out through this; defaults to PostHog. */
   funnel?: FunnelSender;
+  /**
+   * The app's analytics opt-out cookie was on this request. Checkout still
+   * proceeds; the family-linked PostHog event does not.
+   */
+  analyticsOptOut?: boolean;
 }): Promise<CreateBillingCheckoutResult> {
   const {
     tier,
@@ -149,15 +154,17 @@ export async function createBillingCheckout(input: {
     after: { tier, period, sku: sku ?? null, currency: currency ?? null },
   });
 
-  await captureFunnelEvent(
-    {
-      event: 'checkout_started',
-      familyId,
-      attribution: attribution ?? {},
-      properties: { plan: tier, period },
-    },
-    { sender: input.funnel ?? posthogFunnelSender, env },
-  );
+  if (!input.analyticsOptOut) {
+    await captureFunnelEvent(
+      {
+        event: 'checkout_started',
+        familyId,
+        attribution: attribution ?? {},
+        properties: { plan: tier, period },
+      },
+      { sender: input.funnel ?? posthogFunnelSender, env },
+    );
+  }
 
   return { status: 'created', url };
 }

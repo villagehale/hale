@@ -41,6 +41,15 @@ export function persistAnalyticsOptOut(): void {
   }
 }
 
+/** The request Cookie header, for a server route that must honour the same opt-out. */
+export function cookieHeaderHasAnalyticsOptOut(cookieHeader: string | null): boolean {
+  if (!cookieHeader) return false;
+  return cookieHeader.split(';').some((part) => {
+    const [name, value] = part.trim().split('=');
+    return name === ANALYTICS_OPT_OUT_COOKIE && value === '1';
+  });
+}
+
 export function hasAnalyticsOptOut(): boolean {
   if (typeof window === 'undefined') return false;
   try {

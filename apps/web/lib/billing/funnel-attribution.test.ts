@@ -64,7 +64,11 @@ function sessionMetadata(body: string | null): Record<string, string> {
   return out;
 }
 
-async function checkoutFromLanding(cookieHeader: string | null, funnel = createFakeFunnelSender()) {
+async function checkoutFromLanding(
+  cookieHeader: string | null,
+  funnel = createFakeFunnelSender(),
+  analyticsOptOut = false,
+) {
   const stripe = createFakeStripe();
   stripe.intercept(
     (call) => call.method === 'POST' && call.path === '/v1/checkout/sessions',
@@ -87,6 +91,7 @@ async function checkoutFromLanding(cookieHeader: string | null, funnel = createF
     origin: 'https://app.example.com',
     marketingOrigin: 'https://www.example.com',
     funnel: funnel.sender,
+    analyticsOptOut,
   });
   expect(result).toEqual({
     status: 'created',
@@ -185,6 +190,29 @@ describe('checkout_started', () => {
   it('sends nothing with the flag off', async () => {
     const { funnel } = await checkoutFromLanding(siteCookie(parseAttribution(LANDING)));
     expect(funnel.sent).toEqual([]);
+  });
+
+  it('sends nothing when the request carries the analytics opt-out cookie', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const { funnel, metadata } = await checkoutFromLanding(
+      siteCookie(parseAttribution(LANDING)),
+      createFakeFunnelSender(),
+      true,
+    );
+    expect(funnel.sent).toEqual([]);
+    expect(metadata.utm_campaign).toBe('bf26');
+  });
+
+  it('does not put a co-parent join tag in Stripe metadata or the event', async () => {
+    vi.stubEnv(FLAG, 'true');
+    const join = `join-${'ab'.repeat(16)}`;
+    const { funnel, metadata } = await checkoutFromLanding(
+      siteCookie({ utm_source: 'text', source_code: join }),
+    );
+    expect(metadata).not.toHaveProperty('source_code');
+    expect(JSON.stringify(metadata)).not.toContain(join);
+    expect(funnel.sent[0]?.properties).not.toHaveProperty('source_code');
+    expect(JSON.stringify(funnel.sent)).not.toContain(join);
   });
 });
 
