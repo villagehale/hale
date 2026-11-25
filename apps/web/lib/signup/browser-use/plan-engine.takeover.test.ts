@@ -431,4 +431,56 @@ describe('VIL-718 · picking the session back up after the parent is done', () =
       liveViewUrl: LIVE,
     });
   });
+
+  it('the assisted turn after a done on a class with no stated price carries its addendum too', async () => {
+    const ready = {
+      outcome: 'ready_for_parent',
+      detail: 'none',
+      choice_index: 0,
+      page_url: 'https://register.example-rec.test/Enroll',
+      fee_cents: 12500,
+      submitted: false,
+      payment_details_entered: false,
+    };
+    const { deps, log } = setup({ queued: JSON.stringify(ready), assisted: true });
+    const { input } = plan({
+      mode: 'assisted',
+      takeover: true,
+      takeoverResume: { ...resume, purpose: 'sign_in' },
+      binding: {
+        approved: {
+          v: 1,
+          sessions: [
+            {
+              sessionId: 'sat-0900',
+              program: { courseIds: [], name: 'Preschool Swim' },
+              startsAt: '2027-01-09T14:00:00.000Z',
+              sharesDate: false,
+              amount: { kind: 'unstated' },
+            },
+          ],
+          quantity: 1,
+          maxCents: 0,
+          countsAgainstSeason: false,
+          seasonKey: null,
+          hold: 'price_unstated',
+        },
+        childFirstName: 'Ada',
+        siblingFirstNames: [],
+        timeZone: 'America/Toronto',
+        freeCheckoutEnabled: false,
+        priorChargeNow: async () => false,
+      },
+    });
+    const result = await runBrowserUseAssistedSignup(input, deps);
+    const queued = log.find(
+      (r) => r.method === 'POST' && r.path === '/sessions/bu-session-1/queue',
+    );
+    expect(String(queued?.body.text)).toContain(
+      '# skill browser-use-assisted-signup\n\n# skill browser-use-price-unstated\n\n## This registration',
+    );
+    expect(String(queued?.body.text)).toContain('"max_price_cents": null');
+    // A fee over the plan's maximum is not a stop: the class had no price to hold it to.
+    expect(result).toMatchObject({ outcome: 'ready_for_parent', detail: 'price_unstated' });
+  });
 });

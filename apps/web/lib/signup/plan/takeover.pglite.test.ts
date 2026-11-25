@@ -2065,3 +2065,320 @@ describe('VIL-718 · with the takeover link off', () => {
     expect(door.facts[0]?.kind).toBe('takeover_unfinished');
   });
 });
+
+describe('VIL-718 · a takeover on a plan bound by the pre-flight', () => {
+  const PLAN_SKILL = '# skill browser-use-plan-signup';
+  const RESUME_SKILL = '# skill browser-use-takeover-resume';
+  const CART_READ_SKILL = '# skill browser-use-cart-read';
+  const PRICE_UNSTATED_SKILL = '# skill browser-use-price-unstated';
+  const QUEUED = 'run-q';
+  const PROGRAM = 'Preschool Swim';
+  // Sat 9 Jan 2027, 14:00Z, is 09:00 in the plan's zone.
+  const CART_READ = {
+    provider_course_id: null,
+    session_label: PROGRAM,
+    session_date: '2027-01-09',
+    session_time: '09:00',
+    participant_first_name: 'Ada',
+    line_count: 1,
+    quantity: 1,
+  };
+  const AT_CHECKOUT = {
+    outcome: 'reached_checkout',
+    detail: 'none',
+    choice_index: 0,
+    checkout_url: `https://${HOST}/Checkout`,
+    cart_total_cents: 9800,
+    cart_currency: 'cad',
+    hold_minutes: 15,
+    saved_card_on_file: true,
+    security_code_required: false,
+    payment_details_entered: false,
+  };
+  const SHOWN = {
+    v: 1 as const,
+    read: 'course_model' as const,
+    program: { courseIds: [], name: PROGRAM },
+    residency: 'resident' as const,
+    age: { fit: 'in_band' as const, band: null, rule: null },
+    prerequisite: { required: 'no' as const, quote: null },
+    refund: null,
+    currency: 'cad' as const,
+    countsAgainstSeason: false,
+    priorChargeUnknown: false,
+    sessions: [
+      {
+        sessionId: 'sat-0900',
+        rates: [{ rate: 'resident' as const, cents: 9800 }],
+        tax: 'included' as const,
+        source: 'course_model' as const,
+      },
+    ],
+  };
+  type Hold = 'price_unstated' | 'prerequisite_unconfirmed' | null;
+
+  beforeEach(() => {
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', 'true');
+  });
+
+  /** The parent's yes, bound as the pre-flight binds it, on the plan `plannedFamily` made. */
+  async function bound(hold: Hold = null) {
+    const family = await plannedFamily();
+    await db.database
+      .update(schema.providerSignupSessions)
+      .set({ browserUseProfileId: 'profile-seeded' })
+      .where(eq(schema.providerSignupSessions.familyId, family.familyId));
+    const offer = await offerRow(family.offerId);
+    if (!offer) throw new Error('no offer');
+    await db.database.insert(schema.authorizedSignupTerms).values({
+      offerId: family.offerId,
+      familyId: family.familyId,
+      childId: offer.childId,
+      parentUserId: family.parentUserId,
+      shown: SHOWN,
+      approved: {
+        v: 1,
+        sessions: [
+          {
+            sessionId: 'sat-0900',
+            program: { courseIds: [], name: PROGRAM },
+            startsAt: '2027-01-09T14:00:00.000Z',
+            sharesDate: false,
+            amount:
+              hold === 'price_unstated'
+                ? { kind: 'unstated' }
+                : { kind: 'exact', cents: [9800], currency: 'cad', plusTax: null },
+          },
+        ],
+        quantity: 1,
+        maxCents: hold === 'price_unstated' ? 0 : 9800,
+        countsAgainstSeason: false,
+        seasonKey: null,
+        hold,
+      },
+      approvedAt: new Date(NOW.getTime() - 20 * 60 * 60_000),
+      approvingMessageId: `msg-bound-${family.offerId}`,
+    });
+    return family;
+  }
+
+  /**
+   * The real engine over a fake Browser Use. Its agent answers as its task tells it: the
+   * first run stops at a code, and the turn after the parent's done reaches checkout, with
+   * the cart line copied only when the task asks for it.
+   */
+  function bindingEngine(cart: typeof CART_READ) {
+    const clock = { now: NOW };
+    const created: Array<{ task: string; outputSchema: unknown }> = [];
+    const queued: string[] = [];
+    const answer = (task: string) => {
+      if (!task.startsWith(RESUME_SKILL)) {
+        return { ...AT_CHECKOUT, outcome: 'needs_human', detail: 'verification_code' };
+      }
+      return task.includes(CART_READ_SKILL) ? { ...AT_CHECKOUT, cart_read: cart } : AT_CHECKOUT;
+    };
+    const taskOf = new Map<string, string>();
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      const parsed = new URL(url);
+      const method = init.method ?? 'GET';
+      const path = `${parsed.pathname.replace('/api/v4', '')}${parsed.search}`;
+      if (method === 'POST' && path === '/runs') {
+        const body = JSON.parse(String(init.body));
+        created.push({ task: String(body.task), outputSchema: body.outputSchema });
+        const id = `run-${created.length}`;
+        taskOf.set(id, String(body.task));
+        return Response.json({ id, sessionId: 'bu-session-1' });
+      }
+      if (method === 'POST' && path === '/sessions/bu-session-1/queue') {
+        const text = String(JSON.parse(String(init.body)).text);
+        queued.push(text);
+        taskOf.set(QUEUED, text);
+        return Response.json({
+          id: 7,
+          sessionId: 'bu-session-1',
+          runId: QUEUED,
+          status: 'dispatched',
+        });
+      }
+      if (method === 'PATCH' && path === '/sessions/bu-session-1/cost-cap') {
+        return Response.json({});
+      }
+      if (method === 'PATCH' && path === '/browsers/browser-1') return Response.json({});
+      if (path === '/sessions/bu-session-1/cost') {
+        return Response.json({ sessionId: 'bu-session-1', totalCostUsd: '0.090000' });
+      }
+      const run = /^\/runs\/(run-[\w]+)/.exec(path)?.[1];
+      if (!run) throw new Error(`unexpected ${method} ${path}`);
+      if (path.endsWith('/status')) return Response.json({ status: 'completed' });
+      if (path.endsWith('/cancel')) return Response.json({ id: run, status: 'cancelled' });
+      if (path.includes('/events')) {
+        return Response.json({
+          events: [
+            {
+              id: 1,
+              type: 'browser.ready',
+              data: { live_view_url: LIVE, browser_session_id: 'browser-1' },
+            },
+          ],
+          nextAfter: null,
+        });
+      }
+      const output = answer(taskOf.get(run) ?? '');
+      return Response.json({
+        id: run,
+        status: 'completed',
+        sessionId: 'bu-session-1',
+        // A queued turn has no outputSchema: it answers in JSON text.
+        output: run === QUEUED ? JSON.stringify(output) : output,
+        error: null,
+        totalCostUsd: '0.0400',
+      });
+    });
+    const engine: BrowserUseEngineDeps = {
+      api: browserUseApi({ apiKey: 'test-key', fetch: fetchImpl }),
+      seeder: null,
+      loadTask: async (skill) => `# skill ${skill}`,
+      sleep: async () => undefined,
+      now: () => clock.now,
+    };
+    const runner = {
+      run: (input: BrowserUsePlanInput) => runBrowserUsePlanSignup(input, engine),
+      release: (resume: PlanResumeToken) => releasePlanRun(resume, engine),
+      settlePayment: (input: Parameters<typeof settleBrowserUsePlanPayment>[0]) =>
+        settleBrowserUsePlanPayment(input, engine),
+    };
+    return { runner, created, queued, clock };
+  }
+
+  /** Parks the bound plan on a code, has the parent tap done, and runs the turn after it. */
+  async function takenOverThenResumed(
+    hold: Hold,
+    cart: typeof CART_READ = CART_READ,
+    availability: Record<string, unknown> | null = null,
+  ) {
+    const family = await bound(hold);
+    if (availability) {
+      await db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ planAvailability: availability })
+        .where(eq(schema.authorizedSignupOffers.id, family.offerId));
+    }
+    const engine = bindingEngine(cart);
+    const door = takeoverDoor();
+    const notices: PlanOutcomeNotice[] = [];
+    const deps: PlanRunDeps = {
+      runner: engine.runner,
+      autoHosts: [HOST],
+      notifyParent: async (notice) => {
+        notices.push(notice);
+        return 'sent';
+      },
+      checkSpendingCap: async () => ({ ok: true, reason: 'within' }),
+      takeover: door.deps,
+    };
+    const parked = await runDueSignupPlans(db.database, { now: NOW }, deps);
+    expect(parked.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'checkpointed',
+      phase: 'takeover',
+    });
+    const tapped = new Date(NOW.getTime() + 2 * 60_000);
+    const code = sentCode(door.parts[0] ?? []);
+    expect((await finishTakeover(db.database, { code, now: tapped })).ok).toBe(true);
+    const later = new Date(tapped.getTime() + 60_000);
+    engine.clock.now = later;
+    const result = await runDueSignupPlans(db.database, { now: later }, deps);
+    return {
+      family,
+      engine,
+      notices,
+      plan: result.plans.find((p) => p.offerId === family.offerId),
+      ordinary: engine.created[0],
+      resumed: engine.queued[0] ?? '',
+    };
+  }
+
+  const factsOf = (task: string) => {
+    const json = /## This registration\n\n```json\n([\s\S]*?)\n```/.exec(task)?.[1];
+    if (!json) throw new Error('no facts block');
+    return JSON.parse(json) as Record<string, unknown>;
+  };
+  const answerFormatOf = (task: string) => {
+    const json = /## Answer format[\s\S]*?```json\n([\s\S]*?)\n```/.exec(task)?.[1];
+    if (!json) throw new Error('no answer format');
+    return JSON.parse(json) as unknown;
+  };
+  const skillOf = (task: string) => task.split('\n\n## This registration')[0] ?? '';
+
+  it('the turn after the done carries the cart read and its schema, as the first turn did', async () => {
+    const { ordinary, resumed } = await takenOverThenResumed(null);
+
+    if (!ordinary) throw new Error('no first run');
+    expect(skillOf(ordinary.task)).toBe(`${PLAN_SKILL}\n\n${CART_READ_SKILL}`);
+    expect(
+      resumed.startsWith(`${RESUME_SKILL}\n\n${skillOf(ordinary.task)}\n\n## This registration`),
+    ).toBe(true);
+    expect(answerFormatOf(resumed)).toEqual(ordinary.outputSchema);
+    expect(JSON.stringify(answerFormatOf(resumed))).toContain('cart_read');
+  });
+
+  it('a cart that matches the approval passes its check and goes on to checkout', async () => {
+    const { family, plan, notices, engine } = await takenOverThenResumed(null);
+
+    const check = (await steps(family.offerId)).find((row) => row.step === 'plan_cart_check');
+    expect(check).toMatchObject({ stage: 'cart', differences: [], ok: true });
+    // The payment flag is off here, so a cart that passes stops where an unbound one does.
+    expect(plan).toMatchObject({ outcome: 'needs_human', detail: 'payment_off' });
+    expect(notices).toEqual([
+      expect.objectContaining({ detail: 'payment_off', charged: 'nothing', liveViewUrl: LIVE }),
+    ]);
+    expect(engine.created).toHaveLength(1);
+  });
+
+  it('a cart that differs from the approval stops at checkout with nothing charged', async () => {
+    const { family, plan, notices, engine } = await takenOverThenResumed(null, {
+      ...CART_READ,
+      participant_first_name: 'Bea',
+    });
+
+    const check = (await steps(family.offerId)).find((row) => row.step === 'plan_cart_check');
+    expect(check).toMatchObject({ stage: 'cart', differences: ['kid'], ok: false });
+    expect(plan).toMatchObject({ outcome: 'needs_human', detail: 'cart_mismatch' });
+    expect(notices).toEqual([
+      expect.objectContaining({
+        detail: 'cart_mismatch',
+        charged: 'nothing',
+        cartDifferences: ['kid'],
+      }),
+    ]);
+    // No checkout review and no payment run: the first run and the queued turn only.
+    expect(engine.created).toHaveLength(1);
+    expect(engine.queued).toHaveLength(1);
+  });
+
+  it.each([
+    ['price_unstated' as const, [PRICE_UNSTATED_SKILL]],
+    ['prerequisite_unconfirmed' as const, []],
+  ])(
+    'a %s hold taken over still stops at checkout and never joins a waitlist',
+    async (hold, addenda) => {
+      const { plan, notices, resumed, ordinary } = await takenOverThenResumed(hold, CART_READ, {
+        kind: 'join_waitlist',
+      });
+
+      if (!ordinary) throw new Error('no first run');
+      expect(skillOf(ordinary.task)).toBe([PLAN_SKILL, CART_READ_SKILL, ...addenda].join('\n\n'));
+      expect(skillOf(resumed)).toBe(`${RESUME_SKILL}\n\n${skillOf(ordinary.task)}`);
+      expect(factsOf(resumed)).toMatchObject({ join_waitlist: false, takeover_done: 'code' });
+      expect(plan).toMatchObject({ outcome: 'needs_human', detail: hold });
+      expect(notices).toEqual([
+        expect.objectContaining({ detail: hold, charged: 'nothing', liveViewUrl: LIVE }),
+      ]);
+    },
+  );
+
+  it('with no hold the same plan joins its waitlist on the turn after the done', async () => {
+    const { resumed } = await takenOverThenResumed(null, CART_READ, { kind: 'join_waitlist' });
+
+    expect(factsOf(resumed)).toMatchObject({ join_waitlist: true, takeover_done: 'code' });
+  });
+});

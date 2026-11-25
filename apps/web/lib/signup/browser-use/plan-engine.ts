@@ -553,10 +553,11 @@ async function drivePlan(
       tracker.browserId = resume.browserId;
       const text = takeoverResumeText({
         resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
-        runSkill: await deps.loadTask(PLAN_SIGNUP_SKILL),
+        // The same task and answer as a first turn: a bound plan's cart is read either way.
+        runSkill: await boundSkill(input, deps, PLAN_SIGNUP_SKILL),
         facts: planFacts(input),
         purpose: resume.purpose,
-        outputSchema: BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+        outputSchema: input.binding ? BOUND_PLAN_OUTPUT_SCHEMA : BROWSER_USE_PLAN_OUTPUT_SCHEMA,
       });
       const queued = await queueTakeoverTurn(
         { ...input, takeoverResume: resume },

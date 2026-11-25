@@ -169,7 +169,7 @@ async function driveAssisted(
       tracker.browserId = resume.browserId;
       const text = takeoverResumeText({
         resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
-        runSkill: await deps.loadTask(ASSISTED_SIGNUP_SKILL),
+        runSkill: await withPriceUnstated(input, deps, await deps.loadTask(ASSISTED_SIGNUP_SKILL)),
         facts: assistedFacts(input),
         purpose: resume.purpose,
         outputSchema: BROWSER_USE_ASSISTED_OUTPUT_SCHEMA,
