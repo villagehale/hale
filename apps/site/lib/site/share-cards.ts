@@ -25,7 +25,7 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * (`?promo_phase=holiday` on Preview). The image route paints whatever the URL
  * says, so a crawler that saved the URL gets that card.
  */
-export const SHARE_CARD_VERSION = 'd1';
+export const SHARE_CARD_VERSION = 'd2';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -155,6 +155,15 @@ export function shareCardQueryFromUrl(url: URL): ShareCardQuery {
   };
 }
 
+/**
+ * Site price cards print a bare "$" for both currencies. A share card has no
+ * other currency cue, so CAD is C$ and USD stays that same bare "$".
+ */
+export function sharePriceLabel(currency: BillingCurrency, label: string): string {
+  if (currency === 'CAD' && label.startsWith('$')) return `C${label}`;
+  return label;
+}
+
 export function shareCardQueryString(query: ShareCardQuery): string {
   return [
     `v=${SHARE_CARD_VERSION}`,
@@ -258,7 +267,10 @@ function pageHeadline(
     case 'home':
       return HOME_SLOGAN[locale].plain;
     case 'pricing':
-      if (promo && locale === 'en') return `${promo.saleName}: Max for ${promo.max.saleLabel}.`;
+      if (promo && locale === 'en') {
+        const max = sharePriceLabel(promo.currency, promo.max.saleLabel);
+        return `${promo.saleName}: Max for ${max}.`;
+      }
       return tx(locale, 'Plus, by the year or the month.');
     case 'faq':
       return tx(locale, 'Is Hale right for your family?');
@@ -297,7 +309,9 @@ function paint(
   slogan: PaintedShareCard['slogan'],
 ): PaintedShareCard {
   const promo = query.offer ? buildHolidayPromo(query.phase, query.currency) : null;
-  const prices = promo ? `Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}` : null;
+  const max = promo ? sharePriceLabel(promo.currency, promo.max.saleLabel) : null;
+  const plus = promo ? sharePriceLabel(promo.currency, promo.plus.saleLabel) : null;
+  const prices = max && plus ? `Max ${max} · Plus ${plus}` : null;
   return {
     id,
     alt: `Hale. ${headline}`,

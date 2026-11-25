@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SITE_URL } from '~/lib/app-url.js';
+import { SHARE_CARD_VERSION } from '~/lib/site/share-cards.js';
 import { homeMetadata } from '~/lib/site/home-meta.js';
 import { notFoundHeading, notFoundMetadata, notFoundTitle } from '~/lib/site/not-found-copy.js';
 import { generateMetadata as catchAllMetadata } from './[locale]/[...rest]/page.js';
@@ -140,7 +141,7 @@ describe('404 tab titles', () => {
       const first = Array.isArray(images) ? images[0] : images;
       const url = first && typeof first === 'object' && 'url' in first ? String(first.url) : '';
       expect(url).toContain('phase=holiday');
-      expect(url).toContain('v=d1');
+      expect(url).toContain(`v=${SHARE_CARD_VERSION}`);
       expect(meta.twitter && 'card' in meta.twitter ? meta.twitter.card : '').toBe(
         'summary_large_image',
       );

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import { PROMO_PRICE_DISPLAY, currencyFromIpCountry } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
 import { tx } from '~/components/redesign/tx';
 import type { Locale } from '~/i18n/routing';
@@ -10,12 +10,14 @@ import { generateMetadata as pricingMetadata } from '../../app/[locale]/pricing/
 import {
   HOME_SLOGAN,
   SHARE_CARD_IDS,
+  SHARE_CARD_VERSION,
   type ShareCardQuery,
   paintAnswerCard,
   paintShareCard,
   shareCardQueryFrom,
   shareCardQueryString,
   shareCardVisibleText,
+  sharePriceLabel,
 } from './share-cards';
 
 const LOCALES: Locale[] = ['en', 'fr', 'zh'];
@@ -79,7 +81,21 @@ describe('share card query', () => {
 
   it('puts the phase and the version on the image URL', () => {
     const card = query({ locale: 'zh', phase: 'holiday', currency: 'USD', offer: true });
-    expect(shareCardQueryString(card)).toBe('v=d1&locale=zh&phase=holiday&cc=USD&offer=1&paid=0');
+    expect(shareCardQueryString(card)).toBe('v=d2&locale=zh&phase=holiday&cc=USD&offer=1&paid=0');
+  });
+
+  it('uses CAD when no country is known, the same default as the site', () => {
+    const now = new Date('2026-11-25T12:00:00-05:00');
+    const env = { HOLIDAY_PROMO_ENABLED: 'true', VERCEL_ENV: 'production' };
+    expect(currencyFromIpCountry(null)).toBe('CAD');
+    expect(shareCardQueryFrom({ locale: 'en', now, country: null, env }).currency).toBe('CAD');
+    expect(
+      shareCardQueryFrom({
+        locale: 'en',
+        now,
+        env: { ...env, CHECKOUT_SERVER_CURRENCY_ENABLED: 'true' },
+      }).currency,
+    ).toBe('CAD');
   });
 });
 
@@ -91,10 +107,14 @@ describe('share card copy', () => {
         'home',
         query({ locale: 'en', currency, offer: true, phase: 'holiday' }),
       );
-      expect(card.prices).toBe(`Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}`);
+      const max = sharePriceLabel(currency, promo.max.saleLabel);
+      const plus = sharePriceLabel(currency, promo.plus.saleLabel);
+      expect(card.prices).toBe(`Max ${max} · Plus ${plus}`);
+      const symbol = currency === 'CAD' ? 'C$' : '$';
       expect(card.prices).toBe(
-        `Max $${PROMO_PRICE_DISPLAY.family[currency].amount}/yr · Plus $${PROMO_PRICE_DISPLAY.plus[currency].amount}/yr`,
+        `Max ${symbol}${PROMO_PRICE_DISPLAY.family[currency].amount}/yr · Plus ${symbol}${PROMO_PRICE_DISPLAY.plus[currency].amount}/yr`,
       );
+      expect(card.prices).not.toContain('US$');
       expect(card.flag).toBe('Holiday Sale');
     }
   });
@@ -102,7 +122,13 @@ describe('share card copy', () => {
   it('uses the pricing page H1 when the offer is on in English, and the yearly line otherwise', () => {
     const promo = buildHolidayPromo('black_friday', 'CAD');
     const on = paintShareCard('pricing', query({ locale: 'en', offer: true }));
-    expect(on.headline).toBe(`${promo.saleName}: Max for ${promo.max.saleLabel}.`);
+    expect(on.headline).toBe(
+      `${promo.saleName}: Max for ${sharePriceLabel('CAD', promo.max.saleLabel)}.`,
+    );
+    expect(on.headline).toBe('Black Friday Sale: Max for C$99/yr.');
+    expect(
+      paintShareCard('pricing', query({ locale: 'en', offer: true, currency: 'USD' })).headline,
+    ).toBe('Black Friday Sale: Max for $79/yr.');
     expect(paintShareCard('pricing', query({ locale: 'en', offer: false })).headline).toBe(
       'Plus, by the year or the month.',
     );
@@ -191,7 +217,7 @@ describe('pricing metadata image', () => {
       const url = first && typeof first === 'object' && 'url' in first ? String(first.url) : '';
       expect(url).toContain('phase=holiday');
       expect(url).toContain('offer=1');
-      expect(url).toContain('v=d1');
+      expect(url).toContain(`v=${SHARE_CARD_VERSION}`);
       expect(meta.twitter && 'card' in meta.twitter ? meta.twitter.card : '').toBe(
         'summary_large_image',
       );
