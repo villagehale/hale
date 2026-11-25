@@ -171,7 +171,9 @@ import {
 } from './onboarding-turn';
 import {
   holdSender,
+  isHeldStop,
   markStopPending,
+  recordStopRan,
   releaseHeldMessage,
   releaseStoppedMessage,
 } from './opt-out-hold';
@@ -613,7 +615,7 @@ async function runIntakeTurn(
       );
       const held = heldUnreadOutcome(settled, reading);
       if (held) return held;
-      if (reading?.intent === 'stop') {
+      if (reading?.intent === 'stop' || settled === 'kept_for_stop') {
         return stopThenReleaseHold(
           database,
           {
@@ -622,7 +624,7 @@ async function runIntakeTurn(
             session: await loadOpenSession(database, phoneE164),
             now,
             providerAnswered: inbound.providerAnsweredKeyword === 'stop',
-            confirmation: reading.confirmation,
+            confirmation: stopConfirmationOf(reading),
           },
           deps,
           settled,
@@ -671,7 +673,7 @@ async function runIntakeTurn(
     );
     const held = heldUnreadOutcome(settled, reading);
     if (held) return held;
-    if (reading?.intent === 'stop') {
+    if (reading?.intent === 'stop' || settled === 'kept_for_stop') {
       return stopThenReleaseHold(
         database,
         {
@@ -680,7 +682,7 @@ async function runIntakeTurn(
           session,
           now,
           providerAnswered: inbound.providerAnsweredKeyword === 'stop',
-          confirmation: reading.confirmation,
+          confirmation: stopConfirmationOf(reading),
         },
         deps,
         settled,
@@ -4415,6 +4417,8 @@ function heldUnreadOutcome(
   settled: HoldSettle,
   reading: OptOutReading | null,
 ): Extract<IntakeOutcome, { status: 'ignored' }> | null {
+  // A stop already read on this text runs, whatever this turn's read was.
+  if (settled === 'kept_for_stop') return null;
   if (settled === 'hold_unwritten') {
     return { status: 'ignored', reason: 'opt_out_hold_unwritten' };
   }
@@ -4441,6 +4445,16 @@ async function settleOptOutHold(
       const name = err instanceof Error ? err.name : 'unknown';
       console.warn({ err: name }, 'opt-out hold: stop not marked pending - the row is read again');
     }
+    return 'kept_for_stop';
+  }
+  // A redelivery of a text already read as a stop: that stop is the instruction that
+  // arrived, so this read, a start or anything else, neither releases nor replaces it. A
+  // crisis read still gets its crisis reply; the sweep runs the stop that stays pending.
+  if (
+    optOutHoldUntilStopCommitsEnabled() &&
+    !isCrisisReading(reading) &&
+    (await isHeldStop(database, { phoneHash, providerMessageId: inbound.providerId }))
+  ) {
     return 'kept_for_stop';
   }
   const port: OptOutHoldPort = hold ?? {
@@ -4485,11 +4499,18 @@ async function stopThenReleaseHold(
 ): Promise<IntakeOutcome> {
   const stopped = await handleStop(database, args, deps);
   if (settled !== 'kept_for_stop') return stopped;
+  const held = {
+    phoneHash: phoneBlindIndex(args.phoneE164),
+    providerMessageId: args.inbound.providerId,
+  };
   try {
-    await releaseStoppedMessage(database, {
-      phoneHash: phoneBlindIndex(args.phoneE164),
-      providerMessageId: args.inbound.providerId,
-    });
+    await recordStopRan(database, held);
+  } catch (err) {
+    const name = err instanceof Error ? err.name : 'unknown';
+    console.warn({ err: name }, 'opt-out hold: stop ran but not recorded on its hold');
+  }
+  try {
+    await releaseStoppedMessage(database, held);
   } catch (err) {
     // Never rethrown: the stop is recorded, and a failed turn would send its ack again.
     const name = err instanceof Error ? err.name : 'unknown';
@@ -4499,6 +4520,12 @@ async function stopThenReleaseHold(
     );
   }
   return stopped;
+}
+
+/** A stop's confirmation is the stop reading's own model-written one. A stop run for a
+ * text read differently this time has none, so nothing is sent. */
+function stopConfirmationOf(reading: OptOutReading | null): string {
+  return reading?.intent === 'stop' ? reading.confirmation : '';
 }
 
 /** What the provider says it already answered (always null on today's transports). */

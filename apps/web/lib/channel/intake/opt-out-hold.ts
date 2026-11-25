@@ -28,6 +28,12 @@ export const ID_COLLISION_HOLD = 'id_collision';
 /** A text the model read as a stop whose stop is not recorded yet. A later read cannot make
  * it ordinary again: only the stop path releases it, once it is recorded or superseded. */
 export const STOP_PENDING_HOLD = 'stop_pending';
+/** A pending stop that ran: the record a release rests on, never an inference from what
+ * the stop wrote elsewhere. Only the stop path writes it, and the recovery sweep releases it. */
+export const STOP_RAN_HOLD = 'stop_ran';
+
+/** A transaction handle, so a release can commit with what it gates. */
+export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 /** The only rows a read may release. A pending stop goes by {@link releaseStoppedMessage};
  * a kind this code does not know is kept like a collision (fail closed). */
@@ -37,6 +43,7 @@ const releasableHold = eq(schema.optOutHeldMessages.kind, MESSAGE_HOLD);
 export const operatorOnlyHold = notInArray(schema.optOutHeldMessages.kind, [
   MESSAGE_HOLD,
   STOP_PENDING_HOLD,
+  STOP_RAN_HOLD,
 ]);
 
 /**
@@ -155,7 +162,7 @@ export async function clearCollisionHold(
 
 /** This exact text has been read. Releases its own message hold and no other row. */
 export async function releaseHeldMessage(
-  database: Database,
+  database: Database | Tx,
   providerMessageId: string,
 ): Promise<'released' | 'not_held'> {
   const deleted = await database
@@ -183,6 +190,42 @@ export async function markStopPending(
     .where(and(heldTextOf(input), releasableHold));
 }
 
+/** The stop on this number's text ran. Written before its release, so a release that
+ * fails leaves the record the sweep releases on. */
+export async function recordStopRan(
+  database: Database,
+  input: { phoneHash: string; providerMessageId: string },
+): Promise<void> {
+  await database
+    .update(schema.optOutHeldMessages)
+    .set({ kind: STOP_RAN_HOLD })
+    .where(
+      and(
+        heldTextOf(input),
+        inArray(schema.optOutHeldMessages.kind, [MESSAGE_HOLD, STOP_PENDING_HOLD]),
+      ),
+    );
+}
+
+/** This number's held text is a stop already read, pending or ran: a later read of the
+ * same text does not decide it again. */
+export async function isHeldStop(
+  database: Database,
+  input: { phoneHash: string; providerMessageId: string },
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.optOutHeldMessages.providerMessageId })
+    .from(schema.optOutHeldMessages)
+    .where(
+      and(
+        heldTextOf(input),
+        inArray(schema.optOutHeldMessages.kind, [STOP_PENDING_HOLD, STOP_RAN_HOLD]),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /** The stop on this number's text is recorded or superseded: its hold goes, marked or not. */
 export async function releaseStoppedMessage(
   database: Database,
@@ -193,7 +236,7 @@ export async function releaseStoppedMessage(
     .where(
       and(
         heldTextOf(input),
-        inArray(schema.optOutHeldMessages.kind, [MESSAGE_HOLD, STOP_PENDING_HOLD]),
+        inArray(schema.optOutHeldMessages.kind, [MESSAGE_HOLD, STOP_PENDING_HOLD, STOP_RAN_HOLD]),
       ),
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });

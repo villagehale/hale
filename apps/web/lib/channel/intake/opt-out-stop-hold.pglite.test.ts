@@ -30,6 +30,7 @@ import {
   holdSender,
   isSenderHeld,
   markStopPending,
+  recordStopRan,
 } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import { type OptOutRecoveryDeps, recoverHeldOptOutReads } from './opt-out-recovery';
@@ -509,7 +510,7 @@ describe('a stop read live that could not be recorded', () => {
     expect(transport.sent).toEqual([]);
   }, 30_000);
 
-  it('is not released by a redelivery the model reads as ordinary', async () => {
+  it('runs on a redelivery the model reads as ordinary, and nothing is sent', async () => {
     vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
     const text = ownText();
     const family = await heldParent(text);
@@ -519,23 +520,17 @@ describe('a stop read live that could not be recorded', () => {
     const model = readerOf(NONE);
     const redelivered = new FakeTransport();
 
-    await handleInboundSms(
+    const outcome = await handleInboundSms(
       db.database,
       delivery(redelivered, text),
       intakeDeps(NONE, redelivered, allowed(), { optOutReader: model.reader }),
     );
 
     expect(model.asked()).toBe(1);
-    expect(await channelRevoked(family.parentUserId)).toBe(false);
-    expect(await isSenderHeld(db.database, HASH())).toBe(true);
-
-    const swept = await recoverHeldOptOutReads(
-      db.database,
-      sweepDeps(model.reader, new FakeTransport(), NOW),
-    );
-
-    expect(swept.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(outcome).toEqual({ status: 'stopped', ack: 'voice_unsent' });
+    expect(redelivered.sent).toEqual([]);
     expect(await channelRevoked(family.parentUserId)).toBe(true);
+    expect(await withdrawals(family.parentUserId)).toBe(1);
     expect(await isSenderHeld(db.database, HASH())).toBe(false);
   }, 30_000);
 
@@ -1015,7 +1010,7 @@ describe('a pending stop whose text is in no store', () => {
     30_000,
   );
 
-  it('releases after the stop commits even though it closes only the newest unanswered invite', async () => {
+  it('releases on the record of its stop, not on the invite it declined, when an older invite outlives it', async () => {
     vi.stubEnv(OPT_OUT_HOLD_UNTIL_STOP_COMMITS_ENV, 'true');
     await seedInvite('expired', { createdAt: new Date(SENT_AT.getTime() - 7_200_000) });
     await seedInvite('seat_taken');
@@ -1024,13 +1019,19 @@ describe('a pending stop whose text is in no store', () => {
     expect((await sweep(NOW)).outcomes.unrecorded).toBe(1);
 
     await theStopCommits();
-    const second = await sweep(PAST_BACKOFF);
+    const unrecorded = await sweep(PAST_BACKOFF);
 
     const states = await db.database
       .select({ state: schema.caregiverInvites.state })
       .from(schema.caregiverInvites);
     expect(states.map((row) => row.state).sort()).toEqual(['declined', 'expired']);
-    expect(second.outcomes.no_channel).toBe(1);
+    expect(unrecorded.outcomes.unrecorded).toBe(1);
+    expect(await isSenderHeld(db.database, HASH())).toBe(true);
+
+    await recordStopRan(db.database, { phoneHash: HASH(), providerMessageId: HELD_ID });
+    const recorded = await sweep(new Date(PAST_BACKOFF.getTime() + 31 * 60_000));
+
+    expect(recorded.outcomes.already_stopped).toBe(1);
     expect(await isSenderHeld(db.database, HASH())).toBe(false);
   }, 30_000);
 

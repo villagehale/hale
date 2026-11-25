@@ -35,8 +35,9 @@ export const optOutHeldMessages = pgTable(
     readAttempts: integer('read_attempts').notNull().default(0),
     /** What the row holds (0225). `message`: a text, released once it is read.
      * `stop_pending`: a text read as a stop, released once the stop is recorded or
-     * superseded. Any other value, `id_collision` or one this code does not know, is kept
-     * until an operator clears it (opt-out-hold.ts). */
+     * superseded. `stop_ran`: that stop ran, and the recovery sweep releases it. Any
+     * other value, `id_collision` or one this code does not know, is kept until an
+     * operator clears it (opt-out-hold.ts). */
     kind: text('kind').notNull().default('message'),
     /** VIL-602 · retired plain copies of the read below (0204). Nothing writes them; an
      * erasure still clears them. Dropped after a deprecation cycle (rule #9). */
