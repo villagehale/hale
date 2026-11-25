@@ -3,9 +3,10 @@
  *
  * These are advertising click and campaign identifiers plus Hale's own card code,
  * not parent or child data. Values are truncated so they fit Stripe metadata (500
- * chars). A value that carries an email's `@`, a URL's `://`, markup or quotes is
- * dropped whole rather than carried, because these values reach Stripe and analytics.
- * Anything else a campaign name holds (accents, CJK, `|`, `/`, `:`) passes.
+ * chars). A value that carries an email's `@`, a URL's `://`, markup or a double quote
+ * is dropped whole rather than carried, because these values reach Stripe and
+ * analytics. Anything else a campaign name holds (accents, `'`, CJK, `|`, `/`, `:`)
+ * passes.
  *
  * `source_code` is Hale's card code. The site reads it from its own `s` / `src` tag
  * with its own validator, never from a landing URL under this name.
@@ -27,7 +28,7 @@ export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
 export type Attribution = Partial<Record<AttributionKey, string>>;
 
 const MAX_VALUE_LENGTH = 200;
-const UNSAFE_VALUE = /@|:\/\/|[<>"']/;
+const UNSAFE_VALUE = /@|:\/\/|[<>"]/;
 /** The site's card-code grammar (apps/site/lib/text-entry.ts SOURCE_CODE_PATTERN). */
 const SOURCE_CODE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SOURCE_CODE_MAX_LENGTH = 48;

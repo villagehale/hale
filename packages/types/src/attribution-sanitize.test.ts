@@ -20,9 +20,9 @@ describe('parseAttribution value sanitizing', () => {
     });
   });
 
-  it('keeps real campaign names: accents, CJK, pipes, slashes, colons, commas and parentheses', () => {
+  it('keeps real campaign names: accents, apostrophes, CJK, pipes, slashes, colons, commas and parentheses', () => {
     const values = {
-      utm_campaign: 'rentrée-2026',
+      utm_campaign: "rentrée d'automne 2026",
       utm_term: '儿童 夏令营',
       utm_content: 'video/hero',
       utm_medium: 'bf26:ca',
