@@ -1,5 +1,5 @@
 import type { Skill } from '@hale/agent';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadCronSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
 import {
   AGE_FIT_CORRECTION_ENABLED_ENV,
@@ -80,6 +80,14 @@ describe('age-fit-correction skill', () => {
 });
 
 describe('friendVoiceSystem age-fit addendum', () => {
+  // These bytes are the age-fit addendum alone. The stated-place and model-fields
+  // addenda are pinned lit in friend-voice.test.ts, thread v2 in friend-voice-thread-v2.test.ts.
+  beforeEach(() => {
+    vi.stubEnv('INTAKE_STATED_PLACE_ENABLED', '');
+    vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', '');
+    vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', '');
+  });
+
   it('keeps onboarding-friend bytes when the flag is off', async () => {
     const base = (await loadOnboardingFriendSkill()).instructions;
     expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);

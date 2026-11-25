@@ -30,6 +30,7 @@ import {
 import type { FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
+import { withModelFields } from './scripted-friend-voice.fixture';
 import { FakeTransport, type InboundMessage } from './transport';
 
 /**
@@ -70,6 +71,8 @@ interface ScriptedTurn {
   capture: WireCapture;
   groupLeads?: string[];
   asks?: boolean;
+  asksName?: boolean;
+  connectorsOffered?: ('gmail' | 'calendar')[];
   joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 }
 
@@ -220,15 +223,18 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
   }
 
   let ask: string;
+  let connectorsOffered: ('gmail' | 'calendar')[] = [];
   if (!postalKnown) ask = "Hey, it's Hale. What's your postal code?";
   else if (!kidsKnown) ask = "What are your kids' names?";
   else if (!agesKnown) ask = 'How old are your kids?';
   else if (!nameKnown) ask = 'What should I call you?';
   else if (!gmailKnown) {
+    connectorsOffered = ['gmail'];
     ask = who
       ? `${who}, want me to watch school and camp email for the dates?`
       : 'Want me to watch school and camp email for the dates?';
   } else if (!calendarKnown) {
+    connectorsOffered = ['calendar'];
     ask = who ? `${who}, want me to check your calendar?` : 'Want me to check your calendar?';
   } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want the swim one on your calendar as a weekly reminder?';
@@ -237,7 +243,13 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
 
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture, asks: ask !== "I'll take it from here." };
+  return {
+    reply,
+    capture,
+    asks: ask !== "I'll take it from here.",
+    asksName: ask === 'What should I call you?',
+    connectorsOffered,
+  };
 }
 
 function findResult() {
@@ -344,7 +356,7 @@ function conversation(options?: {
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     friendVoice: {
       async compose(input: FriendVoiceInput) {
-        return (options?.compose ?? scriptedTurn)(input);
+        return withModelFields(input, (options?.compose ?? scriptedTurn)(input));
       },
     },
     now: NOW,
@@ -393,6 +405,8 @@ beforeEach(() => {
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
+  // Today's walk. The thread-v2 walk is golden-conversation-v2.test.ts.
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
 });
 
 afterEach(() => {
@@ -404,6 +418,8 @@ afterEach(() => {
 
 describe('golden onboarding conversation', () => {
   it('walks postal, kids, ages, the map, name, Gmail, calendar, schedule, co-parent, then chat', async () => {
+    // Step 10 is the group flag's dark claim; its lit twin is "with the flag on" below.
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const talk = conversation();
     const postal = await talk.say('hi');
     expect(postal.bodies.join('\n')).toMatch(/postal code\?$/);
@@ -502,6 +518,7 @@ describe('golden onboarding conversation', () => {
   });
 
   it('puts the phrase under a yes while the flag is off, including words about a new group', async () => {
+    vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const talk = conversation();
     for (const words of [
       'hi',
@@ -836,12 +853,17 @@ describe('golden onboarding conversation', () => {
         async compose(input) {
           const chosen = input.synced?.calendar[0];
           const partner = input.synced?.overlaps[0]?.later;
-          if (!chosen) return { reply: 'Your calendar is connected.', ahaMention: null };
+          if (!chosen) {
+            return withModelFields(input, {
+              reply: 'Your calendar is connected.',
+              ahaMention: null,
+            });
+          }
           const clash = partner ? ` It overlaps ${partner}.` : '';
-          return {
+          return withModelFields(input, {
             reply: `${chosen.title} is on your calendar ${when}.${clash} I can remind you the evening before.`,
             ahaMention: chosen.title,
-          };
+          });
         },
       },
       synced,
@@ -871,11 +893,12 @@ describe('golden onboarding conversation', () => {
       {
         async compose(input) {
           const subject = input.synced?.email[0]?.subject;
-          if (!subject) return { reply: 'Gmail is connected.', ahaMention: null };
-          return {
+          if (!subject)
+            return withModelFields(input, { reply: 'Gmail is connected.', ahaMention: null });
+          return withModelFields(input, {
             reply: `${subject} is in your email. I can remind you before it.`,
             ahaMention: subject,
-          };
+          });
         },
       },
       { provider: 'gmail', read: 'ok', calendar: [], email: mail, overlaps: [] },
@@ -889,8 +912,8 @@ describe('golden onboarding conversation', () => {
       'en',
       'gcal',
       {
-        async compose() {
-          return { reply: 'Your calendar is connected.', ahaMention: null };
+        async compose(input) {
+          return withModelFields(input, { reply: 'Your calendar is connected.', ahaMention: null });
         },
       },
       emptyAha('gcal'),
@@ -906,7 +929,10 @@ describe('golden onboarding conversation', () => {
         {
           async compose(input) {
             groups.push(input.householdGroup);
-            return { reply: 'Your calendar is connected.', ahaMention: null };
+            return withModelFields(input, {
+              reply: 'Your calendar is connected.',
+              ahaMention: null,
+            });
           },
         },
         emptyAha('gcal'),
@@ -923,8 +949,11 @@ describe('golden onboarding conversation', () => {
       'en',
       'gcal',
       {
-        async compose() {
-          return { reply: 'Hockey is on Thursday at 4:00.', ahaMention: 'Hockey' };
+        async compose(input) {
+          return withModelFields(input, {
+            reply: 'Hockey is on Thursday at 4:00.',
+            ahaMention: 'Hockey',
+          });
         },
       },
       synced,

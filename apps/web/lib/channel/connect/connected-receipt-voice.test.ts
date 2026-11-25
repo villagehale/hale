@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { withModelFields } from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { connectedReceiptBody } from './connected-notice';
 
 describe('connected receipt voice', () => {
@@ -8,8 +9,8 @@ describe('connected receipt voice', () => {
 
   it('sends the model receipt, and nothing canned when the model is missing', async () => {
     const composed = await connectedReceiptBody('en', 'gmail', {
-      async compose() {
-        return { reply: 'Gmail is connected.' };
+      async compose(input) {
+        return withModelFields(input, { reply: 'Gmail is connected.' });
       },
     });
     expect(composed).toBe('Gmail is connected.');
@@ -21,8 +22,11 @@ describe('connected receipt voice', () => {
 
   it('does not send a receipt that names the other connector', async () => {
     const body = await connectedReceiptBody('fr', 'gcal', {
-      async compose() {
-        return { reply: 'Ton Gmail est connecté.' };
+      async compose(input) {
+        return withModelFields(input, {
+          reply: 'Ton Gmail est connecté.',
+          connectorsOffered: ['gmail' as const],
+        });
       },
     });
     expect(body).toBe('');

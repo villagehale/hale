@@ -27,13 +27,22 @@ function offScriptAside(words: string): string | null {
  * capture say is known: postal, kids, ages, the map (no question), the name,
  * Gmail, calendar, schedule, co-parent.
  */
-export function scriptedTurn(input: FriendVoiceInput): {
+export function scriptedTurn(input: FriendVoiceInput): ScriptedReply & ModelFields {
+  const turn = scriptedReply(input);
+  return { ...turn, ...modelFields(input, turn) };
+}
+
+type ScriptedReply = {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
   asks?: boolean;
+  asksName?: boolean;
+  connectorsOffered?: ('gmail' | 'calendar')[];
   joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
-} {
+};
+
+function scriptedReply(input: FriendVoiceInput): ScriptedReply {
   const words = input.parentWords.trim();
   const capture: OnboardingCapture = {
     ...EMPTY_ONBOARDING_CAPTURE,
@@ -173,7 +182,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
     };
   }
   if (input.step === 'nudge_find') {
-    return { reply: 'Still here if one of those looks good. What should I call you?', capture };
+    return {
+      reply: 'Still here if one of those looks good. What should I call you?',
+      capture,
+      asksName: true,
+    };
   }
   // A yes to the connector just asked: the receipt for the yes, nothing more.
   // The next ask rides the connect receipt (connected-notice.ts) or the next text.
@@ -189,6 +202,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   let ask: string;
+  let connectorsOffered: ('gmail' | 'calendar')[] = [];
   if (speakingFrench && !postalKnown) {
     ask = "Salut, c'est Hale. Quel est ton code postal?";
   } else if (speakingFrench && !kidsKnown) {
@@ -204,10 +218,12 @@ export function scriptedTurn(input: FriendVoiceInput): {
   } else if (!nameKnown) {
     ask = 'What should I call you?';
   } else if (!gmailKnown) {
+    connectorsOffered = ['gmail'];
     ask = name
       ? `${name}, want me to watch school and camp email for the dates?`
       : 'Want me to watch school and camp email for the dates?';
   } else if (!calendarKnown) {
+    connectorsOffered = ['calendar'];
     ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
   } else if (!scheduleKnown && input.findLines.length > 0) {
     ask = 'Want the first one on your calendar as a weekly reminder?';
@@ -218,7 +234,57 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture, asks: true };
+  return {
+    reply,
+    capture,
+    asks: true,
+    asksName: postalKnown && kidsKnown && agesKnown && !nameKnown,
+    connectorsOffered,
+  };
+}
+
+type ModelFields = {
+  parentQuestion: boolean;
+  asksCount: number;
+  asksName: boolean;
+  speaksAsParent: boolean;
+  joinInProse: boolean;
+  messageIsYes: boolean;
+  messageOnlyName: string | null;
+  questionBeforeList: boolean;
+};
+
+/**
+ * The seven fields FRIEND_VOICE_MODEL_FIELDS_ENABLED reads, as the model fills
+ * them: what this fixture's own reply asks, and what the parent's message is.
+ * Every question these fixtures write carries a question mark, so the count is read
+ * off the reply the fixture itself wrote.
+ */
+function modelFields(
+  input: FriendVoiceInput,
+  turn: { reply: string; asksName?: boolean },
+): ModelFields {
+  const words = input.parentWords.trim();
+  const lone = words.match(/^(\p{Lu}[\p{L}'’-]+)[.!]?$/u)?.[1] ?? null;
+  return {
+    parentQuestion: words.includes('?'),
+    asksCount: (turn.reply.match(/\?/g) ?? []).length,
+    asksName: turn.asksName === true,
+    speaksAsParent: false,
+    joinInProse: false,
+    messageIsYes: /^(yes|yeah|yep|sure|ok|okay|sounds good)[.!]*$/i.test(words),
+    messageOnlyName:
+      lone && !/^(yes|yeah|yep|no|nope|later|ok|okay|sure|thanks)$/i.test(lone) ? lone : null,
+    questionBeforeList: false,
+  };
+}
+
+/** A test's own reply, with the fields the model fills on every composed reply. */
+export function withModelFields<T extends { reply: string; asksName?: boolean }>(
+  input: FriendVoiceInput,
+  composed: T,
+): T & ModelFields {
+  return { ...modelFields(input, composed), ...composed };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */

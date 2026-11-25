@@ -135,6 +135,8 @@ beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
   vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+  // Today's walk. The thread-v2 walk has its own suites (golden-conversation-v2).
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
 });
 
 afterEach(() => {

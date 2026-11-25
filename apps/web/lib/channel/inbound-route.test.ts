@@ -12,7 +12,10 @@ import {
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
-import { scriptedFriendVoice } from '~/lib/channel/intake/scripted-friend-voice.fixture';
+import {
+  scriptedFriendVoice,
+  withModelFields,
+} from '~/lib/channel/intake/scripted-friend-voice.fixture';
 import { SCRIPTED_STOP_CONFIRMATION } from '~/lib/channel/intake/scripted-opt-out-reader.fixture';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LINQ_TYPING_SHOW_DELAY_MS } from '~/lib/channel/linq/presence';
@@ -865,7 +868,7 @@ describe('a first text that got no reply', () => {
 
   function withComposer(h: Harness, compose: () => Promise<{ reply: string }>): void {
     const intake = h.deps.intake('sms');
-    intake.friendVoice = { compose };
+    intake.friendVoice = { compose: async (input) => withModelFields(input, await compose()) };
   }
 
   it('is counted intake_unsent, never folded into intake', async () => {

@@ -11,6 +11,7 @@ import {
   type FriendVoiceInput,
   friendVoiceContext,
 } from './friend-voice';
+import { withModelFields } from './scripted-friend-voice.fixture';
 import { loadOpenSession } from './session';
 import { FakeTransport } from './transport';
 
@@ -128,12 +129,12 @@ function composer(): FriendVoiceComposer & { inputs: FriendVoiceInput[] } {
     inputs,
     async compose(input) {
       inputs.push(input);
-      return {
+      return withModelFields(input, {
         reply:
           input.step === 'ages'
             ? 'How old are your kids?'
             : "Hey, it's Hale. What's your postal code?",
-      };
+      });
     },
   };
 }

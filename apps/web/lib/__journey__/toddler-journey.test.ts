@@ -933,6 +933,14 @@ async function runToddlerJourney(): Promise<Journey> {
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
+  // This journey walks onboarding with no cold-start ladder, the grandparent through the
+  // texted invite, and no registration page read. Each lit path has its own suites:
+  // golden-conversation-v2, golden-conversation, caregiver/add-command-no-cold-text.pglite,
+  // registration/sequence/date-recheck.pglite.
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+  vi.stubEnv('COLD_START_LADDER_ENABLED', '');
+  vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
+  vi.stubEnv('REGISTRATION_DATE_CHECK', '');
   journey = await runToddlerJourney();
 });
 
