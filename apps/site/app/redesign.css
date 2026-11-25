@@ -1176,12 +1176,18 @@
   .rd .gallery-arrow { position: static; transform: none; }
 }
 @media (min-width: 768px) {
-  /* One handset, centred. 720px is the content width at 767px, so the active
-     card stays centred and the neighbours keep that peek instead of filling
-     the 1200px row. The handset's own cap (320px) keeps the phone's ratio. */
+  /* Grow the handset from the 320px mobile cap to 400px at a 1440 viewport,
+     inside the 380–420px band of the old static cards. The stage grows with
+     the viewport, capped at 960px, so the active card stays centred and both
+     neighbours still peek. The base rules below 768px are unchanged. */
   .rd .chat-gallery {
-    width: min(100%, 720px);
+    --gallery-phone-w: clamp(320px, calc(320px + (100vw - 768px) * 5 / 42), 400px);
+    --gallery-card: max(360px, var(--gallery-phone-w));
+    width: min(100%, 960px, calc(720px + (100vw - 768px) * 5 / 14));
     margin-inline: auto;
+  }
+  .rd .chat-gallery .gallery-phone {
+    --gallery-phone-w: inherit;
   }
 }
 

@@ -44,8 +44,19 @@ it('shows the chat gallery from 768px and does not keep a static grid', () => {
   expect(css).not.toContain(
     'grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: stretch;',
   );
+  expect(css).toContain('--gallery-card: min(360px, calc(100vw - 64px));');
   expect(css).toContain('--gallery-card: min(342px, calc(100vw - 48px));');
-  expect(css).toContain('width: min(100%, 720px);');
+  expect(css).toContain(
+    '--gallery-phone-w: clamp(320px, calc(320px + (100vw - 768px) * 5 / 42), 400px);',
+  );
+  expect(css).toContain('--gallery-card: max(360px, var(--gallery-phone-w));');
+  expect(css).toContain('width: min(100%, 960px, calc(720px + (100vw - 768px) * 5 / 14));');
+  expect(css).toContain('--gallery-phone-w: inherit;');
+  const desktop = css.slice(css.indexOf('@media (min-width: 768px)'));
+  expect(desktop).toContain('--gallery-phone-w: inherit;');
+  expect(css.slice(0, css.indexOf('@media (min-width: 768px)'))).not.toContain(
+    '--gallery-phone-w: inherit;',
+  );
 });
 
 it('follows the latest visible line and leaves a finished thread on the padding edge', () => {
