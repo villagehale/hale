@@ -65,6 +65,8 @@ function fakeDb(
 describe('createBillingCheckout', () => {
   beforeEach(() => {
     vi.stubEnv('CHECKOUT_SUCCESS_STATES_ENABLED', undefined);
+    // These cases are main's path; one-open-checkout.pglite.test.ts covers the flag on.
+    vi.stubEnv('ONE_OPEN_CHECKOUT_ENABLED', undefined);
   });
 
   afterEach(() => {

@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { OpsPage, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
+import { LIVE_SUBSCRIPTION } from '~/lib/webhooks/stripe-billing';
 import { familyAlreadySubscribed } from './already-subscribed.js';
 import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-client.js';
 
@@ -20,14 +20,15 @@ import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-clien
  *   - open otherwise: it is expired in Stripe first. Another adult gets their own session,
  *     because the payer is read from who opened it. If Stripe will not expire it, nothing
  *     is made, #ops is paged, and the request fails;
- *   - paid, with its subscription not ended: already_paid, as if the webhook had landed;
- *   - expired, gone from Stripe, or its subscription ended: a new session is made.
- * The create carries an Idempotency-Key from the family, the session it follows, and the
- * whole request, so a retry of one request makes one session and a different request is
- * never refused as a reused key.
+ *   - paid, with a subscription that keeps or may yet start a paid plan: already_paid, as
+ *     if the webhook had landed;
+ *   - expired, gone from Stripe, or paid with a subscription that leaves the family on
+ *     Free: a new session is made.
+ * The create sends no Idempotency-Key. The lock already makes two requests take turns, and
+ * Stripe returns a key's first response, a 500 included, to every later request with that
+ * key for at least a day, so a key built from the request would turn one failed create
+ * into a day of failed checkouts.
  */
-
-const SUBSCRIPTION_ENDED: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
 
 export class OpenCheckoutNotExpired extends Error {
   override name = 'OpenCheckoutNotExpired';
@@ -134,10 +135,7 @@ export async function createOneOpenCheckout(input: {
 
     let created: { url: string; id?: string };
     try {
-      created = await client.createCheckoutSession({
-        ...params,
-        idempotencyKey: idempotencyKey(familyId, priorSessionId, params),
-      });
+      created = await client.createCheckoutSession(params);
     } catch (err) {
       return { kind: 'create_failed', err };
     }
@@ -164,22 +162,17 @@ export async function createOneOpenCheckout(input: {
   }
 }
 
-/** A subscription read back as anything but an ended one counts as live. */
+/**
+ * Ended means the webhook would leave the family on Free: any status but the webhook's
+ * live ones and `incomplete`, whose first payment may yet go through. A subscription
+ * whose status cannot be read counts as live.
+ */
 function subscriptionEnded(subscription: StripeSession['subscription']): boolean {
   return (
     typeof subscription === 'object' &&
     subscription !== null &&
     typeof subscription.status === 'string' &&
-    SUBSCRIPTION_ENDED.has(subscription.status)
+    subscription.status !== 'incomplete' &&
+    !LIVE_SUBSCRIPTION.has(subscription.status)
   );
-}
-
-function idempotencyKey(
-  familyId: string,
-  priorSessionId: string | null,
-  params: CheckoutSessionParams,
-): string {
-  return createHash('sha256')
-    .update(JSON.stringify({ familyId, priorSessionId, params }))
-    .digest('hex');
 }

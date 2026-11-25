@@ -151,10 +151,36 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
     const url = payable[0]?.url;
     expect(first).toEqual({ status: 'created', url });
     expect(second).toEqual({ status: 'created', url });
-    const create = fake.calls.find((c) => c.path === '/v1/checkout/sessions');
-    expect(create?.headers.get('idempotency-key')).toMatch(/^[0-9a-f]{64}$/);
     const opened = { sessionId: payable[0]?.id, actor: parent.userId };
     expect(await recordedSessions(parent.familyId)).toEqual([opened, opened]);
+  });
+
+  it('a create Stripe fails is not replayed: asking again makes the checkout', async () => {
+    const parent = await signedInParent();
+    // Stripe saves a keyed POST's first response, a 500 included, and returns it to every
+    // request that sends that key again, for at least 24 hours.
+    const isCreate = (c: { method: string; path: string }) =>
+      c.method === 'POST' && c.path === '/v1/checkout/sessions';
+    const failedKeys = new Set<string>();
+    fake.intercept(
+      isCreate,
+      (c) => {
+        const key = c.headers.get('idempotency-key');
+        if (key) failedKeys.add(key);
+        return stripeError(500);
+      },
+      1,
+    );
+    fake.intercept(
+      (c) => isCreate(c) && failedKeys.has(c.headers.get('idempotency-key') ?? ''),
+      () => stripeError(500),
+    );
+
+    await expect(checkout(parent, PLUS)).rejects.toThrow(/create failed: 500/);
+    const again = await checkout(parent, PLUS);
+
+    expect(again.status).toBe('created');
+    expect(fake.payableCheckoutSessions(parent.familyId)).toHaveLength(1);
   });
 
   it('decides under a row lock on the family, which is what makes Postgres take turns', async () => {
@@ -248,6 +274,27 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
     const again = await checkout(parent, MAX);
     expect(again.status).toBe('created');
     expect(creates()).toBe(2);
+  });
+
+  // The webhook keeps a family on a paid plan only while its subscription is active,
+  // trialing or past_due; any other status puts it on Free, where it may buy again.
+  // `incomplete` still blocks: its first payment may yet go through.
+  it.each([
+    ['unpaid', 'created'],
+    ['paused', 'created'],
+    ['past_due', 'already_paid'],
+    ['incomplete', 'already_paid'],
+  ])('a paid session whose subscription is %s: the next checkout is %s', async (status, expected) => {
+    const parent = await signedInParent();
+    await checkout(parent, PLUS);
+    const [paid] = fake.payableCheckoutSessions(parent.familyId);
+    if (!paid) throw new Error('expected the Plus session');
+    fake.completeCheckout(paid.id, `sub_${status}`);
+    const subscription = fake.subscriptions.get(`sub_${status}`);
+    if (!subscription) throw new Error('expected the subscription');
+    subscription.status = status;
+
+    expect((await checkout(parent, MAX)).status).toBe(expected);
   });
 
   it('a checkout started while the flag was off does not hide the session opened with it on', async () => {
