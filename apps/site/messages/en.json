@@ -154,7 +154,9 @@
     "cooldown": "Wait a moment, then send again.",
     "notSent": "We couldn't send a code just now.",
     "phoneInvalid": "Enter a Canadian or US number.",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "paymentEnded": "This payment is no longer active.",
+    "alreadyOnPlan": "This number is already on a plan."
   },
   "Jsonld": {
     "orgDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",

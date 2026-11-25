@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { familyAlreadySubscribed } from '~/lib/billing/already-subscribed';
 import { smsExternalAuthId } from '~/lib/billing/new-visitor-join';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import {
@@ -23,7 +24,8 @@ import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
  * The webhook stores the tier and the Stripe phone. The success page sends a
  * Linq code and only then binds that number. A normal billing event never
  * reaches a query — the dark-notice test installs a database that throws on
- * touch, and this module has to leave it alone.
+ * touch, and this module has to leave it alone. The one other query is a
+ * subscription that has ended: that stamps `ended_at` on an unbound row.
  */
 
 const SESSION_ID = /^cs_[A-Za-z0-9_]+$/;
@@ -55,6 +57,7 @@ export type PricingSendStatus =
   | 'send_failed'
   | 'invalid_phone'
   | 'already_bound'
+  | 'payment_ended'
   | 'no_payment';
 
 export type PricingCheckoutView = {
@@ -73,7 +76,9 @@ export type PricingVerifyStatus =
   | 'expired'
   | 'no_pending'
   | 'already_bound'
+  | 'already_subscribed'
   | 'attempts_limited'
+  | 'payment_ended'
   | 'no_payment';
 
 export type PricingVerifyResult = {
@@ -193,6 +198,51 @@ export async function storePricingSnapshot(
   return outcome;
 }
 
+const ENDED_SUBSCRIPTION_STATUS = new Set(['canceled', 'unpaid', 'incomplete_expired']);
+
+/**
+ * Subscription id when this event ends an unbound pricing checkout. Null for
+ * every other event, and that null returns before any query.
+ */
+function endedSubscriptionId(event: unknown): string | null {
+  if (!isRecord(event)) return null;
+  const data = isRecord(event.data) ? event.data : null;
+  const object = data && isRecord(data.object) ? data.object : null;
+  const id = object ? readString(object.id) : null;
+  if (!id?.startsWith('sub_')) return null;
+  if (event.type === 'customer.subscription.deleted') return id;
+  if (event.type !== 'customer.subscription.updated') return null;
+  const status = readString(object?.status);
+  return status && ENDED_SUBSCRIPTION_STATUS.has(status) ? id : null;
+}
+
+/**
+ * An ended subscription must not still unlock a plan. Only an unbound row is
+ * stamped; a bind that already happened stays for the billing webhook.
+ */
+export async function recordPricingSubscriptionEnded(
+  database: Database,
+  event: unknown,
+): Promise<'ended' | 'ignored'> {
+  const subscriptionId = endedSubscriptionId(event);
+  if (!subscriptionId) return 'ignored';
+  const updated = await database
+    .update(schema.pricingCheckoutPayments)
+    .set({ endedAt: new Date() })
+    .where(
+      and(
+        eq(schema.pricingCheckoutPayments.stripeSubscriptionId, subscriptionId),
+        isNull(schema.pricingCheckoutPayments.boundAt),
+        isNull(schema.pricingCheckoutPayments.endedAt),
+      ),
+    )
+    .returning({ id: schema.pricingCheckoutPayments.id });
+  if (updated.length > 0) {
+    console.info({ event: 'pricing_checkout_ended' }, 'pricing checkout');
+  }
+  return updated.length > 0 ? 'ended' : 'ignored';
+}
+
 async function loadPayment(database: Database, sessionId: string): Promise<PaymentRow | null> {
   const [row] = await database
     .select()
@@ -267,6 +317,30 @@ function lastSentAt(codes: readonly CodeRow[]): number {
   return codes.reduce((max, code) => Math.max(max, code.createdAt.getTime()), 0);
 }
 
+function phoneOnCode(row: CodeRow): string | null {
+  try {
+    return normalizePhoneE164(decryptString(row.phoneE164Encrypted));
+  } catch {
+    return null;
+  }
+}
+
+/** Session first, then the number, so a send and a verify cannot deadlock. */
+async function lockCheckout(tx: Database, sessionId: string, phoneHash: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pricing-session:${sessionId}`}))`);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pricing-phone:${phoneHash}`}))`);
+}
+
+function logCheckout(event: string, err?: unknown): void {
+  console.warn(
+    {
+      event,
+      ...(err !== undefined ? { name: err instanceof Error ? err.name : 'unknown' } : {}),
+    },
+    'pricing checkout',
+  );
+}
+
 /**
  * Send a code, or report the one already in flight. `resend` replaces it.
  * A different phone replaces it too. The sender runs only after the row
@@ -288,36 +362,66 @@ export async function sendPricingCheckoutCode(
   if (!sessionId) return view(null, 'no_payment', null);
   const payment = await ensurePayment(database, sessionId, input.retrieve);
   if (!payment) return view(null, 'no_payment', null);
+  try {
+    return await deliverPricingCode(database, payment, sessionId, input, now);
+  } catch (err) {
+    logCheckout('pricing_checkout_code_send_failed', err);
+    return view(payment, 'send_failed', storedPhone(payment));
+  }
+}
+
+async function deliverPricingCode(
+  database: Database,
+  payment: PaymentRow,
+  sessionId: string,
+  input: {
+    phone?: string | null;
+    resend?: boolean;
+    sender: OtpSender;
+  },
+  now: Date,
+): Promise<PricingCheckoutView> {
+  if (payment.endedAt) return view(payment, 'payment_ended', storedPhone(payment));
   if (payment.boundAt) return view(payment, 'already_bound', storedPhone(payment));
 
+  const codes = await sessionCodes(database, sessionId);
   let phone: string | null = null;
   if (input.phone != null && input.phone.trim() !== '') {
     phone = normalizePhoneE164(input.phone);
     if (!phone) return view(payment, 'invalid_phone', null);
   } else {
-    phone = storedPhone(payment);
+    const latest = codes[0];
+    phone = (latest ? phoneOnCode(latest) : null) ?? storedPhone(payment);
   }
   if (!phone) return view(payment, 'invalid_phone', null);
-  const phoneHash = phoneBlindIndex(phone);
+  const destination = phone;
+  const phoneHash = phoneBlindIndex(destination);
 
-  const codes = await sessionCodes(database, sessionId);
   const live = latestLive(codes, now);
   const replacing = input.resend === true || (live !== null && live.phoneE164Hash !== phoneHash);
-  if (live && !replacing) return view(payment, 'sent', phone);
-
-  const forPhone = await phoneCodes(database, phoneHash);
-  if (codes.length >= PRICING_CODE_SEND_CAP || forPhone.length >= PRICING_CODE_SEND_CAP) {
-    return view(payment, 'send_limited', phone);
-  }
-  const elapsed = now.getTime() - Math.max(lastSentAt(codes), lastSentAt(forPhone));
-  if (elapsed < OTP_RESEND_COOLDOWN_MS && (codes.length > 0 || forPhone.length > 0)) {
-    return view(payment, 'cooldown', phone, OTP_RESEND_COOLDOWN_MS - elapsed);
-  }
+  if (live && !replacing) return view(payment, 'sent', destination);
 
   const code = generateOtpCode();
-  const codeId = await database.transaction(async (rawTx) => {
+  const gated = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    if (replacing || codes.some((row) => row.consumedAt === null)) {
+    await lockCheckout(tx, sessionId, phoneHash);
+    const lockedCodes = await sessionCodes(tx, sessionId);
+    const lockedPhone = await phoneCodes(tx, phoneHash);
+    const lockedLive = latestLive(lockedCodes, now);
+    const lockedReplacing =
+      input.resend === true || (lockedLive !== null && lockedLive.phoneE164Hash !== phoneHash);
+    if (lockedLive && !lockedReplacing) return { kind: 'sent' as const };
+    if (
+      lockedCodes.length >= PRICING_CODE_SEND_CAP ||
+      lockedPhone.length >= PRICING_CODE_SEND_CAP
+    ) {
+      return { kind: 'send_limited' as const };
+    }
+    const elapsed = now.getTime() - Math.max(lastSentAt(lockedCodes), lastSentAt(lockedPhone));
+    if (elapsed < OTP_RESEND_COOLDOWN_MS && (lockedCodes.length > 0 || lockedPhone.length > 0)) {
+      return { kind: 'cooldown' as const, retryAfterMs: OTP_RESEND_COOLDOWN_MS - elapsed };
+    }
+    if (lockedReplacing || lockedCodes.some((row) => row.consumedAt === null)) {
       await tx
         .update(schema.pricingCheckoutCodes)
         .set({ consumedAt: now })
@@ -332,7 +436,7 @@ export async function sendPricingCheckoutCode(
       .insert(schema.pricingCheckoutCodes)
       .values({
         stripeSessionId: sessionId,
-        phoneE164Encrypted: encryptString(phone),
+        phoneE164Encrypted: encryptString(destination),
         phoneE164Hash: phoneHash,
         codeHash: hashOtpCode(code),
         expiresAt: new Date(now.getTime() + OTP_TTL_MS),
@@ -340,29 +444,36 @@ export async function sendPricingCheckoutCode(
       })
       .onConflictDoNothing()
       .returning({ id: schema.pricingCheckoutCodes.id });
-    return inserted[0]?.id ?? null;
+    const id = inserted[0]?.id;
+    return id ? { kind: 'inserted' as const, id } : { kind: 'sent' as const };
   });
-  if (!codeId) return view(payment, 'sent', phone);
+  if (gated.kind === 'send_limited') return view(payment, 'send_limited', destination);
+  if (gated.kind === 'cooldown') {
+    return view(payment, 'cooldown', destination, gated.retryAfterMs);
+  }
+  if (gated.kind !== 'inserted') return view(payment, 'sent', destination);
 
   try {
-    const sent = await input.sender.sendCode({ phoneE164: phone, code });
+    const sent = await input.sender.sendCode({ phoneE164: destination, code });
     if (sent.status !== 'sent') {
       await database
         .delete(schema.pricingCheckoutCodes)
-        .where(eq(schema.pricingCheckoutCodes.id, codeId));
-      return view(payment, 'not_configured', phone);
+        .where(eq(schema.pricingCheckoutCodes.id, gated.id));
+      logCheckout('pricing_checkout_code_not_configured');
+      return view(payment, 'not_configured', destination);
     }
   } catch (err) {
     await database
       .delete(schema.pricingCheckoutCodes)
-      .where(eq(schema.pricingCheckoutCodes.id, codeId));
-    return view(
-      payment,
-      err instanceof PreviewCaptureRefused ? 'not_configured' : 'send_failed',
-      phone,
+      .where(eq(schema.pricingCheckoutCodes.id, gated.id));
+    const refused = err instanceof PreviewCaptureRefused;
+    logCheckout(
+      refused ? 'pricing_checkout_code_not_configured' : 'pricing_checkout_code_send_failed',
+      err,
     );
+    return view(payment, refused ? 'not_configured' : 'send_failed', destination);
   }
-  return view(payment, 'sent', phone);
+  return view(payment, 'sent', destination);
 }
 
 function higherPlan(
@@ -397,17 +508,47 @@ async function writeBindAudit(
     phoneE164: string;
     sessionId: string;
     now: Date;
+    duplicate: boolean;
   },
 ): Promise<void> {
-  await tx.insert(schema.auditLog).values({
+  const row = {
     familyId: input.familyId,
     actor: input.actor,
-    actionTaken: 'pricing_checkout_bound',
     targetTable: 'families',
     targetId: input.familyId,
     after: { tier: input.tier, phone: maskPhoneE164(input.phoneE164), sessionId: input.sessionId },
     occurredAt: input.now,
+  };
+  if (input.duplicate) {
+    await tx.insert(schema.auditLog).values({
+      ...row,
+      actionTaken: 'pricing_checkout_duplicate',
+    });
+    return;
+  }
+  await tx.insert(schema.auditLog).values({
+    ...row,
+    actionTaken: 'pricing_checkout_bound',
   });
+}
+
+async function existingSubscriptionDiffers(
+  tx: Database,
+  familyId: string,
+  incomingSubscriptionId: string | null,
+): Promise<boolean> {
+  if (!incomingSubscriptionId) return false;
+  const [family] = await tx
+    .select({
+      planTier: schema.families.planTier,
+      stripeSubscriptionId: schema.families.stripeSubscriptionId,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  if (!family?.stripeSubscriptionId) return false;
+  if (family.stripeSubscriptionId === incomingSubscriptionId) return false;
+  return familyAlreadySubscribed(family);
 }
 
 async function onboardPaidFamily(
@@ -418,9 +559,10 @@ async function onboardPaidFamily(
     tier: PaidTier;
     currency: string | null;
     sessionId: string;
+    subscriptionId: string | null;
     now: Date;
   },
-): Promise<string> {
+): Promise<{ familyId: string; duplicate: boolean }> {
   const [channel] = await tx
     .select({
       familyId: schema.parentChannels.familyId,
@@ -436,9 +578,15 @@ async function onboardPaidFamily(
     )
     .limit(1);
   if (channel) {
-    await raisePlan(tx, channel.familyId, input.tier, input.now);
-    await writeBindAudit(tx, { ...input, familyId: channel.familyId, actor: channel.userId });
-    return channel.familyId;
+    const duplicate = await existingSubscriptionDiffers(tx, channel.familyId, input.subscriptionId);
+    if (!duplicate) await raisePlan(tx, channel.familyId, input.tier, input.now);
+    await writeBindAudit(tx, {
+      ...input,
+      familyId: channel.familyId,
+      actor: channel.userId,
+      duplicate,
+    });
+    return { familyId: channel.familyId, duplicate };
   }
 
   const externalAuthId = smsExternalAuthId(input.phoneHash);
@@ -463,9 +611,19 @@ async function onboardPaidFamily(
     .where(eq(schema.familyMembers.userId, userId))
     .limit(1);
   if (membership) {
-    await raisePlan(tx, membership.familyId, input.tier, input.now);
-    await writeBindAudit(tx, { ...input, familyId: membership.familyId, actor: userId });
-    return membership.familyId;
+    const duplicate = await existingSubscriptionDiffers(
+      tx,
+      membership.familyId,
+      input.subscriptionId,
+    );
+    if (!duplicate) await raisePlan(tx, membership.familyId, input.tier, input.now);
+    await writeBindAudit(tx, {
+      ...input,
+      familyId: membership.familyId,
+      actor: userId,
+      duplicate,
+    });
+    return { familyId: membership.familyId, duplicate };
   }
 
   const [family] = await tx
@@ -483,8 +641,8 @@ async function onboardPaidFamily(
     userId,
     role: 'primary_parent',
   });
-  await writeBindAudit(tx, { ...input, familyId: family.id, actor: userId });
-  return family.id;
+  await writeBindAudit(tx, { ...input, familyId: family.id, actor: userId, duplicate: false });
+  return { familyId: family.id, duplicate: false };
 }
 
 async function attemptTotal(
@@ -492,18 +650,22 @@ async function attemptTotal(
   sessionId: string,
   phoneHash: string,
 ): Promise<number> {
-  const [forSession, forPhone] = await Promise.all([
-    sessionCodes(database, sessionId),
-    phoneCodes(database, phoneHash),
-  ]);
+  const forSession = await sessionCodes(database, sessionId);
+  const forPhone = await phoneCodes(database, phoneHash);
   const sum = (rows: readonly CodeRow[]) =>
     rows.reduce((total, row) => total + row.attemptCount, 0);
   return Math.max(sum(forSession), sum(forPhone));
 }
 
+function attemptsLeft(attemptCount: number, spent: number): number {
+  return Math.max(0, Math.min(OTP_MAX_ATTEMPTS - attemptCount, PRICING_ATTEMPT_CAP - spent));
+}
+
 /**
  * The bound number is the number on the code row, never a phone the browser
  * sends beside the code. One session binds once (`bound_at` is still null).
+ * The code is claimed with `consumed_at is null` inside the same transaction
+ * as the bind, so a correction that landed first cannot still bind.
  */
 export async function verifyPricingCheckoutCode(
   database: Database,
@@ -514,98 +676,132 @@ export async function verifyPricingCheckoutCode(
   if (!sessionId) return { status: 'no_payment' };
   const payment = await loadPayment(database, sessionId);
   if (!payment) return { status: 'no_payment' };
+  if (payment.endedAt) return { status: 'payment_ended' };
   if (payment.boundAt) return { status: 'already_bound' };
 
-  const codes = await sessionCodes(database, sessionId);
-  const live = codes.find((code) => code.consumedAt === null) ?? null;
-  if (!live) return { status: 'no_pending' };
-  if (isOtpExpired(live.expiresAt, now)) {
-    await database
+  const code = input.code.trim();
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`pricing-session:${sessionId}`}))`,
+    );
+    const [fresh] = await tx
+      .select()
+      .from(schema.pricingCheckoutPayments)
+      .where(eq(schema.pricingCheckoutPayments.id, payment.id))
+      .limit(1);
+    if (!fresh) return { status: 'no_payment' };
+    if (fresh.endedAt) return { status: 'payment_ended' };
+    if (fresh.boundAt) return { status: 'already_bound' };
+
+    const codes = await sessionCodes(tx, sessionId);
+    const live = codes.find((row) => row.consumedAt === null) ?? null;
+    if (!live) return { status: 'no_pending' };
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`pricing-phone:${live.phoneE164Hash}`}))`,
+    );
+
+    if (isOtpExpired(live.expiresAt, now)) {
+      await tx
+        .update(schema.pricingCheckoutCodes)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(schema.pricingCheckoutCodes.id, live.id),
+            isNull(schema.pricingCheckoutCodes.consumedAt),
+          ),
+        );
+      return { status: 'expired' };
+    }
+
+    const spent = await attemptTotal(tx, sessionId, live.phoneE164Hash);
+    if (spent >= PRICING_ATTEMPT_CAP || isOtpLockedOut(live.attemptCount)) {
+      return {
+        status: spent >= PRICING_ATTEMPT_CAP ? 'attempts_limited' : 'locked',
+        attemptsRemaining: 0,
+      };
+    }
+
+    if (
+      codes.some(
+        (row) => row.id !== live.id && row.consumedAt !== null && verifyOtpCode(code, row.codeHash),
+      )
+    ) {
+      return { status: 'wrong_code', attemptsRemaining: attemptsLeft(live.attemptCount, spent) };
+    }
+
+    if (!verifyOtpCode(code, live.codeHash)) {
+      const nextCount = live.attemptCount + 1;
+      const bumped = await tx
+        .update(schema.pricingCheckoutCodes)
+        .set({ attemptCount: nextCount })
+        .where(
+          and(
+            eq(schema.pricingCheckoutCodes.id, live.id),
+            isNull(schema.pricingCheckoutCodes.consumedAt),
+            eq(schema.pricingCheckoutCodes.attemptCount, live.attemptCount),
+          ),
+        )
+        .returning({ attemptCount: schema.pricingCheckoutCodes.attemptCount });
+      if (bumped.length === 0) return { status: 'locked', attemptsRemaining: 0 };
+      const total = spent + 1;
+      if (total >= PRICING_ATTEMPT_CAP) return { status: 'attempts_limited', attemptsRemaining: 0 };
+      if (isOtpLockedOut(nextCount)) return { status: 'locked', attemptsRemaining: 0 };
+      return { status: 'wrong_code', attemptsRemaining: attemptsLeft(nextCount, total) };
+    }
+
+    let phone = '';
+    try {
+      phone = decryptString(live.phoneE164Encrypted);
+    } catch {
+      return { status: 'no_pending' };
+    }
+    const phoneHash = phoneBlindIndex(phone);
+    const [stillLive] = await tx
       .update(schema.pricingCheckoutCodes)
       .set({ consumedAt: now })
-      .where(eq(schema.pricingCheckoutCodes.id, live.id));
-    return { status: 'expired' };
-  }
+      .where(
+        and(
+          eq(schema.pricingCheckoutCodes.id, live.id),
+          isNull(schema.pricingCheckoutCodes.consumedAt),
+        ),
+      )
+      .returning({ id: schema.pricingCheckoutCodes.id });
+    if (!stillLive) return { status: 'no_pending' };
 
-  const spent = await attemptTotal(database, sessionId, live.phoneE164Hash);
-  if (spent >= PRICING_ATTEMPT_CAP || isOtpLockedOut(live.attemptCount)) {
-    return { status: spent >= PRICING_ATTEMPT_CAP ? 'attempts_limited' : 'locked' };
-  }
-
-  const code = input.code.trim();
-  if (
-    codes.some(
-      (row) => row.id !== live.id && row.consumedAt !== null && verifyOtpCode(code, row.codeHash),
-    )
-  ) {
-    return {
-      status: 'wrong_code',
-      attemptsRemaining: Math.min(
-        OTP_MAX_ATTEMPTS - live.attemptCount,
-        PRICING_ATTEMPT_CAP - spent,
-      ),
-    };
-  }
-  if (!verifyOtpCode(code, live.codeHash)) {
-    const attemptCount = live.attemptCount + 1;
-    await database
-      .update(schema.pricingCheckoutCodes)
-      .set({ attemptCount })
-      .where(eq(schema.pricingCheckoutCodes.id, live.id));
-    const total = spent + 1;
-    if (total >= PRICING_ATTEMPT_CAP) return { status: 'attempts_limited', attemptsRemaining: 0 };
-    if (isOtpLockedOut(attemptCount)) return { status: 'locked', attemptsRemaining: 0 };
-    return {
-      status: 'wrong_code',
-      attemptsRemaining: Math.min(OTP_MAX_ATTEMPTS - attemptCount, PRICING_ATTEMPT_CAP - total),
-    };
-  }
-
-  let phone = '';
-  try {
-    phone = decryptString(live.phoneE164Encrypted);
-  } catch {
-    return { status: 'no_pending' };
-  }
-  const phoneHash = phoneBlindIndex(phone);
-  const bound = await database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
     const [claimed] = await tx
       .update(schema.pricingCheckoutPayments)
       .set({ boundAt: now, boundPhoneE164Hash: phoneHash })
       .where(
         and(
-          eq(schema.pricingCheckoutPayments.id, payment.id),
+          eq(schema.pricingCheckoutPayments.id, fresh.id),
           isNull(schema.pricingCheckoutPayments.boundAt),
+          isNull(schema.pricingCheckoutPayments.endedAt),
         ),
       )
       .returning({ id: schema.pricingCheckoutPayments.id });
-    if (!claimed) return null;
-    const familyId = await onboardPaidFamily(tx, {
+    if (!claimed) return { status: 'already_bound' };
+
+    const onboarded = await onboardPaidFamily(tx, {
       phoneE164: phone,
       phoneHash,
-      tier: payment.tier,
-      currency: payment.currency,
+      tier: fresh.tier,
+      currency: fresh.currency,
       sessionId,
+      subscriptionId: fresh.stripeSubscriptionId,
       now,
     });
     await tx
       .update(schema.pricingCheckoutPayments)
-      .set({ boundFamilyId: familyId })
-      .where(eq(schema.pricingCheckoutPayments.id, payment.id));
-    await tx
-      .update(schema.pricingCheckoutCodes)
-      .set({ consumedAt: now })
-      .where(eq(schema.pricingCheckoutCodes.id, live.id));
-    return familyId;
+      .set({ boundFamilyId: onboarded.familyId })
+      .where(eq(schema.pricingCheckoutPayments.id, fresh.id));
+    return {
+      status: onboarded.duplicate ? 'already_subscribed' : 'verified',
+      familyId: onboarded.familyId,
+      customerId: fresh.stripeCustomerId,
+      subscriptionId: fresh.stripeSubscriptionId,
+    };
   });
-  if (!bound) return { status: 'already_bound' };
-  return {
-    status: 'verified',
-    familyId: bound,
-    customerId: payment.stripeCustomerId,
-    subscriptionId: payment.stripeSubscriptionId,
-  };
 }
 
 /** Best-effort. A unique customer already on another family must not undo the bind. */
@@ -642,4 +838,33 @@ export async function rememberStripeCustomer(
       'pricing checkout',
     );
   }
+}
+
+/**
+ * Right-to-erasure. The checkout foreign key only clears `bound_family_id`,
+ * so the sweep deletes the payment (and its codes) while the family and its
+ * channel hashes are still there.
+ */
+export async function erasePricingCheckoutRows(
+  database: Database,
+  familyIds: readonly string[],
+): Promise<void> {
+  if (familyIds.length === 0) return;
+  const channels = await database
+    .select({ hash: schema.parentChannels.phoneE164Hash })
+    .from(schema.parentChannels)
+    .where(inArray(schema.parentChannels.familyId, [...familyIds]));
+  const hashes = [...new Set(channels.map((row) => row.hash))];
+  const byFamily = inArray(schema.pricingCheckoutPayments.boundFamilyId, [...familyIds]);
+  await database
+    .delete(schema.pricingCheckoutPayments)
+    .where(
+      hashes.length === 0
+        ? byFamily
+        : or(
+            byFamily,
+            inArray(schema.pricingCheckoutPayments.phoneE164Hash, hashes),
+            inArray(schema.pricingCheckoutPayments.boundPhoneE164Hash, hashes),
+          ),
+    );
 }

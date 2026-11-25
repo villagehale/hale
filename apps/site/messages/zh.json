@@ -154,7 +154,9 @@
     "cooldown": "请稍等，然后再发。",
     "notSent": "验证码暂时发不出去。",
     "phoneInvalid": "请输入加拿大或美国的号码。",
-    "confirm": "确认"
+    "confirm": "确认",
+    "paymentEnded": "这笔付款已经结束。",
+    "alreadyOnPlan": "这个号码已经有方案。"
   },
   "Jsonld": {
     "orgDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",

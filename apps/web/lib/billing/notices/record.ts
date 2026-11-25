@@ -7,7 +7,10 @@ import {
 } from '@hale/db';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { billingThreadNoticesArmedAt } from '~/lib/billing/flags';
-import { recordPricingDirectCheckout } from '~/lib/billing/pricing-checkout';
+import {
+  recordPricingDirectCheckout,
+  recordPricingSubscriptionEnded,
+} from '~/lib/billing/pricing-checkout';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import { familyIdFromStripeEvent, stripeRefsFromStripeEvent } from '~/lib/webhooks/stripe-billing';
@@ -107,9 +110,10 @@ export async function recordBillingNoticeIntent(
   applied: ApplyStripeBillingResult,
   deps: RecordNoticeDeps = {},
 ): Promise<BillingNoticeRecordOutcome> {
-  // Before the dark return, and only a paid pricing_direct checkout touches the
-  // database. Every other event — including the flag-off proxy test — stays a
-  // pure read of the event object.
+  // Before the dark return. A paid pricing_direct checkout is stored, and a
+  // subscription that has ended stamps an unbound row. Every other event —
+  // including the flag-off proxy test — stays a pure read of the event object.
+  await recordPricingSubscriptionEnded(database, event);
   await recordPricingDirectCheckout(database, event);
   const env = deps.env ?? process.env;
   const armedAt = billingThreadNoticesArmedAt(env);

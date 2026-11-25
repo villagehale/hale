@@ -93,6 +93,8 @@ export interface CheckoutSessionFacts {
   readonly tier: 'plus' | 'family' | null;
   /** Present only when hale-web has CHECKOUT_SUCCESS_STATES_ENABLED on. */
   readonly view?: CheckoutSuccessView;
+  /** A paid /pricing checkout. Present only when the app says so. */
+  readonly direct?: true;
 }
 
 export function googlePurchaseFromPaidSession(input: {
@@ -189,6 +191,7 @@ export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | 
     paid: payload.paid === true,
     tier,
     ...(view ? { view } : {}),
+    ...(payload.direct === true ? { direct: true as const } : {}),
   };
 }
 

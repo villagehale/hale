@@ -150,7 +150,9 @@
     "cooldown": "Attends un moment, puis renvoie.",
     "notSent": "Nous n'avons pas pu envoyer de code.",
     "phoneInvalid": "Entre un numéro du Canada ou des États-Unis.",
-    "confirm": "Confirmer"
+    "confirm": "Confirmer",
+    "paymentEnded": "Ce paiement n'est plus actif.",
+    "alreadyOnPlan": "Ce numéro a déjà un forfait."
   },
   "Text": {
     "metaTitle": "Texter Hale",

@@ -102,9 +102,20 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
     : null;
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const textHref = smsNumber ? buildSmsHref(smsNumber, null, intakePrefill(locale)) : null;
-  const direct = paid && sessionId ? await openPricingCheckout(sessionId) : null;
-  const verifying = direct?.direct === true && direct.bound === false;
-  const view = verifying ? null : checkoutViewForPage(sessionId, facts);
+  const opened = paid && sessionId ? await openPricingCheckout(sessionId) : null;
+  const direct =
+    opened?.direct === true
+      ? opened
+      : facts?.direct === true
+        ? {
+            direct: true as const,
+            bound: false,
+            phone: null,
+            tier: facts.tier,
+            status: 'send_failed',
+          }
+        : null;
+  const view = direct ? null : checkoutViewForPage(sessionId, facts);
   const platform = view ? await requestPlatform() : 'unknown';
 
   return (
@@ -112,11 +123,12 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
       <SiteHeader locale={locale} />
       <div className="rd">
         <main id="main" className="sp-hero">
-          {direct && !direct.bound && sessionId ? (
+          {direct && sessionId ? (
             <PricingCheckoutVerify
               sessionId={sessionId}
               initialPhone={direct.phone}
               initialStatus={direct.status}
+              initialBound={direct.bound}
               locale={locale}
               smsNumber={smsNumber ?? ''}
               prefill={intakePrefill(locale)}
@@ -138,6 +150,8 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
                 notSent: t('notSent'),
                 phoneInvalid: t('phoneInvalid'),
                 confirm: t('confirm'),
+                paymentEnded: t('paymentEnded'),
+                alreadyOnPlan: t('alreadyOnPlan'),
                 lede: t('lede'),
                 textHale: t('textHale'),
               }}

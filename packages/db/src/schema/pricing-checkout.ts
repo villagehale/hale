@@ -25,6 +25,8 @@ export const pricingCheckoutPayments = pgTable(
     boundFamilyId: uuid('bound_family_id').references(() => families.id, { onDelete: 'set null' }),
     boundPhoneE164Hash: text('bound_phone_e164_hash'),
     boundAt: timestamp('bound_at', { withTimezone: true }),
+    /** Set when the subscription ends before this row is bound. Verify then refuses. */
+    endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

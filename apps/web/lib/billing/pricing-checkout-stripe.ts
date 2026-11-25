@@ -50,3 +50,35 @@ export async function annotatePricingSubscription(
     throw new Error(`stripe subscription annotate failed: ${res.status}`);
   }
 }
+
+/**
+ * Cancel the new subscription when the number already has a different one.
+ * A missing secret is named. The body is never logged. Tests pass fetch.
+ */
+export async function cancelPricingSubscription(
+  secret: string,
+  subscriptionId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<'canceled' | 'not_configured' | 'failed'> {
+  if (!secret.trim()) {
+    console.warn(
+      { event: 'pricing_checkout_cancel_skipped', reason: 'not_configured' },
+      'pricing checkout',
+    );
+    return 'not_configured';
+  }
+  if (!SUBSCRIPTION_ID.test(subscriptionId)) return 'failed';
+  const res = await fetchImpl(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${secret}` },
+  });
+  if (!res.ok) {
+    console.warn(
+      { event: 'pricing_checkout_cancel_failed', status: res.status },
+      'pricing checkout',
+    );
+    return 'failed';
+  }
+  console.info({ event: 'pricing_checkout_cancel' }, 'pricing checkout');
+  return 'canceled';
+}

@@ -32,7 +32,9 @@ import { recordBillingNoticeIntent } from './notices/record';
 import {
   PRICING_ATTEMPT_CAP,
   PRICING_CODE_SEND_CAP,
+  erasePricingCheckoutRows,
   recordPricingDirectCheckout,
+  recordPricingSubscriptionEnded,
   sendPricingCheckoutCode,
   verifyPricingCheckoutCode,
 } from './pricing-checkout';
@@ -517,6 +519,152 @@ describe('pricing checkout codes', () => {
       .from(schema.families)
       .where(eq(schema.families.id, seeded.familyId));
     expect(family?.planTier).toBe('family');
+  });
+
+  it('sends the corrected number again when resend omits the phone', async () => {
+    const stripePhone = '+14165552013';
+    const corrected = '+14165552014';
+    const { id, sender } = await pay(stripePhone);
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: id,
+      phone: corrected,
+      resend: true,
+      now: later(61_000),
+      sender,
+    });
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: id,
+      resend: true,
+      now: later(122_000),
+      sender,
+    });
+    expect(sender.sent.map((row) => row.phoneE164)).toEqual([stripePhone, corrected, corrected]);
+  });
+
+  it('does not bind a code that was already replaced', async () => {
+    const phone = '+14165552015';
+    const before = await familyCount();
+    const { id, sender } = await pay(phone);
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    const code = sender.sent[0]?.code ?? '';
+    await db.database
+      .update(schema.pricingCheckoutCodes)
+      .set({ consumedAt: NOW })
+      .where(eq(schema.pricingCheckoutCodes.stripeSessionId, id));
+    const verified = await verifyPricingCheckoutCode(db.database, {
+      sessionId: id,
+      code,
+      now: NOW,
+    });
+    expect(verified.status).toBe('no_pending');
+    expect(await familyCount()).toBe(before);
+    expect((await payment(id))?.boundAt).toBeNull();
+  });
+
+  it('does not bind a checkout whose subscription has ended', async () => {
+    const phone = '+14165552016';
+    const before = await familyCount();
+    const { id, sender } = await pay(phone);
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    const ended = await recordPricingSubscriptionEnded(db.database, {
+      type: 'customer.subscription.deleted',
+      data: { object: { id: `sub_${id}` } },
+    });
+    expect(ended).toBe('ended');
+    const verified = await verifyPricingCheckoutCode(db.database, {
+      sessionId: id,
+      code: sender.sent[0]?.code ?? '',
+      now: NOW,
+    });
+    expect(verified.status).toBe('payment_ended');
+    expect(await familyCount()).toBe(before);
+    expect((await payment(id))?.boundAt).toBeNull();
+  });
+
+  it('does not open a second subscription for a family that already has one', async () => {
+    const phone = '+14165552017';
+    const seeded = await seedFamily(db.database, 'Already paying');
+    await db.database
+      .update(schema.families)
+      .set({ planTier: 'plus', stripeSubscriptionId: 'sub_already_live' })
+      .where(eq(schema.families.id, seeded.familyId));
+    await db.database.insert(schema.parentChannels).values({
+      userId: seeded.parentUserId,
+      familyId: seeded.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: NOW,
+    });
+    const before = await familyCount();
+    const { id, sender } = await pay(phone, 'family');
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    const verified = await verifyPricingCheckoutCode(db.database, {
+      sessionId: id,
+      code: sender.sent[0]?.code ?? '',
+      now: NOW,
+    });
+    expect(verified.status).toBe('already_subscribed');
+    expect(verified.subscriptionId).toBe(`sub_${id}`);
+    expect(await familyCount()).toBe(before);
+    const [family] = await db.database
+      .select({
+        planTier: schema.families.planTier,
+        stripeSubscriptionId: schema.families.stripeSubscriptionId,
+      })
+      .from(schema.families)
+      .where(eq(schema.families.id, seeded.familyId));
+    expect(family?.planTier).toBe('plus');
+    expect(family?.stripeSubscriptionId).toBe('sub_already_live');
+    expect((await payment(id))?.boundAt).not.toBeNull();
+  });
+
+  it('names a missing sender and stores no code', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { id } = await pay('+14165552018');
+    const sender: OtpSender = {
+      async sendCode() {
+        return { status: 'not_configured' };
+      },
+    };
+    await expect(
+      sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender }),
+    ).resolves.toMatchObject({ status: 'not_configured', direct: true });
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'pricing_checkout_code_not_configured' }),
+      'pricing checkout',
+    );
+    const codes = await db.database
+      .select({ id: schema.pricingCheckoutCodes.id })
+      .from(schema.pricingCheckoutCodes)
+      .where(eq(schema.pricingCheckoutCodes.stripeSessionId, id));
+    expect(codes).toHaveLength(0);
+    warn.mockRestore();
+  });
+
+  it('drops the stored phone when that family is erased', async () => {
+    const phone = '+14165552019';
+    const { id } = await pay(phone);
+    const seeded = await seedFamily(db.database, 'Leaving');
+    await db.database.insert(schema.parentChannels).values({
+      userId: seeded.parentUserId,
+      familyId: seeded.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: NOW,
+    });
+    await db.database
+      .update(schema.pricingCheckoutPayments)
+      .set({
+        boundFamilyId: seeded.familyId,
+        boundAt: NOW,
+        boundPhoneE164Hash: phoneBlindIndex(phone),
+      })
+      .where(eq(schema.pricingCheckoutPayments.stripeSessionId, id));
+    await erasePricingCheckoutRows(db.database, [seeded.familyId]);
+    expect(await payment(id)).toBeNull();
   });
 
   it('starts onboarding when the verified number texts back, and stays one paid family', async () => {

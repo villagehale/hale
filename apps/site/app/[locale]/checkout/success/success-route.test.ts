@@ -152,7 +152,7 @@ describe('/checkout/success', () => {
   });
 
   it('asks for the Linq code before Text Hale on a direct checkout', async () => {
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16462352164');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -197,7 +197,7 @@ describe('/checkout/success', () => {
   });
 
   it('shows Text Hale once that direct checkout is bound', async () => {
-    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16462352164');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -233,8 +233,87 @@ describe('/checkout/success', () => {
     );
     expect(html).toContain('You&#x27;re in.');
     expect(html).toContain('Text Hale');
-    expect(html).toContain('sms:+16462352164');
+    expect(html).toContain('href="/text"');
+    expect(html).toContain('data-cta-placement="checkout_success"');
     expect(html).not.toContain('We sent a code to this number.');
+  });
+
+  it('keeps Text Hale when checkout states are on and the direct checkout is bound', async () => {
+    vi.stubEnv('CHECKOUT_SUCCESS_STATES_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: true,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'already_bound',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_bound_states',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+            direct: true,
+            view: { state: 'receipt' },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_bound_states' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('Text Hale');
+    expect(main).toContain('href="/text"');
+    expect(main).toContain('data-cta-placement="checkout_success"');
+    expect(main).not.toContain('This checkout is finished');
+  });
+
+  it('shows the code form when a direct checkout cannot be opened', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response('nope', { status: 500 });
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_direct_down',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+            direct: true,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_direct_down' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('send a code just now');
+    expect(main).toContain('Send a code to this number');
+    expect(main).not.toContain('sms:');
   });
 
   it('never reads value or currency from the query string', () => {

@@ -4,7 +4,10 @@ import {
   rememberStripeCustomer,
   verifyPricingCheckoutCode,
 } from '~/lib/billing/pricing-checkout';
-import { annotatePricingSubscription } from '~/lib/billing/pricing-checkout-stripe';
+import {
+  annotatePricingSubscription,
+  cancelPricingSubscription,
+} from '~/lib/billing/pricing-checkout-stripe';
 import { db } from '~/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -22,9 +25,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!code) return NextResponse.json({ status: 'wrong_code' }, { status: 400 });
   try {
     const result = await verifyPricingCheckoutCode(db(), { sessionId, code, now: new Date() });
+    const secret = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
     if (result.status === 'verified' && result.familyId) {
       await rememberStripeCustomer(db(), result.familyId, result.customerId, result.subscriptionId);
-      const secret = process.env.STRIPE_SECRET_KEY?.trim();
       if (secret && result.subscriptionId) {
         try {
           await annotatePricingSubscription(secret, result.subscriptionId, result.familyId);
@@ -37,6 +40,19 @@ export async function POST(request: Request): Promise<Response> {
             'pricing checkout',
           );
         }
+      }
+    }
+    if (result.status === 'already_subscribed' && result.subscriptionId) {
+      try {
+        await cancelPricingSubscription(secret, result.subscriptionId);
+      } catch (err) {
+        console.warn(
+          {
+            event: 'pricing_checkout_cancel_failed',
+            name: err instanceof Error ? err.name : 'unknown',
+          },
+          'pricing checkout',
+        );
       }
     }
     return NextResponse.json({

@@ -143,7 +143,14 @@ export function directCheckoutCancelUrl(origin: string): string {
   return `${origin.replace(/\/$/, '')}/pricing?checkout=cancelled`;
 }
 
-/** Hosted Checkout collects a phone when this is enabled, and the phone is required. */
+/**
+ * Hosted Checkout collects a phone when this is enabled, and the phone is required.
+ * `card` is what turns on Apple Pay and Google Pay: they are wallets on the card
+ * method, not their own `payment_method_types`. Hosted Checkout shows them on
+ * checkout.stripe.com when the device supports them. That domain is Stripe's, so
+ * villagehale.com and a Preview host do not register an Apple Pay domain for this
+ * redirect. Link is listed beside card.
+ */
 export function directCheckoutForm(input: {
   priceId: string;
   tier: DirectTier;

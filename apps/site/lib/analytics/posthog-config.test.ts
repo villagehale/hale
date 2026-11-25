@@ -63,6 +63,25 @@ describe('marketing-site PostHog posture', () => {
   it('honours Do Not Track', () => {
     expect(POSTHOG_INIT_CONFIG.respect_dnt).toBe(true);
   });
+
+  it('strips a checkout session id from any URL before the event leaves', () => {
+    const id = 'cs_test_secret_session';
+    const send = POSTHOG_INIT_CONFIG.before_send;
+    expect(send).toBeTypeOf('function');
+    const event = send?.({
+      uuid: 'u',
+      event: '$pageview',
+      properties: {
+        $current_url: `https://www.villagehale.com/checkout/success?session_id=${id}`,
+        encoded: `https://www.villagehale.com/checkout/success%3Fsession_id%3D${id}`,
+      },
+    });
+    expect(JSON.stringify(event)).not.toContain(id);
+    expect(event?.properties).toMatchObject({
+      $current_url: 'https://www.villagehale.com/checkout/success?session_id=[redacted]',
+      encoded: 'https://www.villagehale.com/checkout/success%3Fsession_id%3D[redacted]',
+    });
+  });
 });
 
 describe('the privacy policy still matches that posture', () => {

@@ -19,6 +19,8 @@ export interface PaidCheckoutFacts {
   readonly paid: boolean;
   /** Verified paid tier from session metadata. `family` is Max. */
   readonly tier: 'plus' | 'family' | null;
+  /** Present only for a pricing_direct session. No phone, email, or family. */
+  readonly direct?: true;
 }
 
 export function checkoutSessionIdFromUnknown(raw: unknown): string | null {
@@ -60,12 +62,15 @@ export function paidCheckoutFactsFromStripeSession(payload: unknown): PaidChecko
   if (!transactionId || !SESSION_ID.test(transactionId) || !currency || amountTotal === null) {
     return null;
   }
+  const metadata = isRecord(payload.metadata) ? payload.metadata : null;
+  const direct = metadata ? readString(metadata.source) === 'pricing_direct' : false;
   return {
     transactionId,
     value: amountTotal / 100,
     currency,
     paid: readString(payload.payment_status) === 'paid',
     tier: paidTierFromSession(payload),
+    ...(direct ? { direct: true as const } : {}),
   };
 }
 

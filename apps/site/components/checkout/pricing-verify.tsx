@@ -22,6 +22,8 @@ export type PricingVerifyCopy = {
   notSent: string;
   phoneInvalid: string;
   confirm: string;
+  paymentEnded: string;
+  alreadyOnPlan: string;
   lede: string;
   textHale: string;
 };
@@ -44,6 +46,8 @@ function messageFor(status: string, copy: PricingVerifyCopy): string {
       return copy.limited;
     case 'invalid_phone':
       return copy.phoneInvalid;
+    case 'payment_ended':
+      return copy.paymentEnded;
     case 'wrong_code':
       return copy.wrongCode;
     case 'expired':
@@ -63,6 +67,7 @@ export function PricingCheckoutVerify({
   sessionId,
   initialPhone,
   initialStatus,
+  initialBound = false,
   locale,
   smsNumber,
   prefill,
@@ -71,6 +76,7 @@ export function PricingCheckoutVerify({
   sessionId: string;
   initialPhone: string | null;
   initialStatus: string;
+  initialBound?: boolean;
   locale: Locale;
   smsNumber: string;
   prefill: string;
@@ -81,7 +87,8 @@ export function PricingCheckoutVerify({
   const [code, setCode] = useState('');
   const [status, setStatus] = useState(initialStatus);
   const [note, setNote] = useState(messageFor(initialStatus, copy));
-  const [bound, setBound] = useState(false);
+  const [bound, setBound] = useState(initialBound);
+  const [onPlan, setOnPlan] = useState(false);
   const [pending, setPending] = useState(false);
 
   async function post(path: string, body: Record<string, unknown>): Promise<CodeResponse | null> {
@@ -121,7 +128,8 @@ export function PricingCheckoutVerify({
     event.preventDefault();
     const result = await post('/api/checkout/verify', { sessionId, code });
     const next = result?.status ?? 'no_pending';
-    if (next === 'verified' || next === 'already_bound') {
+    if (next === 'verified' || next === 'already_bound' || next === 'already_subscribed') {
+      if (next === 'already_subscribed') setOnPlan(true);
       setBound(true);
       return;
     }
@@ -134,7 +142,7 @@ export function PricingCheckoutVerify({
       <>
         <h1 className="sp-h1">{copy.heading}</h1>
         {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
-        <p className="sp-lede">{copy.lede}</p>
+        <p className="sp-lede">{onPlan ? copy.alreadyOnPlan : copy.lede}</p>
         <div className="sp-cta">
           <TextDoor
             className="btn btn-hero"
@@ -162,6 +170,7 @@ export function PricingCheckoutVerify({
           {copy.phoneLabel}
           <input
             id="pricing-phone"
+            className="ph-mask"
             name="phone"
             type="tel"
             autoComplete="tel"
@@ -186,6 +195,7 @@ export function PricingCheckoutVerify({
               {copy.codeLabel}
               <input
                 id="pricing-code"
+                className="ph-mask"
                 name="code"
                 inputMode="numeric"
                 autoComplete="one-time-code"
