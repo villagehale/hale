@@ -611,7 +611,9 @@ async function runIntakeTurn(
         now,
         deps.optOutHold,
       );
-      const held = heldUnreadOutcome(settled, reading);
+      // A turn with no words (a photo) has nothing to read, so a null reading is not an
+      // unread stop. Step 5 makes the same check before it reads.
+      const held = inbound.body.trim().length > 0 ? heldUnreadOutcome(settled, reading) : null;
       if (held) return held;
       if (reading?.intent === 'stop') {
         return stopThenReleaseHold(

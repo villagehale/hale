@@ -328,7 +328,13 @@ describe('routing', () => {
     expect(h.transport.sent).toHaveLength(0);
   });
 
-  it('stays silent when a photo is over the inbound limit', async () => {
+  // A photo has no words to read for a stop, so the unread-hold flag must not turn it
+  // into an unread opt-out.
+  it.each([
+    ['off', ''],
+    ['on', 'true'],
+  ])('stays silent when a photo is over the inbound limit (unread-hold flag %s)', async (_state, value) => {
+    vi.stubEnv('OPT_OUT_UNREAD_HOLD_TURN_ENABLED', value);
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
     vi.spyOn(limiter, 'check').mockResolvedValue({
