@@ -1,4 +1,5 @@
 import { parseMetaPixelIds } from './meta-pixel';
+import { hasPromoPreviewQuery } from './posthog-provider';
 
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -8,12 +9,28 @@ type Fbq = ((...args: unknown[]) => void) & {
   loaded?: boolean;
   version?: string;
   push?: Fbq;
+  disablePushState?: boolean;
 };
 
 interface PixelWindow extends Window {
   fbq?: Fbq;
   _fbq?: Fbq;
   __haleMetaPixel?: boolean;
+}
+
+/**
+ * The only app paths the browser pixel loads on: the public pre-signup join page ads
+ * land on. Every other app page carries a bearer token in its URL (/l/<code>, the
+ * texted connect and sign-in links) or shows a family's data, and must load nothing
+ * from Meta (hard rule #1). `/founding?preview=` carries a secret, so it is out too.
+ */
+export const META_PIXEL_PATH_PREFIXES = ['/founding'] as const;
+
+export function metaPixelAllowedOn(pathname: string | null, search: string): boolean {
+  if (!pathname || hasPromoPreviewQuery(search)) return false;
+  return META_PIXEL_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 function pixelWindow(): PixelWindow | null {
@@ -45,6 +62,9 @@ export function installMetaPixel(pixelId: string | readonly string[]): void {
   fbq.loaded = true;
   fbq.version = '2.0';
   fbq.queue = [];
+  // The allowlist is checked only here. Left on, fbevents.js would send a PageView with
+  // the new URL on every later client-side navigation, wherever it leads.
+  fbq.disablePushState = true;
   w.fbq = fbq;
   w._fbq = fbq;
   for (const id of ids) fbq('init', id);
