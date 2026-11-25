@@ -542,6 +542,7 @@ export const AUDIT_VERBS = [
   'integration.gmail_draft_failed',
   'user_preferences_updated',
   'billing_checkout_started',
+  'billing_checkout_expired',
   'promo_join_family_created',
   'promo_join_verified',
   'billing_refunded',
@@ -2048,6 +2049,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
   // Started, not finished: the row is written before checkout completes.
   billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
+  // VIL-729. A newer checkout replaced one nobody had paid, so only one can be paid.
+  billing_checkout_expired: { sentence: 'Hale closed an unfinished upgrade', family: 'note' },
   promo_join_family_created: {
     sentence: 'you joined Hale with a text code',
     family: 'note',

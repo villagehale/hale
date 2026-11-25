@@ -247,6 +247,10 @@ export const FLAGS = [
   // the number held for the parent it names. Exact `true`. Env-only: read before any family
   // is known, so a PostHog 100% rollout must never be able to light it.
   exact('connect-link-code', 'CONNECT_LINK_CODE_ENABLED', { envOnly: true }),
+  // VIL-729. At most one Checkout Session a family can pay: a new checkout returns the open
+  // one (same adult, same price) or expires it in Stripe first. Exact `true`. Env-only: it
+  // guards a live payment path, so a PostHog rollout must never be able to change it.
+  exact('one-open-checkout', 'ONE_OPEN_CHECKOUT_ENABLED', { envOnly: true }),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,
   }),

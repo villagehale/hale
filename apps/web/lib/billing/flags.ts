@@ -3,6 +3,8 @@
  * Nothing in PostHog may turn a payment or an ads conversion on (PAYMENT_ENV_ONLY).
  */
 
+import { isEnabled } from '@hale/flags';
+
 export const HOLIDAY_PROMO_ENABLED_ENV = 'HOLIDAY_PROMO_ENABLED';
 export const PROMO_NEW_VISITOR_CHECKOUT_ENABLED_ENV = 'PROMO_NEW_VISITOR_CHECKOUT_ENABLED';
 export const CONVERSIONS_API_ENABLED_ENV = 'CONVERSIONS_API_ENABLED';
@@ -94,6 +96,16 @@ export function stripeRefundEndsSubscriptionEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   return env[STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED_ENV] === 'true';
+}
+
+/**
+ * At most one Checkout Session a family can pay. Exact `true`, env-only in the
+ * `@hale/flags` catalog (`one-open-checkout`).
+ */
+export function oneOpenCheckoutEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isEnabled('one-open-checkout', undefined, env);
 }
 
 export function stripeClearDeletedSubscriptionEnabled(

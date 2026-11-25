@@ -2,11 +2,17 @@ import { type Database, schema } from '@hale/db';
 import type { Attribution, BillingCurrency, BillingPeriod } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
+import { type OpsPage, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { AdsCheckoutContext } from './ads-context.js';
 import { familyAlreadySubscribed } from './already-subscribed.js';
 import { checkoutCancelUrl, checkoutSuccessUrl } from './checkout-session.js';
-import { checkoutSuccessStatesEnabled, holidayPromoEnabled } from './flags.js';
+import {
+  checkoutSuccessStatesEnabled,
+  holidayPromoEnabled,
+  oneOpenCheckoutEnabled,
+} from './flags.js';
+import { createOneOpenCheckout } from './one-open-checkout.js';
 import {
   type CheckoutSku,
   foundingWindowOpen,
@@ -14,7 +20,7 @@ import {
   isPromoPriceId,
 } from './prices.js';
 import { isPromoPreviewFamily } from './promo-preview.js';
-import type { StripeCheckoutClient } from './stripe-client.js';
+import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-client.js';
 
 /**
  * Creates a Stripe Checkout session for the caller's family and records the
@@ -26,8 +32,9 @@ import type { StripeCheckoutClient } from './stripe-client.js';
  * the other family-scoped mutations. already_paid when the family is on plus or
  * family — a leftover stripeSubscriptionId after cancel/delete is not live.
  * Duplicate live subscriptions are blocked by that tier check plus reusing the
- * Stripe Customer. The audit row is the billing intent, written once the session
- * is created.
+ * Stripe Customer, and with ONE_OPEN_CHECKOUT_ENABLED by holding at most one payable
+ * session per family (one-open-checkout.ts). The audit row is the billing intent,
+ * written once the session is created.
  */
 export type CreateBillingCheckoutResult =
   | { status: 'created'; url: string }
@@ -68,6 +75,8 @@ export async function createBillingCheckout(input: {
   cancelUrl?: string;
   now?: Date;
   env?: Record<string, string | undefined>;
+  /** How a refused expire reaches #ops under ONE_OPEN_CHECKOUT_ENABLED. */
+  page?: (database: Database, page: OpsPage) => Promise<OpsPagerOutcome>;
 }): Promise<CreateBillingCheckoutResult> {
   const {
     tier,
@@ -116,7 +125,7 @@ export async function createBillingCheckout(input: {
     return { status: 'founding_only' };
   }
 
-  const { url } = await client.createCheckoutSession({
+  const params: CheckoutSessionParams = {
     priceId,
     familyId,
     tier,
@@ -134,7 +143,22 @@ export async function createBillingCheckout(input: {
     currency,
     attribution,
     adsContext,
-  });
+  };
+  const audit = { tier, period, sku: sku ?? null, currency: currency ?? null };
+
+  if (oneOpenCheckoutEnabled(env)) {
+    return createOneOpenCheckout({
+      database,
+      client,
+      familyId,
+      userId,
+      params,
+      audit,
+      page: input.page ?? pageOps,
+    });
+  }
+
+  const { url } = await client.createCheckoutSession(params);
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -142,7 +166,7 @@ export async function createBillingCheckout(input: {
     actionTaken: 'billing_checkout_started',
     targetTable: 'families',
     targetId: familyId,
-    after: { tier, period, sku: sku ?? null, currency: currency ?? null },
+    after: audit,
   });
 
   return { status: 'created', url };

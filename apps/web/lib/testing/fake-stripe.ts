@@ -97,6 +97,20 @@ interface StoredInvoicePayment {
   payment: { type: string; payment_intent?: string };
 }
 
+interface StoredCheckoutSession {
+  id: string;
+  object: 'checkout.session';
+  status: 'open' | 'complete' | 'expired';
+  payment_status: 'unpaid' | 'paid';
+  url: string | null;
+  created: number;
+  expires_at: number;
+  client_reference_id: string | null;
+  customer: string | null;
+  metadata: Record<string, string>;
+  subscription: string | null;
+}
+
 interface Interceptor {
   match: (call: FakeStripeCall) => boolean;
   respond: (call: FakeStripeCall) => Response | Promise<Response>;
@@ -133,6 +147,9 @@ export function createFakeStripe() {
   const interceptors: Interceptor[] = [];
   /** Subscription ids the search index has not caught up with. */
   const unindexed = new Set<string>();
+  const checkoutSessions = new Map<string, StoredCheckoutSession>();
+  /** Idempotency-Key → the body it was first sent with and the session it made. */
+  const idempotent = new Map<string, { body: string; sessionId: string }>();
   let onDelete: ((subscriptionId: string) => Promise<void>) | null = null;
   const readHooks: Array<{ match: (call: FakeStripeCall) => boolean; run: () => Promise<void> }> =
     [];
@@ -309,8 +326,94 @@ export function createFakeStripe() {
     return Response.json({ object: 'list', url: path, has_more: hasMore, data });
   }
 
+  function createCheckoutSession(call: FakeStripeCall): Response {
+    const body = call.body ?? '';
+    const key = call.headers.get('idempotency-key');
+    const prior = key ? idempotent.get(key) : undefined;
+    if (prior) {
+      // Stripe replays the first response for the same key and body, and refuses a key
+      // sent again with different parameters.
+      if (prior.body !== body) return stripeError(400, 'idempotency_key_in_use');
+      return Response.json(checkoutSessions.get(prior.sessionId));
+    }
+    const form = new URLSearchParams(body);
+    const metadata: Record<string, string> = {};
+    for (const [name, value] of form) {
+      const field = name.match(/^metadata\[([^\]]+)\]$/)?.[1];
+      if (field) metadata[field] = value;
+    }
+    const id = `cs_test_${checkoutSessions.size + 1}`;
+    const created = Math.floor(Date.now() / 1000);
+    const session: StoredCheckoutSession = {
+      id,
+      object: 'checkout.session',
+      status: 'open',
+      payment_status: 'unpaid',
+      url: `https://checkout.stripe.com/c/pay/${id}`,
+      created,
+      expires_at: created + 24 * 3600,
+      client_reference_id: form.get('client_reference_id'),
+      customer: form.get('customer'),
+      metadata,
+      subscription: null,
+    };
+    checkoutSessions.set(id, session);
+    if (key) idempotent.set(key, { body, sessionId: id });
+    return Response.json(session);
+  }
+
+  function checkoutSessionRoute(call: FakeStripeCall): Response | null {
+    const { method, path, query } = call;
+    if (method === 'POST' && path === '/v1/checkout/sessions') return createCheckoutSession(call);
+    const expire = path.match(/^\/v1\/checkout\/sessions\/([^/]+)\/expire$/)?.[1];
+    if (method === 'POST' && expire) {
+      const session = checkoutSessions.get(expire);
+      if (!session) return missing(expire);
+      // Stripe expires only an open session.
+      if (session.status !== 'open') return stripeError(400);
+      session.status = 'expired';
+      session.url = null;
+      return Response.json(session);
+    }
+    const read = path.match(/^\/v1\/checkout\/sessions\/([^/]+)$/)?.[1];
+    if (method === 'GET' && read) {
+      const session = checkoutSessions.get(read);
+      if (!session) return missing(read);
+      const expand = query.getAll('expand[]');
+      const subscription =
+        expand.includes('subscription') && session.subscription
+          ? (subscriptions.get(session.subscription) ?? session.subscription)
+          : session.subscription;
+      return Response.json({ ...session, subscription });
+    }
+    return null;
+  }
+
+  /** The parent pays: the session completes and its subscription is live. */
+  function completeCheckout(sessionId: string, subscriptionId: string): void {
+    const session = checkoutSessions.get(sessionId);
+    if (!session) throw new Error(`fake stripe: no checkout session ${sessionId}`);
+    if (session.status !== 'open') throw new Error(`fake stripe: ${sessionId} is not open`);
+    const now = Math.floor(Date.now() / 1000);
+    addSubscription({
+      id: subscriptionId,
+      customer: session.customer ?? `cus_${sessionId}`,
+      familyId: session.metadata.familyId ?? null,
+      created: now,
+      periodStart: now,
+      periodEnd: now + 365 * 24 * 3600,
+      priceId: session.metadata.priceId,
+    });
+    session.status = 'complete';
+    session.payment_status = 'paid';
+    session.url = null;
+    session.subscription = subscriptionId;
+  }
+
   async function route(call: FakeStripeCall): Promise<Response> {
     const { method, path, query } = call;
+    const checkout = checkoutSessionRoute(call);
+    if (checkout) return checkout;
     if (method === 'DELETE') {
       const id = path.match(/^\/v1\/subscriptions\/([^/]+)$/)?.[1];
       if (!id) throw new Error(`fake stripe: unexpected DELETE ${path}`);
@@ -463,6 +566,14 @@ export function createFakeStripe() {
     invoicePayments,
     refunds,
     unindexed,
+    checkoutSessions,
+    completeCheckout,
+    /** Sessions a parent could still pay, for one family. */
+    payableCheckoutSessions(familyId: string): StoredCheckoutSession[] {
+      return [...checkoutSessions.values()].filter(
+        (session) => session.status === 'open' && session.metadata.familyId === familyId,
+      );
+    },
     addSubscription,
     addPaidInvoice,
     addOpenInvoice,

@@ -60,6 +60,10 @@ export const families = pgTable(
     stripeCustomerId: text('stripe_customer_id'),
     /** Stripe Subscription id. Null on the free plan, set when a subscription is live. */
     stripeSubscriptionId: text('stripe_subscription_id'),
+    /** VIL-729 · the last Checkout Session opened under ONE_OPEN_CHECKOUT_ENABLED, and the
+     * adult who opened it. Stripe holds whether it is still payable; null = none opened. */
+    stripeCheckoutSessionId: text('stripe_checkout_session_id'),
+    stripeCheckoutOpenedBy: uuid('stripe_checkout_opened_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
