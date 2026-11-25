@@ -225,7 +225,7 @@ describe('/pricing — the tier cards have anatomy', () => {
       features: [
         'Knows your family',
         'Keeps them, season to season',
-        'Starting Dec 1, signs them up with your ok.',
+        'Signs them up Dec 1.',
       ],
     },
     {

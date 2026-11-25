@@ -10,7 +10,6 @@ import {
 } from '~/lib/billing/plain-price';
 import {
   HERO_SUB,
-  PLUS_SIGNUP_LINE,
   SIGNUP_ANSWER,
 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
@@ -78,7 +77,7 @@ export function RedesignHome({
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 2.5c2.5 0 4.5 1.6 4.5 3.6S9 9.7 6.5 9.7c-.45 0-.9-.05-1.3-.15L2.8 10.6l.65-1.75C2.55 8.2 2 7.2 2 6.1 2 4.1 4 2.5 6.5 2.5Z" /><path d="M12.2 6.2c1.1.6 1.8 1.6 1.8 2.7 0 .9-.45 1.7-1.2 2.3l.5 1.5-1.9-.85c-.4.1-.8.15-1.2.15-1.3 0-2.45-.45-3.25-1.2" /></svg>
         {t("Works in your group chats")}
       </span>
-      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t("From we should")}<br />{t("we're in.")}</h1>
+      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t("We should")}<br />{t("we're in.")}</h1>
       <p className="sub">{t(HERO_SUB)}</p>
       <div className="cta-row">
         <TextDoor className="btn btn-hero" placement="hero" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>
@@ -297,7 +296,7 @@ export function RedesignHome({
       <HaleHead />
       <div className="im-thread">
        <OneStamp today={t("Today")} time={t("9:41 AM")} />
-       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6. The new time is on the family plan.")}</div></div>
+       <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("From Maya's school email: the winter concert moved to Thursday at 6. The new time is on the family plan. Tonight.")}</div></div>
       </div>
      </div>
      <div className="im-event" data-motion-step="1.4"><div className="hs-rem-date"><span className="hs-rem-cal"><i>{t("Thu")}</i><b>6</b></span><div><div className="hs-rem-t">{t("The winter concert")}</div><div className="hs-wm">{t("Thursday · 6:00 p.m.")}</div></div></div></div>
@@ -375,7 +374,7 @@ export function RedesignHome({
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(PLUS_SIGNUP_LINE)}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Signs them up Dec 1.")}</span></li></ul>
     <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">

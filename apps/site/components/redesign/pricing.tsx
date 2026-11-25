@@ -8,7 +8,6 @@ import {
   plusMonthlyLabel,
   plusPriceSentence,
 } from '~/lib/billing/plain-price';
-import { PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { FaqDeepLink } from './faq-deeplink';
 import { FaqItem } from './faq-item';
@@ -68,7 +67,7 @@ export function RedesignPricing({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list ? t("Plus, by the year or the month.") : t("What you pay.")}</h1>
-    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and chat stays open with no card needed. Join by Dec 31 and your price is locked in for as long as you’re a member. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and chat stays open with no card needed. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
     {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
     {noChargeLine ? <p className="hs-meta">{noChargeLine}</p> : null}
     
@@ -101,7 +100,7 @@ export function RedesignPricing({
     </>)}
     {promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{promo.saleName}: locked in. Join by Dec 31.</p> : null}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
-    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t(PLUS_SIGNUP_LINE)}</span></li></ul>
+    <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Signs them up Dec 1.")}</span></li></ul>
     <div className="hs-tier-cta">{promo ? <FoundingCheckoutLink className="hs-btn-primary" placement="pricing_plus" phase={promo.phase} currency={promo.currency} plan="plus">Lock in {promo.plus.saleLabel}</FoundingCheckoutLink> : list ? <TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">

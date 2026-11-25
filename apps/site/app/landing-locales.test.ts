@@ -35,15 +35,15 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('From we should');
+    expect(HTML.en).toContain('We should<br/>we&#x27;re in.');
     expect(HTML.en).toContain('we&#x27;re in.');
     expect(HTML.en).toContain('Plans already live in group chats');
     expect(HTML.en).toContain('Library playgroup');
-    expect(rd(HTML.fr)).toContain('Depuis on devrait');
+    expect(rd(HTML.fr)).toContain('On devrait');
     expect(rd(HTML.fr)).toContain('on y va');
     expect(rd(HTML.fr)).toContain('Les plans sont déjà dans les groupes texto');
     expect(rd(HTML.fr)).not.toContain('From "we should"');
-    expect(rd(HTML.zh)).toContain('从改天开始');
+    expect(rd(HTML.zh)).toContain('我们该去');
     expect(rd(HTML.zh)).toContain('就这么定了');
     expect(rd(HTML.zh)).toContain('计划已经在家长群里');
     expect(rd(HTML.zh)).not.toContain('From "we should"');
@@ -69,7 +69,7 @@ describe('every locale renders the redesign', () => {
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
     expect(fr).toContain('Les plans sont déjà dans les groupes texto');
-    expect(fr).toContain('À partir du 1er décembre, il les inscrit avec ton accord.');
+    expect(fr).toContain('Les inscrit le 1er déc.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
     expect(fr).toContain('Tu dis oui, et tu paies.');
@@ -80,7 +80,7 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
     expect(zh).toContain('计划已经在家长群里');
-    expect(zh).toContain('从 12 月 1 日起，经你同意帮他们报名。');
+    expect(zh).toContain('12 月 1 日帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');
     expect(zh).not.toContain('每个孩子，照顾的人也算上');
