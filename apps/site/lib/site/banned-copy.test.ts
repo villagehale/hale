@@ -35,12 +35,25 @@ const phrases = [
   'year ' + 'memory',
   'calendar ' + 'invite',
   'spot ' + 'opened',
+  'Gets the open ' + 'spot',
+  'A seat just ' + 'opened',
+  'Prend la place ' + 'libre',
+  'Une place vient ' + 'd\u2019ouvrir',
+  'J\u2019ai eu la ' + 'place',
+  '今天拿到空出的' + '名额',
+  '拿到空出来的' + '名额',
+  '刚空出一个' + '名额',
+  '抢到名额' + '了',
 ];
 
 const priceWordPattern = new RegExp(`\\b${priceWord}\\b`, 'i');
 
-/** Sale-block only. The home heading still says this with "today", and that line stays. */
-const promoSpotPhrases = ['Gets the open spot', 'Prend la place libre', '拿到空出来的名额'];
+/** The sale block must not bring the open-spot chip back. Split so this file does not contain the phrase. */
+const promoSpotPhrases = [
+  'Gets the open ' + 'spot',
+  'Prend la place ' + 'libre',
+  '拿到空出来的' + '名额',
+];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
