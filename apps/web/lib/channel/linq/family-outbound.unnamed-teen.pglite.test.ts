@@ -52,7 +52,7 @@ async function household(children: ReadonlyArray<{ name: string | null; years: n
   const familyId = family?.id as string;
   const [user] = await db.database
     .insert(schema.users)
-    .values({ name: 'Barton' })
+    .values({ name: 'Test Parent' })
     .returning({ id: schema.users.id });
   const parentUserId = user?.id as string;
   await db.database
