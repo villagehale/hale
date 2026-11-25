@@ -1,12 +1,9 @@
 import { schema } from '@hale/db';
-import type { CalendarInviteRequest } from '@hale/worker/executor';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { eq, isNotNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import type { CommonTimePlanPorts } from './common-time-plan';
-import type { GroupPlanAttendance, GroupPlanMessage } from './group-plan-invites';
 import { joinFamilyToSharedGroup, takeMultiFamilyTurn } from './multi-family';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupReadInput, SharedGroupReader } from './shared-group-reading';
@@ -140,47 +137,12 @@ const pickOffered =
   };
 const chatter = () => reading({ intent: 'chatter' });
 
-/**
- * The attendance read stands in for the model (its eval covers the reading): a family
- * whose own latest line is "can't make it" is out, any other own line is in. The fan-out
- * still applies the own-word rule.
- */
-function planPorts() {
-  const invites: CalendarInviteRequest[] = [];
-  const reads: GroupPlanMessage[][] = [];
-  const ports: CommonTimePlanPorts = {
-    reader: {
-      async read(input) {
-        reads.push([...input.messages]);
-        const latest = new Map(input.messages.map((m) => [m.familyId, m.text]));
-        return new Map(
-          input.families.map((f): [string, GroupPlanAttendance] => {
-            const line = latest.get(f.familyId);
-            if (line === undefined) return [f.familyId, 'unclear'];
-            return [f.familyId, line === "can't make it" ? 'out' : 'in'];
-          }),
-        );
-      },
-    },
-    invites: {
-      async send(request) {
-        invites.push(request);
-        return { status: 'reported', parents: [] };
-      },
-    },
-    noteWriter: { write: async () => null },
-    sendOneToOne: async () => 'failed',
-  };
-  return { ports, invites, reads };
-}
-
 const listOf =
   (handles: readonly string[]): ListChatHandles =>
   async () => ({ status: 'ok', handles: [...handles], isGroup: true });
 
 async function turn(
   reader: SharedGroupReader,
-  plan: CommonTimePlanPorts | undefined,
   input: { id: string; from: string; text: string; minutes: number; reactionType?: string },
   handles: readonly string[] = [MEI, ADA, PRIYA],
 ) {
@@ -202,7 +164,6 @@ async function turn(
       reader,
       composer: fakeSharedGroupComposer(),
       commonTimeWriter: async () => 'written by the model',
-      ...(plan ? { commonTimePlan: plan } : {}),
     },
   );
 }
@@ -237,26 +198,25 @@ async function proposal() {
 
 describe('a picked common time writes no family calendar', () => {
   for (const calendar of ['', 'true'] as const) {
-    it(`records the pick and writes no copy and sends no invite (plan calendar flag ${calendar || 'unset'})`, async () => {
+    it(`records the pick and writes no copy (plan calendar flag ${calendar || 'unset'})`, async () => {
       vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', calendar);
       const { ada } = await threeFamilies();
       const { reader } = script([ask, pickOffered(1), pickOffered(1)]);
-      const plan = planPorts();
 
-      await turn(reader, plan.ports, {
+      await turn(reader, {
         id: 'in-1',
         from: MEI,
         text: 'when can we all do the zoo?',
         minutes: 0,
       });
       const offer = await proposal();
-      const picked = await turn(reader, plan.ports, {
+      const picked = await turn(reader, {
         id: 'in-2',
         from: ADA,
         text: 'the second one works for us',
         minutes: 5,
       });
-      await turn(reader, plan.ports, { id: 'in-3', from: PRIYA, text: 'same for us', minutes: 9 });
+      await turn(reader, { id: 'in-3', from: PRIYA, text: 'same for us', minutes: 9 });
 
       expect(picked).toMatchObject({
         handled: true,
@@ -264,8 +224,6 @@ describe('a picked common time writes no family calendar', () => {
         notice: 'not_placed',
       });
       expect(await copies()).toEqual([]);
-      expect(plan.invites).toEqual([]);
-      expect(plan.reads).toEqual([]);
       // Positive control: the pick itself happened and is on the picker's family.
       const rows = await db.database
         .select({ familyId: schema.auditLog.familyId, after: schema.auditLog.after })
@@ -286,8 +244,7 @@ describe('a picked common time writes no family calendar', () => {
   it('with the flag off nothing is offered to the reader and nothing is placed', async () => {
     await threeFamilies();
     const { reader } = script([ask, pickOffered(0)]);
-    const plan = planPorts();
-    await turn(reader, plan.ports, {
+    await turn(reader, {
       id: 'in-1',
       from: MEI,
       text: 'when can we all do the zoo?',
@@ -296,7 +253,7 @@ describe('a picked common time writes no family calendar', () => {
     vi.stubEnv('LINQ_GROUP_COMMON_TIME_ENABLED', 'false');
     const seenWhenOff = script([() => reading({ intent: 'chatter' })]);
 
-    await turn(seenWhenOff.reader, plan.ports, {
+    await turn(seenWhenOff.reader, {
       id: 'in-2',
       from: ADA,
       text: 'first one',
@@ -305,33 +262,6 @@ describe('a picked common time writes no family calendar', () => {
 
     expect(seenWhenOff.seen[0]?.offered).toBeUndefined();
     expect(await copies()).toHaveLength(0);
-    expect(plan.invites).toHaveLength(0);
-  });
-
-  it('a pick with no plan sender wired is named, not dropped silently', async () => {
-    await threeFamilies();
-    const { reader } = script([ask, pickOffered(0)]);
-    await turn(reader, undefined, {
-      id: 'in-1',
-      from: MEI,
-      text: 'when can we all do the zoo?',
-      minutes: 0,
-    });
-
-    const out = await turn(reader, undefined, {
-      id: 'in-2',
-      from: ADA,
-      text: 'first one',
-      minutes: 2,
-    });
-
-    expect(out).toMatchObject({ handled: true, outcome: 'common_time_pick_unwired' });
-    expect(await copies()).toHaveLength(0);
-    const picked = await db.database
-      .select({ id: schema.auditLog.id })
-      .from(schema.auditLog)
-      .where(and(eq(schema.auditLog.actionTaken, 'linq_multi_family_common_time_picked')));
-    expect(picked).toHaveLength(0);
   });
 });
 
@@ -341,40 +271,22 @@ describe('only a member whose family is in this chat can pick the time', () => {
     const NANNY = '+16415550401';
     await seedParent(NANNY, 'Nan', 'nanny');
     const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
-    const plan = planPorts();
     const handles = [MEI, ADA, PRIYA, NANNY];
 
-    await turn(
-      reader,
-      plan.ports,
-      { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 },
-      handles,
-    );
-    await turn(
-      reader,
-      plan.ports,
-      { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 },
-      handles,
-    );
+    await turn(reader, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 }, handles);
+    await turn(reader, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 }, handles);
     const refused = await turn(
       reader,
-      plan.ports,
       { id: 'in-3', from: NANNY, text: 'first one', minutes: 4 },
       handles,
     );
 
     expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_not_joined' });
     expect(await copies()).toHaveLength(0);
-    expect(plan.invites).toHaveLength(0);
     expect(await pickedRows()).toHaveLength(0);
 
     // Positive control: the same pick from a joined, consenting parent is recorded.
-    await turn(
-      reader,
-      plan.ports,
-      { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 },
-      handles,
-    );
+    await turn(reader, { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 }, handles);
     expect(await pickedRows()).toHaveLength(1);
     expect(await copies()).toHaveLength(0);
   });
@@ -382,10 +294,9 @@ describe('only a member whose family is in this chat can pick the time', () => {
   it("a pick from a parent whose family's consent for this chat is gone writes nothing", async () => {
     const { ada } = await threeFamilies();
     const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
-    const plan = planPorts();
 
-    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
-    await turn(reader, plan.ports, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
+    await turn(reader, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
     const [join] = await db.database
       .select({ consentRecordId: schema.linqMultiFamilyJoins.consentRecordId })
       .from(schema.linqMultiFamilyJoins)
@@ -394,7 +305,7 @@ describe('only a member whose family is in this chat can pick the time', () => {
       .update(schema.consentRecords)
       .set({ revokedAt: NOW })
       .where(eq(schema.consentRecords.id, join?.consentRecordId as string));
-    const refused = await turn(reader, plan.ports, {
+    const refused = await turn(reader, {
       id: 'in-3',
       from: ADA,
       text: 'first one',
@@ -403,11 +314,10 @@ describe('only a member whose family is in this chat can pick the time', () => {
 
     expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_not_joined' });
     expect(await copies()).toHaveLength(0);
-    expect(plan.invites).toHaveLength(0);
     expect(await pickedRows()).toHaveLength(0);
 
     // Positive control: Priya's family still consents, and her pick is recorded.
-    await turn(reader, plan.ports, { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 });
+    await turn(reader, { id: 'in-4', from: PRIYA, text: 'first one', minutes: 6 });
     expect(await pickedRows()).toHaveLength(1);
     expect(await copies()).toHaveLength(0);
   });
@@ -415,15 +325,14 @@ describe('only a member whose family is in this chat can pick the time', () => {
   it('a reaction from a parent who stopped Hale in this chat picks nothing', async () => {
     await threeFamilies();
     const { reader } = script([ask, chatter, pickOffered(0), pickOffered(0)]);
-    const plan = planPorts();
 
-    await turn(reader, plan.ports, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
-    await turn(reader, plan.ports, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
+    await turn(reader, { id: 'in-1', from: MEI, text: 'zoo when?', minutes: 0 });
+    await turn(reader, { id: 'in-2', from: PRIYA, text: 'we are in', minutes: 2 });
     await db.database
       .update(schema.linqSharedGroupPeople)
       .set({ stoppedAt: NOW })
       .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(ADA)));
-    const refused = await turn(reader, plan.ports, {
+    const refused = await turn(reader, {
       id: 'in-3',
       from: ADA,
       text: '',
@@ -433,11 +342,10 @@ describe('only a member whose family is in this chat can pick the time', () => {
 
     expect(refused).toMatchObject({ handled: true, outcome: 'common_time_pick_stopped' });
     expect(await copies()).toHaveLength(0);
-    expect(plan.invites).toHaveLength(0);
     expect(await pickedRows()).toHaveLength(0);
 
     // Positive control: the same reaction from a member who has not stopped is recorded.
-    await turn(reader, plan.ports, {
+    await turn(reader, {
       id: 'in-4',
       from: PRIYA,
       text: '',

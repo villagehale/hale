@@ -157,13 +157,18 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     familyId: string;
     actorUserId: string | null;
   }): Promise<void>;
-  /** The household's accepted copy moved to the plan's new start. */
-  noteCalendarMoved(input: {
+  /**
+   * Moves the household's accepted copy to the plan's new start and audits the move in
+   * one transaction, so a moved copy always has its audit row.
+   */
+  commitCalendarMove(input: {
     planId: string;
+    chatId: string;
     familyId: string;
-    familyEventId: string;
+    title: string;
     startsAt: Date;
-  }): Promise<void>;
+    location: string | null;
+  }): Promise<CalendarMove>;
   markCalendarDeclined(input: {
     planId: string;
     familyId: string;
@@ -183,6 +188,11 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
     now: Date;
   }): Promise<CalendarCommit>;
 }
+
+export type CalendarMove =
+  | { status: 'moved'; familyEventId: string }
+  | { status: 'unchanged'; familyEventId: string }
+  | { status: 'failed' };
 
 export type CalendarCommit =
   | { status: 'written'; familyEventId: string }
@@ -833,15 +843,39 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
       });
     },
 
-    async noteCalendarMoved(input) {
-      await database.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'linq_group_plan_calendar_moved',
-        targetTable: 'family_events',
-        targetId: input.familyEventId,
-        after: { familyId: input.familyId, startsAt: input.startsAt.toISOString() },
-      });
+    async commitCalendarMove(input) {
+      try {
+        return await database.transaction(async (tx) => {
+          const copy = await createFamilyEventsCopyStore(tx as unknown as Database).upsertCopy(
+            {
+              groupPlanId: input.planId,
+              chatId: input.chatId,
+              title: input.title,
+              startsAt: input.startsAt,
+              endsAt: null,
+              location: input.location,
+              cancelled: false,
+            },
+            input.familyId,
+          );
+          if (copy.status === 'unchanged') return copy;
+          await tx.insert(schema.auditLog).values({
+            familyId: input.familyId,
+            actor: 'system',
+            actionTaken: 'linq_group_plan_calendar_moved',
+            targetTable: 'family_events',
+            targetId: copy.familyEventId,
+            after: { familyId: input.familyId, startsAt: input.startsAt.toISOString() },
+          });
+          return { status: 'moved' as const, familyEventId: copy.familyEventId };
+        });
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'group plan calendar: move failed',
+        );
+        return { status: 'failed' };
+      }
     },
 
     async markCalendarDeclined(input) {

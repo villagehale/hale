@@ -1,23 +1,7 @@
 import { type Database, schema } from '@hale/db';
-import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { productionChannels } from '~/lib/channel/adapters/production';
-import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
-import { withInviteUnwrittenPage } from '~/lib/loop/calendar-invite-page';
-import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
-import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
-import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
-import { failurePageOpsPager } from '~/lib/monitoring/failure-page';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { linqChatAuditKey } from './family-audit';
-import {
-  type GroupFamilyDirectory,
-  type GroupPlanAttendanceReader,
-  type GroupPlanNoteWriter,
-  createGroupPlanAttendanceReader,
-  createGroupPlanNoteWriter,
-} from './group-plan-invites';
-import type { SendOneToOne } from './group-private-aside';
+import type { GroupFamilyDirectory } from './group-plan-invites';
 
 /**
  * VIL-459 — a time the group picks from Hale's proposal is recorded. It writes no
@@ -34,13 +18,6 @@ export interface CommonTimeProposal {
   /** Offered starts still ahead. */
   slots: Date[];
   title: string | null;
-}
-
-export interface CommonTimePlanPorts {
-  reader: GroupPlanAttendanceReader;
-  invites: CalendarInviteSender;
-  noteWriter: GroupPlanNoteWriter;
-  sendOneToOne: SendOneToOne;
 }
 
 /**
@@ -132,16 +109,12 @@ export async function placePickedTime(
     chatId: string;
     proposal: CommonTimeProposal;
     picked: Date;
-    title: string;
     /** The parent who picked: the pick's own audit row is on their family. */
     picker: { familyId: string; userId: string };
     directory: GroupFamilyDirectory;
-    /** First name the group uses, by user id. */
-    names: ReadonlyMap<string, string | null>;
-    /** Users who stopped Hale in this chat: their lines are not read. */
+    /** Users who stopped Hale in this chat: they cannot pick. */
     stopped: ReadonlySet<string>;
   },
-  _ports: CommonTimePlanPorts,
 ): Promise<PickedTimeReport> {
   if (input.stopped.has(input.picker.userId)) {
     console.warn({ outcome: 'common_time_pick_stopped' }, 'linq multi-family: pick not placed');
@@ -170,27 +143,4 @@ export async function placePickedTime(
     'linq multi-family: a group pick writes no family calendar',
   );
   return { status: 'not_placed' };
-}
-
-/** Production: the same invite sender a 1:1 placement uses (VIL-249), model reads and notes. */
-export function productionCommonTimePlanPorts(
-  database: Database,
-  sendOneToOne: SendOneToOne,
-): CommonTimePlanPorts {
-  const client = () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'plan' });
-  return {
-    reader: createGroupPlanAttendanceReader(client),
-    // VIL-719: an invite text the model cannot write tells #ops while the ask policy is on.
-    invites: withInviteUnwrittenPage(
-      createCalendarInviteSender(database, {
-        channels: productionChannels(database),
-        renderer: loopTemplateRenderer,
-        inviteVoice: productionCalendarInviteVoice(),
-        cancelVoice: productionCalendarCancelVoice(),
-      }),
-      failurePageOpsPager(() => database),
-    ),
-    noteWriter: createGroupPlanNoteWriter(client),
-    sendOneToOne,
-  };
 }

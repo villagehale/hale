@@ -28,7 +28,6 @@ import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { type FamilyAvailability, composeCommonTime, familyClock } from './common-time';
 import {
-  type CommonTimePlanPorts,
   type CommonTimeProposal,
   chatAlreadyProposedFromBusy,
   latestCommonTimeProposal,
@@ -146,8 +145,6 @@ export interface MultiFamilyTurnPorts {
   language?: string;
   /** VIL-459: writes the common-time line. Production: the spoken-line writer. */
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
-  /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
-  commonTimePlan?: CommonTimePlanPorts;
   /** VIL-687: reads a shared-list turn. Production: sharedListTurnModel(). */
   listTurn?: SharedListTurnModel;
   /** VIL-686: reads a Secret Santa turn. Production: secretSantaTurnModel(). */
@@ -1412,10 +1409,10 @@ function joinedFamiliesDirectory(
 }
 
 /**
- * VIL-459 — someone in a linked family settled on one of the times Hale offered. The
- * proposal becomes a plan at that time and each family that said it is in gets its own
- * calendar copy and invite (VIL-455). Hale says nothing more in the group: the invites
- * are the answer.
+ * VIL-459 — someone in a linked family settled on one of the times Hale offered. The pick
+ * is recorded on the picker's family. It writes no family's calendar copy and sends no
+ * invite: a group plan reaches a family's calendar only through that parent's own 1:1 OK
+ * (VIL-773). Hale says nothing more in the group.
  */
 async function pickCommonTime(
   database: Database,
@@ -1426,7 +1423,6 @@ async function pickCommonTime(
     planTitle: string | null;
     asker: { familyId: string; userId: string };
     people: readonly PersonRow[];
-    ports: MultiFamilyTurnPorts;
   },
 ): Promise<Extract<MultiFamilyTurnResult, { handled: true }>> {
   const title = input.proposal.title ?? input.planTitle;
@@ -1434,28 +1430,16 @@ async function pickCommonTime(
     console.warn({ outcome: 'common_time_pick_untitled' }, 'linq multi-family: pick not placed');
     return { handled: true, outcome: 'common_time_pick_untitled', count: 'ignored' };
   }
-  if (!input.ports.commonTimePlan) {
-    console.warn({ outcome: 'common_time_pick_unwired' }, 'linq multi-family: pick not placed');
-    return { handled: true, outcome: 'common_time_pick_unwired', count: 'ignored' };
-  }
-  const report = await placePickedTime(
-    database,
-    {
-      chatId: input.chatId,
-      proposal: input.proposal,
-      picked: input.picked,
-      title,
-      picker: input.asker,
-      directory: joinedFamiliesDirectory(database, input.people),
-      names: new Map(
-        input.people.flatMap((row) => (row.userId ? [[row.userId, row.firstName]] : [])),
-      ),
-      stopped: new Set(
-        input.people.flatMap((row) => (row.userId && row.stoppedAt ? [row.userId] : [])),
-      ),
-    },
-    input.ports.commonTimePlan,
-  );
+  const report = await placePickedTime(database, {
+    chatId: input.chatId,
+    proposal: input.proposal,
+    picked: input.picked,
+    picker: input.asker,
+    directory: joinedFamiliesDirectory(database, input.people),
+    stopped: new Set(
+      input.people.flatMap((row) => (row.userId && row.stoppedAt ? [row.userId] : [])),
+    ),
+  });
   if (report.status === 'picker_not_joined') {
     return { handled: true, outcome: 'common_time_pick_not_joined', count: 'ignored' };
   }
@@ -2050,7 +2034,6 @@ export async function takeMultiFamilyTurn(
       planTitle: reading.planTitle ?? null,
       asker: channel,
       people: live,
-      ports: wired,
     });
     const aside = await runAside();
     return aside ? { ...picked, aside: aside.outcome } : picked;

@@ -2,28 +2,19 @@ import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import type {
-  CalendarInviteMethod,
-  CalendarInviteReport,
-  CalendarInviteSender,
-} from '@hale/worker/executor';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
- * VIL-455 (T13) — a plan made in a multi-family group lands on each family's calendar.
+ * VIL-455 (T13) — a group plan's per-family pieces.
  *
- * The model reads which families are in (no keywords). Each `in` family gets its own
- * family_events copy and the SAME per-family calendar-invite sender a 1:1 placement uses.
- * The copy's idempotency key is scoped to (group plan, family), so a re-drive never
- * double-places or double-texts. An edit or a cancel re-drives every copy. When a copy or
- * its invite fails, that family alone gets a private, model-written 1:1 note; if the
- * model can't write it, nothing is sent (no fixed fallback line).
- *
- * The group -> families mapping (VIL-399) is not on main yet, so it is an interface
- * ({@link GroupFamilyDirectory}) with fixtures until it lands.
+ * Each family's family_events copy is keyed by (group plan, family), so a re-write never
+ * double-places. The group plan calendar writes it only after that parent's own 1:1 OK
+ * (VIL-773). The fan-out that placed a copy and an invite for every family the model read
+ * as `in` from group words is gone; the attendance read and the failure note writer
+ * below have no production caller.
  */
 
 export const GROUP_PLAN_ATTENDANCE = ['in', 'out', 'unclear'] as const;
@@ -185,11 +176,6 @@ export interface GroupPlanNoteWriter {
   write(input: GroupPlanNoteInput): Promise<string | null>;
 }
 
-/** Sends to ONE family's own 1:1 thread(s). Never a group. */
-export interface FamilyPrivateNoteSender {
-  send(input: { familyId: string; text: string }): Promise<'sent' | 'not_sent'>;
-}
-
 const noteSchema = z.object({ text: z.string().trim().min(1) });
 export const NOTE_TOOL_SCHEMA = {
   type: 'object',
@@ -319,175 +305,4 @@ export function createFamilyEventsCopyStore(database: Database): GroupPlanCopySt
       return row?.id ?? null;
     },
   };
-}
-
-/** Which copies exist (live or not) for these families — lets a cancel find every copy. */
-export async function existingCopyFamilies(
-  database: Database,
-  plan: Pick<GroupPlan, 'groupPlanId'>,
-  familyIds: readonly string[],
-): Promise<Set<string>> {
-  if (familyIds.length === 0) return new Set();
-  const keys = familyIds.map((id) => groupPlanCopyKey(plan.groupPlanId, id));
-  const rows = await database
-    .select({ familyId: schema.familyEvents.familyId })
-    .from(schema.familyEvents)
-    .where(inArray(schema.familyEvents.groupPlanCopyKey, keys));
-  return new Set(rows.map((r) => r.familyId));
-}
-
-// ─── The fan-out ──────────────────────────────────────────────────────────────
-
-export interface GroupPlanInviteDeps {
-  directory: GroupFamilyDirectory;
-  reader: GroupPlanAttendanceReader;
-  copies: GroupPlanCopyStore;
-  /** The same per-family sender a 1:1 placement uses (VIL-249). */
-  invites: CalendarInviteSender;
-  noteWriter: GroupPlanNoteWriter;
-  privateNotes: FamilyPrivateNoteSender;
-}
-
-export type FamilyFanOutOutcome =
-  | 'invited'
-  | 'unchanged'
-  | 'cancelled'
-  | 'not_in'
-  | 'placement_failed'
-  | 'invite_failed'
-  | 'cancel_failed';
-
-export interface FamilyFanOutResult {
-  familyId: string;
-  attendance: GroupPlanAttendance | 'cancelled_plan';
-  outcome: FamilyFanOutOutcome;
-  /** Set only on a failure: what became of the private note. */
-  note?: 'sent' | 'not_sent' | 'draft_failed';
-  invite?: CalendarInviteReport;
-}
-
-export type GroupPlanFanOutReport =
-  | { status: 'no_families' }
-  /** The attendance read failed: nothing placed, nothing sent. */
-  | { status: 'unread' }
-  | { status: 'done'; families: FamilyFanOutResult[] };
-
-/**
- * A report is a failure (owed a private note) only when the send broke: the sender threw,
- * or a parent leg came back send_failed / event_not_found / compose_deferred. A leg the
- * dispatch policy suppressed (consent, quiet hours, cap) or a parent Hale can't reach
- * (no_channel / not_configured) is a named outcome, not a failure: a note would hit the
- * same wall or override the parent's own settings.
- */
-export function inviteDelivered(report: CalendarInviteReport): boolean {
-  if (report.status === 'errored') return false;
-  if (report.status !== 'reported') return true;
-  return !report.parents.some((p) =>
-    ['send_failed', 'event_not_found', 'compose_deferred'].includes(p.outcome),
-  );
-}
-
-/**
- * Only a family's own members can put that family in or out. A family with no message of
- * its own in the thread is `unclear`, whatever the read says: one parent must not put
- * another family's calendar or contact details in play.
- */
-export function ownWordOnly(
-  attendance: ReadonlyMap<string, GroupPlanAttendance>,
-  messages: readonly GroupPlanMessage[],
-): Map<string, GroupPlanAttendance> {
-  const spoke = new Set(messages.map((m) => m.familyId).filter((id): id is string => !!id));
-  return new Map(
-    [...attendance].map(([familyId, a]) => [familyId, spoke.has(familyId) ? a : 'unclear']),
-  );
-}
-
-export async function driveGroupPlan(
-  deps: GroupPlanInviteDeps,
-  plan: GroupPlan,
-  messages: readonly GroupPlanMessage[],
-  /** Families that already hold a copy (any state). A cancel or an `out` re-drives these. */
-  existingCopies: ReadonlySet<string>,
-): Promise<GroupPlanFanOutReport> {
-  const families = await deps.directory.familiesInGroup(plan.chatId);
-  if (families.length === 0) return { status: 'no_families' };
-
-  let attendance: Map<string, GroupPlanAttendance> | null = null;
-  if (!plan.cancelled) {
-    const read = await deps.reader.read({ plan, families, messages });
-    if (!read) return { status: 'unread' };
-    attendance = ownWordOnly(read, messages);
-  }
-
-  const results: FamilyFanOutResult[] = [];
-  for (const family of families) {
-    const a = attendance?.get(family.familyId) ?? 'cancelled_plan';
-    const result = await driveOne(deps, plan, family, a, existingCopies.has(family.familyId));
-    results.push(result);
-  }
-  return { status: 'done', families: results };
-}
-
-async function sendInvite(
-  deps: GroupPlanInviteDeps,
-  familyId: string,
-  familyEventId: string,
-  method: CalendarInviteMethod,
-): Promise<CalendarInviteReport> {
-  try {
-    return await deps.invites.send({ familyId, familyEventId, method });
-  } catch (err) {
-    return { status: 'errored', message: err instanceof Error ? err.message : 'unknown' };
-  }
-}
-
-async function driveOne(
-  deps: GroupPlanInviteDeps,
-  plan: GroupPlan,
-  family: GroupPlanFamily,
-  attendance: GroupPlanAttendance | 'cancelled_plan',
-  hasCopy: boolean,
-): Promise<FamilyFanOutResult> {
-  const base = { familyId: family.familyId, attendance };
-  const fail = async (
-    outcome: GroupPlanFailure,
-    invite?: CalendarInviteReport,
-  ): Promise<FamilyFanOutResult> => {
-    const text = await deps.noteWriter.write({ plan, familyLabel: family.label, failure: outcome });
-    const note = text
-      ? await deps.privateNotes
-          .send({ familyId: family.familyId, text })
-          .catch(() => 'not_sent' as const)
-      : ('draft_failed' as const);
-    return { ...base, outcome, note, ...(invite ? { invite } : {}) };
-  };
-
-  // Unclear never takes a copy back: a yes the read can no longer place is not an out.
-  if (attendance === 'unclear') return { ...base, outcome: hasCopy ? 'unchanged' : 'not_in' };
-  if (attendance !== 'in') {
-    // Cancelled plan, or the family's own out: take back any copy.
-    if (!hasCopy) return { ...base, outcome: 'not_in' };
-    let eventId: string | null;
-    try {
-      eventId = await deps.copies.cancelCopy(plan, family.familyId);
-    } catch {
-      return fail('cancel_failed');
-    }
-    if (!eventId)
-      return { ...base, outcome: attendance === 'cancelled_plan' ? 'cancelled' : 'not_in' };
-    const invite = await sendInvite(deps, family.familyId, eventId, 'CANCEL');
-    if (!inviteDelivered(invite)) return fail('cancel_failed', invite);
-    return { ...base, outcome: 'cancelled', invite };
-  }
-
-  let write: CopyWrite;
-  try {
-    write = await deps.copies.upsertCopy(plan, family.familyId);
-  } catch {
-    return fail('placement_failed');
-  }
-  if (write.status === 'unchanged') return { ...base, outcome: 'unchanged' };
-  const invite = await sendInvite(deps, family.familyId, write.familyEventId, 'REQUEST');
-  if (!inviteDelivered(invite)) return fail('invite_failed', invite);
-  return { ...base, outcome: 'invited', invite };
 }

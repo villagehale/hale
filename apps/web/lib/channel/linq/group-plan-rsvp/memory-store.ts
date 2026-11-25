@@ -452,11 +452,13 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
       });
     },
 
-    async noteCalendarMoved(input) {
+    async commitCalendarMove(input) {
+      const familyEventId = `evt-${input.familyId}`;
       world.audits.push({
         actionTaken: 'linq_group_plan_calendar_moved',
-        after: { familyId: input.familyId, familyEventId: input.familyEventId },
+        after: { familyId: input.familyId, familyEventId },
       });
+      return { status: 'moved', familyEventId };
     },
 
     async markCalendarDeclined(input) {

@@ -273,6 +273,7 @@ function lockPorts(
     groupLines?: string[];
     calendarComposer?: ReturnType<typeof fakeGroupPlanRsvpComposer>;
     posted?: string[];
+    findDirectChat?: (phone: string) => Promise<string | null>;
   } = {},
 ) {
   const posted = options.posted ?? [];
@@ -297,7 +298,7 @@ function lockPorts(
     calendar: {
       composer: options.calendarComposer ?? fakeGroupPlanRsvpComposer(),
       oneToOne: out.oneToOne,
-      findDirectChat: out.findDirectChat,
+      findDirectChat: options.findDirectChat ?? out.findDirectChat,
       pager: failurePageOpsPager(() => db.database, {
         now,
         post: async (text: string) => {
@@ -754,5 +755,186 @@ describe('a locked new start', () => {
         ),
       );
     expect(audits).toHaveLength(1);
+  });
+});
+
+/** This parent says yes in the group, so their household is asked in their 1:1. */
+async function sayYes(out: ReturnType<typeof linq>, userId: string, phone: string, now: Date) {
+  await considerGroupPlanRsvp(rsvpPorts(out, now), {
+    chatId: CHAT,
+    senderHandle: phone,
+    senderUserId: userId,
+    text: 'we are in',
+    tapback: null,
+  });
+}
+
+/** This parent OKs the ask in their own 1:1, so their household's copy is written. */
+async function okInOwnOneToOne(
+  out: ReturnType<typeof linq>,
+  userId: string,
+  phone: string,
+  now: Date,
+) {
+  await considerPrivateCalendarReply(rsvpPorts(out, now), {
+    senderUserId: userId,
+    senderName: 'Parent',
+    chatId: dm(phone),
+    text: 'yes put it on our calendar',
+  });
+}
+
+async function movedAudits() {
+  return db.database
+    .select({ familyId: schema.auditLog.familyId })
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_calendar_moved'));
+}
+
+const kinds = (lines: { body: string }[]) => lines.map((line) => line.body.split(' ')[0]);
+
+describe("after a lock, one household's failure never stops another's", () => {
+  it('a throw while re-asking one household still moves the other household, and pages once', async () => {
+    const w = await world();
+    await thread(w.famA, w.a, A_PHONE);
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.a, A_PHONE, NOW);
+    await sayYes(out, w.s, S_PHONE, at(1));
+    await okInOwnOneToOne(out, w.s, S_PHONE, at(2));
+    expect(await events()).toEqual([{ familyId: w.famS, startsAt: OLD_START, deletedAt: null }]);
+    await timePoll(w.plan.id, w.famA);
+    const posted: string[] = [];
+
+    const result = await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), {
+      posted,
+      findDirectChat: async (phone) => {
+        if (phone === A_PHONE) throw new Error('direct chat lookup broke');
+        return dm(phone);
+      },
+    }).catch((err: unknown) => err);
+
+    expect(await events()).toEqual([{ familyId: w.famS, startsAt: NEW_START, deletedAt: null }]);
+    expect(kinds(out.to(S_PHONE)).at(-1)).toBe('calendar_moved');
+    expect(posted).toEqual([
+      'Hale: ops page. site group_plan_calendar_move. failure follow_up_failed.',
+    ]);
+    expect(result).toMatchObject({ handled: true, outcome: 'group_experience_spoken' });
+  });
+});
+
+describe('a lock texts only an adult who is still a parent of that household', () => {
+  it('a co-parent removed from the family after the ask gets no re-ask; a parent still in theirs does', async () => {
+    const w = await world();
+    await thread(w.famA, w.b, B_PHONE);
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.b, B_PHONE, NOW);
+    await sayYes(out, w.s, S_PHONE, at(1));
+    expect(kinds(out.to(B_PHONE))).toEqual(['calendar_ask']);
+    await db.database.delete(schema.familyMembers).where(eq(schema.familyMembers.userId, w.b));
+    await timePoll(w.plan.id, w.famA);
+    const info = vi.spyOn(console, 'info');
+
+    await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3));
+
+    expect(kinds(out.to(B_PHONE))).toEqual(['calendar_ask']);
+    expect(info).toHaveBeenCalledWith(
+      { outcome: 'group_plan_calendar_not_a_parent', kind: 'calendar_ask' },
+      expect.any(String),
+    );
+    const sAsks = out.to(S_PHONE).filter((line) => line.body.startsWith('calendar_ask'));
+    expect(sAsks.map((line) => line.body.includes('Nov 30'))).toEqual([false, true]);
+  });
+
+  it('a co-parent removed from the family after their OK gets no moved line, and the copy still moves', async () => {
+    const w = await world();
+    await thread(w.famA, w.b, B_PHONE);
+    const out = linq();
+    await sayYes(out, w.b, B_PHONE, NOW);
+    await okInOwnOneToOne(out, w.b, B_PHONE, at(1));
+    expect(kinds(out.to(B_PHONE))).toEqual(['calendar_ask', 'calendar_written']);
+    await db.database.delete(schema.familyMembers).where(eq(schema.familyMembers.userId, w.b));
+    await timePoll(w.plan.id, w.famA);
+    const info = vi.spyOn(console, 'info');
+
+    await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3));
+
+    expect(kinds(out.to(B_PHONE))).toEqual(['calendar_ask', 'calendar_written']);
+    expect(info).toHaveBeenCalledWith(
+      { outcome: 'group_plan_calendar_not_a_parent', kind: 'calendar_moved' },
+      expect.any(String),
+    );
+    expect(await events()).toEqual([{ familyId: w.famA, startsAt: NEW_START, deletedAt: null }]);
+    expect(await movedAudits()).toEqual([{ familyId: w.famA }]);
+  });
+});
+
+describe('a moved copy always has its audit row', () => {
+  it('when the moved audit row cannot be written, the copy stays at its old start and #ops is paged', async () => {
+    const w = await world();
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.s, S_PHONE, NOW);
+    await okInOwnOneToOne(out, w.s, S_PHONE, at(1));
+    await timePoll(w.plan.id, w.famA);
+    await db.exec(`
+      create function refuse_moved_audit() returns trigger language plpgsql as $$
+      begin
+        if new.action_taken = 'linq_group_plan_calendar_moved' then
+          raise exception 'moved audit refused';
+        end if;
+        return new;
+      end $$;
+      create trigger refuse_moved_audit before insert on audit_log
+      for each row execute function refuse_moved_audit();
+    `);
+    const posted: string[] = [];
+    try {
+      await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), { posted }).catch(
+        (err: unknown) => err,
+      );
+    } finally {
+      await db.exec(
+        'drop trigger refuse_moved_audit on audit_log; drop function refuse_moved_audit();',
+      );
+    }
+
+    expect(await events()).toEqual([{ familyId: w.famS, startsAt: OLD_START, deletedAt: null }]);
+    expect(await movedAudits()).toEqual([]);
+    expect(kinds(out.to(S_PHONE))).toEqual(['calendar_ask', 'calendar_written']);
+    expect(posted).toEqual(['Hale: ops page. site group_plan_calendar_move. failure move_failed.']);
+  });
+});
+
+describe('two deliveries of the same lock at the same moment', () => {
+  it('close the poll once, so the per-household work runs once', async () => {
+    const w = await world();
+    await thread(w.famA, w.a, A_PHONE);
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.a, A_PHONE, NOW);
+    await sayYes(out, w.s, S_PHONE, at(1));
+    await okInOwnOneToOne(out, w.s, S_PHONE, at(2));
+    await timePoll(w.plan.id, w.famA);
+
+    const outcomes = await Promise.all([
+      lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3)),
+      lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3)),
+    ]);
+
+    expect(outcomes.map((o) => (o.handled ? o.outcome : 'unhandled')).sort()).toEqual([
+      'group_experience_recorded',
+      'group_experience_spoken',
+    ]);
+    const withdrawn = await db.database
+      .select({ familyId: schema.auditLog.familyId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_plan_calendar_withdrawn'));
+    expect(withdrawn).toEqual([{ familyId: w.famA }]);
+    const aAsks = out.to(A_PHONE).filter((line) => line.body.startsWith('calendar_ask'));
+    expect(aAsks.map((line) => line.body.includes('Nov 30'))).toEqual([false, true]);
+    expect(await movedAudits()).toEqual([{ familyId: w.famS }]);
+    expect(kinds(out.to(S_PHONE)).filter((kind) => kind === 'calendar_moved')).toHaveLength(1);
   });
 });

@@ -44,7 +44,6 @@ import { considerSocialForward } from '~/lib/social/forward';
 import { considerCarpoolTapback, considerCarpoolTurn } from './carpool';
 import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
-import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
   groupExperienceTurnEnabled,
   groupPollsEnabled,
@@ -271,8 +270,6 @@ export async function handleLinqInboundRequest(
     groupExperienceReader?: GroupExperienceReader;
     /** VIL-399 test seam. Production composes with the model when the flag is on. */
     groupExperienceComposer?: GroupExperienceComposer;
-    /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
-    commonTimePlan?: CommonTimePlanPorts;
     /** VIL-686 test seam. Production reads a Secret Santa turn with the model. */
     secretSantaTurn?: SecretSantaTurnModel;
     /** VIL-686 test seam. Production writes every Secret Santa line with the model. */
@@ -992,15 +989,6 @@ async function handleLinqGroup(
       },
       {
         ...multiFamilyPorts(deps),
-        commonTimePlan:
-          deps.commonTimePlan ??
-          productionCommonTimePlanPorts(
-            deps.database,
-            privateAsideOneToOne(deps.database, {
-              now: deps.now?.() ?? new Date(),
-              send: deps.oneToOne,
-            }),
-          ),
         optOut: async (text) => {
           const intent = await optOutIntentOf(text);
           return intent === 'stop' || intent === 'start' ? intent : 'none';

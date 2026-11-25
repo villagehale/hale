@@ -471,6 +471,25 @@ async function askedParentOf(
 }
 
 /**
+ * One household's work after a lock. The poll is already closed, so a retry never redoes
+ * it: a throw pages #ops for that household and never stops the next household's work.
+ */
+async function settleOneHousehold(pager: OpsPager, work: () => Promise<unknown>) {
+  try {
+    await work();
+  } catch (err) {
+    console.error(
+      {
+        outcome: 'group_plan_calendar_after_lock_failed',
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      "group plan calendar: one household's work after the lock failed",
+    );
+    await pager.page({ site: 'group_plan_calendar_move', facts: { failure: 'follow_up_failed' } });
+  }
+}
+
+/**
  * After a group locked a new start ({@link lockPlanStart} already withdrew every open
  * ask): each household whose ask was withdrawn is asked once more about the new start,
  * and each household whose copy was written gets it moved and hears so in their 1:1.
@@ -486,36 +505,40 @@ export async function settleCalendarsAfterLock(
   const turnPorts = { store, ...calendarPorts(ports) };
   const pager = ports.pager ?? failurePageOpsPager(() => ports.database);
   for (const row of locked.withdrawn) {
-    const userId = await askedParentOf(ports.database, row.askProviderMessageId);
-    if (!userId) {
-      console.warn(
-        { outcome: 'group_plan_calendar_reask_no_parent' },
-        'group plan calendar: no parent on record for the withdrawn ask',
+    await settleOneHousehold(pager, async () => {
+      const userId = await askedParentOf(ports.database, row.askProviderMessageId);
+      if (!userId) {
+        console.warn(
+          { outcome: 'group_plan_calendar_reask_no_parent' },
+          'group plan calendar: no parent on record for the withdrawn ask',
+        );
+        return;
+      }
+      await reaskAfterLockedStart(
+        {
+          plan: locked.plan,
+          row,
+          userId,
+          language: await householdLanguage(ports.database, row.familyId),
+          now: ports.now,
+        },
+        turnPorts,
       );
-      continue;
-    }
-    await reaskAfterLockedStart(
-      {
-        plan: locked.plan,
-        row,
-        userId,
-        language: await householdLanguage(ports.database, row.familyId),
-        now: ports.now,
-      },
-      turnPorts,
-    );
+    });
   }
   for (const row of locked.written) {
-    await moveWrittenCopy(
-      {
-        plan: locked.plan,
-        previousStartsAt: locked.previousStartsAt,
-        row,
-        userId: await askedParentOf(ports.database, row.askProviderMessageId),
-        language: await householdLanguage(ports.database, row.familyId),
-        now: ports.now,
-      },
-      { ...turnPorts, pager },
+    await settleOneHousehold(pager, async () =>
+      moveWrittenCopy(
+        {
+          plan: locked.plan,
+          previousStartsAt: locked.previousStartsAt,
+          row,
+          userId: await askedParentOf(ports.database, row.askProviderMessageId),
+          language: await householdLanguage(ports.database, row.familyId),
+          now: ports.now,
+        },
+        { ...turnPorts, pager },
+      ),
     );
   }
 }

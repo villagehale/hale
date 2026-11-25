@@ -48,6 +48,7 @@ export type CalendarSkipReason =
   | 'no_parent'
   | 'no_thread'
   | 'thread_unread'
+  | 'not_a_parent'
   | 'withdrawn'
   | 'write_failed'
   | 'remove_failed';
@@ -552,6 +553,24 @@ async function removeWrittenCopy(
   return { status: 'removed', familyId, familyEventId: removed.familyEventId };
 }
 
+/**
+ * A lock's 1:1 line goes to the adult the old ask went to only while they are still a
+ * parent (primary or co-parent) of that household here. Anyone else gets nothing.
+ */
+async function stillParentOf(
+  ports: CalendarTurnPorts,
+  input: { chatId: string; userId: string; familyId: string; kind: CalendarPrivateKind },
+): Promise<CalendarSkipReason | null> {
+  const home = await resolveHousehold(ports, input.chatId, input.userId);
+  if (home.status === 'skipped') return home.reason;
+  if (home.status === 'one' && home.familyId === input.familyId) return null;
+  console.info(
+    { outcome: 'group_plan_calendar_not_a_parent', kind: input.kind },
+    'group plan calendar: no longer a parent of that household, nothing sent',
+  );
+  return 'not_a_parent';
+}
+
 /** The key a lock's send goes out once under: plan, new start, household. Never a clock. */
 function lockSendKey(plan: GroupPlanRecord, familyId: string): string {
   return `${plan.id}:${plan.startsAt?.toISOString() ?? 'none'}:${familyId}`;
@@ -573,6 +592,13 @@ export async function reaskAfterLockedStart(
 ): Promise<CalendarEffect> {
   if (!input.plan.startsAt) return { status: 'skipped', reason: 'no_start' };
   const { familyId } = input.row;
+  const refused = await stillParentOf(ports, {
+    chatId: input.plan.chatId,
+    userId: input.userId,
+    familyId,
+    kind: 'calendar_ask',
+  });
+  if (refused) return { status: 'skipped', reason: refused };
   const claimed = await ports.store.claimCalendarAsk({
     planId: input.plan.id,
     familyId,
@@ -615,10 +641,11 @@ export async function reaskAfterLockedStart(
 }
 
 /**
- * A lock moved the plan. The copy this household accepted moves to the new start, the
- * move is audited in that household, and the parent who agreed hears it in a line the
- * model writes. A failed move, or a line the model cannot write, pages #ops; the copy
- * moves either way.
+ * A lock moved the plan. The copy this household accepted moves to the new start with
+ * its audit row in that household, in one transaction, and the parent who agreed hears
+ * it in a line the model writes while they are still a parent there. A failed move pages
+ * #ops and leaves the copy where it was; a line the model cannot write pages #ops and the
+ * copy still moves.
  */
 export async function moveWrittenCopy(
   input: {
@@ -633,12 +660,7 @@ export async function moveWrittenCopy(
 ): Promise<CalendarEffect> {
   const { familyId } = input.row;
   if (!input.plan.startsAt) return { status: 'skipped', reason: 'no_start' };
-  if (!ports.calendar) {
-    console.warn({ outcome: 'not_configured' }, 'group plan calendar: no writer');
-    await ports.pager.page({ site: 'group_plan_calendar_move', facts: { failure: 'move_failed' } });
-    return { status: 'skipped', reason: 'not_configured' };
-  }
-  const moved = await ports.calendar.write({
+  const moved = await ports.store.commitCalendarMove({
     planId: input.plan.id,
     chatId: input.plan.chatId,
     familyId,
@@ -656,12 +678,17 @@ export async function moveWrittenCopy(
   }
   const effect: CalendarEffect = { status: 'moved', familyId, familyEventId: moved.familyEventId };
   if (moved.status === 'unchanged') return effect;
-  await ports.store.noteCalendarMoved({
-    planId: input.plan.id,
-    familyId,
-    familyEventId: moved.familyEventId,
-    startsAt: input.plan.startsAt,
-  });
+  if (
+    input.userId &&
+    (await stillParentOf(ports, {
+      chatId: input.plan.chatId,
+      userId: input.userId,
+      familyId,
+      kind: 'calendar_moved',
+    }))
+  ) {
+    return effect;
+  }
 
   const timeZone = await ports.store.householdTimeZone(familyId);
   const spoken = await composeGroupPlanRsvpLine(
